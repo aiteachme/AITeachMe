@@ -24,6 +24,8 @@ export interface BuildPlannerConfirmResponse {
   plan: string;
   chapters?: BuildPlannerChapterResponse[];
   diagnose?: BuildPlannerDiagnosticQuestionResponse[];
+  diagnose_status?: string;
+  diagnose_note?: string;
   status_history?: string[];
   created_at: string;
   updated_at: string;

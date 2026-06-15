@@ -51,6 +51,7 @@ from app.utils.time import utcnow
 from app.workflows.digest.common.file_status import is_markdown_ready_for_digest
 from app.workflows.digest.common.runtime_config import get_teaching_runtime_config
 from app.workflows.digest.planner.lib.plans import (
+    normalize_planner_diagnosis_draft,
     normalize_planner_payload,
     planner_mode_label,
 )
@@ -102,6 +103,25 @@ def _planning_note_from_plan(plan: Mapping[str, Any]) -> str:
     return str(plan.get("planning_note") or "")
 
 
+def _public_diagnose_payload(plan: Mapping[str, Any]) -> list[dict[str, Any]]:
+    diagnose: list[dict[str, Any]] = []
+    for raw in list(plan.get("diagnose") or []):
+        if not isinstance(raw, Mapping):
+            continue
+        item = dict(raw)
+        option_values = item.get("options") or item.get("sample_answers") or item.get("quick_answers") or item.get("answers")
+        raw_options = option_values if isinstance(option_values, (list, tuple, set)) else [option_values]
+        item["options"] = [
+            _diagnose_clean_text(option)
+            for option in list(raw_options or [])[:4]
+            if _diagnose_clean_text(option)
+        ]
+        for legacy_key in ("sample_answers", "quick_answers", "answers"):
+            item.pop(legacy_key, None)
+        diagnose.append(item)
+    return diagnose
+
+
 def _public_plan_payload(plan: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "course_name": str(plan.get("course_name") or ""),
@@ -112,7 +132,9 @@ def _public_plan_payload(plan: Mapping[str, Any]) -> dict[str, Any]:
         "suggestion": str(plan.get("suggestion") or ""),
         "plan": str(plan.get("plan") or ""),
         "chapters": list(plan.get("chapters") or []),
-        "diagnose": list(plan.get("diagnose") or []),
+        "diagnose": _public_diagnose_payload(plan),
+        "diagnose_status": str(plan.get("diagnose_status") or ""),
+        "diagnose_note": str(plan.get("diagnose_note") or ""),
         "model_override": normalize_runtime_model_override(plan.get("model_override")) or "",
     }
 
@@ -151,6 +173,56 @@ def _planner_selected_file_ids(session_item: ChatSession) -> list[str]:
         seen.add(file_id)
         result.append(file_id)
     return result
+
+
+def _diagnose_clean_text(value: Any) -> str:
+    return " ".join(str(value or "").split()).strip()
+
+
+def _diagnose_answer_map(raw_answers: list[Mapping[str, Any]] | None) -> dict[str, str]:
+    answers: dict[str, str] = {}
+    for raw in list(raw_answers or []):
+        if not isinstance(raw, Mapping):
+            continue
+        question = _diagnose_clean_text(raw.get("question"))
+        answer = _diagnose_clean_text(raw.get("answer"))
+        if question and answer:
+            answers[question.casefold()] = answer
+    return answers
+
+
+def _apply_diagnose_resolution(
+    plan: Mapping[str, Any],
+    *,
+    diagnose_answers: list[Mapping[str, Any]] | None = None,
+    diagnose_status: str = "",
+    diagnose_note: str = "",
+) -> dict[str, Any]:
+    answers = _diagnose_answer_map(diagnose_answers)
+    status = _diagnose_clean_text(diagnose_status)
+    note = _diagnose_clean_text(diagnose_note)
+    next_plan = dict(plan)
+
+    diagnose: list[dict[str, Any]] = []
+    for raw in list(next_plan.get("diagnose") or []):
+        if not isinstance(raw, Mapping):
+            continue
+        item = dict(raw)
+        question = _diagnose_clean_text(item.get("question"))
+        answer = answers.get(question.casefold()) if question else None
+        if answer:
+            item["answer"] = answer
+        diagnose.append(item)
+    if diagnose:
+        next_plan["diagnose"] = diagnose
+
+    if status in {"answered", "skipped"}:
+        next_plan["diagnose_status"] = status
+    elif answers:
+        next_plan["diagnose_status"] = "answered"
+    if note:
+        next_plan["diagnose_note"] = note
+    return next_plan
 
 
 def _planner_model_override(session_item: ChatSession) -> str | None:
@@ -409,6 +481,8 @@ def _plan_response(
         plan=str(public_plan.get("plan") or ""),
         chapters=list(public_plan.get("chapters") or []),
         diagnose=list(public_plan.get("diagnose") or []),
+        diagnose_status=str(public_plan.get("diagnose_status") or ""),
+        diagnose_note=str(public_plan.get("diagnose_note") or ""),
         status=status,
         planner_session_id=session_id,
         confirmed_plan_id=confirmed_plan_id,
@@ -599,6 +673,43 @@ def _render_final_plan_markdown(plan_payload: dict[str, Any]) -> str:
     return "\n".join(lines).strip()
 
 
+def _is_diagnosis_draft(plan_payload: Mapping[str, Any] | None) -> bool:
+    if not plan_payload:
+        return False
+    return (
+        str(plan_payload.get("planner_stage") or "").strip() == "diagnosis"
+        or (
+            bool(plan_payload.get("diagnose"))
+            and str(plan_payload.get("diagnose_status") or "").strip() == "pending"
+            and not list(plan_payload.get("chapters") or [])
+            and not str(plan_payload.get("plan") or "").strip()
+        )
+    )
+
+
+def _render_diagnosis_markdown(plan_payload: dict[str, Any]) -> str:
+    questions = [
+        str(item.get("question") or "").strip()
+        for item in list(plan_payload.get("diagnose") or [])
+        if isinstance(item, Mapping) and str(item.get("question") or "").strip()
+    ]
+    lines = [
+        "# 前置诊断",
+        "",
+        "先确认这几项选择，再生成正式学习方案。",
+    ]
+    if questions:
+        lines.extend(["", "## 诊断问题"])
+        lines.extend(f"{index}. {question}" for index, question in enumerate(questions, start=1))
+    return "\n".join(lines).strip()
+
+
+def _render_planner_message_markdown(plan_payload: dict[str, Any]) -> str:
+    if _is_diagnosis_draft(plan_payload):
+        return _render_diagnosis_markdown(plan_payload)
+    return _render_final_plan_markdown(plan_payload)
+
+
 def _build_docgen_history_brief(turns: list[ChatMessage]) -> str:
     lines: list[str] = []
     for turn in turns:
@@ -699,6 +810,15 @@ def _normalize_persisted_plan(
     material_context: Any | None = None,
     latest_plan: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    if _is_diagnosis_draft(plan):
+        return normalize_planner_diagnosis_draft(
+            plan or {},
+            course_id=course_id,
+            user_prompt=user_prompt,
+            requested_digest_mode=digest_mode,
+            shared_inputs=material_context,
+            latest_plan=latest_plan,
+        )
     return normalize_planner_payload(
         plan or {},
         course_id=course_id,
@@ -957,7 +1077,7 @@ def save_planner_result(
             session,
             record,
             latest_plan=persisted_plan,
-            latest_summary=str(persisted_plan.get("plan") or ""),
+            latest_summary=str(persisted_plan.get("plan") or ("前置诊断待完成" if _is_diagnosis_draft(persisted_plan) else "")),
             digest_mode=str(persisted_plan.get("digest_mode") or meta.get("digest_mode") or ""),
             model_override=normalize_runtime_model_override(state.get("model_override")),
             planner_status="draft",
@@ -974,7 +1094,7 @@ def save_planner_result(
             session,
             record=record,
             role="assistant",
-            content=_render_final_plan_markdown(persisted_plan),
+            content=_render_planner_message_markdown(persisted_plan),
             plan=persisted_plan,
         )
         turns = _list_planner_turns(session, session_id=record.id, course_id=course_id, user_id=user_id)
@@ -994,6 +1114,109 @@ def save_planner_result(
             "planner_record": _record_snapshot(record),
             "planner_turns": [_turn_snapshot(turn) for turn in turns],
         }
+
+
+def resolve_planner_diagnosis_without_regeneration(
+    *,
+    course: Course,
+    user_id: str,
+    session_id: str,
+    message: str,
+    diagnose_answers: list[Mapping[str, Any]] | None = None,
+    diagnose_status: str = "",
+    diagnose_note: str = "",
+) -> BuildPlannerSessionResponse:
+    """Persist pre-diagnosis resolution without asking the model to replan."""
+
+    status = _diagnose_clean_text(diagnose_status)
+    note = _diagnose_clean_text(diagnose_note)
+    user_message = _diagnose_clean_text(message)
+    with managed_session() as session:
+        record = _get_planner_session(
+            session,
+            course_id=course.id,
+            session_id=session_id,
+            user_id=user_id,
+        )
+        if record is None:
+            raise BuildPlannerSessionNotFoundError(session_id)
+        latest_plan = _planner_plan(record)
+        if not latest_plan:
+            raise BuildPlannerEmptyPlanError(session_id)
+        resolved_plan = _apply_diagnose_resolution(
+            latest_plan,
+            diagnose_answers=diagnose_answers,
+            diagnose_status=status,
+            diagnose_note=note,
+        )
+        record = _update_planner_session_meta(
+            session,
+            record,
+            latest_plan=resolved_plan,
+            latest_summary=str(resolved_plan.get("plan") or ""),
+            planner_status="draft",
+            confirmed_plan_id=None,
+            confirmed_plan=None,
+        )
+        turns_before_user_message = _list_planner_turns(
+            session,
+            session_id=record.id,
+            course_id=course.id,
+            user_id=user_id,
+        )
+        latest_assistant = next(
+            (turn for turn in reversed(turns_before_user_message) if turn.role == "assistant"),
+            None,
+        )
+        if latest_assistant is not None:
+            latest_assistant.content = _render_final_plan_markdown(resolved_plan)
+            latest_assistant.meta_json = {
+                **dict(latest_assistant.meta_json or {}),
+                "source": PLANNER_CHAT_SOURCE,
+                "message_kind": "planner_plan",
+                "planner_session_id": record.id,
+                "plan_json": resolved_plan,
+                "plan": str(resolved_plan.get("plan") or ""),
+            }
+            session.add(latest_assistant)
+            session.commit()
+        else:
+            _create_planner_message(
+                session,
+                record=record,
+                role="assistant",
+                content=_render_final_plan_markdown(resolved_plan),
+                plan=resolved_plan,
+            )
+        _create_planner_message(
+            session,
+            record=record,
+            role="user",
+            content=user_message
+            or (
+                "我先跳过前置诊断，继续使用当前方案。"
+                if status == "skipped"
+                else "我已完成前置诊断选择。"
+            ),
+        )
+        session.refresh(record)
+        turns = _list_planner_turns(session, session_id=record.id, course_id=course.id, user_id=user_id)
+        logger.info(
+            "planner_diagnosis_resolved_without_regeneration",
+            course_id=course.id,
+            user_id=user_id,
+            planner_session_id=session_id,
+            diagnose_status=status,
+            diagnose_answer_count=len(diagnose_answers or []),
+            turn_count=len(turns),
+        )
+        return _planner_session_response(
+            record,
+            course_id=course.id,
+            selected_file_ids=_planner_selected_file_ids(record),
+            plan=resolved_plan,
+            turns=turns,
+        )
 
 
 def _normalized_plan_payload(
@@ -1024,6 +1247,8 @@ def _normalized_plan_payload(
             for item in list(plan.get("diagnose") or [])
             if isinstance(item, Mapping)
         ][:10],
+        "diagnose_status": str(plan.get("diagnose_status") or ""),
+        "diagnose_note": str(plan.get("diagnose_note") or ""),
         "build_constraints": build_constraints,
         "model_override": normalize_runtime_model_override(plan.get("model_override")) or "",
     }
@@ -1218,6 +1443,8 @@ def confirm_planner_session(
         plan=str(plan_payload.get("plan") or confirmed.plan or ""),
         chapters=list(plan_payload.get("chapters") or []),
         diagnose=list(plan_payload.get("diagnose") or []),
+        diagnose_status=str(plan_payload.get("diagnose_status") or ""),
+        diagnose_note=str(plan_payload.get("diagnose_note") or ""),
         status_history=[confirmed.status, _planner_status(record)],
         created_at=confirmed.created_at,
         updated_at=confirmed.updated_at,
@@ -1344,5 +1571,6 @@ __all__ = [
     "mark_planner_session_failed",
     "prepare_planner_run",
     "planner_session_response_from_state",
+    "resolve_planner_diagnosis_without_regeneration",
     "save_planner_result",
 ]

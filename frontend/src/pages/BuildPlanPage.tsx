@@ -30,6 +30,7 @@ import {
 } from "../api/client";
 import type {
   BuildPlannerConfirmResponse,
+  BuildPlannerDiagnosticAnswerRequest,
   BuildPlannerPlanResponse,
   BuildPlannerSessionResponse,
   DocGenBuildCancelData,
@@ -90,11 +91,12 @@ interface PersistedPlannerState {
   currentPlan: BuildPlannerPlanResponse | null;
   inputValue: string;
   plannerNeedsRefresh: boolean;
+  diagnosisGate?: PlannerDiagnosisGate | null;
 }
 
 const STORAGE_PREFIX = "aiteachme:files-page-planner";
 const LOGO_SRC = publicAssetPath("logo.svg");
-const PLANNER_STATE_VERSION = 5;
+const PLANNER_STATE_VERSION = 6;
 const LEGACY_WELCOME_MESSAGE_CONTENT =
   "可以直接告诉我你的学习目标，也可以先上传资料。我会先思考资料边界，再给出几条计划大纲，你确认后再正式开始知识文档构建。";
 const TRANSIENT_PLANNER_ERROR_SNIPPETS = [
@@ -142,7 +144,13 @@ interface PlannerViewChapter {
 interface PlannerDiagnosticQuestion {
   question?: string;
   purpose?: string;
-  sample_answers?: string[];
+  options?: string[];
+  answer?: string;
+}
+
+interface PlannerDiagnosisGate {
+  sessionId: string;
+  answers: Record<string, string>;
 }
 
 type PlannerViewPlan = BuildPlannerPlanResponse & {
@@ -153,6 +161,8 @@ type PlannerViewPlan = BuildPlannerPlanResponse & {
   plan?: string;
   chapters?: PlannerViewChapter[];
   diagnose?: PlannerDiagnosticQuestion[];
+  diagnose_status?: string;
+  diagnose_note?: string;
 };
 
 type PlannerStreamStepStatus = "active" | "done" | "warning" | "error";
@@ -212,9 +222,14 @@ function createInitialMessages(): ChatMessage[] {
   return [];
 }
 
+function isInternalPlannerDiagnosisPrompt(content: string): boolean {
+  const text = content.trim();
+  return text.startsWith("前置诊断选择：") || text.startsWith("跳过前置诊断，请按当前学习目标和资料继续生成可确认的学习方案。");
+}
+
 function sanitizePlannerMessages(messages: ChatMessage[]): ChatMessage[] {
-  return messages.map((message) => {
-    if (message.role !== "assistant" || !message.plan || hasUsablePlannerPlan(message.plan)) {
+  const normalized = messages.map((message) => {
+    if (message.role !== "assistant" || !message.plan || hasRenderablePlannerDraft(message.plan)) {
       return message;
     }
     return {
@@ -222,18 +237,36 @@ function sanitizePlannerMessages(messages: ChatMessage[]): ChatMessage[] {
       plan: null,
       content: message.content?.trim() || "这次生成结果缺少章节大纲，请继续补充要求后重新生成。",
     };
-  }).filter(
-    (message) =>
-      !(
-        message.role === "assistant" &&
-        message.content === LEGACY_WELCOME_MESSAGE_CONTENT &&
-        !message.plan
-      ) &&
-      !(
-        message.role === "system" &&
-        TRANSIENT_PLANNER_ERROR_SNIPPETS.some((snippet) => message.content.includes(snippet))
-      ),
-  );
+  });
+  const sessionsWithUsablePlan = new Set<string>();
+  for (const message of normalized) {
+    if (message.role !== "assistant" || !hasUsablePlannerPlan(message.plan)) {
+      continue;
+    }
+    const sessionId = planSessionId(message.plan, null);
+    if (sessionId) {
+      sessionsWithUsablePlan.add(sessionId);
+    }
+  }
+
+  return normalized.filter((message) => {
+    if (message.role === "user" && isInternalPlannerDiagnosisPrompt(message.content)) {
+      return false;
+    }
+    if (message.role === "assistant" && message.plan && !hasUsablePlannerPlan(message.plan) && hasPlannerDiagnosis(message.plan)) {
+      const sessionId = planSessionId(message.plan, null);
+      if (sessionId && sessionsWithUsablePlan.has(sessionId)) {
+        return false;
+      }
+    }
+    if (message.role === "assistant" && message.content === LEGACY_WELCOME_MESSAGE_CONTENT && !message.plan) {
+      return false;
+    }
+    if (message.role === "system" && TRANSIENT_PLANNER_ERROR_SNIPPETS.some((snippet) => message.content.includes(snippet))) {
+      return false;
+    }
+    return true;
+  });
 }
 
 function plannerView(plan: BuildPlannerPlanResponse | null | undefined): PlannerViewPlan | null {
@@ -256,12 +289,138 @@ function plannerDiagnose(plan: BuildPlannerPlanResponse | null | undefined): Pla
   return (plannerView(plan)?.diagnose ?? []).filter((item) => String(item?.question ?? "").trim());
 }
 
+function plannerDiagnosticOptions(item: PlannerDiagnosticQuestion): string[] {
+  const legacyItem = item as PlannerDiagnosticQuestion & { sample_answers?: string[] };
+  return (item.options ?? legacyItem.sample_answers ?? [])
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean)
+    .slice(0, 4);
+}
+
+function plannerDiagnoseStatus(plan: BuildPlannerPlanResponse | null | undefined): string {
+  return String(plannerView(plan)?.diagnose_status ?? "").trim();
+}
+
+function hasPlannerDiagnosis(plan: BuildPlannerPlanResponse | null | undefined): boolean {
+  return plannerDiagnose(plan).length > 0;
+}
+
+function plannerDiagnoseAnswers(plan: BuildPlannerPlanResponse | null | undefined): Record<string, string> {
+  const answers: Record<string, string> = {};
+  for (const item of plannerDiagnose(plan)) {
+    const question = String(item.question ?? "").trim();
+    const answer = String(item.answer ?? "").trim();
+    if (question && answer) {
+      answers[question] = answer;
+    }
+  }
+  return answers;
+}
+
+function isPlannerDiagnoseResolved(plan: BuildPlannerPlanResponse | null | undefined): boolean {
+  const status = plannerDiagnoseStatus(plan);
+  if (status === "answered" || status === "skipped") {
+    return true;
+  }
+  const items = plannerDiagnose(plan);
+  return items.length > 0 && items.every((item) => String(item.answer ?? "").trim());
+}
+
+function planSessionId(plan: BuildPlannerPlanResponse | null | undefined, fallback: string | null | undefined): string {
+  const view = plannerView(plan);
+  return String(view?.planner_session_id ?? fallback ?? "").trim();
+}
+
+function createPlannerDiagnosisGate(
+  sessionId: string | null | undefined,
+  plan: BuildPlannerPlanResponse | null | undefined,
+): PlannerDiagnosisGate | null {
+  const resolvedSessionId = planSessionId(plan, sessionId);
+  if (plannerView(plan)?.confirmed_plan_id) {
+    return null;
+  }
+  if (isPlannerDiagnoseResolved(plan)) {
+    return null;
+  }
+  return resolvedSessionId && plannerDiagnose(plan).length
+    ? { sessionId: resolvedSessionId, answers: plannerDiagnoseAnswers(plan) }
+    : null;
+}
+
+function isPlannerDiagnosisPending(
+  gate: PlannerDiagnosisGate | null | undefined,
+  plan: BuildPlannerPlanResponse | null | undefined,
+  fallbackSessionId: string | null | undefined,
+): boolean {
+  return Boolean(
+    gate &&
+    gate.sessionId === planSessionId(plan, fallbackSessionId) &&
+    !plannerView(plan)?.confirmed_plan_id &&
+    plannerDiagnose(plan).length &&
+    !isPlannerDiagnoseResolved(plan),
+  );
+}
+
+function buildPlannerDiagnosisPrompt(
+  plan: BuildPlannerPlanResponse | null | undefined,
+  answers: Record<string, string>,
+  skip = false,
+): string {
+  if (skip) {
+    return "跳过前置诊断，请按当前学习目标和资料继续生成可确认的学习方案。";
+  }
+
+  const lines = ["前置诊断选择："];
+  for (const item of plannerDiagnose(plan)) {
+    const question = String(item.question ?? "").trim();
+    const answer = String(answers[question] ?? "").trim();
+    if (question && answer) {
+      lines.push(`问题：${question}`);
+      lines.push(`回答：${answer}`);
+    }
+  }
+
+  if (lines.length === 1) {
+    return "";
+  }
+  lines.push("请根据这些选择更新学习方案，并让后续知识文档的讲解起点、例题、图示和练习配置对齐这些信号。");
+  return lines.join("\n");
+}
+
+function applyPlannerDiagnosisResolution(
+  plan: BuildPlannerPlanResponse | null | undefined,
+  answers: Record<string, string>,
+  status: "answered" | "skipped",
+): BuildPlannerPlanResponse | null {
+  if (!plan) {
+    return null;
+  }
+  const nextDiagnose = plannerDiagnose(plan).map((item) => {
+    const question = String(item.question ?? "").trim();
+    const answer = status === "answered" ? String(answers[question] ?? item.answer ?? "").trim() : "";
+    return {
+      ...item,
+      answer,
+    };
+  });
+  return {
+    ...plan,
+    diagnose: nextDiagnose,
+    diagnose_status: status,
+    diagnose_note: "",
+  } as BuildPlannerPlanResponse;
+}
+
 function hasUsablePlannerPlan(plan: BuildPlannerPlanResponse | null | undefined): plan is BuildPlannerPlanResponse {
   return Boolean(plan && plannerChapters(plan).some((chapter) => String(chapter.title ?? "").trim()));
 }
 
+function hasRenderablePlannerDraft(plan: BuildPlannerPlanResponse | null | undefined): plan is BuildPlannerPlanResponse {
+  return hasUsablePlannerPlan(plan) || hasPlannerDiagnosis(plan);
+}
+
 function usablePlannerPlan(plan: BuildPlannerPlanResponse | null | undefined): BuildPlannerPlanResponse | null {
-  return hasUsablePlannerPlan(plan) ? plan : null;
+  return hasRenderablePlannerDraft(plan) ? plan : null;
 }
 
 function appendUserMessage(messages: ChatMessage[], prompt: string): ChatMessage[] {
@@ -331,6 +490,7 @@ function readPersistedPlannerState(courseId: string): PersistedPlannerState | nu
       ...parsed,
       messages: sanitizePlannerMessages(parsed.messages ?? []),
       currentPlan: usablePlannerPlan(parsed.currentPlan),
+      diagnosisGate: parsed.diagnosisGate ?? null,
     };
   } catch {
     logPlannerDebug("read_persisted_state_failed", { courseId });
@@ -348,6 +508,7 @@ function persistPlannerState(courseId: string, value: PersistedPlannerState) {
     version: PLANNER_STATE_VERSION,
     messages: sanitizePlannerMessages(value.messages),
     currentPlan: usablePlannerPlan(value.currentPlan),
+    diagnosisGate: value.diagnosisGate ?? null,
   });
   window.localStorage.setItem(key, serialized);
   window.sessionStorage.setItem(key, serialized);
@@ -421,6 +582,11 @@ function planFromTurn(
     suggestion: String(raw.suggestion ?? plannerView(latest)?.suggestion ?? ""),
     plan: String(raw.plan ?? plannerView(latest)?.plan ?? ""),
     chapters: Array.isArray(raw.chapters) ? raw.chapters as PlannerViewChapter[] : [],
+    diagnose: Array.isArray(raw.diagnose)
+      ? raw.diagnose as PlannerDiagnosticQuestion[]
+      : plannerView(latest)?.diagnose ?? [],
+    diagnose_status: String(raw.diagnose_status ?? plannerView(latest)?.diagnose_status ?? ""),
+    diagnose_note: String(raw.diagnose_note ?? plannerView(latest)?.diagnose_note ?? ""),
     status: typeof raw.status === "string" ? raw.status : session.status,
     planner_session_id: String(raw.planner_session_id ?? session.session_id ?? ""),
     confirmed_plan_id: typeof raw.confirmed_plan_id === "string" ? raw.confirmed_plan_id : null,
@@ -450,6 +616,9 @@ function planFromSsePreviewPayload(payload: unknown): BuildPlannerPlanResponse |
     suggestion: String(raw.suggestion ?? ""),
     plan: String(raw.plan ?? ""),
     chapters: Array.isArray(raw.chapters) ? raw.chapters as PlannerViewChapter[] : [],
+    diagnose: Array.isArray(raw.diagnose) ? raw.diagnose as PlannerDiagnosticQuestion[] : [],
+    diagnose_status: String(raw.diagnose_status ?? ""),
+    diagnose_note: String(raw.diagnose_note ?? ""),
     status: typeof raw.status === "string" ? raw.status : "planning",
     planner_session_id: typeof raw.planner_session_id === "string" ? raw.planner_session_id : null,
     confirmed_plan_id: typeof raw.confirmed_plan_id === "string" ? raw.confirmed_plan_id : null,
@@ -535,6 +704,10 @@ function plannerStreamStepTitle(stage: string): string {
       return "生成课程身份";
     case "planner.identity.ready":
       return "课程身份完成";
+    case "planner.diagnose.started":
+      return "生成前置诊断";
+    case "planner.diagnose.ready":
+      return "前置诊断就绪";
     case "planner.plan.started":
       return "流式生成 plan";
     case "planner.suggestion.started":
@@ -702,7 +875,7 @@ function PlannerStreamingBubble({ preview, statusText, plan }: PlannerStreamingB
   return (
     <div
       aria-live="polite"
-      className="planner-stream-bubble rounded-lg border border-zinc-200/70 bg-white px-4 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.045)] dark:border-slate-800 dark:bg-slate-950"
+      className="planner-stream-bubble px-1 py-1"
     >
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
         <span className="font-semibold text-zinc-950 dark:text-slate-100">正在规划</span>
@@ -728,9 +901,19 @@ function PlannerOutlineCard({
   isDisabled,
   isBuilding,
   publishedDocReady,
+  diagnosisPending,
+  diagnosticAnswers,
+  showActions,
+  inlineStreaming,
+  streamingPreview,
+  streamingStatusText,
+  streamingPlan,
+  contentFallback,
   onConfirm,
   onAdjust,
   onDiagnosticAnswer,
+  onSubmitDiagnostics,
+  onSkipDiagnostics,
   onOpenKnowledgeDocs,
 }: {
   plan: BuildPlannerPlanResponse;
@@ -738,17 +921,66 @@ function PlannerOutlineCard({
   isDisabled: boolean;
   isBuilding: boolean;
   publishedDocReady: boolean;
+  diagnosisPending: boolean;
+  diagnosticAnswers: Record<string, string>;
+  showActions: boolean;
+  inlineStreaming?: boolean;
+  streamingPreview?: string;
+  streamingStatusText?: string;
+  streamingPlan?: BuildPlannerPlanResponse | null;
+  contentFallback?: string;
   onConfirm: () => void;
   onAdjust: () => void;
   onDiagnosticAnswer: (question: string, answer: string) => void;
+  onSubmitDiagnostics: () => void;
+  onSkipDiagnostics: () => void;
   onOpenKnowledgeDocs: () => void;
 }) {
   const outlineItems = buildPlannerOutlineItems(plan);
   const adjustmentQuestions = buildPlannerAdjustmentQuestions(plan);
-  const diagnoseItems = plannerDiagnose(plan).slice(0, 10);
+  const diagnoseItems = plannerDiagnose(plan).slice(0, 5);
   const view = plannerView(plan);
   const planText = plannerPlanText(plan);
+  const planningNoteText = String(view?.planning_note ?? "").trim();
+  const fallbackIntroText = String(contentFallback ?? "").trim();
+  const isDiagnosisIntroFallback =
+    /^前置诊断\b/u.test(fallbackIntroText) ||
+    /^诊断问题\b/u.test(fallbackIntroText) ||
+    fallbackIntroText.includes("先确认这几项选择") ||
+    fallbackIntroText.includes("先完成上方前置诊断");
+  const introText = planText || planningNoteText || (isDiagnosisIntroFallback ? "" : fallbackIntroText);
   const courseName = String(view?.course_name ?? "").trim();
+  const visibleDiagnoseItems = diagnoseItems;
+  const diagnoseStatus = plannerDiagnoseStatus(plan);
+  const diagnosisSkipped = diagnoseStatus === "skipped";
+  const answerForDiagnosis = (item: PlannerDiagnosticQuestion): string => {
+    const question = String(item.question ?? "").trim();
+    return String(diagnosticAnswers[question] ?? item.answer ?? "").trim();
+  };
+  const selectedDiagnosisCount = visibleDiagnoseItems.filter((item) => {
+    const question = String(item.question ?? "").trim();
+    return Boolean(question && answerForDiagnosis(item));
+  }).length;
+  const diagnosisAnswered =
+    !diagnosisSkipped &&
+    visibleDiagnoseItems.length > 0 &&
+    selectedDiagnosisCount === visibleDiagnoseItems.length;
+  const canSubmitDiagnostics =
+    diagnosisPending &&
+    visibleDiagnoseItems.length > 0 &&
+    visibleDiagnoseItems.every((item) => {
+      const question = String(item.question ?? "").trim();
+      return Boolean(question && answerForDiagnosis(item));
+    });
+  const diagnosisSubtitle = diagnosisSkipped
+    ? "已跳过"
+    : !diagnosisPending && diagnosisAnswered
+      ? "已应用"
+      : `${selectedDiagnosisCount}/${visibleDiagnoseItems.length} 已选择`;
+  const streamingStatus = compactPlannerDetail(streamingStatusText || "正在整理学习目标...", 86);
+  const trimmedStreamingPreview = (streamingPreview ?? "").trim();
+  const shouldShowPlanIntro = Boolean(introText) || !visibleDiagnoseItems.length;
+  const shouldShowResolvedPlan = !diagnosisPending && !inlineStreaming;
 
   return (
     <article className="rounded-lg bg-white px-5 py-5 shadow-[0_10px_34px_rgba(15,23,42,0.06)] ring-1 ring-zinc-200/65 dark:bg-slate-950 dark:ring-slate-800">
@@ -759,73 +991,177 @@ function PlannerOutlineCard({
             {courseName}
           </div>
         ) : null}
-        <p className="text-[16px] font-medium leading-7 text-zinc-950 dark:text-slate-100">
-          {planText || "我会先整理资料主线，再生成一份可继续调整的初步大纲。"}
-        </p>
-        {adjustmentQuestions.length ? (
-          <div className="mt-4 rounded-md bg-zinc-50/80 px-3 py-3 text-sm leading-6 text-zinc-700 dark:bg-slate-900/60 dark:text-slate-300">
-            <div className="mb-1.5 flex items-center gap-2 text-xs font-medium text-zinc-500 dark:text-slate-400">
-              <RefreshCw className="h-3.5 w-3.5" />
-              可以继续这样改
-            </div>
-            {adjustmentQuestions.map((item, index) => (
-              <p key={`${index}-${item}`}>{item}</p>
-            ))}
-          </div>
-        ) : null}
       </div>
 
-      {diagnoseItems.length ? (
-        <div className="mt-5 rounded-md border border-blue-100 bg-blue-50/60 px-3 py-3 dark:border-blue-500/20 dark:bg-blue-500/10">
-          <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-blue-700 dark:text-blue-300">
-            <Brain className="h-3.5 w-3.5" />
-            前置诊断
+      {shouldShowPlanIntro ? (
+        <div className={courseName ? "mt-3" : ""}>
+          {introText ? (
+            planText ? (
+              <p className="text-[16px] font-medium leading-7 text-zinc-950 dark:text-slate-100">
+                {introText}
+              </p>
+            ) : (
+              <div className="planner-stream-preview text-[16px] font-medium leading-7 text-zinc-950 dark:text-slate-100">
+                <PlannerPreviewMarkdown markdown={introText} />
+              </div>
+            )
+          ) : (
+            <p className="text-[16px] font-medium leading-7 text-zinc-950 dark:text-slate-100">
+              我会先整理资料主线，再生成一份可继续调整的初步大纲。
+            </p>
+          )}
+          {shouldShowResolvedPlan && adjustmentQuestions.length ? (
+            <div className="mt-4 rounded-md bg-zinc-50/80 px-3 py-3 text-sm leading-6 text-zinc-700 dark:bg-slate-900/60 dark:text-slate-300">
+              <div className="mb-1.5 flex items-center gap-2 text-xs font-medium text-zinc-500 dark:text-slate-400">
+                <RefreshCw className="h-3.5 w-3.5" />
+                可以继续这样改
+              </div>
+              {adjustmentQuestions.map((item, index) => (
+                <p key={`${index}-${item}`}>{item}</p>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {visibleDiagnoseItems.length ? (
+        <div className={courseName ? "mt-5" : "mt-0"}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-zinc-950 text-white dark:bg-slate-100 dark:text-slate-950">
+                <Brain className="h-4 w-4" />
+              </span>
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-zinc-950 dark:text-slate-100">前置诊断</div>
+                <div className="text-xs text-zinc-500 dark:text-slate-400">
+                  {diagnosisSubtitle}
+                </div>
+              </div>
+            </div>
+            {inlineStreaming ? (
+              <span className="inline-flex items-center gap-1.5 rounded-md bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-700 dark:bg-slate-800 dark:text-slate-300">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                生成中
+              </span>
+            ) : canSubmitDiagnostics ? (
+              <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                已就绪
+              </span>
+            ) : !diagnosisPending && (diagnosisAnswered || diagnosisSkipped) ? (
+              <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                {diagnosisSkipped ? "已跳过" : "已应用"}
+              </span>
+            ) : null}
           </div>
-          <div className="space-y-3">
-            {diagnoseItems.slice(0, 3).map((item, index) => {
+          <div className="mt-4 space-y-4">
+            {visibleDiagnoseItems.map((item, index) => {
               const question = String(item.question ?? "").trim();
-              const answers = (item.sample_answers ?? []).filter(Boolean).slice(0, 4);
+              const options = plannerDiagnosticOptions(item);
+              const selectedAnswer = answerForDiagnosis(item);
+              const canEditDiagnosis = diagnosisPending && !isDisabled;
               return (
-                <div key={`${index}-${question}`} className="text-sm leading-6 text-zinc-700 dark:text-slate-300">
-                  <p className="font-medium text-zinc-900 dark:text-slate-100">{question}</p>
-                  {answers.length ? (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {answers.map((answer) => (
+                <div key={`${index}-${question}`}>
+                  <div className="flex gap-3">
+                    <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-zinc-100 text-xs font-semibold text-zinc-500 dark:bg-slate-800 dark:text-slate-400">
+                      {index + 1}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold leading-6 text-zinc-900 dark:text-slate-100">{question}</p>
+                      {options.length ? (
+                        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                          {options.map((answer) => (
                         <button
                           key={`${question}-${answer}`}
                           type="button"
-                          onClick={() => onDiagnosticAnswer(question, answer)}
-                          disabled={isDisabled}
-                          className="rounded-md border border-blue-200/80 bg-white px-2.5 py-1 text-xs font-medium text-blue-700 transition hover:border-blue-300 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-500/30 dark:bg-slate-950/70 dark:text-blue-200 dark:hover:bg-blue-500/10"
+                          onClick={() => {
+                            if (canEditDiagnosis) {
+                              onDiagnosticAnswer(question, answer);
+                            }
+                          }}
+                          aria-disabled={!canEditDiagnosis}
+                          className={
+                            "min-h-10 rounded-md border px-3 py-2 text-left text-xs font-medium leading-5 transition " +
+                            (selectedAnswer === answer
+                              ? "border-zinc-950 bg-zinc-950 text-white shadow-sm dark:border-slate-100 dark:bg-slate-100 dark:text-slate-950"
+                              : "border-zinc-200 bg-white text-zinc-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300") +
+                            (canEditDiagnosis && selectedAnswer !== answer
+                              ? " hover:border-zinc-300 hover:bg-zinc-50 dark:hover:bg-slate-900"
+                              : " cursor-default")
+                          }
                         >
-                          {answer}
+                          <span className="inline-flex items-start gap-2">
+                            <Check className={"mt-0.5 h-3.5 w-3.5 shrink-0 " + (selectedAnswer === answer ? "opacity-100" : "opacity-0")} />
+                            <span>{answer}</span>
+                          </span>
                         </button>
-                      ))}
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
-                  ) : null}
+                  </div>
                 </div>
               );
             })}
           </div>
+          {diagnosisPending ? (
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={onSkipDiagnostics}
+                disabled={isDisabled}
+                className="inline-flex min-h-10 items-center justify-center rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-900"
+              >
+                跳过诊断
+              </button>
+              <button
+                type="button"
+                onClick={onSubmitDiagnostics}
+                disabled={isDisabled || !canSubmitDiagnostics}
+                className="inline-flex min-h-10 items-center justify-center rounded-md bg-zinc-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
+              >
+                应用诊断
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
-      <div className="mt-5 space-y-3">
-        {outlineItems.map((item, index) => (
-          <div key={`${index}-${item.title}`} className="rounded-md px-1 py-1">
-            <div className="min-w-0">
-              <div className="text-[15px] font-semibold leading-6 text-zinc-900 dark:text-slate-100">{item.title}</div>
-              {item.description ? (
-                <div title={item.tooltip || item.description} className="mt-1 line-clamp-2 text-sm leading-6 text-zinc-600 dark:text-slate-400">
-                  {item.description}
-                </div>
-              ) : null}
-            </div>
+      {inlineStreaming ? (
+        <div aria-live="polite" className="mt-5">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+            <span className="font-semibold text-zinc-950 dark:text-slate-100">正在规划</span>
+            <span className="min-w-0 flex-1 truncate text-zinc-500 dark:text-slate-400">{streamingStatus}</span>
           </div>
-        ))}
-      </div>
+          {trimmedStreamingPreview ? (
+            <div className="planner-stream-preview mt-3 text-sm leading-7 text-zinc-600 dark:text-slate-300">
+              <PlannerPreviewMarkdown markdown={trimmedStreamingPreview} />
+            </div>
+          ) : null}
+          {hasUsablePlannerPlan(streamingPlan) ? <PlannerStreamingOutlinePreview plan={streamingPlan} /> : null}
+        </div>
+      ) : null}
 
-      <div className="mt-5 flex flex-wrap items-center gap-3">
+      {shouldShowResolvedPlan ? (
+        <div className="mt-5 space-y-3">
+          {outlineItems.map((item, index) => (
+            <div key={`${index}-${item.title}`} className="rounded-md px-1 py-1">
+              <div className="min-w-0">
+                <div className="text-[15px] font-semibold leading-6 text-zinc-900 dark:text-slate-100">{item.title}</div>
+                {item.description ? (
+                  <div title={item.tooltip || item.description} className="mt-1 line-clamp-2 text-sm leading-6 text-zinc-600 dark:text-slate-400">
+                    {item.description}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {shouldShowResolvedPlan && showActions ? (
+        <div className="mt-5 flex flex-wrap items-center gap-3">
         {needsRefresh ? (
           <span className="text-xs text-amber-600 dark:text-amber-400">
             资料已变化
@@ -871,7 +1207,8 @@ function PlannerOutlineCard({
           )}
           {publishedDocReady ? "重新构建" : "开始构建"}
         </button>
-      </div>
+        </div>
+      ) : null}
     </article>
   );
 }
@@ -1356,11 +1693,22 @@ async function revisePlannerSessionStream(
     signal?: AbortSignal;
     onStatus?: (payload: unknown) => void;
     onToken?: (token: string) => void;
+    diagnosis?: {
+      answers?: BuildPlannerDiagnosticAnswerRequest[];
+      status?: "answered" | "skipped";
+      note?: string;
+    };
   } = {},
 ) {
   return streamPlannerSession(
     `/api/v1/courses/${course}/knowledge/build/plans/${sessionId}/messages/stream`,
-    { message, model },
+    {
+      message,
+      model,
+      diagnose_answers: options.diagnosis?.answers ?? [],
+      diagnose_status: options.diagnosis?.status ?? null,
+      diagnose_note: options.diagnosis?.note ?? "",
+    },
     options,
   );
 }
@@ -1417,6 +1765,7 @@ export function BuildPlanPage() {
   const [plannerStreamingStatus, setPlannerStreamingStatus] = useState("正在思考目标与资料...");
   const [plannerStreamingPlan, setPlannerStreamingPlan] = useState<BuildPlannerPlanResponse | null>(null);
   const [, setPlannerStreamingSteps] = useState<PlannerStreamStepItem[]>([]);
+  const [diagnosisGate, setDiagnosisGate] = useState<PlannerDiagnosisGate | null>(null);
 
   const handlePlannerStatusPayload = useCallback((payload: unknown) => {
     setPlannerStreamingStatus(resolvePlannerStatusText(payload));
@@ -1598,11 +1947,24 @@ export function BuildPlanPage() {
         messageCount: persisted.messages.length,
         hasCurrentPlan: Boolean(persisted.currentPlan),
       });
+      const persistedPlan = usablePlannerPlan(persisted.currentPlan);
+      const restoredGate = createPlannerDiagnosisGate(persisted.plannerSessionId, persistedPlan);
       setMessages(sanitizePlannerMessages(persisted.messages));
       setPlannerSessionId(persisted.plannerSessionId);
-      setCurrentPlan(usablePlannerPlan(persisted.currentPlan));
+      setCurrentPlan(persistedPlan);
       setInputValue(persisted.inputValue ?? navState?.initialPrompt ?? "");
       setPlannerNeedsRefresh(Boolean(persisted.plannerNeedsRefresh));
+      setDiagnosisGate(
+        restoredGate
+          ? {
+            ...restoredGate,
+            answers: {
+              ...restoredGate.answers,
+              ...(persisted.diagnosisGate?.answers ?? {}),
+            },
+          }
+          : null,
+      );
       setHasAutoUploaded(false);
       hydratedCourseRef.current = courseId;
       return;
@@ -1629,6 +1991,7 @@ export function BuildPlanPage() {
           setCurrentPlan(null);
           setInputValue(navState?.initialPrompt ?? "");
           setPlannerNeedsRefresh(false);
+          setDiagnosisGate(null);
           setHasAutoUploaded(false);
           hydratedCourseRef.current = courseId;
           return;
@@ -1660,11 +2023,13 @@ export function BuildPlanPage() {
           ));
         }
 
+        const latestPlan = usablePlannerPlan(session.latest_plan);
         setPlannerSessionId(session.session_id);
-        setCurrentPlan(usablePlannerPlan(session.latest_plan));
+        setCurrentPlan(latestPlan);
         setMessages(sanitizePlannerMessages(restored));
         setInputValue(navState?.initialPrompt ?? "");
         setPlannerNeedsRefresh(false);
+        setDiagnosisGate(createPlannerDiagnosisGate(session.session_id, latestPlan));
         setHasAutoUploaded(false);
         hydratedCourseRef.current = courseId;
       } catch {
@@ -1676,6 +2041,7 @@ export function BuildPlanPage() {
         setCurrentPlan(null);
         setInputValue(navState?.initialPrompt ?? "");
         setPlannerNeedsRefresh(false);
+        setDiagnosisGate(null);
         setHasAutoUploaded(false);
         hydratedCourseRef.current = courseId;
       }
@@ -1701,8 +2067,9 @@ export function BuildPlanPage() {
       currentPlan,
       inputValue,
       plannerNeedsRefresh,
+      diagnosisGate,
     });
-  }, [currentPlan, inputValue, messages, plannerNeedsRefresh, plannerSessionId, courseId]);
+  }, [currentPlan, diagnosisGate, inputValue, messages, plannerNeedsRefresh, plannerSessionId, courseId]);
 
   useEffect(() => {
     if (hydratedCourseRef.current !== courseId || !currentPlan) {
@@ -1783,6 +2150,7 @@ export function BuildPlanPage() {
           response,
           "我已经根据当前目标和资料整理了一版计划大纲。",
           plannerStreamingRawRef.current.replace(/\r/g, "").trim(),
+          "start",
         );
         trackCourseAnalyticsEvent("course_plan_generated", courseId, {
           ...plannerResponseAnalyticsProperties(response),
@@ -2002,6 +2370,7 @@ export function BuildPlanPage() {
   });
 
   const isPlannerPending = plannerStreaming || confirmPlannerMutation.isPending;
+  const isDiagnosisPending = isPlannerDiagnosisPending(diagnosisGate, currentPlan, plannerSessionId);
   const isBuilding = knowledgeBuild.isPending || isBuildActive;
   const shouldShowBuildDialog = isBuilding || isWaitingForRequestedBuild || isBuildFailure;
   const plannerPendingStatusText = plannerStreaming
@@ -2058,15 +2427,33 @@ export function BuildPlanPage() {
   }, [currentPlan, focusComposer, plannerSessionId, courseId]);
 
   const handleDiagnosticAnswer = useCallback((question: string, answer: string) => {
-    const nextPrompt = [
-      "前置诊断回答：",
-      `问题：${question}`,
-      `我的回答：${answer}`,
-      "请根据这个诊断更新学习方案，并把后续知识文档、练习重点和画像判断都对齐这个薄弱点。",
-    ].join("\n");
-    setInputValue(nextPrompt);
-    focusComposer();
-  }, [focusComposer]);
+    const normalizedQuestion = question.trim();
+    if (!normalizedQuestion) {
+      return;
+    }
+    setDiagnosisGate((prev) => {
+      if (!prev) {
+        const gate = createPlannerDiagnosisGate(plannerSessionId, currentPlan);
+        if (!gate) {
+          return prev;
+        }
+        return {
+          ...gate,
+          answers: {
+            ...gate.answers,
+            [normalizedQuestion]: answer,
+          },
+        };
+      }
+      return {
+        ...prev,
+        answers: {
+          ...prev.answers,
+          [normalizedQuestion]: answer,
+        },
+      };
+    });
+  }, [currentPlan, plannerSessionId]);
 
   const handleStopPlannerStream = useCallback(() => {
     logPlannerDebug("click_stop_plan_message", {
@@ -2077,7 +2464,12 @@ export function BuildPlanPage() {
   }, [plannerSessionId, courseId]);
 
   const appendPlannerResponse = useCallback(
-    (response: BuildPlannerSessionResponse, fallbackContent: string, contentOverride?: string | null) => {
+    (
+      response: BuildPlannerSessionResponse,
+      fallbackContent: string,
+      contentOverride?: string | null,
+      diagnosisMode: "start" | "resolve" | "keep" = "keep",
+    ) => {
       const persistedContent = pickAssistantReply(response, "");
       const resolvedContent = persistedContent || contentOverride?.trim() || fallbackContent;
       const latestPlan = usablePlannerPlan(response.latest_plan);
@@ -2085,21 +2477,36 @@ export function BuildPlanPage() {
       setPlannerSessionId(response.session_id);
       setCurrentPlan(latestPlan);
       setPlannerNeedsRefresh(false);
+      if (diagnosisMode === "start") {
+        setDiagnosisGate(createPlannerDiagnosisGate(response.session_id, latestPlan));
+      } else if (diagnosisMode === "resolve") {
+        setDiagnosisGate(null);
+      }
       void queryClient.invalidateQueries({ queryKey: ["courses"] });
       setMessages((prev) => {
+        let baseMessages = sanitizePlannerMessages(prev);
+        if (diagnosisMode === "resolve" && latestPlan) {
+          const resolvedSessionId = planSessionId(latestPlan, response.session_id);
+          baseMessages = baseMessages.filter((message) => {
+            if (message.id === pendingId || message.role !== "assistant" || !message.plan) {
+              return true;
+            }
+            return planSessionId(message.plan, response.session_id) !== resolvedSessionId;
+          });
+        }
         if (pendingId) {
-          const replaced = replaceMessageById(prev, pendingId, (message) => ({
+          const replaced = replaceMessageById(baseMessages, pendingId, (message) => ({
             ...message,
             content: resolvedContent,
             plan: latestPlan,
             streaming: false,
           }));
-          if (replaced !== prev) {
+          if (replaced !== baseMessages) {
             return replaced;
           }
         }
         return [
-          ...sanitizePlannerMessages(prev),
+          ...baseMessages,
           createMessage(
             "assistant",
             resolvedContent,
@@ -2130,6 +2537,224 @@ export function BuildPlanPage() {
     cancelBuildMutation.mutate();
   }, [buildStatus, cancelBuildMutation, courseId]);
 
+  const submitDiagnosisRevision = useCallback(async (options: { skip?: boolean } = {}) => {
+    if (plannerStreaming) {
+      handleStopPlannerStream();
+      return;
+    }
+    if (
+      plannerStreamInFlightRef.current ||
+      !plannerSessionId ||
+      !currentPlan ||
+      isPlannerPending ||
+      isBuilding
+    ) {
+      logPlannerDebug("diagnosis_submit_blocked", {
+        courseId,
+        hasPlannerSession: Boolean(plannerSessionId),
+        hasCurrentPlan: Boolean(currentPlan),
+        plannerInFlight: plannerStreamInFlightRef.current,
+        isPlannerPending,
+        isBuilding,
+      });
+      return;
+    }
+
+    const answers = diagnosisGate?.answers ?? {};
+    const diagnosisAnswers: BuildPlannerDiagnosticAnswerRequest[] = plannerDiagnose(currentPlan)
+      .map((item) => {
+        const question = String(item.question ?? "").trim();
+        const answer = String(answers[question] ?? "").trim();
+        return { question, answer };
+      })
+      .filter((item) => item.question && item.answer);
+    const diagnosisStatus: "answered" | "skipped" = options.skip ? "skipped" : "answered";
+    const prompt = buildPlannerDiagnosisPrompt(currentPlan, answers, Boolean(options.skip));
+    if (!prompt.trim()) {
+      focusComposer();
+      return;
+    }
+
+    logPlannerDebug("diagnosis_submit_start", {
+      courseId,
+      plannerSessionId,
+      skip: Boolean(options.skip),
+    });
+    trackCourseAnalyticsEvent("course_plan_diagnosis_submitted", courseId, {
+      ...plannerPlanAnalyticsProperties(currentPlan),
+      has_planner_session: Boolean(plannerSessionId),
+      skipped: Boolean(options.skip),
+      source: "diagnosis",
+    });
+
+    markPlannerLocalInteraction();
+    const submittedPlan = applyPlannerDiagnosisResolution(currentPlan, answers, diagnosisStatus) ?? currentPlan;
+    const resolvedSessionId = planSessionId(currentPlan, plannerSessionId);
+    const existingAssistantMessage = [...messages].reverse().find(
+      (message) =>
+        message.role === "assistant" &&
+        message.plan &&
+        planSessionId(message.plan, plannerSessionId) === resolvedSessionId,
+    );
+    const pendingAssistantId = existingAssistantMessage?.id ?? nextMessageId();
+    const reusedAssistantMessage = Boolean(existingAssistantMessage);
+    plannerPendingMessageIdRef.current = pendingAssistantId;
+    setCurrentPlan(submittedPlan);
+    setMessages((prev) => {
+      const baseMessages = sanitizePlannerMessages(prev);
+      const replaced = replaceMessageById(baseMessages, pendingAssistantId, (message) => ({
+        ...message,
+        content: "",
+        plan: submittedPlan,
+        streaming: true,
+      }));
+      if (replaced !== baseMessages) {
+        return replaced;
+      }
+      const streamingDiagnosisMessage: ChatMessage = {
+        id: pendingAssistantId,
+        role: "assistant",
+        content: "",
+        timestamp: new Date().toISOString(),
+        plan: submittedPlan,
+        streaming: true,
+      };
+      return [
+        ...baseMessages,
+        streamingDiagnosisMessage,
+      ];
+    });
+    setInputValue("");
+    plannerStreamInFlightRef.current = true;
+    setPlannerStreaming(true);
+    const controller = new AbortController();
+    plannerAbortControllerRef.current = controller;
+    plannerStreamingRawRef.current = "";
+    setPlannerStreamingPreview("");
+    setPlannerStreamingPlan(null);
+    setPlannerStreamingSteps([]);
+    setPlannerStreamingStatus(options.skip ? "正在按当前信息继续生成方案..." : "正在根据诊断回答更新方案...");
+
+    try {
+      const response = await revisePlannerSessionStream(
+        courseId,
+        plannerSessionId,
+        prompt,
+        toChatRequestModel(chatModel),
+        {
+          signal: controller.signal,
+          onStatus: (payload) => {
+            handlePlannerStatusPayload(payload);
+          },
+          onToken: (token) => {
+            plannerStreamingRawRef.current += token;
+            setPlannerStreamingPreview(plannerStreamingRawRef.current.replace(/\r/g, "").trim());
+          },
+          diagnosis: {
+            answers: diagnosisAnswers,
+            status: diagnosisStatus,
+            note: "",
+          },
+        },
+      );
+      appendPlannerResponse(
+        response,
+        options.skip ? "我已经按当前信息生成了最终方案。" : "我已经根据诊断回答更新了最终方案。",
+        plannerStreamingRawRef.current.replace(/\r/g, "").trim(),
+        "resolve",
+      );
+      trackCourseAnalyticsEvent("course_plan_revised", courseId, {
+        ...plannerResponseAnalyticsProperties(response),
+        file_count: plannerEffectiveFileIds.length,
+        mode: "revise",
+        ready_file_count: readyFileIds.length,
+        source: "diagnosis",
+      });
+    } catch (error) {
+      if (isAbortError(error)) {
+        trackCourseAnalyticsEvent("course_plan_cancelled", courseId, {
+          mode: "revise",
+          source: "diagnosis",
+        });
+        const partialContent = plannerStreamingRawRef.current.replace(/\r/g, "").trim();
+        setCurrentPlan(currentPlan);
+        setMessages((prev) => {
+          const restored = reusedAssistantMessage
+            ? replaceMessageById(prev, pendingAssistantId, (message) => ({
+                ...message,
+                plan: currentPlan,
+                streaming: false,
+              }))
+            : removeMessageById(prev, pendingAssistantId);
+          return [
+            ...restored,
+            createMessage(
+              "system",
+              partialContent
+                ? "已停止生成，以上是已输出的部分内容。你可以继续完成或跳过前置诊断。"
+                : "已停止生成，你可以继续完成或跳过前置诊断。",
+            ),
+          ];
+        });
+        plannerPendingMessageIdRef.current = null;
+        return;
+      }
+      trackCourseAnalyticsEvent("course_plan_failed", courseId, {
+        mode: "revise",
+        source: "diagnosis",
+      });
+      setCurrentPlan(currentPlan);
+      setMessages((prev) => {
+        const next = reusedAssistantMessage
+          ? replaceMessageById(prev, pendingAssistantId, (message) => ({
+              ...message,
+              plan: currentPlan,
+              streaming: false,
+            }))
+          : removeMessageById(prev, pendingAssistantId);
+        return [
+          ...next,
+          createMessage("system", getApiErrorMessage(error, "诊断提交失败，请稍后重试。")),
+        ];
+      });
+      plannerPendingMessageIdRef.current = null;
+    } finally {
+      plannerStreamInFlightRef.current = false;
+      plannerAbortControllerRef.current = null;
+      setPlannerStreaming(false);
+      plannerStreamingRawRef.current = "";
+      setPlannerStreamingPreview("");
+      setPlannerStreamingPlan(null);
+      setPlannerStreamingSteps([]);
+      setPlannerStreamingStatus("正在思考目标与资料...");
+    }
+  }, [
+    appendPlannerResponse,
+    chatModel,
+    courseId,
+    currentPlan,
+    diagnosisGate?.answers,
+    focusComposer,
+    handlePlannerStatusPayload,
+    handleStopPlannerStream,
+    isBuilding,
+    isPlannerPending,
+    markPlannerLocalInteraction,
+    messages,
+    plannerEffectiveFileIds.length,
+    plannerSessionId,
+    plannerStreaming,
+    readyFileIds.length,
+  ]);
+
+  const handleSubmitDiagnostics = useCallback(() => {
+    void submitDiagnosisRevision();
+  }, [submitDiagnosisRevision]);
+
+  const handleSkipDiagnostics = useCallback(() => {
+    void submitDiagnosisRevision({ skip: true });
+  }, [submitDiagnosisRevision]);
+
   const handleSend = useCallback(async () => {
     if (plannerStreaming) {
       handleStopPlannerStream();
@@ -2144,6 +2769,7 @@ export function BuildPlanPage() {
       courseId,
       hasText: Boolean(text),
       isPlannerPending,
+      isDiagnosisPending,
       isBuilding,
       plannerSessionId,
       hasCurrentPlan: Boolean(currentPlan),
@@ -2151,6 +2777,10 @@ export function BuildPlanPage() {
       plannerFileCount: plannerFileIds.length,
       readyFileCount: readyFileIds.length,
     });
+    if (isDiagnosisPending) {
+      logPlannerDebug("send_plan_message_blocked", { reason: "diagnosis_pending" });
+      return;
+    }
     if (!text || isPlannerPending || isBuilding) {
       logPlannerDebug("send_plan_message_blocked", {
         reason: !text ? "empty_text" : isPlannerPending ? "planner_pending" : "building",
@@ -2223,6 +2853,7 @@ export function BuildPlanPage() {
           response,
           "我已经根据当前目标和资料整理了一版计划大纲。",
           plannerStreamingRawRef.current.replace(/\r/g, "").trim(),
+          "start",
         );
         trackCourseAnalyticsEvent("course_plan_generated", courseId, {
           ...plannerResponseAnalyticsProperties(response),
@@ -2321,6 +2952,7 @@ export function BuildPlanPage() {
     handleStopPlannerStream,
     inputValue,
     isBuilding,
+    isDiagnosisPending,
     isPlannerPending,
     plannerEffectiveFileIds,
     plannerFileIds,
@@ -2329,6 +2961,7 @@ export function BuildPlanPage() {
     plannerStreaming,
     readyFileIds.length,
     markPlannerLocalInteraction,
+    submitDiagnosisRevision,
     courseId,
   ]);
 
@@ -2347,14 +2980,16 @@ export function BuildPlanPage() {
       has_planner_session: Boolean(plannerSessionId),
       ready_file_count: readyFileIds.length,
     });
-    if (!plannerSessionId || !hasUsablePlannerPlan(currentPlan) || isPlannerPending || isBuilding) {
+    if (!plannerSessionId || !hasUsablePlannerPlan(currentPlan) || isPlannerPending || isDiagnosisPending || isBuilding) {
       const reason = !plannerSessionId
         ? "missing_session"
         : !hasUsablePlannerPlan(currentPlan)
           ? "missing_plan_outline"
           : isPlannerPending
             ? "planner_pending"
-            : "building";
+            : isDiagnosisPending
+              ? "diagnosis_pending"
+              : "building";
       logPlannerDebug("confirm_build_blocked", {
         reason,
       });
@@ -2428,6 +3063,7 @@ export function BuildPlanPage() {
     courseId,
     currentPlan,
     isBuilding,
+    isDiagnosisPending,
     isPlannerPending,
     knowledgeBuild,
     plannerNeedsRefresh,
@@ -2455,17 +3091,22 @@ export function BuildPlanPage() {
     queueUploadFiles,
   ]);
 
-  const inputPlaceholder = hasUsablePlannerPlan(currentPlan)
-    ? "直接说想怎么改当前方案，例如：把函数思想拆成两章"
-    : "直接输入学习目标，也可以先上传资料再一起规划";
+  const inputPlaceholder = isDiagnosisPending
+    ? "先完成上方前置诊断，或直接跳过"
+    : hasUsablePlannerPlan(currentPlan)
+      ? "直接说想怎么改当前方案，例如：把函数思想拆成两章"
+      : "直接输入学习目标，也可以先上传资料再一起规划";
 
   const canOpenKnowledgeDocs =
     isRequestedBuildReady || hasLiveDocMarkdown || hasDraftDocMarkdown;
-  const hasRenderedPlannerPlan = messages.some((message) => hasUsablePlannerPlan(message.plan));
+  const hasRenderedPlannerPlan = messages.some((message) => hasRenderablePlannerDraft(message.plan));
+  const latestPlannerDraftMessageId = [...messages]
+    .reverse()
+    .find((message) => message.role === "assistant" && hasRenderablePlannerDraft(message.plan))?.id ?? null;
   const hasRenderedStreamingPlannerMessage = messages.some(
-    (message) => message.role === "assistant" && message.streaming && !message.plan,
+    (message) => message.role === "assistant" && message.streaming,
   );
-  const shouldShowCurrentPlanFallback = Boolean(hasUsablePlannerPlan(currentPlan) && !hasRenderedPlannerPlan && !plannerStreaming);
+  const shouldShowCurrentPlanFallback = Boolean(hasRenderablePlannerDraft(currentPlan) && !hasRenderedPlannerPlan && !plannerStreaming);
   const shouldShowPlannerStreamingFallback = plannerStreaming && !hasRenderedStreamingPlannerMessage;
   const shouldShowPlannerEmptyState =
     messages.length === 0 &&
@@ -2578,16 +3219,26 @@ export function BuildPlanPage() {
                         </div>
                       ) : null}
 
-                      {hasUsablePlannerPlan(message.plan) ? (
+                      {hasRenderablePlannerDraft(message.plan) ? (
                         <PlannerOutlineCard
                           plan={message.plan}
                           needsRefresh={plannerNeedsRefresh}
                           isDisabled={isBuilding || isPlannerPending}
                           isBuilding={isBuilding || isPlannerPending}
                           publishedDocReady={hasLiveDocMarkdown && !isBuilding && !isPlannerPending}
+                          diagnosisPending={isPlannerDiagnosisPending(diagnosisGate, message.plan, plannerSessionId)}
+                          diagnosticAnswers={diagnosisGate?.answers ?? {}}
+                          showActions={message.id === latestPlannerDraftMessageId}
+                          inlineStreaming={message.streaming}
+                          streamingPreview={plannerStreamingPreview}
+                          streamingStatusText={plannerPendingStatusText}
+                          streamingPlan={plannerStreamingPlan}
+                          contentFallback={message.content}
                           onConfirm={handleConfirmBuild}
                           onAdjust={handleContinueAdjust}
                           onDiagnosticAnswer={handleDiagnosticAnswer}
+                          onSubmitDiagnostics={handleSubmitDiagnostics}
+                          onSkipDiagnostics={handleSkipDiagnostics}
                           onOpenKnowledgeDocs={handleOpenKnowledgeDocs}
                         />
                       ) : null}
@@ -2611,9 +3262,16 @@ export function BuildPlanPage() {
                     isDisabled={isBuilding || isPlannerPending}
                     isBuilding={isBuilding || isPlannerPending}
                     publishedDocReady={hasLiveDocMarkdown && !isBuilding && !isPlannerPending}
+                    diagnosisPending={isPlannerDiagnosisPending(diagnosisGate, currentPlan, plannerSessionId)}
+                    diagnosticAnswers={diagnosisGate?.answers ?? {}}
+                    showActions
+                    inlineStreaming={false}
+                    contentFallback=""
                     onConfirm={handleConfirmBuild}
                     onAdjust={handleContinueAdjust}
                     onDiagnosticAnswer={handleDiagnosticAnswer}
+                    onSubmitDiagnostics={handleSubmitDiagnostics}
+                    onSkipDiagnostics={handleSkipDiagnostics}
                     onOpenKnowledgeDocs={handleOpenKnowledgeDocs}
                   />
                 </div>
@@ -2672,7 +3330,7 @@ export function BuildPlanPage() {
                       void queueUploadFiles(files);
                     }
                   }}
-                disabled={isBuilding || plannerStreaming}
+                disabled={isBuilding || plannerStreaming || isDiagnosisPending}
                 placeholder={plannerStreaming ? "正在生成方案，点击右侧按钮可停止当前生成" : inputPlaceholder}
                 rows={1}
                 className="w-full min-h-[56px] max-h-[120px] resize-none border-0 bg-transparent px-4 pb-3 pt-4 text-[14px] leading-relaxed text-zinc-800 dark:text-zinc-200 placeholder:text-zinc-400 dark:placeholder:text-slate-500 focus:outline-none"
@@ -2784,14 +3442,15 @@ export function BuildPlanPage() {
                       disabled={
                         (isBuilding && !isBuildActive) ||
                         cancelBuildMutation.isPending ||
+                        isDiagnosisPending ||
                         (!isBuilding && !plannerStreaming && (!inputValue.trim() || confirmPlannerMutation.isPending))
                       }
-                      title={isBuilding ? "终止当前构建" : plannerStreaming ? "停止当前生成" : "发送"}
+                      title={isBuilding ? "终止当前构建" : plannerStreaming ? "停止当前生成" : isDiagnosisPending ? "先完成前置诊断" : "发送"}
                       className={
                         "flex h-11 w-11 shrink-0 items-center justify-center rounded-md transition-all sm:h-9 sm:w-9 " +
                         (isBuilding || plannerStreaming
                           ? "rounded-full bg-zinc-100 text-zinc-950 shadow-sm hover:bg-zinc-200 focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98]"
-                          : (!inputValue.trim() || confirmPlannerMutation.isPending)
+                          : (isDiagnosisPending || !inputValue.trim() || confirmPlannerMutation.isPending)
                           ? "cursor-not-allowed bg-zinc-100 text-zinc-300"
                           : "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800 focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98]")
                       }

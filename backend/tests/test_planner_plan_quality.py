@@ -10,7 +10,9 @@ from app.workflows.digest.planner.lib.plans import (
     planner_mode_label,
 )
 from app.workflows.digest.planner.lib.store import _ensure_chapter_count_payload
+from app.workflows.digest.docgen.nodes.load_context import _render_diagnose_brief
 from app.workflows.digest.planner.nodes import compose_planner_draft as plan_draft_node
+from app.workflows.digest.planner.nodes.save_planner_draft import _merge_diagnose_resolution
 from app.workflows.digest.planner.prompts.build_plan_composer import (
     CHAPTERS_END,
     CHAPTERS_START,
@@ -41,7 +43,7 @@ def _planner_payload(*, chapter_count: int = 3) -> dict[str, object]:
             {
                 "question": "极限、导数、积分里你现在最怕哪一块？",
                 "purpose": "识别高数复习的第一薄弱入口。",
-                "sample_answers": ["极限定义", "导数应用", "积分计算"],
+                "options": ["极限定义", "导数应用", "积分计算"],
             }
         ],
         "chapters": [
@@ -75,7 +77,55 @@ def test_normalize_planner_draft_uses_new_planner_fields() -> None:
     assert draft.plan.startswith("本课程会先用极限")
     assert [chapter.title for chapter in draft.chapters] == ["任务切片 1", "任务切片 2", "任务切片 3"]
     assert draft.diagnose[0].question == "极限、导数、积分里你现在最怕哪一块？"
-    assert draft.diagnose[0].sample_answers == ["极限定义", "导数应用", "积分计算"]
+    assert draft.diagnose[0].options == ["极限定义", "导数应用", "积分计算"]
+
+
+def test_diagnose_resolution_merges_answers_into_latest_questions() -> None:
+    current_plan = _planner_payload()
+    current_plan["diagnose"] = [
+        {
+            "question": "模型重新生成的新问题",
+            "purpose": "不应该覆盖用户已看到的问题。",
+            "options": ["新选项"],
+        }
+    ]
+    state = {
+        "latest_plan": _planner_payload(),
+        "diagnose_answers": [
+            {
+                "question": "极限、导数、积分里你现在最怕哪一块？",
+                "answer": "导数应用",
+            }
+        ],
+        "diagnose_status": "answered",
+        "diagnose_note": "先补导数，再串积分。",
+    }
+
+    merged = _merge_diagnose_resolution(current_plan, state)
+
+    assert merged["diagnose"][0]["question"] == "极限、导数、积分里你现在最怕哪一块？"
+    assert merged["diagnose"][0]["answer"] == "导数应用"
+    assert merged["diagnose_status"] == "answered"
+    assert merged["diagnose_note"] == "先补导数，再串积分。"
+
+
+def test_docgen_diagnose_brief_renders_user_answers() -> None:
+    brief = _render_diagnose_brief(
+        [
+            {
+                "question": "你最想先补哪一块？",
+                "purpose": "定位优先级。",
+                "options": ["函数", "几何"],
+                "answer": "函数",
+            }
+        ],
+        status="answered",
+        note="希望后续例题对齐函数薄弱点。",
+    )
+
+    assert "用户补充：希望后续例题对齐函数薄弱点。" in brief
+    assert "用户回答：函数" in brief
+    assert "快速回答" not in brief
 
 
 def test_normalize_planner_draft_builds_fallback_diagnose() -> None:
@@ -89,9 +139,9 @@ def test_normalize_planner_draft_builds_fallback_diagnose() -> None:
         requested_digest_mode="sprint",
     )
 
-    assert len(draft.diagnose) == 10
-    assert draft.diagnose[0].question.startswith("看到“任务切片 1”")
-    assert len(draft.diagnose[0].sample_answers) >= 3
+    assert len(draft.diagnose) == 5
+    assert draft.diagnose[0].question.startswith("《任务切片 1》")
+    assert len(draft.diagnose[0].options) >= 3
 
 
 def test_normalize_planner_draft_does_not_use_full_prompt_as_course_name() -> None:
@@ -306,11 +356,6 @@ def test_parse_planner_response_reads_marker_protocol() -> None:
 {SUGGESTION_START}
 如果更偏中考，可以增加压轴题比例。
 {SUGGESTION_END}
-{DIAGNOSE_START}
-[
-  {{"question": "函数图像里你最容易混淆什么？", "purpose": "定位函数薄弱点", "sample_answers": ["一次函数", "二次函数", "图像变换"]}}
-]
-{DIAGNOSE_END}
 {CHAPTERS_START}
 [
   {{"title": "数与式基础", "key_points": ["实数与代数式", "方程基本变形"]}},
@@ -322,10 +367,31 @@ def test_parse_planner_response_reads_marker_protocol() -> None:
 
     assert parsed["plan"].startswith("先补数与式")
     assert parsed["suggestion"].startswith("如果更偏中考")
-    assert parsed["diagnose"][0]["question"] == "函数图像里你最容易混淆什么？"
-    assert parsed["diagnose"][0]["sample_answers"] == ["一次函数", "二次函数", "图像变换"]
+    assert parsed["diagnose"] == []
     assert parsed["chapters"][0]["title"] == "数与式基础"
     assert parsed["chapters"][0]["required_elements"] == ["实数与代数式", "方程基本变形"]
+
+
+def test_parse_diagnosis_response_reads_choice_questions() -> None:
+    parsed = plan_draft_node._parse_diagnosis_response(
+        f"""
+{DIAGNOSE_START}
+[
+  {{"question": "函数图像里你最容易混淆什么？", "purpose": "影响函数章节的例题和图示重点", "options": ["一次函数", "二次函数", "图像变换"]}},
+  {{"question": "这个空题会被丢弃", "purpose": "缺少选项", "options": []}}
+]
+{DIAGNOSE_END}
+"""
+    )
+
+    assert parsed == [
+        {
+            "question": "函数图像里你最容易混淆什么？",
+            "purpose": "影响函数章节的例题和图示重点",
+            "options": ["一次函数", "二次函数", "图像变换"],
+            "answer": "",
+        }
+    ]
 
 
 def test_partial_chapters_supports_streaming_preview() -> None:
@@ -347,6 +413,65 @@ def test_parse_planner_response_rejects_empty_chapter_points() -> None:
 {CHAPTERS_START}[{{"title": "计算基础", "key_points": []}}]{CHAPTERS_END}
 """
         )
+
+
+def test_planner_node_create_generates_diagnosis_before_plan(monkeypatch: pytest.MonkeyPatch) -> None:
+    emitted_tokens: list[str] = []
+    emitted_events: list[tuple[str, dict | None]] = []
+    raw_output = (
+        f'{DIAGNOSE_START}[{{"question":"你当前最想先补哪类能力？",'
+        f'"purpose":"影响章节优先级和练习密度",'
+        f'"options":["概念理解","基础计算","综合应用"]}}]{DIAGNOSE_END}'
+    )
+
+    def fake_acompletion_stream(*args, **kwargs) -> Iterator[str]:
+        del args, kwargs
+
+        async def _gen():
+            yield raw_output
+
+        return _gen()
+
+    async def fake_emit_token(state, token: str) -> None:
+        del state
+        emitted_tokens.append(token)
+
+    async def fake_emit_event(state, *, event: str, detail: str, payload=None) -> None:
+        del state, detail
+        emitted_events.append((event, payload))
+
+    monkeypatch.setattr(plan_draft_node, "acompletion_stream", fake_acompletion_stream)
+    monkeypatch.setattr(plan_draft_node, "emit_planner_token", fake_emit_token)
+    monkeypatch.setattr(plan_draft_node, "emit_planner_event", fake_emit_event)
+
+    node = plan_draft_node.build_compose_planner_draft_node(context=object())
+    result = asyncio.run(
+        node(
+            {
+                "course_id": "course_test",
+                "planner_session_id": "session_test",
+                "planner_operation": "create",
+                "material_context": _material_context(),
+                "planning_note": "用户希望整理三年级数学。",
+                "material_note": "没有绑定上传资料，只能按目标规划。",
+                "user_prompt": "三年级数学",
+                "digest_mode": "sprint",
+                "message_history": ["用户：三年级数学"],
+            }
+        )
+    )
+
+    assert emitted_tokens == []
+    assert result["build_plan_draft"]["planner_stage"] == "diagnosis"
+    assert result["build_plan_draft"]["plan"] == ""
+    assert result["build_plan_draft"]["chapters"] == []
+    assert result["build_plan_draft"]["diagnose_status"] == "pending"
+    assert result["build_plan_draft"]["diagnose"][0]["options"] == ["概念理解", "基础计算", "综合应用"]
+    assert [event for event, _payload in emitted_events] == [
+        "planner.diagnose.started",
+        "planner.diagnose.ready",
+    ]
+    assert emitted_events[-1][1]["plan_preview"]["diagnose_status"] == "pending"
 
 
 def test_planner_node_streams_plan_and_builds_new_draft(monkeypatch: pytest.MonkeyPatch) -> None:

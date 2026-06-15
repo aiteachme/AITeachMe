@@ -148,16 +148,17 @@ class DigestPlannerDiagnosticQuestion(BaseModel):
 
     question: str = ""
     purpose: str = ""
-    sample_answers: list[str] = Field(default_factory=list)
+    options: list[str] = Field(default_factory=list)
+    answer: str = ""
 
-    @field_validator("question", "purpose", mode="before")
+    @field_validator("question", "purpose", "answer", mode="before")
     @classmethod
     def _normalize_text(cls, value: Any) -> str:
         return _clean_text(value)
 
-    @field_validator("sample_answers", mode="before")
+    @field_validator("options", mode="before")
     @classmethod
-    def _normalize_sample_answers(cls, value: Any) -> list[str]:
+    def _normalize_options(cls, value: Any) -> list[str]:
         return _clean_string_list(value)
 
 
@@ -175,6 +176,8 @@ class DigestConfirmedPlanContract(BaseModel):
     plan: str = ""
     chapters: list[DigestChapterContract] = Field(default_factory=list)
     diagnose: list[DigestPlannerDiagnosticQuestion] = Field(default_factory=list)
+    diagnose_status: str = ""
+    diagnose_note: str = ""
     build_constraints: DigestBuildConstraints = Field(default_factory=DigestBuildConstraints)
     selected_file_ids: list[str] = Field(default_factory=list)
     planner_session_id: str = ""
@@ -193,6 +196,8 @@ class DigestConfirmedPlanContract(BaseModel):
         "planning_note",
         "suggestion",
         "plan",
+        "diagnose_status",
+        "diagnose_note",
         "planner_session_id",
         "confirmed_plan_id",
         "model_override",

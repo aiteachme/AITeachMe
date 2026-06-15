@@ -324,6 +324,9 @@ def create_planner_initial_state(
     message_history: list[str],
     model: str | None = None,
     latest_plan: dict | None = None,
+    diagnose_answers: list[dict] | None = None,
+    diagnose_status: str = "",
+    diagnose_note: str = "",
     progress_callback: object | None = None,
     token_callback: object | None = None,
 ) -> BuildPlannerState:
@@ -341,6 +344,9 @@ def create_planner_initial_state(
         "planner_session_id": planner_session_id,
         "message_history": message_history,
         "latest_plan": latest_plan,
+        "diagnose_answers": list(diagnose_answers or []),
+        "diagnose_status": diagnose_status,
+        "diagnose_note": diagnose_note,
         "progress_callback": progress_callback,
         "token_callback": token_callback,
         "error": None,
@@ -366,6 +372,9 @@ async def run_build_planner_workflow(
     session_title: str = "",
     feedback_message: str = "",
     latest_plan: dict | None = None,
+    diagnose_answers: list[dict] | None = None,
+    diagnose_status: str = "",
+    diagnose_note: str = "",
     progress_callback: object | None = None,
     token_callback: object | None = None,
 ) -> WorkflowResult[BuildPlannerState]:
@@ -412,6 +421,9 @@ async def run_build_planner_workflow(
         message_history=message_history,
         model=model_override,
         latest_plan=latest_plan,
+        diagnose_answers=diagnose_answers,
+        diagnose_status=diagnose_status,
+        diagnose_note=diagnose_note,
         progress_callback=progress_callback,
         token_callback=token_callback,
     )
@@ -525,6 +537,12 @@ async def append_build_planner_message(
             digest_mode="",
             message_history=[],
             model=payload.model,
+            diagnose_answers=[
+                item.model_dump(mode="json")
+                for item in list(payload.diagnose_answers or [])
+            ],
+            diagnose_status=payload.diagnose_status or "",
+            diagnose_note=payload.diagnose_note,
             progress_callback=progress_callback,
             token_callback=token_callback,
         )

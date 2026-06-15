@@ -19,6 +19,7 @@ from app.workflows.digest.planner.lib.planner_events import emit_planner_event, 
 from app.workflows.digest.planner.lib.plans import (
     _resolve_course_name,
     compose_planning_note,
+    normalize_planner_diagnosis_draft,
     normalize_planner_draft,
 )
 from app.workflows.digest.planner.prompts.build_plan_composer import (
@@ -30,6 +31,7 @@ from app.workflows.digest.planner.prompts.build_plan_composer import (
     PLAN_START,
     SUGGESTION_END,
     SUGGESTION_START,
+    build_planner_diagnosis_messages,
     build_planner_stream_messages,
 )
 from app.workflows.digest.planner.state import BuildPlannerState
@@ -141,6 +143,48 @@ def _string_list(value: Any) -> list[str]:
     return result
 
 
+def _diagnose_answer_map(raw_answers: Any) -> dict[str, str]:
+    if not isinstance(raw_answers, list):
+        return {}
+    answers: dict[str, str] = {}
+    for raw in raw_answers:
+        if not isinstance(raw, dict):
+            continue
+        question = _clean_text(raw.get("question"))
+        answer = _clean_text(raw.get("answer"))
+        if question and answer:
+            answers[question.casefold()] = answer
+    return answers
+
+
+def _latest_plan_with_current_diagnosis(state: BuildPlannerState, latest_plan: dict[str, Any]) -> dict[str, Any]:
+    answers = _diagnose_answer_map(state.get("diagnose_answers"))
+    status = _clean_text(state.get("diagnose_status"))
+    note = _clean_text(state.get("diagnose_note"))
+    if not answers and not status and not note:
+        return latest_plan
+    next_plan = dict(latest_plan)
+    diagnose: list[dict[str, Any]] = []
+    for raw in list(next_plan.get("diagnose") or []):
+        if not isinstance(raw, dict):
+            continue
+        item = dict(raw)
+        question = _clean_text(item.get("question"))
+        answer = answers.get(question.casefold()) if question else ""
+        if answer:
+            item["answer"] = answer
+        diagnose.append(item)
+    if diagnose:
+        next_plan["diagnose"] = diagnose
+    if status in {"answered", "skipped"}:
+        next_plan["diagnose_status"] = status
+    elif answers:
+        next_plan["diagnose_status"] = "answered"
+    if note:
+        next_plan["diagnose_note"] = note
+    return next_plan
+
+
 def _parse_chapters(value: str) -> list[dict[str, Any]]:
     try:
         decoded = json.loads(value)
@@ -180,23 +224,28 @@ def _parse_diagnose(value: str) -> list[dict[str, Any]]:
     if not isinstance(decoded, list):
         raise ValueError("diagnose must be a JSON array")
     diagnose: list[dict[str, Any]] = []
-    for raw in decoded[:10]:
+    for raw in decoded[:5]:
         if not isinstance(raw, dict):
             continue
         question = _clean_text(raw.get("question") or raw.get("title") or raw.get("prompt"))
         if not question:
             continue
-        sample_answers = _string_list(
-            raw.get("sample_answers")
+        options = _string_list(
+            raw.get("options")
+            or raw.get("choices")
+            or raw.get("sample_answers")
             or raw.get("quick_answers")
             or raw.get("example_answers")
             or raw.get("answers")
         )[:4]
+        if len(options) < 2:
+            continue
         diagnose.append(
             {
                 "question": question,
                 "purpose": _clean_text(raw.get("purpose") or raw.get("diagnosis_target") or raw.get("target")),
-                "sample_answers": sample_answers,
+                "options": options,
+                "answer": _clean_text(raw.get("answer") or raw.get("user_answer") or raw.get("selected_answer")),
             }
         )
     return diagnose
@@ -205,17 +254,19 @@ def _parse_diagnose(value: str) -> list[dict[str, Any]]:
 def _parse_planner_response(text: str) -> dict[str, Any]:
     plan = _clean_text(_extract_between(text, PLAN_START, PLAN_END))
     suggestion = _clean_text(_extract_between(text, SUGGESTION_START, SUGGESTION_END))
-    diagnose = _parse_diagnose(
-        _extract_between(text, DIAGNOSE_START, DIAGNOSE_END)
-        if DIAGNOSE_START in text
-        else ""
-    )
     chapters = _parse_chapters(_extract_between(text, CHAPTERS_START, CHAPTERS_END))
     if not plan:
         raise ValueError("planner response is missing plan")
     if not suggestion:
         raise ValueError("planner response is missing suggestion")
-    return {"suggestion": suggestion, "plan": plan, "diagnose": diagnose, "chapters": chapters}
+    return {"suggestion": suggestion, "plan": plan, "diagnose": [], "chapters": chapters}
+
+
+def _parse_diagnosis_response(text: str) -> list[dict[str, Any]]:
+    diagnose = _parse_diagnose(_extract_between(text, DIAGNOSE_START, DIAGNOSE_END))
+    if not diagnose:
+        raise ValueError("planner diagnosis response is missing useful choice questions")
+    return diagnose
 
 
 def _plan_preview_payload(state: BuildPlannerState, payload: dict[str, Any]) -> dict[str, Any]:
@@ -237,6 +288,8 @@ def _plan_preview_payload(state: BuildPlannerState, payload: dict[str, Any]) -> 
         "suggestion": str(payload.get("suggestion") or ""),
         "plan": str(payload.get("plan") or ""),
         "diagnose": list(payload.get("diagnose") or latest_plan.get("diagnose") or []),
+        "diagnose_status": str(payload.get("diagnose_status") or latest_plan.get("diagnose_status") or ""),
+        "diagnose_note": str(payload.get("diagnose_note") or latest_plan.get("diagnose_note") or ""),
         "chapters": list(payload.get("chapters") or []),
         "status": "planning",
         "planner_session_id": state.get("planner_session_id") or None,
@@ -247,7 +300,7 @@ def _plan_preview_payload(state: BuildPlannerState, payload: dict[str, Any]) -> 
 
 async def _stream_planner_response(state: BuildPlannerState) -> str:
     material_context = state["material_context"]
-    latest_plan = dict(state.get("latest_plan") or {})
+    latest_plan = _latest_plan_with_current_diagnosis(state, dict(state.get("latest_plan") or {}))
     planning_note = str(state.get("planning_note") or latest_plan.get("planning_note") or "").strip()
     material_note = str(state.get("material_note") or "").strip()
     messages = build_planner_stream_messages(
@@ -329,6 +382,49 @@ async def _stream_planner_response(state: BuildPlannerState) -> str:
     return "".join(raw_tokens).strip()
 
 
+def _should_generate_diagnosis_first(state: BuildPlannerState) -> bool:
+    if _clean_text(state.get("planner_operation")).casefold() != "create":
+        return False
+    if _clean_text(state.get("diagnose_status")):
+        return False
+    latest_plan = state.get("latest_plan")
+    return not isinstance(latest_plan, dict) or not latest_plan
+
+
+async def _stream_diagnosis_response(state: BuildPlannerState) -> str:
+    material_context = state["material_context"]
+    latest_plan = dict(state.get("latest_plan") or {})
+    planning_note = str(state.get("planning_note") or latest_plan.get("planning_note") or "").strip()
+    material_note = str(state.get("material_note") or "").strip()
+    messages = build_planner_diagnosis_messages(
+        course_name=_course_for_prompt(state),
+        user_prompt=state.get("user_prompt") or latest_plan.get("user_prompt") or "",
+        digest_mode=state.get("digest_mode") or latest_plan.get("digest_mode") or material_context.course_mode_decision.mode.value,
+        material_context=material_context,
+        planning_note=planning_note,
+        material_note=material_note,
+        message_history=list(state.get("message_history", [])),
+    )
+    await emit_planner_event(
+        state,
+        event="planner.diagnose.started",
+        detail="正在生成前置诊断选择题。",
+    )
+    raw_tokens: list[str] = []
+    stream = acompletion_stream(
+        messages,
+        **planner_completion_kwargs_with_metadata(
+            PlannerModelStep.DRAFT_PLAN,
+            model_override=state.get("model_override"),
+            planner_session_id=state.get("planner_session_id") or "",
+            substep="生成前置诊断",
+        ),
+    )
+    async for token in stream:
+        raw_tokens.append(token)
+    return "".join(raw_tokens).strip()
+
+
 def build_compose_planner_draft_node(*, context: WorkflowContext):
     """Build the planner draft composer node."""
 
@@ -345,6 +441,55 @@ def build_compose_planner_draft_node(*, context: WorkflowContext):
             planner_operation=state.get("planner_operation", ""),
         )
         try:
+            if _should_generate_diagnosis_first(state):
+                raw_output = await _stream_diagnosis_response(state)
+                latest_plan = dict(state.get("latest_plan") or {})
+                planning_note = compose_planning_note(
+                    state.get("planning_note") or latest_plan.get("planning_note"),
+                    state.get("material_note"),
+                )
+                diagnosis_payload = {
+                    "planner_stage": "diagnosis",
+                    "planning_note": planning_note,
+                    "course_name": str(latest_plan.get("course_name") or ""),
+                    "course_icon": str(latest_plan.get("course_icon") or ""),
+                    "diagnose": _parse_diagnosis_response(raw_output),
+                    "diagnose_status": "pending",
+                    "build_constraints": {},
+                }
+                material_context = state["material_context"]
+                digest_mode = (
+                    state.get("digest_mode")
+                    or latest_plan.get("digest_mode")
+                    or material_context.course_mode_decision.mode.value
+                )
+                draft_payload = normalize_planner_diagnosis_draft(
+                    diagnosis_payload,
+                    course_id=state["course_id"],
+                    user_prompt=state.get("user_prompt") or latest_plan.get("user_prompt") or "",
+                    requested_digest_mode=digest_mode,
+                    shared_inputs=material_context,
+                    latest_plan=latest_plan or None,
+                )
+                await emit_planner_event(
+                    state,
+                    event="planner.diagnose.ready",
+                    detail=f"前置诊断已生成：{len(draft_payload.get('diagnose') or [])} 道选择题。",
+                    payload={
+                        "diagnose_count": len(draft_payload.get("diagnose") or []),
+                        "plan_preview": _plan_preview_payload(state, draft_payload),
+                    },
+                )
+                logger.info(
+                    "planner_diagnosis_node_completed",
+                    planner_session_id=state.get("planner_session_id", ""),
+                    diagnose_count=len(draft_payload.get("diagnose") or []),
+                )
+                return {
+                    "build_plan_draft": draft_payload,
+                    "plan_outline_markdown": "",
+                }
+
             raw_output = await _stream_planner_response(state)
             parsed = _parse_planner_response(raw_output)
         except Exception as exc:
@@ -357,11 +502,11 @@ def build_compose_planner_draft_node(*, context: WorkflowContext):
             await emit_planner_event(
                 state,
                 event="planner.plan.failed",
-                detail="模型没有按协议返回修改建议、方案总说明和章节大纲，请重试。",
+                detail="模型没有按协议返回前置诊断或方案内容，请重试。",
             )
             raise
 
-        latest_plan = dict(state.get("latest_plan") or {})
+        latest_plan = _latest_plan_with_current_diagnosis(state, dict(state.get("latest_plan") or {}))
         planning_note = compose_planning_note(
             state.get("planning_note") or latest_plan.get("planning_note"),
             state.get("material_note"),
@@ -409,6 +554,7 @@ def build_compose_planner_draft_node(*, context: WorkflowContext):
 
 
 __all__ = [
+    "_parse_diagnosis_response",
     "_parse_planner_response",
     "build_compose_planner_draft_node",
 ]

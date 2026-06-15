@@ -29,6 +29,9 @@ class BuildPlannerState(TypedDict, total=False):
     planner_session_id: str
     message_history: list[str]
     latest_plan: dict[str, Any] | None
+    diagnose_answers: list[dict[str, Any]]
+    diagnose_status: str
+    diagnose_note: str
     planner_context_stats: dict[str, Any]
     existing_doc_context: str
     planner_context_mode: str
@@ -78,6 +81,9 @@ BuildPlannerGraphInput = project_typed_dict_schema(
         "planner_session_id",
         "message_history",
         "latest_plan",
+        "diagnose_answers",
+        "diagnose_status",
+        "diagnose_note",
         "progress_callback",
         "token_callback",
     ],

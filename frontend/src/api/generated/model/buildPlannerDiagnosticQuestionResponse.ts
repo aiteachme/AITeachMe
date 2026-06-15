@@ -8,5 +8,6 @@
 export interface BuildPlannerDiagnosticQuestionResponse {
   question: string;
   purpose?: string;
-  sample_answers?: string[];
+  options?: string[];
+  answer?: string;
 }

@@ -24,25 +24,39 @@ from app.workflows.digest.common.indexing import materialize_course_inputs_for_r
 from app.workflows.digest.common.prepare import prepare_shared_inputs
 
 
-def _render_diagnose_brief(items: list[dict]) -> str:
+def _render_diagnose_brief(
+    items: list[dict],
+    *,
+    status: str = "",
+    note: str = "",
+) -> str:
     lines: list[str] = []
-    for index, raw in enumerate(items[:10], start=1):
+    normalized_status = " ".join(str(status or "").split()).strip()
+    normalized_note = " ".join(str(note or "").split()).strip()
+    if normalized_status == "skipped":
+        lines.append("用户跳过了前置诊断。")
+    if normalized_note:
+        lines.append(f"用户补充：{normalized_note}")
+    for index, raw in enumerate(items[:5], start=1):
         if not isinstance(raw, dict):
             continue
         question = " ".join(str(raw.get("question") or "").split()).strip()
         if not question:
             continue
         purpose = " ".join(str(raw.get("purpose") or "").split()).strip()
-        answers = [
+        answer = " ".join(str(raw.get("answer") or "").split()).strip()
+        options = [
             " ".join(str(item or "").split()).strip()
-            for item in list(raw.get("sample_answers") or [])[:4]
+            for item in list(raw.get("options") or raw.get("sample_answers") or [])[:4]
             if str(item or "").strip()
         ]
         suffix_parts = []
+        if answer:
+            suffix_parts.append(f"用户回答：{answer}")
         if purpose:
             suffix_parts.append(f"诊断目标：{purpose}")
-        if answers:
-            suffix_parts.append("快速回答：" + " / ".join(answers))
+        if options and not answer:
+            suffix_parts.append("可选项：" + " / ".join(options))
         suffix = "；" + "；".join(suffix_parts) if suffix_parts else ""
         lines.append(f"{index}. {question}{suffix}")
     if not lines:
@@ -105,8 +119,14 @@ def build_load_context_node(*, context: WorkflowContext):
             dict(item)
             for item in list(plan_payload.get("diagnose") or [])
             if isinstance(item, dict)
-        ][:10]
-        diagnose_brief = _render_diagnose_brief(diagnose)
+        ][:5]
+        diagnose_status = str(plan_payload.get("diagnose_status") or "").strip()
+        diagnose_note = str(plan_payload.get("diagnose_note") or "").strip()
+        diagnose_brief = _render_diagnose_brief(
+            diagnose,
+            status=diagnose_status,
+            note=diagnose_note,
+        )
         docgen_history_brief = str(
             plan_payload.get("docgen_history_brief")
             or planner_context.get("docgen_history_brief")
@@ -157,6 +177,8 @@ def build_load_context_node(*, context: WorkflowContext):
             "learner_profile_text": learner_profile_text,
             "learner_profile_context": learner_profile_context,
             "diagnose": diagnose,
+            "diagnose_status": diagnose_status,
+            "diagnose_note": diagnose_note,
             "diagnose_brief": diagnose_brief,
             "planner_context": planner_context,
             "build_constraints": build_constraints,
@@ -175,6 +197,8 @@ def build_load_context_node(*, context: WorkflowContext):
             learner_profile_context=learner_profile_context,
             planner_context=planner_context,
             diagnose=diagnose,
+            diagnose_status=diagnose_status,
+            diagnose_note=diagnose_note,
             build_constraints=build_constraints,
             source_strategy="local_first" if has_local_materials else "web_first",
             include_sources=False,

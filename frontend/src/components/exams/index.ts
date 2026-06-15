@@ -1,4 +1,9 @@
-export { CreateExamModal, loadCreateExamConfig, toExamGenerateRequest } from "./CreateExamModal";
+export {
+  CreateExamModal,
+  applyExamModeToCreateConfig,
+  loadCreateExamConfig,
+  toExamGenerateRequest,
+} from "./CreateExamModal";
 export { ExamHeroOrb } from "./ExamHeroOrb";
 export { ExamMarkdown } from "./ExamMarkdown";
 export { ExamMasteryDrillSession } from "./ExamMasteryDrillSession";
@@ -9,6 +14,7 @@ export { ExamPaperWorkspace } from "./ExamPaperWorkspace";
 export {
   MASTERY_DRILL_EXAM_MODE,
   MASTERY_DRILL_QUESTION_COUNT,
+  PAPER_EXAM_MODES,
   buildExamTitle,
   formatDifficultyLabel,
 } from "./examDisplay";
