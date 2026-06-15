@@ -1,11 +1,6 @@
 import { memo, Suspense, lazy, startTransition, useState, useRef, useEffect, useMemo, useCallback, useLayoutEffect, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
-import rehypeHighlight from "rehype-highlight";
-import rehypeKatex from "rehype-katex";
 import { useLocation } from "react-router-dom";
 import {
   BookOpen,
@@ -42,7 +37,7 @@ import {
   useDocMarkdown,
 } from "../components/knowledge-docs";
 import { CourseVectorNotice } from "../components/knowledge-graph/CourseVectorNotice";
-import { MarkdownViewer, preprocessMarkdownForRender } from "../components/ui/MarkdownViewer";
+import { MarkdownViewer } from "../components/ui/MarkdownViewer";
 import { useToast } from "../components/ui/Toast";
 import { CoursePagePillTitle } from "../components/course/CoursePagePillTitle";
 import { buildCoursePath } from "../lib/courseNavigation";
@@ -1675,15 +1670,7 @@ const DocMarkdown = memo(function DocMarkdown({
 const CommentMarkdown = memo(function CommentMarkdown({ content }: { content: string }) {
   return (
     <div className="break-words text-xs leading-relaxed text-slate-700 dark:text-slate-300 [&_a]:text-indigo-600 [&_a]:underline [&_a]:underline-offset-2 dark:[&_a]:text-indigo-300 [&_blockquote]:my-2 [&_blockquote]:rounded-r-md [&_blockquote]:border-l-2 [&_blockquote]:border-indigo-200 [&_blockquote]:bg-indigo-50/60 [&_blockquote]:px-2.5 [&_blockquote]:py-1.5 dark:[&_blockquote]:border-indigo-500/30 dark:[&_blockquote]:bg-indigo-500/10 [&_code]:rounded [&_code]:bg-slate-100 [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[11px] dark:[&_code]:bg-slate-800 dark:[&_code]:text-slate-200 [&_h1]:mb-1.5 [&_h1]:mt-3 [&_h1]:text-sm [&_h1]:font-semibold [&_h1]:text-slate-800 dark:[&_h1]:text-slate-100 [&_h2]:mb-1.5 [&_h2]:mt-3 [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:text-slate-800 dark:[&_h2]:text-slate-100 [&_h3]:mb-1 [&_h3]:mt-2.5 [&_h3]:text-xs [&_h3]:font-semibold [&_h3]:text-slate-700 dark:[&_h3]:text-slate-200 [&_li]:leading-relaxed [&_ol]:mb-1.5 [&_ol]:list-decimal [&_ol]:space-y-1 [&_ol]:pl-4 [&_p:last-child]:mb-0 [&_p]:mb-1.5 [&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-slate-900 [&_pre]:p-2.5 [&_pre]:text-slate-100 dark:[&_pre]:bg-slate-950 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_table]:min-w-full [&_table]:rounded-md [&_table]:border [&_table]:border-slate-200 [&_table]:text-[11px] dark:[&_table]:border-slate-700 [&_td]:border-t [&_td]:border-slate-100 [&_td]:px-2 [&_td]:py-1 dark:[&_td]:border-slate-800 [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:font-semibold [&_thead]:bg-slate-50 dark:[&_thead]:bg-slate-900 [&_ul]:mb-1.5 [&_ul]:list-disc [&_ul]:space-y-1 [&_ul]:pl-4">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[
-          [rehypeKatex, { throwOnError: false, strict: false, errorColor: "#1F2329", output: "html" }],
-          rehypeHighlight,
-        ]}
-      >
-        {preprocessMarkdownForRender(content) || " "}
-      </ReactMarkdown>
+      <MarkdownViewer content={content || " "} />
     </div>
   );
 });
@@ -2700,29 +2687,42 @@ export function KnowledgeDocsPage() {
 
   useEffect(() => {
     tocDefaultInitializedRef.current = false;
-    const rafId = window.requestAnimationFrame(() => {
-      const container = scrollRef.current;
-      if (!container) return;
-      const headingNodes = container.querySelectorAll<HTMLElement>("[data-heading-id]");
-      const nextToc = compactTocItems(Array.from(headingNodes)
-        .map((node): TocItem | null => {
-          const id = node.getAttribute("data-heading-id") ?? node.id;
-          if (!id) return null;
-          if (!isTocTrackedHeading(node)) return null;
-          const level = getHeadingLevel(node);
-          const text = node.textContent?.trim() || id;
-          const section = findHeadingSectionElement(node);
-          const hasInteractive = section ? sectionHasOwnInteractiveEmbed(section) : false;
-          return { id, text, level, hasInteractive };
-        })
-        .filter((item): item is TocItem => item !== null));
-      setToc((prev) => (tocEqual(prev, nextToc) ? prev : nextToc));
-      if (!tocDefaultInitializedRef.current && nextToc.length > 0) {
-        tocDefaultInitializedRef.current = true;
-        setCollapsedTocIds(buildDefaultCollapsedTocIds(nextToc));
-      }
+    let scanRafId = 0;
+    const paintRafId = window.requestAnimationFrame(() => {
+      scanRafId = window.requestAnimationFrame(() => {
+        const container = scrollRef.current;
+        if (!container) return;
+        const headingNodes = container.querySelectorAll<HTMLElement>("[data-heading-id]");
+        const nextToc = compactTocItems(Array.from(headingNodes)
+          .map((node): TocItem | null => {
+            const id = node.getAttribute("data-heading-id") ?? node.id;
+            if (!id) return null;
+            if (!isTocTrackedHeading(node)) return null;
+            const level = getHeadingLevel(node);
+            const text = node.textContent?.trim() || id;
+            const section = findHeadingSectionElement(node);
+            const hasInteractive = section ? sectionHasOwnInteractiveEmbed(section) : false;
+            return { id, text, level, hasInteractive };
+          })
+          .filter((item): item is TocItem => item !== null));
+        const shouldInitializeCollapsedToc = !tocDefaultInitializedRef.current && nextToc.length > 0;
+        if (shouldInitializeCollapsedToc) {
+          tocDefaultInitializedRef.current = true;
+        }
+        startTransition(() => {
+          setToc((prev) => (tocEqual(prev, nextToc) ? prev : nextToc));
+          if (shouldInitializeCollapsedToc) {
+            setCollapsedTocIds(buildDefaultCollapsedTocIds(nextToc));
+          }
+        });
+      });
     });
-    return () => window.cancelAnimationFrame(rafId);
+    return () => {
+      window.cancelAnimationFrame(paintRafId);
+      if (scanRafId) {
+        window.cancelAnimationFrame(scanRafId);
+      }
+    };
   }, [renderedMarkdown]);
 
   useEffect(() => {
@@ -2943,7 +2943,7 @@ export function KnowledgeDocsPage() {
     readingPositionRestoredRef.current = "";
   }, [courseId, renderedMarkdown]);
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     if (!courseId || !renderedMarkdown.trim()) {
       return;
     }
@@ -3073,34 +3073,62 @@ export function KnowledgeDocsPage() {
     }
 
     let rafId = 0;
+    let positionRafId = 0;
+    let headingPositions: Array<{ id: string; top: number }> = [];
+
+    const refreshHeadingPositions = () => {
+      headingPositions = headings
+        .map((heading) => {
+          const id = heading.getAttribute("data-heading-id") ?? "";
+          if (!id || !isVisibleHeading(heading)) {
+            return null;
+          }
+          return {
+            id,
+            top: getElementContentTop(scrollParent, heading),
+          };
+        })
+        .filter((item): item is { id: string; top: number } => item !== null)
+        .sort((left, right) => left.top - right.top);
+    };
+
+    const schedulePositionRefresh = () => {
+      window.cancelAnimationFrame(positionRafId);
+      positionRafId = window.requestAnimationFrame(() => {
+        positionRafId = 0;
+        refreshHeadingPositions();
+        syncActiveHeading();
+      });
+    };
 
     const findActiveHeadingId = () => {
       const isScrollable = scrollParent.scrollHeight > scrollParent.clientHeight;
       const isAtBottom = isScrollable && (scrollParent.scrollTop + scrollParent.clientHeight >= scrollParent.scrollHeight - 15);
       if (isAtBottom) {
-        const visibleHeadings = headings.filter(isVisibleHeading);
-        if (visibleHeadings.length > 0) {
-          return visibleHeadings[visibleHeadings.length - 1].getAttribute("data-heading-id") ?? "";
+        const lastHeading = headingPositions[headingPositions.length - 1];
+        if (lastHeading) {
+          return lastHeading.id;
         }
       }
 
-      const scrollParentRect = scrollParent.getBoundingClientRect();
-      const activationTop = scrollParentRect.top + getHeadingActivationOffset(scrollParent);
-      let current = headings.find(isVisibleHeading)?.getAttribute("data-heading-id") ?? "";
-      for (const heading of headings) {
-        if (!isVisibleHeading(heading)) {
-          continue;
-        }
-        const rect = heading.getBoundingClientRect();
-        const id = heading.getAttribute("data-heading-id") ?? "";
-        if (!id) continue;
-        if (rect.top <= activationTop) {
-          current = id;
+      if (headingPositions.length === 0) {
+        return "";
+      }
+
+      const activationTop = scrollParent.scrollTop + getHeadingActivationOffset(scrollParent);
+      let left = 0;
+      let right = headingPositions.length - 1;
+      let activeIndex = 0;
+      while (left <= right) {
+        const mid = Math.floor((left + right) / 2);
+        if (headingPositions[mid].top <= activationTop) {
+          activeIndex = mid;
+          left = mid + 1;
         } else {
-          break;
+          right = mid - 1;
         }
       }
-      return current;
+      return headingPositions[activeIndex]?.id ?? "";
     };
 
     const syncActiveHeading = () => {
@@ -3129,18 +3157,28 @@ export function KnowledgeDocsPage() {
       syncActiveHeading();
     };
 
+    refreshHeadingPositions();
     scrollParent.addEventListener("scroll", handleScroll, { passive: true });
     scrollParent.addEventListener("scrollend", handleScrollEnd, { passive: true });
-    window.addEventListener("resize", handleScroll);
+    window.addEventListener("resize", schedulePositionRefresh);
+    const resizeObserverTarget = headingRoot;
+    const resizeObserver = typeof ResizeObserver !== "undefined" && resizeObserverTarget
+      ? new ResizeObserver(schedulePositionRefresh)
+      : null;
+    if (resizeObserver && resizeObserverTarget) {
+      resizeObserver.observe(resizeObserverTarget);
+    }
     syncActiveHeading();
 
     return () => {
       window.cancelAnimationFrame(rafId);
+      window.cancelAnimationFrame(positionRafId);
       scrollParent.removeEventListener("scroll", handleScroll);
       scrollParent.removeEventListener("scrollend", handleScrollEnd);
-      window.removeEventListener("resize", handleScroll);
+      window.removeEventListener("resize", schedulePositionRefresh);
+      resizeObserver?.disconnect();
     };
-  }, [renderedMarkdown, toc]);
+  }, [renderedMarkdown]);
 
   // Keep the active TOC item aligned when layout changes or window resizes
   useEffect(() => {
@@ -4532,8 +4570,8 @@ export function KnowledgeDocsPage() {
       .sort(compareCommentThreadViewOrder)
   ), [commentsByThread, hasRenderedMarkdown, renderedMarkdown, tocOrderMap]);
   const knowledgeCards = useMemo(
-    () => buildKnowledgeCardsFromMarkdown(renderedMarkdown, toc),
-    [renderedMarkdown, toc],
+    () => (isCardsPanelOpen ? buildKnowledgeCardsFromMarkdown(renderedMarkdown, toc) : []),
+    [isCardsPanelOpen, renderedMarkdown, toc],
   );
   const commentThreadIds = useMemo(
     () => commentThreads.map((item) => item.threadId),

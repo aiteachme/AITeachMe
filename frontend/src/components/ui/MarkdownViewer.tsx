@@ -1483,6 +1483,18 @@ function preprocessMarkdownContent(content: string): string {
   return preprocessMarkdownForRender(content);
 }
 
+function hasLikelyMathContent(content: string): boolean {
+  return /\\[([]/.test(content) || /\$\$/.test(content) || /(^|[^\\])\$[^$\n]{1,240}(^|[^\\])\$/.test(content);
+}
+
+function hasLikelyHighlightableCode(content: string): boolean {
+  return /(^|\n)(```|~~~)/.test(content) || /(^|\n)(?: {4}|\t)\S/.test(content);
+}
+
+function hasLikelyRawHtmlContent(content: string): boolean {
+  return /<!--/.test(content) || /<\/?[a-z][\w:-]*(?:\s[^>]*)?>/i.test(content);
+}
+
 function textToId(text: string): string {
   return text
     .toLowerCase()
@@ -2544,6 +2556,9 @@ export function MarkdownViewer({
   onHeadingCollapseChange,
 }: MarkdownViewerProps) {
   const processedContent = useMemo(() => preprocessMarkdownContent(content), [content]);
+  const hasMathContent = useMemo(() => hasLikelyMathContent(processedContent), [processedContent]);
+  const hasHighlightableCode = useMemo(() => hasLikelyHighlightableCode(processedContent), [processedContent]);
+  const hasRawHtmlContent = useMemo(() => hasLikelyRawHtmlContent(processedContent), [processedContent]);
   const styles = VIEWER_STYLES[variant];
   const nextHeadingId = useMemo(() => createHeadingIdFactory(), [processedContent]);
   const collapsibleHeadingLevels = useMemo(
@@ -2612,17 +2627,24 @@ export function MarkdownViewer({
   }, [controlledCollapsedHeadingIds, onHeadingCollapseChange]);
 
   const remarkPlugins = useMemo(
-    () => [remarkGfm, remarkMath, remarkBlankTokens, remarkSafeHighlights, remarkCallouts, headingStructurePlugin] as any[],
-    [headingStructurePlugin],
+    () => [
+      remarkGfm,
+      ...(hasMathContent ? [remarkMath] : []),
+      remarkBlankTokens,
+      remarkSafeHighlights,
+      remarkCallouts,
+      headingStructurePlugin,
+    ] as any[],
+    [hasMathContent, headingStructurePlugin],
   );
 
   const rehypePlugins = useMemo(
     () => [
-      ...(variant === "document" ? [rehypeRaw] : []),
-      [rehypeKatex, { throwOnError: false, strict: false, errorColor: "#1F2329", output: "html" }],
-      rehypeHighlight,
+      ...(variant === "document" && hasRawHtmlContent ? [rehypeRaw] : []),
+      ...(hasMathContent ? [[rehypeKatex, { throwOnError: false, strict: false, errorColor: "#1F2329", output: "html" }]] : []),
+      ...(hasHighlightableCode ? [rehypeHighlight] : []),
     ] as any[],
-    [variant],
+    [hasHighlightableCode, hasMathContent, hasRawHtmlContent, variant],
   );
 
   const components = useMemo(() => {
