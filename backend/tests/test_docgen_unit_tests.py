@@ -39,7 +39,11 @@ def test_unit_test_renderer_replaces_existing_unit_test_section_once() -> None:
 
     assert "旧测试" not in strip_existing_unit_test_sections(body)
     assert markdown.count("## 单元测试") == 1
-    assert markdown.rstrip().endswith("| 2 | 中位数 | 用一句话说明“中位数”的核心含义。 | 围绕“中位数”按本章定义、条件和步骤作答。；依据：能说清对象、条件和结论。 |")
+    assert '<div class="atm-unit-tests" data-unit-test-count="2">' in markdown
+    assert '<details class="atm-unit-test-answer">' in markdown
+    assert "<summary>查看答案与判定依据</summary>" in markdown
+    assert "总和除以个数。" in markdown
+    assert "围绕“中位数”按本章定义、条件和步骤作答。" in markdown
     assert "###" not in unit_test
 
 
@@ -92,6 +96,33 @@ def test_published_unit_test_normalizer_keeps_one_standard_section() -> None:
     assert "旧自检内容" not in normalized
     assert "单元测试与快速自检" not in normalized
     assert normalized.rstrip().endswith("| 1 | 切线判定 | 判断直线是否为切线。 | 经过圆上一点且垂直半径。 |")
+
+
+def test_published_unit_test_normalizer_keeps_html_unit_test_block() -> None:
+    markdown = (
+        "# 圆与切线\n\n"
+        "## 切线判定\n\n"
+        "经过圆上一点且垂直半径的直线是切线。\n\n"
+        "## 单元测试\n\n"
+        '<div class="atm-unit-tests" data-unit-test-count="1">\n'
+        '<article class="atm-unit-test-card">\n'
+        '<details class="atm-unit-test-answer">\n'
+        "<summary>查看答案与判定依据</summary>\n"
+        "<p>答案内容</p>\n"
+        "</details>\n"
+        "</article>\n"
+        "</div>\n\n"
+        "## 不应保留的后续标题\n\n"
+        "这段不应留在单元测试之后。\n"
+    )
+
+    normalized = normalize_published_unit_test_sections(markdown)
+
+    assert normalized.count("## 单元测试") == 1
+    assert '<div class="atm-unit-tests" data-unit-test-count="1">' in normalized
+    assert '<details class="atm-unit-test-answer">' in normalized
+    assert "查看答案与判定依据" in normalized
+    assert "不应保留的后续标题" not in normalized
 
 
 def test_published_unit_test_normalizer_restores_missing_standard_heading() -> None:

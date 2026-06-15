@@ -4,6 +4,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
+import rehypeRaw from "rehype-raw";
 import {
   BadgeCheck,
   ChevronRight,
@@ -2617,10 +2618,11 @@ export function MarkdownViewer({
 
   const rehypePlugins = useMemo(
     () => [
+      ...(variant === "document" ? [rehypeRaw] : []),
       [rehypeKatex, { throwOnError: false, strict: false, errorColor: "#1F2329", output: "html" }],
       rehypeHighlight,
     ] as any[],
-    [],
+    [variant],
   );
 
   const components = useMemo(() => {

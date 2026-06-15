@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from html import escape
 import re
 from typing import Any
 
@@ -24,6 +25,7 @@ _HEADING_NUMBER_PREFIX_RE = re.compile(r"^\s*(?:\d+(?:\.\d+)*\s*)+")
 _UNIT_TEST_TABLE_HEADER_RE = re.compile(
     r"(?m)^\|\s*题号\s*\|\s*训练点\s*\|\s*题目\s*/\s*任务\s*\|\s*答案与判定依据\s*\|"
 )
+_UNIT_TEST_HTML_BLOCK_RE = re.compile(r'(?ms)<div\s+class="atm-unit-tests"[^>]*>.*?(?=^##\s+|\Z)')
 _STANDARD_UNIT_TEST_HEADING_RE = re.compile(r"(?m)^##\s+单元测试\s*$")
 _H3_BODY_TEST_OR_RECAP_HEADING_RE = re.compile(r"(?ms)^###\s+(?P<title>[^\n]+?)\s*\n.*?(?=^#{2,3}\s+|\Z)")
 
@@ -56,7 +58,7 @@ def _is_standard_unit_test_heading(title: str) -> bool:
 
 
 class ChapterUnitTestItem(DocGenBaseModel):
-    """One compact item for the rendered chapter-end unit test table."""
+    """One compact item for the rendered chapter-end unit test cards."""
 
     type: str = "短答"
     target: str = ""
@@ -107,12 +109,38 @@ def strip_existing_unit_test_sections(markdown: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", cleaned).strip() + "\n"
 
 
-def _markdown_cell(value: str, *, limit: int = 120) -> str:
+def _html_text(value: str, *, limit: int | None = None) -> str:
     text = " ".join(str(value or "").strip().split())
-    text = text.replace("|", " / ").replace("\n", " ")
-    if len(text) > limit:
-        text = text[: limit - 1].rstrip() + "..."
-    return text
+    if limit is not None and len(text) > limit:
+        text = text[: max(1, limit - 1)].rstrip() + "..."
+    return escape(text, quote=False)
+
+
+def _render_unit_test_item_html(item: ChapterUnitTestItem, *, index: int) -> str:
+    answer = _html_text(item.answer, limit=420)
+    basis = _html_text(item.basis, limit=420)
+    return "\n".join(
+        [
+            '<article class="atm-unit-test-card">',
+            '  <div class="atm-unit-test-card__head">',
+            f'    <span class="atm-unit-test-card__number">Q{index}</span>',
+            f'    <span class="atm-unit-test-card__type">{_html_text(item.type, limit=24)}</span>',
+            f'    <span class="atm-unit-test-card__target">{_html_text(item.target, limit=64)}</span>',
+            "  </div>",
+            '  <div class="atm-unit-test-card__prompt">',
+            '    <div class="atm-unit-test-card__label">题目 / 任务</div>',
+            f'    <p>{_html_text(item.stem, limit=360)}</p>',
+            "  </div>",
+            '  <details class="atm-unit-test-answer">',
+            "    <summary>查看答案与判定依据</summary>",
+            '    <div class="atm-unit-test-answer__body">',
+            f"      <p><strong>参考答案：</strong>{answer}</p>",
+            f"      <p><strong>判定依据：</strong>{basis}</p>",
+            "    </div>",
+            "  </details>",
+            "</article>",
+        ]
+    )
 
 
 def render_unit_test_markdown(
@@ -122,7 +150,7 @@ def render_unit_test_markdown(
     min_items: int,
     fallback_targets: list[str],
 ) -> str:
-    """Render unit tests as a compact Markdown table instead of heading spam."""
+    """Render unit tests as readable HTML cards with collapsed answers."""
 
     items = list(result.items or [])
     if len(items) < min_items:
@@ -131,25 +159,11 @@ def render_unit_test_markdown(
     lines = [
         "## 单元测试",
         "",
-        "| 题号 | 训练点 | 题目 / 任务 | 答案与判定依据 |",
-        "| --- | --- | --- | --- |",
+        f'<div class="atm-unit-tests" data-unit-test-count="{len(items)}">',
     ]
     for index, item in enumerate(items, start=1):
-        answer = item.answer
-        if item.basis and item.basis not in answer:
-            answer = f"{answer}；依据：{item.basis}"
-        lines.append(
-            "| "
-            + " | ".join(
-                [
-                    str(index),
-                    _markdown_cell(item.target, limit=32),
-                    _markdown_cell(item.stem, limit=120),
-                    _markdown_cell(answer, limit=140),
-                ]
-            )
-            + " |"
-        )
+        lines.append(_render_unit_test_item_html(item, index=index))
+    lines.append("</div>")
     return "\n".join(lines).strip() + "\n"
 
 
@@ -177,6 +191,11 @@ def _extract_markdown_table(markdown: str, start: int) -> str:
     return "\n".join(table_lines).strip() + "\n"
 
 
+def _extract_unit_test_html_block(markdown: str, start: int) -> str:
+    match = _UNIT_TEST_HTML_BLOCK_RE.search(markdown, start)
+    return match.group(0).strip() + "\n" if match is not None else ""
+
+
 def normalize_published_unit_test_sections(markdown: str) -> str:
     """Keep the published chapter to one standard final ``## 单元测试`` section."""
 
@@ -202,16 +221,23 @@ def normalize_published_unit_test_sections(markdown: str) -> str:
         unit_start = standard_matches[-1].start()
         prefix = cleaned[:unit_start].rstrip()
         unit_block = cleaned[unit_start:]
+        html_block = _extract_unit_test_html_block(cleaned, unit_start)
         table_match = _UNIT_TEST_TABLE_HEADER_RE.search(unit_block)
-        if table_match is not None:
+        if html_block:
+            cleaned = prefix + "\n\n## 单元测试\n\n" + html_block
+        elif table_match is not None:
             table_start = unit_start + table_match.start()
             table_block = _extract_markdown_table(cleaned, table_start)
             cleaned = prefix + "\n\n## 单元测试\n\n" + table_block
         else:
             cleaned = prefix + "\n\n" + unit_block.strip()
     else:
+        html_block = _extract_unit_test_html_block(cleaned, 0)
         table_match = _UNIT_TEST_TABLE_HEADER_RE.search(cleaned)
-        if table_match is not None:
+        if html_block:
+            prefix = _strip_body_generated_h3_recap_sections(cleaned[: cleaned.index(html_block.strip())])
+            cleaned = prefix.rstrip() + "\n\n## 单元测试\n\n" + html_block
+        elif table_match is not None:
             prefix = _strip_body_generated_h3_recap_sections(cleaned[: table_match.start()])
             table_block = _extract_markdown_table(cleaned, table_match.start())
             cleaned = prefix.rstrip() + "\n\n## 单元测试\n\n" + table_block

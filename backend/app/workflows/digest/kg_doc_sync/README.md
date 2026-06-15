@@ -128,20 +128,68 @@ early_units_callback
 
 输出：final state
 
-## 类型
+## 图谱类型
 
-节点类型：
+KG 不是“关键词图”，而是学习单元图。节点统一落到 `KnowledgeUnit.knowledge_unit_type`，边统一落到 `KnowledgeEdge.edge_type`。
+
+## 节点类型
+
+| 类型 | 中文名 | 什么时候建这个节点 | 例子 |
+| --- | --- | --- | --- |
+| `topic` | 主题模块 | 章节、单元、专题、知识簇，用来承载下级知识点 | 函数基础、几何证明 |
+| `concept` | 概念术语 | 需要被定义、辨析、复习或出题的概念 | 导数、同位角、现金流 |
+| `principle` | 原理性质 | 定理、性质、规律、判定准则、因果解释 | 切线判定定理、供需规律 |
+| `formula_model` | 公式模型 | 公式、模型、计算框架、符号化关系 | 平均数公式、折现模型 |
+| `procedure` | 方法步骤 | 可按步骤执行的方法、流程、操作规范 | 解一元二次方程步骤 |
+| `skill` | 解题技能 | 可训练和考察的能力动作、题型策略 | 识别函数关系、审题找条件 |
+| `misconception` | 易错辨析 | 常见误解、混淆点、错误边界 | 把切线判定和切线性质混用 |
+| `application_case` | 应用案例 | 例题、案例、场景化应用、迁移任务 | 用导数判断单调性的例题 |
+| `resource` | 学习资源 | 提醒、补充材料、图示说明、表格资料 | 公式记忆表、步骤检查清单 |
+
+抽取原则：
 
 ```text
-topic, concept, principle, formula_model, procedure, skill,
-misconception, application_case, resource
+1. 能被学习、复习、检索、出题或画像追踪，才建节点。
+2. 不把孤立句子、纯关键词、一次性答案当节点。
+3. 练习/自测通常抽成 skill 或 application_case，不抽成 resource。
+4. 注意事项/提醒如果服务于纠错，优先抽成 misconception。
 ```
 
-边类型：
+## 边类型
+
+边是有方向的：`source_node_id -[edge_type]-> target_node_id`。
+
+| 类型 | 中文名 | 方向含义 | 常见连接 |
+| --- | --- | --- | --- |
+| `part_of` | 归属 | source 是 target 的组成部分 | concept -> topic，procedure -> topic |
+| `prerequisite_for` | 前置 | source 是 target 的前置基础 | concept -> skill，procedure -> application_case |
+| `derives_to` | 推导 | source 可推导出 target | concept/principle/formula_model -> principle/formula_model/procedure |
+| `applies_to` | 应用 | source 被应用到 target | concept/principle/formula_model/procedure -> procedure/skill/application_case |
+| `uses_method` | 用方法 | source 需要使用 target 这个方法/技能 | application_case/skill -> procedure/skill |
+| `assesses` | 考察 | source 用来考察 target | skill/application_case/procedure -> concept/principle/formula_model |
+| `explains` | 解释 | source 解释 target | resource/application_case/procedure -> concept/principle/skill |
+| `remediates` | 补救 | source 用来纠正或补救 target | misconception/skill -> concept/principle/procedure/skill |
+| `confuses_with` | 易混 | source 和 target 容易混淆 | misconception/concept <-> concept/principle |
+| `similar_to` | 相似 | source 和 target 相似，可对照学习 | concept/skill/application_case <-> concept/skill/application_case |
+| `extends_to` | 拓展 | source 可拓展到 target | concept/procedure/skill -> application_case/skill/concept |
+
+方向例子：
 
 ```text
-part_of, prerequisite_for, derives_to, applies_to, uses_method,
-assesses, explains, remediates, confuses_with, similar_to, extends_to
+“平均数公式” -[applies_to]-> “计算一组数据的平均水平”
+“识别切点和半径” -[prerequisite_for]-> “切线判定”
+“把切线性质当判定条件” -[remediates]-> “切线判定”
+“章末小测题” -[assesses]-> “切线判定”
+“导数概念” -[part_of]-> “导数基础”
+```
+
+## 类型校验
+
+```text
+1. LLM 只能输出上面的节点类型和边类型。
+2. `audit_graph` 会检查非标准类型、endpoint 是否存在、关系方向是否合理。
+3. `normalize_relation_type` 只负责把少量旧类型映射到标准类型，不鼓励新增兼容别名。
+4. `knowledge_relation_repo` 写库前会再次校验方向。
 ```
 
 ## 关键落库字段

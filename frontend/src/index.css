@@ -174,6 +174,198 @@
   margin: 0.85rem 0;
 }
 
+.atm-unit-tests {
+  display: grid;
+  gap: 12px;
+  margin: 16px 0 24px;
+}
+
+.atm-unit-test-card {
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(255, 255, 255, 0.96));
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.06);
+}
+
+.atm-unit-test-card__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.82);
+  padding: 12px 14px 10px;
+}
+
+.atm-unit-test-card__number {
+  display: inline-flex;
+  min-width: 38px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #1d4ed8;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 22px;
+}
+
+.atm-unit-test-card__type,
+.atm-unit-test-card__target {
+  display: inline-flex;
+  min-height: 22px;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0 9px;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 22px;
+}
+
+.atm-unit-test-card__type {
+  background: rgba(37, 99, 235, 0.1);
+  color: #1d4ed8;
+}
+
+.atm-unit-test-card__target {
+  background: rgba(15, 23, 42, 0.06);
+  color: #334155;
+}
+
+.atm-unit-test-card__prompt {
+  padding: 13px 14px 12px;
+}
+
+.atm-unit-test-card__label {
+  margin-bottom: 6px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.atm-unit-test-card__prompt p,
+.atm-unit-test-answer__body p {
+  margin: 0;
+  color: #1f2937;
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.atm-unit-test-answer {
+  border-top: 1px solid rgba(226, 232, 240, 0.82);
+  background: rgba(248, 250, 252, 0.82);
+}
+
+.atm-unit-test-answer > summary {
+  display: flex;
+  cursor: pointer;
+  list-style: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 14px;
+  color: #2563eb;
+  font-size: 13px;
+  font-weight: 700;
+  outline: none;
+}
+
+.atm-unit-test-answer > summary::-webkit-details-marker {
+  display: none;
+}
+
+.atm-unit-test-answer > summary::after {
+  content: "展开";
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.1);
+  padding: 2px 8px;
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.atm-unit-test-answer[open] > summary::after {
+  content: "收起";
+}
+
+.atm-unit-test-answer > summary:hover {
+  background: rgba(37, 99, 235, 0.06);
+}
+
+.atm-unit-test-answer > summary:focus-visible {
+  box-shadow: inset 0 0 0 2px rgba(37, 99, 235, 0.28);
+}
+
+.atm-unit-test-answer__body {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid rgba(226, 232, 240, 0.78);
+  padding: 12px 14px 14px;
+  background: #ffffff;
+}
+
+.atm-unit-test-answer__body strong {
+  color: #0f172a;
+}
+
+.dark .atm-unit-test-card {
+  border-color: rgba(51, 65, 85, 0.95);
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.96), rgba(2, 6, 23, 0.92));
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.22);
+}
+
+.dark .atm-unit-test-card__head,
+.dark .atm-unit-test-answer {
+  border-color: rgba(51, 65, 85, 0.9);
+}
+
+.dark .atm-unit-test-card__type {
+  background: rgba(96, 165, 250, 0.15);
+  color: #93c5fd;
+}
+
+.dark .atm-unit-test-card__target {
+  background: rgba(148, 163, 184, 0.12);
+  color: #cbd5e1;
+}
+
+.dark .atm-unit-test-card__label {
+  color: #94a3b8;
+}
+
+.dark .atm-unit-test-card__prompt p,
+.dark .atm-unit-test-answer__body p {
+  color: #e2e8f0;
+}
+
+.dark .atm-unit-test-answer {
+  background: rgba(15, 23, 42, 0.74);
+}
+
+.dark .atm-unit-test-answer > summary {
+  color: #93c5fd;
+}
+
+.dark .atm-unit-test-answer > summary::after {
+  background: rgba(96, 165, 250, 0.14);
+  color: #bfdbfe;
+}
+
+.dark .atm-unit-test-answer > summary:hover {
+  background: rgba(96, 165, 250, 0.1);
+}
+
+.dark .atm-unit-test-answer__body {
+  border-color: rgba(51, 65, 85, 0.9);
+  background: rgba(2, 6, 23, 0.55);
+}
+
+.dark .atm-unit-test-answer__body strong {
+  color: #f8fafc;
+}
+
 .electron-window-frame {
   position: relative;
   display: flex;
