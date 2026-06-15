@@ -11,7 +11,7 @@ import {
   Lock,
   type LucideIcon,
 } from "lucide-react";
-import { useNavigate, useParams, Navigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 
 import {
   useExamHistoryApiV1CoursesCourseIdExamsHistoryGet,
@@ -566,11 +566,6 @@ export function CourseDashboardPage() {
       clearTimeout(dataTimer);
     };
   }, [courseId, queryClient]);
-
-  // Redirect to Build Plan if no published knowledge docs exist yet.
-  if (docMarkdownQuery.isSuccess && !docMarkdownQuery.isLoading && !isDocGenerating && !isBuilt) {
-    return <Navigate to={buildCoursePath(courseId!, "build")} replace />;
-  }
 
   const activePaperCount = useMemo(
     () => historyItems.filter((item) => item.status !== "graded").length,

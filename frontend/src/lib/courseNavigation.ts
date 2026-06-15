@@ -19,7 +19,6 @@ export interface CourseNavItem {
   label: string;
   icon: LucideIcon;
   description: string;
-  devOnly?: boolean;
 }
 
 export const COURSE_NAV_ITEMS: CourseNavItem[] = [
@@ -27,8 +26,7 @@ export const COURSE_NAV_ITEMS: CourseNavItem[] = [
     id: "nav",
     label: "导航",
     icon: Compass,
-    description: "开发模式下汇总课程入口、近期试卷和学习画像",
-    devOnly: true,
+    description: "汇总课程入口、近期试卷和学习画像",
   },
   {
     id: "build",
