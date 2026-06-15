@@ -733,11 +733,21 @@ class BuildPlannerCreateRequest(BaseModel):
     model: str | None = Field(default=None, description="Optional per-request planner model. Omit or use settings for configured defaults.")
 
 
+class BuildPlannerDiagnosticAnswerRequest(BaseModel):
+    """Structured answer to a planner pre-diagnosis question."""
+
+    question: str = Field(description="Question text from the current planner diagnose item.")
+    answer: str = Field(description="User answer for the question.")
+
+
 class BuildPlannerMessageRequest(BaseModel):
     """Append one planner revision message."""
 
     message: str = Field(description="User feedback used to revise the current plan draft.")
     model: str | None = Field(default=None, description="Optional per-request planner model. Omit or use settings for configured defaults.")
+    diagnose_answers: list[BuildPlannerDiagnosticAnswerRequest] = Field(default_factory=list)
+    diagnose_status: Literal["answered", "skipped"] | None = Field(default=None)
+    diagnose_note: str = Field(default="")
 
 
 class BuildPlannerAdjustClickResponse(BaseModel):
@@ -770,7 +780,8 @@ class BuildPlannerChapterResponse(BaseModel):
 class BuildPlannerDiagnosticQuestionResponse(BaseModel):
     question: str
     purpose: str = ""
-    sample_answers: list[str] = Field(default_factory=list)
+    options: list[str] = Field(default_factory=list)
+    answer: str = ""
 
 
 class BuildPlannerPlanResponse(BaseModel):
@@ -785,6 +796,8 @@ class BuildPlannerPlanResponse(BaseModel):
     plan: str = ""
     chapters: list[BuildPlannerChapterResponse] = Field(default_factory=list)
     diagnose: list[BuildPlannerDiagnosticQuestionResponse] = Field(default_factory=list)
+    diagnose_status: str = ""
+    diagnose_note: str = ""
     status: str = "draft"
     planner_session_id: str | None = None
     confirmed_plan_id: str | None = None
@@ -821,6 +834,8 @@ class BuildPlannerConfirmResponse(BaseModel):
     plan: str
     chapters: list[BuildPlannerChapterResponse] = Field(default_factory=list)
     diagnose: list[BuildPlannerDiagnosticQuestionResponse] = Field(default_factory=list)
+    diagnose_status: str = ""
+    diagnose_note: str = ""
     status_history: list[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime

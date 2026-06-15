@@ -27,7 +27,7 @@ def test_llm_profile_timeout_env_override(monkeypatch):
 
 def test_task_type_profile_does_not_inject_generation_kwargs(monkeypatch):
     monkeypatch.setenv("LLM_API_KEY", "test-key")
-    context = build_completion_context(task_type=TaskType.CHAT, model="gpt-4o-mini")
+    context = build_completion_context(task_type=TaskType.CHAT, model="codex-auto-review")
     messages = [{"role": "user", "content": "hello"}]
 
     default_kwargs = build_completion_kwargs(

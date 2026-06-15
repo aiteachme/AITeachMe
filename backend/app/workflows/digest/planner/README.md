@@ -45,13 +45,13 @@ from app.workflows.digest.planner import (
 
 ```json
 {
-  "course_name": "初中数学复习全图谱",
+  "course_name": "初中数学",
   "course_icon": "book-open",
-  "user_prompt": "我想系统复习初中数学，请构建一门 14 天课程",
+  "user_prompt": "我想学习初中数学，请构建一门 14 天课程",
   "digest_mode": "systematic",
   "model_override": "",
-  "planning_note": "本轮目标是 14 天系统复习初中数学，需要按知识依赖拆分...",
-  "suggestion": "如果更偏中考冲刺，可以增加压轴题和易错诊断比例。",
+  "planning_note": "本轮目标是 14 天学习初中数学，需要按知识依赖拆分...",
+  "suggestion": "如果更关注考试题型，可以增加压轴题和易错诊断比例。",
   "plan": "本课程会按依赖关系拆成五个板块...",
   "chapters": [
     {
@@ -106,7 +106,7 @@ flowchart LR
 
 触发入口：`create_build_planner_session(...)`
 
-典型场景：用户输入“我想系统复习初中数学，请构建一门 14 天课程”，可选上传资料。
+典型场景：用户输入“我想学习初中数学，请构建一门 14 天课程”，可选上传资料。
 
 短流程：
 

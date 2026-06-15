@@ -115,7 +115,7 @@ class ModelProbeResult(BaseModel):
     endpoint_role: ModelProbeEndpointRole = Field(description="实际测试的端点角色。")
     model: str | None = Field(default=None, description="实际请求的模型名。")
     provider: str | None = Field(default=None, description="推导出的 provider。")
-    api_mode: Literal["auto", "chat_completions"] = Field(description="本次测试请求的接口模式。")
+    api_mode: Literal["auto", "chat_completions", "responses"] = Field(description="本次测试请求的接口模式。")
     elapsed_ms: int = Field(default=0, description="测试耗时，毫秒。")
     message: str = Field(description="用户可读的测试结果。")
 

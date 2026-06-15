@@ -3,23 +3,7 @@
 from __future__ import annotations
 
 from app.workflows.digest.common.prompt_tracing import trace_prompt_build
-from app.workflows.digest.planner.lib.plans import planner_mode_label
 from app.workflows.support.courses.icons import COURSE_ICON_OPTIONS
-
-COURSE_NAME_EXAMPLES = (
-    ("高数帮我系统理一下，我现在学得有点乱。", "高数主线重建", "sigma"),
-    ("线代快考试了，帮我整理成能冲刺复习的那种。", "线代考前抓手", "calculator"),
-    ("Python 数据分析想学到能做作业。", "Python作业通关", "code"),
-    ("心理学导论想系统学一下。", "心理学入门地图", "brain"),
-    ("财务管理考试前帮我抓重点。", "财管重点清单", "chart-line"),
-)
-
-
-def _render_course_name_examples() -> str:
-    return "\n".join(
-        f"- 用户目标：{source} -> course_name：{title}，course_icon：{icon}"
-        for source, title, icon in COURSE_NAME_EXAMPLES
-    )
 
 
 def build_course_identity_messages(
@@ -34,7 +18,6 @@ def build_course_identity_messages(
     """Build the structured identity prompt used when creating a new learning space."""
 
     normalized_topic_hints = [str(item).strip() for item in list(topic_hints or []) if str(item).strip()]
-    mode_label = planner_mode_label(digest_mode)
     options_text = ", ".join(COURSE_ICON_OPTIONS)
     system_prompt = """
 你是 AITeachMe 的课程命名与图标选择器。输出合法 JSON。
@@ -43,26 +26,21 @@ def build_course_identity_messages(
 请根据用户学习目标、规划判断、资料线索和主题提示，生成课程展示身份。
 
 字段要求：
-- course_name：2 到 10 个汉字为佳，最多 16 个字符；像真实对话标题一样自然。
-- course_name 使用具体学科、主题、卡点或任务标题，适合显示在课程页。
+- course_name：用于课程列表的稳定标题，最多 16 个字符。
+- course_name 直接命名学习主题，优先覆盖用户要学的学段、学科、知识对象、资料名或考试科目。
+- 进度、训练、用途和其他安排写入 plan、suggestion 或 key_points，course_name 保持为主题本身。
+- 用户同时给出主题和章节清单时，course_name 取主题，章节清单进入章节规划。
 - course_icon：只能从候选图标 key 中选一个，必须是英文 key。
-- 优先概括“这门内容在学什么、解决什么卡点、服务什么任务”。
 
 用户输入：{user_prompt or '未提供'}
 资料名：{'、'.join(filenames) or '暂无'}
-模式：{mode_label}
-规划判断：{planning_note or '暂无'}
-资料边界：{material_note or '暂无'}
 主题提示：{'、'.join(normalized_topic_hints) or '暂无'}
 
 候选 course_icon：
 {options_text}
 
-参考示例：
-{_render_course_name_examples()}
-
 输出 JSON：
-{{"course_name":"短课程名","course_icon":"book-open"}}
+{{"course_name":"主题名","course_icon":"book-open"}}
 """.strip()
     messages = [
         {"role": "system", "content": system_prompt},

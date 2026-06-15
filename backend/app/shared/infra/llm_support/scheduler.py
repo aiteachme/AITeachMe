@@ -7,9 +7,12 @@ import itertools
 import time
 import weakref
 from collections.abc import Awaitable, Callable, Iterable, Mapping
-from contextvars import ContextVar
+from contextvars import Context, ContextVar, copy_context
 from dataclasses import dataclass, field
 from typing import Any, Generic, Literal, TypeVar
+
+from langsmith import tracing_context
+from langsmith.run_helpers import get_current_run_tree
 
 from .common import get_llm_concurrency_limit
 
@@ -41,6 +44,8 @@ class _LLMTask(Generic[R]):
     label: str | None
     metadata: dict[str, Any]
     created_at: float
+    context: Context
+    langsmith_parent: Any | None = None
     status: LLMTaskStatus = "queued"
     started_at: float | None = None
     finished_at: float | None = None
@@ -105,6 +110,7 @@ class LLMTaskScheduler:
         loop = asyncio.get_running_loop()
         task_id = f"llm-task-{next(self._counter)}"
         future: asyncio.Future[R] = loop.create_future()
+        task_context = copy_context()
         task: _LLMTask[R] = _LLMTask(
             task_id=task_id,
             factory=factory,
@@ -112,10 +118,12 @@ class LLMTaskScheduler:
             label=label,
             metadata=dict(metadata or {}),
             created_at=time.monotonic(),
+            context=task_context,
+            langsmith_parent=_current_langsmith_run_tree(task_context),
         )
         self._tasks[task_id] = task
         runner = self._run_inline(task) if _INSIDE_LLM_TASK.get() else self._run(task)
-        task.runner = asyncio.create_task(runner, name=label or task_id)
+        task.runner = asyncio.create_task(runner, name=label or task_id, context=task_context)
         return LLMTaskHandle(self, task_id, future)
 
     async def run_many(
@@ -194,7 +202,7 @@ class LLMTaskScheduler:
             await self._acquire_slot(task)
             acquired = True
             token = _INSIDE_LLM_TASK.set(True)
-            result = await task.factory()
+            result = await _run_factory_with_langsmith_parent(task)
         except asyncio.CancelledError:
             self._mark_cancelled(task)
             raise
@@ -217,7 +225,7 @@ class LLMTaskScheduler:
             task.started_at = time.monotonic()
             self._notify_changed()
             token = _INSIDE_LLM_TASK.set(True)
-            result = await task.factory()
+            result = await _run_factory_with_langsmith_parent(task)
         except asyncio.CancelledError:
             self._mark_cancelled(task)
             raise
@@ -364,6 +372,20 @@ def get_llm_scheduler() -> LLMTaskScheduler:
         scheduler = LLMTaskScheduler()
         _LLM_SCHEDULERS[loop] = scheduler
     return scheduler
+
+
+def _current_langsmith_run_tree(context: Context) -> Any | None:
+    try:
+        return context.run(get_current_run_tree)
+    except Exception:
+        return None
+
+
+async def _run_factory_with_langsmith_parent(task: _LLMTask[R]) -> R:
+    if task.langsmith_parent is None:
+        return await task.factory()
+    with tracing_context(parent=task.langsmith_parent):
+        return await task.factory()
 
 
 async def run_llm_tasks(

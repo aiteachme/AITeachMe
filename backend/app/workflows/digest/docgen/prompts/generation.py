@@ -43,8 +43,8 @@ def _opening_structure_instruction(*, digest_mode: str) -> str:
 def _section_shape_instruction(*, digest_mode: str) -> str:
     profile = get_docgen_mode_profile(digest_mode)
     if profile.is_sprint:
-        return "小节内部按规则抓手、公式/步骤、题目或任务、解/答案、易错点组织"
-    return "小节内部用加粗字段组织解释、条件/步骤、例题/任务、解析、答案/结论、易错点"
+        return "小节内部围绕具体方法、步骤、例题或任务、解析、结论和易错边界组织"
+    return "小节内部用简短加粗标签区分解释、条件步骤、例题任务、解析结论和易错边界；可见标题仍按具体内容命名"
 
 
 def _presentation_contract(*, digest_mode: str = "") -> str:
@@ -99,7 +99,6 @@ def build_docgen_writer_messages(
     mode_label = mode_profile.prompt_label
     required_text = "、".join(required_elements) if required_elements else "核心概念、推理过程、典型例子"
     execution_contract = dict(execution_contract or {})
-    media_quota = dict(execution_contract.get("media_quota") or {})
     practice_quota = dict(execution_contract.get("practice_quota") or {})
     content_role_targets = dict(execution_contract.get("content_role_targets") or {})
     example_coverage_plan = list(execution_contract.get("example_coverage_plan") or [])
@@ -167,7 +166,7 @@ def build_docgen_writer_messages(
         f"- 最低覆盖分：{execution_contract.get('min_coverage_score') or '未指定'}\n"
         f"- 最低证据支撑：{execution_contract.get('min_evidence_support') or '未指定'}\n"
         f"- 解释深度：{execution_contract.get('explanation_depth') or '未指定'}\n"
-        f"- 媒体配额：Mermaid {media_quota.get('mermaid', 0)}\n"
+        f"- 图示写作：正文写清变量、对象位置、图形关系和图注；静态图节点负责绘制 SVG\n"
         f"- 练习目标：学习活动约 {activity_quota} 个；完整例题/案例 {min_worked_examples} 个；短练习/自测/变式约 {short_practice_quota} 个\n"
         f"- 例题密度：{example_density_policy.get('policy_text') or '例题、案例和任务服务当前知识点。'}\n"
         f"- 内容角色目标：{content_role_targets}\n"
@@ -221,7 +220,7 @@ def build_docgen_writer_messages(
 输出要求：
 1. 只输出中文 Markdown。
 2. 一级标题必须是 `# {title}`。
-3. 本阶段只写知识点内的例题、变式和检查点。
+3. 本阶段只写知识正文和知识点内的例题、变式、检查点；正文末尾停在最后一个知识小节，章末测验由后续专门节点追加。
 4. 只写学生可见正文；不输出内部协议、调试信息、来源附录、草稿痕迹、HTML 注释或未渲染占位内容。
 
 研究材料：
@@ -435,8 +434,8 @@ def build_docgen_sub_query_messages(
 1. 只输出适合中文搜索引擎或知识库检索的查询语句。
 2. 查询要彼此互补，不要只是同义改写。
 3. 优先覆盖：核心定义、推导/公式、应用案例/例题、易错点/常见误区。
-4. 如果主题更偏系统课，可适当补“前置知识”“适用条件”“概念关系”。
-5. 如果主题更偏快速复习，可适当补“真实任务/真实案例”“常见任务/高频题型”“防坑提醒”；只有材料明确包含考试或真题时才使用“真题”措辞。
+4. 如果主题更偏系统节奏，可适当补“前置知识”“适用条件”“概念关系”。
+5. 如果主题更偏紧凑节奏，可适当补“真实任务/真实案例”“常见任务/高频题型”“防坑提醒”；只有材料明确包含考试或真题时才使用“真题”措辞。
 6. 所有查询必须使用中文。
 7. 如果你判断信息不足，也请尽量基于主题稳健拆解，不要返回空列表。
 """.strip()

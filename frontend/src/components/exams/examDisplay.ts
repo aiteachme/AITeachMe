@@ -11,14 +11,14 @@ export const MASTERY_DRILL_EXAM_MODE = "mastery_drill";
 export const MASTERY_DRILL_QUESTION_COUNT = 10;
 
 export const PAPER_EXAM_MODES = [
-  { value: "web_practice", label: "专项练习", description: "适合快速刷题，聚焦薄弱知识点。" },
-  { value: "paper_exam", label: "整卷测试", description: "模拟完整考试节奏，适合阶段检验。" },
+  { value: "web_practice", label: "测验", description: "短平快地找薄弱点，适合日常巩固和阶段摸底。" },
+  { value: "paper_exam", label: "考卷", description: "按完整卷面组织题型，适合阶段检验和考前模拟。" },
 ] as const;
 
 export const TRAINING_MODES = [
   {
     value: MASTERY_DRILL_EXAM_MODE,
-    label: "闯关训练",
+    label: "闯关",
     description: "一页一题，作答后立刻看答案解析；错题回到队列，直到 10 题全部答对。",
   },
 ] as const;

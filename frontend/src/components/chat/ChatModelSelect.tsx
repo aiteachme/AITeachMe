@@ -17,10 +17,7 @@ import { cn } from "../../lib/utils";
 export const CHAT_MODEL_OPTIONS = [
   "settings",
   "gpt-5.5",
-  "gpt-5.4",
   "gpt-5.4-mini",
-  "gpt-5.2",
-  "gpt-5.3-codex",
   "gemini-3.1-flash-lite",
 ] as const;
 
@@ -29,8 +26,8 @@ export type ChatModelChoice = (typeof CHAT_MODEL_OPTIONS)[number];
 export const DEFAULT_CHAT_MODEL_CHOICE: ChatModelChoice = "settings";
 
 const CHAT_MODEL_VALUES = new Set<string>(CHAT_MODEL_OPTIONS);
-const CHAT_MODEL_STORAGE_KEY = "aiteachme:global-chat-model";
 const CHAT_MODEL_CHANGED_EVENT = "aiteachme:global-chat-model-changed";
+let currentChatModelChoice: ChatModelChoice = DEFAULT_CHAT_MODEL_CHOICE;
 
 const CHAT_MODEL_META: Record<ChatModelChoice, {
   optionLabel: string;
@@ -53,33 +50,12 @@ const CHAT_MODEL_META: Record<ChatModelChoice, {
     caption: "复杂规划 · 深入讲解",
     title: "适合复杂推理、规划和讲解",
   },
-  "gpt-5.4": {
-    optionLabel: "高质量",
-    triggerLabel: "高质量",
-    menuLabel: "高质量",
-    caption: "高质量生成 · 复杂任务",
-    title: "适合高质量生成和复杂课程构建",
-  },
   "gpt-5.4-mini": {
     optionLabel: "均衡",
     triggerLabel: "均衡",
     menuLabel: "均衡",
     caption: "稳定生成 · 日常问答",
     title: "适合快速规划、生成和问答",
-  },
-  "gpt-5.2": {
-    optionLabel: "标准",
-    triggerLabel: "标准",
-    menuLabel: "标准",
-    caption: "常规生成 · 稳定问答",
-    title: "适合常规生成、批改和问答",
-  },
-  "gpt-5.3-codex": {
-    optionLabel: "代码",
-    triggerLabel: "代码",
-    menuLabel: "代码",
-    caption: "代码任务 · 结构化修改",
-    title: "适合代码相关解释和修改",
   },
   "gemini-3.1-flash-lite": {
     optionLabel: "快速响应",
@@ -102,27 +78,16 @@ export function toChatRequestModel(value: ChatModelChoice): string {
 }
 
 function readStoredChatModelChoice(): ChatModelChoice {
-  if (typeof window === "undefined") {
-    return DEFAULT_CHAT_MODEL_CHOICE;
-  }
-  return toChatModelChoice(window.localStorage.getItem(CHAT_MODEL_STORAGE_KEY));
+  return currentChatModelChoice;
 }
 
 function subscribeChatModelChoice(onStoreChange: () => void): () => void {
   if (typeof window === "undefined") {
     return () => {};
   }
-
-  const handleStorage = (event: StorageEvent) => {
-    if (event.key === CHAT_MODEL_STORAGE_KEY) {
-      onStoreChange();
-    }
-  };
   window.addEventListener(CHAT_MODEL_CHANGED_EVENT, onStoreChange);
-  window.addEventListener("storage", handleStorage);
   return () => {
     window.removeEventListener(CHAT_MODEL_CHANGED_EVENT, onStoreChange);
-    window.removeEventListener("storage", handleStorage);
   };
 }
 
@@ -133,11 +98,10 @@ export function useGlobalChatModelChoice(): [ChatModelChoice, (value: ChatModelC
     () => DEFAULT_CHAT_MODEL_CHOICE,
   );
   const setValue = useCallback((nextValue: ChatModelChoice) => {
-    if (typeof window === "undefined") {
-      return;
+    currentChatModelChoice = toChatModelChoice(nextValue);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event(CHAT_MODEL_CHANGED_EVENT));
     }
-    window.localStorage.setItem(CHAT_MODEL_STORAGE_KEY, nextValue);
-    window.dispatchEvent(new Event(CHAT_MODEL_CHANGED_EVENT));
   }, []);
   return [value, setValue];
 }

@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
-import { Info, RotateCcw, Save, Sparkles, Target } from "lucide-react";
+import {
+  RotateCcw,
+  Save,
+} from "lucide-react";
 
 import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
@@ -22,10 +25,15 @@ export const DEFAULT_CREATE_EXAM_CONFIG: CreateExamConfig = {
 
 const CREATE_EXAM_CONFIG_STORAGE_PREFIX = "aiteachme.exam.createConfig.v1";
 const QUESTION_COUNT_PRESETS = [
-  { label: "诊断 10", value: 10, description: "快速摸底，适合首次学习前" },
-  { label: "标准 24", value: 24, description: "覆盖主要知识点，适合日常训练" },
-  { label: "冲刺 40", value: 40, description: "接近题海练习，适合考前复盘" },
+  { label: "轻量", value: 10 },
+  { label: "标准", value: 24 },
+  { label: "冲刺", value: 40 },
 ] as const;
+type QuestionCountMode = "preset" | "custom";
+
+function getQuestionCountMode(numQuestions: number): QuestionCountMode {
+  return QUESTION_COUNT_PRESETS.some((preset) => preset.value === numQuestions) ? "preset" : "custom";
+}
 
 function getCreateExamConfigStorageKey(courseId: string) {
   return `${CREATE_EXAM_CONFIG_STORAGE_PREFIX}.${courseId}`;
@@ -84,6 +92,20 @@ export function saveCreateExamConfig(courseId: string, config: CreateExamConfig)
   );
 }
 
+export function applyExamModeToCreateConfig(
+  config: CreateExamConfig,
+  examMode: CreateExamConfig["examMode"],
+): CreateExamConfig {
+  return normalizeCreateExamConfig({
+    ...config,
+    examMode,
+    numQuestions:
+      examMode === "paper_exam" && config.examMode !== "paper_exam" && config.numQuestions <= 12
+        ? 24
+        : config.numQuestions,
+  });
+}
+
 export function toExamGenerateRequest(config: CreateExamConfig) {
   const normalized = normalizeCreateExamConfig(config);
 
@@ -99,34 +121,36 @@ interface CreateExamModalProps {
   open: boolean;
   courseId: string;
   courseName?: string | null;
+  initialExamMode?: CreateExamConfig["examMode"] | null;
   onClose: () => void;
 }
 
-export function CreateExamModal({ open, courseId, courseName, onClose }: CreateExamModalProps) {
+export function CreateExamModal({ open, courseId, courseName, initialExamMode, onClose }: CreateExamModalProps) {
   const { toast } = useToast();
   const [config, setConfig] = useState<CreateExamConfig>(() => loadCreateExamConfig(courseId));
+  const [questionCountMode, setQuestionCountMode] = useState<QuestionCountMode>(() =>
+    getQuestionCountMode(loadCreateExamConfig(courseId).numQuestions),
+  );
   const displayName = courseName?.trim() || "当前课程";
   const activeExamMode = PAPER_EXAM_MODES.find((item) => item.value === config.examMode);
-  const activeQuestionPreset = QUESTION_COUNT_PRESETS.find((item) => item.value === config.numQuestions);
-  const questionCountHint =
-    activeQuestionPreset?.description ??
-    (config.numQuestions <= 12
-      ? "偏诊断，适合先找薄弱点"
-      : config.numQuestions <= 30
-        ? "偏标准训练，适合覆盖核心知识点"
-        : "偏冲刺复盘，适合考前集中练习");
+  const isCustomQuestionCount = questionCountMode === "custom";
 
   useEffect(() => {
     if (!open) return;
-    setConfig(loadCreateExamConfig(courseId));
-  }, [open, courseId]);
+    const stored = loadCreateExamConfig(courseId);
+    const nextConfig = initialExamMode ? applyExamModeToCreateConfig(stored, initialExamMode) : stored;
+    setConfig(nextConfig);
+    setQuestionCountMode(getQuestionCountMode(nextConfig.numQuestions));
+  }, [open, courseId, initialExamMode]);
 
   const handleReset = () => {
-    setConfig(DEFAULT_CREATE_EXAM_CONFIG);
-    saveCreateExamConfig(courseId, DEFAULT_CREATE_EXAM_CONFIG);
+    const resetConfig = applyExamModeToCreateConfig(DEFAULT_CREATE_EXAM_CONFIG, config.examMode);
+    setConfig(resetConfig);
+    setQuestionCountMode(getQuestionCountMode(resetConfig.numQuestions));
+    saveCreateExamConfig(courseId, resetConfig);
     toast({
       title: "配置已重置",
-      description: "之后会使用默认配置开始训练或测试。",
+      description: "之后会使用当前模式的默认配置开始训练或测试。",
       variant: "success",
     });
   };
@@ -135,113 +159,97 @@ export function CreateExamModal({ open, courseId, courseName, onClose }: CreateE
     saveCreateExamConfig(courseId, config);
     toast({
       title: "配置已保存",
-      description: "下次点击测试会直接使用这套配置。",
+      description: "下次点击开始会直接使用这套配置。",
       variant: "success",
     });
     onClose();
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="训练与测试配置" className="max-w-2xl rounded-[28px]">
-      <div className="space-y-6">
-        <div className="rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,#fbfcff_0%,#f5f8ff_100%)] p-5 dark:border-slate-800 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.96)_0%,rgba(30,41,59,0.76)_100%)]">
-          <p className="text-sm font-medium text-indigo-600 dark:text-indigo-300">面向当前课程</p>
-          <h3 className="mt-2 text-2xl font-semibold text-slate-950 dark:text-slate-100">{displayName}</h3>
-          <p className="mt-3 text-sm leading-7 text-slate-600 dark:text-slate-400">
-            保存后，测试按钮会直接使用这套配置开始出题；需要调整时可再次进入这里。
-          </p>
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={`${activeExamMode?.label ?? "出题"}配置`}
+      className="max-w-2xl rounded-xl"
+    >
+      <div className="space-y-4">
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-slate-500 dark:text-slate-400">当前课程</p>
+          <h3 className="mt-1 break-words text-xl font-semibold tracking-tight text-slate-950 dark:text-slate-100">
+            {displayName}
+          </h3>
         </div>
 
-        <div className="rounded-2xl border border-indigo-100 bg-indigo-50/70 px-4 py-3 dark:border-indigo-500/20 dark:bg-indigo-500/10">
-          <div className="flex items-start gap-3">
-            <Info className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600 dark:text-indigo-300" />
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">新手建议</p>
-              <p className="mt-1 text-xs leading-6 text-slate-600 dark:text-slate-300">
-                第一次进入课程建议用“诊断 10”快速摸底；日常训练使用“标准 24”；考前复盘再提高到 40 题以上。
-              </p>
+        <section className="divide-y divide-slate-100 dark:divide-slate-800">
+          <div className="grid gap-3 py-4 sm:grid-cols-[6rem_minmax(0,1fr)] sm:items-center">
+            <p className="text-sm font-semibold text-slate-950 dark:text-slate-100">题目数量</p>
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1 sm:grid-cols-4 dark:bg-slate-800/60">
+                {QUESTION_COUNT_PRESETS.map((preset) => {
+                  const selected = !isCustomQuestionCount && config.numQuestions === preset.value;
+                  return (
+                    <button
+                      key={preset.value}
+                      type="button"
+                      onClick={() => {
+                        setQuestionCountMode("preset");
+                        setConfig((current) => ({
+                          ...current,
+                          numQuestions: preset.value,
+                        }));
+                      }}
+                      className={`rounded-md px-3 py-2 text-center text-sm transition ${
+                        selected
+                          ? "bg-white font-semibold text-slate-950 shadow-sm dark:bg-slate-950 dark:text-slate-100"
+                          : "text-slate-600 hover:bg-white/70 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-900/70 dark:hover:text-slate-100"
+                      }`}
+                      aria-pressed={selected}
+                    >
+                      {preset.label} <span className="text-xs text-slate-400">{preset.value}题</span>
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={() => setQuestionCountMode("custom")}
+                  className={`rounded-md px-3 py-2 text-center text-sm transition ${
+                    isCustomQuestionCount
+                      ? "bg-white font-semibold text-slate-950 shadow-sm dark:bg-slate-950 dark:text-slate-100"
+                      : "text-slate-600 hover:bg-white/70 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-900/70 dark:hover:text-slate-100"
+                  }`}
+                  aria-pressed={isCustomQuestionCount}
+                >
+                  自定义
+                </button>
+              </div>
+              {isCustomQuestionCount && (
+                <label className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                  <span>题量</span>
+                  <input
+                    className="h-9 w-24 rounded-lg border border-transparent bg-slate-100 px-3 text-center font-semibold tabular-nums text-slate-950 outline-none transition focus:border-slate-300 focus:bg-white dark:bg-slate-800/60 dark:text-slate-100 dark:focus:border-slate-700"
+                    type="number"
+                    min={1}
+                    max={80}
+                    value={config.numQuestions}
+                    aria-label="自定义题目数量"
+                    onChange={(event) =>
+                      setConfig((current) => ({
+                        ...current,
+                        numQuestions: Math.min(80, Math.max(1, Number(event.target.value) || 1)),
+                      }))
+                    }
+                  />
+                  <span>题</span>
+                </label>
+              )}
             </div>
           </div>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-2">
-          <label className="text-sm text-slate-600 dark:text-slate-300">
-            <span className="inline-flex items-center gap-1.5 font-medium text-slate-800 dark:text-slate-100">
-              <Target className="h-4 w-4 text-indigo-500" />
-              出题模式
-            </span>
-            <select
-              className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-slate-500"
-              value={config.examMode}
-              onChange={(event) =>
-                setConfig((current) => {
-                  const examMode = event.target.value as CreateExamConfig["examMode"];
-                  return {
-                    ...current,
-                    examMode,
-                    numQuestions:
-                      examMode === "paper_exam" && current.examMode !== "paper_exam" && current.numQuestions <= 10
-                        ? 24
-                        : current.numQuestions,
-                  };
-                })
-              }
-            >
-              {PAPER_EXAM_MODES.map((mode) => (
-                <option key={mode.value} value={mode.value}>
-                  {mode.label}
-                </option>
-              ))}
-            </select>
-            <span className="mt-2 block text-xs leading-6 text-slate-400 dark:text-slate-500">
-              {activeExamMode?.description}
-            </span>
-          </label>
-
-          <label className="text-sm text-slate-600 dark:text-slate-300">
-            <span className="font-medium text-slate-800 dark:text-slate-100">题目数量</span>
-            <input
-              className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-slate-500"
-              type="number"
-              min={1}
-              max={80}
-              value={config.numQuestions}
-              onChange={(event) =>
-                setConfig((current) => ({
-                  ...current,
-                  numQuestions: Math.min(80, Math.max(1, Number(event.target.value) || 1)),
-                }))
-              }
-            />
-            <span className="mt-2 block text-xs leading-6 text-slate-400 dark:text-slate-500">{questionCountHint}</span>
-            <div className="mt-2 grid grid-cols-3 gap-2">
-              {QUESTION_COUNT_PRESETS.map((preset) => (
-                <button
-                  key={preset.value}
-                  type="button"
-                  onClick={() =>
-                    setConfig((current) => ({
-                      ...current,
-                      numQuestions: preset.value,
-                    }))
-                  }
-                  className={`rounded-xl border px-2 py-2 text-xs font-medium transition ${
-                    config.numQuestions === preset.value
-                      ? "border-indigo-300 bg-indigo-50 text-indigo-700 dark:border-indigo-500/40 dark:bg-indigo-500/10 dark:text-indigo-200"
-                      : "border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:text-slate-200"
-                  }`}
-                >
-                  {preset.label}
-                </button>
-              ))}
-            </div>
-          </label>
 
           {config.examMode === "paper_exam" && (
-            <label className="text-sm text-slate-600 dark:text-slate-300">
-              试卷版式
+            <div className="grid gap-3 py-4 sm:grid-cols-[6rem_minmax(0,1fr)] sm:items-center">
+              <p className="text-sm font-semibold text-slate-950 dark:text-slate-100">考卷格式</p>
               <select
-                className="mt-2 h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition focus:border-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-slate-500"
+                className="h-10 w-full rounded-lg border border-transparent bg-slate-100 px-3 text-sm font-medium text-slate-900 outline-none transition focus:border-slate-300 focus:bg-white dark:bg-slate-800/60 dark:text-slate-100 dark:focus:border-slate-700"
                 value={config.paperLayoutMode}
                 onChange={(event) =>
                   setConfig((current) => ({
@@ -256,55 +264,34 @@ export function CreateExamModal({ open, courseId, courseName, onClose }: CreateE
                   </option>
                 ))}
               </select>
-              <span className="mt-2 block text-xs leading-6 text-slate-400 dark:text-slate-500">
-                {PAPER_LAYOUT_MODES.find((item) => item.value === config.paperLayoutMode)?.description}
-              </span>
-            </label>
+            </div>
           )}
 
-          <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/70">
-            <p className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-800 dark:text-slate-100">
-              <Sparkles className="h-4 w-4 text-indigo-500" />
-              智能策略
-            </p>
-            <p className="mt-2 text-sm leading-7 text-slate-500 dark:text-slate-400">
-              系统会结合知识点覆盖、练习状态、前置诊断和我的要求自动规划题型与难度。
-            </p>
-            <div className="mt-3 space-y-1.5 text-xs leading-5 text-slate-500 dark:text-slate-400">
-              <p>覆盖：优先补齐未考过或掌握度低的知识点。</p>
-              <p>难度：根据题量和要求自动拉开梯度。</p>
-              <p>反馈：考试结果会回流到学习画像。</p>
-            </div>
-          </div>
-        </div>
+          <label className="grid gap-3 py-4 sm:grid-cols-[6rem_minmax(0,1fr)] sm:items-start">
+            <span className="text-sm font-semibold text-slate-950 dark:text-slate-100">出题要求</span>
+            <textarea
+              className="min-h-20 w-full resize-none rounded-lg border border-transparent bg-slate-50 px-3 py-2.5 text-sm leading-6 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-300 focus:bg-white dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-slate-700"
+              placeholder="题型、难度或重点范围"
+              value={config.userPrompt}
+              onChange={(event) =>
+                setConfig((current) => ({
+                  ...current,
+                  userPrompt: event.target.value,
+                }))
+              }
+            />
+          </label>
+        </section>
 
-        <label className="block text-sm text-slate-600 dark:text-slate-300">
-          我的要求
-          <textarea
-            className="mt-2 min-h-32 w-full rounded-[24px] border border-slate-200 bg-white px-4 py-4 text-sm leading-7 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-slate-500"
-            placeholder="例如：重点考递归和动态规划，题目接近期末考试，难度偏高，选项要有迷惑性"
-            value={config.userPrompt}
-            onChange={(event) =>
-              setConfig((current) => ({
-                ...current,
-                userPrompt: event.target.value,
-              }))
-            }
-          />
-        </label>
-
-        <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-slate-500 dark:text-slate-400">配置保存在当前浏览器中，不会影响其他设备。</p>
-          <div className="flex gap-3">
-            <Button variant="outline" className="rounded-full px-5" onClick={handleReset}>
-              <RotateCcw className="h-4 w-4" />
-              重置
-            </Button>
-            <Button className="rounded-full bg-black px-6" onClick={handleSave}>
-              <Save className="h-4 w-4" />
-              保存
-            </Button>
-          </div>
+        <div className="flex justify-end gap-3 border-t border-slate-100 pt-4 dark:border-slate-800">
+          <Button variant="outline" className="rounded-full px-5" onClick={handleReset}>
+            <RotateCcw className="h-4 w-4" />
+            重置
+          </Button>
+          <Button className="rounded-full bg-black px-6 dark:bg-white dark:text-slate-950" onClick={handleSave}>
+            <Save className="h-4 w-4" />
+            保存配置
+          </Button>
         </div>
       </div>
     </Modal>

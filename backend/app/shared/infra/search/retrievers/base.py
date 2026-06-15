@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
@@ -180,18 +181,33 @@ class BaseRetriever(ABC):
         langsmith_extra: dict[str, object] | None = None,
     ) -> dict[str, object]:
         del langsmith_extra
-        if self.cacheable:
-            results, cache_status = await get_retriever_runtime_cache().get_or_compute(
-                payload={
-                    "retriever_name": self.name,
-                    "query": query,
-                    "max_results": int(max_results),
+        try:
+            if self.cacheable:
+                results, cache_status = await get_retriever_runtime_cache().get_or_compute(
+                    payload={
+                        "retriever_name": self.name,
+                        "query": query,
+                        "max_results": int(max_results),
+                    },
+                    loader=lambda: self.search(query, max_results=max_results),
+                )
+            else:
+                results = await self.search(query, max_results=max_results)
+                cache_status = "disabled"
+        except asyncio.CancelledError:
+            return {
+                "results": [],
+                "trace": {
+                    "result_count": 0,
+                    "unique_url_count": 0,
+                    "local_result_count": 0,
+                    "effective_local_result_count": 0,
+                    "cache_status": "cancelled",
+                    "cache_hit": False,
+                    "cancelled": True,
+                    "results_preview": [],
                 },
-                loader=lambda: self.search(query, max_results=max_results),
-            )
-        else:
-            results = await self.search(query, max_results=max_results)
-            cache_status = "disabled"
+            }
         return {
             "results": results,
             "trace": {

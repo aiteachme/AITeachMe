@@ -117,8 +117,9 @@ def test_native_web_search_auto_is_sent_to_openai_compatible_responses_gateway(m
     assert call.kwargs["tools"] == [
         {"type": "web_search", "external_web_access": True},
     ]
-    assert call.auto_chat_fallback_kwargs is not None
-    assert "tools" not in call.auto_chat_fallback_kwargs
+    assert call.auto_chat_fallback_kwargs is None
+    assert call.requested_api_mode == "responses"
+    assert call.route_reason == "forced_responses"
 
 
 def test_native_web_search_keeps_supported_responses_controls(monkeypatch) -> None:

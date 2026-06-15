@@ -205,13 +205,13 @@ function buildMockPlannerSession(course: string, prompt: string) {
   const plan = {
     course_id: course,
     selected_file_ids: mockFiles.filter((item) => item.markdown_ready).map((item) => item.id),
-    course_name: "初中数学系统复习",
+    course_name: "初中数学",
     course_icon: "book-open",
     user_prompt: prompt,
     digest_mode: "systematic",
-    planning_note: "用户希望在两周内重建初中数学知识体系，重点覆盖数与式、方程函数、几何和统计概率。当前资料以离散笔记和期末试卷为主，适合作为题型与复盘参考；解析失败文件暂不纳入规划。",
-    suggestion: "如果希望侧重中考压轴题，可以增加函数与几何综合题比例。\n如果 14 天节奏过快，可以延长到 21 天并增加复盘环节。",
-    plan: "本课程用 14 天重建初中数学主线：先稳住数与式基础，再推进方程、不等式、函数和几何，最后用统计概率与综合训练收口。",
+    planning_note: "用户希望在两周内学习初中数学知识体系，重点覆盖数与式、方程函数、几何和统计概率。当前资料以离散笔记和期末试卷为主，适合作为题型与错题分析参考；解析失败文件暂不纳入规划。",
+    suggestion: "如果希望侧重考试题型，可以增加函数与几何题比例。\n如果 14 天节奏过快，可以延长到 21 天并增加练习讲解。",
+    plan: "本课程用 14 天建立初中数学主线：先稳住数与式基础，再推进方程、不等式、函数和几何，后续进入统计与概率。",
     chapters: [
       {
         chapter_index: 1,
@@ -235,8 +235,8 @@ function buildMockPlannerSession(course: string, prompt: string) {
       },
       {
         chapter_index: 5,
-        title: "统计概率与综合复盘",
-        objective: "掌握数据描述、概率计算和综合题复盘方法，形成最后的错题清单。",
+        title: "统计概率与数据分析",
+        objective: "掌握数据描述、统计图表读取、概率计算和简单事件分析方法。",
       },
     ],
     status: "draft",
@@ -270,7 +270,7 @@ function getMockPlannerSession(course: string) {
 
   const session = buildMockPlannerSession(
     course,
-    "我想系统复习初中数学，请构建一门 14 天课程：按数与式、方程与不等式、函数、几何、统计与概率划分章节；每章包含学习目标、核心概念、典型例题、易错点和课后练习。",
+    "我想学习初中数学，请构建一门 14 天课程：按数与式、方程与不等式、函数、几何、统计与概率划分章节；每章包含学习目标、核心概念、典型例题、易错点和课后练习。",
   );
   mockPlannerSessions.set(course, session);
   return session;
@@ -366,7 +366,7 @@ function advanceKnowledgeBuild() {
       "    识别题型",
       "    套用定义",
       "    验算边界",
-      "    复盘易错点",
+      "    定位易错点",
       "```",
       "",
       "![方法图示](../assets/1/figure-1.svg)",
@@ -375,16 +375,16 @@ function advanceKnowledgeBuild() {
       "",
       "---",
       "",
-      "# 第三章 复习抓手",
+      "# 第三章 统计概率与数据分析",
       "",
-      "> 最后一章总结复习顺序、易错点和二次回看建议，方便考前快速过一遍。",
+      "> 本章围绕数据整理、图表读取和简单概率判断展开。",
       "",
-      "## 复习建议",
+      "## 数据图表读取",
       "",
-      "- 先回看目录，再逐章定位薄弱点。",
-      "- 对照原始资料复核定义、公式和图示。",
+      "- 先确认统计对象、样本数量和图表类型。",
+      "- 对照原始资料复核统计量、比例关系和图示信息。",
       "",
-      "标签：#复习 #总结",
+      "标签：#统计 #概率",
     ].join("\n"),
   };
   pendingKnowledgeBuild = null;

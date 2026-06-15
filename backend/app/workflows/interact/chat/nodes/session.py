@@ -10,7 +10,6 @@ missing session intentionally creates one new chat container for the request.
 
 from __future__ import annotations
 
-import asyncio
 from contextlib import contextmanager
 from typing import Generator
 
@@ -25,9 +24,7 @@ from app.repositories.chats_repo import (
 from app.shared.infra.database import managed_session
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.interact.chat.lib.sessioning import (
-    TITLE_RESOLVE_TIMEOUT_S,
     build_session_title,
-    generate_session_title,
     should_generate_session_title,
 )
 from app.workflows.interact.chat.lib.streaming import SSEEventEmitter
@@ -211,33 +208,7 @@ async def _resolve_next_title(
 ) -> str | None:
     if not should_generate_session_title(current_title, state["question"]):
         return None
-    course_context = state.get("course_context")
-    course_name = (
-        course_context.course_name
-        if course_context is not None and course_context.course_name
-        else state["course_id"]
-    )
-    try:
-        return await asyncio.wait_for(
-            generate_session_title(
-                course_name=course_name,
-                question=state["question"],
-                selected_text=(
-                    state.get("selected_text")
-                    or _selection_text(state.get("selection_context"))
-                ),
-                assistant_response=state.get("assistant_response", ""),
-            ),
-            timeout=TITLE_RESOLVE_TIMEOUT_S,
-        )
-    except Exception:
-        return build_session_title(state["question"])
-
-
-def _selection_text(selection_context: object | None) -> str:
-    if selection_context is None:
-        return ""
-    return str(getattr(selection_context, "selected_text", "") or "")
+    return build_session_title(state["question"])
 
 
 __all__ = [

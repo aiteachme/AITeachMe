@@ -50,11 +50,14 @@ import {
   ExamPaperWorkspace,
   MASTERY_DRILL_EXAM_MODE,
   MASTERY_DRILL_QUESTION_COUNT,
+  PAPER_EXAM_MODES,
+  applyExamModeToCreateConfig,
   buildExamTitle,
   formatDifficultyLabel,
   loadCreateExamConfig,
   toExamGenerateRequest,
 } from "../components/exams";
+import type { CreateExamConfig } from "../components/exams/CreateExamModal";
 import {
   AI_SCENE_EXAM_QUESTION,
   AI_SOURCE_EXAM_QUESTION,
@@ -304,6 +307,7 @@ export function ExamsPage() {
   const { toast } = useToast();
   const { mode: examResultDisplayMode } = useExamResultDisplayPreference();
   const [isCreateConfigOpen, setIsCreateConfigOpen] = useState(false);
+  const [createConfigInitialMode, setCreateConfigInitialMode] = useState<CreateExamConfig["examMode"] | null>(null);
   const [createConfigRevision, setCreateConfigRevision] = useState(0);
   const [expandedGroups, setExpandedGroups] = useState({
     active: true,
@@ -471,9 +475,14 @@ export function ExamsPage() {
     },
   });
 
-  const handleStartTest = () => {
+  const openCreateConfig = (examMode?: CreateExamConfig["examMode"]) => {
+    setCreateConfigInitialMode(examMode ?? null);
+    setIsCreateConfigOpen(true);
+  };
+
+  const handleStartExamWithMode = (examMode: CreateExamConfig["examMode"]) => {
     if (!courseId || generateExam.isPending) return;
-    const config = currentCreateConfig ?? loadCreateExamConfig(courseId);
+    const config = applyExamModeToCreateConfig(currentCreateConfig ?? loadCreateExamConfig(courseId), examMode);
     generateExam.mutate({
       courseId,
       data: toExamGenerateRequest(config),
@@ -484,6 +493,16 @@ export function ExamsPage() {
     if (!courseId) return;
     navigate(buildCourseSubPath(courseId, "exams", "mastery-drill"));
   };
+
+  const generatingMode = generateExam.variables?.data.exam_mode;
+  const practiceLabel = PAPER_EXAM_MODES.find((item) => item.value === "web_practice")?.label ?? "测验";
+  const paperLabel = PAPER_EXAM_MODES.find((item) => item.value === "paper_exam")?.label ?? "考卷";
+  const practiceQuestionCount = currentCreateConfig
+    ? applyExamModeToCreateConfig(currentCreateConfig, "web_practice").numQuestions
+    : 10;
+  const paperQuestionCount = currentCreateConfig
+    ? applyExamModeToCreateConfig(currentCreateConfig, "paper_exam").numQuestions
+    : 24;
 
   if (!courseId) {
     return (
@@ -512,58 +531,12 @@ export function ExamsPage() {
                   {courseName ?? "当前课程"}
                 </h1>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500 dark:text-slate-400 sm:text-[15px]">
-                  开始闯关训练或整卷测试，并回看历史得分与题目沉淀。
+                  从闯关、测验、考卷三种模式进入训练，系统会按知识掌握度自动规划题目。
                 </p>
               </div>
             </div>
 
-            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center xl:justify-end">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                <Button
-                  size="lg"
-                  className="!h-11 w-full rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 shadow-md shadow-indigo-500/10 hover:shadow-indigo-500/25 text-white font-semibold transition-all duration-300 sm:w-auto sm:min-w-[7rem] border-none"
-                  onClick={handleStartMasteryDrill}
-                >
-                  <Sparkles className="h-4 w-4 shrink-0 mr-1" />
-                  闯关
-                </Button>
-                <div className="flex w-full items-center gap-2 sm:w-auto">
-                  <div className="inline-flex h-11 w-full overflow-hidden rounded-xl border border-slate-200 bg-white text-slate-900 shadow-sm transition-all hover:border-violet-300 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-100 dark:hover:border-violet-500/30 sm:w-auto">
-                    <button
-                      type="button"
-                      className="flex min-w-0 flex-1 items-center justify-center gap-2 px-5 text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-800/40 focus:outline-none active:scale-[0.99] sm:min-w-[7rem] sm:flex-none"
-                      onClick={handleStartTest}
-                      disabled={generateExam.isPending}
-                    >
-                      {generateExam.isPending && generateExam.variables?.data.exam_mode !== MASTERY_DRILL_EXAM_MODE ? (
-                        <Loader2 className="h-4 w-4 shrink-0 animate-spin text-indigo-500" />
-                      ) : (
-                        <Plus className="h-4 w-4 shrink-0 text-slate-500" />
-                      )}
-                      <span className="whitespace-nowrap">
-                        {generateExam.isPending && generateExam.variables?.data.exam_mode !== MASTERY_DRILL_EXAM_MODE
-                          ? "生成中..."
-                          : "测试"}
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      className="grid h-full w-10 shrink-0 place-items-center border-l border-slate-200 text-slate-550 transition-colors hover:bg-slate-50 hover:text-slate-900 focus:outline-none dark:border-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
-                      onClick={() => setIsCreateConfigOpen(true)}
-                      aria-label="测试设置"
-                      title="测试设置"
-                    >
-                      <SlidersHorizontal className="h-4 w-4" />
-                    </button>
-                  </div>
-                  <ExamPrewarmStatusIcon
-                    status={prewarmStatusQuery.data}
-                    isFetching={prewarmStatusQuery.isFetching}
-                    hasError={prewarmStatusQuery.isError}
-                  />
-                </div>
-              </div>
-              <div className="flex w-full items-center gap-2 sm:w-auto sm:justify-end">
+            <div className="flex w-full items-center gap-2 sm:w-auto sm:justify-end">
                 <Button
                   variant="outline"
                   className="!h-11 min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-4 font-semibold text-slate-600 shadow-sm transition-all duration-300 hover:border-indigo-300 hover:bg-slate-50 hover:text-indigo-600 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-300 dark:hover:border-indigo-500/30 dark:hover:bg-slate-800/40 dark:hover:text-indigo-400 sm:flex-none"
@@ -584,6 +557,106 @@ export function ExamsPage() {
                   <Tags className="h-4 w-4 shrink-0" />
                   <span>题型查看</span>
                 </Button>
+            </div>
+          </section>
+
+          <section className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950/70">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 dark:border-slate-800">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-950 dark:text-slate-100">训练模式</h2>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">选择进入方式，题量和策略可在出题配置中调整。</p>
+              </div>
+              <ExamPrewarmStatusIcon
+                status={prewarmStatusQuery.data}
+                isFetching={prewarmStatusQuery.isFetching}
+                hasError={prewarmStatusQuery.isError}
+              />
+            </div>
+
+            <div className="divide-y divide-slate-100 dark:divide-slate-800">
+              <div className="grid gap-3 px-4 py-4 sm:grid-cols-[8rem_minmax(0,1fr)_auto] sm:items-center">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-slate-500" />
+                  <span className="text-base font-semibold text-slate-950 dark:text-slate-100">闯关</span>
+                </div>
+                <p className="text-sm leading-6 text-slate-500 dark:text-slate-400">
+                  一页一题，答错回队列。{MASTERY_DRILL_QUESTION_COUNT} 题循环掌握。
+                </p>
+                <Button
+                  size="sm"
+                  className="w-full rounded-lg bg-black px-4 sm:w-auto dark:bg-white dark:text-slate-950"
+                  onClick={handleStartMasteryDrill}
+                >
+                  开始
+                </Button>
+              </div>
+
+              <div className="grid gap-3 px-4 py-4 sm:grid-cols-[8rem_minmax(0,1fr)_auto] sm:items-center">
+                <div className="flex items-center gap-2">
+                  <ClipboardCheck className="h-4 w-4 text-slate-500" />
+                  <span className="text-base font-semibold text-slate-950 dark:text-slate-100">{practiceLabel}</span>
+                </div>
+                <p className="text-sm leading-6 text-slate-500 dark:text-slate-400">
+                  快速生成短测验，聚焦薄弱点和高频错因。默认 {practiceQuestionCount} 题。
+                </p>
+                <div className="flex w-full items-center gap-2 sm:w-auto">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1 rounded-lg px-3 sm:flex-none"
+                    onClick={() => openCreateConfig("web_practice")}
+                  >
+                    <SlidersHorizontal className="h-3.5 w-3.5" />
+                    出题配置
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="flex-1 rounded-lg bg-black px-4 sm:flex-none dark:bg-white dark:text-slate-950"
+                    onClick={() => handleStartExamWithMode("web_practice")}
+                    disabled={generateExam.isPending}
+                  >
+                    {generateExam.isPending && generatingMode === "web_practice" ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Plus className="h-3.5 w-3.5" />
+                    )}
+                    开始
+                  </Button>
+                </div>
+              </div>
+
+              <div className="grid gap-3 px-4 py-4 sm:grid-cols-[8rem_minmax(0,1fr)_auto] sm:items-center">
+                <div className="flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-slate-500" />
+                  <span className="text-base font-semibold text-slate-950 dark:text-slate-100">{paperLabel}</span>
+                </div>
+                <p className="text-sm leading-6 text-slate-500 dark:text-slate-400">
+                  按完整试卷结构出题，适合阶段检测和考前模拟。默认 {paperQuestionCount} 题。
+                </p>
+                <div className="flex w-full items-center gap-2 sm:w-auto">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1 rounded-lg px-3 sm:flex-none"
+                    onClick={() => openCreateConfig("paper_exam")}
+                  >
+                    <SlidersHorizontal className="h-3.5 w-3.5" />
+                    出题配置
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="flex-1 rounded-lg bg-black px-4 sm:flex-none dark:bg-white dark:text-slate-950"
+                    onClick={() => handleStartExamWithMode("paper_exam")}
+                    disabled={generateExam.isPending}
+                  >
+                    {generateExam.isPending && generatingMode === "paper_exam" ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Plus className="h-3.5 w-3.5" />
+                    )}
+                    开始
+                  </Button>
+                </div>
               </div>
             </div>
           </section>
@@ -591,13 +664,13 @@ export function ExamsPage() {
           <section>
             <div className="space-y-6">
               {historyQuery.isLoading && (
-                <div className="rounded-[28px] border border-slate-200 bg-slate-50 px-5 py-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-400">
+                <div className="rounded-xl border border-slate-200 bg-white px-4 py-6 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-950/70 dark:text-slate-400">
                   正在加载记录列表...
                 </div>
               )}
 
               {historyQuery.error && (
-                <div className="rounded-[28px] border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
                   {getApiErrorMessage(historyQuery.error, "加载记录列表失败")}
                 </div>
               )}
@@ -632,7 +705,7 @@ export function ExamsPage() {
                   </button>
 
                   {expandedGroups[group.key] && (
-                    <div className="mt-2 rounded-2xl bg-white p-6 border border-slate-200/60 dark:border-slate-800 shadow-[0_4px_20px_rgba(0,0,0,0.015)] dark:bg-[#0b0f19]/40 backdrop-blur-sm">
+                    <div className="mt-2 rounded-xl border border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-950/60">
                       {group.items.length === 0 ? (
                         <div className="px-1 py-1 text-sm text-slate-500 dark:text-slate-400">这个分组下暂时没有记录。</div>
                       ) : (
@@ -676,8 +749,10 @@ export function ExamsPage() {
         open={isCreateConfigOpen}
         courseId={courseId}
         courseName={courseName}
+        initialExamMode={createConfigInitialMode}
         onClose={() => {
           setIsCreateConfigOpen(false);
+          setCreateConfigInitialMode(null);
           setCreateConfigRevision((current) => current + 1);
         }}
       />
@@ -995,7 +1070,7 @@ export function MasteryDrillPage() {
             <BookOpen className="mx-auto h-10 w-10 text-slate-300 dark:text-slate-600" />
             <h2 className="mt-4 text-lg font-semibold text-slate-950 dark:text-slate-100">还没有可用于闯关的题目</h2>
             <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">
-              闯关页只使用已经沉淀到题库的模板，不会现场生成试卷记录。先创建一次专项练习或整卷测试，题目会进入题库后再来闯关。
+              闯关页只使用已经沉淀到题库的模板，不会现场生成试卷记录。先创建一次测验或考卷，题目会进入题库后再来闯关。
             </p>
             <div className="mt-5 flex flex-col justify-center gap-3 sm:flex-row">
               <Button
@@ -1157,9 +1232,9 @@ function formatQuestionTemplateHistoryTime(value?: string | null) {
 
 function getQuestionTemplateHistoryModeLabel(mode: string) {
   const labels: Record<string, string> = {
-    web_practice: "专项练习",
-    paper_exam: "整卷测试",
-    mastery_drill: "闯关训练",
+    web_practice: "测验",
+    paper_exam: "考卷",
+    mastery_drill: "闯关",
     practice: "练习",
     diagnostic: "诊断测验",
     weakpoint_boost: "弱点强化",

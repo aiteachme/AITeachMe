@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from pydantic import ValidationError
@@ -601,7 +601,7 @@ def _model_probe_endpoint_snapshot(endpoint_role: ModelProbeEndpointRole) -> LLM
     if not endpoints:
         return None
 
-    endpoint = endpoints[0]
+    endpoint = replace(endpoints[0], use_default_models=False)
     api_keys = tuple(item.api_key for item in endpoints if item.api_key is not None)
     return LLMRuntimeSnapshot(
         settings=snapshot.settings,
@@ -624,7 +624,7 @@ async def test_settings_model_connection(payload: ModelProbeRequest) -> ModelPro
     """Run a small settings-page LLM probe against one explicit endpoint route."""
 
     snapshot = _model_probe_endpoint_snapshot(payload.endpoint_role)
-    requested_api_mode = "chat_completions" if payload.endpoint_role == "fallback" else "auto"
+    requested_api_mode = "auto" if payload.endpoint_role == "fallback" else "responses"
     if snapshot is None:
         return ModelProbeResult(
             ok=False,

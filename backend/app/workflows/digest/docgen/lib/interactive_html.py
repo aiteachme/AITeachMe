@@ -305,11 +305,13 @@ def build_interactive_markdown_link(*, preview_url: str, link_label: str) -> str
 
 
 def _selection_title(*, anchor_title: str, selected_text: str, user_prompt: str) -> str:
-    seed = (user_prompt or selected_text or anchor_title or "交互演示").strip()
+    del user_prompt
+    seed = (anchor_title or selected_text or "交互演示").strip()
     seed = re.sub(r"\s+", " ", seed)
-    if len(seed) > 28:
-        seed = seed[:28].rstrip() + "..."
-    return seed or "交互演示"
+    seed = seed.strip(" ：:，,。；;")
+    if len(seed) > 18:
+        seed = seed[:18].rstrip(" ：:，,。；;") + "..."
+    return f"{seed}交互演示" if seed and seed != "交互演示" else "交互演示"
 
 
 async def generate_selection_interactive_html_asset(

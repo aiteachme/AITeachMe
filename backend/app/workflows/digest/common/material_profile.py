@@ -183,20 +183,20 @@ def decide_digest_mode(
     if user_prompt:
         prompt_lower = user_prompt.lower()
         if any(kw in prompt_lower for kw in ["速成", "冲刺", "快速", "sprint", "考前"]):
-            evidence["user_prompt"] = "用户明确要求快速复习节奏"
+            evidence["user_prompt"] = "用户明确要求紧凑节奏"
             return DigestModeDecision(
                 mode=DigestMode.SPRINT,
                 confidence=0.95,
-                reason="用户明确要求快速复习节奏",
+                reason="用户明确要求紧凑节奏",
                 user_override=True,
                 evidence=evidence,
             )
         if any(kw in prompt_lower for kw in ["系统", "完整", "详细", "systematic"]):
-            evidence["user_prompt"] = "用户明确要求系统/完整模式"
+            evidence["user_prompt"] = "用户明确要求系统节奏"
             return DigestModeDecision(
                 mode=DigestMode.SYSTEMATIC,
                 confidence=0.95,
-                reason="用户明确要求系统/完整模式",
+                reason="用户明确要求系统节奏",
                 user_override=True,
                 evidence=evidence,
             )
@@ -209,7 +209,7 @@ def decide_digest_mode(
             return DigestModeDecision(
                 mode=DigestMode.SPRINT,
                 confidence=0.85,
-                reason="材料识别为试卷/考题，适合快速复习",
+                reason="材料识别为试卷/考题，适合紧凑节奏",
                 evidence=evidence,
             )
         if course_profile.difficulty_level == "advanced":
@@ -223,7 +223,7 @@ def decide_digest_mode(
         return DigestModeDecision(
             mode=DigestMode.SPRINT,
             confidence=0.80,
-            reason=f"材料以习题为主（密度 {stats.exercise_density:.2f}），适合快速复习",
+            reason=f"材料以习题为主（密度 {stats.exercise_density:.2f}），适合紧凑节奏",
             evidence=evidence,
         )
 
@@ -232,16 +232,16 @@ def decide_digest_mode(
         return DigestModeDecision(
             mode=DigestMode.SYSTEMATIC,
             confidence=0.80,
-            reason=f"教材类型且公式密集（密度 {stats.formula_density:.2f}），适合系统课学习",
+            reason=f"教材类型且公式密集（密度 {stats.formula_density:.2f}），适合系统节奏",
             evidence=evidence,
         )
 
-    # 默认：系统课模式
-    evidence["default"] = "未检测到强信号，默认系统课模式"
+    # 默认：系统节奏
+    evidence["default"] = "未检测到强信号，默认系统节奏"
     return DigestModeDecision(
         mode=DigestMode.SYSTEMATIC,
         confidence=0.60,
-        reason="未检测到明确的模式信号，默认使用系统课模式",
+        reason="未检测到明确的模式信号，默认使用系统节奏",
         evidence=evidence,
     )
 

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from app.shared.infra.search.knowledge import RetrievedChunk
 from app.shared.infra.search.llamaindex_index import ingestion
 from app.shared.infra.search.local_sufficiency import effective_local_result_count
 from app.shared.infra.search.retrievers import local_rag
+from app.shared.infra.search.retrievers.base import BaseRetriever
 from app.shared.infra.search.retrievers.local_rag import LocalRAGRetriever
 from app.shared.infra.search.types import SearchResult
 from app.shared.infra.search.web import dispatch_web_search
@@ -143,6 +146,23 @@ async def test_dispatch_web_search_continues_when_local_hits_are_weak(monkeypatc
     assert local.called
     assert external.called
     assert any(item.url == "https://example.com/strong" for item in results)
+
+
+@pytest.mark.anyio
+async def test_traced_retriever_cancellation_is_recorded_as_empty_result() -> None:
+    class CancelledRetriever(BaseRetriever):
+        canonical_name = "cancelled_test"
+        auto_register = False
+        cacheable = False
+
+        async def search(self, query: str, *, max_results: int = 5) -> list[SearchResult]:
+            raise asyncio.CancelledError()
+
+    payload = await CancelledRetriever()._run_traced_search("测试查询", max_results=2)
+
+    assert payload["results"] == []
+    assert payload["trace"]["cancelled"] is True
+    assert payload["trace"]["result_count"] == 0
 
 
 def test_large_section_splitting_delegates_to_llamaindex(monkeypatch) -> None:

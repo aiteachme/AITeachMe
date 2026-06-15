@@ -75,8 +75,8 @@ USER_PROMPT_KNOWLEDGE_EXTRACT = """
 {% if doc_source_type %}- 来源类型：{{ doc_source_type }}{% endif %}
 {% if course_context %}- 课程上下文：{{ course_context }}{% endif %}
 {% if sibling_topics %}- 相邻主题：{{ sibling_topics }}{% endif %}
-{% if digest_mode == "sprint" %}- 讲义模式：快速复习，优先识别方法、常见任务/题型和常见错误。{% endif %}
-{% if digest_mode == "systematic" %}- 讲义模式：系统课，优先识别完整概念、严谨定义和前置依赖。{% endif %}
+{% if digest_mode == "sprint" %}- 讲义节奏：紧凑，优先识别方法、常见任务/题型和常见错误。{% endif %}
+{% if digest_mode == "systematic" %}- 讲义节奏：系统，优先识别完整概念、严谨定义和前置依赖。{% endif %}
 
 {% if doc_source_type == "knowledge_doc_markdown" %}
 ## 本片段特别要求

@@ -19,6 +19,8 @@ export interface BuildPlannerPlanResponse {
   plan?: string;
   chapters?: BuildPlannerChapterResponse[];
   diagnose?: BuildPlannerDiagnosticQuestionResponse[];
+  diagnose_status?: string;
+  diagnose_note?: string;
   status?: string;
   planner_session_id?: string | null;
   confirmed_plan_id?: string | null;

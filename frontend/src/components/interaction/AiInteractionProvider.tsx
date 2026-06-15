@@ -55,6 +55,23 @@ interface AiInteractionContextValue {
 const AiInteractionContext = createContext<AiInteractionContextValue | null>(null);
 const AI_INTERACTION_CLOSED_EVENT = "aiteachme:ai-sidebar-closed";
 
+function isSameSelectionTarget(
+  left: AiConversationSelectionTargetState | null,
+  right: AiConversationSelectionTargetState | null,
+): boolean {
+  if (left === right) {
+    return true;
+  }
+  if (!left || !right) {
+    return false;
+  }
+  return (
+    left.sessionId === right.sessionId &&
+    left.anchorId === right.anchorId &&
+    left.selectedText === right.selectedText
+  );
+}
+
 export function AiInteractionProvider({ activeScope, children }: AiInteractionProviderProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -69,12 +86,17 @@ export function AiInteractionProvider({ activeScope, children }: AiInteractionPr
   const [sidebarRequest, setSidebarRequest] = useState<AiInteractionOpenRequest | null>(null);
   const [fullscreenRequest, setFullscreenRequest] = useState<AiInteractionOpenRequest | null>(null);
   const [activeConversationSessionId, setActiveConversationSessionId] = useState<string | null>(null);
-  const [activeConversationSelectionTarget, setActiveConversationSelectionTarget] = useState<AiConversationSelectionTargetState | null>(null);
+  const [activeConversationSelectionTarget, setActiveConversationSelectionTargetState] =
+    useState<AiConversationSelectionTargetState | null>(null);
   const [sidebarPanelWidth, setSidebarPanelWidthState] = useState<number | null>(null);
   const [lastNonAssistantPath, setLastNonAssistantPath] = useState("/");
   const [sessionListVersion, setSessionListVersion] = useState(0);
 
   const activeScopeKey = getAiConversationScopeKey(activeScope);
+
+  const setActiveConversationSelectionTarget = useCallback((target: AiConversationSelectionTargetState | null) => {
+    setActiveConversationSelectionTargetState((current) => (isSameSelectionTarget(current, target) ? current : target));
+  }, []);
 
   useEffect(() => {
     if (location.pathname === "/assistant") {
@@ -88,7 +110,7 @@ export function AiInteractionProvider({ activeScope, children }: AiInteractionPr
   useEffect(() => {
     setActiveConversationSessionId(null);
     setActiveConversationSelectionTarget(null);
-  }, [activeScopeKey]);
+  }, [activeScopeKey, setActiveConversationSelectionTarget]);
 
   useEffect(() => {
     if (!activeScope) {
@@ -138,7 +160,7 @@ export function AiInteractionProvider({ activeScope, children }: AiInteractionPr
         },
       }));
     }
-  }, [sidebarScope]);
+  }, [setActiveConversationSelectionTarget, sidebarScope]);
 
   const notifyConversationSessionsChanged = useCallback(() => {
     setSessionListVersion((value) => value + 1);
@@ -256,7 +278,7 @@ export function AiInteractionProvider({ activeScope, children }: AiInteractionPr
       setActiveConversationSessionId(options.sessionId);
     }
     setIsSidebarOpen(true);
-  }, [activeScope, makeOpenRequest, navigate]);
+  }, [activeScope, makeOpenRequest, navigate, setActiveConversationSelectionTarget]);
 
   const value = useMemo<AiInteractionContextValue>(() => ({
     activeScope,
@@ -299,6 +321,7 @@ export function AiInteractionProvider({ activeScope, children }: AiInteractionPr
     sessionListVersion,
     openAiInteraction,
     closeAiInteraction,
+    setActiveConversationSelectionTarget,
     setSidebarPanelWidth,
     setSidebarStreaming,
     getQuickChatSessionId,

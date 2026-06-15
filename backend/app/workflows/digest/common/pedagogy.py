@@ -118,7 +118,7 @@ def build_chapter_title_resolution_messages(
     web_hits: int,
 ) -> list[dict[str, str]]:
     normalized_mode = _normalize_mode(digest_mode)
-    mode_label = "快速复习" if normalized_mode == "sprint" else "系统学习"
+    mode_label = "紧凑节奏" if normalized_mode == "sprint" else "系统节奏"
     required_text = "、".join(item for item in required_elements if item.strip()) or "未提供"
     query_text = "；".join(item for item in search_queries if item.strip()) or "未提供"
     source_text = "\n".join(f"- {item}" for item in source_titles if item.strip()) or "- 未提供"
@@ -175,7 +175,7 @@ def build_document_overview(
 
     del plan
     normalized_mode = _normalize_mode(digest_mode)
-    mode_label = "快速复习" if normalized_mode == "sprint" else "系统学习"
+    mode_label = "紧凑节奏" if normalized_mode == "sprint" else "系统节奏"
     display_course = _resolve_course_name(course_name)
     deduped_chapters = _dedupe_chapters_for_overview(chapters)
     goal_line = user_prompt.strip() or f"围绕 {display_course} 生成一份结构化学习文档。"

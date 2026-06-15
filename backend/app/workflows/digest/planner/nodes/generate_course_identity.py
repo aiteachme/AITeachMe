@@ -14,6 +14,7 @@ from app.workflows.digest.planner.lib.model_policy import (
 )
 from app.workflows.digest.planner.lib.models import PlannerCourseIdentity
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event
+from app.workflows.digest.planner.lib.requested_structure import extract_explicit_learning_topic
 from app.workflows.digest.planner.prompts.course_name import build_course_identity_messages
 from app.workflows.digest.planner.state import BuildPlannerState
 from app.workflows.support.courses.icons import infer_course_icon_key, normalize_course_icon_key
@@ -104,7 +105,8 @@ def build_generate_course_identity_node(*, context: WorkflowContext):
             return {"generated_course_name": "", "generated_course_icon_key": ""}
 
         identity = result if isinstance(result, PlannerCourseIdentity) else PlannerCourseIdentity.model_validate(result)
-        course_name = _clean_course_name(identity.course_name)
+        explicit_topic = extract_explicit_learning_topic(state.get("user_prompt") or "")
+        course_name = explicit_topic or _clean_course_name(identity.course_name)
         course_icon = normalize_course_icon_key(identity.course_icon) or infer_course_icon_key(course_name)
         await emit_planner_event(
             state,

@@ -514,12 +514,16 @@ function getSectionHeadingText(
   return `${title}：本题共 ${section.question_orders.length} 小题，${scoreText}。${instruction}`;
 }
 
-function PaperExamCoverIntro({ paper }: { paper: ExamPaperDetailResponse }) {
+function PaperExamCoverIntro({ paper, layout }: { paper: ExamPaperDetailResponse; layout: PaperLayout }) {
+  const isGaokaoStyle = layout.paper_style === "gaokao" || layout.mode.startsWith("gaokao_");
+  const subtitle = isGaokaoStyle ? "普通高等学校招生全国统一考试仿真卷" : "课程测试卷";
+  const shouldShowSecretMark = isGaokaoStyle || layout.total_pages >= 4;
+
   return (
     <div className="mb-8 text-slate-950 dark:text-slate-100" style={gaokaoTextStyle}>
-      <div className="text-[14px] font-bold leading-6">绝密★启用前</div>
+      {shouldShowSecretMark ? <div className="text-[14px] font-bold leading-6">绝密★启用前</div> : null}
       <div className="mt-7 text-center">
-        <div className="text-[21px] leading-8">普通高等学校招生全国统一考试仿真卷</div>
+        <div className="text-[21px] leading-8">{subtitle}</div>
         <div className="mt-4 text-[30px] font-black leading-9 tracking-[0.24em]" style={gaokaoHeadingStyle}>
           {getExamPaperDisplayTitle(paper)}
         </div>
@@ -1095,7 +1099,7 @@ export function PaperExamCanvasSheet({
                         }}
                       >
                         <div className="min-h-0 flex-1 overflow-hidden" style={gaokaoPageContentStyle}>
-                          {page.page_number === 1 ? <PaperExamCoverIntro paper={paper} /> : null}
+                          {page.page_number === 1 ? <PaperExamCoverIntro paper={paper} layout={layout} /> : null}
 
                           {page.question_orders.length === 0 ? (
                             <div className="flex flex-col justify-end gap-5 pt-12 text-slate-200 dark:text-slate-800" aria-hidden="true">

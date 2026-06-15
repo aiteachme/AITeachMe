@@ -14,4 +14,5 @@ export type ModelProbeResultApiMode = typeof ModelProbeResultApiMode[keyof typeo
 export const ModelProbeResultApiMode = {
   auto: 'auto',
   chat_completions: 'chat_completions',
+  responses: 'responses',
 } as const;

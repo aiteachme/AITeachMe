@@ -8,6 +8,12 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from app.shared.infra.llm_support.common import CompletionContext
+from app.shared.infra.llm_support.model_catalog import (
+    ModelAPIModeHint,
+    classify_known_model_api_mode,
+    is_primary_gateway_model,
+    model_name_candidates,
+)
 from app.shared.infra.settings.support import normalize_llm_provider_name
 
 from .litellm_loader import load_litellm
@@ -21,7 +27,6 @@ from .native_tools import (
 ResolvedAPIMode = Literal["chat_completions", "responses"]
 
 _OPENAI_REASONING_MODEL_PATTERN = re.compile(r"^(?:gpt-5(?:$|[.-])|o\d(?:$|[.-]))")
-_RESPONSES_ROUTE_MARKERS = frozenset({"responses"})
 _REASONING_MODEL_NAME_MARKERS = (
     "reasoner",
     "reasoning",
@@ -82,14 +87,20 @@ def resolve_provider_call(
     supports_auto_responses = _supports_auto_responses_call(context, clean_kwargs)
     native_tool_types = tuple(provider_native_tool_request_types(clean_kwargs.get(PROVIDER_NATIVE_TOOLS_KWARG)))
     has_allowed_native_tools = _has_allowed_provider_native_tools(context, clean_kwargs)
-    should_auto_route_to_responses = _should_auto_route_model_to_responses(context, clean_kwargs)
+    model_for_routing = clean_kwargs.get("model") or context.model
+    model_api_mode = classify_model_api_mode(model_for_routing)
+    should_auto_route_to_responses = (
+        model_api_mode == "responses"
+        or _should_auto_route_model_to_responses(context, clean_kwargs)
+    )
     has_basic_message_shape = _has_basic_responses_message_shape(clean_kwargs.get("messages"))
     has_chat_only_output_shape = _has_chat_only_output_shape(clean_kwargs)
     should_use_responses = (
-        requested_mode == "responses"
+        (requested_mode == "responses" and model_api_mode != "chat_completions")
         or (
             requested_mode == "auto"
             and supports_auto_responses
+            and model_api_mode != "chat_completions"
             and (should_auto_route_to_responses or has_allowed_native_tools)
             and has_basic_message_shape
             and not has_chat_only_output_shape
@@ -100,6 +111,8 @@ def resolve_provider_call(
             route_reason = "forced_responses"
         elif has_allowed_native_tools:
             route_reason = "auto_provider_native_tools"
+        elif model_api_mode == "responses":
+            route_reason = "auto_model_catalog_responses"
         else:
             route_reason = "auto_reasoning_model"
         return ProviderCall(
@@ -123,6 +136,10 @@ def resolve_provider_call(
         route_reason = "chat_only_output_shape"
     elif not has_basic_message_shape:
         route_reason = "chat_only_message_shape"
+    elif model_api_mode == "chat_completions" and requested_mode == "responses":
+        route_reason = "model_catalog_chat_completions_overrides_requested_responses"
+    elif model_api_mode == "chat_completions":
+        route_reason = "auto_model_catalog_chat_completions"
     elif not supports_auto_responses:
         route_reason = "auto_no_responses_support"
     elif native_tool_types and not has_allowed_native_tools:
@@ -335,11 +352,31 @@ def _pop_adapter_kwargs(
     call_kwargs: Mapping[str, Any],
 ) -> tuple[str, dict[str, Any]]:
     clean_kwargs = dict(call_kwargs)
-    requested = clean_kwargs.pop("api_mode", None) or context.settings.llm.api_mode
+    requested = clean_kwargs.pop("api_mode", None)
+    if requested is None:
+        if context.endpoint_role == "fallback":
+            requested = "auto"
+        elif is_primary_gateway_model(context.model):
+            requested = "responses"
+        else:
+            requested = context.settings.llm.api_mode
     requested_text = str(requested or "auto").strip().lower()
     if requested_text not in {"auto", "chat_completions", "responses"}:
         requested_text = "auto"
+    if context.endpoint_role == "primary" and is_primary_gateway_model(context.model):
+        requested_text = "responses"
     return requested_text, clean_kwargs
+
+
+def classify_model_api_mode(model: Any) -> ModelAPIModeHint | None:
+    """Return an exact model-level API mode hint for auto routing."""
+
+    known_mode = classify_known_model_api_mode(model)
+    if known_mode is not None:
+        return known_mode
+    if _is_openai_reasoning_model(model):
+        return "responses"
+    return None
 
 
 def _is_official_openai_call(
@@ -392,39 +429,15 @@ def _should_auto_route_model_to_responses(
     call_kwargs: Mapping[str, Any],
 ) -> bool:
     model = call_kwargs.get("model")
-    if _has_explicit_responses_route(model):
-        return True
     if _litellm_supports_reasoning_model(model, call_kwargs.get("custom_llm_provider")):
         return True
     return _has_reasoning_model_name(model)
 
 
-def _model_name_candidates(model: Any) -> tuple[str, ...]:
-    raw = str(model or "").strip()
-    if not raw:
-        return ()
-    parts = [part for part in raw.replace("\\", "/").split("/") if part]
-    candidates: list[str] = [raw]
-    if parts:
-        candidates.append(parts[-1])
-    if len(parts) >= 2 and parts[-2].lower() in _RESPONSES_ROUTE_MARKERS:
-        candidates.append(parts[-1])
-    return tuple(dict.fromkeys(candidates))
-
-
 def _canonical_model_name(model: Any) -> str:
-    candidates = _model_name_candidates(model)
+    candidates = model_name_candidates(model)
     value = candidates[-1] if candidates else ""
     return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
-
-
-def _has_explicit_responses_route(model: Any) -> bool:
-    parts = [
-        part.lower()
-        for part in str(model or "").strip().replace("\\", "/").split("/")
-        if part
-    ]
-    return any(part in _RESPONSES_ROUTE_MARKERS for part in parts[:-1])
 
 
 def _is_openai_reasoning_model(model: Any) -> bool:
@@ -433,7 +446,7 @@ def _is_openai_reasoning_model(model: Any) -> bool:
 
 
 def _litellm_supports_reasoning_model(model: Any, custom_llm_provider: Any) -> bool:
-    candidates = _model_name_candidates(model)
+    candidates = model_name_candidates(model)
     if not candidates:
         return False
     provider_text = str(custom_llm_provider or "").strip() or None

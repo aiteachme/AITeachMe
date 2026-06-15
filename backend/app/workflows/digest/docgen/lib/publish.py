@@ -36,6 +36,7 @@ from app.workflows.digest.docgen.lib.presentation_policy import (
     normalize_docgen_presentation,
 )
 from app.workflows.digest.docgen.lib.public_markdown import sanitize_public_markdown
+from app.workflows.digest.docgen.lib.unit_tests import normalize_published_unit_test_sections
 from app.workflows.support.courses.learning_context import update_course_learning_context_from_docgen
 from app.utils.path_helpers import sanitize_doc_title
 from app.utils.time import utcnow
@@ -91,7 +92,9 @@ def _prepare_chapter_markdown(
         title=title,
         focus_items=focus_items or [],
     )
-    return _finalize_markdown_rendering(_ensure_chapter_structure(cleaned, title=title))
+    structured = _ensure_chapter_structure(cleaned, title=title)
+    structured = normalize_published_unit_test_sections(structured)
+    return _finalize_markdown_rendering(structured)
 
 
 def _finalize_markdown_rendering(markdown: str) -> str:

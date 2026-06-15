@@ -21,6 +21,7 @@ import {
   Download,
   Layers3,
   StickyNote,
+  Highlighter,
   Loader2,
   Sparkles,
   RefreshCw,
@@ -316,13 +317,13 @@ function quoteMindmapLabel(value: string): string {
 
 function buildAnnotationExportMarkdown(threads: CommentThreadView[], courseId?: string): string {
   const lines: string[] = [
-    "# AITeachMe 知识文档批注",
+    "# AITeachMe 知识文档选区问答",
     "",
     `- 课程：${courseId ?? "当前课程"}`,
     `- 导出时间：${new Date().toLocaleString("zh-CN")}`,
-    `- 批注片段：${threads.length}`,
+    `- 选区片段：${threads.length}`,
     "",
-    "## 批注列表",
+    "## 选区列表",
     "",
   ];
 
@@ -345,11 +346,11 @@ function buildAnnotationExportMarkdown(threads: CommentThreadView[], courseId?: 
     }
   });
 
-  lines.push("## 思维导图式批注");
+  lines.push("## 思维导图式记录");
   lines.push("");
   lines.push("```mermaid");
   lines.push("mindmap");
-  lines.push("  root((知识文档批注))");
+  lines.push("  root((知识文档选区问答))");
   threads.slice(0, 24).forEach((thread, index) => {
     const title = stripMarkdownSyntax(thread.selectedText).slice(0, 36) || `片段 ${index + 1}`;
     lines.push(`    ${quoteMindmapLabel(`${index + 1}. ${title}`)}`);
@@ -486,8 +487,13 @@ function isTransientSelectionThreadId(threadId: string): boolean {
   return (
     threadId === FLOATING_COMPOSER_THREAD_ID ||
     threadId.startsWith("local-") ||
+    threadId.startsWith("mark-") ||
     threadId.startsWith("jump-")
   );
+}
+
+function isStandaloneHighlightThreadId(threadId: string): boolean {
+  return threadId.startsWith("mark-");
 }
 
 function resolveSelectionThreadSessionId(
@@ -526,7 +532,7 @@ function normalizeKnowledgeDocsViewPrefs(raw: unknown): KnowledgeDocsViewPrefs {
   return {
     widePage: candidate.widePage === true,
     showToc: candidate.showToc !== false,
-    showCommentPanel: candidate.showCommentPanel === true,
+    showCommentPanel: false,
   };
 }
 
@@ -3517,6 +3523,10 @@ export function KnowledgeDocsPage() {
     `local-${anchorId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
   ), []);
 
+  const createStandaloneHighlightId = useCallback((anchorId: string) => (
+    `mark-${anchorId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  ), []);
+
   const addSelectionHighlight = useCallback((threadId: string, anchorId: string, selectedText: string, preferred?: HighlightSegment[]) => {
     const segments = preferred ?? captureSelectionSegments();
     if (segments.length === 0) {
@@ -3583,6 +3593,27 @@ export function KnowledgeDocsPage() {
       selection.removeAllRanges();
     }
   }, []);
+
+  const highlightSelectedText = useCallback(() => {
+    if (!floatingToolbar) return;
+    const toolbar = floatingToolbar;
+    const threadId = createStandaloneHighlightId(toolbar.anchorId);
+    const segments = captureSelectionSegments();
+    addSelectionHighlight(threadId, toolbar.anchorId, toolbar.selectedText, segments.length > 0 ? segments : undefined);
+    setActiveCommentThreadId(threadId);
+    setPinnedThreadId(threadId);
+    setIsAutoCommentHighlightSuppressed(false);
+    setFloatingToolbar(null);
+    setFloatingComment(null);
+    setFloatingInput("");
+    clearSelectionHighlight();
+  }, [
+    addSelectionHighlight,
+    captureSelectionSegments,
+    clearSelectionHighlight,
+    createStandaloneHighlightId,
+    floatingToolbar,
+  ]);
 
   useEffect(() => {
     const handleAiInteractionClosed = () => {
@@ -4316,7 +4347,7 @@ export function KnowledgeDocsPage() {
 
     const contentTop = rect.top - containerRect.top + container.scrollTop;
     const selectionViewportTop = rect.top + rect.height / 2;
-    const toolbarWidth = 240;
+    const toolbarWidth = 334;
     const contentLeft = (contentAreaRect?.left ?? containerRect.left) - containerRect.left + container.scrollLeft;
     const contentRight = (contentAreaRect?.right ?? containerRect.right) - containerRect.left + container.scrollLeft;
     const minToolbarLeft = Math.max(container.scrollLeft + 12, contentLeft + 8);
@@ -4516,17 +4547,17 @@ export function KnowledgeDocsPage() {
   const exportAnnotations = useCallback(() => {
     if (commentThreads.length === 0) {
       toast({
-        title: "暂无可导出的批注",
-        description: "先在正文中划选内容并与 AI 对话，系统会把这些片段整理为批注。",
+        title: "暂无可导出的选区问答",
+        description: "先在正文中划选内容并与 AI 对话，系统会把这些片段整理为记录。",
         variant: "info",
       });
       return;
     }
-    const filename = `aiteachme-annotations-${courseId ?? "course"}.md`;
+    const filename = `aiteachme-selection-notes-${courseId ?? "course"}.md`;
     downloadTextFile(filename, buildAnnotationExportMarkdown(commentThreads, courseId), "text/markdown;charset=utf-8");
     toast({
-      title: "批注已导出",
-      description: "已生成 Markdown 文件，包含选中文本、笔记和思维导图式批注。",
+      title: "选区问答已导出",
+      description: "已生成 Markdown 文件，包含选中文本、笔记和思维导图式记录。",
       variant: "success",
     });
   }, [commentThreads, courseId, toast]);
@@ -5022,6 +5053,21 @@ export function KnowledgeDocsPage() {
     (anchorId: string) => threadCountByAnchor.get(anchorId) ?? 0,
     [threadCountByAnchor]
   );
+  const highlightCountByAnchor = useMemo(() => {
+    const next = new Map<string, number>();
+    for (const item of selectionHighlights) {
+      const anchorId = item.anchorId.trim();
+      if (!anchorId || item.threadId === FLOATING_COMPOSER_THREAD_ID) {
+        continue;
+      }
+      next.set(anchorId, (next.get(anchorId) ?? 0) + 1);
+    }
+    return next;
+  }, [selectionHighlights]);
+  const highlightsForAnchor = useCallback(
+    (anchorId: string) => highlightCountByAnchor.get(anchorId) ?? 0,
+    [highlightCountByAnchor]
+  );
 
   useEffect(() => {
     if (!pinnedThreadId) {
@@ -5419,14 +5465,6 @@ export function KnowledgeDocsPage() {
     if (!thread) {
       return;
     }
-    if (!viewPrefs.showCommentPanel) {
-      updateViewPrefs((prev) => ({ ...prev, showCommentPanel: true }));
-    }
-    if (isCompactComment) {
-      setActiveDrawer("comment");
-    } else {
-      setIsCommentCollapsed(false);
-    }
     setActiveCommentThreadId(threadId);
     setIsAutoCommentHighlightSuppressed(false);
     const shouldPin = options.pinToSelection ?? !isCompactComment;
@@ -5436,12 +5474,7 @@ export function KnowledgeDocsPage() {
     if (options.scrollToDoc !== false) {
       centerThreadInViewport(threadId);
     }
-    if (isCompactComment && options.scrollThreadIntoView !== false) {
-      window.requestAnimationFrame(() => {
-        threadRefs.current.get(threadId)?.scrollIntoView({ behavior: "smooth", block: "center" });
-      });
-    }
-  }, [centerThreadInViewport, commentThreadById, isCompactComment, updateViewPrefs, viewPrefs.showCommentPanel]);
+  }, [centerThreadInViewport, commentThreadById, isCompactComment]);
 
   const jumpCommentThread = useCallback((direction: -1 | 1) => {
     if (commentThreadIds.length === 0) return;
@@ -5503,6 +5536,12 @@ export function KnowledgeDocsPage() {
   }, [activeThreadId, commentThreadById, commentThreadIds, openAiInteraction, selectionHighlights, courseId, threadSessionIds]);
 
   const openSelectionHighlightThread = useCallback((threadId: string) => {
+    if (isStandaloneHighlightThreadId(threadId)) {
+      setActiveCommentThreadId(threadId);
+      setPinnedThreadId(threadId);
+      setIsAutoCommentHighlightSuppressed(false);
+      return;
+    }
     if (viewPrefs.showCommentPanel && commentThreadById.has(threadId)) {
       focusCommentThread(threadId, {
         scrollToDoc: false,
@@ -5557,6 +5596,8 @@ export function KnowledgeDocsPage() {
       const isCollapsed = collapsedTocIds.has(item.id);
       const isActive = visibleActiveHeading === item.id;
       const count = commentsForAnchor(item.id);
+      const highlightCount = highlightsForAnchor(item.id);
+      const hasSelectionMark = count > 0 || highlightCount > 0;
       const indent = depth * 12;
       const displayText = splitTocDisplayText(item.text);
 
@@ -5635,7 +5676,6 @@ export function KnowledgeDocsPage() {
               <span>{displayText.title}</span>
             </button>
 
-            {/* Comment count badge */}
             {item.hasInteractive && (
               <span
                 className="mr-1 inline-flex h-4 shrink-0 items-center gap-0.5 rounded-full bg-indigo-100 px-1.5 text-[10px] font-medium text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300"
@@ -5645,9 +5685,13 @@ export function KnowledgeDocsPage() {
                 交互
               </span>
             )}
-            {count > 0 && (
-              <span className="shrink-0 w-4 h-4 mr-1 rounded-full bg-indigo-100 text-indigo-600 text-[10px] flex items-center justify-center font-medium">
-                {count}
+            {hasSelectionMark && (
+              <span
+                className="mr-1 inline-flex h-2.5 w-2.5 shrink-0 rounded-full bg-amber-400 shadow-[0_0_0_3px_rgba(251,191,36,0.16)]"
+                title={count > 0 ? "本章节有划选问答" : "本章节有高亮"}
+                aria-label={count > 0 ? "本章节有划选问答" : "本章节有高亮"}
+              >
+                <span className="sr-only">{count > 0 ? "本章节有划选问答" : "本章节有高亮"}</span>
               </span>
             )}
           </div>
@@ -5661,7 +5705,7 @@ export function KnowledgeDocsPage() {
         </div>
       );
     });
-  }, [collapsedTocIds, commentsForAnchor, handleTocItemClick, toggleTocCollapse, visibleActiveHeading]);
+  }, [collapsedTocIds, commentsForAnchor, handleTocItemClick, highlightsForAnchor, toggleTocCollapse, visibleActiveHeading]);
 
   useEffect(() => {
     if (!isTocVisible) {
@@ -5752,7 +5796,7 @@ export function KnowledgeDocsPage() {
       <div className="flex h-11 items-center justify-between border-b border-slate-200/80 px-1 dark:border-slate-800">
         <div className="flex items-center gap-2 text-slate-900 dark:text-slate-100">
           <StickyNote className="w-4 h-4" />
-          <span className="text-sm font-semibold">批注模式</span>
+          <span className="text-sm font-semibold">选区问答</span>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="text-xs text-slate-500 dark:text-slate-400">
@@ -5768,8 +5812,8 @@ export function KnowledgeDocsPage() {
                 ? "cursor-not-allowed text-slate-300 dark:text-slate-700"
                 : "text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
             )}
-            aria-label="导出批注"
-            title="导出批注"
+            aria-label="导出选区问答"
+            title="导出选区问答"
           >
             <Download className="w-4 h-4" />
           </button>
@@ -5901,7 +5945,7 @@ export function KnowledgeDocsPage() {
         ) : commentThreads.length === 0 && !floatingComment ? (
           <div className={cn("p-3", isCompactComment && "h-full")}>
             <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
-              <p className="text-sm text-slate-500 dark:text-slate-400">选中文本后点击“问问 AI”，即可形成可导出的高亮批注</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">选中文本后点击“问问 AI”，即可形成可导出的划词问答记录</p>
             </div>
           </div>
         ) : isCompactComment ? (
@@ -6206,8 +6250,8 @@ export function KnowledgeDocsPage() {
                 "relative flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white/95 shadow-sm backdrop-blur-sm transition-colors dark:border-slate-800 dark:bg-slate-950/92",
                 isCommentVisible ? "bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300" : "text-slate-600 hover:bg-white hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-100"
               )}
-              aria-label="切换批注抽屉"
-              title="批注模式"
+              aria-label="切换选区问答"
+              title="选区问答"
             >
               <StickyNote className="w-4 h-4" />
               {commentThreads.length > 0 && (
@@ -6458,6 +6502,7 @@ export function KnowledgeDocsPage() {
             <div key={highlight.id}>
               {highlight.segments.map((segment, index) => {
                 const isAiMatchedHighlight = aiMatchedHighlightedThreadId === highlight.threadId;
+                const isStandaloneHighlight = isStandaloneHighlightThreadId(highlight.threadId);
                 return (
                   <button
                     key={`${highlight.id}-${index}`}
@@ -6466,7 +6511,7 @@ export function KnowledgeDocsPage() {
                     data-highlight-thread-id={highlight.threadId}
                     className={cn(
                       "group absolute z-30 rounded-[2px] transition-shadow duration-150 focus-visible:outline-none",
-                      isAiMatchedHighlight
+                      isAiMatchedHighlight || isStandaloneHighlight
                         ? "bg-amber-100/60 shadow-[0_4px_12px_-14px_rgba(180,83,9,0.65)]"
                         : "bg-transparent focus-visible:ring-2 focus-visible:ring-amber-300/45"
                     )}
@@ -6475,15 +6520,19 @@ export function KnowledgeDocsPage() {
                       left: segment.left,
                       width: segment.width,
                       height: segment.height,
-                      backgroundColor: isAiMatchedHighlight ? "rgba(254, 243, 199, 0.6)" : undefined,
+                      backgroundColor: isAiMatchedHighlight
+                        ? "rgba(254, 243, 199, 0.6)"
+                        : isStandaloneHighlight
+                          ? "rgba(254, 240, 138, 0.38)"
+                          : undefined,
                     }}
-                    title={`定位问答：${highlight.selectedText}`}
-                    aria-label="定位划词问答"
+                    title={`${isStandaloneHighlight ? "高亮片段" : "定位问答"}：${highlight.selectedText}`}
+                    aria-label={isStandaloneHighlight ? "定位高亮片段" : "定位划词问答"}
                   >
                     <span
                       className={cn(
                         "pointer-events-none absolute inset-x-[1px] bottom-[-3px] rounded-full transition-shadow duration-150",
-                        isAiMatchedHighlight
+                        isAiMatchedHighlight || isStandaloneHighlight
                           ? "h-[1.5px] bg-amber-600/95 shadow-[0_3px_8px_-5px_rgba(180,83,9,0.85)]"
                           : "h-px bg-amber-400/65 shadow-[0_2px_6px_-5px_rgba(180,83,9,0.65)] group-hover:bg-amber-500/75"
                       )}
@@ -6520,6 +6569,18 @@ export function KnowledgeDocsPage() {
               onMouseUp={(e) => e.stopPropagation()}
             >
               <div className="inline-flex items-center gap-1 rounded-full border border-slate-200/90 bg-white/96 p-1 text-xs font-medium text-slate-700 shadow-[0_18px_42px_-24px_rgba(15,23,42,0.85)] backdrop-blur dark:border-slate-700 dark:bg-slate-950/95 dark:text-slate-300 dark:shadow-[0_18px_42px_-24px_rgba(0,0,0,0.9)]">
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={highlightSelectedText}
+                  className="group inline-flex h-8 items-center gap-1.5 rounded-full px-2 pr-2.5 transition hover:bg-amber-50 hover:text-amber-700 dark:hover:bg-amber-500/10 dark:hover:text-amber-200"
+                  title="高亮选中内容"
+                  aria-label="高亮选中内容"
+                >
+                  <Highlighter className="h-3.5 w-3.5" />
+                  高亮
+                </button>
+                <span className="h-5 w-px bg-slate-200 dark:bg-slate-700" aria-hidden="true" />
                 <button
                   type="button"
                   onMouseDown={(e) => e.preventDefault()}
@@ -6667,31 +6728,6 @@ export function KnowledgeDocsPage() {
             <button
               type="button"
               onClick={() => {
-                updateViewPrefs((prev) => ({ ...prev, showCommentPanel: !prev.showCommentPanel }));
-                if (!viewPrefs.showCommentPanel) {
-                  setIsCommentCollapsed(false);
-                }
-              }}
-              className="flex w-full items-center justify-between rounded-xl px-3 py-3 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800/70"
-              aria-pressed={viewPrefs.showCommentPanel}
-            >
-              <div className="flex min-w-0 items-start gap-3">
-                <span className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300">
-                  <Bot className="h-4 w-4" />
-                </span>
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-slate-900 dark:text-slate-100">显示批注栏</p>
-                  <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">打开后展示划词批注记录；新的划词对话仍从右侧 AI 面板开始。</p>
-                </div>
-              </div>
-              <span className={cn("ml-3 flex h-6 w-11 shrink-0 rounded-full p-0.5 transition", viewPrefs.showCommentPanel ? "bg-slate-900 dark:bg-slate-100" : "bg-slate-200 dark:bg-slate-700")}>
-                <span className={cn("h-5 w-5 rounded-full bg-white shadow-sm transition", viewPrefs.showCommentPanel ? "translate-x-5" : "translate-x-0")} />
-              </span>
-            </button>
-            <div className="my-2 h-px bg-slate-100 dark:bg-slate-800" />
-            <button
-              type="button"
-              onClick={() => {
                 updateViewPrefs((prev) => ({ ...prev, widePage: !prev.widePage }));
               }}
               className="flex w-full items-center justify-between rounded-xl px-3 py-3 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800/70"
@@ -6736,42 +6772,6 @@ export function KnowledgeDocsPage() {
             </button>
           </div>
         </div>
-      )}
-
-      {showFloatingActions && (
-        <button
-          type="button"
-          onClick={() => {
-            const nextVisible = !viewPrefs.showCommentPanel;
-            updateViewPrefs((prev) => ({ ...prev, showCommentPanel: nextVisible }));
-            setIsCardsPanelOpen(false);
-            setIsSettingsPanelOpen(false);
-            if (nextVisible) {
-              setIsCommentCollapsed(false);
-              if (isCompactComment) {
-                setActiveDrawer("comment");
-              }
-            } else if (activeDrawer === "comment") {
-              setActiveDrawer(null);
-            }
-          }}
-          className={cn(
-            "fixed bottom-[13.5rem] right-6 z-[88] inline-flex h-10 w-10 items-center justify-center gap-2 rounded-xl border border-slate-200/70 bg-white/90 text-[13px] font-medium text-slate-700 shadow-[0_12px_32px_-24px_rgba(15,23,42,0.55)] backdrop-blur-md transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/30 active:translate-y-0 active:scale-[0.98] sm:w-[9.25rem] sm:justify-start sm:px-3 dark:border-slate-800/80 dark:bg-slate-950/88 dark:text-slate-300 dark:shadow-[0_18px_44px_-28px_rgba(0,0,0,0.9)] dark:hover:border-slate-700 dark:hover:bg-slate-950 dark:hover:text-slate-100",
-            viewPrefs.showCommentPanel && "border-indigo-200 bg-indigo-50/95 text-indigo-700 shadow-[0_14px_34px_-22px_rgba(79,70,229,0.45)] dark:border-indigo-500/40 dark:bg-indigo-500/12 dark:text-indigo-200"
-          )}
-          aria-label={viewPrefs.showCommentPanel ? "关闭批注模式" : "打开批注模式"}
-          aria-pressed={viewPrefs.showCommentPanel}
-        >
-          <span className="relative inline-flex">
-            <StickyNote className="h-4 w-4 shrink-0" />
-            {commentThreads.length > 0 && (
-              <span className="absolute -right-2 -top-2 min-w-4 rounded-full bg-indigo-500 px-1 text-center text-[10px] leading-4 text-white">
-                {Math.min(commentThreads.length, 99)}
-              </span>
-            )}
-          </span>
-          <span className="hidden truncate sm:inline">批注模式</span>
-        </button>
       )}
 
       {showFloatingActions && (

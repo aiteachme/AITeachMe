@@ -327,16 +327,100 @@ def build_fallback_figure_spec(
         rows = [FigureElement(kind="formula", label=f"({index})", text=line) for index, line in enumerate(lines[:4], start=1)]
         return FigureSpec(type=figure_type, title=title, summary=goal or "按步骤理解公式关系。", elements=rows, source_refs=lines[:3])
     if figure_type == "problem_diagram":
+        elements = _fallback_problem_diagram_elements(context)
         return FigureSpec(
             type=figure_type,
             title=title,
             summary=goal or (lines[0] if lines else ""),
-            elements=[],
-            annotations=lines[:2],
+            elements=elements,
+            annotations=[],
             source_refs=lines[:3],
         )
     rows = [FigureElement(kind="step", label=str(index), text=line) for index, line in enumerate(lines[:5], start=1)]
     return FigureSpec(type=figure_type, title=title, summary=goal or (lines[0] if lines else ""), elements=rows, source_refs=lines[:3])
+
+
+def _fallback_problem_diagram_elements(context: str) -> list[FigureElement]:
+    """Build a small visual-only sketch from cross-subject visual signals."""
+
+    text = str(context or "")
+    compact = _compact(text)
+    if not compact:
+        return []
+
+    if re.search(r"平行线|截线|同位角|内错角|同旁内角|角平分|三角形|四边形|几何|角度|∠|\d+\s*°", text):
+        angle_label = _first_regex_label(text, r"\d+(?:\.\d+)?\s*°", default="θ", limit=8)
+        return [
+            FigureElement(kind="line", label="a", x=18, y=34, x2=86, y2=34),
+            FigureElement(kind="line", label="b", x=14, y=70, x2=82, y2=70),
+            FigureElement(kind="line", label="l", x=36, y=18, x2=68, y2=86),
+            FigureElement(kind="shape", shape_type="angle", label=angle_label, x=52, y=52, r=12, start_angle=20, end_angle=68),
+            FigureElement(kind="shape", shape_type="angle", label="x", x=57, y=66, r=12, start_angle=205, end_angle=248),
+            FigureElement(kind="label", text="对应角", x=70, y=48),
+        ]
+
+    if re.search(r"坐标|函数|图像|图象|斜率|截距|曲线|抛物线|切线|导数|\by\s*=", text, flags=re.IGNORECASE):
+        formula = _first_regex_label(text, r"y\s*=\s*[-+*/^().\w\u4e00-\u9fff]+", default="y=f(x)", limit=16)
+        has_curve = bool(re.search(r"曲线|抛物线|二次|导数|切线|parabola|curve", text, flags=re.IGNORECASE))
+        graph = FigureElement(kind="curve" if has_curve else "line", label=formula, x=24, y=72, x2=82, y2=30)
+        elements = [
+            FigureElement(kind="axis", label="x", x=12, y=78, x2=92, y2=78),
+            FigureElement(kind="axis", label="y", x=20, y=88, x2=20, y2=12),
+            graph,
+            FigureElement(kind="point", id="O", label="O", x=20, y=78),
+            FigureElement(kind="point", id="P", label="P", x=58, y=48),
+        ]
+        if re.search(r"切线|导数|tangent", text, flags=re.IGNORECASE):
+            elements.append(FigureElement(kind="line", label="切线", x=36, y=62, x2=82, y2=36))
+        return elements
+
+    if re.search(r"向量|矢量|受力|合力|分力|力矩|速度|加速度|方向|位移|电场|磁场", text):
+        return [
+            FigureElement(kind="point", id="O", label="O", x=18, y=74),
+            FigureElement(kind="point", id="A", label="A", x=48, y=74),
+            FigureElement(kind="point", id="B", label="B", x=76, y=42),
+            FigureElement(kind="vector", from_id="O", to_id="A", label="F1"),
+            FigureElement(kind="vector", from_id="A", to_id="B", label="F2"),
+            FigureElement(kind="vector", from_id="O", to_id="B", label="R"),
+        ]
+
+    if re.search(r"圆|半径|直径|圆心|圆周角|弧|扇形|面积|周长|球|椭圆", text):
+        return [
+            FigureElement(kind="shape", shape_type="circle", label="O", x=50, y=52, r=24),
+            FigureElement(kind="point", id="O", label="O", x=50, y=52),
+            FigureElement(kind="point", id="A", label="A", x=74, y=52),
+            FigureElement(kind="line", from_id="O", to_id="A", label="r"),
+            FigureElement(kind="shape", shape_type="arc", label="s", x=50, y=52, r=24, start_angle=210, end_angle=320),
+        ]
+
+    if re.search(r"统计|概率|频数|频率|平均数|中位数|条形图|折线图|柱状|分布|样本|数据", text):
+        return [
+            FigureElement(kind="axis", label="x", x=14, y=82, x2=90, y2=82),
+            FigureElement(kind="axis", label="y", x=18, y=86, x2=18, y2=18),
+            FigureElement(kind="shape", shape_type="rectangle", label="A", x=36, y=67, rx=7, ry=15, style="highlight"),
+            FigureElement(kind="shape", shape_type="rectangle", label="B", x=54, y=58, rx=7, ry=24, style="highlight"),
+            FigureElement(kind="shape", shape_type="rectangle", label="C", x=72, y=72, rx=7, ry=10, style="highlight"),
+        ]
+
+    if re.search(r"结构|网络|系统|装置|电路|器官|细胞|分子|流程|路径|地图|区域|模型", text):
+        return [
+            FigureElement(kind="shape", shape_type="circle", label="A", x=25, y=36, r=9),
+            FigureElement(kind="shape", shape_type="circle", label="B", x=56, y=36, r=9),
+            FigureElement(kind="shape", shape_type="circle", label="C", x=42, y=68, r=9),
+            FigureElement(kind="line", x=25, y=36, x2=56, y2=36),
+            FigureElement(kind="line", x=56, y=36, x2=42, y2=68),
+            FigureElement(kind="line", x=42, y=68, x2=25, y2=36),
+            FigureElement(kind="shape", shape_type="region", points=[[18, 24], [66, 24], [74, 76], [28, 84]], style="muted"),
+        ]
+
+    return []
+
+
+def _first_regex_label(text: str, pattern: str, *, default: str, limit: int) -> str:
+    match = re.search(pattern, text, flags=re.IGNORECASE)
+    if match is None:
+        return default
+    return _clean_text(match.group(0), limit=limit) or default
 
 
 def _compact(value: str) -> str:

@@ -7,7 +7,7 @@ from app.workflows.digest.docgen.lib.title_lock import (
     lock_title_for_chapter,
     prefer_confirmed_catalog_title,
 )
-from app.workflows.digest.docgen.lib.publish import _prepare_chapter_markdown
+from app.workflows.digest.docgen.lib.publish import _prepare_chapter_markdown, build_merged_markdown
 from app.workflows.digest.docgen.nodes.sync_locked_titles import _locked_title
 from app.workflows.digest.docgen.prompts.title_lock import build_title_lock_messages
 
@@ -153,6 +153,21 @@ def test_publish_markdown_uses_locked_title_over_existing_h1() -> None:
     assert markdown.splitlines()[0] == "# 导数应用"
 
 
+def test_merged_markdown_keeps_application_title_suffix() -> None:
+    markdown = build_merged_markdown(
+        [
+            {
+                "chapter_index": 1,
+                "title": "读图解题与实际应用",
+                "resolved_title": "读图解题与实际应用",
+                "markdown": "# 读图解题与实际应用\n\n用图像读懂实际问题。",
+            }
+        ],
+    )
+
+    assert markdown.splitlines()[0] == "# 读图解题与实际应用"
+
+
 @pytest.mark.anyio
 async def test_lock_title_for_chapter_falls_back_when_llm_call_fails(monkeypatch) -> None:
     async def fake_completion(*_args, **_kwargs):
@@ -164,7 +179,7 @@ async def test_lock_title_for_chapter_falls_back_when_llm_call_fails(monkeypatch
         course_name="高等数学",
         digest_mode="sprint",
         user_prompt="期末速查",
-        plan="围绕极限计算题型组织快速复习文档。",
+        plan="围绕极限计算题型组织复习文档。",
         chapter={
             "chapter_index": 2,
             "title": "极限计算",
@@ -193,7 +208,7 @@ async def test_lock_title_for_chapter_falls_back_when_llm_title_is_placeholder(m
         course_name="高等数学",
         digest_mode="sprint",
         user_prompt="期末速查",
-        plan="围绕极限计算题型组织快速复习文档。",
+        plan="围绕极限计算题型组织复习文档。",
         chapter={
             "chapter_index": 2,
             "title": "极限计算",
@@ -219,7 +234,7 @@ async def test_lock_title_for_chapter_falls_back_when_llm_schema_is_invalid(monk
         course_name="高等数学",
         digest_mode="sprint",
         user_prompt="期末速查",
-        plan="围绕极限计算题型组织快速复习文档。",
+        plan="围绕极限计算题型组织复习文档。",
         chapter={
             "chapter_index": 2,
             "title": "极限计算",

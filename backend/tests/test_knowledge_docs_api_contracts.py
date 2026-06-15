@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
@@ -370,6 +370,7 @@ def test_knowledge_graph_build_passes_registry_and_course_authorization(monkeypa
 
 def test_interactive_selection_generation_persists_overlay_without_handle_leak(monkeypatch) -> None:
     appended: list[dict[str, object]] = []
+    overrides: list[str | None] = []
     generated_assets = [
         {
             "title": "Generated Demo",
@@ -385,7 +386,7 @@ def test_interactive_selection_generation_persists_overlay_without_handle_leak(m
         yield
 
     async def fake_run_llm_tasks(_items, _worker):
-        return generated_assets
+        return [await _worker(item) for item in _items]
 
     async def fake_find_overlay(*_args, **_kwargs):
         return None
@@ -393,12 +394,35 @@ def test_interactive_selection_generation_persists_overlay_without_handle_leak(m
     async def fake_append_overlay(_course_scope, *, overlay, replace_overlay_id=None):
         appended.append({"overlay": overlay, "replace_overlay_id": replace_overlay_id})
 
+    async def fake_generate_selection_interactive_html_asset(**_kwargs):
+        return generated_assets[0]
+
+    @contextmanager
+    def fake_use_runtime_model_override(value):
+        overrides.append(value)
+        yield None
+
     monkeypatch.setattr(api, "get_course_record", lambda _session, course_id, owner_user_id: _course(course_id))
     monkeypatch.setattr(api, "_storage_scope_for_course_record", lambda course: SimpleNamespace(course_id=course.id))
     monkeypatch.setattr(api, "ensure_published_knowledge_manifest", lambda *_args, **_kwargs: SimpleNamespace(version_no=9))
+    monkeypatch.setattr(
+        api,
+        "read_knowledge_build_runtime",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            docgen_runtime=SimpleNamespace(confirmed_plan_id="confirmed-plan-1", model_override=None),
+            graph_runtime=None,
+        ),
+    )
+    monkeypatch.setattr(
+        api,
+        "get_confirmed_plan",
+        lambda *_args, **_kwargs: SimpleNamespace(plan_json={"model_override": "gpt-5.4-mini"}),
+    )
     monkeypatch.setattr(api, "interactive_overlay_reference_guard", guard)
     monkeypatch.setattr(api, "find_interactive_overlay_by_client_reference", fake_find_overlay)
     monkeypatch.setattr(api, "run_llm_tasks", fake_run_llm_tasks)
+    monkeypatch.setattr(api, "generate_selection_interactive_html_asset", fake_generate_selection_interactive_html_asset)
+    monkeypatch.setattr(api, "use_runtime_model_override", fake_use_runtime_model_override)
     monkeypatch.setattr(api, "append_interactive_overlay", fake_append_overlay)
 
     response = asyncio.run(
@@ -416,6 +440,7 @@ def test_interactive_selection_generation_persists_overlay_without_handle_leak(m
     )
 
     assert response.data.title == "Generated Demo"
+    assert overrides == ["gpt-5.4-mini"]
     assert response.data.version_no == 9
     assert response.data.overlay_id.startswith("interactive-")
     assert "selection-ref" in response.data.preview_url

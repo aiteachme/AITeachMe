@@ -10,7 +10,7 @@ import time
 from collections.abc import Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Iterator, Literal, NoReturn
 
 import structlog
@@ -656,15 +656,25 @@ def build_completion_contexts(
     contexts: list[CompletionContext] = []
     missing_key_error: MissingLLMApiKeyError | None = None
     skipped_primary_model: str | None = None
+    skipped_primary_selector: str | None = None
 
     for endpoint in snapshot.completion_endpoints():
         try:
+            endpoint_for_context = endpoint
+            model_for_context = model
+            if (
+                endpoint.role == "fallback"
+                and skipped_primary_model is not None
+                and skipped_primary_selector is not None
+            ):
+                endpoint_for_context = replace(endpoint, use_default_models=False)
+                model_for_context = skipped_primary_model
             context = _build_completion_context_for_endpoint(
                 task_type=resolved_task_type,
                 profile=profile,
                 snapshot=snapshot,
-                endpoint=endpoint,
-                model=model,
+                endpoint=endpoint_for_context,
+                model=model_for_context,
             )
             if endpoint.role == "primary" and not _primary_model_allowed(
                 snapshot.settings,
@@ -672,6 +682,7 @@ def build_completion_contexts(
                 context.provider,
             ):
                 skipped_primary_model = context.model
+                skipped_primary_selector = context.model_selector
                 logger.warning(
                     "llm_primary_endpoint_skipped_model_not_allowlisted",
                     model=context.model,

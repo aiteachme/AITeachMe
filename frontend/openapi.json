@@ -9393,6 +9393,16 @@
             "type": "array",
             "title": "Diagnose"
           },
+          "diagnose_status": {
+            "type": "string",
+            "title": "Diagnose Status",
+            "default": ""
+          },
+          "diagnose_note": {
+            "type": "string",
+            "title": "Diagnose Note",
+            "default": ""
+          },
           "status_history": {
             "items": {
               "type": "string"
@@ -9495,6 +9505,27 @@
         "title": "BuildPlannerCreateRequest",
         "description": "Create a new planner session and generate the first plan draft."
       },
+      "BuildPlannerDiagnosticAnswerRequest": {
+        "properties": {
+          "question": {
+            "type": "string",
+            "title": "Question",
+            "description": "Question text from the current planner diagnose item."
+          },
+          "answer": {
+            "type": "string",
+            "title": "Answer",
+            "description": "User answer for the question."
+          }
+        },
+        "type": "object",
+        "required": [
+          "question",
+          "answer"
+        ],
+        "title": "BuildPlannerDiagnosticAnswerRequest",
+        "description": "Structured answer to a planner pre-diagnosis question."
+      },
       "BuildPlannerDiagnosticQuestionResponse": {
         "properties": {
           "question": {
@@ -9506,12 +9537,17 @@
             "title": "Purpose",
             "default": ""
           },
-          "sample_answers": {
+          "options": {
             "items": {
               "type": "string"
             },
             "type": "array",
-            "title": "Sample Answers"
+            "title": "Options"
+          },
+          "answer": {
+            "type": "string",
+            "title": "Answer",
+            "default": ""
           }
         },
         "type": "object",
@@ -9538,6 +9574,33 @@
             ],
             "title": "Model",
             "description": "Optional per-request planner model. Omit or use settings for configured defaults."
+          },
+          "diagnose_answers": {
+            "items": {
+              "$ref": "#/components/schemas/BuildPlannerDiagnosticAnswerRequest"
+            },
+            "type": "array",
+            "title": "Diagnose Answers"
+          },
+          "diagnose_status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "answered",
+                  "skipped"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diagnose Status"
+          },
+          "diagnose_note": {
+            "type": "string",
+            "title": "Diagnose Note",
+            "default": ""
           }
         },
         "type": "object",
@@ -9606,6 +9669,16 @@
             },
             "type": "array",
             "title": "Diagnose"
+          },
+          "diagnose_status": {
+            "type": "string",
+            "title": "Diagnose Status",
+            "default": ""
+          },
+          "diagnose_note": {
+            "type": "string",
+            "title": "Diagnose Note",
+            "default": ""
           },
           "status": {
             "type": "string",
@@ -15824,7 +15897,8 @@
             "type": "string",
             "enum": [
               "auto",
-              "chat_completions"
+              "chat_completions",
+              "responses"
             ],
             "title": "Api Mode",
             "description": "本次测试请求的接口模式。"

@@ -19,9 +19,40 @@ from app.workflows.digest.docgen.lib.models import (
 from app.workflows.digest.docgen.prompts.chapter_unit_tests import build_chapter_unit_test_messages
 
 
-_UNIT_TEST_HEADING_RE = re.compile(
-    r"(?ms)^##\s+(?:\d+(?:\.\d+)*\s*)?(?:章末)?单元测试\s*\n.*?(?=^##\s+|\Z)"
+_BODY_TEST_OR_RECAP_HEADING_RE = re.compile(r"(?ms)^##\s+(?P<title>[^\n]+?)\s*\n.*?(?=^##\s+|\Z)")
+_HEADING_NUMBER_PREFIX_RE = re.compile(r"^\s*(?:\d+(?:\.\d+)*\s*)+")
+_UNIT_TEST_TABLE_HEADER_RE = re.compile(
+    r"(?m)^\|\s*题号\s*\|\s*训练点\s*\|\s*题目\s*/\s*任务\s*\|\s*答案与判定依据\s*\|"
 )
+_STANDARD_UNIT_TEST_HEADING_RE = re.compile(r"(?m)^##\s+单元测试\s*$")
+_H3_BODY_TEST_OR_RECAP_HEADING_RE = re.compile(r"(?ms)^###\s+(?P<title>[^\n]+?)\s*\n.*?(?=^#{2,3}\s+|\Z)")
+
+
+def _is_body_generated_test_or_recap_heading(title: str) -> bool:
+    """Identify body-writer test/recap H2 blocks removed before the unit-test node appends one."""
+
+    normalized = _HEADING_NUMBER_PREFIX_RE.sub("", str(title or "")).strip(" ：:，,。；; ")
+    compact = re.sub(r"\s+", "", normalized)
+    if not compact:
+        return False
+    if any(label in compact for label in ("单元测试", "单元小测", "章末测试", "章末小测", "章末练习")):
+        return True
+    if any(label in compact for label in ("快速自测", "小结式检查清单")):
+        return True
+    if "小结" in compact and "检查清单" in compact:
+        return True
+    if compact in {"本章收口", "本章回看", "本章回顾", "本章总结", "本章复盘"}:
+        return True
+    if compact.startswith("本章") and any(label in compact for label in ("收口", "回看", "回顾", "总结", "复盘")):
+        return True
+    if compact.startswith("章末") and any(label in compact for label in ("收口", "回看", "回顾", "总结", "复盘")):
+        return True
+    return False
+
+
+def _is_standard_unit_test_heading(title: str) -> bool:
+    normalized = _HEADING_NUMBER_PREFIX_RE.sub("", str(title or "")).strip(" ：:，,。；; ")
+    return re.sub(r"\s+", "", normalized) == "单元测试"
 
 
 class ChapterUnitTestItem(DocGenBaseModel):
@@ -68,7 +99,11 @@ class ChapterUnitTestSet(DocGenBaseModel):
 def strip_existing_unit_test_sections(markdown: str) -> str:
     """Remove unit-test H2 blocks that the body writer may have generated."""
 
-    cleaned = _UNIT_TEST_HEADING_RE.sub("", str(markdown or "").replace("\r\n", "\n").replace("\r", "\n"))
+    text = str(markdown or "").replace("\r\n", "\n").replace("\r", "\n")
+    cleaned = _BODY_TEST_OR_RECAP_HEADING_RE.sub(
+        lambda match: "" if _is_body_generated_test_or_recap_heading(match.group("title")) else match.group(0),
+        text,
+    )
     return re.sub(r"\n{3,}", "\n\n", cleaned).strip() + "\n"
 
 
@@ -123,6 +158,64 @@ def append_unit_test_markdown(markdown: str, unit_test_markdown: str) -> str:
 
     body = strip_existing_unit_test_sections(markdown)
     return body.rstrip() + "\n\n" + unit_test_markdown.strip() + "\n"
+
+
+def _strip_body_generated_h3_recap_sections(markdown: str) -> str:
+    return _H3_BODY_TEST_OR_RECAP_HEADING_RE.sub(
+        lambda match: "" if _is_body_generated_test_or_recap_heading(match.group("title")) else match.group(0),
+        markdown,
+    )
+
+
+def _extract_markdown_table(markdown: str, start: int) -> str:
+    table_lines: list[str] = []
+    for line in markdown[start:].splitlines():
+        if table_lines and not line.lstrip().startswith("|"):
+            break
+        if line.lstrip().startswith("|"):
+            table_lines.append(line.rstrip())
+    return "\n".join(table_lines).strip() + "\n"
+
+
+def normalize_published_unit_test_sections(markdown: str) -> str:
+    """Keep the published chapter to one standard final ``## 单元测试`` section."""
+
+    text = str(markdown or "").replace("\r\n", "\n").replace("\r", "\n")
+    matches = list(_BODY_TEST_OR_RECAP_HEADING_RE.finditer(text))
+    kept_standard_start = -1
+    for match in reversed(matches):
+        if _is_standard_unit_test_heading(match.group("title")):
+            kept_standard_start = match.start()
+            break
+
+    def replace_match(match: re.Match[str]) -> str:
+        title = match.group("title")
+        if match.start() == kept_standard_start:
+            return match.group(0)
+        if _is_body_generated_test_or_recap_heading(title):
+            return ""
+        return match.group(0)
+
+    cleaned = _BODY_TEST_OR_RECAP_HEADING_RE.sub(replace_match, text)
+    standard_matches = list(_STANDARD_UNIT_TEST_HEADING_RE.finditer(cleaned))
+    if standard_matches:
+        unit_start = standard_matches[-1].start()
+        prefix = cleaned[:unit_start].rstrip()
+        unit_block = cleaned[unit_start:]
+        table_match = _UNIT_TEST_TABLE_HEADER_RE.search(unit_block)
+        if table_match is not None:
+            table_start = unit_start + table_match.start()
+            table_block = _extract_markdown_table(cleaned, table_start)
+            cleaned = prefix + "\n\n## 单元测试\n\n" + table_block
+        else:
+            cleaned = prefix + "\n\n" + unit_block.strip()
+    else:
+        table_match = _UNIT_TEST_TABLE_HEADER_RE.search(cleaned)
+        if table_match is not None:
+            prefix = _strip_body_generated_h3_recap_sections(cleaned[: table_match.start()])
+            table_block = _extract_markdown_table(cleaned, table_match.start())
+            cleaned = prefix.rstrip() + "\n\n## 单元测试\n\n" + table_block
+    return re.sub(r"\n{3,}", "\n\n", cleaned).strip() + "\n"
 
 
 async def generate_chapter_unit_tests(
@@ -213,6 +306,7 @@ __all__ = [
     "ChapterUnitTestSet",
     "append_unit_test_markdown",
     "generate_chapter_unit_tests",
+    "normalize_published_unit_test_sections",
     "render_unit_test_markdown",
     "strip_existing_unit_test_sections",
 ]

@@ -307,9 +307,9 @@ def _build_sample_cards(
                 "title": "构建模式",
                 "card_type": "mode",
                 "summary": (
-                    "速成课模式更强调快速抓重点、贴近题型和考前回顾。"
+                    "紧凑节奏更强调抓住重点、贴近题型和及时回看。"
                     if digest_mode == "sprint"
-                    else "系统课模式更强调概念完整、推导清晰和结构化学习。"
+                    else "系统节奏更强调概念完整、推导清晰和结构化学习。"
                 ),
             }
         )
@@ -756,6 +756,8 @@ def _build_runtime_metrics(
 
 def build_aggregate_knowledge_build_status(
     envelope: KnowledgeBuildRuntimeEnvelope | None,
+    *,
+    graph_expected: bool = False,
 ) -> KnowledgeBuildRuntimeStatus | None:
     if envelope is None:
         return None
@@ -833,6 +835,15 @@ def build_aggregate_knowledge_build_status(
         )
 
     if graph_runtime is None:
+        if graph_expected and docgen_runtime.status == "completed":
+            return _new(
+                requested_at=docgen_runtime.requested_at,
+                status="running",
+                stage="graph_pending",
+                description="知识文档已发布，正在启动知识图谱同步。",
+                started_at=docgen_runtime.started_at,
+                progress_pct=max(95, min(99, int(docgen_runtime.progress_pct or 0))),
+            )
         return _new(
             requested_at=docgen_runtime.requested_at,
             status=docgen_runtime.status,
