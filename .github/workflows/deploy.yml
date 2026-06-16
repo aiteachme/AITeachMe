@@ -87,11 +87,88 @@ jobs:
             echo "should_deploy=false" >> "$GITHUB_OUTPUT"
           fi
 
-  deploy-frontend:
-    name: Deploy frontend to Cloudflare Pages
+  classify_changes:
+    name: Classify deploy changes
     runs-on: ubuntu-latest
     needs: verify-latest
     if: needs.verify-latest.outputs.should_deploy == 'true'
+    outputs:
+      deploy_backend: ${{ steps.classify.outputs.deploy_backend }}
+      deploy_frontend: ${{ steps.classify.outputs.deploy_frontend }}
+      reason: ${{ steps.classify.outputs.reason }}
+
+    steps:
+      - name: Checkout deploy target
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.verify-latest.outputs.source_sha }}
+          fetch-depth: 2
+
+      - name: Classify changed paths
+        id: classify
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SOURCE_SHA: ${{ needs.verify-latest.outputs.source_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          deploy_backend=false
+          deploy_frontend=false
+          reason="path-filtered"
+
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
+            deploy_backend=true
+            deploy_frontend=true
+            reason="manual-dispatch"
+          else
+            base_sha="$(git rev-parse "${SOURCE_SHA}^" 2>/dev/null || true)"
+            if [ -z "${base_sha}" ]; then
+              deploy_backend=true
+              deploy_frontend=true
+              reason="missing-parent"
+            else
+              changed_files="$(git diff --name-only "${base_sha}" "${SOURCE_SHA}")"
+              echo "Changed files:"
+              if [ -n "${changed_files}" ]; then
+                printf '%s\n' "${changed_files}"
+              else
+                echo "(none)"
+              fi
+
+              while IFS= read -r path; do
+                [ -n "${path}" ] || continue
+                case "${path}" in
+                  backend/*|infra/deployment/docker/backend*.Dockerfile)
+                    deploy_backend=true
+                    ;;
+                esac
+                case "${path}" in
+                  frontend/*|infra/deployment/docker/frontend.Dockerfile|infra/deployment/docker/frontend-nginx-resolver.envsh|infra/deployment/nginx/*|.github/workflows/deploy.yml)
+                    deploy_frontend=true
+                    ;;
+                esac
+              done <<< "${changed_files}"
+            fi
+          fi
+
+          echo "deploy_backend=${deploy_backend}" >> "$GITHUB_OUTPUT"
+          echo "deploy_frontend=${deploy_frontend}" >> "$GITHUB_OUTPUT"
+          echo "reason=${reason}" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "Deploy classification reason: ${reason}"
+            echo "Deploy backend: ${deploy_backend}"
+            echo "Deploy frontend: ${deploy_frontend}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy-frontend:
+    name: Deploy frontend to Cloudflare Pages
+    runs-on: ubuntu-latest
+    needs:
+      - verify-latest
+      - classify_changes
+    if: always() && needs.verify-latest.outputs.should_deploy == 'true' && needs.classify_changes.outputs.deploy_frontend == 'true'
 
     steps:
       - name: Check Cloudflare deploy hook opt-in
@@ -129,16 +206,25 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - verify-latest
+      - classify_changes
       - deploy-backend
     # The frontend Sealos smoke test exercises proxied /api upload traffic, so
-    # wait until the backend rollout has finished instead of racing it.
-    if: always() && needs.verify-latest.outputs.should_deploy == 'true' && needs.deploy-backend.result == 'success'
+    # wait for the backend rollout only when this commit actually changes backend.
+    if: >-
+      always() &&
+      needs.verify-latest.outputs.should_deploy == 'true' &&
+      needs.classify_changes.outputs.deploy_frontend == 'true' &&
+      (
+        needs.classify_changes.outputs.deploy_backend != 'true' ||
+        needs.deploy-backend.result == 'success'
+      )
     permissions:
       contents: read
       packages: write
     env:
       SEALOS_KUBECONFIG_B64: ${{ secrets.SEALOS_KUBECONFIG_B64 }}
       SOURCE_SHA: ${{ needs.verify-latest.outputs.source_sha }}
+      STRICT_API_SMOKE: ${{ needs.classify_changes.outputs.deploy_backend == 'true' }}
       ALIYUN_ACR_USERNAME: ${{ secrets.ALIYUN_ACR_USERNAME }}
       ALIYUN_ACR_PASSWORD: ${{ secrets.ALIYUN_ACR_PASSWORD }}
 
@@ -412,15 +498,20 @@ jobs:
           # Keep this above common 1 MiB ingress defaults, but below the real 10 MB app limit.
           upload_probe_bytes=$((1280 * 1024))
           upload_probe_label="1.25MiB"
+          strict_api_smoke="${STRICT_API_SMOKE:-false}"
 
           readiness_ok=false
           for attempt in {1..12}; do
-            root_status="$(curl -sS -o /tmp/frontend-root.out -w "%{http_code}" "${root_url}" || true)"
-            health_status="$(curl -sS -o /tmp/frontend-health.out -w "%{http_code}" "${health_url}" || true)"
+            root_status="$(curl --max-time 10 -sS -o /tmp/frontend-root.out -w "%{http_code}" "${root_url}" || true)"
+            if [ "${strict_api_smoke}" = "true" ]; then
+              health_status="$(curl --max-time 10 -sS -o /tmp/frontend-health.out -w "%{http_code}" "${health_url}" || true)"
+            else
+              health_status="skipped"
+            fi
 
             echo "Frontend readiness smoke attempt ${attempt}/12: / -> ${root_status}, /api/health -> ${health_status}"
 
-            if [ "${root_status}" = "200" ] && [ "${health_status}" = "200" ]; then
+            if [ "${root_status}" = "200" ] && { [ "${strict_api_smoke}" != "true" ] || [ "${health_status}" = "200" ]; }; then
               readiness_ok=true
               break
             fi
@@ -438,14 +529,22 @@ jobs:
             exit 1
           fi
 
-          python3 backend/scripts/smoke_upload_body.py \
-            --url "${upload_url}" \
-            --expected-status 422 \
-            --bytes "${upload_probe_bytes}" \
-            --label "${upload_probe_label}" \
-            --attempts 4 \
-            --timeout 120 \
-            --sleep 15
+          if [ "${strict_api_smoke}" = "true" ]; then
+            python3 backend/scripts/smoke_upload_body.py \
+              --url "${upload_url}" \
+              --expected-status 422 \
+              --bytes "${upload_probe_bytes}" \
+              --label "${upload_probe_label}" \
+              --attempts 4 \
+              --timeout 120 \
+              --sleep 15
+          else
+            {
+              echo "Frontend API smoke skipped."
+              echo
+              echo "Backend was not deployed in this workflow run, so frontend deploy only verifies the static entrypoint."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Show Sealos frontend logs after failed smoke
         if: always() && steps.smoke_frontend.outcome == 'failure' && steps.optin.outputs.enabled == 'true'
@@ -490,8 +589,10 @@ jobs:
   deploy-backend:
     name: Deploy backend to Sealos
     runs-on: ubuntu-latest
-    needs: verify-latest
-    if: needs.verify-latest.outputs.should_deploy == 'true'
+    needs:
+      - verify-latest
+      - classify_changes
+    if: always() && needs.verify-latest.outputs.should_deploy == 'true' && needs.classify_changes.outputs.deploy_backend == 'true'
     permissions:
       contents: read
       packages: write
