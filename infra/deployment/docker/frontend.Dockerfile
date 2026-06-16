@@ -29,7 +29,8 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 
 # 注入 Kubernetes/Docker 运行时 DNS resolver，避免 Nginx 因 upstream 短暂解析失败而启动退出
 COPY infra/deployment/docker/frontend-nginx-resolver.envsh /docker-entrypoint.d/16-aiteachme-resolver.envsh
-RUN chmod +x /docker-entrypoint.d/16-aiteachme-resolver.envsh
+COPY infra/deployment/docker/frontend-runtime-config.sh /docker-entrypoint.d/17-aiteachme-runtime-config.sh
+RUN chmod +x /docker-entrypoint.d/16-aiteachme-resolver.envsh /docker-entrypoint.d/17-aiteachme-runtime-config.sh
 
 # 复制 nginx 模板，容器启动时由官方 entrypoint 注入 AITEACHME_API_UPSTREAM
 COPY infra/deployment/nginx/default.conf.template /etc/nginx/templates/default.conf.template

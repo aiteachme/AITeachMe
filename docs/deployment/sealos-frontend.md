@@ -32,11 +32,18 @@ Replicas: 1
 Public Access: enabled
 Environment:
   AITEACHME_API_UPSTREAM=<backend-internal-upstream>
+  VITE_POSTHOG_ENABLED=true
+  VITE_POSTHOG_TOKEN=<posthog-project-token>
+  VITE_POSTHOG_HOST=https://us.i.posthog.com
+  VITE_POSTHOG_SESSION_REPLAY=false
+  VITE_POSTHOG_DEBUG=false
 ```
 
 前端 App 不要配置 `VITE_API_URL`。Sealos 前端应该走同源 `/api`，再由 Nginx 反代到后端内网服务。
 
 前端 Web 镜像默认使用 `VITE_BASE_PATH=/` 构建静态资源路径，避免深链页面把 JS/CSS 错误解析成相对路径。只有部署到子路径时才需要覆盖这个值。
+
+PostHog 这类浏览器端配置由容器启动脚本写入 `/runtime-config.js`，所以 Sealos 的运行时环境变量会在页面加载时生效；不需要把这些值作为 Docker build args 重新构建镜像。注意只在前端 App 配置 `VITE_POSTHOG_*` 这组公开浏览器变量，后端 App 如需采集服务端事件则单独配置 `POSTHOG_*`。
 
 ## GitHub Actions 配置
 
@@ -88,6 +95,12 @@ curl https://<frontend-domain>/api/health
 
 ```bash
 curl -I https://<frontend-domain>/assets/<hashed-js-file>
+```
+
+运行时前端配置：
+
+```bash
+curl https://<frontend-domain>/runtime-config.js
 ```
 
 SPA 深链：

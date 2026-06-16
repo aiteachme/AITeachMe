@@ -144,7 +144,7 @@ jobs:
                     ;;
                 esac
                 case "${path}" in
-                  frontend/*|infra/deployment/docker/frontend.Dockerfile|infra/deployment/docker/frontend-nginx-resolver.envsh|infra/deployment/nginx/*|.github/workflows/deploy.yml)
+                  frontend/*|infra/deployment/docker/frontend.Dockerfile|infra/deployment/docker/frontend-*|infra/deployment/nginx/*|.github/workflows/deploy.yml)
                     deploy_frontend=true
                     ;;
                 esac

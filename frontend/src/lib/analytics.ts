@@ -72,9 +72,26 @@ function envFlag(value: string | boolean | undefined, fallback = false): boolean
   return ["1", "true", "yes", "on"].includes(normalized);
 }
 
+function getRuntimeEnvValue(key: keyof ImportMetaEnv): string | undefined {
+  if (typeof window === "undefined") {
+    return undefined;
+  }
+  const value = window.__AITEACHME_RUNTIME_CONFIG__?.[key as string];
+  return typeof value === "string" ? value.trim() : undefined;
+}
+
 function getEnvValue(key: keyof ImportMetaEnv): string {
+  const runtimeValue = getRuntimeEnvValue(key);
+  if (runtimeValue !== undefined) {
+    return runtimeValue;
+  }
   const value = import.meta.env[key];
   return typeof value === "string" ? value.trim() : "";
+}
+
+function getEnvFlag(key: keyof ImportMetaEnv, fallback = false): boolean {
+  const runtimeValue = getRuntimeEnvValue(key);
+  return envFlag(runtimeValue ?? import.meta.env[key], fallback);
 }
 
 function resolveRuntimeSurface(): "electron" | "tauri" | "web" {
@@ -215,14 +232,14 @@ export function initializeAnalytics(): PostHog | null {
   }
 
   const token = getEnvValue("VITE_POSTHOG_TOKEN");
-  enabled = envFlag(import.meta.env.VITE_POSTHOG_ENABLED, false) && Boolean(token);
+  enabled = getEnvFlag("VITE_POSTHOG_ENABLED", false) && Boolean(token);
   if (!enabled) {
     return null;
   }
 
   const apiHost = getEnvValue("VITE_POSTHOG_HOST") || DEFAULT_POSTHOG_HOST;
-  const sessionReplayEnabled = envFlag(import.meta.env.VITE_POSTHOG_SESSION_REPLAY, false);
-  const debug = envFlag(import.meta.env.VITE_POSTHOG_DEBUG, false);
+  const sessionReplayEnabled = getEnvFlag("VITE_POSTHOG_SESSION_REPLAY", false);
+  const debug = getEnvFlag("VITE_POSTHOG_DEBUG", false);
 
   const config: Partial<PostHogConfig> = {
     api_host: apiHost,
@@ -265,7 +282,7 @@ export function initializeAnalytics(): PostHog | null {
   posthog.init(token, config);
   posthog.register({
     app_surface: resolveRuntimeSurface(),
-    app_version: import.meta.env.VITE_APP_VERSION || undefined,
+    app_version: getEnvValue("VITE_APP_VERSION") || undefined,
     device_key_suffix: getDeviceKeySuffix(),
   });
 
@@ -494,7 +511,7 @@ export function resetAnalyticsIdentity(): void {
   client.reset();
   client.register({
     app_surface: resolveRuntimeSurface(),
-    app_version: import.meta.env.VITE_APP_VERSION || undefined,
+    app_version: getEnvValue("VITE_APP_VERSION") || undefined,
     device_key_suffix: getDeviceKeySuffix(),
     is_authenticated: false,
   });

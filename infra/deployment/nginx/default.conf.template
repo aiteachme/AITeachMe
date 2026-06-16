@@ -41,6 +41,16 @@ server {
         add_header Cache-Control "no-cache" always;
     }
 
+    location = /runtime-config.js {
+        try_files /runtime-config.js =404;
+        add_header Cache-Control "no-cache" always;
+    }
+
+    location ~ ^/.+/runtime-config\.js$ {
+        try_files /runtime-config.js =404;
+        add_header Cache-Control "no-cache" always;
+    }
+
     location = /api/v1/files/upload {
         # Allow multipart overhead; backend enforces 10 MB total file bytes.
         client_max_body_size 12m;

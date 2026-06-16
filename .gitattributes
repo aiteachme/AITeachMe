@@ -3,8 +3,11 @@
 *.kt    eol=lf
 *.kts   eol=lf
 *.mjs   eol=lf
+*.js    eol=lf
+*.sh    eol=lf
 *.ts    eol=lf
 *.tsx   eol=lf
+*.html  eol=lf
 *.xml   eol=lf
 *.yml   eol=lf
 *.yaml  eol=lf
