@@ -34,7 +34,7 @@ PostHog 的接入确实简单：前端初始化一次、自动采集页面和点
 
 线上默认 `VITE_POSTHOG_DEBUG=false`、`VITE_POSTHOG_SESSION_REPLAY=false`。Replay 如需开启，只给内测或低采样。继续保持文本遮罩、属性过滤、路由参数归一化，避免上传用户内容。
 
-Sealos/Nginx 前端镜像通过启动脚本生成 `/runtime-config.js`，前端 analytics 初始化优先读取其中的 `VITE_POSTHOG_*`。因此线上修改前端 PostHog 配置时，改 Sealos 前端 App 的运行时环境变量并重启/滚动容器即可；后端事件仍由后端 App 的 `POSTHOG_*` 控制。
+Sealos/Nginx 前端镜像通过启动脚本生成 `/runtime-config.js`，前端 analytics 初始化优先读取其中的 `VITE_POSTHOG_*`。因此线上修改前端 PostHog 配置时，改 Sealos 前端 App 的运行时环境变量并重启/滚动容器即可。脚本兼容读取同一前端容器里的 `POSTHOG_*` 作为兜底；后端事件仍由后端 App 的 `POSTHOG_*` 控制。
 
 ## 验收
 

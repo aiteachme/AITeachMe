@@ -20,24 +20,38 @@ escape_js_string() {
   '
 }
 
-write_config_entry() {
+env_value() {
   name="$1"
-  eval "value=\${$name:-}"
+  eval "printf '%s' \"\${$name:-}\""
+}
+
+write_config_entry() {
+  output_name="$1"
+  shift
+  value=""
+  for env_name in "$@"; do
+    candidate="$(env_value "$env_name")"
+    if [ -n "$candidate" ]; then
+      value="$candidate"
+      break
+    fi
+  done
+
   if [ -z "$value" ]; then
     return
   fi
 
   escaped="$(escape_js_string "$value")"
-  printf '  "%s": "%s",\n' "$name" "$escaped"
+  printf '  "%s": "%s",\n' "$output_name" "$escaped"
 }
 
 {
   printf 'window.__AITEACHME_RUNTIME_CONFIG__ = Object.freeze({\n'
-  write_config_entry VITE_POSTHOG_ENABLED
-  write_config_entry VITE_POSTHOG_TOKEN
-  write_config_entry VITE_POSTHOG_HOST
-  write_config_entry VITE_POSTHOG_SESSION_REPLAY
-  write_config_entry VITE_POSTHOG_DEBUG
-  write_config_entry VITE_APP_VERSION
+  write_config_entry VITE_POSTHOG_ENABLED VITE_POSTHOG_ENABLED POSTHOG_ENABLED
+  write_config_entry VITE_POSTHOG_TOKEN VITE_POSTHOG_TOKEN POSTHOG_TOKEN
+  write_config_entry VITE_POSTHOG_HOST VITE_POSTHOG_HOST POSTHOG_HOST
+  write_config_entry VITE_POSTHOG_SESSION_REPLAY VITE_POSTHOG_SESSION_REPLAY
+  write_config_entry VITE_POSTHOG_DEBUG VITE_POSTHOG_DEBUG POSTHOG_DEBUG
+  write_config_entry VITE_APP_VERSION VITE_APP_VERSION
   printf '});\n'
 } > "$runtime_config_path"
