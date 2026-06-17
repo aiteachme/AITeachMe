@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime
@@ -11,6 +12,7 @@ from sqlmodel import Session, SQLModel, create_engine, select
 
 import app.models  # noqa: F401 - ensure all SQLModel tables are registered
 from app.models import ChatMessage, ChatSession, Course, CourseFileLink, IngestStatus, RawFile, TaskStatus
+from app.schemas.knowledge import BuildPlannerCreateRequest
 from app.shared.infra.exceptions import (
     BuildPlannerEmptyPlanError,
     BuildPlannerSessionBusyError,
@@ -18,8 +20,11 @@ from app.shared.infra.exceptions import (
     ConfirmedBuildPlanNotFoundError,
     RawFileNotFoundError,
 )
+from app.shared.infra.workflow.result import ok_result
 from app.utils.time import utcnow
+from app.repositories.chats_repo import list_sessions_by_course, list_sessions_by_user
 from app.workflows.digest.common.models import CourseProfile, DigestMaterialContext, FastTopicHints
+from app.workflows.digest.planner import graph as planner_graph
 from app.workflows.digest.planner.lib import store as planner_store
 
 
@@ -89,6 +94,60 @@ def _seed_course_and_files(session: Session) -> None:
         ]
     )
     session.commit()
+
+
+def test_chat_session_lists_expose_only_latest_course_build_planner_session(session: Session) -> None:
+    _seed_course_and_files(session)
+    base = datetime(2026, 1, 1, 8, 0, 0)
+    session.add_all(
+        [
+            ChatSession(
+                id="planner-old",
+                course_id=COURSE_ID,
+                user_id=USER_ID,
+                title="旧构建方案",
+                source="build_planner",
+                created_at=base,
+                updated_at=base,
+                last_message_at=base,
+            ),
+            ChatSession(
+                id="planner-latest",
+                course_id=COURSE_ID,
+                user_id=USER_ID,
+                title="当前构建方案",
+                source="build_planner",
+                created_at=datetime(2026, 1, 1, 9, 0, 0),
+                updated_at=datetime(2026, 1, 1, 9, 0, 0),
+                last_message_at=datetime(2026, 1, 1, 9, 0, 0),
+            ),
+            ChatSession(
+                id="course-chat",
+                course_id=COURSE_ID,
+                user_id=USER_ID,
+                title="普通课程对话",
+                source="course_chat",
+                created_at=datetime(2026, 1, 1, 10, 0, 0),
+                updated_at=datetime(2026, 1, 1, 10, 0, 0),
+                last_message_at=datetime(2026, 1, 1, 10, 0, 0),
+            ),
+        ]
+    )
+    session.commit()
+
+    course_items, course_total = list_sessions_by_course(
+        session,
+        COURSE_ID,
+        user_id=USER_ID,
+        limit=10,
+        offset=0,
+    )
+    recent_items, recent_total = list_sessions_by_user(session, user_id=USER_ID, limit=10, offset=0)
+
+    assert course_total == 2
+    assert [item.id for item in course_items] == ["course-chat", "planner-latest"]
+    assert "planner-old" not in {item.id for item in recent_items}
+    assert recent_total == 2
 
 
 def _material_context() -> DigestMaterialContext:
@@ -441,6 +500,119 @@ def test_save_planner_result_persists_diagnosis_draft_before_plan(managed_planne
     assert response.turns[-1].plan_json is not None
     assert response.turns[-1].plan_json["diagnose_status"] == "pending"
     assert result["planner_turns"][-1]["plan_json"]["planner_stage"] == "diagnosis"
+
+
+def test_create_operation_reuses_course_planner_session(managed_planner_session: Session) -> None:
+    _seed_course_and_files(managed_planner_session)
+    planner_store.prepare_planner_run(
+        {
+            "planner_operation": "create",
+            "planner_session_id": "planner-singleton",
+            "course_id": COURSE_ID,
+            "user_id": USER_ID,
+            "requested_file_ids": ["file-ready"],
+            "user_prompt": "先生成一版线性代数方案",
+            "digest_mode": "sprint",
+        }
+    )
+    planner_store.save_planner_result(
+        {
+            "planner_operation": "create",
+            "planner_session_id": "planner-singleton",
+            "course_id": COURSE_ID,
+            "user_id": USER_ID,
+            "generated_course_name": "线性代数速成",
+        },
+        plan=_plan(),
+        material_context=_material_context(),
+    )
+    course = managed_planner_session.get(Course, COURSE_ID)
+    assert course is not None
+
+    reusable_id = planner_store.get_reusable_planner_session_id(course=course, user_id=USER_ID)
+    assert reusable_id == "planner-singleton"
+
+    restarted = planner_store.prepare_planner_run(
+        {
+            "planner_operation": "create",
+            "planner_session_id": reusable_id,
+            "course_id": COURSE_ID,
+            "user_id": USER_ID,
+            "requested_file_ids": ["file-ready", "file-pending"],
+            "user_prompt": "重新按考试冲刺生成方案",
+            "digest_mode": "sprint",
+        }
+    )
+    records = managed_planner_session.exec(
+        select(ChatSession).where(
+            ChatSession.course_id == COURSE_ID,
+            ChatSession.user_id == USER_ID,
+            ChatSession.source == planner_store.PLANNER_CHAT_SOURCE,
+        )
+    ).all()
+    turns = managed_planner_session.exec(
+        select(ChatMessage).where(
+            ChatMessage.session_id == "planner-singleton",
+            ChatMessage.source == planner_store.PLANNER_CHAT_SOURCE,
+        )
+    ).all()
+
+    assert len(records) == 1
+    assert restarted["planner_record"]["id"] == "planner-singleton"
+    assert restarted["planner_record"]["status"] == "planning"
+    assert restarted["selected_file_ids"] == ["file-ready", "file-pending"]
+    assert records[0].meta_json["latest_plan"]["plan"] == _plan()["plan"]
+    assert [turn.role for turn in turns] == ["user", "assistant", "user"]
+
+
+def test_create_planner_entry_uses_reusable_course_session(monkeypatch: pytest.MonkeyPatch) -> None:
+    course = Course(id=COURSE_ID, user_id=USER_ID, name="线性代数", description="", user_intent="")
+    captured: dict[str, Any] = {}
+    now = utcnow()
+
+    def fake_get_reusable_planner_session_id(*, course: Course, user_id: str) -> str:
+        captured["reusable_lookup"] = {"course_id": course.id, "user_id": user_id}
+        return "planner-existing"
+
+    async def fake_run_build_planner_workflow(**kwargs: Any):
+        captured["workflow_kwargs"] = dict(kwargs)
+        return ok_result(
+            {
+                "course_id": course.id,
+                "planner_session_id": kwargs["planner_session_id"],
+                "selected_file_ids": [],
+                "model_override": kwargs.get("model"),
+                "plan": _plan(),
+                "planner_turns": [],
+                "planner_record": {
+                    "id": kwargs["planner_session_id"],
+                    "course_id": course.id,
+                    "title": "已有构建方案",
+                    "status": "draft",
+                    "created_at": now,
+                    "updated_at": now,
+                    "confirmed_plan_id": None,
+                    "model_override": kwargs.get("model"),
+                },
+            }
+        )
+
+    monkeypatch.setattr(planner_graph, "get_reusable_planner_session_id", fake_get_reusable_planner_session_id)
+    monkeypatch.setattr(planner_graph, "run_build_planner_workflow", fake_run_build_planner_workflow)
+    monkeypatch.setattr(planner_graph, "_log_planner_runtime", lambda **_: None)
+
+    response = asyncio.run(
+        planner_graph.create_build_planner_session(
+            course=course,
+            user_id=USER_ID,
+            payload=BuildPlannerCreateRequest(user_prompt="请重新规划线性代数课程"),
+        )
+    )
+
+    assert captured["reusable_lookup"] == {"course_id": COURSE_ID, "user_id": USER_ID}
+    assert captured["workflow_kwargs"]["planner_session_id"] == "planner-existing"
+    assert captured["workflow_kwargs"]["planner_operation"] == "create"
+    assert response.session_id == "planner-existing"
 
 
 def test_planner_store_rejects_invalid_files_busy_sessions_and_empty_confirm(

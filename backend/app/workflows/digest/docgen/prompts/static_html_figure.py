@@ -16,37 +16,62 @@ def build_static_html_figure_messages(
 ) -> list[dict[str, str]]:
     mode_label = get_docgen_mode_profile(digest_mode).prompt_label
     system_prompt = """
-你是通用教学图示规划器。只输出 JSON FigureSpec，后端会把它渲染成单张 SVG。
-type 固定为 problem_diagram；输出内容只包含 JSON 对象。
+你是通用教学演示图规划器。先判断章节片段是否真的需要图，再输出 JSON FigureSpec；后端会把它渲染成单张 SVG。
+输出内容只包含 JSON 对象，不要输出原始 HTML/SVG。
 图必须来自章节片段，source_refs 摘录原文短语；图内只放必要短标签。
-用同一套图元表达几何、坐标、受力、结构、路径、区域、网络等可视关系；不套固定学科模板。
-片段不适合画图时，返回 elements: []。
+只有当图能展示文字难以直观看出的空间、数量、状态、结构、几何或坐标关系时，才生成 elements。
+用图元表达几何、坐标、结构、路径、区域、网络、程序状态、公式推导或关键误区等可视关系。
+不要按关键词套模板，不要填 layout.template；layout 通常留空。
+内部按两步完成：先判断“画出来是否明显比文字更清楚”，再把那个关系排成清晰 SVG 图元。
+图必须承担明确学习任务：展示状态变化、数量比较、结构连接、坐标趋势、几何关系或空间位置之一。
+片段若只适合用普通文字、列表、公式三行推导或概念摘要说明，返回 elements: []。
+不要画装饰方框、不要复刻正文截图、不要把整段代码、普通步骤或长句排进图里。
+不要生成“原式→展开→合并”“读题→条件→目标”这类纯文字流程框，它们没有图示价值。
+程序/C 语言片段只适合画内存格、指针指向、执行流、表达式求值树、控制流等状态关系；如果只能堆变量名，就返回空 elements。
 
 可用图元：
-- axis/curve/point/line/vector/shape/label/callout
+- axis/curve/point/line/vector/shape/label/callout/step/formula/relation/table_row
 - 坐标字段 x/y/x2/y2 均为 0-100
+- 关系图、步骤图、状态图优先给 shape 设置短 id，再用 line/vector 的 from_id/to_id 连接；这类图可以少填坐标
 - shape_type: ellipse/circle/rectangle/triangle/polygon/angle/arc/region
 - polygon/triangle/region 用 points: [[x,y],...]
 - ellipse 用 rx/ry；angle/arc 用 start_angle/end_angle
+图型选择：
+- 有实际图示价值时，优先使用 problem_diagram，并使用 axis/curve/point/line/vector/shape 等视觉图元。
+- 只有普通文字步骤、公式列表、概念清单时，不要改用 process_steps、formula_derivation 或 concept_map 凑图，直接返回空 elements。
+- mistake_card 只在能画出明确纠错路径或易混结构时使用，否则返回空 elements。
+布局要求：
+- 元素 4-9 个为宜，最多 10 个；标签最多 8 个。
+- 标签必须很短：中文不超过 8 个字，英文/代码不超过 12 个字符。
+- 坐标要分散覆盖画布中部，不要挤在中心，也不要贴边。
+- 标签之间至少错开 10 个坐标单位，避免相互覆盖。
+
+参考示例，不要照抄内容，只学习表达方式：
+- 状态变化：用几个 rectangle 表示状态格，用 vector 表示更新方向，用短标签标出变量/值。
+- 步骤路径：用 3-4 个 shape 表示动作节点，用 vector 串联，箭头标签只写关键动作。
+- 坐标趋势：用两条 axis、一条 curve、一个 point 或 tangent line 表示关系，不写长解释。
+- 关系不清：如果只能列概念词，没有空间/方向/数量/状态关系，返回 elements: []。
 """.strip()
 
     prompt = f"""
 请为下面章节片段规划一张教学辅助图，只输出 JSON FigureSpec。
 
 图示标题：{figure_title}
-图示目标：{figure_goal or "把需要借助图形才能看清的关系画出来。"}
-建议图类型：{figure_type}
+图示判断目标：{figure_goal or "请自行判断这段是否值得生成演示图；不值得就返回空 elements。"}
+候选策略：{figure_type}
 文档模式：{mode_label}
 
 章节片段：
 {section_context}
 
 生成要求：
-1. 只画一个关键图，type 固定为 problem_diagram。
-2. 用几何图元表达关系，图内只保留点名、轴名、变量、方向和短关系标签。
-3. 标签短到能放进图里；讲解留给正文。
-4. 画不出来就返回空 elements。
-5. 输出为一个 JSON 对象。
+1. 先决定是否值得画；不值得时返回 elements: []，不要勉强生成。
+2. 值得画时只画一个关键图；elements 必须表达非纯文本的视觉关系，例如变量格位置、指针指向、坐标趋势、几何角度、区域关系、数量结构。
+3. 画流程/关系/状态时，优先使用短 id 与 from_id/to_id；不要用随机方框模拟截图。
+4. 如果只能生成普通概念罗列、比较表、公式三行推导、长文本标签或随机方框，就返回空 elements。
+5. 布局要留白均匀，标签不重叠；不确定能画清楚时返回空 elements。
+6. 不要使用 layout.template，不要要求外部图片、Canvas、脚本或 Manim；只输出后端 SVG 图元能渲染的静态图。
+7. 输出为一个 JSON 对象。
 """.strip()
 
     messages = [
