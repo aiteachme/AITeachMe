@@ -358,11 +358,49 @@ def _is_formula_token_relation_diagram(elements: list[FigureElement]) -> bool:
     return (connection_count >= 1 or partition_count >= 4) and symbolic_count >= max(3, math.ceil(len(texts) * 0.6))
 
 
+_GENERIC_PARTITION_LABELS = {
+    "左区",
+    "右区",
+    "中区",
+    "上区",
+    "下区",
+    "交叠",
+    "重叠",
+    "区域",
+    "部分",
+    "左侧",
+    "右侧",
+}
+
+
+def _is_generic_partition_diagram(elements: list[FigureElement]) -> bool:
+    """Reject Venn/region-like guesses with no concrete geometry or state."""
+
+    items = elements[:18]
+    if any(item.kind in {"axis", "curve", "point", "vector"} for item in items):
+        return False
+    partition_count = sum(
+        1
+        for item in items
+        if item.kind == "shape" and (item.shape_type in {"polygon", "region"} or len(item.points) >= 3)
+    )
+    if partition_count < 2:
+        return False
+    generic_count = sum(
+        1
+        for text in _visible_visual_texts(items)
+        if re.sub(r"\s+", "", text) in _GENERIC_PARTITION_LABELS
+    )
+    return generic_count >= 2
+
+
 def _has_visual_value_beyond_text(elements: list[FigureElement]) -> bool:
     """Reject diagrams that merely put ordinary prose in boxes."""
 
     items = elements[:18]
     if _is_formula_token_relation_diagram(items):
+        return False
+    if _is_generic_partition_diagram(items):
         return False
     if any(item.kind in {"axis", "curve"} for item in items):
         return True

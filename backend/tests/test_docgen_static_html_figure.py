@@ -210,6 +210,29 @@ def test_formula_token_area_layout_without_spatial_labels_is_not_publishable() -
     assert "text_only_relation_diagram" in report["issues"]
 
 
+def test_generic_partition_guess_is_not_publishable_problem_diagram() -> None:
+    spec = FigureSpec(
+        type="problem_diagram",
+        title="力的合成图示",
+        elements=[
+            FigureElement(kind="shape", shape_type="polygon", label="F1", points=[[25, 35], [45, 30], [55, 45], [35, 55]]),
+            FigureElement(kind="shape", shape_type="polygon", label="F2", points=[[48, 32], [72, 34], [68, 58], [52, 50]]),
+            FigureElement(kind="shape", shape_type="polygon", label="FR", points=[[36, 45], [60, 42], [64, 60], [42, 62]]),
+            FigureElement(kind="line", x=35, y=54, x2=70, y2=64),
+            FigureElement(kind="label", label="左区", x=28, y=25),
+            FigureElement(kind="label", label="右区", x=74, y=25),
+            FigureElement(kind="label", label="交叠", x=50, y=65),
+        ],
+        source_refs=["两个力 F1 和 F2 首尾相接时，合力 FR 从第一个力的起点指向第二个力的终点。"],
+    )
+
+    report = assess_static_figure_layout(spec)
+
+    assert not is_renderable_static_figure(spec)
+    assert report["ok"] is False
+    assert "text_only_relation_diagram" in report["issues"]
+
+
 def test_empty_concept_map_does_not_invent_default_nodes() -> None:
     spec = FigureSpec(type="concept_map", title="空概念图")
 
