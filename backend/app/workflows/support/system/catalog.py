@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+from app.shared.infra.settings import DEFAULT_INGEST_MAX_UPLOAD_SIZE_MB
+
 CatalogEntryKind = Literal["setting", "env", "runtime"]
 SettingOption = tuple[str | None, str]
 
@@ -376,7 +378,7 @@ SETTINGS_CATALOG: tuple[SettingsCatalogSection, ...] = (
             setting(
                 "ingest.max_upload_size_mb",
                 "单次上传总大小",
-                description="单次文件上传请求的所有文件总大小限制，默认 10MB。",
+                description=f"单次文件上传请求的所有文件总大小限制，默认 {DEFAULT_INGEST_MAX_UPLOAD_SIZE_MB}MB。",
                 ui_group="上传限制",
                 ui_order=10,
             ),

@@ -41,7 +41,7 @@ const IMAGE_EXTENSIONS = new Set<string>(
   UPLOAD_FILE_TYPES.filter((item) => "image" in item && item.image).map((item) => item.extension),
 );
 const IMAGE_PARSER_SETTING_KEYS = new Set<string>(["paddle_ocr.api_token", "mineru.api_token"]);
-const DEFAULT_MAX_UPLOAD_TOTAL_SIZE_MB = 10;
+const UNKNOWN_MAX_UPLOAD_TOTAL_SIZE_MB = Number.POSITIVE_INFINITY;
 const DEFAULT_MAX_FILES_PER_UPLOAD = 10;
 
 type UploadLimitConfig = {
@@ -95,7 +95,7 @@ function getNumericSetting(overview: SettingsOverviewData | null, key: string, f
 function getUploadLimitConfig(overview: SettingsOverviewData | null): UploadLimitConfig {
   return {
     maxFiles: Math.floor(getNumericSetting(overview, "ingest.max_files_per_upload", DEFAULT_MAX_FILES_PER_UPLOAD)),
-    maxTotalSizeMb: getNumericSetting(overview, "ingest.max_upload_size_mb", DEFAULT_MAX_UPLOAD_TOTAL_SIZE_MB),
+    maxTotalSizeMb: getNumericSetting(overview, "ingest.max_upload_size_mb", UNKNOWN_MAX_UPLOAD_TOTAL_SIZE_MB),
   };
 }
 
@@ -113,7 +113,7 @@ function buildUploadLimitExceededMessage(files: File[], limits: UploadLimitConfi
 
   const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
   const maxTotalBytes = limits.maxTotalSizeMb * 1024 * 1024;
-  if (totalBytes > maxTotalBytes) {
+  if (Number.isFinite(limits.maxTotalSizeMb) && totalBytes > maxTotalBytes) {
     return `单次上传文件总大小不能超过 ${limits.maxTotalSizeMb} MB，当前为 ${formatFileSize(totalBytes)}。`;
   }
 

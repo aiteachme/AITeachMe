@@ -21,6 +21,7 @@ env:
   # does not apply Kubernetes search domains. Keep the backend service as a
   # fully qualified cluster DNS name rather than the Sealos short internal URL.
   AITEACHME_API_UPSTREAM: http://atm-d-tgkmhxmhacer.ns-icbq3ltw.svc.cluster.local:9020
+  AITEACHME_NGINX_IMPORT_CLIENT_MAX_BODY_SIZE: 260m
   BACKEND_ACR_NAMESPACE: aiteachme
   BACKEND_ACR_REGISTRY: crpi-eit0zz7ic5vs22ow.cn-beijing.personal.cr.aliyuncs.com
   BACKEND_IMAGE_NAME: aiteachme-backend
@@ -280,6 +281,7 @@ jobs:
           [ -n "${FRONTEND_IMAGE_NAME}" ] || missing+=("env:FRONTEND_IMAGE_NAME")
           [ -n "${SEALOS_IMAGE_PULL_SECRET}" ] || missing+=("env:SEALOS_IMAGE_PULL_SECRET")
           [ -n "${AITEACHME_API_UPSTREAM}" ] || missing+=("env:AITEACHME_API_UPSTREAM")
+          [ -n "${AITEACHME_NGINX_IMPORT_CLIENT_MAX_BODY_SIZE}" ] || missing+=("env:AITEACHME_NGINX_IMPORT_CLIENT_MAX_BODY_SIZE")
 
           if [ "${#missing[@]}" -gt 0 ]; then
             printf 'Missing required Sealos frontend deploy configuration:\n' >&2
@@ -291,6 +293,14 @@ jobs:
             echo "FRONTEND_ROLLOUT_TIMEOUT_SECONDS must be an integer number of seconds." >&2
             exit 1
           fi
+
+          for size_var in AITEACHME_NGINX_IMPORT_CLIENT_MAX_BODY_SIZE; do
+            size_value="${!size_var}"
+            if ! [[ "${size_value}" =~ ^[0-9]+[kKmMgG]?$ ]]; then
+              echo "${size_var} must be an Nginx size value like 260m." >&2
+              exit 1
+            fi
+          done
 
       - name: Set up Docker Buildx
         if: steps.optin.outputs.enabled == 'true'
@@ -393,6 +403,8 @@ jobs:
 
           echo "Deploying frontend image: ${{ steps.image.outputs.image }}"
           echo "API upstream: ${AITEACHME_API_UPSTREAM}"
+          echo "Upload transport body limit: ${AITEACHME_NGINX_IMPORT_CLIENT_MAX_BODY_SIZE}"
+          echo "Import body limit: ${AITEACHME_NGINX_IMPORT_CLIENT_MAX_BODY_SIZE}"
           echo "Rollout timeout: ${FRONTEND_ROLLOUT_TIMEOUT_SECONDS}s"
 
           kubectl -n "${SEALOS_NAMESPACE}" patch \
@@ -410,7 +422,9 @@ jobs:
 
           kubectl -n "${SEALOS_NAMESPACE}" set env \
             "deployment/${SEALOS_FRONTEND_DEPLOYMENT}" \
-            "AITEACHME_API_UPSTREAM=${AITEACHME_API_UPSTREAM}"
+            "AITEACHME_API_UPSTREAM=${AITEACHME_API_UPSTREAM}" \
+            "AITEACHME_NGINX_UPLOAD_CLIENT_MAX_BODY_SIZE=${AITEACHME_NGINX_IMPORT_CLIENT_MAX_BODY_SIZE}" \
+            "AITEACHME_NGINX_IMPORT_CLIENT_MAX_BODY_SIZE=${AITEACHME_NGINX_IMPORT_CLIENT_MAX_BODY_SIZE}"
 
           kubectl -n "${SEALOS_NAMESPACE}" set image \
             "deployment/${SEALOS_FRONTEND_DEPLOYMENT}" \
@@ -465,6 +479,8 @@ jobs:
             echo "### ${pod} nginx runtime probe"
             kubectl -n "${SEALOS_NAMESPACE}" exec "${pod}" -- sh -lc '
               echo "AITEACHME_API_UPSTREAM=${AITEACHME_API_UPSTREAM:-}";
+              echo "AITEACHME_NGINX_UPLOAD_CLIENT_MAX_BODY_SIZE=${AITEACHME_NGINX_UPLOAD_CLIENT_MAX_BODY_SIZE:-}";
+              echo "AITEACHME_NGINX_IMPORT_CLIENT_MAX_BODY_SIZE=${AITEACHME_NGINX_IMPORT_CLIENT_MAX_BODY_SIZE:-}";
               upstream_host="${AITEACHME_API_UPSTREAM#http://}";
               upstream_host="${upstream_host#https://}";
               upstream_host="${upstream_host%%/*}";
@@ -475,6 +491,8 @@ jobs:
               nslookup "${upstream_host}" 2>&1 || true;
               echo "--- /etc/nginx/conf.d/default.conf";
               sed -n "1,140p" /etc/nginx/conf.d/default.conf;
+              echo "--- nginx body limits";
+              grep -n "client_max_body_size" /etc/nginx/conf.d/default.conf || true;
               echo "--- local static probe";
               wget -S -O /dev/null -T 5 http://127.0.0.1/ 2>&1 || true;
               echo "--- direct upstream api probe";
@@ -495,9 +513,7 @@ jobs:
           root_url="${base_url}/"
           health_url="${base_url}/api/health"
           upload_url="${base_url}/api/v1/files/upload"
-          # Keep this above common 1 MiB ingress defaults, but below the real 10 MB app limit.
-          upload_probe_bytes=$((1280 * 1024))
-          upload_probe_label="1.25MiB"
+          eval "$(python3 backend/scripts/resolve_upload_probe.py)"
           strict_api_smoke="${STRICT_API_SMOKE:-false}"
 
           readiness_ok=false
@@ -529,22 +545,14 @@ jobs:
             exit 1
           fi
 
-          if [ "${strict_api_smoke}" = "true" ]; then
-            python3 backend/scripts/smoke_upload_body.py \
-              --url "${upload_url}" \
-              --expected-status 422 \
-              --bytes "${upload_probe_bytes}" \
-              --label "${upload_probe_label}" \
-              --attempts 4 \
-              --timeout 120 \
-              --sleep 15
-          else
-            {
-              echo "Frontend API smoke skipped."
-              echo
-              echo "Backend was not deployed in this workflow run, so frontend deploy only verifies the static entrypoint."
-            } >> "$GITHUB_STEP_SUMMARY"
-          fi
+          python3 backend/scripts/smoke_upload_body.py \
+            --url "${upload_url}" \
+            --expected-status 422 \
+            --bytes "${upload_probe_bytes}" \
+            --label "${upload_probe_label}" \
+            --attempts 4 \
+            --timeout 120 \
+            --sleep 15
 
       - name: Show Sealos frontend logs after failed smoke
         if: always() && steps.smoke_frontend.outcome == 'failure' && steps.optin.outputs.enabled == 'true'
@@ -581,6 +589,8 @@ jobs:
             echo "Sealos namespace: ${SEALOS_NAMESPACE}"
             echo "Sealos deployment: ${SEALOS_FRONTEND_DEPLOYMENT}"
             echo "API upstream: ${AITEACHME_API_UPSTREAM}"
+            echo "Upload transport body limit: ${AITEACHME_NGINX_IMPORT_CLIENT_MAX_BODY_SIZE}"
+            echo "Import body limit: ${AITEACHME_NGINX_IMPORT_CLIENT_MAX_BODY_SIZE}"
             if [ -n "${FRONTEND_PUBLIC_URL}" ]; then
               echo "Public URL: ${FRONTEND_PUBLIC_URL}"
             fi
@@ -893,6 +903,7 @@ jobs:
           set -euo pipefail
 
           health_probe='import os, urllib.request; port = os.environ.get("PORT") or "9020"; url = "http://127.0.0.1:%s/api/health" % port; print(urllib.request.urlopen(url, timeout=5).read().decode("utf-8"))'
+          eval "$(python3 backend/scripts/resolve_upload_probe.py)"
 
           for attempt in {1..12}; do
             pod="$(
@@ -903,7 +914,7 @@ jobs:
             if [ -n "${pod}" ] \
               && kubectl -n "${SEALOS_NAMESPACE}" exec "${pod}" -- python -c "${health_probe}" \
               && kubectl -n "${SEALOS_NAMESPACE}" exec "${pod}" -- sh -c \
-                'python scripts/smoke_upload_body.py --url "http://127.0.0.1:${PORT:-9020}/api/v1/files/upload" --expected-status 422 --bytes 1310720 --label 1.25MiB --attempts 1 --timeout 60 --sleep 0'; then
+                "python scripts/smoke_upload_body.py --url \"http://127.0.0.1:\${PORT:-9020}/api/v1/files/upload\" --expected-status 422 --bytes ${upload_probe_bytes} --label \"${upload_probe_label}\" --attempts 1 --timeout 120 --sleep 0"; then
               exit 0
             fi
 
@@ -923,5 +934,5 @@ jobs:
             echo "Sealos namespace: ${SEALOS_NAMESPACE}"
             echo "Sealos deployment: ${SEALOS_BACKEND_DEPLOYMENT}"
             echo "Health check: in-cluster pod localhost /api/health"
-            echo "Upload check: in-cluster 1.25MiB multipart /api/v1/files/upload -> 422"
+            echo "Upload check: in-cluster multipart below DEFAULT_INGEST_MAX_UPLOAD_SIZE_MB -> 422"
           } >> "$GITHUB_STEP_SUMMARY"

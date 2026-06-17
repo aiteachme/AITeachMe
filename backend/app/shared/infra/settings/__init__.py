@@ -1,6 +1,7 @@
 """Public runtime settings entrypoint."""
 
 from .defaults import (
+    DEFAULT_INGEST_MAX_UPLOAD_SIZE_MB,
     DEFAULT_SETTINGS_VALUES,
     get_default_settings_values,
     merge_default_settings,
@@ -37,6 +38,7 @@ from .support import (
 )
 
 __all__ = [
+    "DEFAULT_INGEST_MAX_UPLOAD_SIZE_MB",
     "DEFAULT_SETTINGS_VALUES",
     "PROJECT_SETTINGS_ENV_NAME",
     "PROJECT_SETTINGS_SOURCE_LABEL",

@@ -32,6 +32,7 @@ Replicas: 1
 Public Access: enabled
 Environment:
   AITEACHME_API_UPSTREAM=<backend-internal-upstream>
+  AITEACHME_NGINX_IMPORT_CLIENT_MAX_BODY_SIZE=260m
   VITE_POSTHOG_ENABLED=true
   VITE_POSTHOG_TOKEN=<posthog-project-token>
   VITE_POSTHOG_HOST=https://us.i.posthog.com
@@ -44,6 +45,16 @@ Environment:
 前端 Web 镜像默认使用 `VITE_BASE_PATH=/` 构建静态资源路径，避免深链页面把 JS/CSS 错误解析成相对路径。只有部署到子路径时才需要覆盖这个值。
 
 PostHog 这类浏览器端配置由容器启动脚本写入 `/runtime-config.js`，所以 Sealos 的运行时环境变量会在页面加载时生效；不需要把这些值作为 Docker build args 重新构建镜像。注意优先在前端 App 配置 `VITE_POSTHOG_*` 这组公开浏览器变量。脚本也会兼容读取同一前端容器里的 `POSTHOG_ENABLED`、`POSTHOG_TOKEN`、`POSTHOG_HOST`、`POSTHOG_DEBUG` 作为兜底；后端 App 如需采集服务端事件则仍应单独配置 `POSTHOG_*`。
+
+## 上传大小与网关限制
+
+后端资料上传由 `ingest.max_upload_size_mb` 控制；默认值来自 `backend/app/shared/infra/settings/defaults.py` 的 `DEFAULT_INGEST_MAX_UPLOAD_SIZE_MB`。普通资料上传的业务上限只改这个默认变量或运行时 settings，不需要同步修改 Nginx。
+
+前端 Nginx 对资料上传只保留传输天花板，默认复用 `AITEACHME_NGINX_IMPORT_CLIENT_MAX_BODY_SIZE=260m`，避免业务上限调到 20MB 以上时被旧的 10m/12m 网关配置提前截断。后端会分块读取上传内容，超过 `ingest.max_upload_size_mb` 会立即返回 413。
+
+课程包导入 `.atmx` 走 `/api/v1/courses/import`，后端包大小上限为 256MB；Nginx 使用 `AITEACHME_NGINX_IMPORT_CLIENT_MAX_BODY_SIZE=260m`。
+
+如果 Sealos 公网访问层、Ingress、Cloudflare 或其他网关也配置了请求体大小限制，需要同步放大到至少 260m。否则请求会先被外层网关拦截，后端和容器内 Nginx 的设置都不会生效。
 
 ## GitHub Actions 配置
 
@@ -59,6 +70,7 @@ Sealos 部署常量维护在 `.github/workflows/deploy.yml` 的 `env` 中，例�
 
 ```text
 AITEACHME_API_UPSTREAM=<backend-internal-upstream>
+AITEACHME_NGINX_IMPORT_CLIENT_MAX_BODY_SIZE=260m
 FRONTEND_PUBLIC_URL=https://<frontend-domain>
 SEALOS_FRONTEND_DEPLOYMENT=<frontend-deployment>
 SEALOS_NAMESPACE=<namespace>
@@ -89,6 +101,13 @@ API 反代：
 
 ```bash
 curl https://<frontend-domain>/api/health
+```
+
+上传链路 body limit：
+
+```bash
+eval "$(python backend/scripts/resolve_upload_probe.py)"
+python backend/scripts/smoke_upload_body.py --url https://<frontend-domain>/api/v1/files/upload --expected-status 422 --bytes "${upload_probe_bytes}" --label "${upload_probe_label}"
 ```
 
 静态资源缓存：

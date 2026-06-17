@@ -35,6 +35,7 @@ from app.workflows.ingest.intake.parse_dispatch import _start_parse_for_files
 
 
 DEFAULT_PARSE_REQUEST_SIGNATURE = "default"
+_UPLOAD_READ_CHUNK_BYTES = 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -193,15 +194,20 @@ async def _read_uploads(files: list[UploadFile], *, max_size_mb: int) -> list[_P
     total_bytes = 0
     pending_uploads: list[_PendingUpload] = []
     for file in files:
-        content = await file.read()
-        total_bytes += len(content)
-        if total_bytes > max_total_bytes:
-            raise FileTooLargeError(max_size_mb)
+        chunks: list[bytes] = []
+        while True:
+            chunk = await file.read(_UPLOAD_READ_CHUNK_BYTES)
+            if not chunk:
+                break
+            total_bytes += len(chunk)
+            if total_bytes > max_total_bytes:
+                raise FileTooLargeError(max_size_mb)
+            chunks.append(chunk)
         pending_uploads.append(
             _PendingUpload(
                 filename=file.filename or "unknown",
                 content_type=file.content_type,
-                content=content,
+                content=b"".join(chunks),
             )
         )
     return pending_uploads
