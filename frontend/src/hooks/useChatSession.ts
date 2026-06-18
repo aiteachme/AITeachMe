@@ -132,6 +132,8 @@ interface UseChatSessionOptions {
   enabled?: boolean;
   loadWithoutSession?: boolean;
   preserveMessagesWithoutSession?: boolean;
+  abortOnUnmount?: boolean;
+  abortOnCourseChange?: boolean;
   onSessionResolved?: (sessionId: string) => void;
   onMessageStart?: (payload: ChatMessageLifecyclePayload) => void;
   onMessageSessionResolved?: (payload: ChatMessageSessionPayload) => void;
@@ -147,6 +149,8 @@ export function useChatSession(courseId: string, options: UseChatSessionOptions 
   const enabled = options.enabled ?? true;
   const loadWithoutSession = options.loadWithoutSession ?? true;
   const preserveMessagesWithoutSession = options.preserveMessagesWithoutSession ?? false;
+  const abortOnUnmount = options.abortOnUnmount ?? true;
+  const abortOnCourseChange = options.abortOnCourseChange ?? true;
   const onSessionResolved = options.onSessionResolved;
   const onMessageStart = options.onMessageStart;
   const onMessageSessionResolved = options.onMessageSessionResolved;
@@ -166,6 +170,8 @@ export function useChatSession(courseId: string, options: UseChatSessionOptions 
   const streamSeqRef = useRef(0);
   const activeStreamSessionIdRef = useRef<string | null>(null);
   const messagesSessionIdRef = useRef<string | null>(sessionId);
+  const abortOnUnmountRef = useRef(abortOnUnmount);
+  const abortOnCourseChangeRef = useRef(abortOnCourseChange);
 
   function setStreamingState(nextValue: boolean) {
     isStreamingRef.current = nextValue;
@@ -176,6 +182,11 @@ export function useChatSession(courseId: string, options: UseChatSessionOptions 
     messagesSessionIdRef.current = nextSessionId;
     setMessagesSessionIdState(nextSessionId);
   }
+
+  useEffect(() => {
+    abortOnUnmountRef.current = abortOnUnmount;
+    abortOnCourseChangeRef.current = abortOnCourseChange;
+  }, [abortOnCourseChange, abortOnUnmount]);
 
   useEffect(() => {
     let cancelled = false;
@@ -257,13 +268,17 @@ export function useChatSession(courseId: string, options: UseChatSessionOptions 
 
   useEffect(() => {
     return () => {
-      abortControllerRef.current?.abort();
+      if (abortOnUnmountRef.current) {
+        abortControllerRef.current?.abort();
+      }
     };
   }, []);
 
   useEffect(() => {
     return () => {
-      abortControllerRef.current?.abort();
+      if (abortOnCourseChangeRef.current) {
+        abortControllerRef.current?.abort();
+      }
     };
   }, [courseId]);
 

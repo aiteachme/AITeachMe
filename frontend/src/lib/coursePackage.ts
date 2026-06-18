@@ -89,7 +89,6 @@ export async function importCoursePackage(file: File, newName?: string): Promise
     method: "POST",
     url: "/api/v1/courses/import",
     data: formData,
-    headers: { "Content-Type": "multipart/form-data" },
     timeout: LONG_RUNNING_API_TIMEOUT_MS,
   });
   if (!response.data) {

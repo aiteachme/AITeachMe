@@ -9,6 +9,8 @@
  * Create a new planner session and generate the first plan draft.
  */
 export interface BuildPlannerCreateRequest {
+  /** Optional existing planner session ID to reuse. When omitted, the backend reuses the latest course planner session or creates a new one. */
+  planner_session_id?: string | null;
   /** Optional uploaded file IDs to bind to the planner session. Files may still be parsing; planner prefers parsed content and falls back to filenames/metadata when needed. */
   file_ids?: string[] | null;
   /** Learner prompt or requested document target. */

@@ -47,7 +47,6 @@ const TYPE_ORDER = [
   "skill",
   "misconception",
   "application_case",
-  "resource",
 ];
 
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));

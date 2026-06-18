@@ -79,6 +79,7 @@ export function KnowledgeGraphSidePanel({
       queryClient.invalidateQueries({ queryKey: ["knowledge-overview", courseId] });
       queryClient.invalidateQueries({ queryKey: ["graph-node-detail", courseId] });
       queryClient.invalidateQueries({ queryKey: ["graph-node-list", courseId] });
+      queryClient.invalidateQueries({ queryKey: ["graph-initial", courseId] });
       queryClient.invalidateQueries({ queryKey: ["graph-subgraph", courseId] });
       queryClient.invalidateQueries({ queryKey: ["docgen-content", courseId] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-doc-build", courseId] });
@@ -104,6 +105,7 @@ export function KnowledgeGraphSidePanel({
     queryClient.invalidateQueries({ queryKey: buildKnowledgeOverviewQueryKey(courseId, overviewInclude) });
     queryClient.invalidateQueries({ queryKey: ["knowledge-overview", courseId] });
     queryClient.invalidateQueries({ queryKey: ["graph-node-list", courseId] });
+    queryClient.invalidateQueries({ queryKey: ["graph-initial", courseId] });
     queryClient.invalidateQueries({ queryKey: ["graph-subgraph", courseId] });
     queryClient.invalidateQueries({ queryKey: ["graph-node-detail", courseId] });
   }, [courseId, graphStatus, overviewInclude, queryClient]);
@@ -115,6 +117,7 @@ export function KnowledgeGraphSidePanel({
       queryClient.invalidateQueries({ queryKey: buildKnowledgeOverviewQueryKey(courseId, overviewInclude) });
       queryClient.invalidateQueries({ queryKey: ["knowledge-overview", courseId] });
       queryClient.invalidateQueries({ queryKey: ["graph-node-list", courseId] });
+      queryClient.invalidateQueries({ queryKey: ["graph-initial", courseId] });
       queryClient.invalidateQueries({ queryKey: ["graph-subgraph", courseId] });
     },
   });
@@ -277,9 +280,6 @@ export function KnowledgeGraphSidePanel({
             <KnowledgeGraphView
               course={courseId}
               stats={overview?.stats ?? null}
-              canBuildGraph={!graphIsActive && !graphBuildMutation.isPending}
-              buildGraphPending={graphBuildMutation.isPending}
-              onBuildGraph={() => graphBuildMutation.mutate()}
               onSourceRefClick={onSourceRefClick}
             />
           </Suspense>

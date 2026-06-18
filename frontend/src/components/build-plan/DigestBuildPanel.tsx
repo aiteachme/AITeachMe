@@ -523,6 +523,7 @@ export function KnowledgeGraphBuildProgress({
   }
 
   const metrics = state.activeLane.metrics ?? {};
+  const docgenMetrics = data?.docgen?.metrics ?? {};
   const graphMetrics = data?.graph_metrics ?? null;
   const processedChunks = Number(graphMetrics?.processed_chunks ?? metrics.processed_chunks ?? 0);
   const docSyncSections = Number(graphMetrics?.doc_sync_section_count ?? metrics.doc_sync_section_count ?? 0);
@@ -535,6 +536,10 @@ export function KnowledgeGraphBuildProgress({
   const backboneEdgeCount = Number(graphMetrics?.backbone_edge_count ?? metrics.backbone_edge_count ?? 0);
   const deprecatedUnitCount = Number(graphMetrics?.deprecated_unit_count ?? metrics.deprecated_unit_count ?? 0);
   const deprecatedEdgeCount = Number(graphMetrics?.deprecated_edge_count ?? metrics.deprecated_edge_count ?? 0);
+  const prePublishPersisted = Number(docgenMetrics.docgen_kg_pre_publish_persisted ?? 0) > 0;
+  const prePublishUnitCount = Number(docgenMetrics.docgen_kg_pre_publish_unit_count ?? 0);
+  const prePublishEdgeCount = Number(docgenMetrics.docgen_kg_pre_publish_edge_count ?? 0);
+  const prePublishVisible = prePublishPersisted && prePublishUnitCount > 0;
   const tone = state.isFailed
     ? "border-rose-200 bg-rose-50 dark:border-rose-500/30 dark:bg-rose-500/10"
     : state.isCompleted
@@ -571,8 +576,10 @@ export function KnowledgeGraphBuildProgress({
           style={{ width: `${state.progress}%` }}
         />
       </div>
-      {(processedChunks > 0 || docSyncSections > 0 || unitChanges > 0 || edgeChanges > 0 || sourceRefCount > 0 || revisionNo > 0 || state.activeLane.started_at) && (
+      {(processedChunks > 0 || docSyncSections > 0 || unitChanges > 0 || edgeChanges > 0 || sourceRefCount > 0 || revisionNo > 0 || prePublishVisible || state.activeLane.started_at) && (
         <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+          {prePublishVisible ? <span>预发布知识点 {prePublishUnitCount} 个已可见</span> : null}
+          {prePublishVisible && prePublishEdgeCount > 0 ? <span>预发布关系 {prePublishEdgeCount} 条</span> : null}
           {processedChunks > 0 ? <span>已处理 {processedChunks} 个片段</span> : null}
           {docSyncSections > 0 ? <span>已同步 {docSyncSections} 个章节段落</span> : null}
           {unitChanges > 0 ? <span>知识点更新 {unitChanges} 个</span> : null}

@@ -8,6 +8,7 @@ import {
   BookOpen,
   Check,
   CheckCircle2,
+  Copy,
   FileCode,
   FileImage,
   FileText,
@@ -15,6 +16,7 @@ import {
   FolderOpen,
   Loader2,
   Paperclip,
+  Pencil,
   RefreshCw,
   Search,
   Square,
@@ -106,12 +108,21 @@ const TRANSIENT_PLANNER_ERROR_SNIPPETS = [
   "AuthenticationError",
   "apikey-error",
 ];
+const PLANNER_CARD_CLASSNAME =
+  "rounded-lg rounded-tl-sm bg-white px-5 py-5 shadow-[0_10px_34px_rgba(15,23,42,0.06)] ring-1 ring-zinc-200/65 dark:bg-slate-950 dark:ring-slate-800";
 
 interface BuildPlanLocationState {
   initialFiles?: File[];
   initialPrompt?: string;
   autoStart?: boolean;
   model?: string | null;
+}
+
+type PlannerPromptSource = "composer" | "message_edit";
+
+interface SubmitPlannerPromptOptions {
+  source?: PlannerPromptSource;
+  replaceMessageId?: string;
 }
 
 let messageCounter = 0;
@@ -278,11 +289,11 @@ function plannerChapters(plan: BuildPlannerPlanResponse | null | undefined): Pla
 }
 
 function plannerPlanText(plan: BuildPlannerPlanResponse | null | undefined): string {
-  return String(plannerView(plan)?.plan ?? "").trim();
+  return polishPlannerDisplayText(String(plannerView(plan)?.plan ?? ""));
 }
 
 function plannerSuggestionText(plan: BuildPlannerPlanResponse | null | undefined): string {
-  return String(plannerView(plan)?.suggestion ?? "").trim();
+  return polishPlannerDisplayText(String(plannerView(plan)?.suggestion ?? ""));
 }
 
 function plannerDiagnose(plan: BuildPlannerPlanResponse | null | undefined): PlannerDiagnosticQuestion[] {
@@ -374,9 +385,13 @@ function buildPlannerDiagnosisPrompt(
   for (const item of plannerDiagnose(plan)) {
     const question = String(item.question ?? "").trim();
     const answer = String(answers[question] ?? "").trim();
+    const purpose = String(item.purpose ?? "").trim();
     if (question && answer) {
       lines.push(`问题：${question}`);
       lines.push(`回答：${answer}`);
+      if (purpose) {
+        lines.push(`落点：${purpose}`);
+      }
     }
   }
 
@@ -452,7 +467,7 @@ function settleAbortedPlannerMessages(
   partialContent: string,
   systemContent: string,
 ): ChatMessage[] {
-  const content = partialContent.trim();
+  const content = polishPlannerDisplayText(partialContent);
   const next = messages.filter(
     (message) => !(message.role === "assistant" && message.streaming && !message.plan),
   );
@@ -462,6 +477,59 @@ function settleAbortedPlannerMessages(
   }
   next.push(createMessage("system", systemContent));
   return next;
+}
+
+function replaceUserMessageAndDropFollowing(
+  messages: ChatMessage[],
+  messageId: string,
+  content: string,
+): ChatMessage[] {
+  const baseMessages = sanitizePlannerMessages(messages);
+  const targetIndex = baseMessages.findIndex((message) => message.id === messageId && message.role === "user");
+  if (targetIndex < 0) {
+    return appendUserMessage(baseMessages, content);
+  }
+  const editedMessage: ChatMessage = {
+    ...baseMessages[targetIndex],
+    content,
+    timestamp: new Date().toISOString(),
+  };
+  return [
+    ...baseMessages.slice(0, targetIndex),
+    editedMessage,
+  ];
+}
+
+function plannerMessageCopyText(message: ChatMessage): string {
+  if (message.role === "assistant" && message.plan) {
+    return [
+      message.content,
+      plannerPlanText(message.plan),
+      plannerSuggestionText(message.plan),
+    ]
+      .map((value) => polishPlannerDisplayText(value))
+      .filter(Boolean)
+      .join("\n\n");
+  }
+  return polishPlannerDisplayText(message.content);
+}
+
+async function copyTextToClipboard(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  textarea.style.top = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  document.body.removeChild(textarea);
 }
 
 function readPersistedPlannerState(courseId: string): PersistedPlannerState | null {
@@ -643,11 +711,20 @@ function formatPlannerNodeLabel(stepName: string): string {
   }
 }
 
-function polishPlannerStatusText(text: string): string {
+function polishPlannerDisplayText(text: string): string {
   return text
+    .replace(/\r/g, "")
+    .replace(/(^|\n)\s*planning_note\s*[:：]\s*/gi, "$1学习边界：")
+    .replace(/(^|\n)\s*suggestion\s*[:：]\s*/gi, "$1可调整项：")
+    .replace(/(^|\n)\s*plan\s*[:：]\s*/gi, "$1")
     .replace(/规划判断/g, "学习边界")
     .replace(/planning_note/gi, "学习边界")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+function polishPlannerStatusText(text: string): string {
+  return polishPlannerDisplayText(text);
 }
 
 function resolvePlannerStatusText(payload: unknown): string {
@@ -875,11 +952,22 @@ function PlannerStreamingBubble({ preview, statusText, plan }: PlannerStreamingB
   return (
     <div
       aria-live="polite"
-      className="planner-stream-bubble px-1 py-1"
+      className={`planner-stream-bubble ${PLANNER_CARD_CLASSNAME}`}
     >
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-        <span className="font-semibold text-zinc-950 dark:text-slate-100">正在规划</span>
-        <span className="min-w-0 flex-1 truncate text-zinc-500 dark:text-slate-400">{currentStatus}</span>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-zinc-950 text-white dark:bg-slate-100 dark:text-slate-950">
+            <Loader2 className="h-4 w-4 animate-spin" />
+          </span>
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-zinc-950 dark:text-slate-100">正在规划</div>
+            <div className="truncate text-xs leading-5 text-zinc-500 dark:text-slate-400">{currentStatus}</div>
+          </div>
+        </div>
+        <span className="inline-flex items-center gap-1.5 rounded-md bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-700 dark:bg-slate-800 dark:text-slate-300">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          生成中
+        </span>
       </div>
 
       {trimmedPreview ? (
@@ -941,8 +1029,8 @@ function PlannerOutlineCard({
   const diagnoseItems = plannerDiagnose(plan).slice(0, 5);
   const view = plannerView(plan);
   const planText = plannerPlanText(plan);
-  const planningNoteText = String(view?.planning_note ?? "").trim();
-  const fallbackIntroText = String(contentFallback ?? "").trim();
+  const planningNoteText = polishPlannerDisplayText(String(view?.planning_note ?? ""));
+  const fallbackIntroText = polishPlannerDisplayText(String(contentFallback ?? ""));
   const isDiagnosisIntroFallback =
     /^前置诊断\b/u.test(fallbackIntroText) ||
     /^诊断问题\b/u.test(fallbackIntroText) ||
@@ -981,20 +1069,54 @@ function PlannerOutlineCard({
   const trimmedStreamingPreview = (streamingPreview ?? "").trim();
   const shouldShowPlanIntro = Boolean(introText) || !visibleDiagnoseItems.length;
   const shouldShowResolvedPlan = !diagnosisPending && !inlineStreaming;
+  const stageDescription = inlineStreaming
+    ? "正在生成正式方案"
+    : diagnosisPending
+      ? "先完成前置诊断，方案会按选择继续细化"
+      : shouldShowResolvedPlan
+        ? "方案已生成，可继续调整或开始构建"
+        : "正在整理可确认方案";
+  const stageBadge = inlineStreaming
+    ? (
+      <span className="inline-flex items-center gap-1.5 rounded-md bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-700 dark:bg-slate-800 dark:text-slate-300">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        生成中
+      </span>
+    )
+    : diagnosisPending
+      ? (
+        <span className="inline-flex items-center gap-1.5 rounded-md bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+          待诊断
+        </span>
+      )
+      : (
+        <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+          <CheckCircle2 className="h-3.5 w-3.5" />
+          可构建
+        </span>
+      );
 
   return (
-    <article className="rounded-lg bg-white px-5 py-5 shadow-[0_10px_34px_rgba(15,23,42,0.06)] ring-1 ring-zinc-200/65 dark:bg-slate-950 dark:ring-slate-800">
-      <div>
-        {courseName ? (
-          <div className="mb-2 inline-flex items-center gap-1.5 text-xs font-medium text-zinc-500 dark:text-slate-400">
-            <BookOpen className="h-3.5 w-3.5" />
-            {courseName}
+    <article className={PLANNER_CARD_CLASSNAME}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-zinc-950 text-white dark:bg-slate-100 dark:text-slate-950">
+            <BookOpen className="h-4 w-4" />
+          </span>
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold text-zinc-950 dark:text-slate-100">
+              {courseName || "课程方案"}
+            </div>
+            <div className="truncate text-xs leading-5 text-zinc-500 dark:text-slate-400">
+              {stageDescription}
+            </div>
           </div>
-        ) : null}
+        </div>
+        {stageBadge}
       </div>
 
       {shouldShowPlanIntro ? (
-        <div className={courseName ? "mt-3" : ""}>
+        <div className="mt-4">
           {introText ? (
             planText ? (
               <p className="text-[16px] font-medium leading-7 text-zinc-950 dark:text-slate-100">
@@ -1025,7 +1147,7 @@ function PlannerOutlineCard({
       ) : null}
 
       {visibleDiagnoseItems.length ? (
-        <div className={courseName ? "mt-5" : "mt-0"}>
+        <div className="mt-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2">
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-zinc-950 text-white dark:bg-slate-100 dark:text-slate-950">
@@ -1670,7 +1792,7 @@ async function streamPlannerSession(
 
 async function createPlannerSessionStream(
   course: string,
-  payload: { file_ids: string[]; user_prompt: string; model?: string },
+  payload: { file_ids: string[]; user_prompt: string; model?: string; planner_session_id?: string | null },
   options: {
     signal?: AbortSignal;
     onStatus?: (payload: unknown) => void;
@@ -1719,7 +1841,7 @@ function pickAssistantReply(response: BuildPlannerSessionResponse, fallbackConte
     .reverse()
     .find((turn) => turn.role === "assistant" && turn.content.trim());
 
-  return assistantTurn?.content.trim() || plannerPlanText(response.latest_plan) || fallbackContent;
+  return polishPlannerDisplayText(assistantTurn?.content ?? "") || plannerPlanText(response.latest_plan) || fallbackContent;
 }
 
 export function BuildPlanPage() {
@@ -1766,6 +1888,9 @@ export function BuildPlanPage() {
   const [plannerStreamingPlan, setPlannerStreamingPlan] = useState<BuildPlannerPlanResponse | null>(null);
   const [, setPlannerStreamingSteps] = useState<PlannerStreamStepItem[]>([]);
   const [diagnosisGate, setDiagnosisGate] = useState<PlannerDiagnosisGate | null>(null);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editingMessageValue, setEditingMessageValue] = useState("");
 
   const handlePlannerStatusPayload = useCallback((payload: unknown) => {
     setPlannerStreamingStatus(resolvePlannerStatusText(payload));
@@ -2072,6 +2197,17 @@ export function BuildPlanPage() {
   }, [currentPlan, diagnosisGate, inputValue, messages, plannerNeedsRefresh, plannerSessionId, courseId]);
 
   useEffect(() => {
+    if (!editingMessageId) {
+      return;
+    }
+    if (messages.some((message) => message.id === editingMessageId)) {
+      return;
+    }
+    setEditingMessageId(null);
+    setEditingMessageValue("");
+  }, [editingMessageId, messages]);
+
+  useEffect(() => {
     if (hydratedCourseRef.current !== courseId || !currentPlan) {
       return;
     }
@@ -2134,7 +2270,12 @@ export function BuildPlanPage() {
         });
         const response = await createPlannerSessionStream(
           courseId,
-          { file_ids: plannerEffectiveFileIds, user_prompt: prompt, model: selectedModel },
+          {
+            file_ids: plannerEffectiveFileIds,
+            user_prompt: prompt,
+            model: selectedModel,
+            planner_session_id: plannerSessionIdRef.current,
+          },
           {
             signal: controller.signal,
             onStatus: (payload) => {
@@ -2142,7 +2283,7 @@ export function BuildPlanPage() {
             },
             onToken: (token) => {
               plannerStreamingRawRef.current += token;
-              setPlannerStreamingPreview(plannerStreamingRawRef.current.replace(/\r/g, "").trim());
+              setPlannerStreamingPreview(polishPlannerDisplayText(plannerStreamingRawRef.current));
             },
           },
         );
@@ -2471,7 +2612,7 @@ export function BuildPlanPage() {
       diagnosisMode: "start" | "resolve" | "keep" = "keep",
     ) => {
       const persistedContent = pickAssistantReply(response, "");
-      const resolvedContent = persistedContent || contentOverride?.trim() || fallbackContent;
+      const resolvedContent = polishPlannerDisplayText(persistedContent || contentOverride || fallbackContent);
       const latestPlan = usablePlannerPlan(response.latest_plan);
       const pendingId = plannerPendingMessageIdRef.current;
       setPlannerSessionId(response.session_id);
@@ -2648,7 +2789,7 @@ export function BuildPlanPage() {
           },
           onToken: (token) => {
             plannerStreamingRawRef.current += token;
-            setPlannerStreamingPreview(plannerStreamingRawRef.current.replace(/\r/g, "").trim());
+            setPlannerStreamingPreview(polishPlannerDisplayText(plannerStreamingRawRef.current));
           },
           diagnosis: {
             answers: diagnosisAnswers,
@@ -2755,16 +2896,20 @@ export function BuildPlanPage() {
     void submitDiagnosisRevision({ skip: true });
   }, [submitDiagnosisRevision]);
 
-  const handleSend = useCallback(async () => {
+  const submitPlannerPrompt = useCallback(async (
+    rawText: string,
+    options: SubmitPlannerPromptOptions = {},
+  ) => {
     if (plannerStreaming) {
-      handleStopPlannerStream();
+      logPlannerDebug("send_plan_message_blocked", { reason: "planner_streaming" });
       return;
     }
     if (plannerStreamInFlightRef.current) {
       logPlannerDebug("send_plan_message_blocked", { reason: "planner_in_flight" });
       return;
     }
-    const text = inputValue.trim();
+    const text = rawText.trim();
+    const source = options.source ?? "composer";
     logPlannerDebug("click_send_plan_message", {
       courseId,
       hasText: Boolean(text),
@@ -2776,6 +2921,7 @@ export function BuildPlanPage() {
       plannerNeedsRefresh,
       plannerFileCount: plannerFileIds.length,
       readyFileCount: readyFileIds.length,
+      source,
     });
     if (isDiagnosisPending) {
       logPlannerDebug("send_plan_message_blocked", { reason: "diagnosis_pending" });
@@ -2788,26 +2934,37 @@ export function BuildPlanPage() {
       return;
     }
 
-    const shouldCreateSession = !plannerSessionId || !hasUsablePlannerPlan(currentPlan) || plannerNeedsRefresh;
+    const effectivePlannerSessionId = plannerSessionId;
+    const effectiveCurrentPlan = currentPlan;
+    const shouldCreateSession =
+      !effectivePlannerSessionId ||
+      !hasUsablePlannerPlan(effectiveCurrentPlan) ||
+      plannerNeedsRefresh;
     logPlannerDebug("send_plan_message_start", {
       courseId,
       mode: shouldCreateSession ? "create" : "revise",
-      plannerSessionId,
+      plannerSessionId: effectivePlannerSessionId,
       effectiveFileCount: plannerEffectiveFileIds.length,
+      source,
     });
     trackCourseAnalyticsEvent("course_plan_requested", courseId, {
       file_count: plannerEffectiveFileIds.length,
       mode: shouldCreateSession ? "create" : "revise",
       ready_file_count: readyFileIds.length,
-      source: "composer",
+      source,
     });
     markPlannerLocalInteraction();
     const pendingAssistantId = nextMessageId();
     plannerPendingMessageIdRef.current = pendingAssistantId;
-    setMessages((prev) => [
-      ...appendUserMessage(prev, text),
-      createStreamingAssistantMessage(pendingAssistantId),
-    ]);
+    setMessages((prev) => {
+      const baseMessages = options.replaceMessageId
+        ? replaceUserMessageAndDropFollowing(prev, options.replaceMessageId, text)
+        : appendUserMessage(prev, text);
+      return [
+        ...baseMessages,
+        createStreamingAssistantMessage(pendingAssistantId),
+      ];
+    });
     setInputValue("");
     plannerStreamInFlightRef.current = true;
     setPlannerStreaming(true);
@@ -2832,6 +2989,7 @@ export function BuildPlanPage() {
             file_ids: plannerEffectiveFileIds,
             user_prompt: text,
             model: toChatRequestModel(chatModel),
+            planner_session_id: effectivePlannerSessionId,
           },
           {
             signal: controller.signal,
@@ -2840,7 +2998,7 @@ export function BuildPlanPage() {
             },
             onToken: (token) => {
               plannerStreamingRawRef.current += token;
-              setPlannerStreamingPreview(plannerStreamingRawRef.current.replace(/\r/g, "").trim());
+              setPlannerStreamingPreview(polishPlannerDisplayText(plannerStreamingRawRef.current));
             },
           },
         );
@@ -2860,14 +3018,17 @@ export function BuildPlanPage() {
           file_count: plannerEffectiveFileIds.length,
           mode: "create",
           ready_file_count: readyFileIds.length,
-          source: "composer",
+          source,
         });
         return;
       }
 
+      if (!effectivePlannerSessionId) {
+        throw new Error("缺少规划会话，请重新生成方案。");
+      }
       const response = await revisePlannerSessionStream(
         courseId,
-        plannerSessionId,
+        effectivePlannerSessionId,
         text,
         toChatRequestModel(chatModel),
         {
@@ -2877,7 +3038,7 @@ export function BuildPlanPage() {
           },
           onToken: (token) => {
             plannerStreamingRawRef.current += token;
-            setPlannerStreamingPreview(plannerStreamingRawRef.current.replace(/\r/g, "").trim());
+            setPlannerStreamingPreview(polishPlannerDisplayText(plannerStreamingRawRef.current));
           },
         },
       );
@@ -2896,14 +3057,14 @@ export function BuildPlanPage() {
         file_count: plannerEffectiveFileIds.length,
         mode: "revise",
         ready_file_count: readyFileIds.length,
-        source: "composer",
+        source,
       });
     } catch (error) {
       if (isAbortError(error)) {
         logPlannerDebug("send_plan_message_aborted", { courseId });
         trackCourseAnalyticsEvent("course_plan_cancelled", courseId, {
           mode: shouldCreateSession ? "create" : "revise",
-          source: "composer",
+          source,
         });
         const partialContent = plannerStreamingRawRef.current.replace(/\r/g, "").trim();
         setMessages((prev) => settleAbortedPlannerMessages(
@@ -2922,7 +3083,7 @@ export function BuildPlanPage() {
       });
       trackCourseAnalyticsEvent("course_plan_failed", courseId, {
         mode: shouldCreateSession ? "create" : "revise",
-        source: "composer",
+        source,
       });
       setMessages((prev) => {
         const next = plannerPendingMessageIdRef.current
@@ -2949,8 +3110,6 @@ export function BuildPlanPage() {
     chatModel,
     currentPlan,
     handlePlannerStatusPayload,
-    handleStopPlannerStream,
-    inputValue,
     isBuilding,
     isDiagnosisPending,
     isPlannerPending,
@@ -2961,9 +3120,69 @@ export function BuildPlanPage() {
     plannerStreaming,
     readyFileIds.length,
     markPlannerLocalInteraction,
-    submitDiagnosisRevision,
     courseId,
   ]);
+
+  const handleSend = useCallback(async () => {
+    if (plannerStreaming) {
+      handleStopPlannerStream();
+      return;
+    }
+    await submitPlannerPrompt(inputValue, { source: "composer" });
+  }, [handleStopPlannerStream, inputValue, plannerStreaming, submitPlannerPrompt]);
+
+  const canEditPlannerMessages = !isBuilding && !isPlannerPending && !isDiagnosisPending;
+
+  const handleCopyMessage = useCallback(async (message: ChatMessage) => {
+    const text = plannerMessageCopyText(message);
+    if (!text) {
+      return;
+    }
+    try {
+      await copyTextToClipboard(text);
+      setCopiedMessageId(message.id);
+      toast({
+        title: "已复制",
+        variant: "success",
+        duration: 1400,
+      });
+      window.setTimeout(() => {
+        setCopiedMessageId((current) => current === message.id ? null : current);
+      }, 1400);
+    } catch {
+      toast({
+        title: "复制失败",
+        description: "浏览器暂时无法访问剪贴板。",
+        variant: "error",
+      });
+    }
+  }, [toast]);
+
+  const handleStartEditMessage = useCallback((message: ChatMessage) => {
+    if (message.role !== "user" || !canEditPlannerMessages) {
+      return;
+    }
+    setEditingMessageId(message.id);
+    setEditingMessageValue(message.content);
+  }, [canEditPlannerMessages]);
+
+  const handleCancelEditMessage = useCallback(() => {
+    setEditingMessageId(null);
+    setEditingMessageValue("");
+  }, []);
+
+  const handleSubmitEditedMessage = useCallback(async (messageId: string) => {
+    const text = editingMessageValue.trim();
+    if (!text || !canEditPlannerMessages) {
+      return;
+    }
+    setEditingMessageId(null);
+    setEditingMessageValue("");
+    await submitPlannerPrompt(text, {
+      source: "message_edit",
+      replaceMessageId: messageId,
+    });
+  }, [canEditPlannerMessages, editingMessageValue, submitPlannerPrompt]);
 
   const handleConfirmBuild = useCallback(async () => {
     logPlannerDebug("click_confirm_build", {
@@ -3144,8 +3363,8 @@ export function BuildPlanPage() {
         <div className="relative z-10 flex min-h-0 w-full flex-1 flex-col">
           <CoursePagePillTitle icon={Sparkles} label="方案规划" href={courseId ? buildCoursePath(courseId, "nav") : undefined} />
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 md:px-8 lg:px-16">
-          <div className="mx-auto max-w-3xl space-y-3">
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-6 md:px-8 md:pt-8 lg:px-16">
+          <div className="mx-auto max-w-3xl space-y-5">
             {shouldShowPlannerEmptyState ? (
               <div className="flex min-h-[calc(100dvh-18rem)] items-center justify-center py-12">
                 <div className="max-w-xl text-center">
@@ -3177,34 +3396,111 @@ export function BuildPlanPage() {
               </div>
             ) : null}
 
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={
-                  message.role === "user"
-                    ? "flex justify-end"
-                    : message.role === "system"
-                      ? "flex justify-center"
-                      : "flex gap-3"
-                }
-              >
-                {message.role === "assistant" ? (
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-50 p-1 shadow-sm ring-1 ring-slate-200/50 dark:bg-slate-900 dark:ring-slate-800">
-                    <img src={LOGO_SRC} alt="AI" className="h-full w-full object-contain" />
-                  </div>
-                ) : null}
+            {messages.map((message) => {
+              const isUserMessage = message.role === "user";
+              const isEditingMessage = isUserMessage && editingMessageId === message.id;
+              const copyableText = plannerMessageCopyText(message);
+              const isCopied = copiedMessageId === message.id;
 
+              return (
                 <div
+                  key={message.id}
                   className={
-                    message.role === "user"
-                      ? "max-w-[80%] rounded-lg rounded-tr-sm bg-zinc-900 px-4 py-3 text-sm text-white shadow-sm"
+                    isUserMessage
+                      ? "group/message flex justify-end"
                       : message.role === "system"
-                        ? "rounded-full bg-zinc-100 dark:bg-slate-800 px-3 py-1 text-xs text-zinc-500 dark:text-slate-400"
-                        : "min-w-0 flex-1 space-y-2"
+                        ? "flex justify-center"
+                        : "group/message flex gap-3"
                   }
                 >
                   {message.role === "assistant" ? (
-                    <>
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-50 p-1 shadow-sm ring-1 ring-slate-200/50 dark:bg-slate-900 dark:ring-slate-800">
+                      <img src={LOGO_SRC} alt="AI" className="h-full w-full object-contain" />
+                    </div>
+                  ) : null}
+
+                  {isUserMessage ? (
+                    <div className="flex max-w-[80%] flex-col items-end gap-1.5">
+                      {isEditingMessage ? (
+                        <form
+                          className="w-full min-w-[min(32rem,80vw)] rounded-lg rounded-tr-sm border border-zinc-200 bg-white p-2 shadow-sm dark:border-slate-800 dark:bg-slate-950"
+                          onSubmit={(event) => {
+                            event.preventDefault();
+                            void handleSubmitEditedMessage(message.id);
+                          }}
+                        >
+                          <textarea
+                            autoFocus
+                            value={editingMessageValue}
+                            onChange={(event) => setEditingMessageValue(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                                event.preventDefault();
+                                void handleSubmitEditedMessage(message.id);
+                              }
+                              if (event.key === "Escape") {
+                                event.preventDefault();
+                                handleCancelEditMessage();
+                              }
+                            }}
+                            rows={3}
+                            className="max-h-44 min-h-24 w-full resize-y rounded-md border-0 bg-zinc-50 px-3 py-2 text-sm leading-6 text-zinc-900 outline-none ring-1 ring-zinc-200 transition focus:bg-white focus:ring-2 focus:ring-zinc-900/15 dark:bg-slate-900 dark:text-slate-100 dark:ring-slate-800 dark:focus:bg-slate-950 dark:focus:ring-slate-100/20"
+                          />
+                          <div className="mt-2 flex items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={handleCancelEditMessage}
+                              className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 focus:outline-none focus:ring-4 focus:ring-zinc-900/10 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                              取消
+                            </button>
+                            <button
+                              type="submit"
+                              disabled={!editingMessageValue.trim() || !canEditPlannerMessages}
+                              className="inline-flex h-8 items-center gap-1.5 rounded-md bg-zinc-900 px-3 text-xs font-semibold text-white transition hover:bg-zinc-800 focus:outline-none focus:ring-4 focus:ring-zinc-900/10 disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-400 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
+                            >
+                              <Check className="h-3.5 w-3.5" />
+                              保存并重发
+                            </button>
+                          </div>
+                        </form>
+                      ) : (
+                        <div className="whitespace-pre-wrap break-words rounded-lg rounded-tr-sm bg-zinc-900 px-4 py-3 text-sm leading-6 text-white shadow-sm selection:bg-white/25">
+                          {message.content}
+                        </div>
+                      )}
+                      {!isEditingMessage && copyableText ? (
+                        <div className="flex h-7 items-center gap-1 pr-1 opacity-0 transition group-hover/message:opacity-100 focus-within:opacity-100">
+                          <button
+                            type="button"
+                            onClick={() => void handleCopyMessage(message)}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-900 focus:outline-none focus:ring-4 focus:ring-zinc-900/10 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                            title={isCopied ? "已复制" : "复制"}
+                            aria-label={isCopied ? "已复制" : "复制消息"}
+                          >
+                            {isCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                          </button>
+                          {canEditPlannerMessages ? (
+                            <button
+                              type="button"
+                              onClick={() => handleStartEditMessage(message)}
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-900 focus:outline-none focus:ring-4 focus:ring-zinc-900/10 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                              title="编辑并重新生成"
+                              aria-label="编辑并重新生成"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : message.role === "system" ? (
+                    <div className="rounded-full bg-zinc-100 px-3 py-1 text-xs text-zinc-500 dark:bg-slate-800 dark:text-slate-400">
+                      {message.content}
+                    </div>
+                  ) : (
+                    <div className="min-w-0 flex-1 space-y-2">
                       {message.streaming && !message.plan ? (
                         <PlannerStreamingBubble
                           preview={plannerStreamingPreview}
@@ -3214,8 +3510,8 @@ export function BuildPlanPage() {
                       ) : null}
 
                       {!message.plan && message.content ? (
-                        <div className="rounded-lg rounded-tl-sm border border-zinc-100 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3 shadow-sm">
-                          <PlannerPreviewMarkdown markdown={message.content} />
+                        <div className={PLANNER_CARD_CLASSNAME}>
+                          <PlannerPreviewMarkdown markdown={polishPlannerDisplayText(message.content)} />
                         </div>
                       ) : null}
 
@@ -3242,13 +3538,25 @@ export function BuildPlanPage() {
                           onOpenKnowledgeDocs={handleOpenKnowledgeDocs}
                         />
                       ) : null}
-                    </>
-                  ) : (
-                    message.content
+
+                      {!message.streaming && copyableText ? (
+                        <div className="flex h-7 items-center gap-1 pl-1 opacity-0 transition group-hover/message:opacity-100 focus-within:opacity-100">
+                          <button
+                            type="button"
+                            onClick={() => void handleCopyMessage(message)}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-900 focus:outline-none focus:ring-4 focus:ring-zinc-900/10 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                            title={isCopied ? "已复制" : "复制"}
+                            aria-label={isCopied ? "已复制" : "复制消息"}
+                          >
+                            {isCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
                   )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
 
             {shouldShowCurrentPlanFallback && currentPlan ? (
               <div className="flex gap-3">

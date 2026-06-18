@@ -18,6 +18,7 @@ import {
   StickyNote,
   Highlighter,
   Loader2,
+  MessageCircle,
   Sparkles,
   RefreshCw,
   ExternalLink,
@@ -5087,10 +5088,6 @@ export function KnowledgeDocsPage() {
     }
     return next;
   }, [commentThreads]);
-  const commentsForAnchor = useCallback(
-    (anchorId: string) => threadCountByAnchor.get(anchorId) ?? 0,
-    [threadCountByAnchor]
-  );
   const highlightCountByAnchor = useMemo(() => {
     const next = new Map<string, number>();
     for (const item of selectionHighlights) {
@@ -5102,9 +5099,39 @@ export function KnowledgeDocsPage() {
     }
     return next;
   }, [selectionHighlights]);
-  const highlightsForAnchor = useCallback(
-    (anchorId: string) => highlightCountByAnchor.get(anchorId) ?? 0,
-    [highlightCountByAnchor]
+  const tocAnchorDescendantIds = useMemo(() => {
+    const next = new Map<string, string[]>();
+    const visit = (node: TocTreeNode): string[] => {
+      const ids = [node.item.id];
+      for (const child of node.children) {
+        ids.push(...visit(child));
+      }
+      next.set(node.item.id, ids);
+      return ids;
+    };
+    for (const node of tocTree) {
+      visit(node);
+    }
+    return next;
+  }, [tocTree]);
+  const countTocAnchorItems = useCallback(
+    (anchorId: string, source: Map<string, number>) => {
+      const ids = tocAnchorDescendantIds.get(anchorId) ?? [anchorId];
+      let total = 0;
+      for (const id of ids) {
+        total += source.get(id) ?? 0;
+      }
+      return total;
+    },
+    [tocAnchorDescendantIds]
+  );
+  const commentsForTocAnchor = useCallback(
+    (anchorId: string) => countTocAnchorItems(anchorId, threadCountByAnchor),
+    [countTocAnchorItems, threadCountByAnchor]
+  );
+  const highlightsForTocAnchor = useCallback(
+    (anchorId: string) => countTocAnchorItems(anchorId, highlightCountByAnchor),
+    [countTocAnchorItems, highlightCountByAnchor]
   );
 
   useEffect(() => {
@@ -5633,9 +5660,8 @@ export function KnowledgeDocsPage() {
       const hasChildren = node.children.length > 0;
       const isCollapsed = collapsedTocIds.has(item.id);
       const isActive = visibleActiveHeading === item.id;
-      const count = commentsForAnchor(item.id);
-      const highlightCount = highlightsForAnchor(item.id);
-      const hasSelectionMark = count > 0 || highlightCount > 0;
+      const count = commentsForTocAnchor(item.id);
+      const highlightCount = highlightsForTocAnchor(item.id);
       const indent = depth * 12;
       const displayText = splitTocDisplayText(item.text);
 
@@ -5723,13 +5749,22 @@ export function KnowledgeDocsPage() {
                 交互
               </span>
             )}
-            {hasSelectionMark && (
+            {count > 0 && (
+              <span
+                className="mr-1 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-sky-50 text-sky-600 ring-1 ring-sky-100 dark:bg-sky-500/10 dark:text-sky-300 dark:ring-sky-400/15"
+                title={`本章节${node.children.length > 0 ? "或子章节" : ""}有 ${count} 个划选问答`}
+                aria-label={`本章节${node.children.length > 0 ? "或子章节" : ""}有划选问答`}
+              >
+                <MessageCircle className="h-3 w-3" />
+              </span>
+            )}
+            {highlightCount > 0 && (
               <span
                 className="mr-1 inline-flex h-2.5 w-2.5 shrink-0 rounded-full bg-amber-400 shadow-[0_0_0_3px_rgba(251,191,36,0.16)]"
-                title={count > 0 ? "本章节有划选问答" : "本章节有高亮"}
-                aria-label={count > 0 ? "本章节有划选问答" : "本章节有高亮"}
+                title={`本章节${node.children.length > 0 ? "或子章节" : ""}有 ${highlightCount} 个高亮`}
+                aria-label={`本章节${node.children.length > 0 ? "或子章节" : ""}有高亮`}
               >
-                <span className="sr-only">{count > 0 ? "本章节有划选问答" : "本章节有高亮"}</span>
+                <span className="sr-only">本章节有高亮</span>
               </span>
             )}
           </div>
@@ -5743,7 +5778,7 @@ export function KnowledgeDocsPage() {
         </div>
       );
     });
-  }, [collapsedTocIds, commentsForAnchor, handleTocItemClick, highlightsForAnchor, toggleTocCollapse, visibleActiveHeading]);
+  }, [collapsedTocIds, commentsForTocAnchor, handleTocItemClick, highlightsForTocAnchor, toggleTocCollapse, visibleActiveHeading]);
 
   useEffect(() => {
     if (!isTocVisible) {
@@ -6187,76 +6222,58 @@ export function KnowledgeDocsPage() {
 
   if (!hasRenderedMarkdown && docMarkdownQuery.isError) {
     return (
-      <div className="relative flex h-full min-h-0 flex-1 w-full items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
-        <DocLoadErrorState
-          message={getApiErrorMessage(docMarkdownQuery.error, "获取知识文档失败，请稍后重试。")}
-          onRetry={() => {
-            void docMarkdownQuery.refetch();
-          }}
+      <div className="relative flex h-full min-h-0 flex-1 w-full flex-col overflow-hidden bg-white dark:bg-slate-950">
+        <CoursePagePillTitle
+          icon={BookOpen}
+          label="知识库"
+          className="shrink-0 bg-white/92 backdrop-blur-md dark:bg-slate-900/92"
+          href={courseId ? buildCoursePath(courseId, "nav") : undefined}
         />
+        <div className="relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
+          <DocLoadErrorState
+            message={getApiErrorMessage(docMarkdownQuery.error, "获取知识文档失败，请稍后重试。")}
+            onRetry={() => {
+              void docMarkdownQuery.refetch();
+            }}
+          />
+        </div>
       </div>
     );
   }
 
   if (!hasRenderedMarkdown && showDocBuildFailureState) {
     return (
-      <div className="relative flex h-full min-h-0 flex-1 w-full items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
-        <DocLoadErrorState
-          message={buildStatusText}
-          onRetry={() => {
-            void docMarkdownQuery.refetch();
-          }}
+      <div className="relative flex h-full min-h-0 flex-1 w-full flex-col overflow-hidden bg-white dark:bg-slate-950">
+        <CoursePagePillTitle
+          icon={BookOpen}
+          label="知识库"
+          className="shrink-0 bg-white/92 backdrop-blur-md dark:bg-slate-900/92"
+          href={courseId ? buildCoursePath(courseId, "nav") : undefined}
         />
+        <div className="relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
+          <DocLoadErrorState
+            message={buildStatusText}
+            onRetry={() => {
+              void docMarkdownQuery.refetch();
+            }}
+          />
+        </div>
       </div>
     );
   }
 
   if (!hasRenderedMarkdown && showDocEmptyState) {
     return (
-      <div className="relative flex h-full min-h-0 flex-1 w-full items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
-        <DocEmptyState />
-      </div>
-    );
-  }
-
-  if (!hasRenderedMarkdown && showDocLoadingState) {
-    return (
-      <div className="relative flex h-full min-h-0 flex-1 w-full items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
-        <DocLoadingState />
-      </div>
-    );
-  }
-
-  if (!hasRenderedMarkdown && docMarkdownQuery.isError) {
-    return (
-      <div className="relative flex h-full min-h-0 flex-1 w-full items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
-        <DocLoadErrorState
-          message={getApiErrorMessage(docMarkdownQuery.error, "获取知识文档失败，请稍后重试。")}
-          onRetry={() => {
-            void docMarkdownQuery.refetch();
-          }}
+      <div className="relative flex h-full min-h-0 flex-1 w-full flex-col overflow-hidden bg-white dark:bg-slate-950">
+        <CoursePagePillTitle
+          icon={BookOpen}
+          label="知识库"
+          className="shrink-0 bg-white/92 backdrop-blur-md dark:bg-slate-900/92"
+          href={courseId ? buildCoursePath(courseId, "nav") : undefined}
         />
-      </div>
-    );
-  }
-
-  if (!hasRenderedMarkdown && showDocBuildFailureState) {
-    return (
-      <div className="relative flex h-full min-h-0 flex-1 w-full items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
-        <DocLoadErrorState
-          message={buildStatusText}
-          onRetry={() => {
-            void docMarkdownQuery.refetch();
-          }}
-        />
-      </div>
-    );
-  }
-
-  if (!hasRenderedMarkdown && showDocEmptyState) {
-    return (
-      <div className="relative flex h-full min-h-0 flex-1 w-full items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
-        <DocEmptyState />
+        <div className="relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
+          <DocEmptyState />
+        </div>
       </div>
     );
   }
@@ -6426,12 +6443,6 @@ export function KnowledgeDocsPage() {
           icon={BookOpen}
           label="知识库"
           className="shrink-0 bg-white/92 backdrop-blur-md dark:bg-slate-900/92 transition-all duration-300 ease-in-out"
-          innerClassName={cn(
-            "transition-all duration-300 ease-in-out",
-            (!isCompactToc && viewPrefs.showToc) && (
-              !isTocCollapsed ? "-translate-x-[clamp(7rem,8vw,9rem)]" : "-translate-x-[28px]"
-            )
-          )}
           href={courseId ? buildCoursePath(courseId, "nav") : undefined}
         />
 

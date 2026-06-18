@@ -36,8 +36,8 @@ const layerSeeds = [
     names: ["订单查询案例", "用户统计案例", "库存扣减场景", "批量导入任务", "权限审计任务", "报表分页项目", "死锁复现案例", "备份演练任务"],
   },
   {
-    type: "resource",
-    names: ["执行计划截图说明", "事务日志片段", "索引结构图", "慢查询样例", "权限表说明"],
+    type: "application_case",
+    names: ["执行计划截图解读", "事务日志分析案例", "索引结构解读任务", "慢查询样例诊断", "权限表审计案例"],
   },
 ];
 
@@ -89,7 +89,6 @@ function buildMockGraphEdges() {
   connect(nodeIdsByType("application_case"), nodeIdsByType("procedure"), "uses_method");
   connect(nodeIdsByType("skill"), nodeIdsByType("concept"), "assesses", 2);
   connect(nodeIdsByType("misconception"), nodeIdsByType("concept"), "remediates");
-  connect(nodeIdsByType("resource"), nodeIdsByType("concept"), "explains");
   connect(nodeIdsByType("concept").slice(0, 6), nodeIdsByType("concept").slice(6), "similar_to");
   connect(nodeIdsByType("misconception"), nodeIdsByType("procedure"), "confuses_with");
   return edges;

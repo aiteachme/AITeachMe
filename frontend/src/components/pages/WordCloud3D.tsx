@@ -39,22 +39,21 @@ const TYPE_COLORS: Record<string, string> = {
   skill: "#dc2626",
   misconception: "#be123c",
   application_case: "#0891b2",
-  resource: "#6b7280",
 };
 
 const TYPE_LABELS: Record<string, string> = {
   topic: "主题模块",
-  concept: "概念术语",
+  concept: "核心概念",
   principle: "原理性质",
   formula_model: "公式模型",
   procedure: "方法步骤",
   skill: "解题技能",
   misconception: "易错辨析",
   application_case: "应用案例",
-  resource: "学习资源",
 };
 
 const DEFAULT_COLOR = "#94a3b8";
+const SUPPRESSED_NODE_TYPES = new Set(["resource"]);
 
 function getColor(nodeType: string): string {
   return TYPE_COLORS[nodeType.toLowerCase()] ?? DEFAULT_COLOR;
@@ -88,9 +87,14 @@ export function WordCloud3D({ courseLabel, nodes, height, onNodeClick }: WordClo
   });
 
   // Prepare sorted + deduplicated word list
+  const visibleNodes = useMemo(
+    () => nodes.filter((node) => !SUPPRESSED_NODE_TYPES.has(node.nodeType.toLowerCase())),
+    [nodes],
+  );
+
   const wordInput = useMemo(() => {
     const seen = new Set<string>();
-    const sorted = [...nodes].sort((a, b) => b.confidence - a.confidence);
+    const sorted = [...visibleNodes].sort((a, b) => b.confidence - a.confidence);
     const result: WordCloudNode[] = [];
     for (const n of sorted) {
       const key = n.name.toLowerCase().trim();
@@ -100,18 +104,18 @@ export function WordCloud3D({ courseLabel, nodes, height, onNodeClick }: WordClo
       if (result.length >= MAX_WORDS) break;
     }
     return result;
-  }, [nodes]);
+  }, [visibleNodes]);
 
   const topTypes = useMemo(() => {
     return Object.entries(
-      nodes.reduce<Record<string, number>>((acc, n) => {
+      visibleNodes.reduce<Record<string, number>>((acc, n) => {
         acc[n.nodeType] = (acc[n.nodeType] || 0) + 1;
         return acc;
       }, {}),
     )
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5);
-  }, [nodes]);
+  }, [visibleNodes]);
 
   // Measure container
   useEffect(() => {

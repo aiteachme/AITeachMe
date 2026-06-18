@@ -722,7 +722,7 @@ const LiveTextDocument = memo(function LiveTextDocument({
 
   return (
     <article>
-      <div className="feishu-doc-content build-live-markdown max-w-[920px] break-words [&>*:first-child]:!mt-0 [&>*:last-child]:!mb-0">
+      <div className="feishu-doc-content build-live-markdown max-w-[860px] break-words [&>*:first-child]:!mt-0 [&>*:last-child]:!mb-0">
         <MarkdownViewer content={renderState.markdown} variant="document" />
       </div>
 

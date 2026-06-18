@@ -37,10 +37,16 @@ import { useCourseDisplayName } from "../hooks/useCourseDisplayName";
 import { buildExamTitle, formatModeLabel } from "../components/exams/examDisplay";
 import { fetchKnowledgeBuildRuntime } from "../lib/knowledgeBuildRuntime";
 import { fetchKnowledgeOverview, OVERVIEW_INCLUDE_PRESETS, buildKnowledgeOverviewQueryKey } from "../lib/knowledgeOverview";
-import { graphFullApiV1CoursesCourseIdKnowledgeGraphFullPost } from "../api/generated/knowledge";
+import {
+  graphFocusSubgraphApiV1CoursesCourseIdKnowledgeGraphSubgraphPost,
+  graphFullApiV1CoursesCourseIdKnowledgeGraphFullPost,
+} from "../api/generated/knowledge";
 
 const pageShellClass = "mx-auto min-h-full w-full max-w-[1400px] px-6 pb-24 sm:px-8 lg:px-12 pt-8 relative";
 const alertClass = "rounded-2xl border border-amber-250 bg-amber-500/5 px-6 py-5 text-sm text-amber-900 dark:border-amber-500/20 dark:text-amber-300 backdrop-blur-sm";
+const INITIAL_FOCUSED_GRAPH_THRESHOLD = 180;
+const INITIAL_FOCUSED_GRAPH_EDGE_THRESHOLD = 520;
+const INITIAL_FOCUSED_GRAPH_LIMIT = 140;
 
 interface ChapterHeading {
   id: string;
@@ -542,15 +548,47 @@ export function CourseDashboardPage() {
           staleTime: 30000,
         });
 
-        // 4. Prefetch full D3 graph data using the retrieved node/edge counts
+        // 4. Prefetch the same initial graph window that the graph page will render first.
         const nodeCount = overviewData?.stats?.node_count ?? 0;
         const edgeCount = overviewData?.stats?.edge_count ?? 0;
+        const shouldPrefetchFocusedGraph =
+          nodeCount > INITIAL_FOCUSED_GRAPH_THRESHOLD ||
+          edgeCount > INITIAL_FOCUSED_GRAPH_EDGE_THRESHOLD;
+        const initialFocusedGraphLimit = Math.max(
+          80,
+          Math.min(
+            INITIAL_FOCUSED_GRAPH_THRESHOLD,
+            Math.max(
+              INITIAL_FOCUSED_GRAPH_LIMIT,
+              Math.round(Math.sqrt(Math.max(1, nodeCount)) * 12),
+            ),
+          ),
+        );
         void queryClient.prefetchQuery({
-          queryKey: ["graph-full", courseId, nodeCount, edgeCount],
-          queryFn: async () =>
-            unwrapOrvalResponse(
+          queryKey: [
+            "graph-initial",
+            courseId,
+            nodeCount,
+            edgeCount,
+            shouldPrefetchFocusedGraph ? "focused" : "full",
+            initialFocusedGraphLimit,
+          ],
+          queryFn: async () => {
+            if (shouldPrefetchFocusedGraph) {
+              return unwrapOrvalResponse(
+                await graphFocusSubgraphApiV1CoursesCourseIdKnowledgeGraphSubgraphPost(courseId, {
+                  center_knowledge_unit_id: null,
+                  topic: null,
+                  edge_type: null,
+                  hops: 1,
+                  limit: initialFocusedGraphLimit,
+                }),
+              ) ?? null;
+            }
+            return unwrapOrvalResponse(
               await graphFullApiV1CoursesCourseIdKnowledgeGraphFullPost(courseId),
-            ) ?? null,
+            ) ?? null;
+          },
           staleTime: 30000,
         });
       } catch (e) {

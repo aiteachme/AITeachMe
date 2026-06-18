@@ -965,7 +965,7 @@ export function HomePage() {
           transition={{ delay: 3.0, duration: 0.6 }}
           className="mb-8 px-4 text-center text-base leading-relaxed text-zinc-500 dark:text-slate-400"
         >
-          把任何令人头疼的学习资料，变成你的 24 小时专属"赛博私教"。
+          上传资料或写下目标，生成一门可学习的课程。
         </motion.p>
 
         {/* ── Unified Input Area ── */}
@@ -984,7 +984,7 @@ export function HomePage() {
           )}>
             <textarea
               ref={textareaRef}
-              placeholder="描述你想构建的课程：学什么、给谁学、多久学完、希望每章包含什么"
+              placeholder="输入课程目标：学什么、多久学完、希望怎么安排"
               className="w-full min-h-[148px] max-h-[320px] resize-none border-0 bg-transparent px-5 pb-3 pt-5 text-[15px] leading-7 text-zinc-900 focus:outline-none placeholder:text-zinc-400 dark:text-slate-100 dark:placeholder:text-slate-500 sm:min-h-[156px] sm:px-6 sm:pt-6"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
@@ -1115,7 +1115,7 @@ export function HomePage() {
           <div className="mt-3 w-full px-2">
             <div className="mb-1 flex items-center gap-3 text-[11px] font-medium text-zinc-400 dark:text-slate-500">
               <span className="h-px flex-1 bg-gradient-to-r from-transparent via-zinc-200 to-zinc-200/60 dark:via-slate-800 dark:to-slate-800/60" />
-              <span>{hasEntryFiles ? "基于资料的示例提示词" : "示例提示词"}</span>
+              <span>{hasEntryFiles ? "基于资料的构建示例" : "课程构建示例"}</span>
               <span className="h-px flex-1 bg-gradient-to-l from-transparent via-zinc-200 to-zinc-200/60 dark:via-slate-800 dark:to-slate-800/60" />
             </div>
             <div className="divide-y divide-zinc-200/60 dark:divide-slate-800/70">

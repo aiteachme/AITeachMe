@@ -3,10 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import {
   BarChart3,
   Loader2,
-  Network,
   List,
   Share2,
-  RefreshCw,
 } from "lucide-react";
 import {
   graphKnowledgeUnitsApiV1CoursesCourseIdKnowledgeGraphKnowledgeUnitsPost,
@@ -20,47 +18,50 @@ import { ForceGraphView } from "./ForceGraphView";
 import { EvidenceContextModal } from "./EvidenceContextModal";
 import { KnowledgeGraphNodeDetailPanel, type KnowledgeGraphSourceRefNavigationTarget } from "./KnowledgeGraphNodeDetailPanel";
 import { KnowledgeGraphInsightsView } from "./KnowledgeGraphInsightsView";
+import { isSuppressedGraphNodeType } from "./knowledgeGraphVisual";
 
 const NODE_TYPE_STYLE: Record<string, { label: string; color: string }> = {
   topic: { label: "主题模块", color: "bg-indigo-50 text-indigo-600" },
-  concept: { label: "概念术语", color: "bg-blue-50 text-blue-600" },
+  concept: { label: "核心概念", color: "bg-blue-50 text-blue-600" },
   principle: { label: "原理性质", color: "bg-teal-50 text-teal-600" },
   formula_model: { label: "公式模型", color: "bg-cyan-50 text-cyan-700" },
   procedure: { label: "方法步骤", color: "bg-amber-50 text-amber-600" },
   skill: { label: "解题技能", color: "bg-rose-50 text-rose-600" },
   misconception: { label: "易错辨析", color: "bg-red-50 text-red-600" },
   application_case: { label: "应用案例", color: "bg-pink-50 text-pink-600" },
-  resource: { label: "学习资源", color: "bg-slate-100 text-slate-600" },
 };
 
 const NODE_TYPES = [
   { value: undefined, label: "全部" },
   { value: "topic", label: "主题模块" },
-  { value: "concept", label: "概念术语" },
+  { value: "concept", label: "核心概念" },
   { value: "principle", label: "原理性质" },
   { value: "formula_model", label: "公式模型" },
   { value: "procedure", label: "方法步骤" },
   { value: "skill", label: "解题技能" },
   { value: "misconception", label: "易错辨析" },
   { value: "application_case", label: "应用案例" },
-  { value: "resource", label: "学习资源" },
 ];
 
 type ViewMode = "list" | "graph" | "insights";
 
+function hasMarkdownMathDelimiter(value: string): boolean {
+  return /(?:\\\(|\\\[|\$)/.test(String(value || ""));
+}
+
+function graphNodeNameMarkdown(node: KnowledgeUnitResponse): string {
+  const text = String(node.canonical_name || "").trim();
+  if (!text || node.knowledge_unit_type !== "formula_model" || hasMarkdownMathDelimiter(text)) return text;
+  return `$${text}$`;
+}
+
 export function KnowledgeGraphView({
   course,
   stats,
-  onBuildGraph,
-  buildGraphPending = false,
-  canBuildGraph = false,
   onSourceRefClick,
 }: {
   course: string;
   stats: KnowledgeOverviewStats | null;
-  onBuildGraph?: () => void;
-  buildGraphPending?: boolean;
-  canBuildGraph?: boolean;
   onSourceRefClick?: (ref: KnowledgeGraphSourceRefNavigationTarget) => void;
 }) {
   const [viewMode, setViewMode] = useState<ViewMode>("graph");
@@ -87,7 +88,7 @@ export function KnowledgeGraphView({
     retry: false,
   });
 
-  const nodes = listData?.items ?? [];
+  const nodes = (listData?.items ?? []).filter((node: KnowledgeUnitResponse) => !isSuppressedGraphNodeType(node.knowledge_unit_type));
   const total = listData?.total ?? (nodeType ? 0 : graphNodeCount);
   const totalPages = listData?.pages ?? Math.max(1, Math.ceil(total / pageSize));
   const displayPage = listData?.page ?? page;
@@ -134,49 +135,6 @@ export function KnowledgeGraphView({
     </div>
   );
 
-  if (graphNodeCount === 0 && !nodeType) {
-    return (
-      <div className="knowledge-graph-view flex h-full min-h-0 flex-col bg-white dark:bg-slate-950">
-        <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-3 py-2 dark:border-slate-800">
-          {viewToggle}
-          <span className="shrink-0 text-xs text-slate-400">等待构建</span>
-        </div>
-        <div className="flex min-h-0 flex-1 items-center justify-center p-6">
-          <div className="flex max-w-sm flex-col items-center text-center text-slate-500">
-            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-slate-400 dark:bg-slate-900 dark:text-slate-500">
-              <Network className="h-5 w-5" />
-            </span>
-            <p className="mt-3 text-sm font-medium text-slate-700 dark:text-slate-200">暂无知识节点</p>
-            <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">构建完成后会在这里展示知识点与关系。</p>
-            {onBuildGraph && canBuildGraph ? (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={onBuildGraph}
-                disabled={buildGraphPending}
-                className="mt-4 h-8 gap-1.5 px-3 text-xs"
-              >
-                {buildGraphPending ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <RefreshCw className="h-3.5 w-3.5" />
-                )}
-                构建图谱
-              </Button>
-            ) : null}
-          </div>
-        </div>
-        <EvidenceContextModal
-          open={!!evidenceModalState}
-          onClose={() => setEvidenceModalState(null)}
-          course={course}
-          chunkId={evidenceModalState?.chunkId ?? null}
-          quoteText={evidenceModalState?.quoteText}
-        />
-      </div>
-    );
-  }
-
   return (
     <div className="knowledge-graph-view flex h-full min-h-0 flex-col bg-white dark:bg-slate-950">
       {viewMode === "graph" && (
@@ -185,8 +143,8 @@ export function KnowledgeGraphView({
           toolbar={viewToggle}
           onEvidenceClick={(chunkId, quoteText) => setEvidenceModalState({ chunkId, quoteText })}
           onSourceRefClick={onSourceRefClick}
-          totalNodeCount={graphNodeCount}
-          totalEdgeCount={graphEdgeCount}
+          totalNodeCount={stats ? graphNodeCount : undefined}
+          totalEdgeCount={stats ? graphEdgeCount : undefined}
         />
       )}
 
@@ -240,7 +198,7 @@ export function KnowledgeGraphView({
                     >
                       <div className="flex items-center gap-2">
                         <span className="flex-1 truncate text-sm text-slate-800 dark:text-slate-200 [&_p]:mb-0 [&_p]:inline">
-                          <MarkdownViewer content={node.canonical_name} />
+                          <MarkdownViewer content={graphNodeNameMarkdown(node)} />
                         </span>
                         <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${typeStyle.color}`}>
                           {typeStyle.label}

@@ -9437,6 +9437,18 @@
       },
       "BuildPlannerCreateRequest": {
         "properties": {
+          "planner_session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planner Session Id",
+            "description": "Optional existing planner session ID to reuse. When omitted, the backend reuses the latest course planner session or creates a new one."
+          },
           "file_ids": {
             "anyOf": [
               {
