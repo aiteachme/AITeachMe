@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 from collections.abc import Awaitable, Callable, Mapping
 from time import perf_counter
@@ -48,6 +49,41 @@ STREAM_CALLBACK_MIN_INTERVAL_S = get_env_bounded_float(
     min_value=0.03,
     max_value=1.0,
 )
+WRITER_TASK_TIMEOUT_S = get_env_bounded_float(
+    "DOCGEN_WRITER_TASK_TIMEOUT_S",
+    120.0,
+    min_value=30.0,
+    max_value=360.0,
+)
+WRITER_MAX_EFFECTIVE_TARGET_WORDS = get_env_bounded_int(
+    "DOCGEN_WRITER_MAX_EFFECTIVE_TARGET_WORDS",
+    2400,
+    min_value=800,
+    max_value=8000,
+)
+
+
+def _positive_int(value: object, *, default: int) -> int:
+    try:
+        parsed = int(value or 0)
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed > 0 else default
+
+
+def _writer_target_word_count(execution_contract: Mapping[str, Any]) -> int:
+    target_words = _positive_int(execution_contract.get("target_word_count"), default=1200)
+    return min(target_words, WRITER_MAX_EFFECTIVE_TARGET_WORDS)
+
+
+def _writer_max_tokens_for_contract(execution_contract: Mapping[str, Any]) -> int:
+    target_words = _writer_target_word_count(execution_contract)
+    return max(1800, min(5600, int(target_words * 1.8) + 900))
+
+
+def _writer_stream_char_limit(execution_contract: Mapping[str, Any]) -> int:
+    target_words = _writer_target_word_count(execution_contract)
+    return max(5000, min(14000, int(target_words * 4.5)))
 
 
 class DocGenWriterRuntime(BaseTracedExecution):
@@ -101,9 +137,14 @@ class DocGenWriterRuntime(BaseTracedExecution):
             digest_mode=digest_mode,
             extra_metadata=self.context.trace_metadata(chapter_index=self.context.chapter_index),
         )
+        target_max_tokens = _writer_max_tokens_for_contract(execution_contract)
+        configured_max_tokens = int(writer_model_kwargs.get("max_tokens") or target_max_tokens)
+        writer_model_kwargs["max_tokens"] = min(configured_max_tokens, target_max_tokens)
+        stream_char_limit = _writer_stream_char_limit(execution_contract)
         markdown = ""
         scaffold_fallback_applied = False
         writer_fallback_reason = ""
+        stream_timed_out = False
         if on_stream_update is not None and self.context.llm_caller is None:
             streamed_chars = 0
 
@@ -129,12 +170,34 @@ class DocGenWriterRuntime(BaseTracedExecution):
                         stream_callback_last_at = now
                         stream_callback_last_len = streamed_chars
                         await self._safe_stream_update(on_stream_update, "".join(chunks))
+                    if streamed_chars >= stream_char_limit:
+                        self.logger.info(
+                            "docgen_writer_stream_soft_limit_reached",
+                            chapter_index=chapter_index,
+                            streamed_chars=streamed_chars,
+                            stream_char_limit=stream_char_limit,
+                            target_word_count=_writer_target_word_count(execution_contract),
+                        )
+                        break
                 result = "".join(chunks)
                 await self._safe_stream_update(on_stream_update, result)
                 return result
 
             try:
-                (markdown,) = await run_llm_tasks([None], _run_writer_stream, max_concurrent=1)
+                (markdown,) = await asyncio.wait_for(
+                    run_llm_tasks([None], _run_writer_stream, max_concurrent=1),
+                    timeout=WRITER_TASK_TIMEOUT_S,
+                )
+            except asyncio.TimeoutError as exc:
+                stream_timed_out = True
+                writer_fallback_reason = f"TimeoutError: writer stream exceeded {WRITER_TASK_TIMEOUT_S:.0f}s"
+                self.logger.warning(
+                    "docgen_writer_stream_timeout_using_scaffold",
+                    chapter_index=chapter_index,
+                    streamed_chars=streamed_chars,
+                    timeout_s=WRITER_TASK_TIMEOUT_S,
+                    error=str(exc),
+                )
             except Exception as exc:
                 self.logger.warning(
                     "docgen_writer_stream_failed_falling_back",
@@ -144,18 +207,23 @@ class DocGenWriterRuntime(BaseTracedExecution):
                 )
 
         if not markdown.strip():
-            async def _run_writer_completion(_: object) -> str:
-                return str(await llm(messages, **writer_model_kwargs) or "")
+            if not stream_timed_out:
+                async def _run_writer_completion(_: object) -> str:
+                    return str(await llm(messages, **writer_model_kwargs) or "")
 
-            try:
-                (markdown,) = await run_llm_tasks([None], _run_writer_completion, max_concurrent=1)
-            except Exception as exc:
-                writer_fallback_reason = f"{type(exc).__name__}: {str(exc)[:180]}"
-                self.logger.warning(
-                    "docgen_writer_completion_failed_using_scaffold",
-                    chapter_index=chapter_index,
-                    error=str(exc),
-                )
+                try:
+                    (markdown,) = await asyncio.wait_for(
+                        run_llm_tasks([None], _run_writer_completion, max_concurrent=1),
+                        timeout=WRITER_TASK_TIMEOUT_S,
+                    )
+                except Exception as exc:
+                    writer_fallback_reason = f"{type(exc).__name__}: {str(exc)[:180]}"
+                    self.logger.warning(
+                        "docgen_writer_completion_failed_using_scaffold",
+                        chapter_index=chapter_index,
+                        error=str(exc),
+                    )
+            if not markdown.strip():
                 markdown = self._build_scaffold_fallback(
                     title=title,
                     objective=objective,
@@ -171,7 +239,7 @@ class DocGenWriterRuntime(BaseTracedExecution):
             digest_mode=digest_mode,
         )
         heading_repair_applied = False
-        if bool(heading_quality.get("needs_agent_repair")):
+        if not scaffold_fallback_applied and bool(heading_quality.get("needs_agent_repair")):
             repaired_markdown = await self._repair_heading_structure(
                 title=title,
                 objective=objective,

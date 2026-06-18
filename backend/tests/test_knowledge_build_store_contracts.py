@@ -100,6 +100,20 @@ def test_runtime_status_hydration_sanitizes_progress_metrics_and_events() -> Non
     assert [card["title"] for card in hydrated.sample_cards[1:]] == ["Limit", "Derivative"]
 
 
+def test_runtime_status_hydration_knows_docgen_graph_prepare_stage() -> None:
+    status = build_store.KnowledgeBuildRuntimeStatus(
+        requested_at=datetime.now(timezone.utc),
+        build_kind="docgen",
+        status="running",
+        stage="preparing_knowledge_graph",
+    )
+
+    hydrated = build_store._hydrate_runtime_status(status)
+
+    assert hydrated.progress_pct >= 85
+    assert hydrated.current_stage_description == "正在准备可立即展示的知识图谱候选。"
+
+
 def test_aggregate_status_prefers_blocking_lane_and_preserves_metrics() -> None:
     now = datetime.now(timezone.utc)
     docgen_done = build_store.KnowledgeBuildRuntimeStatus(

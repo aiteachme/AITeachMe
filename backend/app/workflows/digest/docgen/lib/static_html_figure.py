@@ -44,6 +44,8 @@ class _StaticFigureCandidate:
     insert_at: int
     goal: str
     figure_type: str
+    visual_kind: str = "static_svg"
+    example_seed: str = ""
     selection_reason: str = ""
 
 
@@ -51,9 +53,11 @@ class _StaticFigureSelectionItem(BaseModel):
     index: int = 0
     figure_goal: str = ""
     figure_type: str = "problem_diagram"
+    visual_kind: str = "static_svg"
+    example_seed: str = ""
     reason: str = ""
 
-    @field_validator("figure_goal", "figure_type", "reason", mode="before")
+    @field_validator("figure_goal", "figure_type", "visual_kind", "example_seed", "reason", mode="before")
     @classmethod
     def _text(cls, value: object) -> str:
         return re.sub(r"\s+", " ", str(value or "")).strip()[:220]
@@ -232,6 +236,17 @@ async def _select_static_figure_candidates(
     for item in selection.selected:
         if item.index in seen:
             continue
+        visual_kind = (item.visual_kind or "static_svg").strip().lower()
+        if visual_kind not in {"static_svg", "svg", "problem_diagram"}:
+            logger.info(
+                "docgen_static_html_figure_selection_skipped_non_static_intent",
+                chapter_index=draft.chapter_index,
+                chapter_title=draft.title,
+                selected_index=item.index,
+                visual_kind=visual_kind,
+                reason=item.reason,
+            )
+            continue
         candidate = by_index.get(item.index)
         if candidate is None:
             continue
@@ -241,6 +256,8 @@ async def _select_static_figure_candidates(
                 candidate,
                 goal=item.figure_goal or item.reason or "模型判断该片段需要静态教学示意图。",
                 figure_type=item.figure_type or "problem_diagram",
+                visual_kind="static_svg",
+                example_seed=item.example_seed,
                 selection_reason=item.reason,
             )
         )
@@ -424,6 +441,7 @@ async def generate_static_html_figure_assets(
                 "open_mode": "inline_static",
                 "link_markdown": f"[图示：{candidate.title}]({preview_url})",
                 "validation_issues": validation_issues,
+                "visual_kind": candidate.visual_kind,
                 "figure_type": spec.type,
                 "figure_spec": spec.model_dump(mode="json"),
                 "validation_report": spec_validation,
@@ -435,6 +453,7 @@ async def generate_static_html_figure_assets(
                     figure_title=figure_title,
                     figure_goal=candidate.goal,
                     figure_type=candidate.figure_type,
+                    example_seed=candidate.example_seed,
                     digest_mode=digest_mode,
                     section_context=context,
                 ),

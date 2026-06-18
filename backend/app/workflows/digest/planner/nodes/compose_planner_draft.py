@@ -18,6 +18,7 @@ from app.workflows.digest.planner.lib.model_policy import (
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event, emit_planner_token
 from app.workflows.digest.planner.lib.plans import (
     _resolve_course_name,
+    compose_effective_planner_request_text,
     compose_planning_note,
     normalize_planner_diagnosis_draft,
     normalize_planner_draft,
@@ -520,10 +521,14 @@ def build_compose_planner_draft_node(*, context: WorkflowContext):
         }
         material_context = state["material_context"]
         digest_mode = state.get("digest_mode") or latest_plan.get("digest_mode") or material_context.course_mode_decision.mode.value
+        effective_request_text = compose_effective_planner_request_text(
+            state.get("user_prompt") or latest_plan.get("user_prompt") or "",
+            state.get("feedback_message") or "",
+        )
         normalized_draft = normalize_planner_draft(
             draft_payload,
             course_id=state["course_id"],
-            user_prompt=state.get("user_prompt") or latest_plan.get("user_prompt") or "",
+            user_prompt=effective_request_text,
             requested_digest_mode=digest_mode,
             shared_inputs=material_context,
             latest_plan=latest_plan or None,

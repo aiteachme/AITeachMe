@@ -55,6 +55,10 @@ def _report_metrics(report: KnowledgeSyncReport, *, elapsed_ms: int) -> dict[str
         "graph_active_edge_count": report.graph_active_edge_count,
         "graph_avg_degree": report.graph_avg_degree,
         "graph_isolated_unit_pct": report.graph_isolated_unit_pct,
+        "docgen_draft_fast_finalize": report.docgen_draft_fast_finalize,
+        "docgen_draft_final_unit_count": report.docgen_draft_final_unit_count,
+        "docgen_draft_final_edge_count": report.docgen_draft_final_edge_count,
+        "docgen_draft_final_skipped_edge_count": report.docgen_draft_final_skipped_edge_count,
         "stable_anchor_count": report.stable_anchor_count,
     }
 

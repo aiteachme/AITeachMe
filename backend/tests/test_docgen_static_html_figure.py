@@ -657,6 +657,54 @@ def test_static_figure_generation_skips_when_llm_declines_trigger(monkeypatch) -
     assert store.text_writes == {}
 
 
+def test_static_figure_generation_skips_non_static_visual_intent(monkeypatch) -> None:
+    store = _FakeContentStore()
+    calls = {"spec": 0}
+
+    async def fake_acompletion(*_args, **kwargs):
+        if kwargs.get("response_model") is static_figures._StaticFigureSelection:
+            return static_figures._StaticFigureSelection(
+                selected=[
+                    static_figures._StaticFigureSelectionItem(
+                        index=1,
+                        visual_kind="interactive_html",
+                        figure_goal="让学生拖动参数观察状态变化。",
+                        example_seed="可调参数实验",
+                        reason="静态图无法体现变量连续变化。",
+                    )
+                ]
+            )
+        calls["spec"] += 1
+        return FigureSpec(
+            type="problem_diagram",
+            title="不应生成",
+            elements=[FigureElement(kind="axis", x=12, y=72, x2=92, y2=72)],
+        )
+
+    monkeypatch.setattr(static_figures, "get_content_store", lambda: store)
+    monkeypatch.setattr(
+        static_figures,
+        "resolve_course_storage_scope",
+        lambda _course_id: SimpleNamespace(namespace="users/test/courses/course_abc123abc123"),
+    )
+    monkeypatch.setattr(static_figures, "acompletion_with_fallback", fake_acompletion)
+
+    markdown = "## 参数实验\n\n这段内容更适合拖动参数观察曲线连续变化。"
+    assets = asyncio.run(
+        static_figures.generate_static_html_figure_assets(
+            draft=ChapterDraft(chapter_index=9, title="参数实验", markdown=markdown),
+            traced_context=TracedExecutionContext(course_id="course_abc123abc123", build_session_id="build_9"),
+            digest_mode="systematic",
+            markdown=markdown,
+            max_assets=1,
+        )
+    )
+
+    assert assets == []
+    assert calls["spec"] == 0
+    assert store.text_writes == {}
+
+
 def test_static_figure_generation_skips_text_only_process_step_specs(monkeypatch) -> None:
     store = _FakeContentStore()
 

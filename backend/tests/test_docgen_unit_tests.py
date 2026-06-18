@@ -1,3 +1,5 @@
+import re
+
 from app.workflows.digest.docgen.lib.unit_tests import (
     ChapterUnitTestItem,
     ChapterUnitTestSet,
@@ -40,8 +42,10 @@ def test_unit_test_renderer_replaces_existing_unit_test_section_once() -> None:
     assert "旧测试" not in strip_existing_unit_test_sections(body)
     assert markdown.count("## 单元测试") == 1
     assert '<div class="atm-unit-tests" data-unit-test-count="2">' in markdown
+    assert '<div class="atm-unit-tests__overview">' in markdown
+    assert "概念判断 / 短答题" in markdown
     assert '<details class="atm-unit-test-answer">' in markdown
-    assert "<summary>查看答案与判定依据</summary>" in markdown
+    assert "<summary>答案与依据</summary>" in markdown
     assert "总和除以个数。" in markdown
     assert "围绕“中位数”按本章定义、条件和步骤作答。" in markdown
     assert "###" not in unit_test
@@ -75,6 +79,64 @@ def test_unit_test_renderer_strips_body_writer_test_and_recap_sections() -> None
     assert markdown.count("## 单元测试") == 1
     assert "单元小测" not in markdown
     assert "小结式检查清单" not in markdown
+
+
+def test_unit_test_renderer_normalizes_type_and_difficulty_metadata() -> None:
+    unit_test = render_unit_test_markdown(
+        ChapterUnitTestSet(
+            chapter_index=1,
+            items=[
+                ChapterUnitTestItem(
+                    type="single_choice",
+                    difficulty="hard",
+                    target="函数单调性",
+                    stem="下列哪一项最能判断函数单调性？A. 定义域 B. 函数值变化方向 C. 图像颜色",
+                    answer="B",
+                    basis="单调性看自变量变化时函数值的变化方向。",
+                )
+            ],
+        ),
+        title="函数",
+        min_items=1,
+        fallback_targets=[],
+    )
+
+    assert 'data-question-type="选择题"' in unit_test
+    assert 'data-difficulty="挑战"' in unit_test
+    assert '<span class="atm-unit-test-card__number">Q01</span>' in unit_test
+    assert '<span class="atm-unit-test-card__type">选择题</span>' in unit_test
+    assert '<span class="atm-unit-test-card__difficulty">挑战</span>' in unit_test
+    assert '<span class="atm-unit-tests__chip">选择题</span>' in unit_test
+    assert '<span class="atm-unit-tests__chip">挑战</span>' in unit_test
+
+
+def test_unit_test_renderer_enforces_type_diversity_and_max_items() -> None:
+    unit_test = render_unit_test_markdown(
+        ChapterUnitTestSet(
+            chapter_index=1,
+            items=[
+                ChapterUnitTestItem(
+                    type="短答题",
+                    difficulty="基础",
+                    target=f"知识点 {index}",
+                    stem=f"解释知识点 {index}。",
+                    answer="按正文作答。",
+                    basis="说清条件和结论。",
+                )
+                for index in range(1, 7)
+            ],
+        ),
+        title="函数",
+        min_items=4,
+        max_items=4,
+        fallback_targets=["函数定义", "对应关系", "函数值"],
+    )
+
+    assert unit_test.count('<article class="atm-unit-test-card"') == 4
+    assert 'data-unit-test-count="4"' in unit_test
+    question_types = set(re.findall(r'data-question-type="([^"]+)"', unit_test))
+    assert len(question_types) == 4
+    assert "短答题" in question_types
 
 
 def test_published_unit_test_normalizer_keeps_one_standard_section() -> None:

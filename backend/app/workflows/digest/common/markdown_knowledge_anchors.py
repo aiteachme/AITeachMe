@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import re
 
-from app.models.knowledge_taxonomy import normalize_knowledge_unit_type
+from app.models.knowledge_taxonomy import normalize_generated_knowledge_unit_type, normalize_knowledge_unit_type
 
 ANCHOR_PREFIX = "ku_"
 ANCHOR_COMMENT_PREFIX = "ATM_KU:"
@@ -78,8 +78,8 @@ _LABEL_TYPE_MAP = {
     "exercise": "skill",
     "\u8bc1\u660e": "principle",
     "proof": "principle",
-    "\u5907\u6ce8": "resource",
-    "remark": "resource",
+    "\u5907\u6ce8": "concept",
+    "remark": "concept",
 }
 
 
@@ -456,10 +456,14 @@ def _extract_unit_name(line: str) -> str:
 
 def _infer_node_type(line: str, explicit_type: str) -> str:
     if explicit_type:
-        return normalize_knowledge_unit_type(explicit_type)
+        return normalize_generated_knowledge_unit_type(explicit_type, name=line, summary=line)
     label = _LABEL_RE.match(line)
     if label:
-        return normalize_knowledge_unit_type(_LABEL_TYPE_MAP.get(label.group("label").lower(), "concept"))
+        return normalize_generated_knowledge_unit_type(
+            _LABEL_TYPE_MAP.get(label.group("label").lower(), "concept"),
+            name=line,
+            summary=line,
+        )
     return "concept"
 
 

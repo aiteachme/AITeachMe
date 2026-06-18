@@ -110,8 +110,7 @@ Planner handoff:
     "procedure": ["..."],
     "skill": ["..."],
     "misconception": ["..."],
-    "application_case": ["..."],
-    "resource": ["..."]
+    "application_case": ["..."]
   }},
   "example_coverage_plan": [
     {{"target": "...", "example_type": "worked_example_or_case", "purpose": "...", "min_examples": 1}}
@@ -131,16 +130,17 @@ Planner handoff:
 要求：
 1. 这是最小执行简报，不是完整教学大纲。
 2. `teaching_outline` 最多 3 条，要写成教学动作，不要写固定章节标题。
-3. `content_role_targets` 是主合同，要按学习图谱 9 类节点列出本章最应该覆盖的目标；每类最多 2 条，空类可省略。
+3. `content_role_targets` 是主合同，要按学习图谱 8 类节点列出本章最应该覆盖的目标；每类最多 2 条，空类可省略。
 4. `example_coverage_plan` 列出本章正文中需要用例题、案例、操作示例、变式训练或自测覆盖的重点；密度按章节角色分配。
 5. `chapter_end_practice_plan` 是最终 `## 单元测试` 模块的测试计划：每章默认 {chapter_end_min}-{chapter_end_max} 个小题/案例检查/操作任务/边界辨析/迁移任务；传统题不适合的学科也要转成可判断的任务，并规划答案、判定依据或解析要点。
 6. 紧凑节奏先判断本章角色：概念章安排短例子、反例和条件辨析；方法章安排步骤、检查点和例题；训练章围绕真实题型或任务差异安排标准例题、变式检查和错误诊断。
 7. 每个 `example_coverage_plan` 和 `chapter_end_practice_plan` 项的 `purpose` 写清这道例题/案例帮助学生学会什么；自测、辨析或思考题同步规划参考答案、判定依据或解题要点。
-8. 旧字段 `concept_targets`、`definition_targets`、`formula_targets`、`example_targets`、`pitfall_targets` 只做兼容输出，各最多 2 条。
-9. `retrieval_queries` 最多 2 条。
-10. 不允许顺带修改标题。
-11. 不要输出媒体请求，这些后续由规则节点派生。
-12. 只输出简短、可执行的字段，不要输出长段解释。
+8. 如果 learner_profile 含“前置诊断信号”或“文档落点”，把相关选择落到 `teaching_outline`、`example_coverage_plan`、`chapter_end_practice_plan` 或图示相关目标中，不要只复述诊断答案。
+9. 旧字段 `concept_targets`、`definition_targets`、`formula_targets`、`example_targets`、`pitfall_targets` 只做兼容输出，各最多 2 条。
+10. `retrieval_queries` 最多 2 条。
+11. 不允许顺带修改标题。
+12. 不要输出媒体请求，这些后续由规则节点派生。
+13. 只输出简短、可执行的字段，不要输出长段解释。
 """.strip()
     messages = [
         {"role": "system", "content": system_prompt},

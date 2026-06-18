@@ -17,6 +17,7 @@ from app.models.knowledge_graph_sync import KnowledgeGraphSourceRef, KnowledgeGr
 from app.models.knowledge_relation import KnowledgeEdge
 from app.models.knowledge_unit import KnowledgeUnit
 from app.models.knowledge_taxonomy import (
+    normalize_generated_knowledge_unit_type,
     normalize_knowledge_unit_type,
     normalize_relation_type,
     validate_relation_direction,
@@ -27,7 +28,7 @@ from app.shared.infra.llm_support import run_llm_tasks, get_llm_concurrency_limi
 from app.shared.infra.search.api import search_knowledge
 from app.shared.infra.settings import get_settings
 from app.utils.knowledge_helpers import normalize_name
-from app.utils.time import utcnow
+from app.utils.time import ensure_utc_datetime, utcnow
 from app.workflows.digest.common.markdown_knowledge_anchors import build_knowledge_unit_anchor
 from app.workflows.digest.common.markdown_knowledge_anchors import (
     MarkdownKnowledgeUnit,
@@ -181,10 +182,12 @@ def _clean_context_list(value: object, *, limit: int = 6, max_chars: int = 100) 
 
 def _source_confidence_for_kind(source_kind: str) -> float:
     kind = str(source_kind or "").strip().casefold()
-    if kind.startswith("llm_") or kind == "llm_relation":
+    if kind.startswith("llm_") or kind in {"llm_relation", "kg_prefetch_llm"}:
         return 0.86
-    if kind == "docgen_preliminary_kg":
+    if kind in {"docgen_preliminary_kg", "docgen_reviewed_chapter"}:
         return 0.62
+    if kind in {"docgen_reviewed_heading", "docgen_review_refinement"}:
+        return 0.7
     if kind == "docgen_backbone":
         return 0.58
     if kind == "structural_heading":
@@ -198,9 +201,18 @@ def _source_confidence_for_kind(source_kind: str) -> float:
 
 def _unit_type_source_for_kind(source_kind: str) -> tuple[str, float]:
     kind = str(source_kind or "").strip().casefold()
-    if kind.startswith("llm_"):
+    if kind.startswith("llm_") or kind == "kg_prefetch_llm":
         return "llm", _source_confidence_for_kind(kind)
-    if kind in {"docgen_preliminary_kg", "docgen_backbone", "structural_heading", "cross_section_semantic", "markdown"}:
+    if kind in {
+        "docgen_preliminary_kg",
+        "docgen_reviewed_chapter",
+        "docgen_reviewed_heading",
+        "docgen_review_refinement",
+        "docgen_backbone",
+        "structural_heading",
+        "cross_section_semantic",
+        "markdown",
+    }:
         return "rule", _source_confidence_for_kind(kind)
     return "manual", 1.0
 
@@ -329,7 +341,6 @@ def _chapter_docgen_hints(payloads: list[dict[str, object]]) -> tuple[str, list[
             "misconception",
             "application_case",
             "topic",
-            "resource",
         ):
             role_targets.extend(_clean_context_list(role_payload.get(role_name), limit=4, max_chars=90))
     role_targets = _clean_context_list(role_targets, limit=10, max_chars=90)
@@ -425,11 +436,14 @@ def _document_backbone_payload(structured_context: dict[str, object]) -> dict[st
 
 def _preliminary_kg_payload(structured_context: dict[str, object]) -> dict[str, object]:
     manifest = _as_mapping(structured_context.get("docgen_manifest"))
+    draft = _as_mapping(manifest.get("docgen_kg_draft"))
+    if draft:
+        return draft
     preliminary = _as_mapping(manifest.get("preliminary_kg"))
     if preliminary:
         return preliminary
     summary = _as_mapping(structured_context.get("document_summary_json"))
-    return _as_mapping(summary.get("preliminary_kg"))
+    return _as_mapping(summary.get("docgen_kg_draft") or summary.get("preliminary_kg"))
 
 
 def sync_markdown_knowledge_graph(
@@ -576,7 +590,7 @@ def build_prefetched_knowledge_graph_units_payload(
 
     优先复用已匹配最终文档的 section LLM 预抽取；即使预抽取为空，也会使用
     DocGen 规划阶段产出的 preliminary_kg/backbone 规则种子，避免自动图谱
-    在后置抽取被取消时完全没有可用知识点。
+    在正式抽取被取消时完全没有可用知识点。
     """
 
     records = list(prefetched_records or [])
@@ -609,6 +623,10 @@ def build_prefetched_knowledge_graph_units_payload(
     used_prefetch_keys: set[tuple[str, str]] = set()
     used_anchors: set[str] = set()
     units: list[MarkdownKnowledgeUnit] = []
+    pending_edges: list[PendingMarkdownExtractedEdge] = []
+    candidate_id_to_anchor: dict[str, str] = {}
+    anchors_by_name: dict[str, list[str]] = {}
+    anchors_by_normalized_name: dict[str, list[str]] = {}
     diagnostics = _empty_extraction_diagnostics()
     diagnostics["chapter_count"] = len(chapters)
     diagnostics["section_count"] = len(extraction_tasks)
@@ -622,6 +640,18 @@ def build_prefetched_knowledge_graph_units_payload(
         payload = _apply_task_context_to_payload(prefetched.payload, task)
         payload = _make_payload_anchors_unique(payload, used_anchors)
         units.extend(payload.units)
+        pending_edges.extend(payload.pending_edges)
+        candidate_id_to_anchor.update(payload.candidate_id_to_anchor)
+        for name, anchors in payload.anchors_by_name.items():
+            bucket = anchors_by_name.setdefault(name, [])
+            for anchor in anchors:
+                if anchor not in bucket:
+                    bucket.append(anchor)
+        for name, anchors in payload.anchors_by_normalized_name.items():
+            bucket = anchors_by_normalized_name.setdefault(name, [])
+            for anchor in anchors:
+                if anchor not in bucket:
+                    bucket.append(anchor)
         for metric_key in diagnostics:
             diagnostics[metric_key] += int(payload.diagnostics.get(metric_key, 0) or 0)
 
@@ -645,11 +675,719 @@ def build_prefetched_knowledge_graph_units_payload(
         units = [*backbone_units, *units]
         diagnostics["backbone_unit_count"] = len(backbone_units)
     if backbone_edges:
+        pending_edges.extend(backbone_edges)
         diagnostics["backbone_edge_count"] = len(backbone_edges)
     diagnostics["docgen_seed_unit_count"] = len(backbone_units)
     diagnostics["docgen_seed_edge_count"] = len(backbone_edges)
+    unit_type_by_anchor = {unit.anchor: unit.knowledge_unit_type for unit in units if unit.anchor}
+    for unit in units:
+        if not unit.anchor:
+            continue
+        name_bucket = anchors_by_name.setdefault(unit.name, [])
+        if unit.anchor not in name_bucket:
+            name_bucket.append(unit.anchor)
+        normalized_name = normalize_name(unit.name)
+        if normalized_name:
+            normalized_bucket = anchors_by_normalized_name.setdefault(normalized_name, [])
+            if unit.anchor not in normalized_bucket:
+                normalized_bucket.append(unit.anchor)
+    edges = _resolve_pending_edges_to_extracted(
+        pending_edges,
+        candidate_id_to_anchor=candidate_id_to_anchor,
+        anchors_by_name=anchors_by_name,
+        anchors_by_normalized_name=anchors_by_normalized_name,
+        unit_type_by_anchor=unit_type_by_anchor,
+    )
+    diagnostics["prefetch_early_edge_count"] = sum(
+        1
+        for edge in edges
+        if edge.source_kind not in {"docgen_backbone", "docgen_preliminary_kg"}
+    )
+    diagnostics["early_edge_count"] = len(edges)
+    diagnostics["total_extracted_edge_count"] = len(edges)
+    diagnostics["early_unit_count"] = len(units)
+    return KnowledgeSyncExtractionPayload(units=units, extracted_edges=edges, diagnostics_totals=diagnostics)
+
+
+def build_docgen_kg_draft_units_payload(
+    *,
+    docgen_kg_draft: dict[str, object] | None = None,
+) -> KnowledgeSyncExtractionPayload:
+    """Convert a quality-checked DocGen KG draft into early visible units.
+
+    This is intentionally node-only. Relations and source refs are still owned
+    by the final kg_doc_sync persist step, where final KnowledgeDoc ids and the
+    full graph audit are available.
+    """
+
+    draft = _as_mapping(docgen_kg_draft)
+    diagnostics = _empty_extraction_diagnostics()
+    diagnostics["docgen_draft_unit_count"] = 0
+    diagnostics["docgen_draft_edge_count"] = len(_as_list(draft.get("edges")))
+    diagnostics["docgen_draft_quality_ready"] = 1 if _docgen_draft_quality_gate_passed(draft) else 0
+    quality_audit = _as_mapping(draft.get("quality_audit"))
+    diagnostics["docgen_draft_quality_audit_present"] = 1 if quality_audit else 0
+    diagnostics["docgen_draft_quality_warning_count"] = int(quality_audit.get("warning_count", 0) or 0)
+    if not draft:
+        return KnowledgeSyncExtractionPayload(units=[], extracted_edges=[], diagnostics_totals=diagnostics)
+
+    used_anchors: set[str] = set()
+    units: list[MarkdownKnowledgeUnit] = []
+    for item in _as_list(draft.get("nodes")):
+        payload = _as_mapping(item)
+        name = str(payload.get("name") or "").strip()
+        normalized_name = normalize_name(name)
+        if not name or not normalized_name:
+            continue
+        summary = _source_quote(str(payload.get("summary") or payload.get("quote_text") or name), max_chars=300)
+        unit_type = normalize_generated_knowledge_unit_type(
+            str(payload.get("knowledge_unit_type") or payload.get("type") or "concept"),
+            name=name,
+            summary=summary,
+        )
+        source_kind = str(payload.get("source") or "docgen_kg_draft").strip() or "docgen_kg_draft"
+        units.append(
+            MarkdownKnowledgeUnit(
+                anchor=build_knowledge_unit_anchor(f"docgen-draft-{unit_type}-{source_kind}-{name}", used=used_anchors),
+                name=name,
+                knowledge_unit_type=unit_type,
+                summary=summary,
+                body_markdown=summary,
+                source_kind=source_kind,
+                knowledge_document_id=None,
+                chapter_index=_safe_int(payload.get("chapter_index")),
+                source_file_ids=_clean_string_list(payload.get("source_file_ids")),
+                quote_text=_source_quote(str(payload.get("quote_text") or summary), max_chars=500),
+            )
+        )
+
+    diagnostics["docgen_draft_unit_count"] = len(units)
     diagnostics["early_unit_count"] = len(units)
     return KnowledgeSyncExtractionPayload(units=units, extracted_edges=[], diagnostics_totals=diagnostics)
+
+
+def build_docgen_kg_draft_final_payload(
+    *,
+    markdown: str,
+    structured_context: dict[str, object] | None = None,
+) -> KnowledgeSyncExtractionPayload | None:
+    """Build the final sync payload from a quality-ready DocGen KG draft.
+
+    This is the fast post-publish path for DocGen-initiated syncs: the expensive
+    section LLM extraction has already run during DocGen, so final sync only
+    resolves published chapter/source metadata, audits, and writes source refs.
+    """
+
+    normalized_context = _structured_context_payload(structured_context)
+    manifest = _as_mapping(normalized_context.get("docgen_manifest"))
+    summary = _as_mapping(normalized_context.get("document_summary_json"))
+    draft = _as_mapping(manifest.get("docgen_kg_draft") or summary.get("docgen_kg_draft"))
+    if not draft or not _docgen_draft_quality_gate_passed(draft):
+        return None
+
+    chapters = extract_markdown_chapter_chunks(markdown, max_body_chars=None)
+    if not chapters:
+        return None
+    chapter_contexts = _chapter_context_lookup(normalized_context)
+    covered_chapters = set(_clean_int_list(draft.get("covered_chapter_indices")))
+    expected_chapters = {index for index in chapter_contexts if index > 0} or {
+        index for index in range(1, len(chapters) + 1)
+    }
+    if expected_chapters and not expected_chapters.issubset(covered_chapters):
+        return None
+
+    units: list[MarkdownKnowledgeUnit] = []
+    used_anchors: set[str] = set()
+    anchors_by_normalized_name: dict[str, list[str]] = {}
+    anchors_by_name: dict[str, list[str]] = {}
+    unit_type_by_anchor: dict[str, str] = {}
+    seen_type_names: set[tuple[str, str]] = set()
+
+    for item in _as_list(draft.get("nodes")):
+        payload = _as_mapping(item)
+        name = str(payload.get("name") or "").strip()
+        normalized_name = normalize_name(name)
+        if not name or not normalized_name:
+            continue
+        summary_text = _source_quote(str(payload.get("summary") or payload.get("quote_text") or name), max_chars=300)
+        unit_type = normalize_generated_knowledge_unit_type(
+            str(payload.get("knowledge_unit_type") or payload.get("type") or "concept"),
+            name=name,
+            summary=summary_text,
+        )
+        type_name_key = (unit_type, normalized_name)
+        if type_name_key in seen_type_names:
+            continue
+        seen_type_names.add(type_name_key)
+        chapter_candidates = _clean_int_list(payload.get("target_chapters")) or _clean_int_list(payload.get("chapter_index"))
+        chapter_index = chapter_candidates[0] if chapter_candidates else 0
+        chapter_context = chapter_contexts.get(chapter_index) or ChapterSourceContext(chapter_index=chapter_index)
+        source_kind = str(payload.get("source") or "docgen_kg_draft").strip() or "docgen_kg_draft"
+        source_file_ids = _clean_string_list(
+            [
+                *_clean_string_list(payload.get("source_file_ids")),
+                *list(chapter_context.source_file_ids),
+            ]
+        )
+        anchor = build_knowledge_unit_anchor(f"docgen-draft-{unit_type}-{name}", used=used_anchors)
+        unit = MarkdownKnowledgeUnit(
+            anchor=anchor,
+            name=name,
+            knowledge_unit_type=unit_type,
+            summary=summary_text,
+            body_markdown=summary_text,
+            source_kind=source_kind,
+            knowledge_document_id=chapter_context.knowledge_document_id,
+            chapter_index=chapter_index,
+            source_file_ids=source_file_ids,
+            quote_text=_source_quote(str(payload.get("quote_text") or summary_text), max_chars=500),
+        )
+        units.append(unit)
+        unit_type_by_anchor[anchor] = unit_type
+        anchors_by_name.setdefault(name, []).append(anchor)
+        anchors_by_normalized_name.setdefault(normalized_name, []).append(anchor)
+
+    if not units:
+        return None
+
+    def _resolve_anchor(name: object) -> str:
+        normalized = normalize_name(str(name or "").strip())
+        if not normalized:
+            return ""
+        candidates = anchors_by_normalized_name.get(normalized, [])
+        return candidates[0] if len(candidates) == 1 else ""
+
+    edges: list[MarkdownExtractedEdge] = []
+    seen_edges: set[tuple[str, str, str]] = set()
+    skipped_edge_count = 0
+    skipped_edge_endpoint_count = 0
+    skipped_edge_direction_count = 0
+    for item in _as_list(draft.get("edges")):
+        payload = _as_mapping(item)
+        source_name = str(payload.get("source_name") or payload.get("source") or "").strip()
+        target_name = str(payload.get("target_name") or payload.get("target") or "").strip()
+        source_anchor = _resolve_anchor(source_name)
+        target_anchor = _resolve_anchor(target_name)
+        edge_type = normalize_relation_type(str(payload.get("edge_type") or payload.get("relation") or "related_to"))
+        if not source_anchor or not target_anchor or source_anchor == target_anchor:
+            skipped_edge_count += 1
+            skipped_edge_endpoint_count += 1
+            continue
+        if not validate_relation_direction(
+            edge_type=edge_type,
+            source_type=unit_type_by_anchor.get(source_anchor, ""),
+            target_type=unit_type_by_anchor.get(target_anchor, ""),
+        ):
+            skipped_edge_count += 1
+            skipped_edge_direction_count += 1
+            continue
+        key = (source_anchor, target_anchor, edge_type)
+        if key in seen_edges:
+            continue
+        seen_edges.add(key)
+        chapter_candidates = _clean_int_list(payload.get("target_chapters")) or _clean_int_list(payload.get("chapter_index"))
+        chapter_index = chapter_candidates[0] if chapter_candidates else 0
+        if chapter_index <= 0:
+            chapter_index = next(
+                (unit.chapter_index for unit in units if unit.anchor == target_anchor or unit.anchor == source_anchor),
+                0,
+            )
+        chapter_context = chapter_contexts.get(chapter_index) or ChapterSourceContext(chapter_index=chapter_index)
+        source_kind = str(payload.get("source") or "docgen_kg_draft").strip() or "docgen_kg_draft"
+        source_file_ids = _clean_string_list(
+            [
+                *_clean_string_list(payload.get("source_file_ids")),
+                *list(chapter_context.source_file_ids),
+            ]
+        )
+        description = str(payload.get("description") or "").strip() or f"{source_name} 关联 {target_name}。"
+        edges.append(
+            MarkdownExtractedEdge(
+                source_anchor=source_anchor,
+                target_anchor=target_anchor,
+                edge_type=edge_type,
+                description=description,
+                source_kind=source_kind,
+                knowledge_document_id=chapter_context.knowledge_document_id,
+                chapter_index=chapter_index,
+                source_file_ids=source_file_ids,
+                quote_text=_source_quote(str(payload.get("quote_text") or description), max_chars=500),
+            )
+        )
+
+    if not edges:
+        return None
+
+    diagnostics = _empty_extraction_diagnostics()
+    quality_audit = _as_mapping(draft.get("quality_audit"))
+    diagnostics["chapter_count"] = len(chapters)
+    diagnostics["section_count"] = 0
+    diagnostics["successful_section_count"] = 0
+    diagnostics["llm_section_count"] = 0
+    diagnostics["total_extracted_node_count"] = len(units)
+    diagnostics["total_extracted_edge_count"] = len(edges)
+    diagnostics["docgen_draft_fast_finalize"] = 1
+    diagnostics["docgen_draft_final_unit_count"] = len(units)
+    diagnostics["docgen_draft_final_edge_count"] = len(edges)
+    diagnostics["docgen_draft_quality_ready"] = 1
+    diagnostics["docgen_draft_quality_warning_count"] = int(quality_audit.get("warning_count", 0) or 0)
+    diagnostics["docgen_draft_final_skipped_edge_count"] = skipped_edge_count
+    diagnostics["docgen_draft_final_skipped_endpoint_count"] = skipped_edge_endpoint_count
+    diagnostics["docgen_draft_final_skipped_direction_count"] = skipped_edge_direction_count
+    return KnowledgeSyncExtractionPayload(units=units, extracted_edges=edges, diagnostics_totals=diagnostics)
+
+
+def _docgen_draft_quality_gate_passed(draft: dict[str, object]) -> bool:
+    if not draft:
+        return False
+    if not bool(draft.get("quality_ready")) or not bool(draft.get("fast_visible_ready")):
+        return False
+    audit = _as_mapping(draft.get("quality_audit"))
+    if not audit:
+        return False
+    status = str(draft.get("quality_status") or audit.get("quality_status") or "").strip()
+    if status and status != "ready":
+        return False
+    if not bool(audit.get("quality_ready", draft.get("quality_ready"))):
+        return False
+    if int(audit.get("warning_count", 0) or 0) > 0:
+        return False
+    hard_issue_keys = (
+        "missing_chapter_count",
+        "edge_endpoint_issue_count",
+        "edge_endpoint_ambiguity_count",
+        "relation_direction_issue_count",
+    )
+    if any(int(audit.get(key, 0) or 0) > 0 for key in hard_issue_keys):
+        return False
+    if not bool(audit.get("examine_profile_ready")):
+        return False
+    if int(audit.get("downstream_unit_count", 0) or 0) <= 0:
+        return False
+    if int(audit.get("diagnostic_unit_count", 0) or 0) <= 0:
+        return False
+    node_count = len(_as_list(draft.get("nodes")))
+    if node_count > 1:
+        if int(audit.get("valid_relation_edge_count", 0) or 0) <= 0:
+            return False
+        if int(audit.get("structure_edge_count", 0) or 0) <= 0:
+            return False
+    return True
+
+
+def _resolve_unique_draft_unit(
+    units_by_normalized_name: dict[str, list[KnowledgeUnit]],
+    name: object,
+) -> KnowledgeUnit | None:
+    normalized_name = normalize_name(str(name or "").strip())
+    if not normalized_name:
+        return None
+    candidates = units_by_normalized_name.get(normalized_name, [])
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def _snapshot_unit_for_docgen_rollback(unit: KnowledgeUnit) -> dict[str, object]:
+    return {
+        "id": int(unit.id or 0),
+        "knowledge_unit_type": unit.knowledge_unit_type,
+        "canonical_name": unit.canonical_name,
+        "normalized_name": unit.normalized_name,
+        "summary": unit.summary,
+        "body": unit.body,
+        "body_markdown": unit.body_markdown,
+        "aliases_json": unit.aliases_json,
+        "evidence_refs_json": unit.evidence_refs_json,
+        "status": unit.status,
+        "confidence": float(unit.confidence),
+        "type_confidence": float(unit.type_confidence),
+        "type_source": unit.type_source,
+        "build_revision_no": int(unit.build_revision_no or 0),
+        "current_revision_id": unit.current_revision_id,
+        "merged_into_knowledge_unit_id": unit.merged_into_knowledge_unit_id,
+        "updated_at": unit.updated_at.isoformat() if unit.updated_at is not None else "",
+    }
+
+
+def _snapshot_edge_for_docgen_rollback(edge: KnowledgeEdge) -> dict[str, object]:
+    return {
+        "id": int(edge.id or 0),
+        "source_node_id": int(edge.source_node_id or 0),
+        "target_node_id": int(edge.target_node_id or 0),
+        "edge_type": edge.edge_type,
+        "description": edge.description,
+        "evidence_refs_json": edge.evidence_refs_json,
+        "weight": float(edge.weight),
+        "confidence": float(edge.confidence),
+        "status": edge.status,
+        "build_revision_no": int(edge.build_revision_no or 0),
+        "current_revision_id": edge.current_revision_id,
+        "updated_at": edge.updated_at.isoformat() if edge.updated_at is not None else "",
+    }
+
+
+def _restore_unit_from_docgen_snapshot(unit: KnowledgeUnit, snapshot: dict[str, object]) -> None:
+    unit.knowledge_unit_type = str(snapshot.get("knowledge_unit_type") or unit.knowledge_unit_type)
+    unit.canonical_name = str(snapshot.get("canonical_name") or unit.canonical_name)
+    unit.normalized_name = str(snapshot.get("normalized_name") or unit.normalized_name)
+    unit.summary = str(snapshot.get("summary") or "")
+    unit.body = str(snapshot.get("body") or "")
+    unit.body_markdown = str(snapshot.get("body_markdown") or "")
+    unit.aliases_json = str(snapshot.get("aliases_json") or "[]")
+    unit.evidence_refs_json = str(snapshot.get("evidence_refs_json") or "[]")
+    unit.status = str(snapshot.get("status") or unit.status)
+    unit.confidence = float(snapshot.get("confidence") or unit.confidence)
+    unit.type_confidence = float(snapshot.get("type_confidence") or unit.type_confidence)
+    unit.type_source = str(snapshot.get("type_source") or unit.type_source)
+    unit.build_revision_no = int(snapshot.get("build_revision_no") or 0)
+    unit.current_revision_id = _optional_snapshot_int(snapshot.get("current_revision_id"))
+    unit.merged_into_knowledge_unit_id = _optional_snapshot_int(snapshot.get("merged_into_knowledge_unit_id"))
+    restored_updated_at = _parse_snapshot_updated_at(snapshot.get("updated_at"))
+    unit.updated_at = restored_updated_at or utcnow()
+
+
+def _restore_edge_from_docgen_snapshot(edge: KnowledgeEdge, snapshot: dict[str, object]) -> None:
+    edge.source_node_id = int(snapshot.get("source_node_id") or edge.source_node_id)
+    edge.target_node_id = int(snapshot.get("target_node_id") or edge.target_node_id)
+    edge.edge_type = str(snapshot.get("edge_type") or edge.edge_type)
+    edge.description = str(snapshot.get("description") or "")
+    edge.evidence_refs_json = str(snapshot.get("evidence_refs_json") or "[]")
+    edge.weight = float(snapshot.get("weight") or edge.weight)
+    edge.confidence = float(snapshot.get("confidence") or edge.confidence)
+    edge.status = str(snapshot.get("status") or edge.status)
+    edge.build_revision_no = int(snapshot.get("build_revision_no") or 0)
+    edge.current_revision_id = _optional_snapshot_int(snapshot.get("current_revision_id"))
+    restored_updated_at = _parse_snapshot_updated_at(snapshot.get("updated_at"))
+    edge.updated_at = restored_updated_at or utcnow()
+
+
+def _parse_snapshot_updated_at(value: object):
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        from datetime import datetime
+
+        return ensure_utc_datetime(datetime.fromisoformat(value))
+    except Exception:
+        return None
+
+
+def _optional_snapshot_int(value: object) -> int | None:
+    try:
+        parsed = int(value or 0)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _coerce_int_id_list(value: object) -> list[int]:
+    items = value if isinstance(value, list) else []
+    cleaned: list[int] = []
+    seen: set[int] = set()
+    for item in items:
+        try:
+            parsed = int(item or 0)
+        except (TypeError, ValueError):
+            continue
+        if parsed <= 0 or parsed in seen:
+            continue
+        seen.add(parsed)
+        cleaned.append(parsed)
+    return cleaned
+
+
+def _snapshot_items_by_id(value: object) -> dict[int, dict[str, object]]:
+    items = value if isinstance(value, list) else []
+    snapshots: dict[int, dict[str, object]] = {}
+    for item in items:
+        snapshot = _as_mapping(item)
+        try:
+            item_id = int(snapshot.get("id") or 0)
+        except (TypeError, ValueError):
+            continue
+        if item_id > 0:
+            snapshots[item_id] = snapshot
+    return snapshots
+
+
+def _append_rollback_snapshot_once(sink: list[dict[str, object]], entity_id: int | None, snapshot: dict[str, object]) -> None:
+    parsed_id = int(entity_id or 0)
+    if parsed_id <= 0:
+        return
+    for item in sink:
+        if int(item.get("id") or 0) == parsed_id:
+            return
+    sink.append(snapshot)
+
+
+def persist_docgen_kg_draft_graph_early(
+    session: Session,
+    *,
+    course_id: str,
+    docgen_kg_draft: dict[str, object] | None,
+    build_revision_no: int | None = None,
+    require_quality_ready: bool = True,
+    enable_rag_dedup: bool = False,
+) -> dict[str, object]:
+    """Persist quality-ready DocGen KG draft units and resolvable edges early."""
+
+    payload = build_docgen_kg_draft_units_payload(docgen_kg_draft=docgen_kg_draft)
+    diagnostics = dict(payload.diagnostics_totals or {})
+    draft = _as_mapping(docgen_kg_draft)
+    quality_ready = bool(int(diagnostics.get("docgen_draft_quality_ready", 0) or 0))
+    if require_quality_ready and not quality_ready:
+        return {
+            "ok": True,
+            "skipped": True,
+            "skip_reason": "docgen_kg_draft_quality_not_ready",
+            **diagnostics,
+        }
+    if not payload.units:
+        return {
+            "ok": True,
+            "skipped": True,
+            "skip_reason": "docgen_kg_draft_empty",
+            **diagnostics,
+        }
+
+    revision_no = int(build_revision_no or 0) or _next_revision_no(session, course_id)
+    created_unit_ids: list[int] = []
+    updated_unit_ids: list[int] = []
+    created_edge_ids: list[int] = []
+    updated_edge_ids: list[int] = []
+    updated_unit_snapshots: list[dict[str, object]] = []
+    updated_edge_snapshots: list[dict[str, object]] = []
+    skipped_edge_count = 0
+    skipped_edge_endpoint_count = 0
+    skipped_edge_direction_count = 0
+    lookup_cache = _build_unit_lookup_cache(session, course_id=course_id)
+    edge_lookup_cache = _build_edge_lookup_cache(session, course_id=course_id)
+    units_by_normalized_name: dict[str, list[KnowledgeUnit]] = {}
+    for item in payload.units:
+        unit, created = _upsert_unit(
+            session,
+            course_id=course_id,
+            item=item,
+            build_revision_no=revision_no,
+            enable_rag_dedup=enable_rag_dedup,
+            lookup_cache=lookup_cache,
+            pre_update_snapshot_sink=updated_unit_snapshots,
+        )
+        if unit.id is None:
+            continue
+        if created:
+            created_unit_ids.append(unit.id)
+        else:
+            updated_unit_ids.append(unit.id)
+        normalized_name = normalize_name(unit.canonical_name)
+        if normalized_name:
+            units_by_normalized_name.setdefault(normalized_name, []).append(unit)
+
+    for item in _as_list(draft.get("edges")):
+        edge_payload = _as_mapping(item)
+        source = _resolve_unique_draft_unit(units_by_normalized_name, edge_payload.get("source_name"))
+        target = _resolve_unique_draft_unit(units_by_normalized_name, edge_payload.get("target_name"))
+        if source is None or target is None or source.id is None or target.id is None or source.id == target.id:
+            skipped_edge_count += 1
+            skipped_edge_endpoint_count += 1
+            continue
+        edge_type = normalize_relation_type(str(edge_payload.get("edge_type") or "related_to"))
+        if not validate_relation_direction(
+            edge_type=edge_type,
+            source_type=source.knowledge_unit_type,
+            target_type=target.knowledge_unit_type,
+        ):
+            skipped_edge_count += 1
+            skipped_edge_direction_count += 1
+            continue
+        edge, created = _upsert_edge(
+            session,
+            course_id=course_id,
+            source_node_id=source.id,
+            target_node_id=target.id,
+            edge_type=edge_type,
+            description=str(edge_payload.get("description") or ""),
+            build_revision_no=revision_no,
+            lookup_cache=edge_lookup_cache,
+            pre_update_snapshot_sink=updated_edge_snapshots,
+        )
+        if edge.id is None:
+            continue
+        if created:
+            created_edge_ids.append(edge.id)
+        else:
+            updated_edge_ids.append(edge.id)
+
+    session.flush()
+    logger.info(
+        "docgen_kg_draft_graph_early_persisted",
+        course_id=course_id,
+        build_revision_no=revision_no,
+        unit_count=len(created_unit_ids) + len(updated_unit_ids),
+        created_unit_count=len(created_unit_ids),
+        updated_unit_count=len(updated_unit_ids),
+        edge_count=len(created_edge_ids) + len(updated_edge_ids),
+        created_edge_count=len(created_edge_ids),
+        updated_edge_count=len(updated_edge_ids),
+        skipped_edge_count=skipped_edge_count,
+    )
+    return {
+        "ok": True,
+        "skipped": False,
+        "build_revision_no": revision_no,
+        "unit_count": len(created_unit_ids) + len(updated_unit_ids),
+        "created_unit_count": len(created_unit_ids),
+        "updated_unit_count": len(updated_unit_ids),
+        "created_unit_ids": created_unit_ids,
+        "updated_unit_ids": updated_unit_ids,
+        "updated_unit_snapshots": updated_unit_snapshots,
+        "edge_count": len(created_edge_ids) + len(updated_edge_ids),
+        "created_edge_count": len(created_edge_ids),
+        "updated_edge_count": len(updated_edge_ids),
+        "created_edge_ids": created_edge_ids,
+        "updated_edge_ids": updated_edge_ids,
+        "updated_edge_snapshots": updated_edge_snapshots,
+        "skipped_edge_count": skipped_edge_count,
+        "skipped_edge_endpoint_count": skipped_edge_endpoint_count,
+        "skipped_edge_direction_count": skipped_edge_direction_count,
+        **diagnostics,
+    }
+
+
+def rollback_docgen_kg_draft_graph_early(
+    session: Session,
+    *,
+    course_id: str,
+    early_persist_metrics: dict[str, object] | None,
+    reason: str = "",
+) -> dict[str, object]:
+    """Undo the query-visible pre-publish DocGen KG draft when DocGen fails before publish."""
+
+    metrics = _as_mapping(early_persist_metrics)
+    if not metrics or bool(metrics.get("skipped")):
+        return {"ok": True, "skipped": True, "skip_reason": "early_persist_not_applied"}
+
+    revision_no = int(metrics.get("build_revision_no") or 0)
+    if revision_no <= 0:
+        return {"ok": True, "skipped": True, "skip_reason": "early_persist_revision_missing"}
+
+    created_edge_ids = _coerce_int_id_list(metrics.get("created_edge_ids"))
+    created_unit_ids = _coerce_int_id_list(metrics.get("created_unit_ids"))
+    updated_edge_snapshots = _snapshot_items_by_id(metrics.get("updated_edge_snapshots"))
+    updated_unit_snapshots = _snapshot_items_by_id(metrics.get("updated_unit_snapshots"))
+
+    deleted_edge_ids: list[int] = []
+    restored_edge_ids: list[int] = []
+    deleted_unit_ids: list[int] = []
+    restored_unit_ids: list[int] = []
+    skipped_edge_ids: list[int] = []
+    skipped_unit_ids: list[int] = []
+
+    def _matches_revision(entity) -> bool:
+        return int(getattr(entity, "build_revision_no", 0) or 0) == revision_no
+
+    for edge_id in created_edge_ids:
+        edge = session.get(KnowledgeEdge, edge_id)
+        if edge is None or edge.course_id != course_id or not _matches_revision(edge):
+            skipped_edge_ids.append(edge_id)
+            continue
+        session.delete(edge)
+        deleted_edge_ids.append(edge_id)
+
+    for edge_id, snapshot in updated_edge_snapshots.items():
+        edge = session.get(KnowledgeEdge, edge_id)
+        if edge is None or edge.course_id != course_id or not _matches_revision(edge):
+            skipped_edge_ids.append(edge_id)
+            continue
+        _restore_edge_from_docgen_snapshot(edge, snapshot)
+        session.add(edge)
+        restored_edge_ids.append(edge_id)
+
+    if created_unit_ids:
+        incident_edges = session.exec(
+            select(KnowledgeEdge).where(
+                KnowledgeEdge.course_id == course_id,
+                KnowledgeEdge.build_revision_no == revision_no,
+            )
+        ).all()
+        created_unit_id_set = set(created_unit_ids)
+        for edge in incident_edges:
+            edge_id = int(edge.id or 0)
+            if edge_id <= 0 or edge_id in deleted_edge_ids:
+                continue
+            if edge.source_node_id not in created_unit_id_set and edge.target_node_id not in created_unit_id_set:
+                continue
+            session.delete(edge)
+            deleted_edge_ids.append(edge_id)
+
+    for unit_id in created_unit_ids:
+        unit = session.get(KnowledgeUnit, unit_id)
+        if unit is None or unit.course_id != course_id or not _matches_revision(unit):
+            skipped_unit_ids.append(unit_id)
+            continue
+        session.delete(unit)
+        deleted_unit_ids.append(unit_id)
+
+    for unit_id, snapshot in updated_unit_snapshots.items():
+        unit = session.get(KnowledgeUnit, unit_id)
+        if unit is None or unit.course_id != course_id or not _matches_revision(unit):
+            skipped_unit_ids.append(unit_id)
+            continue
+        _restore_unit_from_docgen_snapshot(unit, snapshot)
+        session.add(unit)
+        restored_unit_ids.append(unit_id)
+
+    session.flush()
+    logger.info(
+        "docgen_kg_draft_graph_early_rolled_back",
+        course_id=course_id,
+        build_revision_no=revision_no,
+        reason=reason,
+        deleted_unit_count=len(deleted_unit_ids),
+        restored_unit_count=len(restored_unit_ids),
+        deleted_edge_count=len(deleted_edge_ids),
+        restored_edge_count=len(restored_edge_ids),
+        skipped_unit_count=len(skipped_unit_ids),
+        skipped_edge_count=len(skipped_edge_ids),
+    )
+    return {
+        "ok": True,
+        "skipped": False,
+        "build_revision_no": revision_no,
+        "reason": reason,
+        "deleted_unit_ids": deleted_unit_ids,
+        "restored_unit_ids": restored_unit_ids,
+        "deleted_edge_ids": deleted_edge_ids,
+        "restored_edge_ids": restored_edge_ids,
+        "skipped_unit_ids": skipped_unit_ids,
+        "skipped_edge_ids": skipped_edge_ids,
+        "deleted_unit_count": len(deleted_unit_ids),
+        "restored_unit_count": len(restored_unit_ids),
+        "deleted_edge_count": len(deleted_edge_ids),
+        "restored_edge_count": len(restored_edge_ids),
+        "skipped_unit_count": len(skipped_unit_ids),
+        "skipped_edge_count": len(skipped_edge_ids),
+    }
+
+
+def persist_docgen_kg_draft_units_early(
+    session: Session,
+    *,
+    course_id: str,
+    docgen_kg_draft: dict[str, object] | None,
+    build_revision_no: int | None = None,
+    require_quality_ready: bool = True,
+    enable_rag_dedup: bool = False,
+) -> dict[str, object]:
+    """Backward-compatible wrapper for the early DocGen draft graph persist."""
+
+    return persist_docgen_kg_draft_graph_early(
+        session,
+        course_id=course_id,
+        docgen_kg_draft=docgen_kg_draft,
+        build_revision_no=build_revision_no,
+        require_quality_ready=require_quality_ready,
+        enable_rag_dedup=enable_rag_dedup,
+    )
 
 
 def persist_knowledge_graph_items(
@@ -703,6 +1441,10 @@ def persist_knowledge_graph_items(
         prefetch_catchup_section_count=int(diagnostics_totals.get("prefetch_catchup_section_count", 0) or 0),
         prefetch_stale_section_count=int(diagnostics_totals.get("prefetch_stale_section_count", 0) or 0),
         prefetch_failed_section_count=int(diagnostics_totals.get("prefetch_failed_section_count", 0) or 0),
+        docgen_draft_fast_finalize=int(diagnostics_totals.get("docgen_draft_fast_finalize", 0) or 0),
+        docgen_draft_final_unit_count=int(diagnostics_totals.get("docgen_draft_final_unit_count", 0) or 0),
+        docgen_draft_final_edge_count=int(diagnostics_totals.get("docgen_draft_final_edge_count", 0) or 0),
+        docgen_draft_final_skipped_edge_count=int(diagnostics_totals.get("docgen_draft_final_skipped_edge_count", 0) or 0),
         stable_anchor_count=len({item.anchor for item in units if item.anchor}),
     )
     report.knowledge_image_count = sum(len(item.knowledge_images) for item in units)
@@ -757,15 +1499,19 @@ def persist_knowledge_graph_units_early(
     payload: KnowledgeSyncExtractionPayload,
     enable_rag_dedup: bool = False,
 ) -> dict[str, object]:
-    """只提前写入 KnowledgeUnit 行，让下游链路能更早启动。
+    """提前写入可验证的 KnowledgeUnit/KnowledgeEdge 种子。
 
-    这里刻意不写边、source ref、废弃标记，也不结束 sync run。
+    这里刻意不写 source ref、废弃标记，也不结束 sync run。
     关系缝合完成后，原本的 persist 节点仍然负责最终权威写入。
     """
 
     sync_run = get_sync_run_or_raise(session, run_context.sync_run_id)
     created_unit_ids: list[int] = []
     updated_unit_ids: list[int] = []
+    created_edge_ids: list[int] = []
+    updated_edge_ids: list[int] = []
+    skipped_edge_count = 0
+    unit_by_anchor: dict[str, KnowledgeUnit] = {}
     lookup_cache = _build_unit_lookup_cache(session, course_id=run_context.course_id)
     for item in payload.units:
         unit, created = _upsert_unit(
@@ -778,20 +1524,58 @@ def persist_knowledge_graph_units_early(
         )
         if unit.id is None:
             continue
+        unit_by_anchor[item.anchor] = unit
         if created:
             created_unit_ids.append(unit.id)
         else:
             updated_unit_ids.append(unit.id)
 
     session.flush()
+    edge_lookup_cache = _build_edge_lookup_cache(session, course_id=run_context.course_id)
+    for extracted_edge in payload.extracted_edges:
+        source = unit_by_anchor.get(extracted_edge.source_anchor)
+        target = unit_by_anchor.get(extracted_edge.target_anchor)
+        if source is None or target is None or source.id is None or target.id is None:
+            skipped_edge_count += 1
+            continue
+        if not validate_relation_direction(
+            edge_type=extracted_edge.edge_type,
+            source_type=source.knowledge_unit_type,
+            target_type=target.knowledge_unit_type,
+        ):
+            skipped_edge_count += 1
+            continue
+        edge, created = _upsert_edge(
+            session,
+            course_id=run_context.course_id,
+            source_node_id=source.id,
+            target_node_id=target.id,
+            edge_type=extracted_edge.edge_type,
+            description=extracted_edge.description,
+            build_revision_no=run_context.build_revision_no,
+            lookup_cache=edge_lookup_cache,
+        )
+        if edge.id is None:
+            skipped_edge_count += 1
+            continue
+        if created:
+            created_edge_ids.append(edge.id)
+        else:
+            updated_edge_ids.append(edge.id)
+
+    session.flush()
     logger.info(
-        "knowledge_docs_sync_units_early_persisted",
+        "knowledge_docs_sync_graph_seed_early_persisted",
         course_id=run_context.course_id,
         build_revision_no=run_context.build_revision_no,
         sync_run_id=sync_run.id,
         unit_count=len(created_unit_ids) + len(updated_unit_ids),
         created_unit_count=len(created_unit_ids),
         updated_unit_count=len(updated_unit_ids),
+        edge_count=len(created_edge_ids) + len(updated_edge_ids),
+        created_edge_count=len(created_edge_ids),
+        updated_edge_count=len(updated_edge_ids),
+        skipped_edge_count=skipped_edge_count,
     )
     return {
         "sync_run_id": sync_run.id,
@@ -799,8 +1583,14 @@ def persist_knowledge_graph_units_early(
         "unit_count": len(created_unit_ids) + len(updated_unit_ids),
         "created_unit_count": len(created_unit_ids),
         "updated_unit_count": len(updated_unit_ids),
+        "edge_count": len(created_edge_ids) + len(updated_edge_ids),
+        "created_edge_count": len(created_edge_ids),
+        "updated_edge_count": len(updated_edge_ids),
+        "skipped_edge_count": skipped_edge_count,
         "created_unit_ids": created_unit_ids,
         "updated_unit_ids": updated_unit_ids,
+        "created_edge_ids": created_edge_ids,
+        "updated_edge_ids": updated_edge_ids,
     }
 
 
@@ -1830,7 +2620,12 @@ def _build_backbone_graph_items(
         chapter_index = target_chapters[0] if target_chapters else 0
         chapter_context = chapter_contexts.get(chapter_index) or ChapterSourceContext(chapter_index=chapter_index)
         summary = _source_quote(str(payload.get("summary") or name), max_chars=300)
-        unit_type = normalize_knowledge_unit_type(str(payload.get("knowledge_unit_type") or payload.get("type") or "concept"))
+        unit_type = normalize_generated_knowledge_unit_type(
+            str(payload.get("knowledge_unit_type") or payload.get("type") or "concept"),
+            name=name,
+            summary=summary,
+        )
+        source_kind = str(payload.get("source") or "docgen_preliminary_kg").strip() or "docgen_preliminary_kg"
         units.append(
             MarkdownKnowledgeUnit(
                 anchor=build_knowledge_unit_anchor(f"docgen-preliminary-{name}", used=used_backbone_anchors),
@@ -1838,7 +2633,7 @@ def _build_backbone_graph_items(
                 knowledge_unit_type=unit_type,
                 summary=summary,
                 body_markdown=summary,
-                source_kind="docgen_preliminary_kg",
+                source_kind=source_kind,
                 knowledge_document_id=chapter_context.knowledge_document_id,
                 chapter_index=chapter_index,
                 source_file_ids=list(chapter_context.source_file_ids),
@@ -1862,7 +2657,11 @@ def _build_backbone_graph_items(
         chapter_index = target_chapters[0] if target_chapters else 0
         chapter_context = chapter_contexts.get(chapter_index) or ChapterSourceContext(chapter_index=chapter_index)
         definition = _source_quote(str(payload.get("definition") or payload.get("summary") or term), max_chars=300)
-        unit_type = normalize_knowledge_unit_type(str(payload.get("knowledge_unit_type") or payload.get("type") or "concept"))
+        unit_type = normalize_generated_knowledge_unit_type(
+            str(payload.get("knowledge_unit_type") or payload.get("type") or "concept"),
+            name=term,
+            summary=definition,
+        )
         units.append(
             MarkdownKnowledgeUnit(
                 anchor=build_knowledge_unit_anchor(f"docgen-backbone-{term}", used=used_backbone_anchors),
@@ -1906,6 +2705,7 @@ def _build_backbone_graph_items(
         chapter_index = chapter_candidates[0] if chapter_candidates else 0
         chapter_context = chapter_contexts.get(chapter_index) or ChapterSourceContext(chapter_index=chapter_index)
         description = str(payload.get("description") or "").strip()
+        source_kind = str(payload.get("source") or "docgen_preliminary_kg").strip() or "docgen_preliminary_kg"
         edges.append(
             PendingMarkdownExtractedEdge(
                 source_candidate_id=None,
@@ -1914,7 +2714,7 @@ def _build_backbone_graph_items(
                 target_name=target_name,
                 edge_type=edge_type,
                 description=description or f"{source_name} 关联 {target_name}。",
-                source_kind="docgen_preliminary_kg",
+                source_kind=source_kind,
                 knowledge_document_id=chapter_context.knowledge_document_id,
                 chapter_index=chapter_index,
                 source_file_ids=list(chapter_context.source_file_ids),
@@ -2441,6 +3241,60 @@ def _resolve_edge_anchor(
     return None
 
 
+def _resolve_pending_edges_to_extracted(
+    pending_edges: list[PendingMarkdownExtractedEdge],
+    *,
+    candidate_id_to_anchor: dict[str, str],
+    anchors_by_name: dict[str, list[str]],
+    anchors_by_normalized_name: dict[str, list[str]],
+    unit_type_by_anchor: dict[str, str],
+) -> list[MarkdownExtractedEdge]:
+    edges: list[MarkdownExtractedEdge] = []
+    seen_edge_keys: set[tuple[str, str, str]] = set()
+    for edge in pending_edges:
+        edge_type = normalize_relation_type(edge.edge_type)
+        source_anchor = _resolve_edge_anchor(
+            candidate_id=edge.source_candidate_id,
+            endpoint_name=edge.source_name,
+            anchor_by_candidate_id=candidate_id_to_anchor,
+            anchors_by_name=anchors_by_name,
+            anchors_by_normalized_name=anchors_by_normalized_name,
+        )
+        target_anchor = _resolve_edge_anchor(
+            candidate_id=edge.target_candidate_id,
+            endpoint_name=edge.target_name,
+            anchor_by_candidate_id=candidate_id_to_anchor,
+            anchors_by_name=anchors_by_name,
+            anchors_by_normalized_name=anchors_by_normalized_name,
+        )
+        if not source_anchor or not target_anchor or source_anchor == target_anchor:
+            continue
+        if not validate_relation_direction(
+            edge_type=edge_type,
+            source_type=unit_type_by_anchor.get(source_anchor, ""),
+            target_type=unit_type_by_anchor.get(target_anchor, ""),
+        ):
+            continue
+        key = (source_anchor, target_anchor, edge_type)
+        if key in seen_edge_keys:
+            continue
+        seen_edge_keys.add(key)
+        edges.append(
+            MarkdownExtractedEdge(
+                source_anchor=source_anchor,
+                target_anchor=target_anchor,
+                edge_type=edge_type,
+                description=edge.description,
+                source_kind=edge.source_kind,
+                knowledge_document_id=edge.knowledge_document_id,
+                chapter_index=edge.chapter_index,
+                source_file_ids=list(edge.source_file_ids),
+                quote_text=edge.quote_text,
+            )
+        )
+    return edges
+
+
 def _build_unit_lookup_cache(session: Session, *, course_id: str) -> _UnitLookupCache:
     units = session.exec(
         select(KnowledgeUnit).where(
@@ -2493,6 +3347,7 @@ def _upsert_unit(
     build_revision_no: int,
     enable_rag_dedup: bool = False,
     lookup_cache: _UnitLookupCache | None = None,
+    pre_update_snapshot_sink: list[dict[str, object]] | None = None,
 ) -> tuple[KnowledgeUnit, bool]:
     knowledge_unit_type = normalize_knowledge_unit_type(item.knowledge_unit_type)
     normalized_name = normalize_name(item.name)
@@ -2547,6 +3402,12 @@ def _upsert_unit(
             normalized_name=normalized_name,
             status="active",
         )
+    elif pre_update_snapshot_sink is not None:
+        _append_rollback_snapshot_once(
+            pre_update_snapshot_sink,
+            unit.id,
+            _snapshot_unit_for_docgen_rollback(unit),
+        )
     unit.knowledge_unit_type = knowledge_unit_type
     unit.canonical_name = item.name
     unit.normalized_name = normalized_name
@@ -2578,6 +3439,7 @@ def _upsert_edge(
     description: str,
     build_revision_no: int,
     lookup_cache: _EdgeLookupCache | None = None,
+    pre_update_snapshot_sink: list[dict[str, object]] | None = None,
 ) -> tuple[KnowledgeEdge, bool]:
     normalized_type = normalize_relation_type(edge_type)
     edge_key = (source_node_id, target_node_id, normalized_type)
@@ -2598,6 +3460,12 @@ def _upsert_edge(
         target_node_id=target_node_id,
         edge_type=normalized_type,
     )
+    if existing is not None and pre_update_snapshot_sink is not None:
+        _append_rollback_snapshot_once(
+            pre_update_snapshot_sink,
+            existing.id,
+            _snapshot_edge_for_docgen_rollback(existing),
+        )
     edge.description = f"{_SYNC_EDGE_MARKER}: {description}"
     edge.status = "active"
     edge.weight = 1.0
@@ -2857,6 +3725,10 @@ __all__ = [
     "KnowledgeSyncExtractionPayload",
     "KnowledgeSyncReport",
     "KnowledgeSyncRunContext",
+    "persist_docgen_kg_draft_graph_early",
+    "rollback_docgen_kg_draft_graph_early",
+    "build_docgen_kg_draft_units_payload",
+    "build_docgen_kg_draft_final_payload",
     "build_prefetched_knowledge_graph_units_payload",
     "extract_knowledge_graph_items",
     "extract_knowledge_graph_items_async",
@@ -2864,6 +3736,7 @@ __all__ = [
     "graph_extraction_parallelism",
     "initialize_knowledge_graph_sync_run",
     "mark_knowledge_graph_sync_run_failed",
+    "persist_docgen_kg_draft_units_early",
     "persist_knowledge_graph_items",
     "persist_knowledge_graph_units_early",
     "sync_markdown_knowledge_graph",

@@ -28,6 +28,7 @@ from app.shared.infra.workflow.runtime import run_state_graph
 from app.workflows.digest.common.node_tracing import named_route, node_metadata, traced_digest_node
 from app.workflows.digest.common.runtime_config import get_teaching_runtime_config
 from app.workflows.digest.planner.lib.store import (
+    get_reusable_planner_session_id,
     get_planner_adjust_click_context,
     mark_planner_session_cancelled,
     mark_planner_session_draft,
@@ -457,7 +458,9 @@ async def create_build_planner_session(
     """创建一次新的 Planner 会话并流式生成首版方案。"""
 
     planner_defaults = get_teaching_runtime_config().planner
-    session_id = uuid.uuid4().hex
+    requested_session_id = str(payload.planner_session_id or "").strip()
+    reusable_session_id = requested_session_id or get_reusable_planner_session_id(course=course, user_id=user_id)
+    session_id = reusable_session_id or uuid.uuid4().hex
     user_prompt = payload.user_prompt.strip()
     digest_mode = (payload.digest_mode or planner_defaults.default_digest_mode).strip() or planner_defaults.default_digest_mode
     logger.info(
@@ -465,6 +468,8 @@ async def create_build_planner_session(
         course_id=course.id,
         user_id=user_id,
         planner_session_id=session_id,
+        reused_existing_session=bool(reusable_session_id),
+        requested_planner_session_id=bool(requested_session_id),
         file_id_count=len(payload.file_ids or []),
         digest_mode=digest_mode,
         user_prompt_preview=user_prompt[:80],

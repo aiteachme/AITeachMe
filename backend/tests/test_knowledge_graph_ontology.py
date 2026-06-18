@@ -15,6 +15,7 @@ from app.models.knowledge_taxonomy import (
     STANDARD_KNOWLEDGE_UNIT_TYPES,
     STANDARD_RELATION_TYPES,
     knowledge_unit_type_label,
+    normalize_generated_knowledge_unit_type,
     normalize_knowledge_unit_type,
     normalize_relation_type,
     relation_type_label,
@@ -23,15 +24,16 @@ from app.models.knowledge_taxonomy import (
 
 
 def test_learning_graph_ontology_matches_enum_values():
+    prompt_unit_types = STANDARD_KNOWLEDGE_UNIT_TYPES - {"resource"}
     assert STANDARD_KNOWLEDGE_UNIT_TYPES == {item.value for item in KnowledgeUnitType}
     assert STANDARD_RELATION_TYPES == {item.value for item in KnowledgeRelationType}
     assert PRIMARY_KNOWLEDGE_UNIT_TYPES | SECONDARY_KNOWLEDGE_UNIT_TYPES == STANDARD_KNOWLEDGE_UNIT_TYPES
     assert PRIMARY_KNOWLEDGE_UNIT_TYPES.isdisjoint(SECONDARY_KNOWLEDGE_UNIT_TYPES)
     assert PARENT_KNOWLEDGE_UNIT_TYPES <= STANDARD_KNOWLEDGE_UNIT_TYPES
-    assert set(LEARNING_GRAPH_ONTOLOGY.unit_type_values) == STANDARD_KNOWLEDGE_UNIT_TYPES
+    assert set(LEARNING_GRAPH_ONTOLOGY.unit_type_values) == prompt_unit_types
     assert set(LEARNING_GRAPH_ONTOLOGY.relation_type_values) == STANDARD_RELATION_TYPES
     assert set(LEARNING_GRAPH_ONTOLOGY.primary_unit_type_values) == PRIMARY_KNOWLEDGE_UNIT_TYPES
-    assert set(LEARNING_GRAPH_ONTOLOGY.secondary_unit_type_values) == SECONDARY_KNOWLEDGE_UNIT_TYPES
+    assert set(LEARNING_GRAPH_ONTOLOGY.secondary_unit_type_values) == (SECONDARY_KNOWLEDGE_UNIT_TYPES - {"resource"})
     assert set(LEARNING_GRAPH_ONTOLOGY.parent_unit_type_values) == PARENT_KNOWLEDGE_UNIT_TYPES
 
 
@@ -52,6 +54,7 @@ def test_section_graph_prompt_uses_canonical_ontology_bullets():
     assert direction_bullets in SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
     for spec in LEARNING_GRAPH_ONTOLOGY.unit_types:
         assert f"`{spec.value}`" in SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
+    assert "`resource`" not in unit_bullets
     for spec in LEARNING_GRAPH_ONTOLOGY.relation_types:
         assert f"`{spec.value}`" in SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
 
@@ -122,6 +125,10 @@ def test_legacy_knowledge_graph_types_are_normalized_for_compatibility():
     assert normalize_knowledge_unit_type("exercise") == "skill"
     assert normalize_knowledge_unit_type("proof_step") == "principle"
     assert normalize_knowledge_unit_type("remark") == "resource"
+    assert normalize_generated_knowledge_unit_type("resource", name="标准化数据提醒") == "misconception"
+    assert normalize_generated_knowledge_unit_type("remark", name="应用图示") == "application_case"
+    assert normalize_generated_knowledge_unit_type("concept", name="每日 8 道方程求解与 2 道应用题建模") == "skill"
+    assert normalize_generated_knowledge_unit_type("concept", name="章末小测：函数图像性质辨析") == "skill"
     assert normalize_relation_type("derivation") == "derives_to"
     assert normalize_relation_type("example_of") == "applies_to"
     assert normalize_relation_type("support") == "explains"

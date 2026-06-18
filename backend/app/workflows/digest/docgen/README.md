@@ -28,6 +28,7 @@ load_context
   -> repair_or_route
   -> merge_review
   -> sync_locked_titles
+  -> prepare_knowledge_graph
   -> publish_document
   -> sync_knowledge_graph
 ```
@@ -126,9 +127,9 @@ user_profile.prompt_addendum
 
 输入：`chapter_task_seeds`, `intent_core`, `document_backbone`, `guideline`, `summary_enhanced`, `user_profile`
 
-动作：按章并行生成 brief，说明每章讲什么、怎么讲、覆盖哪些点。
+动作：按章并行生成 brief，说明每章讲什么、怎么讲、覆盖哪些点；brief fan-in 后可非阻塞启动早期 KG prefetch sidecar。
 
-输出：`chapter_execution_briefs`
+输出：`chapter_execution_briefs`, `kg_prefetch_status`, `kg_prefetch_ready`
 
 ## 8. `assemble_chapter_tasks`
 
@@ -162,7 +163,7 @@ user_profile.prompt_addendum
 
 输入：`unit_test_chapter_drafts`, `intent_profile`, `summary_enhanced`, `preliminary_kg`
 
-动作：增强 Mermaid、静态图、交互 HTML、练习资产；可选启动 KG prefetch sidecar。
+动作：增强 Mermaid、静态图、交互 HTML、练习资产；可选用完整章节刷新 KG prefetch sidecar，并保留早期候选。
 
 输出：`enhanced_chapter_drafts`, `asset_manifests`, `practice_manifests`
 
@@ -170,9 +171,9 @@ user_profile.prompt_addendum
 
 输入：`enhanced_chapter_draft`, `guideline`, `dispatch_table`, `chapters_enhanced`, `summary_enhanced`, `user_profile`
 
-动作：按章 review 覆盖、证据、结构、练习和风险。
+动作：按章 review 覆盖、证据、结构、练习和风险；同步产出章节级 KG refinement。
 
-输出：`reviewed_chapter_overlay_items`, `chapter_review_report_items`, `review_action_items`
+输出：`reviewed_chapter_overlay_items`, `chapter_review_report_items`, `review_action_items`, `kg_refinement_items`
 
 ## 13. `document_consistency_review`
 
@@ -186,9 +187,9 @@ user_profile.prompt_addendum
 
 输入：`reviewed_chapter_drafts`, `review_actions`, `document_consistency_report`
 
-动作：只修真正的问题；无法安全修的问题写入 warning。
+动作：只修真正的问题；无法安全修的问题写入 warning；无论是否 patch 都用最新 review/repair 上下文刷新 KG prefetch sidecar，patch 成功时追加修补后的 KG refinement。
 
-输出：`reviewed_chapter_drafts`, `repair_trace`, `unresolved_warnings`
+输出：`reviewed_chapter_drafts`, `repair_trace`, `unresolved_warnings`, `kg_refinement_items`, `kg_prefetch_status`
 
 ## 15. `merge_review`
 
@@ -206,19 +207,31 @@ user_profile.prompt_addendum
 
 输出：`final_chapter_titles`, `title_review_report`, `merged_markdown`, `enriched_markdown`
 
-## 17. `publish_document`
+## 17. `prepare_knowledge_graph`
 
-输入：`merged_markdown`, `chapter_metadatas`, `intent_enhanced`, `summary_enhanced`, `user_profile`, `chapters_enhanced`, `dispatch_table`, `preliminary_kg`, `guideline`
+输入：`chapter_metadatas`, `title_review_report`, `reviewed_chapter_drafts`, `document_backbone`, `preliminary_kg`, `kg_refinement_items`, `build_session_id`
+
+动作：在最终标题同步后、发布前等待或刷新 KG prefetch；生成 `docgen_kg_draft`；质量门通过时提前写入可查询 `KnowledgeUnit` 和端点唯一、方向合法的候选 `KnowledgeEdge`。
+
+输出：`docgen_kg_draft`, `kg_prefetch_metrics`, `kg_prefetch_ready`, `kg_draft_early_persist_metrics`
+
+质量门会检查章节覆盖、边端点唯一性、关系方向、可考核/画像节点、诊断型节点和结构关系。这里不写 `KnowledgeGraphSourceRef`，不废弃旧节点/旧边；正式补抽、source_ref 和废弃收口仍由发布后的 `kg_doc_sync` 完成。
+
+如果后续 `publish_document` 在 KnowledgeDoc 发布前失败，`rollback_knowledge_graph` 会删除本轮新建候选节点/边，并恢复本轮更新过的旧节点/边；已发布文档后的图谱同步失败不会走这条回滚路径。
+
+## 18. `publish_document`
+
+输入：`merged_markdown`, `chapter_metadatas`, `intent_enhanced`, `summary_enhanced`, `user_profile`, `chapters_enhanced`, `dispatch_table`, `preliminary_kg`, `docgen_kg_draft`, `kg_draft_early_persist_metrics`, `guideline`
 
 动作：发布 markdown；写 `docgen_manifest`；写 `KnowledgeDoc`；更新课程文档摘要。
 
 输出：`doc_ids`, `built_paths`, `build_group_id`, `merged_path`
 
-## 18. `sync_knowledge_graph`
+## 19. `sync_knowledge_graph`
 
-输入：`doc_ids`, `merged_markdown`, `chapter_metadatas`
+输入：`doc_ids`, `merged_markdown`, `chapter_metadatas`, `docgen_kg_draft`, `build_session_id`
 
-动作：记录或触发 KG 同步状态；正式建图在 `kg_doc_sync`。
+动作：在同一条 DocGen trace 下运行 KG Doc Sync。若 `docgen_kg_draft` quality-ready 且覆盖最终章节，优先 fast-finalize；否则复用 content hash 命中的 prefetch section，对缺失/变更 section 补抽。
 
 输出：`graph_sync_status`, `graph_sync_metrics`
 

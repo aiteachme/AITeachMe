@@ -7,7 +7,7 @@ import re
 from typing import Literal
 from time import perf_counter
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 import structlog
 
 from app.shared.infra.llm_support import acompletion_structured, run_llm_tasks
@@ -24,6 +24,7 @@ from app.workflows.digest.kg_doc_sync.lib.ontology import relation_endpoint_type
 from app.workflows.digest.kg_doc_sync.lib.candidate_identity import build_candidate_stable_id
 from app.workflows.digest.kg_doc_sync.lib.question_blocks import parse_question_blocks
 from app.models.knowledge_taxonomy import (
+    normalize_generated_knowledge_unit_type,
     normalize_knowledge_unit_type,
     normalize_relation_type,
     normalize_type_source,
@@ -87,7 +88,6 @@ class CandidateNode(BaseModel):
         "skill",
         "misconception",
         "application_case",
-        "resource",
     ] = Field(
         description="允许的节点类型，必须使用枚举值本身。"
     )
@@ -100,6 +100,19 @@ class CandidateNode(BaseModel):
         description="解释辅助、练习评估、方法示范等节点所属的父知识、方法或主题。",
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_legacy_resource_like_type(cls, value: object) -> object:
+        if isinstance(value, dict):
+            data = dict(value)
+            data["knowledge_unit_type"] = normalize_generated_knowledge_unit_type(
+                str(data.get("knowledge_unit_type") or ""),
+                name=str(data.get("name") or ""),
+                summary=str(data.get("local_summary") or ""),
+            )
+            return data
+        return value
+
     @field_validator("knowledge_unit_type", mode="before")
     @classmethod
     def _normalize_knowledge_unit_type(cls, value: object) -> str:
@@ -109,6 +122,15 @@ class CandidateNode(BaseModel):
     @classmethod
     def _normalize_type_source(cls, value: object) -> str:
         return normalize_type_source(str(value or ""))
+
+    @model_validator(mode="after")
+    def _avoid_new_resource_nodes(self) -> "CandidateNode":
+        self.knowledge_unit_type = normalize_generated_knowledge_unit_type(
+            self.knowledge_unit_type,
+            name=self.name,
+            summary=self.local_summary,
+        )
+        return self
 
 
 class CandidateEdge(BaseModel):

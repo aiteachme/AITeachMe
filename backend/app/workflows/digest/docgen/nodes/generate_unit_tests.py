@@ -114,6 +114,7 @@ def build_generate_unit_tests_node(*, context: WorkflowContext):
                 result,
                 title=draft.title,
                 min_items=min_items,
+                max_items=max_items,
                 fallback_targets=targets,
             )
             markdown = append_unit_test_markdown(draft.markdown, unit_test_markdown)

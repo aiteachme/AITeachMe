@@ -114,7 +114,6 @@ _PRIMARY_ENDPOINT_TYPES = (
 )
 _SUPPORT_ENDPOINT_TYPES = (
     KnowledgeUnitType.TOPIC.value,
-    KnowledgeUnitType.RESOURCE.value,
 )
 
 
@@ -130,7 +129,7 @@ LEARNING_GRAPH_ONTOLOGY = LearningGraphOntology(
         KnowledgeUnitTypeSpec(
             KnowledgeUnitType.CONCEPT.value,
             "概念术语",
-            "概念术语：定义、对象、术语、性质名称、基础事实，回答学习者必须先知道什么。",
+            "概念术语：稳定的名词、对象、定义项或基础事实，回答学习者必须先知道什么；不要放练习安排、题量计划、测试任务或一次性学习目标。",
         ),
         KnowledgeUnitTypeSpec(
             KnowledgeUnitType.PRINCIPLE.value,
@@ -150,7 +149,7 @@ LEARNING_GRAPH_ONTOLOGY = LearningGraphOntology(
         KnowledgeUnitTypeSpec(
             KnowledgeUnitType.SKILL.value,
             "解题技能",
-            "解题技能：可训练、可诊断的能力点，例如建模、化简、判别、画图、迁移、检查。",
+            "解题技能：可训练、可诊断的能力点或题型训练目标，例如建模、化简、判别、画图、迁移、检查、每日练习和章末测试。",
         ),
         KnowledgeUnitTypeSpec(
             KnowledgeUnitType.MISCONCEPTION.value,
@@ -160,12 +159,7 @@ LEARNING_GRAPH_ONTOLOGY = LearningGraphOntology(
         KnowledgeUnitTypeSpec(
             KnowledgeUnitType.APPLICATION_CASE.value,
             "应用案例",
-            "应用案例：例题、实验、真实场景、综合任务、迁移问题，用于连接知识和使用情境。",
-        ),
-        KnowledgeUnitTypeSpec(
-            KnowledgeUnitType.RESOURCE.value,
-            "学习资源",
-            "学习资源：背景材料、补充说明、来源片段、阅读资料或图表说明，作为证据和解释支撑。",
+            "应用案例：例题、实验、真实场景、综合任务、迁移问题，用于连接知识和使用情境；有题量/训练意味时优先用 `skill`。",
         ),
     ),
     relation_types=(
@@ -215,7 +209,7 @@ LEARNING_GRAPH_ONTOLOGY = LearningGraphOntology(
             KnowledgeRelationType.EXPLAINS.value,
             "解释",
             "解释：source 对 target 做直观说明、背景补充、证据支撑或换一种说法。",
-            source_type_preferences=(KnowledgeUnitType.RESOURCE.value, KnowledgeUnitType.APPLICATION_CASE.value, KnowledgeUnitType.PROCEDURE.value),
+            source_type_preferences=(KnowledgeUnitType.APPLICATION_CASE.value, KnowledgeUnitType.PROCEDURE.value, KnowledgeUnitType.PRINCIPLE.value),
             target_type_preferences=_PRIMARY_ENDPOINT_TYPES,
         ),
         KnowledgeRelationTypeSpec(

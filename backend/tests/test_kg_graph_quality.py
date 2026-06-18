@@ -53,6 +53,13 @@ def test_graph_quality_audit_records_taxonomy_direction_endpoint_and_coverage_me
     assert diagnostics["graph_audit_unit_count"] == 3
     assert diagnostics["graph_audit_edge_count"] == 3
     assert diagnostics["graph_audit_downstream_unit_count"] == 1
+    assert diagnostics["graph_audit_exam_ready_unit_count"] == 1
+    assert diagnostics["graph_audit_profile_ready_unit_count"] == 1
+    assert diagnostics["graph_audit_diagnostic_unit_count"] == 0
+    assert diagnostics["graph_audit_valid_relation_edge_count"] == 0
+    assert diagnostics["graph_audit_structure_edge_count"] == 0
+    assert diagnostics["graph_audit_exam_edge_count"] == 0
+    assert diagnostics["graph_audit_examine_profile_ready"] == 0
     assert diagnostics["graph_audit_missing_chapter_count"] == 1
     assert diagnostics["graph_audit_chapter_coverage_pct"] == 50.0
     assert diagnostics["graph_audit_nonstandard_unit_type_count"] == 1
@@ -77,4 +84,8 @@ def test_audit_node_updates_payload_and_node_metrics() -> None:
     assert result["error"] is None
     assert result["node_metrics"]["audit_graph"]["ok"] is True
     assert result["node_metrics"]["audit_graph"]["chapter_coverage_pct"] == 100.0
+    assert result["node_metrics"]["audit_graph"]["exam_ready_unit_count"] == 1
+    assert result["node_metrics"]["audit_graph"]["profile_ready_unit_count"] == 1
+    assert result["node_metrics"]["audit_graph"]["diagnostic_unit_count"] == 0
+    assert result["node_metrics"]["audit_graph"]["examine_profile_ready"] == 0
     assert result["extraction_payload"].diagnostics_totals["graph_audit_warning_count"] == 0

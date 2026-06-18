@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import io
 from collections.abc import Generator
+from typing import Any
 
 import pytest
 from fastapi import FastAPI
@@ -14,7 +16,7 @@ from app.api import export_import as export_import_api
 from app.api.deps import CurrentUserContext
 from app.models import ChatMessage, ChatSession
 from app.repositories.chats_repo import create_chat_message
-from app.schemas.export_import import CoursePackageItem
+from app.schemas.export_import import CoursePackageItem, ImportResultData
 from app.utils.course import GLOBAL_COURSE
 
 
@@ -148,3 +150,51 @@ def test_demo_courses_api_sets_no_store_headers_and_catalog_count(
             "stats": {"chapters": 3},
         },
     ]
+
+
+def test_import_course_upload_accepts_atmx_filename(monkeypatch: pytest.MonkeyPatch) -> None:
+    app = FastAPI()
+    app.include_router(export_import_api.router)
+
+    def override_get_db() -> Generator[object, None, None]:
+        yield object()
+
+    def override_current_user_context() -> CurrentUserContext:
+        return CurrentUserContext(user_id="api-user", email=None, is_local=True)
+
+    def fake_import_course(
+        session: object,
+        *,
+        file_path: Any,
+        options: Any,
+        user_id: str,
+    ) -> ImportResultData:
+        del session
+        assert str(file_path).endswith(".atmx")
+        assert getattr(options, "new_course_name", None) == "导入测试"
+        assert user_id == "api-user"
+        return ImportResultData(
+            course_id="course_import_api",
+            course_name="导入测试",
+            imported_counts={"course": 1},
+            warnings=[],
+        )
+
+    monkeypatch.setattr(export_import_api, "import_course", fake_import_course)
+    monkeypatch.setattr(
+        export_import_api,
+        "spawn_imported_embedding_rebuild_background",
+        lambda *args, **kwargs: False,
+    )
+    app.dependency_overrides[deps.get_db] = override_get_db
+    app.dependency_overrides[deps.get_current_user_context] = override_current_user_context
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v1/courses/import",
+            files={"file": ("课程.atmx", io.BytesIO(b"fake"), "application/octet-stream")},
+            data={"new_course_name": "导入测试"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["course_id"] == "course_import_api"

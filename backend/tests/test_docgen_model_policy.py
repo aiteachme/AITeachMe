@@ -14,7 +14,7 @@ from app.workflows.digest.docgen.lib.model_policy import (
 def test_docgen_model_policy_sets_step_timeouts() -> None:
     kwargs = docgen_completion_kwargs(DocGenModelStep.WRITER, digest_mode="systematic")
 
-    assert kwargs["timeout"] == 360
+    assert kwargs["timeout"] == 120
     assert kwargs["max_tokens"] == 12000
     assert kwargs["model"] == "reason"
     assert kwargs["max_retries"] == 5
@@ -26,7 +26,7 @@ def test_docgen_writer_model_slot_still_follows_digest_mode() -> None:
     kwargs = docgen_completion_kwargs(DocGenModelStep.WRITER, digest_mode="sprint")
 
     assert kwargs["model"] == "primary"
-    assert kwargs["timeout"] == 360
+    assert kwargs["timeout"] == 120
 
 
 def test_docgen_model_policy_metadata_includes_timeout() -> None:

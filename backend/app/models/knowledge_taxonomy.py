@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from app.models.enums import KnowledgeRelationType, KnowledgeUnitType, KnowledgeUnitTypeSource
 
 STANDARD_KNOWLEDGE_UNIT_TYPES = {item.value for item in KnowledgeUnitType}
@@ -103,6 +105,23 @@ PARENT_KNOWLEDGE_UNIT_TYPES = {
     KnowledgeUnitType.PROCEDURE.value,
 }
 
+_GENERATED_MISCONCEPTION_TEXT_RE = re.compile(
+    r"(?:易错|误区|混淆|陷阱|错因|纠错|注意|提醒|警告|不要|避免|边界|反例)"
+)
+_GENERATED_COUNTED_PRACTICE_RE = re.compile(
+    r"(?:每日|每天|每周|每章|每节|课后|章末|单元|阶段)?\s*[一二两三四五六七八九十百\d]+\s*道"
+)
+_GENERATED_SKILL_TEXT_RE = re.compile(
+    r"(?:练习|训练|自检|测验|测试|考试|小测|刷题|错题|题型|题目|应用题|综合题|"
+    r"综合应用|建模|求解|化简|判定|判断|计算|证明|推理|作图|画图|迁移|查漏|巩固|基础题|变式)"
+)
+_GENERATED_APPLICATION_TEXT_RE = re.compile(
+    r"(?:例题|示例|案例|场景|情境|图示|图表|表格|实验|项目|任务)"
+)
+_GENERATED_PROCEDURE_TEXT_RE = re.compile(
+    r"(?:步骤|流程|方法|策略|路径|操作|检查|排序|清单)"
+)
+
 _ALLOWED_SOURCE_TYPES_BY_RELATION = {
     KnowledgeRelationType.PART_OF.value: STANDARD_KNOWLEDGE_UNIT_TYPES,
     KnowledgeRelationType.PREREQUISITE_FOR.value: PRIMARY_KNOWLEDGE_UNIT_TYPES,
@@ -135,6 +154,7 @@ _ALLOWED_SOURCE_TYPES_BY_RELATION = {
         KnowledgeUnitType.RESOURCE.value,
         KnowledgeUnitType.APPLICATION_CASE.value,
         KnowledgeUnitType.PROCEDURE.value,
+        KnowledgeUnitType.PRINCIPLE.value,
     },
     KnowledgeRelationType.REMEDIATES.value: {KnowledgeUnitType.MISCONCEPTION.value, KnowledgeUnitType.SKILL.value},
     KnowledgeRelationType.EXTENDS_TO.value: PRIMARY_KNOWLEDGE_UNIT_TYPES,
@@ -178,6 +198,39 @@ def normalize_knowledge_unit_type(
     if normalized in STANDARD_KNOWLEDGE_UNIT_TYPES:
         return normalized
     return LEGACY_KNOWLEDGE_UNIT_TYPE_MAP.get(normalized, default)
+
+
+def normalize_generated_knowledge_unit_type(
+    raw_type: str | None,
+    *,
+    name: str = "",
+    summary: str = "",
+    default: str = KnowledgeUnitType.CONCEPT.value,
+) -> str:
+    """Normalize newly generated KG node types without creating resource nodes.
+
+    ``resource`` is kept in the persisted enum for historical data, but new
+    extraction should model explanations as source refs/evidence or as a real
+    learnable unit type.
+    """
+
+    normalized = normalize_knowledge_unit_type(raw_type, default=default)
+    text = f"{raw_type or ''} {name or ''} {summary or ''}".strip().lower()
+    inferred_type = ""
+    if _GENERATED_MISCONCEPTION_TEXT_RE.search(text):
+        inferred_type = KnowledgeUnitType.MISCONCEPTION.value
+    elif _GENERATED_COUNTED_PRACTICE_RE.search(text) or _GENERATED_SKILL_TEXT_RE.search(text):
+        inferred_type = KnowledgeUnitType.SKILL.value
+    elif _GENERATED_APPLICATION_TEXT_RE.search(text):
+        inferred_type = KnowledgeUnitType.APPLICATION_CASE.value
+    elif _GENERATED_PROCEDURE_TEXT_RE.search(text):
+        inferred_type = KnowledgeUnitType.PROCEDURE.value
+
+    if normalized == KnowledgeUnitType.RESOURCE.value:
+        return inferred_type or default
+    if normalized == KnowledgeUnitType.CONCEPT.value and inferred_type:
+        return inferred_type
+    return normalized
 
 
 def normalize_type_source(raw_source: str | None, *, default: str = KnowledgeUnitTypeSource.LLM.value) -> str:
@@ -242,6 +295,7 @@ __all__ = [
     "is_standard_knowledge_unit_type",
     "is_standard_relation_type",
     "knowledge_unit_type_label",
+    "normalize_generated_knowledge_unit_type",
     "normalize_knowledge_unit_type",
     "normalize_relation_type",
     "normalize_type_source",

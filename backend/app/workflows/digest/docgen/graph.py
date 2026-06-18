@@ -43,8 +43,10 @@ from app.workflows.digest.docgen.nodes.load_context import build_load_context_no
 from app.workflows.digest.docgen.nodes.lock_titles_for_chapters import build_lock_titles_for_chapters_node
 from app.workflows.digest.docgen.nodes.merge_review import build_merge_review_node
 from app.workflows.digest.docgen.nodes.prepare_global_seed import build_prepare_global_seed_node
+from app.workflows.digest.docgen.nodes.prepare_knowledge_graph import build_prepare_knowledge_graph_node
 from app.workflows.digest.docgen.nodes.publish_document import build_publish_document_node
 from app.workflows.digest.docgen.nodes.repair_or_route import build_repair_or_route_node
+from app.workflows.digest.docgen.nodes.rollback_knowledge_graph import build_rollback_knowledge_graph_node
 from app.workflows.digest.docgen.nodes.review_content import (
     build_document_consistency_review_node,
     build_review_chapter_node,
@@ -68,6 +70,8 @@ NODE_ENHANCE_CHAPTERS = "enhance_chapters"
 NODE_REVIEW_CHAPTERS = "review_chapters"
 NODE_DOCUMENT_CONSISTENCY_REVIEW = "document_consistency_review"
 NODE_REPAIR_OR_ROUTE = "repair_or_route"
+NODE_PREPARE_KNOWLEDGE_GRAPH = "prepare_knowledge_graph"
+NODE_ROLLBACK_KNOWLEDGE_GRAPH = "rollback_knowledge_graph"
 NODE_MERGE_REVIEW = "merge_review"
 NODE_SYNC_LOCKED_TITLES = "sync_locked_titles"
 NODE_PUBLISH = "publish_document"
@@ -89,6 +93,8 @@ NODE_DISPLAY_NAMES = {
     NODE_REVIEW_CHAPTERS: "复核章节内容",
     NODE_DOCUMENT_CONSISTENCY_REVIEW: "复核整本一致性",
     NODE_REPAIR_OR_ROUTE: "记录复核回流动作",
+    NODE_PREPARE_KNOWLEDGE_GRAPH: "准备图谱候选",
+    NODE_ROLLBACK_KNOWLEDGE_GRAPH: "回滚候选图谱",
     NODE_MERGE_REVIEW: "合并检查整本文档",
     NODE_SYNC_LOCKED_TITLES: "同步锁定标题",
     NODE_PUBLISH: "发布知识文档",
@@ -206,22 +212,43 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
     NODE_BUILD_BACKBONE: {
         "description": (
             "构建整本文档级知识骨架，包括 canonical glossary、概念依赖、符号规范、核心主张池和易混点。"
-            "当前实现以规则和 DocGen 结构化信号为主，用来约束后续章节写作和图谱同步，而不是直接产出正文。"
+            "当前实现以规则和 DocGen 结构化信号为主，用来约束后续章节写作和图谱同步；"
+            "同时先产出第一版 chapters_enhanced、dispatch_table 和 preliminary_kg，让 KG 候选早于章节 brief fan-in 出现。"
         ),
-        "reads": ["chapter_task_seeds", "shared_inputs", "high_confidence_evidence_units", "backbone_research_agenda"],
-        "writes": ["document_backbone", "guideline", "backbone_conflict_warnings"],
-        "input_keys": ["chapter_task_seeds", "shared_inputs", "high_confidence_evidence_units", "backbone_research_agenda"],
-        "output_keys": ["document_backbone", "guideline", "backbone_conflict_warnings", "backbone_ms"],
+        "reads": ["chapter_task_seeds", "summary_enhanced", "high_confidence_evidence_units", "backbone_research_agenda"],
+        "writes": ["document_backbone", "guideline", "chapters_enhanced", "dispatch_table", "preliminary_kg", "backbone_conflict_warnings"],
+        "input_keys": ["chapter_task_seeds", "summary_enhanced", "high_confidence_evidence_units", "backbone_research_agenda"],
+        "output_keys": ["document_backbone", "guideline", "chapters_enhanced", "dispatch_table", "preliminary_kg", "backbone_conflict_warnings", "backbone_ms"],
     },
     NODE_BUILD_CHAPTER_BRIEFS: {
         "description": (
             "在单节点内部按章节并行生成最小执行简报。每个 brief 只给本章 teaching_outline、目标概念/定义/公式/例题/易错点"
-            "和少量检索 query，不允许改标题或扩展成完整大纲。"
+            "和少量检索 query，不允许改标题或扩展成完整大纲；brief fan-in 后会立即基于 brief/dispatch/证据启动 KG 早期预抽取。"
         ),
-        "reads": ["chapter_task_seeds", "document_backbone", "intent_core"],
-        "writes": ["chapter_execution_briefs"],
-        "input_keys": ["course_id", "course_name", "chapter_task_seeds", "document_backbone", "intent_core", "digest_mode"],
-        "output_keys": ["chapter_execution_briefs", "chapter_prepare_ms", "llm_calls_total", "error"],
+        "reads": [
+            "chapter_task_seeds",
+            "document_backbone",
+            "intent_core",
+            "summary_enhanced",
+            "guideline",
+            "dispatch_table",
+            "preliminary_kg",
+            "high_confidence_evidence_units",
+            "build_session_id",
+        ],
+        "writes": ["chapter_execution_briefs", "kg_prefetch_status", "kg_prefetch_ready"],
+        "input_keys": [
+            "course_id",
+            "course_name",
+            "build_session_id",
+            "chapter_task_seeds",
+            "document_backbone",
+            "intent_core",
+            "summary_enhanced",
+            "high_confidence_evidence_units",
+            "digest_mode",
+        ],
+        "output_keys": ["chapter_execution_briefs", "kg_prefetch_status", "kg_prefetch_ready", "chapter_prepare_ms", "llm_calls_total", "error"],
         "fanout": "internal_async_per_chapter",
     },
     NODE_ASSEMBLE_CHAPTER_TASKS: {
@@ -298,9 +325,9 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "该节点不重写核心知识，不改变 claim/evidence 绑定，也不按本地关键词补标题、例题或练习。"
         ),
         "reads": ["chapter_drafts", "claim_ledgers", "document_backbone", "digest_mode"],
-        "writes": ["enhanced_chapter_drafts", "asset_manifests", "practice_manifests"],
+        "writes": ["enhanced_chapter_drafts", "asset_manifests", "practice_manifests", "kg_prefetch_status"],
         "input_keys": ["chapter_drafts", "claim_ledgers", "document_backbone", "digest_mode"],
-        "output_keys": ["enhanced_chapter_drafts", "asset_manifests", "practice_manifests", "enhance_ms", "error"],
+        "output_keys": ["enhanced_chapter_drafts", "asset_manifests", "practice_manifests", "kg_prefetch_status", "enhance_ms", "error"],
     },
     NODE_REVIEW_CHAPTERS: {
         "description": (
@@ -319,7 +346,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "chapters_enhanced",
             "user_profile",
         ],
-        "writes": ["reviewed_chapter_overlay_items", "chapter_review_report_items", "review_action_items"],
+        "writes": ["reviewed_chapter_overlay_items", "chapter_review_report_items", "review_action_items", "kg_refinement_items"],
         "input_keys": [
             "enhanced_chapter_draft",
             "review_chapter_task",
@@ -337,6 +364,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "reviewed_chapter_overlay_items",
             "chapter_review_report_items",
             "review_action_items",
+            "kg_refinement_items",
             "review_ms",
             "llm_calls_total",
             "error",
@@ -358,8 +386,16 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "guideline",
             "dispatch_table",
             "learner_profile_text",
+            "kg_refinement_items",
         ],
-        "writes": ["reviewed_chapter_drafts", "chapter_review_reports", "review_actions", "document_consistency_report", "review_decision"],
+        "writes": [
+            "reviewed_chapter_drafts",
+            "chapter_review_reports",
+            "review_actions",
+            "document_consistency_report",
+            "review_decision",
+            "kg_prefetch_status",
+        ],
         "input_keys": [
             "enhanced_chapter_drafts",
             "reviewed_chapter_overlay_items",
@@ -369,6 +405,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "guideline",
             "dispatch_table",
             "learner_profile_text",
+            "kg_refinement_items",
         ],
         "output_keys": [
             "reviewed_chapter_drafts",
@@ -376,6 +413,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "review_actions",
             "document_consistency_report",
             "review_decision",
+            "kg_prefetch_status",
             "review_ms",
             "llm_calls_total",
             "error",
@@ -387,16 +425,104 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "regenerate_chapter 会降级为单章局部修补，re_dispatch/rebuild_backbone 等重动作结构化记录为 unresolved warnings。"
             "这个节点负责把复核问题转成可追踪的修补记录，不重新展开整本生成。"
         ),
-        "reads": ["review_actions", "reviewed_chapter_drafts", "enhanced_chapter_drafts", "chapter_tasks", "document_backbone"],
-        "writes": ["reviewed_chapter_drafts", "unresolved_warnings", "repair_trace", "repair_loop_state"],
+        "reads": [
+            "review_actions",
+            "reviewed_chapter_drafts",
+            "enhanced_chapter_drafts",
+            "chapter_tasks",
+            "document_backbone",
+            "kg_refinement_items",
+        ],
+        "writes": [
+            "reviewed_chapter_drafts",
+            "unresolved_warnings",
+            "repair_trace",
+            "repair_loop_state",
+            "kg_refinement_items",
+            "kg_prefetch_status",
+        ],
         "input_keys": [
             "review_actions",
             "reviewed_chapter_drafts",
             "enhanced_chapter_drafts",
             "chapter_tasks",
             "document_backbone",
+            "kg_refinement_items",
         ],
-        "output_keys": ["reviewed_chapter_drafts", "unresolved_warnings", "repair_trace", "repair_loop_state", "repair_ms", "error"],
+        "output_keys": [
+            "reviewed_chapter_drafts",
+            "unresolved_warnings",
+            "repair_trace",
+            "repair_loop_state",
+            "kg_refinement_items",
+            "kg_prefetch_status",
+            "repair_ms",
+            "error",
+        ],
+    },
+    NODE_PREPARE_KNOWLEDGE_GRAPH: {
+        "description": (
+            "在 review/repair、整本文档合并和最终标题同步后，发布前准备并提前落库 KG 候选。"
+            "它会等待 DocGen 期间持续刷新的 KG 预抽取 sidecar 尽量完成；如果缓存缺失，会用 reviewed/repaired 章节兜底启动一次预抽取。"
+            "质量门通过时会基于最终章节 metadata 写入可查询的 KnowledgeUnit 和合法候选边，让 publish 阶段前图谱已经可见。"
+            "source_ref/废弃收口仍由发布后的固化节点负责。"
+        ),
+        "reads": [
+            "reviewed_chapter_drafts",
+            "enhanced_chapter_drafts",
+            "chapter_metadatas",
+            "title_review_report",
+            "document_backbone",
+            "guideline",
+            "dispatch_table",
+            "preliminary_kg",
+            "kg_refinement_items",
+            "build_session_id",
+        ],
+        "writes": [
+            "docgen_kg_draft",
+            "kg_prefetch_status",
+            "kg_prefetch_metrics",
+            "kg_prefetch_ready",
+            "kg_draft_early_persist_metrics",
+            "graph_prepare_ms",
+        ],
+        "input_keys": [
+            "course_id",
+            "build_session_id",
+            "reviewed_chapter_drafts",
+            "enhanced_chapter_drafts",
+            "chapter_metadatas",
+            "title_review_report",
+            "document_backbone",
+            "preliminary_kg",
+            "kg_refinement_items",
+        ],
+        "output_keys": [
+            "docgen_kg_draft",
+            "kg_prefetch_status",
+            "kg_prefetch_metrics",
+            "kg_prefetch_ready",
+            "kg_draft_early_persist_metrics",
+            "graph_prepare_ms",
+        ],
+    },
+    NODE_ROLLBACK_KNOWLEDGE_GRAPH: {
+        "description": (
+            "仅在发布前失败路径运行：如果 prepare_knowledge_graph 已经提前写入可查询 KG 草稿，"
+            "而 KnowledgeDoc 尚未发布，则删除本轮新建的候选节点/边，并恢复本轮更新过的旧节点/边。"
+            "已发布文档后的图谱同步失败不会走这条清理路径。"
+        ),
+        "reads": ["kg_draft_early_persist_metrics", "doc_ids", "error", "build_session_id"],
+        "writes": ["kg_draft_rollback_metrics", "kg_draft_rollback_ms"],
+        "input_keys": [
+            "course_id",
+            "build_session_id",
+            "doc_ids",
+            "kg_draft_early_persist_metrics",
+            "error",
+        ],
+        "output_keys": ["kg_draft_rollback_metrics", "kg_draft_rollback_ms"],
     },
     NODE_MERGE_REVIEW: {
         "description": (
@@ -432,20 +558,37 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
         "description": (
             "发布 DocGen 产物：写出章节 Markdown、整本 Markdown、docgen_manifest、版本归档和 KnowledgeDoc rows。"
             "可复用的 KG 预抽取只作为 sidecar 缓存存在，本节点自身只负责文档持久化；"
-            "后续图谱同步由同一 DocGen 图里的同步节点承接，避免发布后另起一条不可关联的自动链路。"
+            "后续图谱固化由同一 DocGen 图里的同步节点承接，负责校验最终版本、补抽缺口和正式落库。"
         ),
-        "reads": ["merged_markdown", "chapter_metadatas", "docgen_artifacts", "document_context", "cover_artifact"],
+        "reads": [
+            "merged_markdown",
+            "chapter_metadatas",
+            "docgen_artifacts",
+            "document_context",
+            "cover_artifact",
+            "docgen_kg_draft",
+            "kg_draft_early_persist_metrics",
+        ],
         "writes": ["doc_ids", "built_paths", "merged_path", "enriched_markdown"],
         "input_keys": ["merged_markdown", "chapter_metadatas", "document_context", "build_session_id"],
         "output_keys": ["doc_ids", "built_paths", "merged_path", "enriched_markdown", "error"],
     },
     NODE_SYNC_KNOWLEDGE_GRAPH: {
         "description": (
-            "在知识文档发布后，沿用同一 DocGen trace 上下文同步课程知识图谱。"
-            "该节点复用 kg_doc_sync 的完整子图、状态写入和质量审计，但不再由 lifecycle 单独 create_task；"
-            "因此 LangSmith 中能看到发布文档后接着同步图谱的连续路径。"
+            "位于知识文档发布后，沿用同一 DocGen trace 上下文固化课程知识图谱。"
+            "该节点优先复用 DocGen 中期预抽取且 hash 匹配最终文档的 section payload，"
+            "再对缺失或变更 section 补抽，并复用 kg_doc_sync 的完整子图、状态写入和质量审计；"
+            "因此 LangSmith 中能看到文档发布和图谱固化的连续路径。"
         ),
-        "reads": ["doc_ids", "merged_markdown", "chapter_metadatas", "preliminary_kg", "document_backbone", "build_group_id"],
+        "reads": [
+            "doc_ids",
+            "merged_markdown",
+            "chapter_metadatas",
+            "preliminary_kg",
+            "docgen_kg_draft",
+            "document_backbone",
+            "build_group_id",
+        ],
         "writes": ["graph_sync_status", "graph_sync_metrics", "graph_sync_ms"],
         "input_keys": [
             "course_id",
@@ -623,6 +766,26 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
         metadata=_langgraph_node_metadata(NODE_REPAIR_OR_ROUTE),
     )
     workflow.add_node(
+        NODE_PREPARE_KNOWLEDGE_GRAPH,
+        _trace_docgen_node(
+            trace,
+            NODE_PREPARE_KNOWLEDGE_GRAPH,
+            build_prepare_knowledge_graph_node(context=context),
+            timing_field="graph_prepare_ms",
+        ),
+        metadata=_langgraph_node_metadata(NODE_PREPARE_KNOWLEDGE_GRAPH),
+    )
+    workflow.add_node(
+        NODE_ROLLBACK_KNOWLEDGE_GRAPH,
+        _trace_docgen_node(
+            trace,
+            NODE_ROLLBACK_KNOWLEDGE_GRAPH,
+            build_rollback_knowledge_graph_node(context=context),
+            timing_field="kg_draft_rollback_ms",
+        ),
+        metadata=_langgraph_node_metadata(NODE_ROLLBACK_KNOWLEDGE_GRAPH),
+    )
+    workflow.add_node(
         NODE_MERGE_REVIEW,
         _trace_docgen_node(
             trace,
@@ -729,13 +892,19 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
     workflow.add_conditional_edges(
         NODE_SYNC_LOCKED_TITLES,
         route_after_step_for_trace,
-        {"continue": NODE_PUBLISH, "fail": END},
+        {"continue": NODE_PREPARE_KNOWLEDGE_GRAPH, "fail": END},
+    )
+    workflow.add_conditional_edges(
+        NODE_PREPARE_KNOWLEDGE_GRAPH,
+        route_after_step_for_trace,
+        {"continue": NODE_PUBLISH, "fail": NODE_ROLLBACK_KNOWLEDGE_GRAPH},
     )
     workflow.add_conditional_edges(
         NODE_PUBLISH,
         route_after_step_for_trace,
-        {"continue": NODE_SYNC_KNOWLEDGE_GRAPH, "fail": END},
+        {"continue": NODE_SYNC_KNOWLEDGE_GRAPH, "fail": NODE_ROLLBACK_KNOWLEDGE_GRAPH},
     )
+    workflow.add_edge(NODE_ROLLBACK_KNOWLEDGE_GRAPH, END)
     workflow.add_edge(NODE_SYNC_KNOWLEDGE_GRAPH, END)
     return workflow
 
@@ -792,6 +961,10 @@ def create_docgen_initial_state(
         "guideline": {},
         "dispatch_table": {},
         "preliminary_kg": {},
+        "kg_refinement_items": [],
+        "docgen_kg_draft": {},
+        "kg_draft_early_persist_metrics": {},
+        "kg_draft_rollback_metrics": {},
         "unit_test_chapter_drafts": [],
         "unit_test_items": [],
         "error": None,

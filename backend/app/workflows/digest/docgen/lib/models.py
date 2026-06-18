@@ -43,7 +43,6 @@ LEARNING_CONTENT_ROLE_TYPES: tuple[str, ...] = (
     "skill",
     "misconception",
     "application_case",
-    "resource",
 )
 
 
@@ -528,7 +527,7 @@ class ChapterBudgetPolicy(DocGenBaseModel):
     max_web_queries: int = 3
     max_opened_urls: int = 4
     max_context_chars: int = 6000
-    max_writer_retries: int = 1
+    max_writer_retries: int = 0
 
 
 class ChapterGenerationTaskSeed(DocGenBaseModel):

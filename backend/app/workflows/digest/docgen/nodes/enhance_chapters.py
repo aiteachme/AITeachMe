@@ -19,7 +19,7 @@ from app.workflows.digest.docgen.lib.chapter_enhancement import enhance_chapter_
 from app.workflows.digest.docgen.lib.models import ChapterDraft, ClaimLedger
 from app.workflows.digest.docgen.nodes.common import extract_markdown_preview_headings, publish_docgen_progress
 from app.workflows.digest.docgen.state import DocGenState
-from app.workflows.digest.kg_doc_sync.lib.prefetch import start_docgen_kg_prefetch
+from app.workflows.digest.kg_doc_sync.lib.prefetch import start_docgen_kg_prefetch_incremental
 
 
 def build_enhance_chapters_node(*, context: WorkflowContext):
@@ -56,6 +56,7 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
             digest_mode=state.get("digest_mode") or None,
             current_stage_description=f"章节初稿已生成，正在并行增强 {len(drafts)} 个章节。",
         )
+        used_static_figure_signatures: set[str] = set()
 
         async def _enhance_one(draft: ChapterDraft):
             traced_context = TracedExecutionContext(
@@ -87,6 +88,7 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
                 traced_context=traced_context,
                 digest_mode=state.get("digest_mode") or "systematic",
                 claim_ledger=claim_ledgers_by_chapter.get(draft.chapter_index),
+                used_static_figure_signatures=used_static_figure_signatures,
             )
             word_count = count_words(enhanced.markdown)
             upsert_knowledge_build_chapter_preview(
@@ -134,7 +136,7 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
         enhanced_items = [item[0] for item in results]
         asset_manifests = [item[1] for item in results]
         practice_manifests = [item[2] for item in results]
-        kg_prefetch_started = start_docgen_kg_prefetch(
+        kg_prefetch_incremental_started = start_docgen_kg_prefetch_incremental(
             course_id=state["course_id"],
             build_session_id=state.get("build_session_id", ""),
             chapters=[item.model_dump(mode="json") for item in enhanced_items],
@@ -147,16 +149,24 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
                 "chapter_generation_plan_seed": dict(state.get("chapter_generation_plan_seed") or {}),
                 "document_backbone_snapshot": dict(state.get("document_backbone") or {}),
                 "preliminary_kg": dict(state.get("preliminary_kg") or {}),
+                "kg_refinement_items": list(state.get("kg_refinement_items") or []),
+                "docgen_kg_draft": dict(state.get("docgen_kg_draft") or {}),
                 "digest_mode": str(state.get("digest_mode") or ""),
+                "kg_prefetch_phase": "enhanced_chapters_incremental",
             },
         )
-        if kg_prefetch_started:
+        kg_prefetch_status = (
+            "incremental_from_enhanced_chapters"
+            if kg_prefetch_incremental_started
+            else "not_started_from_enhanced_chapters"
+        )
+        if kg_prefetch_incremental_started:
             append_knowledge_build_recent_event(
                 state["course_id"],
                 requested_at=state["requested_at"],
                 event={
-                    "stage": "kg_prefetch_started",
-                    "summary": "知识图谱预抽取已在后台启动，不阻塞知识文档复核和发布。",
+                    "stage": "kg_prefetch_incremental_started",
+                    "summary": "增强后的章节已追加进入知识图谱预抽取，不打断已有图谱 sidecar。",
                     "created_at": utcnow(),
                 },
             )
@@ -177,13 +187,16 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
                 "asset_count": sum(len(item.assets) for item in asset_manifests),
                 "practice_count": sum(len(item.questions) for item in practice_manifests),
                 "warning_count": sum(len(item.warnings) for item in enhanced_items),
-                "kg_prefetch_started": kg_prefetch_started,
+                "kg_prefetch_started": kg_prefetch_incremental_started,
+                "kg_prefetch_incremental_started": kg_prefetch_incremental_started,
+                "kg_prefetch_status": kg_prefetch_status,
             },
         )
         return {
             "enhanced_chapter_drafts": [item.model_dump(mode="json") for item in enhanced_items],
             "asset_manifests": [item.model_dump(mode="json") for item in asset_manifests],
             "practice_manifests": [item.model_dump(mode="json") for item in practice_manifests],
+            "kg_prefetch_status": kg_prefetch_status,
             "enhance_ms": elapsed_ms,
         }
 

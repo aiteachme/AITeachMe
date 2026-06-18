@@ -38,7 +38,6 @@ _LEARNING_NODE_TYPES = {
     "skill": "解题技能",
     "misconception": "易错辨析",
     "application_case": "应用案例",
-    "resource": "学习资源",
 }
 _LEARNING_EDGE_TYPES = {
     "part_of": "归属",
@@ -962,7 +961,8 @@ def render_course_llm_context(
             if answer:
                 suffix += f"；用户回答：{answer}"
             if purpose:
-                suffix += f"；诊断目标：{purpose}"
+                purpose_text = purpose.removeprefix("文档落点：").removeprefix("文档落点:").strip()
+                suffix += f"；文档落点：{purpose_text}"
             if options and not answer:
                 suffix += f"；可选项：{options}"
             lines.append(f"{index}. {question}{suffix}")

@@ -93,6 +93,7 @@ async def enhance_chapter_draft(
     traced_context: TracedExecutionContext,
     digest_mode: str,
     claim_ledger: ClaimLedger | None = None,
+    used_static_figure_signatures: set[str] | None = None,
 ) -> tuple[EnhancedChapterDraft, AssetManifest, PracticeManifest]:
     """增强单章草稿的表现层内容。
 
@@ -158,7 +159,8 @@ async def enhance_chapter_draft(
             digest_mode=digest_mode,
             markdown=markdown,
             claim_ledger=claim_ledger,
-            max_assets=2,
+            max_assets=1,
+            used_visual_signatures=used_static_figure_signatures,
         )
         if static_figure_assets:
             markdown = _insert_asset_links(markdown, static_figure_assets)
