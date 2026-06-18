@@ -365,9 +365,8 @@ def _render_unit_test_overview_markdown(items: list[ChapterUnitTestItem]) -> str
     coverage_text = "、".join(targets[:6]) + ("…" if len(targets) > 6 else "")
     return "\n".join(
         [
-            "> [!PRACTICE]",
-            f"> **{len(items)} 题覆盖**：{coverage_text or '本章核心考点'}",
-            f"> **题型与难度**：{type_text}；{difficulty_text}",
+            f"**{len(items)} 题覆盖**：{coverage_text or '本章核心考点'}",
+            f"**题型与难度**：{type_text}；{difficulty_text}",
         ]
     )
 
@@ -376,7 +375,7 @@ def _render_unit_test_item_markdown(item: ChapterUnitTestItem, *, index: int) ->
     question_type = _normalize_question_type(item.type)
     difficulty = _normalize_difficulty(item.difficulty)
     lines = [
-        f"> [!PRACTICE] **Q{index:02d}｜{question_type}｜{difficulty}｜考点：{_markdown_text(item.target, limit=36)}**",
+        f"> [!QUESTION] **Q{index:02d}｜{question_type}｜{difficulty}｜考点：{_markdown_text(item.target, limit=36)}**",
         ">",
         f"> {_markdown_text(item.stem, limit=420)}",
     ]
@@ -384,9 +383,9 @@ def _render_unit_test_item_markdown(item: ChapterUnitTestItem, *, index: int) ->
     lines.extend([f"> - {label}. {_markdown_text(option, limit=42)}" for label, option in zip("ABCD", item.options)])
     lines.extend(
         [
-            ">",
-            f"> **答案与依据**：{_markdown_text(item.answer, limit=360)}",
-            f"> **判定依据**：{_markdown_text(item.basis, limit=360)}",
+            "",
+            f"**答案与依据**：{_markdown_text(item.answer, limit=360)}",
+            f"**判定依据**：{_markdown_text(item.basis, limit=360)}",
         ]
     )
     return "\n".join(lines).strip()

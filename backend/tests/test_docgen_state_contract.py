@@ -2179,7 +2179,7 @@ async def test_repair_appends_unit_test_patch_to_chapter_end(monkeypatch) -> Non
             target_anchor="核心概念",
             patch_markdown=(
                 "## 单元测试\n\n"
-                "> [!PRACTICE]\n"
+                "> [!QUESTION]\n"
                 "> **题目/任务**：判断面积单位是否统一。\n>\n"
                 "> **答案/结论**：必须先统一单位再计算。\n"
             ),

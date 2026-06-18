@@ -54,7 +54,7 @@ def build_presentation_policy(*, digest_mode: str = "") -> dict[str, Any]:
             "heading_levels": "一级标题只用于章节标题，二/三级标题按内容层级展开，不跳级。",
             "emphasis": "核心概念、关键条件、结论、易错边界可加粗；不要整段加粗。",
             "highlight": "只对短关键句使用 ==...== 或受控 <mark>...</mark>，不要大量高亮。",
-            "callouts": ["NOTE", "TIP", "IMPORTANT", "WARNING", "CAUTION"],
+            "callouts": ["NOTE", "TIP", "IMPORTANT", "WARNING", "CAUTION", "QUESTION"],
             "callout_usage": "每个较长章节自然放 3-4 个短提示块；至少覆盖关键前提/结论、快速抓手和易错边界，避免堆成长段彩块。",
             "tables": "表格用于对比、分类、步骤、公式汇总、错因分析和学习路径；建议 3-5 列。",
             "visual_grouping": "定义、公式、步骤、例题、易错点和高频规则清单要有清晰边界，避免连续大段正文把不同学习功能混在一起。",
@@ -65,7 +65,7 @@ def build_presentation_policy(*, digest_mode: str = "") -> dict[str, Any]:
         },
         "reader_experience_checks": {
             "long_paragraphs": "避免连续长段正文；长解释要拆成步骤、表格、公式块、例题或短提示。",
-            "learning_callout_fields": "例题和练习必须能自查，至少有题目/任务、解析/判定依据、答案/结论。",
+            "learning_callout_fields": "题干或短练习可用 QUESTION 题块；解析、步骤、答案和判定依据用普通正文或加粗标签，不要额外套彩块。",
             "reading_blocks": "长章节需要有短提示、表格、公式、图示、代码块或例题等阅读分组，避免整章只有正文和列表。",
             "list_rhythm": "长列表要拆分成小节、表格或练习块，避免学生扫读疲劳。",
         },
@@ -97,7 +97,7 @@ Markdown 表达：
 - 二级标题写本章具体知识、方法、任务或场景；三级标题只服务同一小节下的并列子主题。
 {section_line}
 - 段落短，长列表改成表格、步骤或任务块；表格优先用于对比、分类、步骤和错因。
-- 重点可加粗或少量高亮；每章自然安排 3-4 个短 `> [!IMPORTANT]` / `> [!TIP]` / `> [!WARNING]`，至少覆盖关键前提/结论、快速抓手和易错边界；例题和练习用普通正文块。
+- 重点可加粗或少量高亮；每章自然安排 3-4 个短 `> [!IMPORTANT]` / `> [!TIP]` / `> [!WARNING]`，至少覆盖关键前提/结论、快速抓手和易错边界；题干或短练习可用 `> [!QUESTION]` 轻底色题块，解析、步骤和答案保持普通正文。
 - 公式、代码、Mermaid 使用可渲染 Markdown；Mermaid 关系标签限：{relation_text}。
 - 需要图形辅助时，优先请求 Mermaid：只画靠文字不直观的概念关系、方法流程、几何/坐标/结构关系、对比或实验路径。
 - 不要为公式展开、三步文字清单、单条数轴/箭头或纯标签说明生成图；能用一句话讲清的内容用正文和提示块。

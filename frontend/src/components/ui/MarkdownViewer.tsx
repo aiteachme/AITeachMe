@@ -8,6 +8,7 @@ import rehypeRaw from "rehype-raw";
 import {
   BadgeCheck,
   ChevronRight,
+  CircleHelp,
   ExternalLink,
   Info,
   Lightbulb,
@@ -26,11 +27,19 @@ import { cn } from "../../lib/utils";
 import { MermaidBlock } from "./MermaidBlock";
 
 type MarkdownViewerVariant = "default" | "document" | "planner";
-type CalloutKind = "note" | "tip" | "important" | "warning" | "caution" | "example" | "practice";
+type CalloutKind =
+  | "note"
+  | "tip"
+  | "important"
+  | "warning"
+  | "caution"
+  | "example"
+  | "practice"
+  | "question";
 type CollapsibleHeadings = boolean | readonly number[];
-const CALLOUT_PATTERN = "note|tip|important|warning|caution|example|practice";
+const CALLOUT_PATTERN = "note|tip|important|warning|caution|example|practice|question";
 const CALLOUT_FIELD_LABEL_PATTERN =
-  "题目\\/任务|解析\\/判定依据|答案\\/结论|判定依据|正确答案|参考答案|题目|任务|案例|例题|解析|解法|步骤|答案|结论|易错点|错因|注意";
+  "题目\\/任务|解析\\/判定依据|答案\\/结论|判定依据|正确答案|参考答案|题目|题干|任务|案例|例题|选项|解析|解法|思路|步骤|答案|结论|易错点|错因|注意";
 const CALLOUT_FIELD_MARKER_RE = new RegExp(
   `(?<!\\*)\\s*(?:\\*\\*(?:${CALLOUT_FIELD_LABEL_PATTERN})\\*\\*|(?:${CALLOUT_FIELD_LABEL_PATTERN}))\\s*[：:]`,
   "g",
@@ -145,6 +154,7 @@ const CALLOUT_META: Record<CalloutKind, { label: string; Icon: LucideIcon }> = {
   caution: { label: "警告", Icon: OctagonAlert },
   example: { label: "例题", Icon: BadgeCheck },
   practice: { label: "练习", Icon: Lightbulb },
+  question: { label: "题目", Icon: CircleHelp },
 };
 
 const CALLOUT_STYLES: Record<MarkdownViewerVariant, Record<CalloutKind, { shell: string; badge: string }>> = {
@@ -177,6 +187,10 @@ const CALLOUT_STYLES: Record<MarkdownViewerVariant, Record<CalloutKind, { shell:
       shell: "my-4 rounded-2xl border border-teal-200 bg-teal-50/75 px-4 py-3 text-slate-700 dark:border-teal-500/30 dark:bg-teal-500/10 dark:text-slate-200",
       badge: "bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300",
     },
+    question: {
+      shell: "my-5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-slate-800 shadow-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100",
+      badge: "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900",
+    },
   },
   document: {
     note: {
@@ -207,6 +221,10 @@ const CALLOUT_STYLES: Record<MarkdownViewerVariant, Record<CalloutKind, { shell:
       shell: "my-6 rounded-md border-0 bg-[#ECFDF8] px-4 py-4 text-[#1F2329] dark:bg-teal-500/10 dark:text-slate-200 sm:px-6 sm:py-5",
       badge: "text-[#0F766E] dark:text-teal-300",
     },
+    question: {
+      shell: "my-6 rounded-md border border-[#DEE3EA] bg-[#F7F9FC] px-4 py-4 text-[#1F2329] shadow-[0_8px_24px_rgba(15,23,42,0.04)] dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 sm:px-6 sm:py-5",
+      badge: "text-[#172033] dark:text-slate-100",
+    },
   },
   planner: {
     note: {
@@ -236,6 +254,10 @@ const CALLOUT_STYLES: Record<MarkdownViewerVariant, Record<CalloutKind, { shell:
     practice: {
       shell: "my-4 rounded-xl border border-teal-200 bg-teal-50/70 px-4 py-3 text-zinc-700 dark:border-teal-500/30 dark:bg-teal-500/10 dark:text-slate-200",
       badge: "bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300",
+    },
+    question: {
+      shell: "my-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-zinc-800 shadow-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100",
+      badge: "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900",
     },
   },
 };
@@ -1689,7 +1711,8 @@ function normalizeCalloutKind(value: string | undefined): CalloutKind | null {
     normalized === "warning" ||
     normalized === "caution" ||
     normalized === "example" ||
-    normalized === "practice"
+    normalized === "practice" ||
+    normalized === "question"
   ) {
     return normalized;
   }
@@ -1708,7 +1731,9 @@ function extractCalloutMarker(paragraph: MarkdownAstNode): CalloutKind | null {
   }
 
   const firstText = children[firstTextIndex];
-  const match = String(firstText.value ?? "").match(/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION|EXAMPLE|PRACTICE)\][ \t]*/i);
+  const match = String(firstText.value ?? "").match(
+    /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION|EXAMPLE|PRACTICE|QUESTION)\][ \t]*/i,
+  );
   const kind = normalizeCalloutKind(match?.[1]);
   if (!match || !kind || firstTextIndex > 0) {
     return null;
@@ -2634,7 +2659,9 @@ function parseCallout(children: ReactNode): { kind: CalloutKind; body: ReactNode
   }
 
   const firstText = extractText(nodes[0]).trim();
-  const match = firstText.match(/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION|EXAMPLE|PRACTICE)\](?:\s+(.+))?$/i);
+  const match = firstText.match(
+    /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION|EXAMPLE|PRACTICE|QUESTION)\](?:\s+(.+))?$/i,
+  );
   if (!match) {
     return null;
   }

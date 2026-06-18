@@ -47,7 +47,7 @@ logger = structlog.get_logger()
 _MARKDOWN_DECORATION_RE = re.compile(r"[#*_`>]+")
 _MULTISPACE_RE = re.compile(r"\s+")
 _CALLOUT_MARKER_LINE_RE = re.compile(
-    r"(?im)^\s*>?\s*\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*$",
+    r"(?im)^\s*>?\s*\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION|EXAMPLE|PRACTICE|QUESTION)\]\s*$",
 )
 _MAX_SECTION_CANDIDATE_NODES = 8
 _MAX_SECTION_CANDIDATE_EDGES = 12

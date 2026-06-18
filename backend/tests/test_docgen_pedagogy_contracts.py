@@ -230,7 +230,8 @@ def test_docgen_writer_prompt_asks_for_short_teaching_callouts() -> None:
 
     assert "`> [!IMPORTANT]`" in prompt_text
     assert "`> [!TIP]`" in contract
-    assert "不要把完整例题、长解析或章末练习放进 callout" in prompt_text
+    assert "`> [!QUESTION]`" in prompt_text
+    assert "解析、步骤和答案保持普通正文" in prompt_text
 
 
 def test_mode_sections_do_not_provide_keyword_scaffold_fallback() -> None:
@@ -488,7 +489,7 @@ def test_rule_review_requires_fixed_unit_test_as_final_h2() -> None:
         markdown=(
             "# 函数图像\n\n"
             "## 图像性质\n\n函数图像可以帮助判断增减性。\n\n"
-            "## 单元测试\n\n> [!PRACTICE]\n> **题目/任务**：判断一次函数的增减性。\n>\n> **答案/结论**：斜率为正时递增。\n\n"
+            "## 单元测试\n\n> [!QUESTION]\n> **题目/任务**：判断一次函数的增减性。\n>\n> **答案/结论**：斜率为正时递增。\n\n"
             "## 本章小结\n\n看斜率和截距。\n"
         ),
     )

@@ -42,7 +42,7 @@ def test_unit_test_renderer_replaces_existing_unit_test_section_once() -> None:
     assert "旧测试" not in strip_existing_unit_test_sections(body)
     assert markdown.count("## 单元测试") == 1
     assert '<div class="atm-unit-tests"' not in markdown
-    assert "> [!PRACTICE]" in markdown
+    assert "> [!QUESTION]" in markdown
     assert "**2 题覆盖**" in markdown
     assert "概念判断 / 短答题" in markdown
     assert "**答案与依据**" in markdown
@@ -50,6 +50,7 @@ def test_unit_test_renderer_replaces_existing_unit_test_section_once() -> None:
     assert "总和除以个数。" in markdown
     assert "A. 中位数的定义和适用条件要同时满足" in markdown
     assert "###" not in unit_test
+    assert "> **答案与依据**" not in unit_test
 
 
 def test_unit_test_renderer_strips_body_writer_test_and_recap_sections() -> None:
