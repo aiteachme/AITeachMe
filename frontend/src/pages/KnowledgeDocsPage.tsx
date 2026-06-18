@@ -5083,11 +5083,25 @@ export function KnowledgeDocsPage() {
   }, [commentListOriginTop, desktopThreadLayout.totalHeight, isCommentVisible, showDesktopCommentPanel]);
   const threadCountByAnchor = useMemo(() => {
     const next = new Map<string, number>();
+    const countedThreadIds = new Set<string>();
     for (const item of commentThreads) {
+      countedThreadIds.add(item.threadId);
       next.set(item.anchorId, (next.get(item.anchorId) ?? 0) + 1);
     }
+    for (const item of selectionHighlights) {
+      const anchorId = item.anchorId.trim();
+      if (
+        !anchorId ||
+        item.threadId === FLOATING_COMPOSER_THREAD_ID ||
+        isStandaloneHighlightThreadId(item.threadId) ||
+        countedThreadIds.has(item.threadId)
+      ) {
+        continue;
+      }
+      next.set(anchorId, (next.get(anchorId) ?? 0) + 1);
+    }
     return next;
-  }, [commentThreads]);
+  }, [commentThreads, selectionHighlights]);
   const highlightCountByAnchor = useMemo(() => {
     const next = new Map<string, number>();
     for (const item of selectionHighlights) {

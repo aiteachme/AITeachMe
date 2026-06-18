@@ -120,6 +120,7 @@ def _svg_escape_short(value: Any, *, limit: int = 54) -> str:
 
 
 _INLINE_FORMULA_MARK_RE = re.compile(r"([_^])(?:\{([^{}]{1,12})\}|([A-Za-z0-9+\-=]{1,12}))")
+_CHINESE_PLACEHOLDER_SUFFIX_RE = re.compile(r"^(.+[\u4e00-\u9fff])[A-D]$")
 
 
 def _svg_inline_formula_text(value: Any, *, limit: int = 54) -> str:
@@ -303,6 +304,33 @@ def _has_visual_symbol_or_value(text: str) -> bool:
     )
 
 
+def _has_structural_relation_graph(elements: list[FigureElement]) -> bool:
+    """Allow cross-discipline diagrams that encode structure with nodes and edges."""
+
+    shape_keys: set[str] = set()
+    aliases: dict[str, str] = {}
+    for index, item in enumerate(elements[:18], start=1):
+        if item.kind != "shape" or item.shape_type not in {"rectangle", "ellipse", "circle", "triangle"}:
+            continue
+        key = item.id or item.label or f"node_{index}"
+        shape_keys.add(key)
+        for alias in (item.id, item.label, key):
+            if alias:
+                aliases.setdefault(alias, key)
+                aliases.setdefault(alias.casefold(), key)
+
+    edges: set[tuple[str, str]] = set()
+    for item in elements[:18]:
+        if item.kind not in {"line", "vector"} or not item.from_id or not item.to_id:
+            continue
+        start = aliases.get(item.from_id) or aliases.get(item.from_id.casefold())
+        end = aliases.get(item.to_id) or aliases.get(item.to_id.casefold())
+        if start and end and start != end:
+            edges.add((start, end))
+
+    return len(shape_keys) >= 3 and len(edges) >= 2
+
+
 def _has_visual_value_beyond_text(elements: list[FigureElement]) -> bool:
     """Check renderer-level visual substance without judging teaching semantics."""
 
@@ -317,7 +345,9 @@ def _has_visual_value_beyond_text(elements: list[FigureElement]) -> bool:
         return True
     point_count = sum(1 for item in items if item.kind == "point")
     connection_count = sum(1 for item in items if item.kind in {"line", "vector"})
-    return point_count >= 3 and connection_count >= 2
+    return (
+        point_count >= 3 and connection_count >= 2
+    ) or _has_structural_relation_graph(items)
 
 
 def is_renderable_problem_diagram(spec: FigureSpec) -> bool:
@@ -422,6 +452,9 @@ def assess_static_figure_layout(spec: FigureSpec) -> dict[str, Any]:
         if len(elements) >= 5 and (width < 190 or height < 70) and overlap_count:
             issues.append("crowded_compact_layout")
 
+    if issues == ["label_overlap"] and overlap_count <= 3 and len(label_boxes) <= 8:
+        issues = []
+
     return {"ok": not issues, "issues": sorted(set(issues)), "metrics": metrics}
 
 
@@ -455,7 +488,9 @@ def normalize_figure_spec(
         report["warnings"].append("empty_source_refs")
 
     if figure_type == "problem_diagram":
+        elements = _prune_problem_diagram_elements(elements)
         elements, layout_changed = _auto_layout_relation_graph(elements)
+        elements = _ground_problem_diagram_labels(elements, context)
         if layout_changed:
             report["warnings"].append("relation_graph_auto_layout")
 
@@ -534,6 +569,72 @@ def _comparison_table_visual_elements(elements: list[FigureElement]) -> list[Fig
                 )
             )
     return visual
+
+
+def _prune_problem_diagram_elements(elements: list[FigureElement]) -> list[FigureElement]:
+    """Keep a static sidecar diagram legible by dropping prose-only extras."""
+
+    items = list(elements[:18])
+    if not items:
+        return []
+
+    visual_items = [item for item in items if item.kind not in {"label", "callout", "step", "formula", "table_row", "relation"}]
+    if len(items) > 7 and len(visual_items) >= 4:
+        items = visual_items
+
+    if len(items) <= 10:
+        return items
+
+    shapes = [
+        item
+        for item in items
+        if item.kind == "shape" and item.shape_type in {"rectangle", "ellipse", "circle", "triangle"}
+    ]
+    semantic_edges = [
+        item
+        for item in items
+        if item.kind in {"line", "vector"} and item.from_id and item.to_id
+    ]
+    if len(shapes) >= 3 and len(semantic_edges) >= 2:
+        kept_shapes = shapes[:6]
+        aliases: set[str] = set()
+        for shape in kept_shapes:
+            for alias in (shape.id, shape.label):
+                if alias:
+                    aliases.add(alias)
+                    aliases.add(alias.casefold())
+        kept_edges = [
+            edge
+            for edge in semantic_edges
+            if (edge.from_id in aliases or edge.from_id.casefold() in aliases)
+            and (edge.to_id in aliases or edge.to_id.casefold() in aliases)
+        ][: max(2, 10 - len(kept_shapes))]
+        compact = [*kept_shapes, *kept_edges]
+        if len(compact) >= 5:
+            return compact[:10]
+
+    core_priority = {"axis": 0, "curve": 1, "point": 2, "shape": 3, "line": 4, "vector": 5}
+    core = [item for item in items if item.kind in core_priority]
+    if len(core) >= 4:
+        return sorted(core, key=lambda item: core_priority.get(item.kind, 99))[:10]
+    return items[:10]
+
+
+def _ground_problem_diagram_labels(elements: list[FigureElement], context: str) -> list[FigureElement]:
+    grounded: list[FigureElement] = []
+    compact_context = _compact(context)
+    for item in elements:
+        updates: dict[str, str] = {}
+        for field_name in ("label", "text"):
+            value = getattr(item, field_name)
+            match = _CHINESE_PLACEHOLDER_SUFFIX_RE.match(value)
+            if not match:
+                continue
+            base = match.group(1).strip()
+            if _compact(value) not in compact_context and _compact(base) in compact_context:
+                updates[field_name] = base
+        grounded.append(item.model_copy(update=updates) if updates else item)
+    return grounded
 
 
 def _static_figure_text_values(spec: FigureSpec) -> list[str]:
@@ -906,7 +1007,7 @@ def _edge_label_anchor(
     if ny < 0:
         nx = -nx
         ny = -ny
-    offset = 20.0
+    offset = 28.0
     return (x1 + x2) / 2 + nx * offset, (y1 + y2) / 2 + ny * offset
 
 

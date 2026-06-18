@@ -705,6 +705,35 @@ def test_static_figure_generation_skips_non_static_visual_intent(monkeypatch) ->
     assert store.text_writes == {}
 
 
+def test_static_figure_allows_cross_discipline_structural_relation_graph() -> None:
+    spec = FigureSpec(
+        type="problem_diagram",
+        title="制度执行关系图",
+        summary="用角色与箭头展示政策如何被转译。",
+        source_refs=["中央规范经由地方官员转译，再由乡绅影响村社执行"],
+        elements=[
+            FigureElement(kind="shape", id="rule", shape_type="rectangle", label="中央规范A"),
+            FigureElement(kind="shape", id="official", shape_type="rectangle", label="地方官B"),
+            FigureElement(kind="shape", id="elite", shape_type="rectangle", label="乡绅C"),
+            FigureElement(kind="shape", id="village", shape_type="rectangle", label="村社D"),
+            FigureElement(kind="vector", from_id="rule", to_id="official", label="下达"),
+            FigureElement(kind="vector", from_id="official", to_id="elite", label="转译"),
+            FigureElement(kind="vector", from_id="elite", to_id="village", label="影响"),
+        ],
+    )
+
+    normalized, _ = normalize_figure_spec(
+        spec,
+        fallback_title="制度执行关系图",
+        context="中央规范经由地方官员转译，再由乡绅影响村社执行。",
+    )
+    report = assess_static_figure_layout(normalized)
+
+    assert is_renderable_static_figure(normalized)
+    assert report["ok"] is True
+    assert [item.label for item in normalized.elements[:4]] == ["中央规范", "地方官", "乡绅", "村社"]
+
+
 def test_static_figure_generation_skips_text_only_process_step_specs(monkeypatch) -> None:
     store = _FakeContentStore()
 
