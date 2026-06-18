@@ -4,7 +4,8 @@ import http.server
 import socketserver
 import threading
 
-from scripts import smoke_upload_body
+from app.shared.infra.settings import reset_project_settings_cache, set_system_settings_override
+from scripts import resolve_upload_probe, smoke_upload_body
 
 
 class _UploadProbeHandler(http.server.BaseHTTPRequestHandler):
@@ -48,3 +49,43 @@ def test_run_probe_accepts_expected_upload_rejection() -> None:
 
     assert status == 0
     assert b"0" * 16 in server.last_body  # type: ignore[attr-defined]
+
+
+def test_resolve_upload_probe_uses_code_default_cap() -> None:
+    result = resolve_upload_probe.resolve_upload_probe(source="code-default", max_probe_mb=13)
+
+    assert result == {
+        "upload_limit_mb": 20,
+        "upload_probe_bytes": 13 * 1024 * 1024,
+        "upload_probe_label": "13MiB",
+    }
+
+
+def test_resolve_upload_probe_can_use_runtime_project_settings(monkeypatch, tmp_path) -> None:
+    settings_path = tmp_path / "settings.yaml"
+    settings_path.write_text("ingest:\n  max_upload_size_mb: 10\n", encoding="utf-8")
+    monkeypatch.setenv("PROJECT_SETTINGS_PATH", str(settings_path))
+    reset_project_settings_cache()
+    set_system_settings_override({})
+
+    try:
+        result = resolve_upload_probe.resolve_upload_probe(source="runtime", max_probe_mb=13)
+    finally:
+        reset_project_settings_cache()
+        set_system_settings_override({})
+
+    assert result == {
+        "upload_limit_mb": 10,
+        "upload_probe_bytes": 9 * 1024 * 1024,
+        "upload_probe_label": "9MiB",
+    }
+
+
+def test_resolve_upload_probe_respects_transport_probe_cap() -> None:
+    result = resolve_upload_probe.resolve_upload_probe(source="code-default", max_probe_mb=9)
+
+    assert result == {
+        "upload_limit_mb": 20,
+        "upload_probe_bytes": 9 * 1024 * 1024,
+        "upload_probe_label": "9MiB",
+    }

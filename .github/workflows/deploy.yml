@@ -513,7 +513,7 @@ jobs:
           root_url="${base_url}/"
           health_url="${base_url}/api/health"
           upload_url="${base_url}/api/v1/files/upload"
-          eval "$(python3 backend/scripts/resolve_upload_probe.py)"
+          eval "$(python3 backend/scripts/resolve_upload_probe.py --source code-default --max-probe-mb 9)"
           strict_api_smoke="${STRICT_API_SMOKE:-false}"
 
           readiness_ok=false
@@ -903,7 +903,6 @@ jobs:
           set -euo pipefail
 
           health_probe='import os, urllib.request; port = os.environ.get("PORT") or "9020"; url = "http://127.0.0.1:%s/api/health" % port; print(urllib.request.urlopen(url, timeout=5).read().decode("utf-8"))'
-          eval "$(python3 backend/scripts/resolve_upload_probe.py)"
 
           for attempt in {1..12}; do
             pod="$(
@@ -911,11 +910,13 @@ jobs:
                 | awk -v prefix="${SEALOS_BACKEND_DEPLOYMENT}-" '$1 ~ "^" prefix && $3 == "Running" { print $1; exit }'
             )"
 
-            if [ -n "${pod}" ] \
-              && kubectl -n "${SEALOS_NAMESPACE}" exec "${pod}" -- python -c "${health_probe}" \
-              && kubectl -n "${SEALOS_NAMESPACE}" exec "${pod}" -- sh -c \
-                "python scripts/smoke_upload_body.py --url \"http://127.0.0.1:\${PORT:-9020}/api/v1/files/upload\" --expected-status 422 --bytes ${upload_probe_bytes} --label \"${upload_probe_label}\" --attempts 1 --timeout 120 --sleep 0"; then
-              exit 0
+            if [ -n "${pod}" ]; then
+              if eval "$(kubectl -n "${SEALOS_NAMESPACE}" exec "${pod}" -- python scripts/resolve_upload_probe.py --source runtime)" \
+                && kubectl -n "${SEALOS_NAMESPACE}" exec "${pod}" -- python -c "${health_probe}" \
+                && kubectl -n "${SEALOS_NAMESPACE}" exec "${pod}" -- sh -c \
+                  "python scripts/smoke_upload_body.py --url \"http://127.0.0.1:\${PORT:-9020}/api/v1/files/upload\" --expected-status 422 --bytes ${upload_probe_bytes} --label \"${upload_probe_label}\" --attempts 1 --timeout 120 --sleep 0"; then
+                exit 0
+              fi
             fi
 
             echo "Backend in-cluster health/upload check failed; retrying (${attempt}/12)..."
