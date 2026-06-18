@@ -35,6 +35,10 @@ _MINDMAP_MIXED_SYNTAX_RE = re.compile(
 _FLOWCHART_HEADER_RE = re.compile(r"^(?:flowchart|graph)\b", re.IGNORECASE)
 
 
+class MermaidSkipped(ValueError):
+    """Raised when the model deliberately decides a diagram is unnecessary."""
+
+
 def _normalize_mermaid_text(value: str) -> str:
     return str(value or "").replace("\ufeff", "").replace("\r\n", "\n").replace("\r", "\n").strip()
 
@@ -94,10 +98,10 @@ def _sanitize_mermaid_body(body: str, *, topic: str) -> str:
         if line.strip()
     ]
     if not lines:
-        raise ValueError("Mermaid model returned empty content.")
+        raise MermaidSkipped("Mermaid model decided this topic does not need a diagram.")
     lines = _trim_context_echo_lines(lines)
     if not lines:
-        raise ValueError("Mermaid model only returned echoed context.")
+        raise MermaidSkipped("Mermaid model only returned echoed context.")
     first_line = lines[0].strip()
     if first_line.lower().startswith("mindmap"):
         sanitized = _sanitize_mindmap_body("\n".join(lines), topic=topic)
@@ -211,6 +215,15 @@ class _MermaidPlaceholderRuntime(BaseTracedExecution):
             )
             raw_body = _extract_mermaid_body(str(response))
             body = _sanitize_mermaid_body(str(response), topic=topic)
+        except MermaidSkipped as exc:
+            return TracedExecutionResult(
+                content="",
+                metadata={
+                    "fallback_used": False,
+                    "skipped": True,
+                    "skip_reason": str(exc)[:240],
+                },
+            )
         except Exception as exc:
             raise RuntimeError(f"Mermaid placeholder rendering failed: {str(exc)[:240]}") from exc
         return TracedExecutionResult(
@@ -235,6 +248,8 @@ class _MermaidPlaceholderRuntime(BaseTracedExecution):
                     "source_placeholder": request.description,
                     "fallback_used": bool(metadata.get("fallback_used", False)),
                     "from_raw_placeholder": bool(metadata.get("from_raw_placeholder", False)),
+                    "skipped": bool(metadata.get("skipped", False)),
+                    "skip_reason": str(metadata.get("skip_reason") or "")[:240],
                     "sanitized": bool(metadata.get("sanitized", False)),
                     "error": str(metadata.get("error") or "")[:240],
                     "body_preview": str(metadata.get("body_preview") or "")[:240],

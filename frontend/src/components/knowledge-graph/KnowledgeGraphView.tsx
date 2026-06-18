@@ -18,7 +18,7 @@ import { ForceGraphView } from "./ForceGraphView";
 import { EvidenceContextModal } from "./EvidenceContextModal";
 import { KnowledgeGraphNodeDetailPanel, type KnowledgeGraphSourceRefNavigationTarget } from "./KnowledgeGraphNodeDetailPanel";
 import { KnowledgeGraphInsightsView } from "./KnowledgeGraphInsightsView";
-import { isSuppressedGraphNodeType } from "./knowledgeGraphVisual";
+import { isSuppressedGraphNode } from "./knowledgeGraphVisual";
 
 const NODE_TYPE_STYLE: Record<string, { label: string; color: string }> = {
   topic: { label: "主题模块", color: "bg-indigo-50 text-indigo-600" },
@@ -88,7 +88,7 @@ export function KnowledgeGraphView({
     retry: false,
   });
 
-  const nodes = (listData?.items ?? []).filter((node: KnowledgeUnitResponse) => !isSuppressedGraphNodeType(node.knowledge_unit_type));
+  const nodes = (listData?.items ?? []).filter((node: KnowledgeUnitResponse) => !isSuppressedGraphNode(node));
   const total = listData?.total ?? (nodeType ? 0 : graphNodeCount);
   const totalPages = listData?.pages ?? Math.max(1, Math.ceil(total / pageSize));
   const displayPage = listData?.page ?? page;

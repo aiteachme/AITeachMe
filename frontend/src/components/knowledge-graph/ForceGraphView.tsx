@@ -36,7 +36,7 @@ import {
   getLearningEdgeDirection,
   graphNodeLabelLimit,
   graphNodePriority,
-  isSuppressedGraphNodeType,
+  isSuppressedGraphNode,
   isAssessmentCoreNode,
   isBackboneEdge,
   nodeBaseLayer,
@@ -123,6 +123,13 @@ function stripInlineMathDelimiters(value: string): string {
     .trim();
 }
 
+const GRAPH_INLINE_MATH_RE = /(\$\$[\s\S]*?\$\$|\$[^$\n]{1,220}\$|\\\([\s\S]*?\\\)|\\\[[\s\S]*?\\\])/g;
+const GRAPH_INLINE_MATH_TEST_RE = /(\$\$[\s\S]*?\$\$|\$[^$\n]{1,220}\$|\\\([\s\S]*?\\\)|\\\[[\s\S]*?\\\])/;
+const GRAPH_RAW_LATEX_RE =
+  /((?:[A-Za-z0-9_+\-*/=<>≤≥^{}()[\],. ]|\\[A-Za-z]+|\\[{}])+\\(?:sqrt|frac|lim|sin|cos|tan|ln|log|sum|int|Delta|delta|epsilon|varepsilon|theta|pi|infty|cdot|times|leq|geq|neq|to|sim)(?:[A-Za-z0-9_+\-*/=<>≤≥^{}()[\],. ]|\\[A-Za-z]+|\\[{}])*)/g;
+const GRAPH_RAW_LATEX_TEST_RE =
+  /((?:[A-Za-z0-9_+\-*/=<>≤≥^{}()[\],. ]|\\[A-Za-z]+|\\[{}])+\\(?:sqrt|frac|lim|sin|cos|tan|ln|log|sum|int|Delta|delta|epsilon|varepsilon|theta|pi|infty|cdot|times|leq|geq|neq|to|sim)(?:[A-Za-z0-9_+\-*/=<>≤≥^{}()[\],. ]|\\[A-Za-z]+|\\[{}])*)/;
+
 function isFormulaLikeGraphLabel(node: GraphNode): boolean {
   const label = String(node.canonical_name || "");
   const normalized = normalizeGraphTextLabel(label);
@@ -133,10 +140,21 @@ function isFormulaLikeGraphLabel(node: GraphNode): boolean {
   return node.knowledge_unit_type === "formula_model" || /^\s*(?:\$|\\\(|\\\[|\w+\s*[=<>≤≥])/.test(label);
 }
 
-function graphFormulaLabelHtml(node: GraphNode): string {
-  const rawLabel = String(node.canonical_name || "").trim();
-  const formula = stripInlineMathDelimiters(rawLabel) || normalizeGraphTextLabel(rawLabel);
-  if (!formula) return escapeGraphHtml(normalizeGraphTextLabel(rawLabel));
+function graphLabelHasInlineMath(label: string): boolean {
+  return GRAPH_INLINE_MATH_TEST_RE.test(label) || GRAPH_RAW_LATEX_TEST_RE.test(label);
+}
+
+function graphLabelHasMarkdownSyntax(label: string): boolean {
+  return /\*\*[^*\n]{1,80}\*\*/.test(label);
+}
+
+function shouldUseGraphHtmlLabel(node: GraphNode): boolean {
+  const label = String(node.canonical_name || "");
+  if (!label || label.length > 160) return false;
+  return isFormulaLikeGraphLabel(node) || graphLabelHasInlineMath(label) || graphLabelHasMarkdownSyntax(label);
+}
+
+function graphKatexHtml(formula: string): string {
   try {
     return katex.renderToString(formula, {
       displayMode: false,
@@ -146,13 +164,57 @@ function graphFormulaLabelHtml(node: GraphNode): string {
       trust: false,
     });
   } catch {
-    return escapeGraphHtml(normalizeGraphTextLabel(rawLabel));
+    return escapeGraphHtml(formula);
   }
+}
+
+function graphFormulaLabelHtml(node: GraphNode): string {
+  const rawLabel = String(node.canonical_name || "").trim();
+  const formula = stripInlineMathDelimiters(rawLabel) || normalizeGraphTextLabel(rawLabel);
+  if (!formula) return escapeGraphHtml(normalizeGraphTextLabel(rawLabel));
+  return graphKatexHtml(formula);
+}
+
+function graphEscapedTextHtml(text: string): string {
+  const escaped = escapeGraphHtml(text);
+  return escaped.replace(/\*\*([^*]{1,80})\*\*/g, "<strong>$1</strong>");
+}
+
+function graphMixedLabelHtml(node: GraphNode): string {
+  const rawLabel = String(node.canonical_name || "").trim();
+  if (isFormulaLikeGraphLabel(node)) return graphFormulaLabelHtml(node);
+
+  const chunks: string[] = [];
+  let cursor = 0;
+  for (const match of rawLabel.matchAll(GRAPH_INLINE_MATH_RE)) {
+    const index = match.index ?? 0;
+    if (index > cursor) {
+      chunks.push(graphEscapedTextHtml(rawLabel.slice(cursor, index)));
+    }
+    chunks.push(graphKatexHtml(stripInlineMathDelimiters(match[0])));
+    cursor = index + match[0].length;
+  }
+  if (cursor < rawLabel.length) {
+    const tail = rawLabel.slice(cursor);
+    let tailCursor = 0;
+    for (const match of tail.matchAll(GRAPH_RAW_LATEX_RE)) {
+      const index = match.index ?? 0;
+      if (index > tailCursor) {
+        chunks.push(graphEscapedTextHtml(tail.slice(tailCursor, index)));
+      }
+      chunks.push(graphKatexHtml(match[0].trim()));
+      tailCursor = index + match[0].length;
+    }
+    if (tailCursor < tail.length) {
+      chunks.push(graphEscapedTextHtml(tail.slice(tailCursor)));
+    }
+  }
+  return chunks.join("") || escapeGraphHtml(normalizeGraphTextLabel(rawLabel));
 }
 
 function graphFormulaLabelWidth(node: GraphNode): number {
   const units = Math.max(4, normalizeGraphTextLabel(node.canonical_name).length || String(node.canonical_name || "").length);
-  return Math.min(230, Math.max(76, units * 9 + 34));
+  return Math.min(320, Math.max(76, units * 8.4 + 34));
 }
 
 function applyGraphInteractiveStyles(
@@ -231,7 +293,7 @@ function applyGraphInteractiveStyles(
       return 0.96;
     })
     .text((d) => (
-      isFormulaLikeGraphLabel(d)
+      shouldUseGraphHtmlLabel(d)
         ? ""
         : truncateGraphLabel(d.canonical_name, graphNodeLabelLimitForZoom(d, selectedNodeId, graphZoomScale))
     ));
@@ -947,7 +1009,7 @@ export function ForceGraphView({
   } = useMemo(() => {
     if (!rawData) return { nodes: [] as GraphNode[], links: [] as GraphLink[], presentRelationTypes: [] as RelationFilterItem[] };
 
-    const rawNodes = (rawData.nodes ?? []).filter((node: any) => !isSuppressedGraphNodeType(node.knowledge_unit_type));
+    const rawNodes = (rawData.nodes ?? []).filter((node: any) => !isSuppressedGraphNode(node));
     const nodeIdSet = new Set(rawNodes.map((n: any) => n.id));
     const relationCountByType = new Map<string, number>();
 
@@ -1299,6 +1361,9 @@ export function ForceGraphView({
         font-size: 1em;
         line-height: 1.15;
       }
+      .graph-node .node-formula-label-inner strong {
+        font-weight: 760;
+      }
       .graph-node {
         opacity: 1;
       }
@@ -1543,9 +1608,9 @@ export function ForceGraphView({
       .attr("paint-order", "stroke")
       .attr("opacity", 1)
       .style("pointer-events", "none")
-      .text((d) => (isFormulaLikeGraphLabel(d) ? "" : truncateGraphLabel(d.canonical_name, graphNodeLabelLimit(d, null))));
+      .text((d) => (shouldUseGraphHtmlLabel(d) ? "" : truncateGraphLabel(d.canonical_name, graphNodeLabelLimit(d, null))));
 
-    nodeG.filter((d) => isFormulaLikeGraphLabel(d))
+    nodeG.filter((d) => shouldUseGraphHtmlLabel(d))
       .append("foreignObject")
       .attr("class", "node-formula-label")
       .attr("x", (d) => nodeLabelTextDx(d) - 4)
@@ -1555,7 +1620,7 @@ export function ForceGraphView({
       .attr("opacity", 1)
       .html((d) => (
         `<div xmlns="http://www.w3.org/1999/xhtml" class="node-formula-label-inner">` +
-        `${graphFormulaLabelHtml(d)}</div>`
+        `${graphMixedLabelHtml(d)}</div>`
       ));
 
     // Hover effects

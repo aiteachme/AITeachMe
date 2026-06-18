@@ -398,7 +398,7 @@ function buildPlannerDiagnosisPrompt(
   if (lines.length === 1) {
     return "";
   }
-  lines.push("请根据这些选择更新学习方案，并让后续知识文档的讲解起点、例题、图示和练习配置对齐这些信号。");
+  lines.push("请根据这些选择更新学习方案，并让后续知识文档的讲解起点、例题、练习和测后反馈对齐这些信号。");
   return lines.join("\n");
 }
 
@@ -717,6 +717,9 @@ function polishPlannerDisplayText(text: string): string {
     .replace(/(^|\n)\s*planning_note\s*[:：]\s*/gi, "$1学习边界：")
     .replace(/(^|\n)\s*suggestion\s*[:：]\s*/gi, "$1可调整项：")
     .replace(/(^|\n)\s*plan\s*[:：]\s*/gi, "$1")
+    .replace(/(^|\n|学习边界\s*[:：]\s*)\s*你好[！!。]?\s*我是你的\s*AITeachMe\s*学习规划师[。！!，,]?\s*/gu, "$1")
+    .replace(/(^|\n|学习边界\s*[:：]\s*)\s*我是你的\s*AITeachMe\s*学习规划师[。！!，,]?\s*/gu, "$1")
+    .replace(/准备好了吗[？?]\s*我们现在开始[。！!]?\s*/gu, "")
     .replace(/规划判断/g, "学习边界")
     .replace(/planning_note/gi, "学习边界")
     .replace(/\n{3,}/g, "\n\n")

@@ -63,7 +63,7 @@ def _render_diagnose_brief(
     if not lines:
         return ""
     if normalized_status == "answered":
-        lines.append("请把以上信号落实到讲解起点、例题/图示/练习与章末检测配置中，不要只复述问卷。")
+        lines.append("请把以上信号落实到讲解起点、例题、练习、错因提醒与章末检测配置中，不要只复述问卷。")
     return "前置诊断信号：\n" + "\n".join(lines)
 
 

@@ -94,6 +94,12 @@ function isCompletionStatusText(statusText: string): boolean {
   return /完成|已发布|已生成/.test(statusText);
 }
 
+function polishBuildPlanSummary(text: string): string {
+  return String(text || "")
+    .replace(/^\s*(?:你好[！!。]?\s*)?我是你的\s*AITeachMe\s*学习规划师[。！!，,]?\s*/u, "")
+    .trim();
+}
+
 function formatBuildModeReason(reason?: string | null): string | null {
   const normalized = (reason ?? "").trim();
   if (!normalized) return null;
@@ -318,7 +324,7 @@ export function BuildView({
     buildPreview?.draft_excerpt ||
     ""
   ).trim();
-  const planSummary = (sseSnapshot?.docgen_preview?.plan ?? buildPreview?.plan ?? "").trim();
+  const planSummary = polishBuildPlanSummary(sseSnapshot?.docgen_preview?.plan ?? buildPreview?.plan ?? "");
 
   const spotlightChapter = chapters.find((chapter) => ACTIVE_CHAPTER_STATUSES.has(chapter.status))
     ?? chapters.find((chapter) => chapter.status !== "pending")

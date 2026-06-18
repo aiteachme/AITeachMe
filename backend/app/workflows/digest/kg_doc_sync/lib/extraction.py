@@ -69,7 +69,6 @@ _GENERIC_CANDIDATE_NAME_RE = re.compile(
     r")$",
     re.IGNORECASE,
 )
-_TRAINING_PLAN_NAME_RE = re.compile(r"(?:每日|每章|第\s*\d+\s*天|课后|章末).{0,10}(?:\d+\s*道|练习|测试|小测|训练)")
 _SENTENCE_LIKE_NAME_RE = re.compile(r"[。！？!?]|\s(?:是|指|表示|意味着|定义为|用于|可以|需要)\s")
 
 # 概念性内容检测
@@ -267,8 +266,6 @@ def _clean_candidate_display_name(value: object, *, unit_type: str = "", max_cha
 
     text = _CANDIDATE_LABEL_PREFIX_RE.sub("", text, count=1).strip(" ：:，,。；;、|-")
     if not text or _GENERIC_CANDIDATE_NAME_RE.fullmatch(text):
-        return ""
-    if _TRAINING_PLAN_NAME_RE.search(text):
         return ""
     if len(text) > 28 and _SENTENCE_LIKE_NAME_RE.search(text):
         return ""

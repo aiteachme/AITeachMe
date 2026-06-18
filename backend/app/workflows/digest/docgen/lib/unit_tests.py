@@ -82,6 +82,16 @@ _DIFFICULTY_ALIASES = {
 _DIFFICULTY_ORDER = ["基础", "进阶", "挑战"]
 _CHOICE_LABEL_RE = re.compile(r"^\s*(?:[A-Da-d][.)、:：]\s*)?(?P<text>.+?)\s*$")
 _CHOICE_FALLBACK_OPTIONS = ["条件成立", "条件缺失", "只适合特例", "无法判断"]
+_MATH_SPAN_RE = re.compile(r"(\$\$[\s\S]*?\$\$|\$[^$\n]+\$|\\\([\s\S]*?\\\)|\\\[[\s\S]*?\\\])")
+_RAW_LATEX_FRAGMENT_RE = re.compile(
+    r"(?<![$\\])"
+    r"(?P<formula>"
+    r"(?:[A-Za-z0-9_+\-*/=<>≤≥^{}()[\],. ]|\\[A-Za-z]+|\\[{}])+"
+    r"\\(?:sqrt|frac|lim|sin|cos|tan|cot|ln|log|sum|int|Delta|delta|epsilon|varepsilon|theta|pi|infty|cdot|times|leq|geq|neq|to|sim)"
+    r"(?:[A-Za-z0-9_+\-*/=<>≤≥^{}()[\],. ]|\\[A-Za-z]+|\\[{}])*"
+    r")"
+    r"(?![$])"
+)
 
 
 def _compact_label(value: str) -> str:
@@ -195,10 +205,7 @@ class ChapterUnitTestItem(DocGenBaseModel):
     def _fallback_fields(self) -> "ChapterUnitTestItem":
         self.type = _normalize_question_type(self.type)
         self.difficulty = _normalize_difficulty(self.difficulty)
-        if self.type == "选择题":
-            self.options = _normalize_choice_options(self.options)
-        else:
-            self.options = []
+        self.options = _normalize_choice_options(self.options)
         if not self.target:
             self.target = "本章要点"
         if not self.stem:
@@ -237,7 +244,29 @@ def _markdown_text(value: str, *, limit: int | None = None) -> str:
     text = " ".join(str(value or "").strip().split())
     if limit is not None and len(text) > limit:
         text = text[: max(1, limit - 1)].rstrip(" ，,。；;、") + "…"
-    return text
+    return _wrap_raw_latex_fragments(text)
+
+
+def _wrap_raw_latex_fragments(text: str) -> str:
+    """Wrap obvious raw LaTeX snippets so MarkdownViewer can hand them to KaTeX."""
+
+    value = str(text or "")
+    if "\\" not in value:
+        return value
+
+    parts = _MATH_SPAN_RE.split(value)
+    for index, part in enumerate(parts):
+        if not part or _MATH_SPAN_RE.fullmatch(part):
+            continue
+
+        def replace(match: re.Match[str]) -> str:
+            formula = match.group("formula").strip()
+            if not formula or any("\u4e00" <= char <= "\u9fff" for char in formula):
+                return match.group(0)
+            return f"${formula}$"
+
+        parts[index] = _RAW_LATEX_FRAGMENT_RE.sub(replace, part)
+    return "".join(parts)
 
 
 def _ordered_unique(values: list[str], order: list[str]) -> list[str]:
@@ -347,15 +376,15 @@ def _render_unit_test_item_markdown(item: ChapterUnitTestItem, *, index: int) ->
     question_type = _normalize_question_type(item.type)
     difficulty = _normalize_difficulty(item.difficulty)
     lines = [
-        f"**Q{index:02d}｜{question_type}｜{difficulty}｜考点：{_markdown_text(item.target, limit=36)}**",
-        "",
-        _markdown_text(item.stem, limit=420),
+        f"> [!PRACTICE] **Q{index:02d}｜{question_type}｜{difficulty}｜考点：{_markdown_text(item.target, limit=36)}**",
+        ">",
+        f"> {_markdown_text(item.stem, limit=420)}",
     ]
-    if question_type == "选择题":
-        lines.extend(["", *[f"- {label}. {_markdown_text(option, limit=42)}" for label, option in zip("ABCD", item.options)]])
+    lines.extend([">", "> **选项**"])
+    lines.extend([f"> - {label}. {_markdown_text(option, limit=42)}" for label, option in zip("ABCD", item.options)])
     lines.extend(
         [
-            "",
+            ">",
             f"> **答案与依据**：{_markdown_text(item.answer, limit=360)}",
             f"> **判定依据**：{_markdown_text(item.basis, limit=360)}",
         ]
@@ -537,40 +566,106 @@ def _fallback_items(*, title: str, targets: list[str], count: int) -> list[Chapt
     targets = clean_string_list(targets, limit=max(1, count)) or [title or "本章核心内容"]
     items: list[ChapterUnitTestItem] = []
     templates = [
-        ("概念判断", "基础", "判断并说明理由：“{target}”成立时最关键的条件是什么？", "能说清对象、条件和结论。"),
-        ("选择题", "基础", "关于“{target}”，下列哪一项最符合本章结论？", "应选择符合本章定义、条件或结论的选项。"),
-        ("填空题", "基础", "补全“{target}”的关键步骤或公式空缺，并写出必要条件。", "答案应包含本章给出的核心条件、步骤或表达式。"),
-        ("步骤排序", "进阶", "把解决“{target}”的关键步骤按先后顺序写出。", "顺序应先检查条件，再执行方法，最后验证结论。"),
-        ("错因辨析", "进阶", "指出学习“{target}”时最容易踩坑的一处限制，并给出反例或纠正方式。", "能写出限制条件、常见错因或反例即可。"),
-        ("应用迁移", "挑战", "把“{target}”换到一个新情境中，第一步应检查什么？为什么？", "先判断适用条件，再选择本章方法迁移。"),
-        ("短答题", "进阶", "用不超过三句话解释“{target}”为什么能解决本章对应问题。", "回答要包含原因、方法和结论。"),
-        ("图表读取", "进阶", "如果“{target}”出现在图示或表格中，应优先读取哪两个信息？", "应能定位关键量、关系或边界条件。"),
-        ("推导证明", "挑战", "给出“{target}”的一个关键推导链条或证明入口。", "推导应从已知条件出发，连接到本章结论。"),
+        ("概念判断", "基础", "关于“{target}”的关键判断，哪一项正确？", "能对应本章定义、对象、条件和结论。"),
+        ("选择题", "基础", "关于“{target}”，哪一项最符合本章结论？", "应选择符合本章定义、条件或结论的选项。"),
+        ("填空题", "基础", "补全“{target}”的关键条件，哪一项最合适？", "答案应补到本章强调的核心条件、步骤或表达式。"),
+        ("步骤排序", "进阶", "解决“{target}”时，哪一种步骤顺序更合理？", "顺序应先检查条件，再执行方法，最后验证结论。"),
+        ("错因辨析", "进阶", "学习“{target}”时，哪一项最可能是错误原因？", "能识别限制条件、常见错因或反例。"),
+        ("应用迁移", "挑战", "把“{target}”换到新情境时，第一步应做什么？", "先判断适用条件，再选择本章方法迁移。"),
+        ("短答题", "进阶", "哪一句最能解释“{target}”的作用？", "回答要包含原因、方法和结论。"),
+        ("图表读取", "进阶", "如果“{target}”出现在图表中，应优先确认哪项？", "应能定位关键量、关系或边界条件。"),
+        ("推导证明", "挑战", "推导“{target}”时，哪个入口最稳妥？", "推导应从已知条件出发，连接到本章结论。"),
     ]
     for index in range(max(1, count)):
         target = targets[index % len(targets)]
         item_type, difficulty, stem_template, basis = templates[index % len(templates)]
+        options = _fallback_options_for_type(item_type, target)
         items.append(
             ChapterUnitTestItem(
                 type=item_type,
                 difficulty=difficulty,
                 target=target,
                 stem=stem_template.format(target=target),
-                options=_normalize_choice_options(
-                    [
-                        f"{target}的适用条件成立",
-                        "忽略必要前提也可使用",
-                        "只记结论不用判断条件",
-                        "与本章方法无关",
-                    ]
-                    if item_type == "选择题"
-                    else []
-                ),
-                answer=f"围绕“{target}”按本章定义、条件和步骤作答。",
+                options=options,
+                answer=f"A. {options[0]}",
                 basis=basis,
             )
         )
     return items
+
+
+def _fallback_options_for_type(item_type: str, target: str) -> list[str]:
+    if item_type == "步骤排序":
+        return _normalize_choice_options(
+            [
+                "先判条件，再选方法，最后验结论",
+                "先套公式，再补条件，最后猜结论",
+                "先看答案，再反推题目条件",
+                "只写结论，省略判断过程",
+            ]
+        )
+    if item_type == "错因辨析":
+        return _normalize_choice_options(
+            [
+                "忽略适用条件或边界",
+                "把定义直接当作结论",
+                "只替换数字不看结构",
+                "把无关信息当主线",
+            ]
+        )
+    if item_type == "应用迁移":
+        return _normalize_choice_options(
+            [
+                f"先判断“{target}”是否仍适用",
+                "直接照抄原题答案",
+                "只换符号不检查条件",
+                "跳过模型或关系确认",
+            ]
+        )
+    if item_type == "图表读取":
+        return _normalize_choice_options(
+            [
+                "先读关键量、关系和边界",
+                "先看图形颜色和装饰",
+                "只读标题不看条件",
+                "跳过比例、单位或方向",
+            ]
+        )
+    if item_type == "推导证明":
+        return _normalize_choice_options(
+            [
+                "从已知条件连接核心结论",
+                "先写结论再补理由",
+                "只列公式不说明条件",
+                "用无关定理替代推导",
+            ]
+        )
+    if item_type == "填空题":
+        return _normalize_choice_options(
+            [
+                f"补全“{target}”的必要条件",
+                "只补最终答案",
+                "补无关记忆点",
+                "省略限制范围",
+            ]
+        )
+    if item_type == "短答题":
+        return _normalize_choice_options(
+            [
+                f"说明“{target}”如何连接条件与结论",
+                "只复述题干关键词",
+                "只给结果不讲原因",
+                "讲无关背景信息",
+            ]
+        )
+    return _normalize_choice_options(
+        [
+            f"{target}的定义和适用条件要同时满足",
+            "只记结论即可，不必看条件",
+            "任意情境都能直接套用",
+            "与本章方法没有关系",
+        ]
+    )
 
 
 __all__ = [

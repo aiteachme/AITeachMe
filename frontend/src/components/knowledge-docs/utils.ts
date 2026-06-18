@@ -53,7 +53,7 @@ export const DOC_BUILD_STAGE_TEXT: Record<string, string> = {
   building_document_backbone: "正在构建整本文档知识骨架",
   preparing_chapter_execution_briefs: "正在并行准备章节执行 brief",
   generating_chapters: "正在并行研究并生成章节",
-  enhancing_chapters: "正在增强章节图示、例题和小结",
+  enhancing_chapters: "正在增强章节例题、提示和小结",
   chapters_enhanced: "章节增强已完成",
   reviewing_content: "正在复核章节覆盖和证据",
   content_reviewed: "内容复核已完成",

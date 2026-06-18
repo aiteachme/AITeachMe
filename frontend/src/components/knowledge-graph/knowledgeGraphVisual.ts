@@ -148,34 +148,23 @@ export function normalizeGraphTextLabel(value: string): string {
   return String(value || "")
     .replace(/<!--[\s\S]*?-->/g, " ")
     .replace(/\{#ku_[^}]+\}/g, " ")
-    .replace(/\*\*([^*]+)\*\*/g, "$1")
-    .replace(/__([^_]+)__/g, "$1")
-    .replace(/==([^=]+)==/g, "$1")
+    .replace(/\*\*([^*\n]{1,120})\*\*/g, "$1")
+    .replace(/__([^_\n]{1,120})__/g, "$1")
+    .replace(/==([^=\n]{1,120})==/g, "$1")
     .replace(/`([^`]+)`/g, "$1")
     .replace(/\\\[([\s\S]*?)\\\]/g, "$1")
     .replace(/\\\(([\s\S]*?)\\\)/g, "$1")
     .replace(/\$\$([\s\S]*?)\$\$/g, "$1")
     .replace(/\$([^$]+)\$/g, "$1")
-    .replace(/^\s*(?:定义|定理|公式|例题|示例|练习|证明|备注|任务|步骤|检查点|答案|解析|Q\d+)\s*(?:\d+)?(?:[（(][^）)]{1,18}[）)])?\s*[:：]\s*/i, "")
-    .replace(/\\left\b|\\right\b/g, "")
-    .replace(/\\times\b/g, "×")
-    .replace(/\\cdot\b/g, "·")
-    .replace(/\\div\b/g, "÷")
-    .replace(/\\leq?\b/g, "≤")
-    .replace(/\\geq?\b/g, "≥")
-    .replace(/\\neq\b/g, "≠")
-    .replace(/\\approx\b/g, "≈")
-    .replace(/\\infty\b/g, "∞")
-    .replace(/\\to\b/g, "→")
-    .replace(/\\rightarrow\b/g, "→")
-    .replace(/\\leftarrow\b/g, "←")
-    .replace(/\\pm\b/g, "±")
-    .replace(/\\sqrt\s*\{([^{}]+)\}/g, "√($1)")
-    .replace(/\\frac\s*\{([^{}]+)\}\s*\{([^{}]+)\}/g, "$1/$2")
-    .replace(/\\([a-zA-Z]+)\b/g, "$1")
-    .replace(/[{}]/g, "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+export function isSuppressedGraphNode(node: {
+  canonical_name?: string | null;
+  knowledge_unit_type?: string | null;
+}): boolean {
+  return isSuppressedGraphNodeType(node.knowledge_unit_type) || !normalizeGraphTextLabel(node.canonical_name || "");
 }
 
 export function truncateGraphLabel(value: string, maxChars = 12): string {

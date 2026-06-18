@@ -82,6 +82,28 @@ def test_normalize_planner_draft_uses_new_planner_fields() -> None:
     assert draft.diagnose[0].options == ["极限定义", "导数应用", "积分计算", "综合应用"]
 
 
+def test_normalize_planner_draft_rewrites_stale_figure_diagnosis_terms() -> None:
+    payload = _planner_payload()
+    payload["diagnose"] = [
+        {
+            "question": "图示辅助的重点？",
+            "purpose": "影响章节的图示重点。",
+            "options": ["图示辅助", "基础计算", "综合应用", "少用图示"],
+        }
+    ]
+
+    draft = normalize_planner_draft(
+        payload,
+        course_id="高数",
+        user_prompt="高数速成",
+        requested_digest_mode="sprint",
+    )
+
+    assert draft.diagnose[0].question == "解析要多细？"
+    assert draft.diagnose[0].purpose == "影响章节的解析重点。"
+    assert draft.diagnose[0].options == ["错因提醒", "基础计算", "综合应用", "只给要点"]
+
+
 def test_diagnose_resolution_merges_answers_into_latest_questions() -> None:
     current_plan = _planner_payload()
     current_plan["diagnose"] = [
@@ -486,7 +508,7 @@ def test_planner_node_create_generates_diagnosis_before_plan(monkeypatch: pytest
     raw_output = (
         f'{DIAGNOSE_START}[{{"question":"你当前最想先补哪类能力？",'
         f'"purpose":"影响章节优先级和练习密度",'
-        f'"options":["概念理解","基础计算","综合应用","图示辅助"]}}]{DIAGNOSE_END}'
+        f'"options":["概念理解","基础计算","综合应用","错因提醒"]}}]{DIAGNOSE_END}'
     )
 
     def fake_acompletion_stream(*args, **kwargs) -> Iterator[str]:
@@ -531,7 +553,7 @@ def test_planner_node_create_generates_diagnosis_before_plan(monkeypatch: pytest
     assert result["build_plan_draft"]["plan"] == ""
     assert result["build_plan_draft"]["chapters"] == []
     assert result["build_plan_draft"]["diagnose_status"] == "pending"
-    assert result["build_plan_draft"]["diagnose"][0]["options"] == ["概念理解", "基础计算", "综合应用", "图示辅助"]
+    assert result["build_plan_draft"]["diagnose"][0]["options"] == ["概念理解", "基础计算", "综合应用", "错因提醒"]
     assert [event for event, _payload in emitted_events] == [
         "planner.diagnose.started",
         "planner.diagnose.ready",

@@ -149,7 +149,7 @@ LEARNING_GRAPH_ONTOLOGY = LearningGraphOntology(
         KnowledgeUnitTypeSpec(
             KnowledgeUnitType.SKILL.value,
             "解题技能",
-            "解题技能：可训练、可诊断的能力点或题型训练目标，例如建模、化简、判别、画图、迁移、检查、每日练习和章末测试。",
+            "解题技能：可训练、可诊断的能力点或题型目标，例如建模、化简、判别、作图、迁移、检查与证明。",
         ),
         KnowledgeUnitTypeSpec(
             KnowledgeUnitType.MISCONCEPTION.value,

@@ -272,6 +272,16 @@ function ExamPrewarmStatusIcon({
           : effectiveStatus === "failed"
             ? "后台预生成暂不可用"
             : "后台尚未备好练习或测试";
+  const label =
+    effectiveStatus === "ready"
+      ? "预热已备好"
+      : effectiveStatus === "preparing"
+        ? "正在预热"
+        : effectiveStatus === "stale"
+          ? "预热刷新中"
+          : effectiveStatus === "failed"
+            ? "预热失败"
+            : "待预热";
   const toneClass =
     effectiveStatus === "ready"
       ? "border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300"
@@ -283,7 +293,7 @@ function ExamPrewarmStatusIcon({
 
   return (
     <span
-      className={`inline-grid h-6 w-6 shrink-0 place-items-center rounded-full border ${toneClass}`}
+      className={`inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium ${toneClass}`}
       title={title}
       aria-label={title}
       role="status"
@@ -295,6 +305,7 @@ function ExamPrewarmStatusIcon({
       ) : (
         <CloudOff className="h-3.5 w-3.5" />
       )}
+      <span>{label}</span>
     </span>
   );
 }

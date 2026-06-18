@@ -61,6 +61,10 @@ const BARE_LATEX_TEXT_COMMANDS: Record<string, string> = {
   rightarrow: "→",
   leftarrow: "←",
 };
+const RAW_LATEX_MATH_COMMAND_RE =
+  /\\(?:sqrt|frac|lim|sin|cos|tan|cot|ln|log|sum|int|Delta|delta|epsilon|varepsilon|theta|pi|infty|cup|cap|leq?|geq?|neq|to|sim|pm|cdot|times)\b/;
+const RAW_LATEX_MATH_FRAGMENT_RE =
+  /((?:[A-Za-z0-9_+\-*/=<>≤≥^{}()[\],.，、:：;； \t]|\\[A-Za-z]+|\\[{}])+\\(?:sqrt|frac|lim|sin|cos|tan|cot|ln|log|sum|int|Delta|delta|epsilon|varepsilon|theta|pi|infty|cup|cap|leq?|geq?|neq|to|sim|pm|cdot|times)\b(?:[A-Za-z0-9_+\-*/=<>≤≥^{}()[\],.，、:：;； \t]|\\[A-Za-z]+|\\[{}])*)/g;
 const CALLOUT_LEADING_ICON_RE =
   /^[\s\uFE0F]*(?:(?:💡|📌|🎯|🔍|🧩|🚀|✨|✅|🔥|⭐|⚠️|⚠|❗|❌|⛔|🚫|📝|🔗|📚)\s*)+/u;
 const INTERACTIVE_MARKER_RE = /<!--\s*ATM_INTERACTIVE_(?:OVERLAY|PLAN):[\s\S]*?-->\s*/g;
@@ -346,7 +350,107 @@ export function preprocessLaTeX(content: string): string {
   processed = processed.replace(/\\text\{(_+)\}/g, (_match, underscores: string) => {
     return `\\text{${"\\_".repeat(underscores.length)}}`;
   });
+  processed = wrapBareLatexMathFragments(processed);
   return normalizeBareLatexTextCommands(processed);
+}
+
+function wrapBareLatexMathInText(text: string): string {
+  if (!RAW_LATEX_MATH_COMMAND_RE.test(text)) return text;
+  RAW_LATEX_MATH_COMMAND_RE.lastIndex = 0;
+  return text.replace(RAW_LATEX_MATH_FRAGMENT_RE, (match: string) => {
+    RAW_LATEX_MATH_COMMAND_RE.lastIndex = 0;
+    if (!RAW_LATEX_MATH_COMMAND_RE.test(match)) return match;
+    if (/[\u4e00-\u9fff]/.test(match)) return match;
+    const leadingChoice = match.match(/^(\s*[A-Da-d][.)、:：]\s*)(.+)$/s);
+    const prefix = leadingChoice?.[1] ?? "";
+    const body = (leadingChoice?.[2] ?? match).trim();
+    if (!body || body.startsWith("$") || body.endsWith("$")) return match;
+    return `${prefix}$${body}$`;
+  });
+}
+
+function wrapBareLatexOutsideInlineMathAndCode(markdown: string): string {
+  const source = String(markdown || "");
+  const output: string[] = [];
+  let index = 0;
+
+  while (index < source.length) {
+    const char = source[index];
+    if (char === "`") {
+      const fence = source.slice(index).match(/^`+/)?.[0] ?? "`";
+      const end = source.indexOf(fence, index + fence.length);
+      if (end >= 0) {
+        output.push(source.slice(index, end + fence.length));
+        index = end + fence.length;
+        continue;
+      }
+    }
+
+    if (source.startsWith("$$", index)) {
+      const end = findNextUnescaped(source, "$$", index + 2);
+      if (end >= 0) {
+        output.push(source.slice(index, end + 2));
+        index = end + 2;
+        continue;
+      }
+    }
+
+    if (char === "$") {
+      const end = findNextUnescaped(source, "$", index + 1);
+      if (end >= 0) {
+        output.push(source.slice(index, end + 1));
+        index = end + 1;
+        continue;
+      }
+    }
+
+    const nextSpecialIndexes = [
+      source.indexOf("`", index + 1),
+      source.indexOf("$", index + 1),
+    ].filter((value) => value >= 0);
+    const next = nextSpecialIndexes.length > 0 ? Math.min(...nextSpecialIndexes) : source.length;
+    output.push(wrapBareLatexMathInText(source.slice(index, next)));
+    index = next;
+  }
+
+  return output.join("");
+}
+
+function wrapBareLatexMathFragments(markdown: string): string {
+  const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
+  const output: string[] = [];
+  let activeFence: string | null = null;
+  let plainChunk: string[] = [];
+
+  const flushPlainChunk = () => {
+    if (plainChunk.length === 0) return;
+    output.push(wrapBareLatexOutsideInlineMathAndCode(plainChunk.join("\n")));
+    plainChunk = [];
+  };
+
+  for (const line of lines) {
+    const fenceMatch = line.match(/^(```|~~~)/);
+    if (fenceMatch) {
+      flushPlainChunk();
+      if (activeFence === fenceMatch[1]) {
+        activeFence = null;
+      } else if (activeFence === null) {
+        activeFence = fenceMatch[1];
+      }
+      output.push(line);
+      continue;
+    }
+
+    if (activeFence) {
+      output.push(line);
+      continue;
+    }
+
+    plainChunk.push(line);
+  }
+
+  flushPlainChunk();
+  return output.join("\n");
 }
 
 function replaceBareLatexTextCommands(text: string): string {

@@ -59,9 +59,17 @@ def _text(value: Any) -> str:
     return " ".join(str(value).strip().split())
 
 
+def _remove_planner_self_intro(text: str) -> str:
+    return re.sub(
+        r"^\s*(?:你好[！!。]?\s*)?我是你的\s*AITeachMe\s*学习规划师[。！!，,]?\s*",
+        "",
+        str(text or ""),
+    )
+
+
 def _student_facing_text(value: Any) -> str:
     return (
-        _text(value)
+        _remove_planner_self_intro(_text(value))
         .replace("速成课模式", "紧凑节奏")
         .replace("速成课", "紧凑节奏")
         .replace("系统课", "系统节奏")
@@ -101,9 +109,31 @@ _DIAGNOSIS_OPTION_FALLBACKS = [
     "例题带路",
     "多练变式",
     "章末小测",
-    "图示辅助",
+    "错因提醒",
     "重点速查",
 ]
+
+
+def _diagnosis_contract_text(value: Any, *, field: str = "text") -> str:
+    text = _student_facing_text(value)
+    if not text:
+        return ""
+    if field == "question" and "图示" in text and any(marker in text for marker in ("辅助", "重点", "怎么", "如何", "需求")):
+        return "解析要多细？"
+    replacements = {
+        "图示辅助": "错因提醒",
+        "图示重点": "解析重点",
+        "图示需求": "解析需求",
+        "多用图示": "多练变式",
+        "少用图示": "只给要点",
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    if field == "purpose":
+        text = text.replace("图示", "解析")
+    elif text == "图示":
+        text = "解析"
+    return text
 
 
 def _ensure_four_diagnosis_options(value: Any) -> list[str]:
@@ -113,7 +143,7 @@ def _ensure_four_diagnosis_options(value: Any) -> list[str]:
     result: list[str] = []
     seen: set[str] = set()
     for item in [*options, *_DIAGNOSIS_OPTION_FALLBACKS]:
-        text = _student_facing_text(item)
+        text = _diagnosis_contract_text(item)
         if not text:
             continue
         if len(text) > 16:
@@ -317,10 +347,13 @@ def _merge_chapter(raw: Mapping[str, Any], index: int) -> PlannerChapterPlan:
 
 
 def _merge_diagnostic(raw: Mapping[str, Any]) -> PlannerDiagnosticQuestion | None:
-    question = _student_facing_text(raw.get("question") or raw.get("title") or raw.get("prompt"))
+    question = _diagnosis_contract_text(raw.get("question") or raw.get("title") or raw.get("prompt"), field="question")
     if not question:
         return None
-    purpose = _student_facing_text(raw.get("purpose") or raw.get("diagnosis_target") or raw.get("target"))
+    purpose = _diagnosis_contract_text(
+        raw.get("purpose") or raw.get("diagnosis_target") or raw.get("target"),
+        field="purpose",
+    )
     options = _strings(
         raw.get("options")
         or raw.get("choices")
@@ -333,7 +366,7 @@ def _merge_diagnostic(raw: Mapping[str, Any]) -> PlannerDiagnosticQuestion | Non
         question=question,
         purpose=purpose,
         options=_ensure_four_diagnosis_options(options),
-        answer=_student_facing_text(raw.get("answer") or raw.get("user_answer") or raw.get("selected_answer")),
+        answer=_diagnosis_contract_text(raw.get("answer") or raw.get("user_answer") or raw.get("selected_answer")),
     )
 
 
@@ -376,13 +409,13 @@ def _fallback_diagnostic_pool(
             ],
         ),
         (
-            "图示怎么使用？",
-            "文档落点：决定是否加入 Mermaid 图、图示位置和图注重点。",
+            "解析要多细？",
+            "文档落点：决定章末测试答案、判定依据和错因提示的展开程度。",
             [
-                "少量关键图",
-                "概念关系图",
-                "步骤流程图",
-                "公式结构图",
+                "只给要点",
+                "写清依据",
+                "补错因提醒",
+                "给变式建议",
             ],
         ),
     ]
@@ -589,7 +622,7 @@ def _activity_point_for_requested_title(title: str, user_prompt: str) -> str:
     has_unit_test_request = bool(re.search(r"单元测试|测试|测验|小测", user_prompt))
     activity_items = ["核心概念", "方法步骤", "典型例题", "易错点", "练习"]
     if has_visual_request:
-        activity_items.insert(1, "图示")
+        activity_items.insert(1, "图表读取")
     if has_unit_test_request:
         activity_items.append("单元测试")
     return f"围绕{title}讲清{'、'.join(activity_items)}。"
@@ -638,7 +671,7 @@ def _plan_text_for_requested_titles(requested_titles: list[str], *, user_prompt:
     has_unit_test_request = bool(re.search(r"单元测试|测试|测验|小测", user_prompt))
     activity_items = ["讲解", "例题", "易错点", "练习"]
     if has_visual_request:
-        activity_items.insert(0, "图示")
+        activity_items.insert(0, "图表读取")
     if has_unit_test_request:
         activity_items.append("单元测试")
     activities = "、".join(activity_items)

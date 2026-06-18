@@ -140,7 +140,7 @@ model_override
 8. diagnose_brief 拼入 learner_profile_text
 ```
 
-影响 DocGen：解释深度、例题密度、练习密度、图示需求、前置知识补充。
+影响 DocGen：解释深度、例题密度、练习密度、测后反馈、前置知识补充。
 
 不影响：Profile mastery、Examine 出题、KG 落库。
 

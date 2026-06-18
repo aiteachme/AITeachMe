@@ -10,6 +10,17 @@ from app.workflows.digest.kg_doc_sync.lib.extraction import (
     CandidateNode,
     ChunkExtractionResult,
 )
+from app.workflows.digest.kg_doc_sync.prompts.section_graph import SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
+
+
+def test_kg_prompt_requires_renderable_formula_names() -> None:
+    assert "$...$" in SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
+    assert "$$...$$" in SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
+    assert "不要输出裸" in SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
+    assert "\\sqrt{}" in SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
+    assert "\\frac{}" in SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
+    assert "\\infty" in SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
+    assert "端点必须精确匹配本次返回的节点名" in SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
 
 
 @pytest.mark.anyio
@@ -120,3 +131,12 @@ async def test_kg_section_extraction_drops_generic_task_nodes_and_cleans_markdow
         ("\\int u\\,dv = uv-\\int v\\,du", "分部积分法", "applies_to")
     ]
     assert diagnostics.node_count == 2
+
+
+def test_kg_prompt_rejects_lesson_plan_wrappers_at_generation_time() -> None:
+    prompt = SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
+
+    assert "不要做关键词提取" in prompt
+    assert "可复习、可教学、可出题的知识单元" in prompt
+    assert "学习目标、课程安排、题量计划、检测说明和纯流程壳不入图" in prompt
+    assert "只保留那个真实知识对象" in prompt

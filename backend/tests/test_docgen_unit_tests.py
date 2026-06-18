@@ -48,7 +48,7 @@ def test_unit_test_renderer_replaces_existing_unit_test_section_once() -> None:
     assert "**答案与依据**" in markdown
     assert "**判定依据**" in markdown
     assert "总和除以个数。" in markdown
-    assert "围绕“中位数”按本章定义、条件和步骤作答。" in markdown
+    assert "A. 中位数的定义和适用条件要同时满足" in markdown
     assert "###" not in unit_test
 
 
@@ -108,6 +108,70 @@ def test_unit_test_renderer_normalizes_type_and_difficulty_metadata() -> None:
     assert unit_test.count("- B.") == 1
     assert unit_test.count("- C.") == 1
     assert unit_test.count("- D.") == 1
+
+
+def test_unit_test_renderer_wraps_raw_latex_options_for_katex() -> None:
+    unit_test = render_unit_test_markdown(
+        ChapterUnitTestSet(
+            chapter_index=1,
+            items=[
+                ChapterUnitTestItem(
+                    type="single_choice",
+                    difficulty="medium",
+                    target="复合函数定义域",
+                    stem=r"已知函数 f(x) 的定义域为 [0, 2]，则函数 f(x^2) 的定义域为：",
+                    options=[r"[0, 4]", r"[0, \sqrt{2}]", r"[-\sqrt{2}, \sqrt{2}]", "[-2, 2]"],
+                    answer=r"[-\sqrt{2}, \sqrt{2}]",
+                    basis=r"需要满足 0 \leq x^2 \leq 2。",
+                )
+            ],
+        ),
+        title="函数",
+        min_items=1,
+        fallback_targets=[],
+    )
+
+    assert r"$[0, \sqrt{2}]$" in unit_test
+    assert r"$[-\sqrt{2}, \sqrt{2}]$" in unit_test
+    assert r"$0 \leq x^2 \leq 2$" in unit_test
+
+
+def test_unit_test_renderer_keeps_four_options_for_every_question_type() -> None:
+    unit_test = render_unit_test_markdown(
+        ChapterUnitTestSet(
+            chapter_index=1,
+            items=[
+                ChapterUnitTestItem(
+                    type="概念判断",
+                    difficulty="基础",
+                    target="函数相等判定",
+                    stem="关于函数相等，哪一项正确？",
+                    options=["定义域相同且对应法则相同", "只看表达式一样", "只看图像相似", "只看函数名一致"],
+                    answer="定义域相同且对应法则相同",
+                    basis="函数相等需要定义域和对应关系同时一致。",
+                ),
+                ChapterUnitTestItem(
+                    type="错因辨析",
+                    difficulty="进阶",
+                    target="复合函数定义域",
+                    stem="求复合函数定义域时，哪一项最容易导致错误？",
+                    options=["忘记内层函数值域限制", "先写外层条件", "列不等式", "检查端点"],
+                    answer="忘记内层函数值域限制",
+                    basis="复合函数需要同时满足内层表达式和外层定义域。",
+                ),
+            ],
+        ),
+        title="函数",
+        min_items=2,
+        fallback_targets=[],
+    )
+
+    assert "**Q01｜概念判断｜基础｜考点：函数相等判定**" in unit_test
+    assert "**Q02｜错因辨析｜进阶｜考点：复合函数定义域**" in unit_test
+    assert unit_test.count("- A.") == 2
+    assert unit_test.count("- B.") == 2
+    assert unit_test.count("- C.") == 2
+    assert unit_test.count("- D.") == 2
 
 
 def test_unit_test_renderer_enforces_type_diversity_and_max_items() -> None:
