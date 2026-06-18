@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
+from pydantic import BaseModel, Field, field_validator
 import structlog
 
 from app.shared.infra.execution import TracedExecutionContext
@@ -23,7 +24,10 @@ from app.workflows.digest.docgen.lib.figure_spec import (
 from app.workflows.digest.docgen.lib.html_sidecar import normalize_single_file_html
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.models import ChapterDraft, ClaimLedger
-from app.workflows.digest.docgen.prompts.static_html_figure import build_static_html_figure_messages
+from app.workflows.digest.docgen.prompts.static_html_figure import (
+    build_static_html_figure_messages,
+    build_static_html_figure_selection_messages,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -38,9 +42,25 @@ class _StaticFigureCandidate:
     level: int
     context: str
     insert_at: int
-    score: int
     goal: str
     figure_type: str
+    selection_reason: str = ""
+
+
+class _StaticFigureSelectionItem(BaseModel):
+    index: int = 0
+    figure_goal: str = ""
+    figure_type: str = "problem_diagram"
+    reason: str = ""
+
+    @field_validator("figure_goal", "figure_type", "reason", mode="before")
+    @classmethod
+    def _text(cls, value: object) -> str:
+        return re.sub(r"\s+", " ", str(value or "")).strip()[:220]
+
+
+class _StaticFigureSelection(BaseModel):
+    selected: list[_StaticFigureSelectionItem] = Field(default_factory=list)
 
 
 def _plain_heading_text(raw: str) -> str:
@@ -81,41 +101,6 @@ def _section_end_for_heading(
     return markdown_len
 
 
-def _score_static_figure_signal(title: str, context: str) -> tuple[int, str, str]:
-    score = 0
-    reasons: list[str] = []
-
-    def add(points: int, reason: str) -> None:
-        nonlocal score
-        score += points
-        reasons.append(reason)
-
-    compact_context = re.sub(r"\s+", "", context)
-    content_len = len(compact_context)
-    sentence_count = len([item for item in re.split(r"[。！？!?；;]\s*", context) if item.strip()])
-    structured_item_count = len(re.findall(r"[-*]\s+|^\s*\d+[).、]", context, flags=re.MULTILINE))
-
-    if content_len >= 180:
-        add(2, "片段信息量足够")
-    if sentence_count >= 3:
-        add(2, "包含多句连续说明")
-    if structured_item_count >= 2:
-        add(1, "片段有列表或编号结构")
-
-    if content_len >= 240 and score:
-        score += 1
-    score = max(0, min(10, score))
-    if score < 3:
-        return score, "", "auto"
-    goal = (
-        "请由模型判断这段是否存在文字难以表达的空间、数量、状态、结构或几何关系；"
-        "若只是普通步骤、公式罗列或概念摘要，必须返回空 elements。"
-    )
-    if reasons:
-        goal = f"{goal} 候选原因：{'；'.join(reasons[:2])}。"
-    return score, goal, "auto"
-
-
 def _iter_static_figure_candidates(markdown: str, *, fallback_title: str) -> list[_StaticFigureCandidate]:
     text = str(markdown or "")
     headings = list(_ANY_HEADING_RE.finditer(text))
@@ -133,7 +118,6 @@ def _iter_static_figure_candidates(markdown: str, *, fallback_title: str) -> lis
         end = _section_end_for_heading(headings, heading_index, len(text))
         body = text[heading.end() : end].strip()
         context = f"{title}\n\n{body[:2200].rstrip()}".strip()
-        score, goal, figure_type = _score_static_figure_signal(title, context)
         candidates.append(
             _StaticFigureCandidate(
                 index=len(candidates) + 1,
@@ -142,9 +126,8 @@ def _iter_static_figure_candidates(markdown: str, *, fallback_title: str) -> lis
                 level=level,
                 context=context,
                 insert_at=end,
-                score=score,
-                goal=goal,
-                figure_type=figure_type,
+                goal="",
+                figure_type="problem_diagram",
             )
         )
 
@@ -155,7 +138,6 @@ def _iter_static_figure_candidates(markdown: str, *, fallback_title: str) -> lis
     fallback_heading = _plain_heading_text(fallback_title)
     if not fallback_context or not fallback_heading:
         return []
-    score, goal, figure_type = _score_static_figure_signal(fallback_title, fallback_context)
     return [
         _StaticFigureCandidate(
             index=1,
@@ -164,31 +146,105 @@ def _iter_static_figure_candidates(markdown: str, *, fallback_title: str) -> lis
             level=1,
             context=fallback_context,
             insert_at=len(text),
-            score=score,
-            goal=goal,
-            figure_type=figure_type,
+            goal="",
+            figure_type="problem_diagram",
         )
     ]
 
 
-def _select_static_figure_candidates(
+def _static_figure_candidate_pool(
     markdown: str,
     *,
     fallback_title: str,
-    max_assets: int = 1,
+    max_candidates: int = 12,
 ) -> list[_StaticFigureCandidate]:
     candidates = _iter_static_figure_candidates(markdown, fallback_title=fallback_title)
-    qualified = [item for item in candidates if len(re.sub(r"\s+", "", item.context)) >= 40]
-    if not qualified:
+    if not candidates:
+        return []
+    return candidates[: max(1, max_candidates)]
+
+
+async def _select_static_figure_candidates(
+    candidates: list[_StaticFigureCandidate],
+    *,
+    draft: ChapterDraft,
+    traced_context: TracedExecutionContext,
+    digest_mode: str,
+    max_assets: int,
+) -> list[_StaticFigureCandidate]:
+    if not candidates:
         return []
 
+    candidate_payload = [
+        {
+            "index": item.index,
+            "title": item.title,
+            "context": item.context[:900],
+        }
+        for item in candidates
+    ]
+    try:
+        response = await acompletion_with_fallback(
+            build_static_html_figure_selection_messages(
+                chapter_title=draft.title,
+                digest_mode=digest_mode,
+                candidates=candidate_payload,
+                max_assets=max(1, max_assets),
+            ),
+            response_model=_StaticFigureSelection,
+            **docgen_completion_kwargs_with_metadata(
+                DocGenModelStep.STATIC_HTML_FIGURE,
+                digest_mode=digest_mode,
+                extra_metadata=traced_context.trace_metadata(
+                    docgen_stage="static_html_figure_selection",
+                    asset_kind="static_html_figure",
+                    chapter_index=draft.chapter_index,
+                    candidate_count=len(candidates),
+                ),
+            ),
+        )
+    except Exception as exc:
+        logger.warning(
+            "docgen_static_html_figure_selection_failed",
+            chapter_index=draft.chapter_index,
+            chapter_title=draft.title,
+            error=str(exc)[:240],
+        )
+        return []
+
+    try:
+        selection = (
+            response
+            if isinstance(response, _StaticFigureSelection)
+            else _StaticFigureSelection.model_validate(response)
+        )
+    except Exception as exc:
+        logger.warning(
+            "docgen_static_html_figure_selection_invalid",
+            chapter_index=draft.chapter_index,
+            chapter_title=draft.title,
+            error=str(exc)[:240],
+        )
+        return []
+    by_index = {item.index: item for item in candidates}
     selected: list[_StaticFigureCandidate] = []
-    attempt_limit = max(1, min(len(qualified), max_assets * 4))
-    for item in sorted(qualified, key=lambda candidate: candidate.insert_at):
-        if any(abs(item.insert_at - existing.insert_at) < 160 for existing in selected):
+    seen: set[int] = set()
+    for item in selection.selected:
+        if item.index in seen:
             continue
-        selected.append(item)
-        if len(selected) >= attempt_limit:
+        candidate = by_index.get(item.index)
+        if candidate is None:
+            continue
+        seen.add(item.index)
+        selected.append(
+            replace(
+                candidate,
+                goal=item.figure_goal or item.reason or "模型判断该片段需要静态教学示意图。",
+                figure_type=item.figure_type or "problem_diagram",
+                selection_reason=item.reason,
+            )
+        )
+        if len(selected) >= max(1, max_assets):
             break
     return selected
 
@@ -247,9 +303,17 @@ async def generate_static_html_figure_assets(
     max_assets: int = 1,
     used_visual_signatures: set[str] | None = None,
 ) -> list[dict[str, object]]:
-    candidates = _select_static_figure_candidates(
+    candidate_pool = _static_figure_candidate_pool(
         markdown,
         fallback_title=draft.title,
+    )
+    if not candidate_pool:
+        return []
+    candidates = await _select_static_figure_candidates(
+        candidate_pool,
+        draft=draft,
+        traced_context=traced_context,
+        digest_mode=digest_mode,
         max_assets=max_assets,
     )
     if not candidates:

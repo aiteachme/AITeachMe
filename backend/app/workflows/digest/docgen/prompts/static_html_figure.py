@@ -2,8 +2,70 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from app.workflows.digest.common.prompt_tracing import trace_prompt_build
 from app.workflows.digest.docgen.lib.mode_profiles import get_docgen_mode_profile
+
+
+def build_static_html_figure_selection_messages(
+    *,
+    chapter_title: str,
+    digest_mode: str,
+    candidates: list[dict[str, Any]],
+    max_assets: int,
+) -> list[dict[str, str]]:
+    mode_label = get_docgen_mode_profile(digest_mode).prompt_label
+    candidate_lines: list[str] = []
+    for item in candidates:
+        candidate_lines.append(
+            "\n".join(
+                [
+                    f"候选 {item.get('index')}: {item.get('title')}",
+                    f"片段：{item.get('context')}",
+                ]
+            )
+        )
+    system_prompt = """
+你是 AITeachMe 的教学图示触发判断器。
+本阶段只判断“哪些章节片段值得生成示意图”，不要输出 FigureSpec，不要画图。
+可以一个都不选；宁可不生成，也不要为了凑数量选择没有教学增量的片段。
+判断标准由语义决定：图必须帮助学生看见正文不容易直观把握的空间、数量、状态、结构、几何、坐标、路径、装置或易混关系。
+不要按学科关键词、标题词或固定模板选择；只看片段里是否真的有可视化能显著降低理解成本的关系。
+输出只包含 JSON 对象，格式为 {"selected":[{"index":1,"figure_goal":"图要讲清什么","figure_type":"problem_diagram","reason":"为什么值得画"}]}。
+selected 最多保留 max_assets 个；不值得画时输出 {"selected":[]}。
+""".strip()
+    candidates_text = "\n\n".join(candidate_lines) if candidate_lines else "无"
+    prompt = f"""
+请从下面候选片段中选择最多 {max_assets} 个真正值得生成静态教学示意图的位置。
+
+章节标题：{chapter_title}
+文档模式：{mode_label}
+
+候选片段：
+{candidates_text}
+
+输出要求：
+1. 只做触发判断，不生成图元。
+2. figure_goal 写成一句具体图示目标，方便下一步 FigureSpec 生成。
+3. 如果没有任何片段需要示意图，selected 返回空数组。
+4. 只输出 JSON 对象。
+""".strip()
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": prompt},
+    ]
+    return trace_prompt_build(
+        "docgen_static_html_figure_selection",
+        inputs={
+            "chapter_title": chapter_title,
+            "digest_mode": digest_mode,
+            "candidate_count": len(candidates),
+            "max_assets": max_assets,
+        },
+        output=messages,
+    )
 
 
 def build_static_html_figure_messages(
@@ -22,13 +84,10 @@ def build_static_html_figure_messages(
 只有当图能展示文字难以直观看出的空间、数量、状态、结构、几何或坐标关系时，才生成 elements。
 用图元表达几何、坐标、结构、路径、区域、网络、程序状态、公式推导或关键误区等可视关系。
 不要按关键词套模板，不要填 layout.template；layout 通常留空。
-内部按两步完成：先判断“画出来是否明显比文字更清楚”，再把那个关系排成清晰 SVG 图元。
-图必须承担明确学习任务：展示状态变化、数量比较、结构连接、坐标趋势、几何关系或空间位置之一。
-片段若只适合用普通文字、列表、公式三行推导或概念摘要说明，返回 elements: []。
-不要画装饰方框、不要复刻正文截图、不要把整段代码、普通步骤或长句排进图里。
-不要生成“原式→展开→合并”“读题→条件→目标”这类纯文字流程框，它们没有图示价值。
-不要生成“一条线/一个箭头上标几个变量符号”的图；如果没有数值刻度、曲线、角度、区域、状态格或多对象关系，文字和公式更清楚。
-程序/C 语言片段只适合画内存格、指针指向、执行流、表达式求值树、控制流等状态关系；如果只能堆变量名，就返回空 elements。
+内部按两步完成：先基于片段判断“是否值得画”，再把最有教学增量的关系排成清晰 SVG 图元。
+图必须承担明确学习任务，并能让学生看到仅靠正文不容易把握的关系。
+如果你判断这段不需要示意图，返回 elements: []。
+不要复刻正文截图、不要把整段代码或长句排进图里。
 
 可用图元：
 - axis/curve/point/line/vector/shape/label/callout/step/formula/relation/table_row
@@ -39,8 +98,8 @@ def build_static_html_figure_messages(
 - ellipse 用 rx/ry；angle/arc 用 start_angle/end_angle
 图型选择：
 - 有实际图示价值时，优先使用 problem_diagram，并使用 axis/curve/point/line/vector/shape 等视觉图元。
-- 只有普通文字步骤、公式列表、概念清单时，不要改用 process_steps、formula_derivation 或 concept_map 凑图，直接返回空 elements。
-- mistake_card 只在能画出明确纠错路径或易混结构时使用，否则返回空 elements。
+- 由你判断是否需要图、需要哪类图；不要为了凑数量改用 process_steps、formula_derivation 或 concept_map。
+- mistake_card 只在你判断能画出明确纠错路径或易混结构时使用。
 布局要求：
 - 元素 4-9 个为宜，最多 10 个；标签最多 8 个。
 - 标签必须很短：中文不超过 8 个字，英文/代码不超过 12 个字符。
@@ -66,11 +125,11 @@ def build_static_html_figure_messages(
 {section_context}
 
 生成要求：
-1. 先决定是否值得画；不值得时返回 elements: []，不要勉强生成。
+1. 先由模型判断是否值得画；不值得时返回 elements: []，不要勉强生成。
 2. 值得画时只画一个关键图；elements 必须表达非纯文本的视觉关系，例如变量格位置、指针指向、坐标趋势、几何角度、区域关系、数量结构。
 3. 画流程/关系/状态时，优先使用短 id 与 from_id/to_id；不要用随机方框模拟截图。
-4. 如果只能生成普通概念罗列、比较表、公式三行推导、长文本标签或随机方框，就返回空 elements。
-5. 单线条、单箭头、少量变量名或符号位置示意通常没有教学增量；除非存在真实刻度、曲线趋势、角度、区域、装置或多状态变化，否则返回空 elements。
+4. 标签要短，布局要留白；不要依赖后端模板或关键词规则。
+5. 如果你判断图没有教学增量，就返回空 elements。
 6. 不要使用 layout.template，不要要求外部图片、Canvas、脚本或 Manim；只输出后端 SVG 图元能渲染的静态图。
 7. 输出为一个 JSON 对象。
 """.strip()
@@ -90,4 +149,4 @@ def build_static_html_figure_messages(
     )
 
 
-__all__ = ["build_static_html_figure_messages"]
+__all__ = ["build_static_html_figure_messages", "build_static_html_figure_selection_messages"]

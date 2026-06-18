@@ -15,7 +15,7 @@ from app.workflows.digest.docgen.lib.figure_spec import (
     render_figure_spec_html,
 )
 from app.workflows.digest.docgen.lib.models import ChapterDraft
-from app.workflows.digest.docgen.lib.static_html_figure import _score_static_figure_signal
+from app.workflows.digest.docgen.prompts.static_html_figure import build_static_html_figure_selection_messages
 
 
 class _FakeContentStore:
@@ -26,45 +26,39 @@ class _FakeContentStore:
         self.text_writes[key] = content
 
 
-def test_static_figure_candidate_scoring_only_ranks_context_for_model_judgement() -> None:
-    score, goal, figure_type = _score_static_figure_signal(
-        "复杂片段",
-        (
-            "第一段说明材料的关键背景和任务边界，第二段继续展开具体条件和多个对象之间的关系。"
-            "第三段提醒学习者不要只背结论，而要先判断是否存在适合画成演示图的结构。"
-            "- 条件一需要被核对。\n- 条件二需要被比较。\n"
-        ),
+def _figure_selection(*indexes: int) -> object:
+    return static_figures._StaticFigureSelection(
+        selected=[
+            static_figures._StaticFigureSelectionItem(
+                index=index,
+                figure_goal="用示意图讲清关键关系。",
+                figure_type="problem_diagram",
+                reason="模型判断这段有可视化增量。",
+            )
+            for index in indexes
+        ]
     )
 
-    assert score >= 3
-    assert "由模型判断" in goal
-    assert figure_type == "auto"
 
-
-def test_static_figure_candidate_scoring_does_not_choose_by_domain_keyword() -> None:
-    math_score, _math_goal, math_type = _score_static_figure_signal(
-        "导数、切线斜率与切线方程",
-        "例题：求 y=x^2 在 x=1 处的切线方程。导数表示函数图像在一点处的切线斜率。",
+def test_static_figure_selection_prompt_makes_llm_decide_trigger() -> None:
+    messages = build_static_html_figure_selection_messages(
+        chapter_title="函数图像",
+        digest_mode="systematic",
+        max_assets=1,
+        candidates=[
+            {
+                "index": 1,
+                "title": "函数图像与斜率",
+                "context": "斜率、截距和图像位置需要一起观察。",
+            }
+        ],
     )
-    code_score, _code_goal, code_type = _score_static_figure_signal(
-        "程序中的变量位置",
-        "C 语言中 int a=3, b=5, sum; 执行 sum=a+b 后，变量区中的 a、b、sum 位置和赋值顺序需要区分。",
-    )
+    text = "\n".join(message["content"] for message in messages)
 
-    assert math_type == "auto"
-    assert code_type == "auto"
-    assert math_score >= 0
-    assert code_score >= 0
-
-
-def test_static_figure_candidate_scoring_short_text_has_no_goal_but_still_auto() -> None:
-    score, _goal, figure_type = _score_static_figure_signal(
-        "短片段",
-        "这个流程可以看成“读题 -> 条件 -> 目标 -> 方法”的路径。",
-    )
-
-    assert score < 3
-    assert figure_type == "auto"
+    assert "本阶段只判断" in text
+    assert "一个都不选" in text
+    assert "不要按学科关键词" in text
+    assert '{"selected":[]}' in text
 
 
 def test_rendered_figure_is_single_file_static_html() -> None:
@@ -165,7 +159,7 @@ def test_non_problem_visual_boxes_are_not_promoted_to_publishable_diagrams() -> 
     assert "text_only_static_figure" in assess_static_figure_layout(normalized)["issues"]
 
 
-def test_formula_token_relation_diagram_is_not_publishable_problem_diagram() -> None:
+def test_problem_diagram_renderer_does_not_apply_semantic_blacklist() -> None:
     spec = FigureSpec(
         type="problem_diagram",
         title="完全平方公式",
@@ -184,74 +178,9 @@ def test_formula_token_relation_diagram_is_not_publishable_problem_diagram() -> 
 
     report = assess_static_figure_layout(spec)
 
-    assert not is_renderable_static_figure(spec)
-    assert report["ok"] is False
-    assert "text_only_relation_diagram" in report["issues"]
-
-
-def test_formula_token_area_layout_without_spatial_labels_is_not_publishable() -> None:
-    spec = FigureSpec(
-        type="problem_diagram",
-        title="完全平方公式面积分割",
-        elements=[
-            FigureElement(kind="shape", shape_type="polygon", label="a²", points=[[25, 25], [55, 25], [55, 55], [25, 55]]),
-            FigureElement(kind="shape", shape_type="polygon", label="ab", points=[[55, 25], [78, 25], [78, 55], [55, 55]]),
-            FigureElement(kind="shape", shape_type="polygon", label="ba", points=[[25, 55], [55, 55], [55, 75], [25, 75]]),
-            FigureElement(kind="shape", shape_type="polygon", label="b²", points=[[55, 55], [78, 55], [78, 75], [55, 75]]),
-            FigureElement(kind="label", label="= a²+ab+ba+b²", x=82, y=42),
-        ],
-        source_refs=["先展开成 a^2+ab+ba+b^2，再合并同类项"],
-    )
-
-    report = assess_static_figure_layout(spec)
-
-    assert not is_renderable_static_figure(spec)
-    assert report["ok"] is False
-    assert "text_only_relation_diagram" in report["issues"]
-
-
-def test_generic_partition_guess_is_not_publishable_problem_diagram() -> None:
-    spec = FigureSpec(
-        type="problem_diagram",
-        title="力的合成图示",
-        elements=[
-            FigureElement(kind="shape", shape_type="polygon", label="F1", points=[[25, 35], [45, 30], [55, 45], [35, 55]]),
-            FigureElement(kind="shape", shape_type="polygon", label="F2", points=[[48, 32], [72, 34], [68, 58], [52, 50]]),
-            FigureElement(kind="shape", shape_type="polygon", label="FR", points=[[36, 45], [60, 42], [64, 60], [42, 62]]),
-            FigureElement(kind="line", x=35, y=54, x2=70, y2=64),
-            FigureElement(kind="label", label="左区", x=28, y=25),
-            FigureElement(kind="label", label="右区", x=74, y=25),
-            FigureElement(kind="label", label="交叠", x=50, y=65),
-        ],
-        source_refs=["两个力 F1 和 F2 首尾相接时，合力 FR 从第一个力的起点指向第二个力的终点。"],
-    )
-
-    report = assess_static_figure_layout(spec)
-
-    assert not is_renderable_static_figure(spec)
-    assert report["ok"] is False
-    assert "text_only_relation_diagram" in report["issues"]
-
-
-def test_single_axis_symbol_diagram_is_not_publishable_problem_diagram() -> None:
-    spec = FigureSpec(
-        type="problem_diagram",
-        title="位移与速度的矢量性",
-        elements=[
-            FigureElement(kind="axis", label="轨迹", x=24, y=55, x2=76, y2=55),
-            FigureElement(kind="point", id="x1", label="x1", x=32, y=55),
-            FigureElement(kind="point", id="x2", label="x2", x=66, y=55),
-            FigureElement(kind="line", label="Δx", x=34, y=55, x2=64, y2=55),
-            FigureElement(kind="vector", label="v", x=66, y=55, x2=78, y2=55),
-        ],
-        source_refs=["位移 Δx 从 x1 指向 x2，速度 v 指向运动方向。"],
-    )
-
-    report = assess_static_figure_layout(spec)
-
-    assert not is_renderable_static_figure(spec)
-    assert report["ok"] is False
-    assert "text_only_relation_diagram" in report["issues"]
+    assert is_renderable_static_figure(spec)
+    assert report["ok"] is True
+    assert "text_only_relation_diagram" not in report["issues"]
 
 
 def test_empty_concept_map_does_not_invent_default_nodes() -> None:
@@ -572,7 +501,9 @@ def test_static_figure_generation_uses_llm_spec_for_program_context(monkeypatch)
     store = _FakeContentStore()
     calls = {"count": 0}
 
-    async def fake_acompletion(*_args, **_kwargs):
+    async def fake_acompletion(*_args, **kwargs):
+        if kwargs.get("response_model") is static_figures._StaticFigureSelection:
+            return _figure_selection(1)
         calls["count"] += 1
         return FigureSpec(
             type="problem_diagram",
@@ -633,7 +564,9 @@ def test_static_figure_generation_asks_llm_when_signal_is_not_keyword_matched(mo
     store = _FakeContentStore()
     calls = {"count": 0}
 
-    async def fake_acompletion(*_args, **_kwargs):
+    async def fake_acompletion(*_args, **kwargs):
+        if kwargs.get("response_model") is static_figures._StaticFigureSelection:
+            return _figure_selection(1)
         calls["count"] += 1
         return FigureSpec(
             type="problem_diagram",
@@ -686,10 +619,50 @@ def test_static_figure_generation_asks_llm_when_signal_is_not_keyword_matched(mo
     assert store.text_writes
 
 
+def test_static_figure_generation_skips_when_llm_declines_trigger(monkeypatch) -> None:
+    store = _FakeContentStore()
+    calls = {"spec": 0}
+
+    async def fake_acompletion(*_args, **kwargs):
+        if kwargs.get("response_model") is static_figures._StaticFigureSelection:
+            return static_figures._StaticFigureSelection(selected=[])
+        calls["spec"] += 1
+        return FigureSpec(
+            type="problem_diagram",
+            title="不应生成",
+            elements=[FigureElement(kind="axis", x=12, y=72, x2=92, y2=72)],
+        )
+
+    monkeypatch.setattr(static_figures, "get_content_store", lambda: store)
+    monkeypatch.setattr(
+        static_figures,
+        "resolve_course_storage_scope",
+        lambda _course_id: SimpleNamespace(namespace="users/test/courses/course_abc123abc123"),
+    )
+    monkeypatch.setattr(static_figures, "acompletion_with_fallback", fake_acompletion)
+
+    markdown = "## 普通说明\n\n这一段只是在复述学习目标和文字说明。"
+    assets = asyncio.run(
+        static_figures.generate_static_html_figure_assets(
+            draft=ChapterDraft(chapter_index=8, title="普通说明", markdown=markdown),
+            traced_context=TracedExecutionContext(course_id="course_abc123abc123", build_session_id="build_8"),
+            digest_mode="systematic",
+            markdown=markdown,
+            max_assets=1,
+        )
+    )
+
+    assert assets == []
+    assert calls["spec"] == 0
+    assert store.text_writes == {}
+
+
 def test_static_figure_generation_skips_text_only_process_step_specs(monkeypatch) -> None:
     store = _FakeContentStore()
 
-    async def fake_acompletion(*_args, **_kwargs):
+    async def fake_acompletion(*_args, **kwargs):
+        if kwargs.get("response_model") is static_figures._StaticFigureSelection:
+            return _figure_selection(1)
         return FigureSpec(
             type="process_steps",
             title="审题路径",
@@ -730,7 +703,9 @@ def test_static_figure_generation_skips_duplicate_visual_specs(monkeypatch) -> N
     store = _FakeContentStore()
     calls = {"count": 0}
 
-    async def fake_acompletion(*_args, **_kwargs):
+    async def fake_acompletion(*_args, **kwargs):
+        if kwargs.get("response_model") is static_figures._StaticFigureSelection:
+            return _figure_selection(1, 2)
         calls["count"] += 1
         return FigureSpec(
             type="problem_diagram",
@@ -788,7 +763,9 @@ def test_static_figure_generation_skips_duplicate_visual_specs(monkeypatch) -> N
 def test_static_figure_generation_reuses_visual_signatures_across_chapters(monkeypatch) -> None:
     store = _FakeContentStore()
 
-    async def fake_acompletion(*_args, **_kwargs):
+    async def fake_acompletion(*_args, **kwargs):
+        if kwargs.get("response_model") is static_figures._StaticFigureSelection:
+            return _figure_selection(1)
         return FigureSpec(
             type="problem_diagram",
             title="通用状态图",
@@ -847,7 +824,9 @@ def test_static_figure_generation_reuses_visual_signatures_across_chapters(monke
 def test_static_figure_generation_skips_nonvisual_llm_spec(monkeypatch) -> None:
     store = _FakeContentStore()
 
-    async def fake_acompletion(*_args, **_kwargs):
+    async def fake_acompletion(*_args, **kwargs):
+        if kwargs.get("response_model") is static_figures._StaticFigureSelection:
+            return _figure_selection(1)
         return FigureSpec(
             type="problem_diagram",
             title="空图",
