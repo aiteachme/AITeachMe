@@ -512,8 +512,6 @@ jobs:
           base_url="${FRONTEND_PUBLIC_URL%/}"
           root_url="${base_url}/"
           health_url="${base_url}/api/health"
-          upload_url="${base_url}/api/v1/files/upload"
-          eval "$(python3 backend/scripts/resolve_upload_probe.py --source code-default --max-probe-mb 9)"
           strict_api_smoke="${STRICT_API_SMOKE:-false}"
 
           readiness_ok=false
@@ -545,17 +543,58 @@ jobs:
             exit 1
           fi
 
-          python3 backend/scripts/smoke_upload_body.py \
-            --url "${upload_url}" \
-            --expected-status 422 \
-            --bytes "${upload_probe_bytes}" \
-            --label "${upload_probe_label}" \
-            --attempts 4 \
-            --timeout 120 \
-            --sleep 15
+      - name: Smoke test Sealos frontend proxy in cluster
+        id: smoke_frontend_proxy
+        if: steps.optin.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          eval "$(python3 backend/scripts/resolve_upload_probe.py --source code-default --max-probe-mb 9)"
+          upload_probe_mb="${upload_probe_label%MiB}"
+
+          pod="$(
+            kubectl -n "${SEALOS_NAMESPACE}" get pods --no-headers 2>/dev/null \
+              | awk -v prefix="${SEALOS_FRONTEND_DEPLOYMENT}-" '$1 ~ "^" prefix && $3 == "Running" { print $1; exit }'
+          )"
+          if [ -z "${pod}" ]; then
+            echo "No running frontend pod found for in-cluster proxy smoke." >&2
+            exit 1
+          fi
+
+          kubectl -n "${SEALOS_NAMESPACE}" exec "${pod}" -- sh -lc "
+            set -eu
+            probe_file=/tmp/aiteachme-upload-proxy-probe.bin
+            response_file=/tmp/aiteachme-upload-proxy-response.out
+            rm -f \"\${probe_file}\" \"\${response_file}\"
+            dd if=/dev/zero of=\"\${probe_file}\" bs=1048576 count=${upload_probe_mb} >/dev/null 2>&1
+
+            set +e
+            output=\"\$(wget -S -O \"\${response_file}\" -T 120 \
+              --post-file=\"\${probe_file}\" \
+              --header='Content-Type: application/octet-stream' \
+              http://127.0.0.1/api/v1/files/upload 2>&1)\"
+            rc=\$?
+            set -e
+
+            printf '%s\n' \"\${output}\"
+            status=\"\$(printf '%s\n' \"\${output}\" | awk '/HTTP\\/[0-9.]+/ { code=\$2 } END { print code }')\"
+            echo \"Frontend proxy upload smoke: ${upload_probe_label} raw body -> status=\${status:-unknown}, wget_rc=\${rc}\"
+
+            rm -f \"\${probe_file}\" \"\${response_file}\"
+
+            if [ \"\${status}\" = \"413\" ]; then
+              echo 'Frontend Nginx rejected the probe body before backend validation.' >&2
+              exit 1
+            fi
+            if [ \"\${status}\" != \"422\" ]; then
+              echo 'Frontend proxied upload smoke expected backend HTTP 422.' >&2
+              exit 1
+            fi
+          "
 
       - name: Show Sealos frontend logs after failed smoke
-        if: always() && steps.smoke_frontend.outcome == 'failure' && steps.optin.outputs.enabled == 'true'
+        if: always() && steps.optin.outputs.enabled == 'true' && (steps.smoke_frontend.outcome == 'failure' || steps.smoke_frontend_proxy.outcome == 'failure')
         shell: bash
         run: |
           set -euo pipefail
@@ -590,6 +629,7 @@ jobs:
             echo "Sealos deployment: ${SEALOS_FRONTEND_DEPLOYMENT}"
             echo "API upstream: ${AITEACHME_API_UPSTREAM}"
             echo "Upload transport body limit: ${AITEACHME_NGINX_IMPORT_CLIENT_MAX_BODY_SIZE}"
+            echo "Upload proxy check: in-cluster frontend Nginx /api/v1/files/upload"
             echo "Import body limit: ${AITEACHME_NGINX_IMPORT_CLIENT_MAX_BODY_SIZE}"
             if [ -n "${FRONTEND_PUBLIC_URL}" ]; then
               echo "Public URL: ${FRONTEND_PUBLIC_URL}"
@@ -935,5 +975,5 @@ jobs:
             echo "Sealos namespace: ${SEALOS_NAMESPACE}"
             echo "Sealos deployment: ${SEALOS_BACKEND_DEPLOYMENT}"
             echo "Health check: in-cluster pod localhost /api/health"
-            echo "Upload check: in-cluster multipart below DEFAULT_INGEST_MAX_UPLOAD_SIZE_MB -> 422"
+            echo "Upload check: in-cluster multipart below runtime ingest.max_upload_size_mb -> 422"
           } >> "$GITHUB_STEP_SUMMARY"
