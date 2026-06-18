@@ -10,21 +10,46 @@
 from __future__ import annotations
 
 import time
+from urllib.parse import urlparse, urlunparse
 
 import structlog
 
 from app.shared.infra.embedding.defaults import DEFAULT_EMBEDDING_BATCH_SIZE
 from app.shared.infra.exceptions import LLMCallError, MissingLLMApiKeyError
 from app.shared.infra.llm_support.common import (
+    build_completion_contexts,
     build_litellm_provider_kwargs,
     get_llm_concurrency_limiter,
     get_llm_runtime_snapshot,
 )
 from app.shared.infra.llm_support.litellm_loader import load_litellm
 from app.shared.infra.llm_support import run_llm_tasks
-from app.shared.infra.settings.support import llm_provider_requires_api_key
 
 logger = structlog.get_logger()
+
+
+def _normalize_embedding_api_base(
+    api_base: str,
+    *,
+    provider_kwargs: dict[str, object],
+) -> str:
+    """Prefer the conventional /v1 root for OpenAI-compatible embedding APIs."""
+
+    normalized = (api_base or "").strip()
+    if not normalized:
+        return normalized
+    if provider_kwargs.get("custom_llm_provider") != "openai":
+        return normalized
+
+    try:
+        parsed = urlparse(normalized)
+    except Exception:
+        return normalized
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return normalized
+    if (parsed.path or "").rstrip("/"):
+        return normalized.rstrip("/")
+    return urlunparse(parsed._replace(path="/v1")).rstrip("/")
 
 
 async def _call_embedding(
@@ -32,6 +57,8 @@ async def _call_embedding(
     batch: list[str],
     api_base: str,
     api_key: str | None,
+    provider: str | None = None,
+    api_version: str | None = None,
 ) -> list[list[float]]:
     """调用 litellm embedding，自动处理 encoding_format 兼容性。
 
@@ -42,13 +69,22 @@ async def _call_embedding(
     litellm = load_litellm()
     # 全局：让 litellm 尽可能丢弃不支持的参数
     litellm.drop_params = True
+    provider_kwargs = build_litellm_provider_kwargs(
+        model,
+        runtime_provider=provider,
+        api_version=api_version,
+    )
+    normalized_api_base = _normalize_embedding_api_base(
+        api_base,
+        provider_kwargs=provider_kwargs,
+    )
     try:
         request_kwargs = {
             "model": model,
             "input": batch,
-            "api_base": api_base,
+            "api_base": normalized_api_base,
             "encoding_format": "float",
-            **build_litellm_provider_kwargs(model),
+            **provider_kwargs,
         }
         if api_key is not None:
             request_kwargs["api_key"] = api_key
@@ -68,8 +104,8 @@ async def _call_embedding(
             fallback_kwargs = {
                 "model": model,
                 "input": batch,
-                "api_base": api_base,
-                **build_litellm_provider_kwargs(model),
+                "api_base": normalized_api_base,
+                **provider_kwargs,
             }
             if api_key is not None:
                 fallback_kwargs["api_key"] = api_key
@@ -113,11 +149,6 @@ async def aembed_texts(
 
     snapshot = get_llm_runtime_snapshot()
     settings = snapshot.settings
-    api_base = snapshot.base_url or "https://api.openai.com/v1"
-    provider = snapshot.provider
-    api_key = snapshot.choose_api_key()
-    if api_key is None and llm_provider_requires_api_key(provider, base_url=api_base):
-        raise MissingLLMApiKeyError()
     batch_size = batch_size or DEFAULT_EMBEDDING_BATCH_SIZE
     resolved_model = str(model or settings.models.embedding or "").strip()
     if not resolved_model:
@@ -129,6 +160,8 @@ async def aembed_texts(
             )
             return []
         raise LLMCallError(reason="models.embedding is not configured")
+    context = build_completion_contexts(task_type="embedding", model=resolved_model)[0]
+    api_base = context.base_url or "https://api.openai.com/v1"
     start = time.monotonic()
 
     all_vectors: list[list[float]] = []
@@ -143,24 +176,30 @@ async def aembed_texts(
                 model=resolved_model,
                 batch=batch,
                 api_base=api_base,
-                api_key=api_key,
+                api_key=context.api_key,
+                provider=context.provider,
+                api_version=context.api_version,
             )
             return batch_idx, batch_vectors
         except LLMCallError as exc:
-            logger.error(
-                "embedding_batch_failed",
+            log_method = logger.warning if soft_fail else logger.error
+            log_method(
+                "embedding_batch_soft_failed" if soft_fail else "embedding_batch_failed",
                 batch_idx=batch_idx,
                 batch_size=len(batch),
                 model=resolved_model,
+                endpoint_role=context.endpoint_role,
                 error=str(exc),
             )
             raise
         except Exception as exc:
-            logger.error(
-                "embedding_batch_failed",
+            log_method = logger.warning if soft_fail else logger.error
+            log_method(
+                "embedding_batch_soft_failed" if soft_fail else "embedding_batch_failed",
                 batch_idx=batch_idx,
                 batch_size=len(batch),
                 model=resolved_model,
+                endpoint_role=context.endpoint_role,
                 error=str(exc),
             )
             raise LLMCallError(reason=f"Embedding 调用失败（批次 {batch_idx + 1}/{total_batches}）：{exc}") from exc
@@ -184,6 +223,7 @@ async def aembed_texts(
             text_count=len(texts),
             batch_count=total_batches,
             model=resolved_model,
+            endpoint_role=context.endpoint_role,
             error=str(exc),
         )
         return []
@@ -194,6 +234,7 @@ async def aembed_texts(
         text_count=len(texts),
         batch_count=total_batches,
         model=resolved_model,
+        endpoint_role=context.endpoint_role,
         embedding_dim=len(all_vectors[0]) if all_vectors else 0,
     )
     return all_vectors

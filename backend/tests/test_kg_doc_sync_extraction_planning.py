@@ -190,7 +190,11 @@ def test_many_chapters_keep_chapter_tasks_and_limit_parallel_lanes() -> None:
     tasks, metrics = _build_extraction_tasks(chapters, {})
 
     assert len(tasks) == len(chapters)
-    assert metrics["planned_task_limit"] == incremental_sync._graph_llm_concurrency_cap()
+    assert metrics["planned_task_limit"] == incremental_sync._planned_extraction_task_limit()
+    assert incremental_sync._effective_concurrency_limit(len(tasks)) == min(
+        len(tasks),
+        incremental_sync._graph_llm_concurrency_cap(),
+    )
     assert metrics["chapter_split_count"] == 0
 
 

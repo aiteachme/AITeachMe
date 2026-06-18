@@ -9,6 +9,7 @@ from collections import Counter
 from app.shared.infra.search.cache import get_compression_runtime_cache
 from app.shared.infra.execution import BaseTracedExecution, TracedExecutionResult
 from app.shared.infra.embedding import aembed_texts
+from app.shared.infra.settings import get_settings
 
 _FAST_PATH_CHAR_LIMIT = 2400
 _DEFAULT_PASSAGE_MAX_CHARS = 900
@@ -273,32 +274,37 @@ class ContextCompressor(BaseTracedExecution):
                 },
             )
 
-        try:
-            embeddings = await aembed_texts([focus_query or query.strip() or "context", *passages])
-            query_embedding = embeddings[0]
-            scored: list[tuple[float, float, float, str]] = []
-            for passage, embedding in zip(passages, embeddings[1:], strict=False):
-                similarity = _cosine_similarity(query_embedding, embedding)
-                lexical = _lexical_overlap_score(query_tokens, passage)
-                if similarity >= similarity_threshold or lexical >= lexical_threshold:
-                    score = similarity + (lexical * 0.35)
-                    scored.append((score, similarity, lexical, passage))
-            if scored:
-                scored.sort(key=lambda item: (-item[0], -item[1], -item[2], -len(item[3])))
-                ranked_passages = [passage for _, _, _, passage in scored[:max_results]]
-                selected = _limit_by_total_chars(ranked_passages, max_total_chars=max_total_chars)
-                return TracedExecutionResult(
-                    content="\n\n".join(selected),
-                    metadata={
-                        "compression_mode": "embedding_filter",
-                        "document_count": len(cleaned_documents),
-                        "passage_count": len(passages),
-                        "selected_count": len(selected),
-                        "focus_term_count": len(focus_terms),
-                    },
+        if get_settings().embedding_configured:
+            try:
+                embeddings = await aembed_texts(
+                    [focus_query or query.strip() or "context", *passages],
+                    soft_fail=True,
                 )
-        except Exception:
-            pass
+                if len(embeddings) == len(passages) + 1:
+                    query_embedding = embeddings[0]
+                    scored: list[tuple[float, float, float, str]] = []
+                    for passage, embedding in zip(passages, embeddings[1:], strict=False):
+                        similarity = _cosine_similarity(query_embedding, embedding)
+                        lexical = _lexical_overlap_score(query_tokens, passage)
+                        if similarity >= similarity_threshold or lexical >= lexical_threshold:
+                            score = similarity + (lexical * 0.35)
+                            scored.append((score, similarity, lexical, passage))
+                    if scored:
+                        scored.sort(key=lambda item: (-item[0], -item[1], -item[2], -len(item[3])))
+                        ranked_passages = [passage for _, _, _, passage in scored[:max_results]]
+                        selected = _limit_by_total_chars(ranked_passages, max_total_chars=max_total_chars)
+                        return TracedExecutionResult(
+                            content="\n\n".join(selected),
+                            metadata={
+                                "compression_mode": "embedding_filter",
+                                "document_count": len(cleaned_documents),
+                                "passage_count": len(passages),
+                                "selected_count": len(selected),
+                                "focus_term_count": len(focus_terms),
+                            },
+                        )
+            except Exception:
+                pass
 
         ranked = sorted(
             passages,

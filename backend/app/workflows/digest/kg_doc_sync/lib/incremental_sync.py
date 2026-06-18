@@ -974,14 +974,14 @@ def _create_source_ref_for_edge(
 
 
 def _empty_extraction_diagnostics() -> dict[str, int]:
-    max_parallel = _max_parallel_extractions()
+    planned_task_limit = _planned_extraction_task_limit()
     return {
         "chapter_count": 0,
         "section_count": 0,
         "chapter_split_count": 0,
         "chapter_task_count": 0,
         "subsection_task_count": 0,
-        "planned_task_limit": max_parallel,
+        "planned_task_limit": planned_task_limit,
         "planned_task_count": 0,
         "successful_section_count": 0,
         "failed_section_count": 0,
@@ -1014,6 +1014,10 @@ def _empty_extraction_diagnostics() -> dict[str, int]:
 
 
 def _max_parallel_extractions() -> int:
+    return max(1, min(_configured_extraction_task_limit(), _graph_llm_concurrency_cap()))
+
+
+def _configured_extraction_task_limit() -> int:
     configured = int(
         getattr(
             get_settings().knowledge_graph,
@@ -1022,7 +1026,13 @@ def _max_parallel_extractions() -> int:
         )
         or _DEFAULT_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS
     )
-    return max(1, min(max(1, int(configured)), _graph_llm_concurrency_cap()))
+    return max(1, int(configured))
+
+
+def _planned_extraction_task_limit() -> int:
+    """Return the KG planning budget before the global LLM limiter is applied."""
+
+    return _configured_extraction_task_limit()
 
 
 def _graph_llm_concurrency_cap() -> int:
@@ -1061,7 +1071,7 @@ def graph_extraction_parallelism() -> dict[str, int | float]:
         "chapter_concurrency_limit": _chapter_concurrency_limit(),
         "max_parallel_extractions": _max_parallel_extractions(),
         "llm_concurrency_cap": _graph_llm_concurrency_cap(),
-        "planned_task_limit": _max_parallel_extractions(),
+        "planned_task_limit": _planned_extraction_task_limit(),
         "chapter_max_retries": _chapter_max_retries(),
         "chapter_retry_delay_s": _chapter_retry_delay_s(),
         "split_min_child_sections": _DOCS_SYNC_SPLIT_MIN_CHILD_SECTIONS,
@@ -1197,13 +1207,13 @@ def _build_extraction_tasks(
     chapter_contexts: dict[int, ChapterSourceContext],
 ) -> tuple[list[_ExtractionTask], dict[str, int]]:
     tasks: list[_ExtractionTask] = []
-    max_parallel = _max_parallel_extractions()
-    split_budget = max(0, max_parallel - len(chapters))
+    planned_task_limit = _planned_extraction_task_limit()
+    split_budget = max(0, planned_task_limit - len(chapters))
     metrics = {
         "chapter_split_count": 0,
         "chapter_task_count": 0,
         "subsection_task_count": 0,
-        "planned_task_limit": max_parallel,
+        "planned_task_limit": planned_task_limit,
     }
     for source_chapter_index, chapter in enumerate(chapters, start=1):
         chapter_context = _chapter_context_for_index(chapter_contexts, source_chapter_index)
