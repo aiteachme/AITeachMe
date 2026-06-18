@@ -10,8 +10,10 @@ from app.workflows.digest.docgen.lib.chapter_enhancement import (
 from app.workflows.digest.docgen.lib.chapter_review import _coverage, _rule_review_chapter
 from app.workflows.digest.docgen.lib.chapter_planning import _filter_scope_items
 from app.workflows.digest.docgen.lib.models import ChapterGenerationTask, EnhancedChapterDraft
+from app.workflows.digest.docgen.lib.presentation_policy import build_presentation_contract_prompt
 from app.workflows.digest.docgen.lib.textbook_style import normalize_textbook_headings
 from app.workflows.digest.docgen.lib.mode_profiles import get_docgen_mode_profile
+from app.workflows.digest.docgen.prompts.generation import build_docgen_writer_messages
 from app.workflows.digest.planner.lib.constants import get_planner_mode_contract
 
 
@@ -209,6 +211,26 @@ def test_learning_scaffold_does_not_generate_local_sections() -> None:
     assert "只有一段内容" in scaffold
     assert "> [!TIP]" not in scaffold
     assert "核心总结" not in scaffold
+
+
+def test_docgen_writer_prompt_asks_for_short_teaching_callouts() -> None:
+    messages = build_docgen_writer_messages(
+        title="函数图像",
+        objective="理解函数图像与解析式的对应关系",
+        digest_mode="systematic",
+        required_elements=["一次函数", "图像变换"],
+        writing_instructions="",
+        source_count=1,
+        dense_context="函数图像需要结合解析式、斜率和截距理解。",
+        chapter_index=1,
+        chapter_count=3,
+    )
+    prompt_text = "\n".join(message["content"] for message in messages)
+    contract = build_presentation_contract_prompt(digest_mode="systematic")
+
+    assert "`> [!IMPORTANT]`" in prompt_text
+    assert "`> [!TIP]`" in contract
+    assert "不要把完整例题、长解析或章末练习放进 callout" in prompt_text
 
 
 def test_mode_sections_do_not_provide_keyword_scaffold_fallback() -> None:

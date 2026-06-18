@@ -6,6 +6,7 @@ import pytest
 from app.workflows.digest.common.models import DigestMaterialContext, DigestMode, DigestModeDecision
 from app.workflows.digest.planner.lib.constants import get_planner_mode_contract
 from app.workflows.digest.planner.lib.plans import (
+    compose_effective_planner_request_text,
     normalize_planner_draft,
     planner_mode_label,
 )
@@ -22,6 +23,7 @@ from app.workflows.digest.planner.prompts.build_plan_composer import (
     PLAN_START,
     SUGGESTION_END,
     SUGGESTION_START,
+    build_planner_diagnosis_messages,
 )
 
 
@@ -213,6 +215,26 @@ def test_normalize_planner_draft_respects_exact_chapter_count_from_user_text() -
     assert draft.build_constraints["chapter_count_source"] == "user_request"
 
 
+def test_normalize_planner_draft_respects_chapter_count_from_revision_feedback() -> None:
+    payload = _planner_payload(chapter_count=4)
+    request_text = compose_effective_planner_request_text(
+        "基于上传资料生成一份冲刺复习文档。",
+        "跳过诊断。请严格生成 1 章，章节名为：C 指针与变量位置。不要扩展成多章。",
+    )
+
+    draft = normalize_planner_draft(
+        payload,
+        course_id="course_smoke",
+        user_prompt=request_text,
+        requested_digest_mode="sprint",
+    )
+
+    assert len(draft.chapters) == 1
+    assert draft.build_constraints["requested_chapter_count"] == 1
+    assert draft.build_constraints["chapter_count_source"] == "user_request"
+    assert any("相邻内容覆盖" in item for item in draft.chapters[0].required_elements)
+
+
 def test_normalize_planner_draft_aligns_explicit_chapter_titles() -> None:
     payload = _planner_payload(chapter_count=5)
     payload.pop("course_name")
@@ -236,6 +258,32 @@ def test_normalize_planner_draft_aligns_explicit_chapter_titles() -> None:
     assert len(draft.chapters) == 2
     assert "函数概念与自变量取值" in draft.plan
     assert "一次函数图像与斜率截距" in draft.plan
+
+
+def test_normalize_planner_draft_compacts_verbose_module_titles() -> None:
+    payload = _planner_payload(chapter_count=5)
+    payload["chapters"] = [
+        {"title": "数与式：实数运算与代数式化简", "key_points": ["实数运算", "代数式化简"]},
+        {"title": "方程与不等式：求解策略与应用建模", "key_points": ["方程求解", "应用建模"]},
+        {"title": "函数：图像性质与解析式分析", "key_points": ["函数图像", "解析式"]},
+        {"title": "几何：图形性质与逻辑证明技巧", "key_points": ["图形性质", "几何证明"]},
+        {"title": "统计与概率：数据分析与模型应用", "key_points": ["数据分析", "概率应用"]},
+    ]
+
+    draft = normalize_planner_draft(
+        payload,
+        course_id="初中数学",
+        user_prompt="我想系统复习初中数学。",
+        requested_digest_mode="sprint",
+    )
+
+    assert [chapter.title for chapter in draft.chapters] == [
+        "实数与代数式化简",
+        "方程与不等式求解",
+        "函数图像与解析式",
+        "几何图形与证明",
+        "数据分析与概率应用",
+    ]
 
 
 def test_normalize_planner_draft_respects_user_requested_chapter_range() -> None:
@@ -392,6 +440,23 @@ def test_parse_diagnosis_response_reads_choice_questions() -> None:
             "answer": "",
         }
     ]
+
+
+def test_planner_diagnosis_prompt_keeps_questions_actionable_and_short() -> None:
+    messages = build_planner_diagnosis_messages(
+        course_name="初中数学",
+        user_prompt="14 天复习函数、几何和统计",
+        digest_mode="sprint",
+        material_context=_material_context(),
+        planning_note="用户需要按考试范围构建复习路径。",
+        material_note="暂无绑定资料。",
+        message_history=[],
+    )
+    prompt_text = "\n".join(message["content"] for message in messages)
+
+    assert "每题都必须能在 DocGen 文档中看见结果" in prompt_text
+    assert "重竞赛思维" in prompt_text
+    assert "文档落点" in prompt_text
 
 
 def test_partial_chapters_supports_streaming_preview() -> None:

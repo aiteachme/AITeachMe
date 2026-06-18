@@ -394,6 +394,48 @@ def _is_generic_partition_diagram(elements: list[FigureElement]) -> bool:
     return generic_count >= 2
 
 
+def _is_numeric_visual_label(text: str) -> bool:
+    compact = re.sub(r"\s+", "", str(text or ""))
+    if not compact:
+        return False
+    return bool(re.fullmatch(r"[+-]?\d+(?:\.\d+)?(?:%|°|[A-Za-z\u4e00-\u9fff]{0,4})?", compact))
+
+
+def _is_short_symbolic_axis_label(text: str) -> bool:
+    compact = re.sub(r"\s+", "", str(text or ""))
+    if not compact or len(compact) > 14 or _is_numeric_visual_label(compact):
+        return False
+    if re.search(r"[A-Za-zΑ-ωΔδ_]", compact):
+        return True
+    return bool(re.search(r"[=<>≤≥+\-*/^&]|\\(?:frac|sqrt|sum|int)|[⁰¹²³⁴⁵⁶⁷⁸⁹]", compact))
+
+
+def _is_single_axis_symbol_diagram(elements: list[FigureElement]) -> bool:
+    """Reject one-dimensional symbol annotations that prose/formula can explain better."""
+
+    items = elements[:18]
+    if any(item.kind == "curve" for item in items):
+        return False
+    if any(item.kind == "shape" for item in items):
+        return False
+
+    line_like_count = sum(1 for item in items if item.kind in {"axis", "line", "vector"})
+    if line_like_count <= 0 or line_like_count > 3:
+        return False
+    point_count = sum(1 for item in items if item.kind == "point")
+    if point_count > 2:
+        return False
+
+    texts = _visible_visual_texts(items)
+    if len(texts) < 2 or len(texts) > 7:
+        return False
+    if any(_is_numeric_visual_label(text) for text in texts):
+        return False
+    symbolic_count = sum(1 for text in texts if _is_short_symbolic_axis_label(text))
+    short_label_count = sum(1 for text in texts if _visual_text_units(text) <= 8)
+    return symbolic_count >= 2 and short_label_count == len(texts)
+
+
 def _has_visual_value_beyond_text(elements: list[FigureElement]) -> bool:
     """Reject diagrams that merely put ordinary prose in boxes."""
 
@@ -401,6 +443,8 @@ def _has_visual_value_beyond_text(elements: list[FigureElement]) -> bool:
     if _is_formula_token_relation_diagram(items):
         return False
     if _is_generic_partition_diagram(items):
+        return False
+    if _is_single_axis_symbol_diagram(items):
         return False
     if any(item.kind in {"axis", "curve"} for item in items):
         return True

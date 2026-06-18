@@ -519,9 +519,8 @@ def _record_to_dict(record: SQLModel) -> dict:
 
 def _prepare_imported_course_settings(record_data: dict[str, Any], course_name: str) -> None:
     settings = _decode_settings_json(record_data.get("settings_json"))
-    embedding = settings.get("embedding")
-    if isinstance(embedding, dict) and embedding.get("mode") == "enabled":
-        # The package does not include vector rows, so enabled bindings must be rebuilt.
+    if isinstance(settings.get("embedding"), dict):
+        # Packages do not include vector rows, and disabled bindings are local runtime choices.
         settings.pop("embedding", None)
     if normalize_course_icon_key(settings.get(COURSE_ICON_SETTINGS_KEY)) is None:
         settings[COURSE_ICON_SETTINGS_KEY] = infer_course_icon_key(course_name)

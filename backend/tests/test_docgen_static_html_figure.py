@@ -233,6 +233,27 @@ def test_generic_partition_guess_is_not_publishable_problem_diagram() -> None:
     assert "text_only_relation_diagram" in report["issues"]
 
 
+def test_single_axis_symbol_diagram_is_not_publishable_problem_diagram() -> None:
+    spec = FigureSpec(
+        type="problem_diagram",
+        title="位移与速度的矢量性",
+        elements=[
+            FigureElement(kind="axis", label="轨迹", x=24, y=55, x2=76, y2=55),
+            FigureElement(kind="point", id="x1", label="x1", x=32, y=55),
+            FigureElement(kind="point", id="x2", label="x2", x=66, y=55),
+            FigureElement(kind="line", label="Δx", x=34, y=55, x2=64, y2=55),
+            FigureElement(kind="vector", label="v", x=66, y=55, x2=78, y2=55),
+        ],
+        source_refs=["位移 Δx 从 x1 指向 x2，速度 v 指向运动方向。"],
+    )
+
+    report = assess_static_figure_layout(spec)
+
+    assert not is_renderable_static_figure(spec)
+    assert report["ok"] is False
+    assert "text_only_relation_diagram" in report["issues"]
+
+
 def test_empty_concept_map_does_not_invent_default_nodes() -> None:
     spec = FigureSpec(type="concept_map", title="空概念图")
 

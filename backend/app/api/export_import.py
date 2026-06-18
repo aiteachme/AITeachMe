@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import tempfile
-from pathlib import Path
+from pathlib import Path as FsPath
 
 from fastapi import APIRouter, Body, Depends, File, Form, Path, Request, Response, UploadFile
 from fastapi.responses import FileResponse
@@ -114,9 +114,9 @@ async def import_uploaded_course_api(
 
     filename = file.filename or "upload.atmx"
     _validate_import_package_filename(filename)
-    suffix = Path(filename).suffix or ".atmx"
+    suffix = FsPath(filename).suffix or ".atmx"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        tmp_path = Path(tmp.name)
+        tmp_path = FsPath(tmp.name)
 
     try:
         await _copy_upload_to_temp_file(file, tmp_path)
@@ -199,7 +199,7 @@ async def import_demo_course_api(
 # ---------------------------------------------------------------------------
 
 
-def _cleanup_task(path: Path):
+def _cleanup_task(path: FsPath):
     """返回一个 Starlette BackgroundTask 在响应发送后清理临时文件。"""
 
     from starlette.background import BackgroundTask
@@ -214,12 +214,12 @@ def _set_no_store_headers(response: Response) -> None:
 
 
 def _validate_import_package_filename(filename: str) -> None:
-    suffix = Path(filename or "upload.atmx").suffix.lower() or ".atmx"
+    suffix = FsPath(filename or "upload.atmx").suffix.lower() or ".atmx"
     if suffix not in _SUPPORTED_IMPORT_SUFFIXES:
         raise UnsupportedFileTypeError(suffix)
 
 
-async def _copy_upload_to_temp_file(file: UploadFile, target_path: Path) -> None:
+async def _copy_upload_to_temp_file(file: UploadFile, target_path: FsPath) -> None:
     bytes_written = 0
     with target_path.open("wb") as fh:
         while True:
