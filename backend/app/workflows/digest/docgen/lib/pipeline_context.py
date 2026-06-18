@@ -5,6 +5,33 @@ from __future__ import annotations
 from typing import Any
 
 
+def _compact_profile_text(value: str) -> str:
+    return " ".join(str(value or "").split())
+
+
+def merge_unique_profile_texts(*values: str) -> str:
+    """Merge prompt profile fragments without repeating the same signal."""
+
+    chunks: list[str] = []
+    compact_chunks: list[str] = []
+    for value in values:
+        text = str(value or "").strip()
+        if not text:
+            continue
+        compact = _compact_profile_text(text)
+        if not compact:
+            continue
+        if any(compact == existing or compact in existing for existing in compact_chunks):
+            continue
+        superseded = [index for index, existing in enumerate(compact_chunks) if existing in compact]
+        for index in reversed(superseded):
+            del chunks[index]
+            del compact_chunks[index]
+        chunks.append(text)
+        compact_chunks.append(compact)
+    return "\n".join(chunks).strip()
+
+
 def mapping_list(value: object) -> list[dict[str, Any]]:
     return [dict(item) for item in list(value or []) if isinstance(item, dict)]
 
@@ -57,14 +84,10 @@ def learner_profile_text_for_branch(
     state_profile_text: str = "",
     user_profile: dict[str, Any] | None = None,
 ) -> str:
-    return "\n".join(
-        item
-        for item in [
-            str(docgen_context_text or "").strip(),
-            str(state_profile_text or "").strip(),
-            str((user_profile or {}).get("prompt_addendum") or "").strip(),
-        ]
-        if item
+    return merge_unique_profile_texts(
+        docgen_context_text,
+        state_profile_text,
+        str((user_profile or {}).get("prompt_addendum") or "").strip(),
     ).strip()
 
 
@@ -74,4 +97,5 @@ __all__ = [
     "guideline_summary_for_chapter",
     "learner_profile_text_for_branch",
     "mapping_list",
+    "merge_unique_profile_texts",
 ]

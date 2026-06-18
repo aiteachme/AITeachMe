@@ -2,6 +2,7 @@ import type { FullGraphResponse, GraphEdgeResponse, KnowledgeUnitResponse } from
 import {
   DEFAULT_COLOR,
   NODE_COLORS,
+  isSuppressedGraphNodeType,
   nodeBaseLayer,
   relationTone,
 } from "../knowledgeGraphVisual";
@@ -128,19 +129,18 @@ export const LEARNING_LAYERS = [
   { label: "知识", description: "概念 / 公式 / 事实", color: "#2563eb" },
   { label: "原理", description: "推理 / 机制 / 条件", color: "#0f766e" },
   { label: "方法", description: "步骤 / 技能 / 纠错", color: "#f59e0b" },
-  { label: "应用", description: "案例 / 迁移 / 资源", color: "#f43f5e" },
+  { label: "应用", description: "案例 / 迁移 / 练习", color: "#f43f5e" },
 ] as const;
 
 export const TYPE_LABELS: Record<string, string> = {
   topic: "主题模块",
-  concept: "概念术语",
+  concept: "核心概念",
   principle: "原理性质",
   formula_model: "公式模型",
   procedure: "方法步骤",
   skill: "解题技能",
   misconception: "易错辨析",
   application_case: "应用案例",
-  resource: "学习资源",
 };
 
 export const RELATION_LABELS: Record<string, string> = {
@@ -204,7 +204,7 @@ export function relationLabel(type: string): string {
 }
 
 export function buildInsightModel(payload: FullGraphResponse | null | undefined): GraphInsightModel {
-  const rawNodes = payload?.nodes ?? [];
+  const rawNodes = (payload?.nodes ?? []).filter((node) => !isSuppressedGraphNodeType(node.knowledge_unit_type));
   const nodeById = new Map(rawNodes.map((node) => [node.id, node]));
   const edges = (payload?.edges ?? []).filter(
     (edge) => nodeById.has(edge.source_node_id) && nodeById.has(edge.target_node_id),

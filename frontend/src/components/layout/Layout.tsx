@@ -1,11 +1,18 @@
 import { lazy, Suspense, useCallback, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { AiInteractionProvider, AiInteractionWindow, type AiConversationScope } from "../interaction";
 import { getCourseIdFromPathname, isFullBleedCoursePath, getCourseRouteSegmentFromPathname } from "../../lib/courseNavigation";
+import {
+  buildKnowledgeBuildRuntimeQueryKey,
+  buildRuntimeFailureBackoffMs,
+  fetchKnowledgeBuildRuntime,
+} from "../../lib/knowledgeBuildRuntime";
 import { cn } from "../../lib/utils";
 import { isElectronRuntime } from "../../lib/electronRuntime";
+import { ACTIVE_DOC_BUILD_STATUSES } from "../knowledge-docs/utils";
 
 const SettingsDialog = lazy(() =>
   import("../settings/SettingsDialog").then((module) => ({ default: module.SettingsDialog })),
@@ -20,7 +27,38 @@ export function Layout() {
   const isHomePage = pathname === "/";
   const courseId = useMemo(() => getCourseIdFromPathname(pathname), [pathname]);
   const routeSegment = getCourseRouteSegmentFromPathname(pathname);
+  const isKnowledgeDocsPage = !!courseId && routeSegment === "knowledge-docs";
+  const hasCoursePageTopNavigation =
+    !!courseId &&
+    (routeSegment === "build" ||
+      routeSegment === "knowledge-docs" ||
+      routeSegment === "exams" ||
+      routeSegment === "profile");
   const isCourseDashboardOrBuild = !!courseId && (routeSegment === "nav" || routeSegment === "build" || routeSegment === null);
+  const buildRuntimeQuery = useQuery({
+    queryKey: courseId
+      ? [...buildKnowledgeBuildRuntimeQueryKey(courseId), "layout-interaction-visibility"]
+      : ["knowledge-build-runtime-layout-empty"],
+    queryFn: () => fetchKnowledgeBuildRuntime(courseId as string),
+    enabled: Boolean(courseId && isKnowledgeDocsPage),
+    refetchInterval: (query) => {
+      const failureBackoff = buildRuntimeFailureBackoffMs(query.state.fetchFailureCount);
+      if (failureBackoff !== null) return failureBackoff;
+      const statuses = [
+        query.state.data?.aggregate?.status,
+        query.state.data?.docgen?.status,
+      ].map((status) => (status ?? "").trim());
+      return statuses.some((status) => ACTIVE_DOC_BUILD_STATUSES.has(status)) ? 2500 : false;
+    },
+  });
+  const isKnowledgeDocBuildActive = useMemo(() => {
+    if (!isKnowledgeDocsPage) return false;
+    const statuses = [
+      buildRuntimeQuery.data?.aggregate?.status,
+      buildRuntimeQuery.data?.docgen?.status,
+    ].map((status) => (status ?? "").trim());
+    return statuses.some((status) => ACTIVE_DOC_BUILD_STATUSES.has(status));
+  }, [buildRuntimeQuery.data?.aggregate?.status, buildRuntimeQuery.data?.docgen?.status, isKnowledgeDocsPage]);
   const activeInteractionScope = useMemo<AiConversationScope | null>(() => {
     if (isAssistantPage) {
       return { type: "global" };
@@ -34,10 +72,13 @@ export function Layout() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [hasLoadedSettingsDialog, setHasLoadedSettingsDialog] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
-  const shouldShowTopBar = !isExamFocusPage && !isAssistantPage;
+  const shouldShowTopBar = !isExamFocusPage && !isAssistantPage && !hasCoursePageTopNavigation;
   const routeOutlet = <Outlet key={pathname} />;
   const contentContainerClassName = shouldShowTopBar
-    ? "container mx-auto min-h-full max-w-7xl px-4 pb-4 pt-20 md:px-6 md:pb-6 lg:px-8 lg:pb-8"
+    ? cn(
+        "container mx-auto min-h-full max-w-7xl px-4 pb-4 md:px-6 md:pb-6 lg:px-8 lg:pb-8",
+        hasCoursePageTopNavigation ? "pt-0" : "pt-20",
+      )
     : "container mx-auto min-h-full max-w-7xl px-4 pb-4 pt-20 md:px-6 md:pb-6 lg:px-8 lg:pb-8 lg:pt-6";
   const openSettings = useCallback(() => {
     setHasLoadedSettingsDialog(true);
@@ -90,7 +131,14 @@ export function Layout() {
               )}
             </main>
           </div>
-          <AiInteractionWindow suppressFloatingTrigger={(isMobileSidebarOpen && !isExamFocusPage) || isHomePage || isCourseDashboardOrBuild} />
+          <AiInteractionWindow
+            suppressFloatingTrigger={
+              (isMobileSidebarOpen && !isExamFocusPage) ||
+              isHomePage ||
+              isCourseDashboardOrBuild ||
+              isKnowledgeDocBuildActive
+            }
+          />
         </div>
       </AiInteractionProvider>
 

@@ -23,6 +23,7 @@ FROM nginx:alpine
 # Runtime upstream used by the Nginx template. Override this in Sealos with the
 # backend internal service URL, e.g. http://<backend-internal-upstream>.
 ENV AITEACHME_API_UPSTREAM=http://backend:9020
+ENV AITEACHME_NGINX_IMPORT_CLIENT_MAX_BODY_SIZE=260m
 
 # 复制构建产物到 nginx
 COPY --from=builder /app/dist /usr/share/nginx/html

@@ -8,6 +8,7 @@ import rehypeRaw from "rehype-raw";
 import {
   BadgeCheck,
   ChevronRight,
+  CircleHelp,
   ExternalLink,
   Info,
   Lightbulb,
@@ -26,11 +27,19 @@ import { cn } from "../../lib/utils";
 import { MermaidBlock } from "./MermaidBlock";
 
 type MarkdownViewerVariant = "default" | "document" | "planner";
-type CalloutKind = "note" | "tip" | "important" | "warning" | "caution" | "example" | "practice";
+type CalloutKind =
+  | "note"
+  | "tip"
+  | "important"
+  | "warning"
+  | "caution"
+  | "example"
+  | "practice"
+  | "question";
 type CollapsibleHeadings = boolean | readonly number[];
-const CALLOUT_PATTERN = "note|tip|important|warning|caution|example|practice";
+const CALLOUT_PATTERN = "note|tip|important|warning|caution|example|practice|question";
 const CALLOUT_FIELD_LABEL_PATTERN =
-  "题目\\/任务|解析\\/判定依据|答案\\/结论|判定依据|正确答案|参考答案|题目|任务|案例|例题|解析|解法|步骤|答案|结论|易错点|错因|注意";
+  "题目\\/任务|解析\\/判定依据|答案\\/结论|判定依据|正确答案|参考答案|题目|题干|任务|案例|例题|选项|解析|解法|思路|步骤|答案|结论|易错点|错因|注意";
 const CALLOUT_FIELD_MARKER_RE = new RegExp(
   `(?<!\\*)\\s*(?:\\*\\*(?:${CALLOUT_FIELD_LABEL_PATTERN})\\*\\*|(?:${CALLOUT_FIELD_LABEL_PATTERN}))\\s*[：:]`,
   "g",
@@ -61,6 +70,10 @@ const BARE_LATEX_TEXT_COMMANDS: Record<string, string> = {
   rightarrow: "→",
   leftarrow: "←",
 };
+const RAW_LATEX_MATH_COMMAND_RE =
+  /\\(?:sqrt|frac|lim|sin|cos|tan|cot|ln|log|sum|int|Delta|delta|epsilon|varepsilon|theta|pi|infty|cup|cap|leq?|geq?|neq|to|sim|pm|cdot|times)\b/;
+const RAW_LATEX_MATH_FRAGMENT_RE =
+  /((?:[A-Za-z0-9_+\-*/=<>≤≥^{}()[\],.，、:：;； \t]|\\[A-Za-z]+|\\[{}])+\\(?:sqrt|frac|lim|sin|cos|tan|cot|ln|log|sum|int|Delta|delta|epsilon|varepsilon|theta|pi|infty|cup|cap|leq?|geq?|neq|to|sim|pm|cdot|times)\b(?:[A-Za-z0-9_+\-*/=<>≤≥^{}()[\],.，、:：;； \t]|\\[A-Za-z]+|\\[{}])*)/g;
 const CALLOUT_LEADING_ICON_RE =
   /^[\s\uFE0F]*(?:(?:💡|📌|🎯|🔍|🧩|🚀|✨|✅|🔥|⭐|⚠️|⚠|❗|❌|⛔|🚫|📝|🔗|📚)\s*)+/u;
 const INTERACTIVE_MARKER_RE = /<!--\s*ATM_INTERACTIVE_(?:OVERLAY|PLAN):[\s\S]*?-->\s*/g;
@@ -141,6 +154,7 @@ const CALLOUT_META: Record<CalloutKind, { label: string; Icon: LucideIcon }> = {
   caution: { label: "警告", Icon: OctagonAlert },
   example: { label: "例题", Icon: BadgeCheck },
   practice: { label: "练习", Icon: Lightbulb },
+  question: { label: "题目", Icon: CircleHelp },
 };
 
 const CALLOUT_STYLES: Record<MarkdownViewerVariant, Record<CalloutKind, { shell: string; badge: string }>> = {
@@ -173,6 +187,10 @@ const CALLOUT_STYLES: Record<MarkdownViewerVariant, Record<CalloutKind, { shell:
       shell: "my-4 rounded-2xl border border-teal-200 bg-teal-50/75 px-4 py-3 text-slate-700 dark:border-teal-500/30 dark:bg-teal-500/10 dark:text-slate-200",
       badge: "bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300",
     },
+    question: {
+      shell: "my-5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-slate-800 shadow-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100",
+      badge: "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900",
+    },
   },
   document: {
     note: {
@@ -203,6 +221,10 @@ const CALLOUT_STYLES: Record<MarkdownViewerVariant, Record<CalloutKind, { shell:
       shell: "my-6 rounded-md border-0 bg-[#ECFDF8] px-4 py-4 text-[#1F2329] dark:bg-teal-500/10 dark:text-slate-200 sm:px-6 sm:py-5",
       badge: "text-[#0F766E] dark:text-teal-300",
     },
+    question: {
+      shell: "my-6 rounded-md border border-[#DEE3EA] bg-[#F7F9FC] px-4 py-4 text-[#1F2329] shadow-[0_8px_24px_rgba(15,23,42,0.04)] dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 sm:px-6 sm:py-5",
+      badge: "text-[#172033] dark:text-slate-100",
+    },
   },
   planner: {
     note: {
@@ -232,6 +254,10 @@ const CALLOUT_STYLES: Record<MarkdownViewerVariant, Record<CalloutKind, { shell:
     practice: {
       shell: "my-4 rounded-xl border border-teal-200 bg-teal-50/70 px-4 py-3 text-zinc-700 dark:border-teal-500/30 dark:bg-teal-500/10 dark:text-slate-200",
       badge: "bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300",
+    },
+    question: {
+      shell: "my-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-zinc-800 shadow-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100",
+      badge: "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900",
     },
   },
 };
@@ -272,34 +298,34 @@ const VIEWER_STYLES: Record<MarkdownViewerVariant, ViewerStyles> = {
   },
   document: {
     heading: {
-      1: "mt-5 mb-7 text-[34px] font-bold leading-[1.2] text-[#050505] [overflow-wrap:anywhere] dark:text-slate-100 sm:mb-8 sm:text-[42px] sm:leading-[1.18]",
-      2: "mt-10 mb-4 text-[27px] font-bold leading-[1.3] text-[#080808] [overflow-wrap:anywhere] dark:text-slate-100 sm:mt-12 sm:mb-5 sm:text-[31px] sm:leading-[1.28]",
-      3: "mt-8 mb-3 text-[21px] font-bold leading-[1.36] text-[#111827] [overflow-wrap:anywhere] dark:text-slate-100 sm:mt-9 sm:mb-4 sm:text-[23px] sm:leading-[1.34]",
-      4: "mt-7 mb-3 text-[19px] font-bold leading-[1.42] text-[#111827] [overflow-wrap:anywhere] dark:text-slate-100 sm:text-[20px]",
-      5: "mt-5 mb-2 text-[16px] font-semibold leading-[1.55] text-[#374151] [overflow-wrap:anywhere] dark:text-slate-300 sm:text-[17px]",
-      6: "mt-4 mb-1.5 text-[15px] font-semibold leading-[1.55] text-[#4B5563] [overflow-wrap:anywhere] dark:text-slate-400",
+      1: "mt-4 mb-8 text-[32px] font-semibold leading-[1.24] text-[#1F2329] [overflow-wrap:anywhere] dark:text-slate-100 sm:mt-5 sm:mb-9 sm:text-[40px] sm:leading-[1.18]",
+      2: "mt-11 mb-4 text-[25px] font-semibold leading-[1.34] text-[#1F2329] [overflow-wrap:anywhere] dark:text-slate-100 sm:mt-12 sm:mb-5 sm:text-[29px] sm:leading-[1.3]",
+      3: "mt-8 mb-3 text-[20px] font-semibold leading-[1.42] text-[#1F2329] [overflow-wrap:anywhere] dark:text-slate-100 sm:mt-9 sm:mb-4 sm:text-[22px]",
+      4: "mt-7 mb-2.5 text-[18px] font-semibold leading-[1.5] text-[#242933] [overflow-wrap:anywhere] dark:text-slate-100 sm:text-[19px]",
+      5: "mt-5 mb-2 text-[16px] font-semibold leading-[1.58] text-[#373C43] [overflow-wrap:anywhere] dark:text-slate-300",
+      6: "mt-4 mb-1.5 text-[14px] font-semibold leading-[1.58] text-[#646A73] [overflow-wrap:anywhere] dark:text-slate-400",
     },
-    paragraph: "mb-5 text-[17px] leading-[1.82] text-[#333333] dark:text-slate-300 sm:text-[18px]",
-    list: "my-5 list-disc space-y-2.5 pl-6 text-[17px] leading-[1.78] text-[#333333] marker:text-[#111827] dark:text-slate-300 dark:marker:text-slate-300 sm:pl-7 sm:text-[18px]",
-    orderedList: "my-5 list-decimal space-y-2.5 pl-6 text-[17px] leading-[1.78] text-[#333333] marker:font-semibold marker:text-[#111827] dark:text-slate-300 dark:marker:text-slate-300 sm:pl-7 sm:text-[18px]",
-    listItem: "pl-1 leading-[1.78] [&>ol]:mt-2.5 [&>p]:mb-1.5 [&>p]:block [&>ul]:mt-2.5",
-    blockquote: "my-6 border-l-4 border-[#D0D7DE] bg-[#F7F7F8] px-5 py-4 text-[17px] leading-[1.72] text-[#3F3F46] dark:border-slate-600 dark:bg-slate-900/50 dark:text-slate-300",
-    codeInline: "rounded border border-[#D7DDE5] bg-[#F6F8FA] px-1.5 py-0.5 font-mono text-[0.9em] text-[#24292F] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100",
-    codeShell: "my-7 overflow-hidden rounded-md border border-[#D7DDE5] bg-[#F7F8FA] dark:border-slate-800 dark:bg-slate-950",
-    codeLanguageBadge: "border-b border-[#D7DDE5] bg-[#F2F4F7] px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#667085] dark:border-slate-800 dark:bg-slate-900/95 dark:text-slate-400",
-    codePre: "overflow-x-auto bg-[#F7F8FA] px-4 py-4 text-[13px] leading-6 text-[#24292F] font-mono dark:bg-slate-950 dark:text-slate-100",
-    tableShell: "my-7 overflow-x-auto",
-    table: "min-w-full border-collapse text-[15px]",
+    paragraph: "mb-4 text-[16px] leading-[1.82] text-[#2F343D] dark:text-slate-300 sm:text-[17px]",
+    list: "my-4 list-disc space-y-2 pl-[1.55rem] text-[16px] leading-[1.8] text-[#2F343D] marker:text-[#8F959E] dark:text-slate-300 dark:marker:text-slate-500 sm:text-[17px]",
+    orderedList: "my-4 list-decimal space-y-2 pl-[1.55rem] text-[16px] leading-[1.8] text-[#2F343D] marker:font-medium marker:text-[#8F959E] dark:text-slate-300 dark:marker:text-slate-500 sm:text-[17px]",
+    listItem: "pl-1.5 leading-[1.8] [&>ol]:mt-2 [&>p]:mb-1 [&>p]:block [&>ul]:mt-2",
+    blockquote: "my-6 border-l-[3px] border-[#BBBFC4] bg-[#F7F8FA] px-5 py-3.5 text-[16px] leading-[1.78] text-[#4E5969] dark:border-slate-600 dark:bg-slate-900/50 dark:text-slate-300 sm:text-[17px]",
+    codeInline: "rounded-[4px] border border-[#DEE0E3] bg-[#F5F6F7] px-1.5 py-0.5 font-mono text-[0.88em] text-[#24292F] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100",
+    codeShell: "my-7 overflow-hidden rounded-lg border border-[#DEE0E3] bg-[#F7F8FA] dark:border-slate-800 dark:bg-slate-950",
+    codeLanguageBadge: "border-b border-[#DEE0E3] bg-[#F2F3F5] px-4 py-2 text-[11px] font-medium uppercase tracking-[0.08em] text-[#646A73] dark:border-slate-800 dark:bg-slate-900/95 dark:text-slate-400",
+    codePre: "overflow-x-auto bg-[#F7F8FA] px-4 py-4 font-mono text-[13px] leading-6 text-[#24292F] dark:bg-slate-950 dark:text-slate-100",
+    tableShell: "my-7 overflow-x-auto rounded-lg border border-[#DEE0E3] bg-white dark:border-slate-800 dark:bg-slate-950/60",
+    table: "min-w-full border-collapse text-[14px] sm:text-[15px]",
     thead: "bg-transparent",
-    th: "border border-[#DEE0E3] bg-[#F5F6F7] px-3 py-2.5 text-left text-[14px] font-semibold text-[#1F2329] dark:border-slate-800 dark:bg-slate-900/80 dark:text-slate-100 sm:px-4 sm:py-3",
-    td: "border border-[#DEE0E3] px-3 py-2.5 text-[#333333] dark:border-slate-800 dark:text-slate-300 sm:px-4 sm:py-3",
-    hr: "my-10 border-[#DEE0E3] dark:border-slate-800",
+    th: "border border-[#DEE0E3] bg-[#F5F6F7] px-3 py-2.5 text-left text-[13px] font-semibold leading-6 text-[#1F2329] dark:border-slate-800 dark:bg-slate-900/80 dark:text-slate-100 sm:px-4 sm:py-3 sm:text-[14px]",
+    td: "border border-[#DEE0E3] px-3 py-2.5 leading-6 text-[#2F343D] dark:border-slate-800 dark:text-slate-300 sm:px-4 sm:py-3",
+    hr: "my-9 border-[#DEE0E3] dark:border-slate-800",
     link: "text-[#2563EB] transition-colors hover:text-[#1D4ED8] hover:underline underline-offset-2 dark:text-blue-300 dark:hover:text-blue-200",
-    strong: "font-bold text-[#111111] dark:text-slate-100",
-    em: "italic text-[#555B66] dark:text-slate-400",
+    strong: "font-semibold text-[#1F2329] dark:text-slate-100",
+    em: "italic text-[#646A73] dark:text-slate-400",
     highlight: HIGHLIGHT_MARK_CLASS,
     imageShell: "my-7",
-    imageFrame: "overflow-hidden rounded-md border border-[#D7DDE5] bg-white dark:border-slate-800 dark:bg-slate-950/60",
+    imageFrame: "overflow-hidden rounded-lg border border-[#DEE0E3] bg-white dark:border-slate-800 dark:bg-slate-950/60",
     image: "max-h-[32rem] w-full object-contain bg-white dark:bg-slate-950/60",
     imageCaption: "mt-2 px-1 text-center text-[13px] text-[#646A73] dark:text-slate-400",
   },
@@ -346,7 +372,107 @@ export function preprocessLaTeX(content: string): string {
   processed = processed.replace(/\\text\{(_+)\}/g, (_match, underscores: string) => {
     return `\\text{${"\\_".repeat(underscores.length)}}`;
   });
+  processed = wrapBareLatexMathFragments(processed);
   return normalizeBareLatexTextCommands(processed);
+}
+
+function wrapBareLatexMathInText(text: string): string {
+  if (!RAW_LATEX_MATH_COMMAND_RE.test(text)) return text;
+  RAW_LATEX_MATH_COMMAND_RE.lastIndex = 0;
+  return text.replace(RAW_LATEX_MATH_FRAGMENT_RE, (match: string) => {
+    RAW_LATEX_MATH_COMMAND_RE.lastIndex = 0;
+    if (!RAW_LATEX_MATH_COMMAND_RE.test(match)) return match;
+    if (/[\u4e00-\u9fff]/.test(match)) return match;
+    const leadingChoice = match.match(/^(\s*[A-Da-d][.)、:：]\s*)(.+)$/s);
+    const prefix = leadingChoice?.[1] ?? "";
+    const body = (leadingChoice?.[2] ?? match).trim();
+    if (!body || body.startsWith("$") || body.endsWith("$")) return match;
+    return `${prefix}$${body}$`;
+  });
+}
+
+function wrapBareLatexOutsideInlineMathAndCode(markdown: string): string {
+  const source = String(markdown || "");
+  const output: string[] = [];
+  let index = 0;
+
+  while (index < source.length) {
+    const char = source[index];
+    if (char === "`") {
+      const fence = source.slice(index).match(/^`+/)?.[0] ?? "`";
+      const end = source.indexOf(fence, index + fence.length);
+      if (end >= 0) {
+        output.push(source.slice(index, end + fence.length));
+        index = end + fence.length;
+        continue;
+      }
+    }
+
+    if (source.startsWith("$$", index)) {
+      const end = findNextUnescaped(source, "$$", index + 2);
+      if (end >= 0) {
+        output.push(source.slice(index, end + 2));
+        index = end + 2;
+        continue;
+      }
+    }
+
+    if (char === "$") {
+      const end = findNextUnescaped(source, "$", index + 1);
+      if (end >= 0) {
+        output.push(source.slice(index, end + 1));
+        index = end + 1;
+        continue;
+      }
+    }
+
+    const nextSpecialIndexes = [
+      source.indexOf("`", index + 1),
+      source.indexOf("$", index + 1),
+    ].filter((value) => value >= 0);
+    const next = nextSpecialIndexes.length > 0 ? Math.min(...nextSpecialIndexes) : source.length;
+    output.push(wrapBareLatexMathInText(source.slice(index, next)));
+    index = next;
+  }
+
+  return output.join("");
+}
+
+function wrapBareLatexMathFragments(markdown: string): string {
+  const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
+  const output: string[] = [];
+  let activeFence: string | null = null;
+  let plainChunk: string[] = [];
+
+  const flushPlainChunk = () => {
+    if (plainChunk.length === 0) return;
+    output.push(wrapBareLatexOutsideInlineMathAndCode(plainChunk.join("\n")));
+    plainChunk = [];
+  };
+
+  for (const line of lines) {
+    const fenceMatch = line.match(/^(```|~~~)/);
+    if (fenceMatch) {
+      flushPlainChunk();
+      if (activeFence === fenceMatch[1]) {
+        activeFence = null;
+      } else if (activeFence === null) {
+        activeFence = fenceMatch[1];
+      }
+      output.push(line);
+      continue;
+    }
+
+    if (activeFence) {
+      output.push(line);
+      continue;
+    }
+
+    plainChunk.push(line);
+  }
+
+  flushPlainChunk();
+  return output.join("\n");
 }
 
 function replaceBareLatexTextCommands(text: string): string {
@@ -1585,7 +1711,8 @@ function normalizeCalloutKind(value: string | undefined): CalloutKind | null {
     normalized === "warning" ||
     normalized === "caution" ||
     normalized === "example" ||
-    normalized === "practice"
+    normalized === "practice" ||
+    normalized === "question"
   ) {
     return normalized;
   }
@@ -1604,7 +1731,9 @@ function extractCalloutMarker(paragraph: MarkdownAstNode): CalloutKind | null {
   }
 
   const firstText = children[firstTextIndex];
-  const match = String(firstText.value ?? "").match(/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION|EXAMPLE|PRACTICE)\][ \t]*/i);
+  const match = String(firstText.value ?? "").match(
+    /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION|EXAMPLE|PRACTICE|QUESTION)\][ \t]*/i,
+  );
   const kind = normalizeCalloutKind(match?.[1]);
   if (!match || !kind || firstTextIndex > 0) {
     return null;
@@ -2530,7 +2659,9 @@ function parseCallout(children: ReactNode): { kind: CalloutKind; body: ReactNode
   }
 
   const firstText = extractText(nodes[0]).trim();
-  const match = firstText.match(/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION|EXAMPLE|PRACTICE)\](?:\s+(.+))?$/i);
+  const match = firstText.match(
+    /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION|EXAMPLE|PRACTICE|QUESTION)\](?:\s+(.+))?$/i,
+  );
   if (!match) {
     return null;
   }

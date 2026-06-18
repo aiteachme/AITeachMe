@@ -54,13 +54,16 @@ def _render_diagnose_brief(
         if answer:
             suffix_parts.append(f"用户回答：{answer}")
         if purpose:
-            suffix_parts.append(f"诊断目标：{purpose}")
+            purpose_text = purpose.removeprefix("文档落点：").removeprefix("文档落点:").strip()
+            suffix_parts.append(f"文档落点：{purpose_text}")
         if options and not answer:
             suffix_parts.append("可选项：" + " / ".join(options))
         suffix = "；" + "；".join(suffix_parts) if suffix_parts else ""
         lines.append(f"{index}. {question}{suffix}")
     if not lines:
         return ""
+    if normalized_status == "answered":
+        lines.append("请把以上信号落实到讲解起点、例题、练习、错因提醒与章末检测配置中，不要只复述问卷。")
     return "前置诊断信号：\n" + "\n".join(lines)
 
 
@@ -144,6 +147,8 @@ def build_load_context_node(*, context: WorkflowContext):
                 "user_id": state.get("user_id") or "",
                 "has_profile": False,
                 "profile_text": "",
+                "user_profile_text": "",
+                "course_profile_text": "",
                 "user_profile": {},
                 "course_profile": {},
             }

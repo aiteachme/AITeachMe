@@ -79,5 +79,7 @@ def test_docgen_learner_profile_loader_reads_persisted_profile_text(monkeypatch)
     assert context["user_id"] == "u1"
     assert "分步引导" in context["profile_text"]
     assert "函数部分薄弱" in context["profile_text"]
+    assert context["user_profile_text"].startswith("用户画像")
+    assert context["course_profile_text"].startswith("课程画像")
     assert context["user_profile"]["profile_text"].startswith("用户画像")
     assert context["course_profile"]["profile_text"].startswith("课程画像")

@@ -33,6 +33,7 @@ build_revision_no
 doc_version_no
 build_session_id
 prefetched_sections
+docgen_kg_draft
 early_units_callback
 ```
 
@@ -44,13 +45,26 @@ early_units_callback
 
 ## 0. 预抽取 sidecar
 
-输入：DocGen enhanced markdown, `build_session_id`, `course_id`
+输入：DocGen brief / enhanced / reviewed / repaired markdown, `build_session_id`, `course_id`
 
-动作：DocGen 增强后提前切 section，调用 LLM 抽 `SectionExtractionPayload`，写进程内缓存。
+动作：DocGen 写作期提前切 section，调用 LLM 抽 `SectionExtractionPayload`，写进程内缓存。早期 brief 候选会被完整章节、reviewed 章节和 repaired 章节逐步刷新；已完成记录会保留，供发布前候选兜底。
 
 输出：`prefetched_sections`
 
 边界：不写 `KnowledgeUnit`、`KnowledgeEdge`、`SourceRef`。
+
+## 0.5 DocGen 发布前候选
+
+DocGen 的 `prepare_knowledge_graph` 会在 `merge_review / sync_locked_titles` 之后、`publish_document` 之前收口 `docgen_kg_draft`。
+
+如果质量门通过，DocGen 会提前写入可查询的 `KnowledgeUnit` 和端点唯一、方向合法的候选 `KnowledgeEdge`，让图谱面板和 examine/profile 依赖的骨架尽早可见。
+
+边界：
+
+- 不写 `KnowledgeGraphSourceRef`。
+- 不废弃旧节点/旧边。
+- 如果 KnowledgeDoc 发布前失败，会回滚本轮早写候选。
+- 发布后的 `persist` 仍是 source_ref、补抽、废弃收口和 sync_run 完成状态的权威落库。
 
 ## 1. `prepare`
 
@@ -82,7 +96,7 @@ early_units_callback
 
 输入：`markdown`, `structured_context`, `prefetched_sections`
 
-动作：按最终 Markdown 切章节/小节；命中 prefetch 则复用；未命中则 LLM catch-up 抽取；合并 payload。
+动作：优先使用 quality-ready 且覆盖最终章节的 `docgen_kg_draft` fast-finalize；否则按最终 Markdown 切章节/小节，命中 prefetch 则复用，未命中则 LLM catch-up 抽取，并合并 payload。
 
 输出：`extraction_payload`, extract metrics
 
@@ -144,15 +158,15 @@ KG 不是“关键词图”，而是学习单元图。节点统一落到 `Knowle
 | `skill` | 解题技能 | 可训练和考察的能力动作、题型策略 | 识别函数关系、审题找条件 |
 | `misconception` | 易错辨析 | 常见误解、混淆点、错误边界 | 把切线判定和切线性质混用 |
 | `application_case` | 应用案例 | 例题、案例、场景化应用、迁移任务 | 用导数判断单调性的例题 |
-| `resource` | 学习资源 | 提醒、补充材料、图示说明、表格资料 | 公式记忆表、步骤检查清单 |
 
 抽取原则：
 
 ```text
 1. 能被学习、复习、检索、出题或画像追踪，才建节点。
 2. 不把孤立句子、纯关键词、一次性答案当节点。
-3. 练习/自测通常抽成 skill 或 application_case，不抽成 resource。
+3. 练习/自测通常抽成 skill 或 application_case。
 4. 注意事项/提醒如果服务于纠错，优先抽成 misconception。
+5. 来源材料、阅读链接、普通说明作为 source_ref/evidence 保存，不再单独建 resource 节点。
 ```
 
 ## 边类型
@@ -167,7 +181,7 @@ KG 不是“关键词图”，而是学习单元图。节点统一落到 `Knowle
 | `applies_to` | 应用 | source 被应用到 target | concept/principle/formula_model/procedure -> procedure/skill/application_case |
 | `uses_method` | 用方法 | source 需要使用 target 这个方法/技能 | application_case/skill -> procedure/skill |
 | `assesses` | 考察 | source 用来考察 target | skill/application_case/procedure -> concept/principle/formula_model |
-| `explains` | 解释 | source 解释 target | resource/application_case/procedure -> concept/principle/skill |
+| `explains` | 解释 | source 解释 target | application_case/procedure/principle -> concept/principle/skill |
 | `remediates` | 补救 | source 用来纠正或补救 target | misconception/skill -> concept/principle/procedure/skill |
 | `confuses_with` | 易混 | source 和 target 容易混淆 | misconception/concept <-> concept/principle |
 | `similar_to` | 相似 | source 和 target 相似，可对照学习 | concept/skill/application_case <-> concept/skill/application_case |

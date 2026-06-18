@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as d3 from "d3";
+import katex from "katex";
 import {
   Activity,
   Loader2,
@@ -30,16 +31,20 @@ import {
   clampGraphLayer,
   deterministicEdgeBend,
   edgePriority,
+  estimateGraphLabelWidth,
   estimateRelationLabelWidth,
   getLearningEdgeDirection,
   graphNodeLabelLimit,
   graphNodePriority,
+  isSuppressedGraphNode,
   isAssessmentCoreNode,
   isBackboneEdge,
   nodeBaseLayer,
   nodeStyle,
+  normalizeGraphTextLabel,
   relationLabel,
   relationTone,
+  shouldShowSmartEdgeLabel,
   shouldShowSmartNodeLabel,
   truncateGraphLabel,
   type GraphLink,
@@ -79,6 +84,139 @@ type GraphDeltaState = {
   at: number;
 } | null;
 
+function readableSvgTextSize(basePx: number, zoomScale: number): string {
+  const scale = Math.max(0.34, Math.min(5, Number.isFinite(zoomScale) ? zoomScale : 1));
+  const compensated = basePx / Math.pow(scale, scale >= 1 ? 0.46 : 0.34);
+  return `${Math.min(30, Math.max(6.6, compensated))}px`;
+}
+
+function readableSvgStrokeWidth(basePx: number, zoomScale: number): number {
+  const scale = Math.max(0.34, Math.min(5, Number.isFinite(zoomScale) ? zoomScale : 1));
+  return Math.min(7, Math.max(0.9, basePx / Math.pow(scale, 0.86)));
+}
+
+function graphNodeLabelLimitForZoom(node: GraphNode, selectedNodeId: number | null, zoomScale: number): number {
+  const base = graphNodeLabelLimit(node, selectedNodeId);
+  const scale = Number.isFinite(zoomScale) ? zoomScale : 1;
+  if (scale >= 2.2) return Math.max(base, 34);
+  if (scale >= 1.55) return Math.max(base, 28);
+  if (scale >= 1.28) return Math.max(base, 24);
+  return base;
+}
+
+function escapeGraphHtml(value: string): string {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function stripInlineMathDelimiters(value: string): string {
+  const text = String(value || "").trim();
+  return text
+    .replace(/^\\\(([\s\S]*)\\\)$/g, "$1")
+    .replace(/^\\\[([\s\S]*)\\\]$/g, "$1")
+    .replace(/^\$\$([\s\S]*)\$\$$/g, "$1")
+    .replace(/^\$([^$]*)\$$/g, "$1")
+    .trim();
+}
+
+const GRAPH_INLINE_MATH_RE = /(\$\$[\s\S]*?\$\$|\$[^$\n]{1,220}\$|\\\([\s\S]*?\\\)|\\\[[\s\S]*?\\\])/g;
+const GRAPH_INLINE_MATH_TEST_RE = /(\$\$[\s\S]*?\$\$|\$[^$\n]{1,220}\$|\\\([\s\S]*?\\\)|\\\[[\s\S]*?\\\])/;
+const GRAPH_RAW_LATEX_RE =
+  /((?:[A-Za-z0-9_+\-*/=<>≤≥^{}()[\],. ]|\\[A-Za-z]+|\\[{}])+\\(?:sqrt|frac|lim|sin|cos|tan|ln|log|sum|int|Delta|delta|epsilon|varepsilon|theta|pi|infty|cdot|times|leq|geq|neq|to|sim)(?:[A-Za-z0-9_+\-*/=<>≤≥^{}()[\],. ]|\\[A-Za-z]+|\\[{}])*)/g;
+const GRAPH_RAW_LATEX_TEST_RE =
+  /((?:[A-Za-z0-9_+\-*/=<>≤≥^{}()[\],. ]|\\[A-Za-z]+|\\[{}])+\\(?:sqrt|frac|lim|sin|cos|tan|ln|log|sum|int|Delta|delta|epsilon|varepsilon|theta|pi|infty|cdot|times|leq|geq|neq|to|sim)(?:[A-Za-z0-9_+\-*/=<>≤≥^{}()[\],. ]|\\[A-Za-z]+|\\[{}])*)/;
+
+function isFormulaLikeGraphLabel(node: GraphNode): boolean {
+  const label = String(node.canonical_name || "");
+  const normalized = normalizeGraphTextLabel(label);
+  const hasFormulaSyntax = /\\(?:frac|sqrt|sum|int|lim|left|right|cdot|times|leq|geq)|[$^_=<>≤≥+\-*/]/.test(label);
+  if (!hasFormulaSyntax || label.length > 90 || /[:：，。；;]/.test(label)) return false;
+  if (/[\u4e00-\u9fff]{2,}/.test(normalized)) return false;
+  if (/^(?:任务|步骤|检查点|答案|解析|Q\d+)/i.test(normalized)) return false;
+  return node.knowledge_unit_type === "formula_model" || /^\s*(?:\$|\\\(|\\\[|\w+\s*[=<>≤≥])/.test(label);
+}
+
+function graphLabelHasInlineMath(label: string): boolean {
+  return GRAPH_INLINE_MATH_TEST_RE.test(label) || GRAPH_RAW_LATEX_TEST_RE.test(label);
+}
+
+function graphLabelHasMarkdownSyntax(label: string): boolean {
+  return /\*\*[^*\n]{1,80}\*\*/.test(label);
+}
+
+function shouldUseGraphHtmlLabel(node: GraphNode): boolean {
+  const label = String(node.canonical_name || "");
+  if (!label || label.length > 160) return false;
+  return isFormulaLikeGraphLabel(node) || graphLabelHasInlineMath(label) || graphLabelHasMarkdownSyntax(label);
+}
+
+function graphKatexHtml(formula: string): string {
+  try {
+    return katex.renderToString(formula, {
+      displayMode: false,
+      output: "html",
+      strict: false,
+      throwOnError: false,
+      trust: false,
+    });
+  } catch {
+    return escapeGraphHtml(formula);
+  }
+}
+
+function graphFormulaLabelHtml(node: GraphNode): string {
+  const rawLabel = String(node.canonical_name || "").trim();
+  const formula = stripInlineMathDelimiters(rawLabel) || normalizeGraphTextLabel(rawLabel);
+  if (!formula) return escapeGraphHtml(normalizeGraphTextLabel(rawLabel));
+  return graphKatexHtml(formula);
+}
+
+function graphEscapedTextHtml(text: string): string {
+  const escaped = escapeGraphHtml(text);
+  return escaped.replace(/\*\*([^*]{1,80})\*\*/g, "<strong>$1</strong>");
+}
+
+function graphMixedLabelHtml(node: GraphNode): string {
+  const rawLabel = String(node.canonical_name || "").trim();
+  if (isFormulaLikeGraphLabel(node)) return graphFormulaLabelHtml(node);
+
+  const chunks: string[] = [];
+  let cursor = 0;
+  for (const match of rawLabel.matchAll(GRAPH_INLINE_MATH_RE)) {
+    const index = match.index ?? 0;
+    if (index > cursor) {
+      chunks.push(graphEscapedTextHtml(rawLabel.slice(cursor, index)));
+    }
+    chunks.push(graphKatexHtml(stripInlineMathDelimiters(match[0])));
+    cursor = index + match[0].length;
+  }
+  if (cursor < rawLabel.length) {
+    const tail = rawLabel.slice(cursor);
+    let tailCursor = 0;
+    for (const match of tail.matchAll(GRAPH_RAW_LATEX_RE)) {
+      const index = match.index ?? 0;
+      if (index > tailCursor) {
+        chunks.push(graphEscapedTextHtml(tail.slice(tailCursor, index)));
+      }
+      chunks.push(graphKatexHtml(match[0].trim()));
+      tailCursor = index + match[0].length;
+    }
+    if (tailCursor < tail.length) {
+      chunks.push(graphEscapedTextHtml(tail.slice(tailCursor)));
+    }
+  }
+  return chunks.join("") || escapeGraphHtml(normalizeGraphTextLabel(rawLabel));
+}
+
+function graphFormulaLabelWidth(node: GraphNode): number {
+  const units = Math.max(4, normalizeGraphTextLabel(node.canonical_name).length || String(node.canonical_name || "").length);
+  return Math.min(320, Math.max(76, units * 8.4 + 34));
+}
+
 function applyGraphInteractiveStyles(
   svg: SVGSVGElement,
   links: GraphLink[],
@@ -87,6 +225,7 @@ function applyGraphInteractiveStyles(
   showAllEdges: boolean,
   highlightCoreUnits: boolean,
   showAllNodeLabels: boolean,
+  graphZoomScale = 1,
 ) {
   const selectedNeighbors = new Set<number>();
   if (selectedNodeId !== null) {
@@ -101,6 +240,8 @@ function applyGraphInteractiveStyles(
     showAllEdges || link.is_backbone || (selectedNodeId !== null && isConnectedToSelected(link));
 
   const root = d3.select(svg);
+  const visibleNodeCount = root.selectAll<SVGGElement, GraphNode>("g.graph-node").data().length;
+  const visibleEdgeCount = links.length;
   root.selectAll<SVGPathElement, GraphLink>("path.graph-link")
     .classed("is-selected-link", (d) => selectedNodeId !== null && isConnectedToSelected(d))
     .attr("display", (d) => (isVisibleLink(d) ? null : "none"))
@@ -113,7 +254,12 @@ function applyGraphInteractiveStyles(
 
   root.selectAll<SVGTextElement, GraphLink>("text.graph-link-label")
     .attr("display", (d) => (isVisibleLink(d) ? null : "none"))
-    .attr("opacity", (d) => (showEdgeLabels && (selectedNodeId === null || isConnectedToSelected(d)) ? 1 : 0));
+    .attr("font-size", readableSvgTextSize(10, graphZoomScale))
+    .attr("stroke-width", readableSvgStrokeWidth(5, graphZoomScale))
+    .attr("opacity", (d) => (shouldShowSmartEdgeLabel(d, selectedNodeId, showEdgeLabels, graphZoomScale, visibleEdgeCount) ? 1 : 0));
+  root.selectAll<SVGRectElement, GraphLink>("rect.graph-link-label-bg")
+    .attr("display", (d) => (isVisibleLink(d) ? null : "none"))
+    .attr("opacity", (d) => (shouldShowSmartEdgeLabel(d, selectedNodeId, showEdgeLabels, graphZoomScale, visibleEdgeCount) ? 0.92 : 0));
 
   const nodeG = root.selectAll<SVGGElement, GraphNode>("g.graph-node");
   nodeG
@@ -137,15 +283,30 @@ function applyGraphInteractiveStyles(
       return 1;
     });
   nodeG.select<SVGTextElement>("text.node-label")
-    .attr("font-size", (d) => (isAssessmentCoreNode(d) || d.id === selectedNodeId ? "12.5px" : "11.5px"))
+    .attr("font-size", (d) => readableSvgTextSize(isAssessmentCoreNode(d) || d.id === selectedNodeId ? 12.5 : 11.5, graphZoomScale))
     .attr("font-weight", (d) => (isAssessmentCoreNode(d) || d.id === selectedNodeId ? "700" : "600"))
-    .attr("fill", (d) => (d.id === selectedNodeId ? "#0f172a" : "#475569"))
+    .attr("fill", (d) => (d.id === selectedNodeId ? "#0f172a" : nodeStyle(d.knowledge_unit_type).dark))
+    .attr("stroke-width", readableSvgStrokeWidth(3.2, graphZoomScale))
     .attr("opacity", (d) => {
-      if (!shouldShowSmartNodeLabel(d, selectedNodeId, selectedNeighbors, showAllNodeLabels)) return 0;
+      if (!shouldShowSmartNodeLabel(d, selectedNodeId, selectedNeighbors, showAllNodeLabels, graphZoomScale, visibleNodeCount)) return 0;
       if (selectedNodeId !== null) return d.id === selectedNodeId || selectedNeighbors.has(d.id) ? 1 : 0.3;
       return 0.96;
     })
-    .text((d) => truncateGraphLabel(d.canonical_name, graphNodeLabelLimit(d, null)));
+    .text((d) => (
+      shouldUseGraphHtmlLabel(d)
+        ? ""
+        : truncateGraphLabel(d.canonical_name, graphNodeLabelLimitForZoom(d, selectedNodeId, graphZoomScale))
+    ));
+  nodeG.select<SVGForeignObjectElement>("foreignObject.node-formula-label")
+    .attr("width", (d) => graphFormulaLabelWidth(d))
+    .attr("height", (d) => (d.id === selectedNodeId ? 34 : 30))
+    .attr("opacity", (d) => {
+      if (!shouldShowSmartNodeLabel(d, selectedNodeId, selectedNeighbors, showAllNodeLabels, graphZoomScale, visibleNodeCount)) return 0;
+      if (selectedNodeId !== null) return d.id === selectedNodeId || selectedNeighbors.has(d.id) ? 1 : 0.3;
+      return 0.98;
+    })
+    .style("font-size", (d) => readableSvgTextSize(isAssessmentCoreNode(d) || d.id === selectedNodeId ? 12.5 : 11.5, graphZoomScale))
+    .style("color", (d) => (d.id === selectedNodeId ? "#0f172a" : nodeStyle(d.knowledge_unit_type).dark));
 }
 
 type LoadedGraphData = {
@@ -153,7 +314,7 @@ type LoadedGraphData = {
   edges: GraphEdgeResponse[];
 };
 
-const DETAIL_NODE_TYPES = new Set(["resource", "misconception", "application_case"]);
+const DETAIL_NODE_TYPES = new Set(["misconception", "application_case"]);
 const BACKBONE_RELATION_TYPES = new Set(["prerequisite_for", "part_of", "derives_to", "applies_to", "uses_method", "assesses"]);
 const TYPE_CLUSTER_LAYOUT: Record<string, { xBias: number; yRatio: number; maxColumns: number }> = {
   topic: { xBias: -0.42, yRatio: 0.38, maxColumns: 3 },
@@ -164,10 +325,12 @@ const TYPE_CLUSTER_LAYOUT: Record<string, { xBias: number; yRatio: number; maxCo
   skill: { xBias: 0.3, yRatio: 0.72, maxColumns: 4 },
   misconception: { xBias: 0.36, yRatio: 0.42, maxColumns: 4 },
   application_case: { xBias: 0.42, yRatio: 0.56, maxColumns: 4 },
-  resource: { xBias: 0.4, yRatio: 0.3, maxColumns: 5 },
 };
-const GRAPH_LAYOUT_VERSION = 14;
+const GRAPH_LAYOUT_VERSION = 15;
 const NODE_HIT_RADIUS = 24;
+const INITIAL_FOCUSED_GRAPH_THRESHOLD = 180;
+const INITIAL_FOCUSED_GRAPH_EDGE_THRESHOLD = 520;
+const INITIAL_FOCUSED_GRAPH_LIMIT = 140;
 
 function isDetailGraphNode(node: Pick<GraphNode, "knowledge_unit_type">): boolean {
   return DETAIL_NODE_TYPES.has(node.knowledge_unit_type);
@@ -526,6 +689,7 @@ export function ForceGraphView({
   totalNodeCount?: number;
   totalEdgeCount?: number;
 }) {
+  const queryClient = useQueryClient();
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
@@ -554,21 +718,59 @@ export function ForceGraphView({
   const showEdgeLabelsRef = useRef(false);
   const showAllEdgesRef = useRef(true);
   const highlightCoreUnitsRef = useRef(true);
-  const showAllNodeLabelsRef = useRef(true);
+  const showAllNodeLabelsRef = useRef(false);
+  const graphZoomScaleRef = useRef(1);
+  const zoomStyleFrameRef = useRef<number | null>(null);
   const expandedNodeIdsRef = useRef<Set<number>>(new Set());
   const [graphDelta, setGraphDelta] = useState<GraphDeltaState>(null);
+  const graphStatsKnown = totalNodeCount !== undefined || totalEdgeCount !== undefined;
+  const reportedNodeCount = Number(totalNodeCount ?? 0);
+  const reportedEdgeCount = Number(totalEdgeCount ?? 0);
+  const shouldUseFocusedInitialGraph =
+    !graphStatsKnown ||
+    reportedNodeCount > INITIAL_FOCUSED_GRAPH_THRESHOLD ||
+    reportedEdgeCount > INITIAL_FOCUSED_GRAPH_EDGE_THRESHOLD;
+  const initialFocusedGraphLimit = Math.max(
+    80,
+    Math.min(
+      INITIAL_FOCUSED_GRAPH_THRESHOLD,
+      Math.max(
+        INITIAL_FOCUSED_GRAPH_LIMIT,
+        Math.round(Math.sqrt(Math.max(1, reportedNodeCount)) * 12),
+      ),
+    ),
+  );
 
   const {
     data: initialGraph,
     isLoading: initialLoading,
     isFetching: initialFetching,
     refetch: refetchInitialGraph,
-  } = useQuery({
-    queryKey: ["graph-full", course, totalNodeCount ?? 0, totalEdgeCount ?? 0],
-    queryFn: async () =>
-      unwrapOrvalResponse(
+  } = useQuery<FullGraphResponse | KnowledgeSubgraphResponse | null>({
+    queryKey: [
+      "graph-initial",
+      course,
+      reportedNodeCount,
+      reportedEdgeCount,
+      shouldUseFocusedInitialGraph ? "focused" : "full",
+      initialFocusedGraphLimit,
+    ],
+    queryFn: async () => {
+      if (shouldUseFocusedInitialGraph) {
+        return unwrapOrvalResponse(
+          await graphFocusSubgraphApiV1CoursesCourseIdKnowledgeGraphSubgraphPost(course, {
+            center_knowledge_unit_id: null,
+            topic: null,
+            edge_type: null,
+            hops: 1,
+            limit: initialFocusedGraphLimit,
+          }),
+        ) ?? null;
+      }
+      return unwrapOrvalResponse(
         await graphFullApiV1CoursesCourseIdKnowledgeGraphFullPost(course),
-      ) ?? null,
+      ) ?? null;
+    },
     enabled: Boolean(course),
     retry: false,
   });
@@ -620,6 +822,7 @@ export function ForceGraphView({
   useEffect(() => {
     nodePositionRef.current.clear();
     zoomTransformRef.current = null;
+    graphZoomScaleRef.current = 1;
     hasAutoFittedGraphRef.current = false;
     lastGraphSignatureRef.current = null;
     lastGraphCountsRef.current = null;
@@ -627,6 +830,7 @@ export function ForceGraphView({
     setShowAllEdges(true);
     setShowDetailNodes(true);
     setShowAllNodeLabels(false);
+    setShowEdgeLabels(false);
     setShowSettingsPanel(false);
     setNodeSearchQuery("");
     setGraphDelta(null);
@@ -635,6 +839,7 @@ export function ForceGraphView({
   useEffect(() => {
     nodePositionRef.current.clear();
     zoomTransformRef.current = null;
+    graphZoomScaleRef.current = 1;
     hasAutoFittedGraphRef.current = false;
   }, [showDetailNodes, hiddenRelationTypes]);
 
@@ -650,8 +855,12 @@ export function ForceGraphView({
       graphRefetchTimerRef.current = null;
       void refetchInitialGraph();
       void refetchBuildRuntime();
+      void queryClient.invalidateQueries({ queryKey: ["knowledge-overview", course] });
+      void queryClient.invalidateQueries({ queryKey: ["graph-node-list", course] });
+      void queryClient.invalidateQueries({ queryKey: ["graph-initial", course] });
+      void queryClient.invalidateQueries({ queryKey: ["graph-subgraph", course] });
     }, 900);
-  }, [refetchBuildRuntime, refetchInitialGraph]);
+  }, [course, queryClient, refetchBuildRuntime, refetchInitialGraph]);
 
   useEffect(() => {
     return () => {
@@ -739,8 +948,10 @@ export function ForceGraphView({
     setHiddenRelationTypes(new Set());
     setShowAllEdges(true);
     setShowAllNodeLabels(false);
+    setShowEdgeLabels(false);
     nodePositionRef.current.clear();
     zoomTransformRef.current = null;
+    graphZoomScaleRef.current = 1;
     hasAutoFittedGraphRef.current = false;
     lastGraphSignatureRef.current = null;
     lastGraphCountsRef.current = null;
@@ -798,7 +1009,8 @@ export function ForceGraphView({
   } = useMemo(() => {
     if (!rawData) return { nodes: [] as GraphNode[], links: [] as GraphLink[], presentRelationTypes: [] as RelationFilterItem[] };
 
-    const nodeIdSet = new Set((rawData.nodes ?? []).map((n: any) => n.id));
+    const rawNodes = (rawData.nodes ?? []).filter((node: any) => !isSuppressedGraphNode(node));
+    const nodeIdSet = new Set(rawNodes.map((n: any) => n.id));
     const relationCountByType = new Map<string, number>();
 
     const validEdges = (rawData.edges ?? [])
@@ -906,7 +1118,7 @@ export function ForceGraphView({
 
     const baseLayerByNodeId = new Map<number, number>();
     const layerByNodeId = new Map<number, number>();
-    for (const n of rawData.nodes ?? []) {
+    for (const n of rawNodes) {
       const baseLayer = nodeBaseLayer(String(n.knowledge_unit_type || ""));
       baseLayerByNodeId.set(Number(n.id), baseLayer);
       layerByNodeId.set(Number(n.id), baseLayer);
@@ -931,7 +1143,7 @@ export function ForceGraphView({
       if (!changed) break;
     }
 
-    const baseNodes: Omit<GraphNode, "label_rank" | "layout_rank">[] = (rawData.nodes ?? []).map((n: any) => {
+    const baseNodes: Omit<GraphNode, "label_rank" | "layout_rank">[] = rawNodes.map((n: any) => {
       const componentRoot = findComponentRoot(Number(n.id));
       return {
         id: n.id,
@@ -1004,10 +1216,14 @@ export function ForceGraphView({
     const query = nodeSearchQuery.trim().toLocaleLowerCase();
     if (!query) return [];
     return [...nodes]
-      .filter((node) =>
-        node.canonical_name.toLocaleLowerCase().includes(query) ||
-        nodeStyle(node.knowledge_unit_type).label.toLocaleLowerCase().includes(query),
-      )
+      .filter((node) => {
+        const displayName = normalizeGraphTextLabel(node.canonical_name);
+        return (
+          node.canonical_name.toLocaleLowerCase().includes(query) ||
+          displayName.toLocaleLowerCase().includes(query) ||
+          nodeStyle(node.knowledge_unit_type).label.toLocaleLowerCase().includes(query)
+        );
+      })
       .sort((left, right) =>
         graphNodePriority(right) - graphNodePriority(left) ||
         left.layout_layer - right.layout_layer ||
@@ -1026,6 +1242,7 @@ export function ForceGraphView({
     lastLayoutScopeRef.current = graphLayoutScope;
     nodePositionRef.current.clear();
     zoomTransformRef.current = null;
+    graphZoomScaleRef.current = 1;
     hasAutoFittedGraphRef.current = false;
   }, [graphLayoutScope]);
 
@@ -1094,6 +1311,17 @@ export function ForceGraphView({
     const nodeLabelAnchor = (_node?: GraphNode) => "start";
     const nodeDotRadius = (node: GraphNode) => (isAssessmentCoreNode(node) ? 8.4 : 7.1);
     const nodeDotCx = (_node: GraphNode) => 0;
+    const nodeCollisionRadius = (node: GraphNode) => {
+      const labelWidth = estimateGraphLabelWidth(node.canonical_name, graphNodeLabelLimit(node, null));
+      const labelBoost =
+        nodes.length <= 40
+          ? Math.min(92, labelWidth * 0.38)
+          : nodes.length <= 100
+            ? Math.min(62, labelWidth * 0.26)
+            : 20;
+      return nodeDotRadius(node) + (showAllNodeLabels ? Math.max(50, labelBoost) : labelBoost);
+    };
+    const compactGraphSpread = nodes.length <= 24 ? 1.28 : nodes.length <= 80 ? 1.12 : 1;
 
     // SVG structure
     const svgSel = d3.select(svg)
@@ -1110,8 +1338,31 @@ export function ForceGraphView({
       .graph-node .node-circle,
       .graph-node .node-halo,
       .graph-node .node-priority-ring,
-      .graph-node .node-label {
+      .graph-node .node-label,
+      .graph-node .node-formula-label {
         transition: opacity 160ms ease, stroke-width 160ms ease, stroke 160ms ease;
+      }
+      .graph-node .node-formula-label {
+        overflow: visible;
+        pointer-events: none;
+      }
+      .graph-node .node-formula-label-inner {
+        display: inline-flex;
+        align-items: center;
+        min-height: 24px;
+        max-width: 230px;
+        border-radius: 8px;
+        background: rgba(255,255,255,0.88);
+        padding: 2px 6px;
+        box-shadow: 0 0 0 1px rgba(226,232,240,0.78);
+        white-space: nowrap;
+      }
+      .graph-node .node-formula-label-inner .katex {
+        font-size: 1em;
+        line-height: 1.15;
+      }
+      .graph-node .node-formula-label-inner strong {
+        font-weight: 760;
       }
       .graph-node {
         opacity: 1;
@@ -1155,7 +1406,23 @@ export function ForceGraphView({
       .scaleExtent([0.15, 5])
       .on("zoom", (event) => {
         zoomTransformRef.current = event.transform;
+        graphZoomScaleRef.current = event.transform.k;
         g.attr("transform", event.transform);
+        if (zoomStyleFrameRef.current === null) {
+          zoomStyleFrameRef.current = window.requestAnimationFrame(() => {
+            zoomStyleFrameRef.current = null;
+            applyGraphInteractiveStyles(
+              svg,
+              simLinks,
+              selectedNodeIdRef.current,
+              showEdgeLabelsRef.current,
+              showAllEdgesRef.current,
+              highlightCoreUnitsRef.current,
+              showAllNodeLabelsRef.current,
+              graphZoomScaleRef.current,
+            );
+          });
+        }
       });
     svgSel.call(zoom);
     zoomRef.current = zoom;
@@ -1336,10 +1603,25 @@ export function ForceGraphView({
       .attr("font-family", "system-ui, sans-serif")
       .attr("font-weight", (d) => (isAssessmentCoreNode(d) ? "720" : "620"))
       .attr("fill", "#1f2937")
-      .attr("stroke", "none")
+      .attr("stroke", "rgba(255,255,255,0.92)")
+      .attr("stroke-width", 3)
+      .attr("paint-order", "stroke")
       .attr("opacity", 1)
       .style("pointer-events", "none")
-      .text((d) => truncateGraphLabel(d.canonical_name, graphNodeLabelLimit(d, null)));
+      .text((d) => (shouldUseGraphHtmlLabel(d) ? "" : truncateGraphLabel(d.canonical_name, graphNodeLabelLimit(d, null))));
+
+    nodeG.filter((d) => shouldUseGraphHtmlLabel(d))
+      .append("foreignObject")
+      .attr("class", "node-formula-label")
+      .attr("x", (d) => nodeLabelTextDx(d) - 4)
+      .attr("y", -15)
+      .attr("width", (d) => graphFormulaLabelWidth(d))
+      .attr("height", 30)
+      .attr("opacity", 1)
+      .html((d) => (
+        `<div xmlns="http://www.w3.org/1999/xhtml" class="node-formula-label-inner">` +
+        `${graphMixedLabelHtml(d)}</div>`
+      ));
 
     // Hover effects
     nodeG
@@ -1352,6 +1634,8 @@ export function ForceGraphView({
         nodeG.select<SVGCircleElement>("circle.node-circle")
           .attr("opacity", (node) => (connectedIds.has(node.id) ? 1 : 0.28));
         nodeG.select<SVGTextElement>("text.node-label")
+          .attr("opacity", (node) => (connectedIds.has(node.id) ? 1 : 0));
+        nodeG.select<SVGForeignObjectElement>("foreignObject.node-formula-label")
           .attr("opacity", (node) => (connectedIds.has(node.id) ? 1 : 0));
         linkLine
           .classed("is-neighbor-link", (link) => link.source_node_id === d.id || link.target_node_id === d.id)
@@ -1373,14 +1657,14 @@ export function ForceGraphView({
             showAllEdgesRef.current || link.is_backbone || link.source_node_id === d.id || link.target_node_id === d.id ? null : "none"
           ))
           .attr("opacity", (link) => (
-            showEdgeLabelsRef.current && (link.source_node_id === d.id || link.target_node_id === d.id) ? 1 : 0
+            shouldShowSmartEdgeLabel(link, d.id, showEdgeLabelsRef.current, graphZoomScaleRef.current, simLinks.length) ? 1 : 0
           ));
         linkLabelBg
           .attr("display", (link) => (
             showAllEdgesRef.current || link.is_backbone || link.source_node_id === d.id || link.target_node_id === d.id ? null : "none"
           ))
           .attr("opacity", (link) => (
-            showEdgeLabelsRef.current && (link.source_node_id === d.id || link.target_node_id === d.id) ? 0.96 : 0
+            shouldShowSmartEdgeLabel(link, d.id, showEdgeLabelsRef.current, graphZoomScaleRef.current, simLinks.length) ? 0.92 : 0
           ));
         d3.select(this).select("circle.node-halo").attr("opacity", 0.2);
         d3.select(this).select("circle.node-priority-ring").attr("opacity", 0.92);
@@ -1398,6 +1682,7 @@ export function ForceGraphView({
           showAllEdgesRef.current,
           highlightCoreUnitsRef.current,
           showAllNodeLabelsRef.current,
+          graphZoomScaleRef.current,
         );
       });
 
@@ -1409,6 +1694,7 @@ export function ForceGraphView({
       showAllEdgesRef.current,
       highlightCoreUnitsRef.current,
       showAllNodeLabelsRef.current,
+      graphZoomScaleRef.current,
     );
 
     const displayPoint = (node: GraphNode) => ({
@@ -1539,32 +1825,42 @@ export function ForceGraphView({
         "link",
         d3.forceLink<GraphNode, GraphLink>(simLinks)
           .id((d) => String(d.id))
-          .distance((d) => (d.is_backbone ? 92 : 118) + Math.min(34, (d.source_degree + d.target_degree) * 2))
+          .distance((d) => ((d.is_backbone ? 92 : 118) + Math.min(34, (d.source_degree + d.target_degree) * 2)) * compactGraphSpread)
           .strength((d) => (d.is_backbone ? 0.28 : 0.13)),
       )
-      .force("charge", d3.forceManyBody<GraphNode>().strength((d) => -150 - Math.min(8, d.degree) * 18))
+      .force("charge", d3.forceManyBody<GraphNode>().strength((d) => (-150 - Math.min(8, d.degree) * 18) * compactGraphSpread))
       .force("center", d3.forceCenter(width / 2, height / 2))
       .force("x", d3.forceX<GraphNode>(width / 2).strength(0.025))
       .force("y", d3.forceY<GraphNode>(height / 2).strength(0.032))
-      .force("collide", d3.forceCollide<GraphNode>().radius((d) => nodeDotRadius(d) + (showAllNodeLabels ? 50 : 20)).strength(0.72))
+      .force("collide", d3.forceCollide<GraphNode>().radius(nodeCollisionRadius).strength(nodes.length <= 80 ? 0.82 : 0.72))
       .alpha(0.92)
       .alphaDecay(nodes.length > 160 ? 0.07 : 0.045)
       .on("tick", () => renderTick());
     if (nodes.length > 180) {
       simulation.tick(80);
+      simulation.alpha(nodes.length > 320 ? 0.08 : 0.14);
       renderTick();
     }
+    const settleSimulationTimer = window.setTimeout(
+      () => {
+        if (nodes.length <= 180) return;
+        simulation?.alphaTarget(0);
+        simulation?.stop();
+        renderTick();
+      },
+      nodes.length > 320 ? 760 : 1280,
+    );
 
     const fitCurrentGraphToView = (duration = 600) => {
       const xExtent = d3.extent(simNodes, (d) => d.x) as [number, number];
       const yExtent = d3.extent(simNodes, (d) => d.y) as [number, number];
       if (xExtent[0] == null) return;
       const pad = showAllNodeLabels ? 34 : 44;
-      const labelPad = showAllNodeLabels ? 120 : 46;
-      const visualXMin = Math.min(xExtent[0] - labelPad, 0);
-      const visualXMax = Math.max(xExtent[1] + labelPad, width);
-      const visualYMin = Math.min(yExtent[0] - 74, 0);
-      const visualYMax = Math.max(yExtent[1] + 76, height);
+      const labelPad = showAllNodeLabels ? 136 : 96;
+      const visualXMin = xExtent[0] - labelPad;
+      const visualXMax = xExtent[1] + labelPad;
+      const visualYMin = yExtent[0] - 74;
+      const visualYMax = yExtent[1] + 76;
       const gw = visualXMax - visualXMin + pad * 2;
       const gh = visualYMax - visualYMin + pad * 2;
       const isMobileViewport = width < 640;
@@ -1594,9 +1890,19 @@ export function ForceGraphView({
       hasAutoFitted = true;
       fitCurrentGraphToView(520);
     }, 520);
+    const settleFitTimer = window.setTimeout(() => {
+      if (!hasAutoFitted || nodes.length > 140 || selectedNodeIdRef.current !== null) return;
+      fitCurrentGraphToView(360);
+    }, nodes.length > 80 ? 1800 : 1350);
 
     return () => {
       window.clearTimeout(autoFitTimer);
+      window.clearTimeout(settleFitTimer);
+      window.clearTimeout(settleSimulationTimer);
+      if (zoomStyleFrameRef.current !== null) {
+        window.cancelAnimationFrame(zoomStyleFrameRef.current);
+        zoomStyleFrameRef.current = null;
+      }
       simulation?.stop();
       saveNodePositions();
       if (fitGraphToViewRef.current === fitCurrentGraphToView) fitGraphToViewRef.current = null;
@@ -1606,11 +1912,20 @@ export function ForceGraphView({
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg || nodes.length === 0) return;
-    applyGraphInteractiveStyles(svg, links, selectedNodeId, showEdgeLabels, showAllEdges, highlightCoreUnits, showAllNodeLabels);
+    applyGraphInteractiveStyles(svg, links, selectedNodeId, showEdgeLabels, showAllEdges, highlightCoreUnits, showAllNodeLabels, graphZoomScaleRef.current);
   }, [links, nodes.length, selectedNodeId, showEdgeLabels, showAllEdges, highlightCoreUnits, showAllNodeLabels]);
 
   const graphIsLoading = !rawData && (initialLoading || initialFetching);
-  const graphIsComplete = Boolean(rawData) && (!totalNodeCount || (rawData?.nodes?.length ?? 0) >= totalNodeCount);
+  const graphTotalKnown = reportedNodeCount > 0;
+  const graphIsComplete = Boolean(rawData) && (
+    graphTotalKnown
+      ? (rawData?.nodes?.length ?? 0) >= reportedNodeCount
+      : !shouldUseFocusedInitialGraph
+  );
+  const graphWindowed = Boolean(rawData && reportedNodeCount > 0 && (rawData.nodes?.length ?? 0) < reportedNodeCount);
+  const graphStatusText = graphWindowed
+    ? `主干 ${rawData?.nodes?.length ?? 0}/${reportedNodeCount}`
+    : `${nodes.length} 节点`;
   const selectedNodeExpanded = selectedNodeId !== null && (graphIsComplete || expandedNodeIds.has(selectedNodeId));
   const graphProgressPct = typeof graphLane?.progress_pct === "number"
     ? Math.max(0, Math.min(100, Math.round(graphLane.progress_pct)))
@@ -1691,6 +2006,12 @@ export function ForceGraphView({
         {/* Top-left: mode switch + compact status */}
         <div className="pointer-events-auto absolute left-3 top-3 z-10 hidden max-w-[calc(100%-1.5rem)] flex-wrap items-center gap-2 pr-24 sm:pr-28 lg:right-44 lg:flex lg:max-w-none lg:pr-0">
           {toolbar}
+          <span
+            className="inline-flex h-8 items-center rounded-lg bg-white/95 px-2.5 text-[11px] font-semibold text-slate-500 shadow-sm ring-1 ring-slate-200/70 dark:bg-slate-950/90 dark:text-slate-300 dark:ring-slate-700/80"
+            title={graphWindowed ? "当前显示高连接主干子图" : "当前显示完整图谱"}
+          >
+            {graphStatusText}
+          </span>
           {expandingNodeId ? (
             <span className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-white/95 px-2.5 text-[11px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200/70 dark:bg-slate-950/90 dark:text-slate-300 dark:ring-slate-700/80">
               <Loader2 className="h-3 w-3 animate-spin" />
@@ -1805,7 +2126,7 @@ export function ForceGraphView({
                     />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-xs font-semibold text-slate-700 dark:text-slate-100">
-                        {node.canonical_name}
+                        {normalizeGraphTextLabel(node.canonical_name) || node.canonical_name}
                       </span>
                       <span className="block truncate text-[10px] font-medium text-slate-400 dark:text-slate-500">
                         {GRAPH_LAYERS[clampGraphLayer(node.layout_layer)]?.label ?? "图谱"} · {nodeStyle(node.knowledge_unit_type).label}

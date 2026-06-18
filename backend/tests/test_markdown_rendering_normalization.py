@@ -55,6 +55,19 @@ def test_normalize_supports_practice_callout_blocks() -> None:
     assert summary["callout_count"] == 1
 
 
+def test_normalize_supports_question_callout_blocks_without_flattening() -> None:
+    raw = "[!QUESTION]\n**题目**：判断函数是否单调。\n- A. 是\n- B. 否"
+
+    fixed = normalize_markdown_rendering(raw)
+    normalized = normalize_educational_callouts(fixed)
+    summary = summarize_markdown_presentation(normalized)
+
+    assert normalized.startswith("> [!QUESTION]\n>\n> **题目**：判断函数是否单调。")
+    assert "> - A. 是" in normalized
+    assert "GitHub callout 未使用 blockquote 语法。" not in find_markdown_rendering_issues(normalized)
+    assert summary["callout_count"] == 1
+
+
 def test_normalize_splits_callout_learning_fields_into_paragraphs() -> None:
     raw = (
         "> [!EXAMPLE]\n"

@@ -59,7 +59,7 @@ STUCK_MATH_FENCE_PATTERN = re.compile(
 )
 BLOCKQUOTE_PREFIX_PATTERN = re.compile(r"^\s*>\s?")
 MATH_FENCE_PATTERN = re.compile(r"^\s*(?:>\s*)?\$\$\s*$")
-CALLOUT_KINDS_PATTERN = r"NOTE|TIP|IMPORTANT|WARNING|CAUTION|EXAMPLE|PRACTICE"
+CALLOUT_KINDS_PATTERN = r"NOTE|TIP|IMPORTANT|WARNING|CAUTION|EXAMPLE|PRACTICE|QUESTION"
 CALLOUT_LINE_PATTERN = re.compile(
     rf"^(?P<indent>\s*)(?P<quote>>\s*)?\[!(?P<kind>{CALLOUT_KINDS_PATTERN})\](?P<rest>.*)$",
     re.IGNORECASE,
@@ -842,7 +842,6 @@ def _normalize_callout_blocks(markdown: str) -> str:
             body_line = lines[index].rstrip()
             body_stripped = body_line.strip()
             if not body_stripped:
-                output.append(">")
                 index += 1
                 break
             if body_stripped.startswith(("```", "---", "***", "___")) or re.match(r"^#{1,6}\s+\S", body_stripped):

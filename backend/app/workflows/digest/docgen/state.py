@@ -55,6 +55,7 @@ class DocGenState(TypedDict, total=False):
     chapter_task_seeds: list[dict[str, Any]]
     chapters_enhanced: list[dict[str, Any]]
     preliminary_kg: dict[str, Any]
+    docgen_kg_draft: dict[str, Any]
     chapter_task_seed: dict[str, Any]
     backbone_research_agenda: dict[str, Any]
     document_backbone: dict[str, Any]
@@ -81,6 +82,7 @@ class DocGenState(TypedDict, total=False):
     reviewed_chapter_overlay_items: Annotated[list[dict[str, Any]], operator.add]
     chapter_review_report_items: Annotated[list[dict[str, Any]], operator.add]
     review_action_items: Annotated[list[dict[str, Any]], operator.add]
+    kg_refinement_items: Annotated[list[dict[str, Any]], operator.add]
     reviewed_chapter_drafts: list[dict[str, Any]]
     research_traces: Annotated[list[dict[str, Any]], operator.add]
     evidence_ledgers: Annotated[list[dict[str, Any]], operator.add]
@@ -110,6 +112,11 @@ class DocGenState(TypedDict, total=False):
     doc_ids: list[int]
     built_paths: list[tuple[int, str]]
     build_group_id: str
+    kg_prefetch_status: str
+    kg_prefetch_metrics: dict[str, Any]
+    kg_prefetch_ready: bool
+    kg_draft_early_persist_metrics: dict[str, Any]
+    kg_draft_rollback_metrics: dict[str, Any]
     graph_sync_status: str
     graph_sync_metrics: dict[str, Any]
 
@@ -130,6 +137,8 @@ class DocGenState(TypedDict, total=False):
     repair_ms: int
     merge_review_ms: int
     finalize_ms: int
+    graph_prepare_ms: int
+    kg_draft_rollback_ms: int
     graph_sync_ms: int
     file_summary_llm_calls: Annotated[int, operator.add]
     llm_calls_total: Annotated[int, operator.add]

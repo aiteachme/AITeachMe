@@ -1,4 +1,5 @@
 from app.workflows.digest.docgen import graph as docgen_graph
+from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.kg_doc_sync import graph as kg_doc_sync_graph
 from app.workflows.digest.planner import graph as planner_graph
 
@@ -40,3 +41,22 @@ def test_planner_workflow_node_names_are_action_oriented() -> None:
     assert "上下文" in planner_graph.NODE_TRACE_DETAILS["collect_planner_context"]["description"]
     assert "流式" in planner_graph.NODE_TRACE_DETAILS["compose_planner_draft"]["description"]
     assert "confirmed planner" in planner_graph.NODE_TRACE_DETAILS["save_planner_draft"]["description"]
+
+
+def test_docgen_prepares_knowledge_graph_after_final_titles_before_publish() -> None:
+    workflow = docgen_graph.build_docgen_graph(
+        context=WorkflowContext(workflow_name="digest.docgen.test", course_id="course_graph_order")
+    )
+
+    def next_node(node_key: str) -> str:
+        return workflow.branches[node_key]["检查是否继续"].ends["continue"]
+
+    def fail_node(node_key: str) -> str:
+        return workflow.branches[node_key]["检查是否继续"].ends["fail"]
+
+    assert next_node(docgen_graph.NODE_REPAIR_OR_ROUTE) == docgen_graph.NODE_MERGE_REVIEW
+    assert next_node(docgen_graph.NODE_MERGE_REVIEW) == docgen_graph.NODE_SYNC_LOCKED_TITLES
+    assert next_node(docgen_graph.NODE_SYNC_LOCKED_TITLES) == docgen_graph.NODE_PREPARE_KNOWLEDGE_GRAPH
+    assert next_node(docgen_graph.NODE_PREPARE_KNOWLEDGE_GRAPH) == docgen_graph.NODE_PUBLISH
+    assert fail_node(docgen_graph.NODE_PREPARE_KNOWLEDGE_GRAPH) == docgen_graph.NODE_ROLLBACK_KNOWLEDGE_GRAPH
+    assert fail_node(docgen_graph.NODE_PUBLISH) == docgen_graph.NODE_ROLLBACK_KNOWLEDGE_GRAPH

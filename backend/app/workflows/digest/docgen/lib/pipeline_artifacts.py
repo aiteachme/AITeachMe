@@ -13,22 +13,28 @@ from typing import Any
 
 from app.models.knowledge_taxonomy import (
     knowledge_unit_type_label,
+    normalize_generated_knowledge_unit_type,
     normalize_knowledge_unit_type,
     normalize_relation_type,
     relation_type_label,
+    validate_relation_direction,
 )
 from app.workflows.digest.docgen.lib.models import (
     ChapterExecutionBrief,
     ChapterGenerationTask,
     ChapterGenerationTaskSeed,
+    ChapterReviewReport,
     ChapterSourceSlice,
     DocGenContext,
     DocumentBackbone,
     FileMaterialSummary,
     HighConfidenceEvidenceUnit,
+    ReviewAction,
+    ReviewedChapterDraft,
     SourceAffinityByChapter,
     clean_string_list,
 )
+from app.workflows.digest.docgen.lib.pipeline_context import merge_unique_profile_texts
 
 
 def _safe_int(value: Any) -> int:
@@ -47,6 +53,14 @@ _KG_ACTION_PREFIX_RE = re.compile(
 )
 _KG_ACTION_ONLY_RE = re.compile(r"^(?:提升|复习|巩固|完成|明确|训练|形成|减少|避免|帮助|便于)")
 _KG_NOISE_NODE_RE = re.compile(r"^(?:学习目标|目标|核心概念|知识点|典型例题|例题|易错点|易错提醒|课后练习|练习)$")
+_KG_MARKDOWN_STYLE_RE = re.compile(r"(\*\*|__|==|`+|\\\(|\\\)|\\\[|\\\]|\$\$?)")
+_KG_GENERIC_NODE_RE = re.compile(
+    r"^(?:任务\s*\d*|步骤\s*\d*(?:\s*[（(][^）)]{1,18}[）)])?|检查点|求解步骤|"
+    r"单元测试|单元小测|章末测试|章末小测|章末练习|Q\d+|第\s*\d+\s*题|答案|解析|判定依据)$",
+    re.IGNORECASE,
+)
+_KG_TRAINING_PLAN_RE = re.compile(r"(?:每日|每章|第\s*\d+\s*天|课后|章末).{0,10}(?:\d+\s*道|练习|测试|小测|训练)")
+_KG_ASSESSMENT_CONTAINER_HEADING_RE = re.compile(r"^(?:单元测试|单元小测|章末测试|章末小测|章末练习)$")
 _KG_ROLE_LABEL_TYPES = {
     "核心概念": "concept",
     "知识点": "concept",
@@ -118,10 +132,12 @@ def _append_preliminary_node(
     summary: object = "",
     source: str,
 ) -> None:
-    normalized_type = normalize_knowledge_unit_type(unit_type)
-    text = _clean_preliminary_node_name(name, max_chars=72 if normalized_type == "topic" else 42)
+    initial_type = normalize_knowledge_unit_type(unit_type)
+    text = _clean_preliminary_node_name(name, max_chars=72 if initial_type == "topic" else 42)
     if not text:
         return
+    summary_text = str(summary or text).strip()
+    normalized_type = normalize_generated_knowledge_unit_type(unit_type, name=text, summary=summary_text)
     key = (normalized_type, "".join(text.split()).casefold())
     if key in seen:
         return
@@ -132,7 +148,7 @@ def _append_preliminary_node(
             "knowledge_unit_type": normalized_type,
             "knowledge_unit_type_label": knowledge_unit_type_label(normalized_type),
             "chapter_index": max(0, _safe_int(chapter_index)),
-            "summary": str(summary or text).strip(),
+            "summary": summary_text,
             "source": source,
         }
     )
@@ -195,10 +211,26 @@ def _role_unit_type(role: str) -> str:
 
 def _clean_preliminary_node_name(value: object, *, max_chars: int = 42) -> str:
     text = str(value or "").strip()
+    text = _KG_MARKDOWN_STYLE_RE.sub("", text)
+    text = re.sub(r"\{#ku_[^}]+\}", "", text)
     text = _KG_ROLE_LABEL_RE.sub("", text, count=1)
+    text = re.sub(
+        r"^\s*(?:任务|步骤|检查点|答案|解析|参考答案|Q\d+)(?:\s*\d+)?(?:\s*[（(][^）)]{1,18}[）)])?\s*[:：]\s*",
+        "",
+        text,
+        count=1,
+    )
     text = re.sub(r"\s+", " ", text).strip(" ：:，,。；;、|-")
     text = re.sub(r"^(?:本章|本节|这一章|这部分)\s*", "", text).strip(" ：:，,。；;、|-")
-    if not text or _KG_NOISE_NODE_RE.fullmatch(text) or _KG_ACTION_ONLY_RE.match(text):
+    if (
+        not text
+        or _KG_NOISE_NODE_RE.fullmatch(text)
+        or _KG_GENERIC_NODE_RE.fullmatch(text)
+        or _KG_ACTION_ONLY_RE.match(text)
+        or _KG_TRAINING_PLAN_RE.search(text)
+    ):
+        return ""
+    if len(text) > 28 and re.search(r"[。！？!?]|(?:是|指|表示|意味着|用于|可以|需要)", text):
         return ""
     if len(text) > max_chars:
         for delimiter in ("；", ";", "。", "，", ","):
@@ -206,7 +238,7 @@ def _clean_preliminary_node_name(value: object, *, max_chars: int = 42) -> str:
             if 3 <= len(head) <= max_chars:
                 text = head
                 break
-    if len(text) > max_chars:
+    if len(text) > max_chars or _KG_GENERIC_NODE_RE.fullmatch(text):
         return ""
     return text
 
@@ -398,6 +430,806 @@ def build_preliminary_kg(
     }
 
 
+_MARKDOWN_HEADING_RE = re.compile(r"^\s{0,3}(?P<level>#{1,4})\s+(?P<title>.+?)\s*$")
+_MARKDOWN_BULLET_RE = re.compile(r"^\s{0,6}(?:[-*+]|(?:\d+|[一二三四五六七八九十]+)[.)、])\s+(?P<text>.+?)\s*$")
+_GENERIC_DOCGEN_HEADING_NAMES = {
+    "执行范围",
+    "即将覆盖的重点",
+    "检索线索",
+    "写作路径",
+    "学习路径",
+    "章节位置",
+}
+_SKILL_TEXT_TOKENS = ("测试", "练习", "自检", "题", "训练", "测验", "考试", "刷题")
+_MISCONCEPTION_TEXT_TOKENS = ("易错", "误区", "混淆", "陷阱", "不要", "错误", "边界", "纠错", "错因")
+_APPLICATION_TEXT_TOKENS = ("案例", "示例", "例题", "应用", "场景", "图示", "图表", "表格", "实验")
+_PROCEDURE_TEXT_TOKENS = ("步骤", "流程", "方法", "路径", "操作", "检查", "策略")
+_DOCGEN_KG_DOWNSTREAM_UNIT_TYPES = {
+    "concept",
+    "principle",
+    "formula_model",
+    "procedure",
+    "skill",
+    "misconception",
+    "application_case",
+}
+_DOCGEN_KG_DIAGNOSTIC_UNIT_TYPES = {
+    "skill",
+    "misconception",
+    "application_case",
+}
+_DOCGEN_KG_STRUCTURE_EDGE_TYPES = {
+    "part_of",
+    "prerequisite_for",
+    "derives_to",
+    "applies_to",
+    "uses_method",
+    "assesses",
+    "explains",
+    "remediates",
+    "confuses_with",
+    "extends_to",
+}
+_DOCGEN_KG_EXAM_EDGE_TYPES = {
+    "assesses",
+    "applies_to",
+    "uses_method",
+    "remediates",
+    "confuses_with",
+}
+_DOCGEN_DRAFT_NODE_TYPE_PRIORITY = {
+    "resource": 0,
+    "concept": 10,
+    "principle": 20,
+    "formula_model": 30,
+    "procedure": 40,
+    "application_case": 50,
+    "misconception": 60,
+    "skill": 70,
+    "topic": 80,
+}
+
+
+def _prefer_docgen_draft_node_type(existing: str, incoming: str) -> str:
+    existing_type = normalize_knowledge_unit_type(existing)
+    incoming_type = normalize_knowledge_unit_type(incoming)
+    if _DOCGEN_DRAFT_NODE_TYPE_PRIORITY.get(incoming_type, 0) > _DOCGEN_DRAFT_NODE_TYPE_PRIORITY.get(existing_type, 0):
+        return incoming_type
+    return existing_type
+
+
+def _dedupe_docgen_draft_nodes_by_name(nodes: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    deduped: list[dict[str, Any]] = []
+    by_name: dict[str, dict[str, Any]] = {}
+    for item in nodes:
+        if not isinstance(item, Mapping):
+            continue
+        node = dict(item)
+        name_key = _draft_name_key(node.get("name"))
+        if not name_key:
+            continue
+        existing = by_name.get(name_key)
+        if existing is None:
+            by_name[name_key] = node
+            deduped.append(node)
+            continue
+
+        preferred_type = _prefer_docgen_draft_node_type(
+            str(existing.get("knowledge_unit_type") or ""),
+            str(node.get("knowledge_unit_type") or ""),
+        )
+        existing["knowledge_unit_type"] = preferred_type
+        existing["knowledge_unit_type_label"] = knowledge_unit_type_label(preferred_type)
+
+        existing_summary = str(existing.get("summary") or "").strip()
+        node_summary = str(node.get("summary") or "").strip()
+        if node_summary and (not existing_summary or existing_summary == str(existing.get("name") or "").strip()):
+            existing["summary"] = node_summary
+        if not _safe_int(existing.get("chapter_index")) and _safe_int(node.get("chapter_index")):
+            existing["chapter_index"] = _safe_int(node.get("chapter_index"))
+        if not str(existing.get("anchor") or "").strip() and str(node.get("anchor") or "").strip():
+            existing["anchor"] = str(node.get("anchor") or "").strip()
+        if not str(existing.get("quote_text") or "").strip() and str(node.get("quote_text") or "").strip():
+            existing["quote_text"] = str(node.get("quote_text") or "").strip()
+        existing["source_file_ids"] = clean_string_list(
+            [
+                *list(existing.get("source_file_ids") or []),
+                *list(node.get("source_file_ids") or []),
+            ],
+            limit=12,
+        )
+    return deduped
+
+
+def _append_draft_node(
+    nodes: list[dict[str, Any]],
+    seen: set[tuple[str, str]],
+    *,
+    name: object,
+    unit_type: str,
+    chapter_index: int = 0,
+    summary: object = "",
+    source: str,
+    anchor: object = "",
+    source_file_ids: Sequence[object] | None = None,
+    quote_text: object = "",
+) -> None:
+    initial_type = normalize_knowledge_unit_type(unit_type)
+    text = _clean_preliminary_node_name(name, max_chars=72 if initial_type == "topic" else 56)
+    if not text:
+        return
+    summary_text = str(summary or text).strip()
+    normalized_type = normalize_generated_knowledge_unit_type(unit_type, name=text, summary=summary_text)
+    key = (normalized_type, "".join(text.split()).casefold())
+    if key in seen:
+        return
+    seen.add(key)
+    nodes.append(
+        {
+            "name": text,
+            "knowledge_unit_type": normalized_type,
+            "knowledge_unit_type_label": knowledge_unit_type_label(normalized_type),
+            "chapter_index": max(0, _safe_int(chapter_index)),
+            "summary": summary_text,
+            "source": source,
+            "anchor": str(anchor or "").strip(),
+            "source_file_ids": clean_string_list(source_file_ids or [], limit=12),
+            "quote_text": str(quote_text or "").strip(),
+        }
+    )
+
+
+def _append_draft_edge(
+    edges: list[dict[str, Any]],
+    seen: set[tuple[str, str, str]],
+    *,
+    source_name: object,
+    target_name: object,
+    edge_type: str,
+    description: object = "",
+    chapter_index: int = 0,
+    source: str,
+    quote_text: object = "",
+) -> None:
+    source_text = _clean_preliminary_node_name(source_name, max_chars=56)
+    target_text = _clean_preliminary_node_name(target_name, max_chars=72)
+    if not source_text or not target_text or source_text == target_text:
+        return
+    normalized_type = normalize_relation_type(edge_type)
+    key = (
+        "".join(source_text.split()).casefold(),
+        "".join(target_text.split()).casefold(),
+        normalized_type,
+    )
+    if not key[0] or not key[1] or key in seen:
+        return
+    seen.add(key)
+    edges.append(
+        {
+            "source_name": source_text,
+            "target_name": target_text,
+            "edge_type": normalized_type,
+            "edge_type_label": relation_type_label(normalized_type),
+            "description": str(description or "").strip(),
+            "chapter_index": max(0, _safe_int(chapter_index)),
+            "source": source,
+            "quote_text": str(quote_text or "").strip(),
+        }
+    )
+
+
+def _chapter_title(chapter: Mapping[str, Any], fallback_index: int) -> str:
+    return str(chapter.get("title") or chapter.get("enhanced_title") or f"第 {fallback_index} 章").strip()
+
+
+def _draft_name_key(value: object) -> str:
+    return re.sub(r"\s+", "", str(value or "").strip()).casefold()
+
+
+def _draft_has_node_name(nodes: Sequence[Mapping[str, Any]], name: object) -> bool:
+    name_key = _draft_name_key(name)
+    return bool(name_key) and any(_draft_name_key(node.get("name")) == name_key for node in nodes)
+
+
+def _draft_node_type_by_name(nodes: Sequence[Mapping[str, Any]]) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for node in nodes:
+        name_key = _draft_name_key(node.get("name"))
+        if name_key:
+            result[name_key] = normalize_knowledge_unit_type(str(node.get("knowledge_unit_type") or ""))
+    return result
+
+
+def _expected_chapter_indices(chapters: Sequence[Mapping[str, Any]] | None) -> list[int]:
+    indices: list[int] = []
+    seen: set[int] = set()
+    for fallback_index, chapter in enumerate(list(chapters or []), start=1):
+        if not isinstance(chapter, Mapping):
+            continue
+        index = _safe_int(chapter.get("chapter_index")) or fallback_index
+        if index <= 0 or index in seen:
+            continue
+        seen.add(index)
+        indices.append(index)
+    return sorted(indices)
+
+
+def _audit_docgen_kg_draft(
+    *,
+    nodes: Sequence[Mapping[str, Any]],
+    edges: Sequence[Mapping[str, Any]],
+    expected_chapter_indices: Sequence[int],
+    covered_chapter_indices: Sequence[int],
+    repair_warning_count: int,
+) -> dict[str, Any]:
+    expected = {int(index) for index in expected_chapter_indices if int(index or 0) > 0}
+    covered = {int(index) for index in covered_chapter_indices if int(index or 0) > 0}
+    missing = sorted(expected - covered) if expected else []
+    name_types: dict[str, list[str]] = {}
+    for node in nodes:
+        name_key = _draft_name_key(node.get("name"))
+        if not name_key:
+            continue
+        name_types.setdefault(name_key, []).append(
+            normalize_knowledge_unit_type(str(node.get("knowledge_unit_type") or ""))
+        )
+    known_names = set(name_types)
+    connected_names: set[str] = set()
+    edge_endpoint_issue_count = 0
+    edge_endpoint_ambiguity_count = 0
+    relation_direction_issue_count = 0
+    valid_relation_edge_count = 0
+    valid_structure_edge_count = 0
+    valid_exam_edge_count = 0
+    for edge in edges:
+        source_key = _draft_name_key(edge.get("source_name"))
+        target_key = _draft_name_key(edge.get("target_name"))
+        if not source_key or not target_key or source_key not in known_names or target_key not in known_names:
+            edge_endpoint_issue_count += 1
+            continue
+        source_types = name_types.get(source_key, [])
+        target_types = name_types.get(target_key, [])
+        if len(source_types) != 1 or len(target_types) != 1:
+            edge_endpoint_ambiguity_count += 1
+            continue
+        edge_type = normalize_relation_type(str(edge.get("edge_type") or ""))
+        if not validate_relation_direction(
+            edge_type=edge_type,
+            source_type=source_types[0],
+            target_type=target_types[0],
+        ):
+            relation_direction_issue_count += 1
+            continue
+        connected_names.add(source_key)
+        connected_names.add(target_key)
+        valid_relation_edge_count += 1
+        if edge_type in _DOCGEN_KG_STRUCTURE_EDGE_TYPES:
+            valid_structure_edge_count += 1
+        if edge_type in _DOCGEN_KG_EXAM_EDGE_TYPES:
+            valid_exam_edge_count += 1
+
+    downstream_unit_count = sum(
+        1
+        for node in nodes
+        if normalize_knowledge_unit_type(str(node.get("knowledge_unit_type") or "")) in _DOCGEN_KG_DOWNSTREAM_UNIT_TYPES
+    )
+    diagnostic_unit_count = sum(
+        1
+        for node in nodes
+        if normalize_knowledge_unit_type(str(node.get("knowledge_unit_type") or "")) in _DOCGEN_KG_DIAGNOSTIC_UNIT_TYPES
+    )
+    structure_edge_count = valid_structure_edge_count
+    exam_edge_count = valid_exam_edge_count
+    topic_count = sum(
+        1
+        for node in nodes
+        if normalize_knowledge_unit_type(str(node.get("knowledge_unit_type") or "")) == "topic"
+    )
+    isolated_unit_count = sum(
+        1
+        for node in nodes
+        if _draft_name_key(node.get("name")) not in connected_names
+    )
+    missing_chapter_ratio = (len(missing) / len(expected)) if expected else 0.0
+    endpoint_issue_ratio = (edge_endpoint_issue_count / max(1, len(edges))) if edges else 0.0
+    endpoint_ambiguity_ratio = (edge_endpoint_ambiguity_count / max(1, len(edges))) if edges else 0.0
+    direction_issue_ratio = (relation_direction_issue_count / max(1, len(edges))) if edges else 0.0
+    isolated_ratio = (isolated_unit_count / max(1, len(nodes))) if nodes else 0.0
+    quality_score = 1.0
+    quality_score -= min(0.45, missing_chapter_ratio * 0.45)
+    quality_score -= min(0.25, endpoint_issue_ratio * 0.25)
+    quality_score -= min(0.2, endpoint_ambiguity_ratio * 0.2)
+    quality_score -= min(0.2, direction_issue_ratio * 0.2)
+    quality_score -= 0.2 if nodes and downstream_unit_count == 0 else 0.0
+    quality_score -= 0.08 if len(nodes) > 1 and structure_edge_count == 0 else 0.0
+    quality_score -= 0.1 if len(nodes) > 1 and valid_relation_edge_count == 0 else 0.0
+    quality_score -= min(0.1, isolated_ratio * 0.1)
+    quality_score -= min(0.15, max(0, repair_warning_count) * 0.03)
+    quality_score = round(max(0.0, min(1.0, quality_score)), 4)
+
+    warnings: list[str] = []
+    if missing:
+        warnings.append("missing_chapter_coverage")
+    if edge_endpoint_issue_count:
+        warnings.append("edge_endpoint_issue")
+    if edge_endpoint_ambiguity_count:
+        warnings.append("edge_endpoint_ambiguity")
+    if relation_direction_issue_count:
+        warnings.append("relation_direction_issue")
+    if nodes and downstream_unit_count == 0:
+        warnings.append("no_downstream_learning_unit")
+    if len(nodes) > 1 and structure_edge_count == 0:
+        warnings.append("no_structural_learning_edge")
+    if len(nodes) > 1 and valid_relation_edge_count == 0:
+        warnings.append("no_relation_edge")
+    if repair_warning_count:
+        warnings.append("review_repair_warning")
+    has_relation_shape = len(nodes) <= 1 or valid_relation_edge_count > 0
+    has_examine_profile_shape = (
+        downstream_unit_count > 0
+        and (len(nodes) <= 1 or structure_edge_count > 0)
+    )
+    quality_ready = (
+        bool(nodes)
+        and not missing
+        and edge_endpoint_issue_count == 0
+        and edge_endpoint_ambiguity_count == 0
+        and relation_direction_issue_count == 0
+        and repair_warning_count == 0
+        and has_examine_profile_shape
+        and has_relation_shape
+    )
+    return {
+        "schema_version": 1,
+        "quality_status": "ready" if quality_ready else "needs_catchup",
+        "quality_ready": quality_ready,
+        "quality_score": quality_score,
+        "warning_count": len(warnings),
+        "warnings": warnings,
+        "expected_chapter_count": len(expected),
+        "covered_chapter_count": len(expected & covered) if expected else len(covered),
+        "missing_chapter_count": len(missing),
+        "missing_chapter_indices": missing,
+        "downstream_unit_count": downstream_unit_count,
+        "exam_ready_unit_count": downstream_unit_count,
+        "profile_ready_unit_count": downstream_unit_count,
+        "diagnostic_unit_count": diagnostic_unit_count,
+        "topic_count": topic_count,
+        "structure_edge_count": structure_edge_count,
+        "exam_edge_count": exam_edge_count,
+        "examine_profile_ready": has_examine_profile_shape,
+        "edge_endpoint_issue_count": edge_endpoint_issue_count,
+        "edge_endpoint_ambiguity_count": edge_endpoint_ambiguity_count,
+        "relation_direction_issue_count": relation_direction_issue_count,
+        "valid_relation_edge_count": valid_relation_edge_count,
+        "isolated_unit_count": isolated_unit_count,
+        "isolated_unit_ratio": round(isolated_ratio, 4),
+    }
+
+
+def _append_markdown_heading_nodes(
+    nodes: list[dict[str, Any]],
+    edges: list[dict[str, Any]],
+    seen_nodes: set[tuple[str, str]],
+    seen_edges: set[tuple[str, str, str]],
+    *,
+    chapter: Mapping[str, Any],
+    fallback_index: int,
+    topic_source: str = "docgen_reviewed_chapter",
+    heading_source: str = "docgen_reviewed_heading",
+) -> None:
+    chapter_index = _safe_int(chapter.get("chapter_index")) or fallback_index
+    title = _chapter_title(chapter, fallback_index)
+    markdown = str(chapter.get("markdown") or "").strip()
+    if not _draft_has_node_name(nodes, title):
+        _append_draft_node(
+            nodes,
+            seen_nodes,
+            name=title,
+            unit_type="topic",
+            chapter_index=chapter_index,
+            summary=chapter.get("summary") or chapter.get("summary_draft") or title,
+            source=topic_source,
+        )
+    heading_count = 0
+    bullet_count = 0
+    current_heading = ""
+    current_heading_type = "concept"
+    for line in markdown.splitlines():
+        match = _MARKDOWN_HEADING_RE.match(line)
+        if match is not None:
+            level = len(match.group("level"))
+            heading = match.group("title").strip(" #")
+            if not heading or heading == title or level <= 1:
+                current_heading = ""
+                current_heading_type = "concept"
+                continue
+            if _KG_ASSESSMENT_CONTAINER_HEADING_RE.fullmatch(heading):
+                current_heading = ""
+                current_heading_type = "concept"
+                continue
+            current_heading = heading
+            current_heading_type = _markdown_unit_type_for_text(heading)
+            if heading not in _GENERIC_DOCGEN_HEADING_NAMES:
+                _append_draft_node(
+                    nodes,
+                    seen_nodes,
+                    name=heading,
+                    unit_type=current_heading_type,
+                    chapter_index=chapter_index,
+                    summary=heading,
+                    source=heading_source,
+                )
+                _append_draft_edge(
+                    edges,
+                    seen_edges,
+                    source_name=heading,
+                    target_name=title,
+                    edge_type="part_of",
+                    description=f"{heading} 是《{title}》中的章节知识单元。",
+                    chapter_index=chapter_index,
+                    source=heading_source,
+                )
+                heading_count += 1
+            if heading_count >= 8:
+                current_heading = ""
+            continue
+
+        bullet_match = _MARKDOWN_BULLET_RE.match(line)
+        if bullet_match is None or not current_heading:
+            continue
+        bullet_text = bullet_match.group("text").strip()
+        unit_type = _markdown_unit_type_for_text(f"{current_heading} {bullet_text}", fallback=current_heading_type)
+        for item_name, item_type in _preliminary_items(bullet_text, unit_type=unit_type):
+            if item_name == title or item_name in _GENERIC_DOCGEN_HEADING_NAMES:
+                continue
+            _append_draft_node(
+                nodes,
+                seen_nodes,
+                name=item_name,
+                unit_type=item_type,
+                chapter_index=chapter_index,
+                summary=bullet_text,
+                source=heading_source,
+            )
+            _append_draft_edge(
+                edges,
+                seen_edges,
+                source_name=item_name,
+                target_name=title,
+                edge_type="part_of",
+                description=f"{item_name} 属于《{title}》的学习内容。",
+                chapter_index=chapter_index,
+                source=heading_source,
+                quote_text=bullet_text,
+            )
+            bullet_count += 1
+            if bullet_count >= 12:
+                return
+
+
+def _markdown_unit_type_for_text(text: object, *, fallback: str = "concept") -> str:
+    raw = str(text or "")
+    if any(token in raw for token in _SKILL_TEXT_TOKENS):
+        return "skill"
+    if any(token in raw for token in _MISCONCEPTION_TEXT_TOKENS):
+        return "misconception"
+    if any(token in raw for token in _APPLICATION_TEXT_TOKENS):
+        return "application_case"
+    if any(token in raw for token in _PROCEDURE_TEXT_TOKENS):
+        return "procedure"
+    return fallback
+
+
+def build_chapter_kg_refinement_item(
+    *,
+    reviewed: ReviewedChapterDraft,
+    report: ChapterReviewReport | None = None,
+    actions: Sequence[ReviewAction] | None = None,
+) -> dict[str, Any]:
+    """Build one chapter-level KG refinement record during content review."""
+
+    nodes: list[dict[str, Any]] = []
+    edges: list[dict[str, Any]] = []
+    seen_nodes: set[tuple[str, str]] = set()
+    seen_edges: set[tuple[str, str, str]] = set()
+    chapter_payload = reviewed.model_dump(mode="json")
+    _append_markdown_heading_nodes(
+        nodes,
+        edges,
+        seen_nodes,
+        seen_edges,
+        chapter=chapter_payload,
+        fallback_index=reviewed.chapter_index,
+        topic_source="docgen_review_refinement",
+        heading_source="docgen_review_refinement",
+    )
+    action_payloads = [
+        item.model_dump(mode="json") if hasattr(item, "model_dump") else dict(item)
+        for item in list(actions or [])
+    ]
+    warning_actions = [
+        item
+        for item in action_payloads
+        if str(item.get("severity") or "").strip() in {"warning", "error"}
+        and str(item.get("status") or "recorded").strip() not in {"applied", "downgraded"}
+    ]
+    report_payload = report.model_dump(mode="json") if report is not None else {}
+    return {
+        "schema_version": 1,
+        "chapter_index": reviewed.chapter_index,
+        "title": reviewed.title,
+        "source": "docgen_review_refinement",
+        "node_count": len(nodes),
+        "edge_count": len(edges),
+        "nodes": nodes,
+        "edges": edges,
+        "review_report_ref": reviewed.review_report_ref,
+        "coverage_score": float(report_payload.get("coverage_score") or 0.0),
+        "evidence_support_score": float(report_payload.get("evidence_support_score") or 0.0),
+        "quality_score": float(report_payload.get("quality_score") or 0.0),
+        "passed": bool(report_payload.get("passed", True)),
+        "needs_repair": bool(warning_actions),
+        "warnings": clean_string_list([*list(reviewed.warnings or []), *list(report_payload.get("warnings") or [])], limit=18),
+        "review_action_ids": clean_string_list([item.get("action_id") for item in action_payloads], limit=24),
+    }
+
+
+def build_docgen_kg_draft(
+    *,
+    preliminary_kg: Mapping[str, Any] | None = None,
+    kg_refinement_items: Sequence[Mapping[str, Any]] | None = None,
+    reviewed_chapters: Sequence[Mapping[str, Any]] | None = None,
+    prefetched_records: Sequence[object] | None = None,
+    prefetch_metrics: Mapping[str, Any] | None = None,
+    stage: str = "prepare_knowledge_graph",
+) -> dict[str, Any]:
+    """Build a visible DocGen KG draft before final graph persistence."""
+
+    nodes: list[dict[str, Any]] = []
+    edges: list[dict[str, Any]] = []
+    seen_nodes: set[tuple[str, str]] = set()
+    seen_edges: set[tuple[str, str, str]] = set()
+
+    preliminary = dict(preliminary_kg or {})
+    for item in list(preliminary.get("nodes") or []):
+        if not isinstance(item, Mapping):
+            continue
+        _append_draft_node(
+            nodes,
+            seen_nodes,
+            name=item.get("name"),
+            unit_type=str(item.get("knowledge_unit_type") or item.get("type") or "concept"),
+            chapter_index=_safe_int(item.get("chapter_index")),
+            summary=item.get("summary") or item.get("name"),
+            source=str(item.get("source") or "docgen_preliminary_kg"),
+        )
+    for item in list(preliminary.get("edges") or []):
+        if not isinstance(item, Mapping):
+            continue
+        _append_draft_edge(
+            edges,
+            seen_edges,
+            source_name=item.get("source_name"),
+            target_name=item.get("target_name"),
+            edge_type=str(item.get("edge_type") or "related_to"),
+            description=item.get("description") or "",
+            chapter_index=_safe_int(item.get("chapter_index")),
+            source=str(item.get("source") or "docgen_preliminary_kg"),
+        )
+
+    effective_refinements = _effective_kg_refinement_items(kg_refinement_items or [])
+    refinement_count = 0
+    repair_warning_count = 0
+    for refinement in effective_refinements:
+        if not isinstance(refinement, Mapping):
+            continue
+        refinement_count += 1
+        if bool(refinement.get("needs_repair")):
+            repair_warning_count += 1
+        for item in list(refinement.get("nodes") or []):
+            if not isinstance(item, Mapping):
+                continue
+            _append_draft_node(
+                nodes,
+                seen_nodes,
+                name=item.get("name"),
+                unit_type=str(item.get("knowledge_unit_type") or item.get("type") or "concept"),
+                chapter_index=_safe_int(item.get("chapter_index")) or _safe_int(refinement.get("chapter_index")),
+                summary=item.get("summary") or item.get("name"),
+                source=str(item.get("source") or refinement.get("source") or "docgen_review_refinement"),
+                anchor=item.get("anchor") or "",
+                source_file_ids=list(item.get("source_file_ids") or []),
+                quote_text=item.get("quote_text") or "",
+            )
+        for item in list(refinement.get("edges") or []):
+            if not isinstance(item, Mapping):
+                continue
+            _append_draft_edge(
+                edges,
+                seen_edges,
+                source_name=item.get("source_name"),
+                target_name=item.get("target_name"),
+                edge_type=str(item.get("edge_type") or "related_to"),
+                description=item.get("description") or "",
+                chapter_index=_safe_int(item.get("chapter_index")) or _safe_int(refinement.get("chapter_index")),
+                source=str(item.get("source") or refinement.get("source") or "docgen_review_refinement"),
+                quote_text=item.get("quote_text") or "",
+            )
+
+    for fallback_index, chapter in enumerate(list(reviewed_chapters or []), start=1):
+        if isinstance(chapter, Mapping):
+            _append_markdown_heading_nodes(
+                nodes,
+                edges,
+                seen_nodes,
+                seen_edges,
+                chapter=chapter,
+                fallback_index=fallback_index,
+            )
+
+    payload_record_count = 0
+    for record in list(prefetched_records or []):
+        payload = getattr(record, "payload", None)
+        if payload is None:
+            continue
+        payload_record_count += 1
+        source_chapter_index = _safe_int(getattr(record, "source_chapter_index", 0))
+        for unit in list(getattr(payload, "units", []) or []):
+            _append_draft_node(
+                nodes,
+                seen_nodes,
+                name=getattr(unit, "name", ""),
+                unit_type=str(getattr(unit, "knowledge_unit_type", "concept") or "concept"),
+                chapter_index=_safe_int(getattr(unit, "chapter_index", 0)) or source_chapter_index,
+                summary=getattr(unit, "summary", "") or getattr(unit, "quote_text", ""),
+                source="kg_prefetch_llm",
+                anchor=getattr(unit, "anchor", ""),
+                source_file_ids=list(getattr(unit, "source_file_ids", []) or []),
+                quote_text=getattr(unit, "quote_text", ""),
+            )
+        for edge in list(getattr(payload, "pending_edges", []) or []):
+            _append_draft_edge(
+                edges,
+                seen_edges,
+                source_name=getattr(edge, "source_name", ""),
+                target_name=getattr(edge, "target_name", ""),
+                edge_type=str(getattr(edge, "edge_type", "related_to") or "related_to"),
+                description=getattr(edge, "description", ""),
+                chapter_index=_safe_int(getattr(edge, "chapter_index", 0)) or source_chapter_index,
+                source="kg_prefetch_llm",
+                quote_text=getattr(edge, "quote_text", ""),
+            )
+
+    nodes = _dedupe_docgen_draft_nodes_by_name(nodes)
+    metrics = dict(prefetch_metrics or {})
+    expected_chapter_indices = _expected_chapter_indices(
+        [chapter for chapter in list(reviewed_chapters or []) if isinstance(chapter, Mapping)]
+    )
+    chapter_count = len(expected_chapter_indices)
+    covered_chapter_indices = sorted(
+        {
+            int(item.get("chapter_index") or 0)
+            for item in nodes
+            if int(item.get("chapter_index") or 0) > 0
+        }
+    )
+    expected_chapter_set = set(expected_chapter_indices)
+    covered_chapter_count = (
+        len(expected_chapter_set & set(covered_chapter_indices))
+        if expected_chapter_set
+        else len(covered_chapter_indices)
+    )
+    chapter_coverage_ratio = (
+        round(min(1.0, covered_chapter_count / chapter_count), 4)
+        if chapter_count > 0
+        else 0.0
+    )
+    prefetch_ready = bool(int(metrics.get("prefetch_ready", 0) or 0))
+    quality_audit = _audit_docgen_kg_draft(
+        nodes=nodes,
+        edges=edges,
+        expected_chapter_indices=expected_chapter_indices,
+        covered_chapter_indices=covered_chapter_indices,
+        repair_warning_count=repair_warning_count,
+    )
+    fast_visible_ready = _docgen_kg_fast_visible_ready(
+        nodes=nodes,
+        edges=edges,
+        quality_audit=quality_audit,
+        repair_warning_count=repair_warning_count,
+    )
+    return {
+        "schema_version": 1,
+        "stage": stage,
+        "status": str(metrics.get("prefetch_status") or "draft").strip() or "draft",
+        "ready": prefetch_ready,
+        "quality_ready": bool(quality_audit.get("quality_ready")),
+        "quality_status": str(quality_audit.get("quality_status") or "needs_catchup"),
+        "quality_score": float(quality_audit.get("quality_score") or 0.0),
+        "fast_visible_ready": fast_visible_ready,
+        "needs_post_publish_catchup": not (prefetch_ready and fast_visible_ready),
+        "chapter_count": chapter_count,
+        "expected_chapter_indices": expected_chapter_indices,
+        "covered_chapter_count": covered_chapter_count,
+        "covered_chapter_indices": covered_chapter_indices,
+        "chapter_coverage_ratio": chapter_coverage_ratio,
+        "review_refinement_count": refinement_count,
+        "review_refinement_needs_repair_count": repair_warning_count,
+        "node_count": len(nodes),
+        "edge_count": len(edges),
+        "prefetch_section_count": int(metrics.get("prefetch_section_count", 0) or 0),
+        "prefetch_payload_section_count": payload_record_count,
+        "nodes": nodes,
+        "edges": edges,
+        "quality_audit": quality_audit,
+        "taxonomy": {
+            "node_type_labels": {item["knowledge_unit_type"]: item["knowledge_unit_type_label"] for item in nodes},
+            "edge_type_labels": {item["edge_type"]: item["edge_type_label"] for item in edges},
+        },
+    }
+
+
+def _docgen_kg_fast_visible_ready(
+    *,
+    nodes: Sequence[Mapping[str, Any]],
+    edges: Sequence[Mapping[str, Any]],
+    quality_audit: Mapping[str, Any],
+    repair_warning_count: int,
+) -> bool:
+    """A lighter gate for queryable preview graphs before final KG catch-up."""
+
+    if not nodes:
+        return False
+    if int(quality_audit.get("missing_chapter_count", 0) or 0) > 0:
+        return False
+    hard_issue_keys = (
+        "edge_endpoint_issue_count",
+        "edge_endpoint_ambiguity_count",
+        "relation_direction_issue_count",
+    )
+    if any(int(quality_audit.get(key, 0) or 0) > 0 for key in hard_issue_keys):
+        return False
+    if int(quality_audit.get("downstream_unit_count", 0) or 0) <= 0:
+        return False
+    if len(nodes) > 1:
+        if int(quality_audit.get("valid_relation_edge_count", 0) or 0) <= 0:
+            return False
+        if int(quality_audit.get("structure_edge_count", 0) or 0) <= 0:
+            return False
+    node_type_by_name = _draft_node_type_by_name(nodes)
+    return any(
+        validate_relation_direction(
+            edge_type=str(edge.get("edge_type") or ""),
+            source_type=node_type_by_name.get(_draft_name_key(edge.get("source_name")), ""),
+            target_type=node_type_by_name.get(_draft_name_key(edge.get("target_name")), ""),
+        )
+        for edge in edges
+    ) or len(nodes) == 1
+
+
+def _effective_kg_refinement_items(refinements: Sequence[Mapping[str, Any]]) -> list[Mapping[str, Any]]:
+    """Keep the latest per-chapter refinement so repair output supersedes review output."""
+
+    latest_by_chapter: dict[int, Mapping[str, Any]] = {}
+    global_items: list[Mapping[str, Any]] = []
+    for refinement in list(refinements or []):
+        if not isinstance(refinement, Mapping):
+            continue
+        chapter_index = _safe_int(refinement.get("chapter_index"))
+        if chapter_index > 0:
+            latest_by_chapter[chapter_index] = refinement
+        else:
+            global_items.append(refinement)
+    return [
+        *global_items,
+        *[
+            latest_by_chapter[index]
+            for index in sorted(latest_by_chapter)
+        ],
+    ]
+
+
 def build_user_profile_enhanced(
     *,
     docgen_context: DocGenContext,
@@ -405,14 +1237,33 @@ def build_user_profile_enhanced(
     """Expose profile context as an optional prompt supplement."""
 
     context = dict(docgen_context.learner_profile_context or {})
-    profile_text = str(context.get("profile_text") or docgen_context.learner_profile_text or "").strip()
+    user_profile = dict(context.get("user_profile") or {})
+    course_profile = dict(context.get("course_profile") or {})
+    user_profile_text = str(context.get("user_profile_text") or user_profile.get("profile_text") or "").strip()
+    course_profile_text = str(context.get("course_profile_text") or course_profile.get("profile_text") or "").strip()
+    persisted_profile_text = merge_unique_profile_texts(
+        str(context.get("profile_text") or "").strip(),
+        user_profile_text,
+        course_profile_text,
+    )
+    prompt_addendum = merge_unique_profile_texts(
+        docgen_context.learner_profile_text,
+        persisted_profile_text,
+    )
+    profile_text = prompt_addendum or persisted_profile_text
     return {
         "schema_version": 1,
         "has_profile": bool(profile_text),
+        "has_user_profile": bool(user_profile_text or user_profile),
+        "has_course_profile": bool(course_profile_text or course_profile),
         "profile_text": profile_text,
-        "prompt_addendum": profile_text,
-        "user_profile": dict(context.get("user_profile") or {}),
-        "course_profile": dict(context.get("course_profile") or {}),
+        "prompt_addendum": prompt_addendum,
+        "user_profile_text": user_profile_text,
+        "course_profile_text": course_profile_text,
+        "persisted_profile_text": persisted_profile_text,
+        "runtime_learner_profile_text": str(docgen_context.learner_profile_text or "").strip(),
+        "user_profile": user_profile,
+        "course_profile": course_profile,
     }
 
 
@@ -601,9 +1452,33 @@ def build_guideline(
     }
 
 
+def _task_attr(task: Any, key: str, default: Any = None) -> Any:
+    if isinstance(task, Mapping):
+        return task.get(key, default)
+    return getattr(task, key, default)
+
+
+def _task_title(task: Any) -> str:
+    enhanced = str(_task_attr(task, "enhanced_title", "") or "").strip()
+    confirmed = str(_task_attr(task, "confirmed_title", "") or "").strip()
+    return enhanced or confirmed
+
+
+def _task_max_research_rounds(task: Any) -> int:
+    budget_policy = _task_attr(task, "budget_policy", None)
+    if isinstance(budget_policy, Mapping):
+        value = budget_policy.get("max_research_rounds")
+    else:
+        value = getattr(budget_policy, "max_research_rounds", None)
+    try:
+        return max(1, int(value or 2))
+    except (TypeError, ValueError):
+        return 2
+
+
 def build_dispatch_table(
     *,
-    chapter_tasks: Sequence[ChapterGenerationTask],
+    chapter_tasks: Sequence[Any],
     guideline: Mapping[str, Any] | None = None,
     summary_enhanced: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -624,17 +1499,20 @@ def build_dispatch_table(
         "global_glossary_terms": glossary_terms,
         "items": [
             {
-                "chapter_index": task.chapter_index,
-                "title": task.enhanced_title or task.confirmed_title,
-                "source_file_ids": list(task.priority_file_ids),
-                "source_section_refs": list(task.priority_section_refs),
-                "source_slices": [_source_slice_payload(source_slice) for source_slice in task.source_slices[:16]],
-                "evidence_ids": evidence_map.get(task.chapter_index, []),
-                "preferred_sources": list(task.preferred_sources),
-                "retrieval_queries": list(task.retrieval_queries),
-                "claim_targets": list(task.claim_targets),
-                "confusion_targets": list(task.confusion_targets),
-                "max_research_rounds": task.budget_policy.max_research_rounds,
+                "chapter_index": _safe_int(_task_attr(task, "chapter_index")),
+                "title": _task_title(task),
+                "source_file_ids": clean_string_list(_task_attr(task, "priority_file_ids", []), limit=32),
+                "source_section_refs": clean_string_list(_task_attr(task, "priority_section_refs", []), limit=48),
+                "source_slices": [
+                    _source_slice_payload(source_slice)
+                    for source_slice in list(_task_attr(task, "source_slices", []) or [])[:16]
+                ],
+                "evidence_ids": evidence_map.get(_safe_int(_task_attr(task, "chapter_index")), []),
+                "preferred_sources": clean_string_list(_task_attr(task, "preferred_sources", []), limit=32),
+                "retrieval_queries": clean_string_list(_task_attr(task, "retrieval_queries", []), limit=24),
+                "claim_targets": clean_string_list(_task_attr(task, "claim_targets", []), limit=24),
+                "confusion_targets": clean_string_list(_task_attr(task, "confusion_targets", []), limit=24),
+                "max_research_rounds": _task_max_research_rounds(task),
             }
             for task in chapter_tasks
         ],
@@ -643,7 +1521,9 @@ def build_dispatch_table(
 
 __all__ = [
     "build_chapters_enhanced",
+    "build_chapter_kg_refinement_item",
     "build_dispatch_table",
+    "build_docgen_kg_draft",
     "build_guideline",
     "build_intent_enhanced",
     "build_preliminary_kg",

@@ -22,6 +22,30 @@ _DOWNSTREAM_UNIT_TYPES = {
     KnowledgeUnitType.SKILL.value,
     KnowledgeUnitType.MISCONCEPTION.value,
 }
+_DIAGNOSTIC_UNIT_TYPES = {
+    KnowledgeUnitType.SKILL.value,
+    KnowledgeUnitType.MISCONCEPTION.value,
+    KnowledgeUnitType.APPLICATION_CASE.value,
+}
+_STRUCTURE_EDGE_TYPES = {
+    "part_of",
+    "prerequisite_for",
+    "derives_to",
+    "applies_to",
+    "uses_method",
+    "assesses",
+    "explains",
+    "remediates",
+    "confuses_with",
+    "extends_to",
+}
+_EXAM_EDGE_TYPES = {
+    "assesses",
+    "applies_to",
+    "uses_method",
+    "remediates",
+    "confuses_with",
+}
 
 
 def _mapping_list(value: object) -> list[dict[str, Any]]:
@@ -64,6 +88,9 @@ def audit_knowledge_sync_payload(
     edge_endpoint_issue_count = 0
     relation_direction_issue_count = 0
     nonstandard_edge_type_count = 0
+    valid_relation_edge_count = 0
+    structure_edge_count = 0
+    exam_edge_count = 0
     for edge in edges:
         source = unit_by_anchor.get(edge.source_anchor)
         target = unit_by_anchor.get(edge.target_anchor)
@@ -79,12 +106,25 @@ def audit_knowledge_sync_payload(
             target_type=target.knowledge_unit_type,
         ):
             relation_direction_issue_count += 1
+            continue
+        valid_relation_edge_count += 1
+        if edge.edge_type in _STRUCTURE_EDGE_TYPES:
+            structure_edge_count += 1
+        if edge.edge_type in _EXAM_EDGE_TYPES:
+            exam_edge_count += 1
 
     nonstandard_unit_type_count = sum(
         1 for unit in units if not is_standard_knowledge_unit_type(unit.knowledge_unit_type)
     )
     downstream_unit_count = sum(
         1 for unit in units if unit.knowledge_unit_type in _DOWNSTREAM_UNIT_TYPES
+    )
+    diagnostic_unit_count = sum(
+        1 for unit in units if unit.knowledge_unit_type in _DIAGNOSTIC_UNIT_TYPES
+    )
+    examine_profile_ready = (
+        downstream_unit_count > 0
+        and (len(units) <= 1 or structure_edge_count > 0)
     )
     missing_chapter_count = len(expected_chapters - covered_chapters) if expected_chapters else 0
     chapter_coverage_pct = (
@@ -110,6 +150,13 @@ def audit_knowledge_sync_payload(
             "graph_audit_unit_count": len(units),
             "graph_audit_edge_count": len(edges),
             "graph_audit_downstream_unit_count": downstream_unit_count,
+            "graph_audit_exam_ready_unit_count": downstream_unit_count,
+            "graph_audit_profile_ready_unit_count": downstream_unit_count,
+            "graph_audit_diagnostic_unit_count": diagnostic_unit_count,
+            "graph_audit_valid_relation_edge_count": valid_relation_edge_count,
+            "graph_audit_structure_edge_count": structure_edge_count,
+            "graph_audit_exam_edge_count": exam_edge_count,
+            "graph_audit_examine_profile_ready": 1 if examine_profile_ready else 0,
             "graph_audit_expected_chapter_count": len(expected_chapters),
             "graph_audit_covered_chapter_count": len(expected_chapters & covered_chapters) if expected_chapters else len(covered_chapters),
             "graph_audit_missing_chapter_count": missing_chapter_count,

@@ -53,6 +53,8 @@ def load_docgen_learner_profile_context(
         "user_id": resolved_user_id,
         "has_profile": bool(learner_text),
         "profile_text": learner_text,
+        "user_profile_text": user_text,
+        "course_profile_text": course_text,
         "user_profile": user_payload,
         "course_profile": course_payload,
     }

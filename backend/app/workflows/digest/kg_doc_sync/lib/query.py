@@ -5,12 +5,18 @@ from __future__ import annotations
 import json
 from collections import defaultdict, deque
 
-from sqlmodel import Session, select
+from sqlmodel import Session, func, select
 
 from app.models.knowledge_doc import KnowledgeDocument
 from app.models.knowledge_relation import KnowledgeEdge
 from app.models.knowledge_graph_sync import KnowledgeGraphSourceRef, KnowledgeGraphSyncRun
-from app.models.knowledge_taxonomy import knowledge_unit_type_label, relation_type_label
+from app.models.knowledge_taxonomy import (
+    LEGACY_KNOWLEDGE_UNIT_TYPE_MAP,
+    knowledge_unit_type_label,
+    normalize_generated_knowledge_unit_type,
+    normalize_knowledge_unit_type,
+    relation_type_label,
+)
 from app.shared.infra.exceptions import (
     KnowledgeChunkNotFoundError,
     KnowledgeUnitNotFoundError,
@@ -36,13 +42,31 @@ from app.schemas.knowledge import (
     NodeRevisionItem,
 )
 
+_SUPPRESSED_GRAPH_NODE_TYPES = {"resource"}
+_SUPPRESSED_GRAPH_DB_NODE_TYPES = _SUPPRESSED_GRAPH_NODE_TYPES | {
+    legacy_type
+    for legacy_type, normalized_type in LEGACY_KNOWLEDGE_UNIT_TYPE_MAP.items()
+    if normalized_type in _SUPPRESSED_GRAPH_NODE_TYPES
+}
+
+
+def _display_knowledge_unit_type(knowledge_unit: KnowledgeUnit | None) -> str:
+    if knowledge_unit is None:
+        return "unknown"
+    return normalize_generated_knowledge_unit_type(
+        knowledge_unit.knowledge_unit_type,
+        name=knowledge_unit.canonical_name,
+        summary=knowledge_unit.summary or knowledge_unit.body or knowledge_unit.body_markdown,
+    )
+
 
 def _to_unit_response(knowledge_unit: KnowledgeUnit) -> KnowledgeUnitResponse:
+    display_type = _display_knowledge_unit_type(knowledge_unit)
     return KnowledgeUnitResponse(
         id=knowledge_unit.id,  # type: ignore[arg-type]
         course_id=knowledge_unit.course_id,
-        knowledge_unit_type=knowledge_unit.knowledge_unit_type,
-        knowledge_unit_type_label=knowledge_unit_type_label(knowledge_unit.knowledge_unit_type),
+        knowledge_unit_type=display_type,
+        knowledge_unit_type_label=knowledge_unit_type_label(display_type),
         canonical_name=knowledge_unit.canonical_name,
         status=knowledge_unit.status,
         confidence=knowledge_unit.confidence,
@@ -60,20 +84,86 @@ def _require_unit(session: Session, course_id: str, knowledge_unit_id: int) -> K
     return unit
 
 
+def _is_visible_graph_unit(unit: KnowledgeUnit) -> bool:
+    return (
+        unit.status == "active"
+        and normalize_knowledge_unit_type(unit.knowledge_unit_type) not in _SUPPRESSED_GRAPH_NODE_TYPES
+    )
+
+
+def _visible_graph_unit_filters(course_id: str):
+    normalized_type_expr = func.lower(func.coalesce(KnowledgeUnit.knowledge_unit_type, ""))
+    return [
+        KnowledgeUnit.course_id == course_id,
+        KnowledgeUnit.status == "active",
+        normalized_type_expr.not_in(_SUPPRESSED_GRAPH_DB_NODE_TYPES),
+    ]
+
+
+def _list_visible_graph_units(session: Session, *, course_id: str) -> list[KnowledgeUnit]:
+    return [
+        unit
+        for unit in session.exec(
+            select(KnowledgeUnit)
+            .where(*_visible_graph_unit_filters(course_id))
+            .order_by(KnowledgeUnit.id)
+        ).all()
+        if unit.id is not None and _is_visible_graph_unit(unit)
+    ]
+
+
+def get_visible_graph_counts(
+    session: Session,
+    *,
+    course_id: str,
+) -> tuple[int, int]:
+    """Return graph counts using the same visibility rules as graph queries."""
+
+    visible_unit_filters = _visible_graph_unit_filters(course_id)
+    node_count = int(session.exec(select(func.count(KnowledgeUnit.id)).where(*visible_unit_filters)).one() or 0)
+
+    visible_ids_subquery = select(KnowledgeUnit.id).where(*visible_unit_filters).subquery()
+    visible_ids = select(visible_ids_subquery.c.id)
+    edge_count = int(
+        session.exec(
+            select(func.count(KnowledgeEdge.id)).where(
+                KnowledgeEdge.course_id == course_id,
+                KnowledgeEdge.status == "active",
+                KnowledgeEdge.source_node_id.in_(visible_ids),
+                KnowledgeEdge.target_node_id.in_(visible_ids),
+            )
+        ).one()
+        or 0
+    )
+    return node_count, edge_count
+
+
+def _filter_edges_to_visible_units(edges: list[KnowledgeEdge], visible_unit_ids: set[int]) -> list[KnowledgeEdge]:
+    if not visible_unit_ids:
+        return []
+    return [
+        edge
+        for edge in edges
+        if int(edge.source_node_id or 0) in visible_unit_ids and int(edge.target_node_id or 0) in visible_unit_ids
+    ]
+
+
 def _to_relation_response(session: Session, edge) -> KnowledgeRelationResponse:
     source = session.get(KnowledgeUnit, edge.source_node_id)
     target = session.get(KnowledgeUnit, edge.target_node_id)
+    source_type = _display_knowledge_unit_type(source)
+    target_type = _display_knowledge_unit_type(target)
     return KnowledgeRelationResponse(
         id=edge.id,  # type: ignore[arg-type]
         course_id=edge.course_id,
         source_node_id=edge.source_node_id,
         source_node_name=source.canonical_name if source else f"node#{edge.source_node_id}",
-        source_node_type=source.knowledge_unit_type if source else "unknown",
-        source_node_type_label=knowledge_unit_type_label(source.knowledge_unit_type if source else None),
+        source_node_type=source_type,
+        source_node_type_label=knowledge_unit_type_label(source_type),
         target_node_id=edge.target_node_id,
         target_node_name=target.canonical_name if target else f"node#{edge.target_node_id}",
-        target_node_type=target.knowledge_unit_type if target else "unknown",
-        target_node_type_label=knowledge_unit_type_label(target.knowledge_unit_type if target else None),
+        target_node_type=target_type,
+        target_node_type_label=knowledge_unit_type_label(target_type),
         edge_type=edge.edge_type,
         edge_type_label=relation_type_label(edge.edge_type),
         description=edge.description,
@@ -108,17 +198,19 @@ def _to_relation_response_with_units(
 ) -> KnowledgeRelationResponse:
     source = unit_by_id.get(int(edge.source_node_id or 0))
     target = unit_by_id.get(int(edge.target_node_id or 0))
+    source_type = _display_knowledge_unit_type(source)
+    target_type = _display_knowledge_unit_type(target)
     return KnowledgeRelationResponse(
         id=edge.id,  # type: ignore[arg-type]
         course_id=edge.course_id,
         source_node_id=edge.source_node_id,
         source_node_name=source.canonical_name if source else f"node#{edge.source_node_id}",
-        source_node_type=source.knowledge_unit_type if source else "unknown",
-        source_node_type_label=knowledge_unit_type_label(source.knowledge_unit_type if source else None),
+        source_node_type=source_type,
+        source_node_type_label=knowledge_unit_type_label(source_type),
         target_node_id=edge.target_node_id,
         target_node_name=target.canonical_name if target else f"node#{edge.target_node_id}",
-        target_node_type=target.knowledge_unit_type if target else "unknown",
-        target_node_type_label=knowledge_unit_type_label(target.knowledge_unit_type if target else None),
+        target_node_type=target_type,
+        target_node_type_label=knowledge_unit_type_label(target_type),
         edge_type=edge.edge_type,
         edge_type_label=relation_type_label(edge.edge_type),
         description=edge.description,
@@ -204,13 +296,22 @@ def get_knowledge_units(
     size: int = 20,
 ) -> PaginatedData[KnowledgeUnitResponse]:
     offset = (page - 1) * size
-    knowledge_units, total = knowledge_unit_repo.list_knowledge_units_by_course(
-        session,
-        course_id,
-        knowledge_unit_type=knowledge_unit_type,
-        limit=size,
-        offset=offset,
+    normalized_type = normalize_knowledge_unit_type(knowledge_unit_type) if knowledge_unit_type else None
+    if normalized_type in _SUPPRESSED_GRAPH_NODE_TYPES:
+        return build_paginated_data(items=[], page=page, size=size, total=0)
+
+    filters = [*_visible_graph_unit_filters(course_id)]
+    all_units = list(
+        session.exec(
+            select(KnowledgeUnit)
+            .where(*filters)
+            .order_by(KnowledgeUnit.id)
+        ).all()
     )
+    if normalized_type is not None:
+        all_units = [unit for unit in all_units if _display_knowledge_unit_type(unit) == normalized_type]
+    total = len(all_units)
+    knowledge_units = all_units[offset: offset + size]
     items = [_to_unit_response(knowledge_unit) for knowledge_unit in knowledge_units]
     return build_paginated_data(items=items, page=page, size=size, total=total)
 
@@ -226,7 +327,7 @@ def get_knowledge_unit_detail(
         raise KnowledgeUnitNotFoundError(knowledge_unit_id)
 
     node, revision = result
-    if node.course_id != course_id:
+    if node.course_id != course_id or not _is_visible_graph_unit(node):
         raise KnowledgeUnitNotFoundError(knowledge_unit_id)
 
     current_rev = NodeRevisionItem(
@@ -265,6 +366,8 @@ def get_knowledge_unit_detail(
     edges_raw = knowledge_relation_repo.list_edges_by_knowledge_unit(session, knowledge_unit_id)
     incident_edges: list[IncidentEdgeItem] = []
     for edge in edges_raw:
+        if edge.course_id != course_id:
+            continue
         if edge.source_node_id == knowledge_unit_id:
             other_id = edge.target_node_id
             direction = "outgoing"
@@ -273,8 +376,10 @@ def get_knowledge_unit_detail(
             direction = "incoming"
 
         other_node = session.get(KnowledgeUnit, other_id)
-        other_name = other_node.canonical_name if other_node else f"node#{other_id}"
-        other_type = other_node.knowledge_unit_type if other_node else "unknown"
+        if other_node is None or not _is_visible_graph_unit(other_node):
+            continue
+        other_name = other_node.canonical_name
+        other_type = _display_knowledge_unit_type(other_node)
         incident_edges.append(
             IncidentEdgeItem(
                 id=edge.id,  # type: ignore[arg-type]
@@ -289,11 +394,12 @@ def get_knowledge_unit_detail(
             )
         )
 
+    display_type = _display_knowledge_unit_type(node)
     return KnowledgeUnitDetailResponse(
         id=node.id,  # type: ignore[arg-type]
         course_id=node.course_id,
-        knowledge_unit_type=node.knowledge_unit_type,
-        knowledge_unit_type_label=knowledge_unit_type_label(node.knowledge_unit_type),
+        knowledge_unit_type=display_type,
+        knowledge_unit_type_label=knowledge_unit_type_label(display_type),
         canonical_name=node.canonical_name,
         normalized_name=node.normalized_name,
         status=node.status,
@@ -320,14 +426,12 @@ def get_full_graph(
     *,
     course_id: str,
 ) -> FullGraphResponse:
-    nodes_raw = list(
-        session.exec(
-            select(KnowledgeUnit)
-            .where(KnowledgeUnit.course_id == course_id, KnowledgeUnit.status == "active")
-            .order_by(KnowledgeUnit.id)
-        ).all()
+    nodes_raw = _list_visible_graph_units(session, course_id=course_id)
+    visible_node_ids = {int(node.id) for node in nodes_raw if node.id is not None}
+    edges_raw = _filter_edges_to_visible_units(
+        knowledge_relation_repo.list_all_edges_by_course(session, course_id),
+        visible_node_ids,
     )
-    edges_raw = knowledge_relation_repo.list_all_edges_by_course(session, course_id)
 
     nodes = [_to_unit_response(node) for node in nodes_raw]
     edges = [
@@ -353,7 +457,9 @@ def get_knowledge_unit_relations(
     direction: str = "both",
     edge_type: str | None = None,
 ) -> list[KnowledgeRelationResponse]:
-    _require_unit(session, course_id, knowledge_unit_id)
+    unit = _require_unit(session, course_id, knowledge_unit_id)
+    if not _is_visible_graph_unit(unit):
+        raise KnowledgeUnitNotFoundError(knowledge_unit_id)
     edges = knowledge_relation_repo.list_edges_by_knowledge_unit(session, knowledge_unit_id)
     filtered = []
     for edge in edges:
@@ -365,7 +471,11 @@ def get_knowledge_unit_relations(
             continue
         if direction == "outgoing" and edge.source_node_id != knowledge_unit_id:
             continue
-        filtered.append(_to_relation_response(session, edge))
+        source = session.get(KnowledgeUnit, edge.source_node_id)
+        target = session.get(KnowledgeUnit, edge.target_node_id)
+        if source is None or target is None or not _is_visible_graph_unit(source) or not _is_visible_graph_unit(target):
+            continue
+        filtered.append(_to_relation_response_with_units(edge, {int(source.id or 0): source, int(target.id or 0): target}))
     return filtered
 
 
@@ -378,15 +488,20 @@ def find_knowledge_path(
     edge_type: str | None = None,
     max_depth: int = 4,
 ) -> KnowledgePathResponse:
-    _require_unit(session, course_id, source_knowledge_unit_id)
-    _require_unit(session, course_id, target_knowledge_unit_id)
+    source_unit = _require_unit(session, course_id, source_knowledge_unit_id)
+    target_unit = _require_unit(session, course_id, target_knowledge_unit_id)
+    if not _is_visible_graph_unit(source_unit) or not _is_visible_graph_unit(target_unit):
+        return KnowledgePathResponse(found=False)
     if source_knowledge_unit_id == target_knowledge_unit_id:
-        unit = _require_unit(session, course_id, source_knowledge_unit_id)
-        return KnowledgePathResponse(found=True, nodes=[_to_unit_response(unit)], edges=[])
+        return KnowledgePathResponse(found=True, nodes=[_to_unit_response(source_unit)], edges=[])
 
+    visible_node_ids = {int(unit.id) for unit in _list_visible_graph_units(session, course_id=course_id)}
     edges = [
         edge
-        for edge in knowledge_relation_repo.list_all_edges_by_course(session, course_id)
+        for edge in _filter_edges_to_visible_units(
+            knowledge_relation_repo.list_all_edges_by_course(session, course_id),
+            visible_node_ids,
+        )
         if edge_type is None or edge.edge_type == edge_type
     ]
     adjacency: dict[int, list[object]] = {}
@@ -439,11 +554,19 @@ def get_focus_subgraph(
 ) -> KnowledgeSubgraphResponse:
     node_limit = max(1, limit)
     edge_limit = max(node_limit * 3, node_limit)
+    visible_units = _list_visible_graph_units(session, course_id=course_id)
+    visible_unit_by_id = {int(unit.id): unit for unit in visible_units if unit.id is not None}
+    visible_unit_ids = set(visible_unit_by_id)
     center_ids: set[int] = set()
     if center_knowledge_unit_id is not None:
-        _require_unit(session, course_id, center_knowledge_unit_id)
+        center_unit = _require_unit(session, course_id, center_knowledge_unit_id)
+        if not _is_visible_graph_unit(center_unit):
+            return KnowledgeSubgraphResponse(nodes=[], edges=[], center_knowledge_unit_id=center_knowledge_unit_id)
         center_ids.add(center_knowledge_unit_id)
-    all_edges = knowledge_relation_repo.list_all_edges_by_course(session, course_id)
+    all_edges = _filter_edges_to_visible_units(
+        knowledge_relation_repo.list_all_edges_by_course(session, course_id),
+        visible_unit_ids,
+    )
     if edge_type:
         all_edges = [edge for edge in all_edges if edge.edge_type == edge_type]
     degree: dict[int, int] = defaultdict(int)
@@ -460,34 +583,20 @@ def get_focus_subgraph(
 
     if topic:
         topic_text = topic.casefold()
-        units, _ = knowledge_unit_repo.list_knowledge_units_by_course(
-            session,
-            course_id,
-            status="active",
-            limit=node_limit,
-            offset=0,
-        )
         center_ids.update(
-            unit.id
-            for unit in units
+            int(unit.id)
+            for unit in visible_units
             if unit.id is not None
             and (
                 topic_text in unit.canonical_name.casefold()
                 or topic_text in unit.summary.casefold()
-                or topic_text in unit.knowledge_unit_type.casefold()
+                or topic_text in _display_knowledge_unit_type(unit).casefold()
             )
         )
 
     if not center_ids:
-        units, _ = knowledge_unit_repo.list_knowledge_units_by_course(
-            session,
-            course_id,
-            status="active",
-            limit=max(node_limit * 3, node_limit),
-            offset=0,
-        )
         ordered_units = sorted(
-            units,
+            visible_units,
             key=lambda unit: (-degree.get(int(unit.id or 0), 0), int(unit.id or 0)),
         )
         selected_order: list[int] = []
@@ -511,7 +620,7 @@ def get_focus_subgraph(
             if len(selected_order) >= node_limit:
                 break
         if not selected_ids:
-            selected_order = [int(unit.id) for unit in units[:node_limit] if unit.id is not None]
+            selected_order = [int(unit.id) for unit in visible_units[:node_limit] if unit.id is not None]
             selected_ids = set(selected_order)
         node_ids = set(selected_order[:node_limit])
         unit_by_id = _load_units_by_ids(session, course_id=course_id, unit_ids=node_ids)
@@ -634,4 +743,5 @@ __all__ = [
     "get_knowledge_unit_detail",
     "get_knowledge_unit_relations",
     "get_knowledge_units",
+    "get_visible_graph_counts",
 ]

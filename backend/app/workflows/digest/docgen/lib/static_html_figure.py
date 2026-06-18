@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
+from pydantic import BaseModel, Field, field_validator
 import structlog
 
 from app.shared.infra.execution import TracedExecutionContext
@@ -15,20 +16,23 @@ from app.shared.infra.tools.builtin.markdown_processing import validate_single_f
 from app.utils.path_helpers import sanitize_doc_title
 from app.workflows.digest.docgen.lib.figure_spec import (
     FigureSpec,
-    FigureType,
-    build_fallback_figure_spec,
-    is_renderable_problem_diagram,
+    assess_static_figure_layout,
+    is_renderable_static_figure,
     normalize_figure_spec,
     render_figure_spec_html,
 )
 from app.workflows.digest.docgen.lib.html_sidecar import normalize_single_file_html
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.models import ChapterDraft, ClaimLedger
-from app.workflows.digest.docgen.prompts.static_html_figure import build_static_html_figure_messages
+from app.workflows.digest.docgen.prompts.static_html_figure import (
+    build_static_html_figure_messages,
+    build_static_html_figure_selection_messages,
+)
 
 logger = structlog.get_logger(__name__)
 
 _ANY_HEADING_RE = re.compile(r"^(?P<marks>#{1,6})\s+(?P<title>.+?)\s*$", re.MULTILINE)
+
 
 @dataclass(frozen=True)
 class _StaticFigureCandidate:
@@ -38,9 +42,29 @@ class _StaticFigureCandidate:
     level: int
     context: str
     insert_at: int
-    score: int
     goal: str
-    figure_type: FigureType
+    figure_type: str
+    visual_kind: str = "static_svg"
+    example_seed: str = ""
+    selection_reason: str = ""
+
+
+class _StaticFigureSelectionItem(BaseModel):
+    index: int = 0
+    figure_goal: str = ""
+    figure_type: str = "problem_diagram"
+    visual_kind: str = "static_svg"
+    example_seed: str = ""
+    reason: str = ""
+
+    @field_validator("figure_goal", "figure_type", "visual_kind", "example_seed", "reason", mode="before")
+    @classmethod
+    def _text(cls, value: object) -> str:
+        return re.sub(r"\s+", " ", str(value or "")).strip()[:220]
+
+
+class _StaticFigureSelection(BaseModel):
+    selected: list[_StaticFigureSelectionItem] = Field(default_factory=list)
 
 
 def _plain_heading_text(raw: str) -> str:
@@ -81,48 +105,6 @@ def _section_end_for_heading(
     return markdown_len
 
 
-def _score_static_figure_signal(title: str, context: str) -> tuple[int, str, FigureType]:
-    text = f"{title}\n{context}".lower()
-    score = 0
-    reasons: list[str] = []
-    figure_type: FigureType = "problem_diagram"
-
-    def add(points: int, reason: str) -> None:
-        nonlocal score, figure_type
-        score += points
-        reasons.append(reason)
-        figure_type = "problem_diagram"
-
-    has_problem_signal = bool(
-        re.search(
-            r"图示|如下图|如图|画出|示意|题图|坐标|曲线|图像|图象|抛物线|几何|三角|圆|椭圆|斜面|地图|结构|模型|装置|区域|轴|路径|方向|向量|矢量|电路|受力|力图|示波|流程图|树状图|网络图",
-            text,
-        )
-    )
-    has_quantitative_signal = bool(
-        re.search(r"力|合力|分力|力矩|力偶|约束|速度|加速度|电场|磁场|函数|坐标|概率|统计|供给|需求|曲线|成本|收益|面积|体积|角度|距离|半径|焦点|边长|高度|电压|电流", text)
-    )
-    if has_problem_signal:
-        add(4, "包含题图、坐标、结构或空间关系")
-    if has_problem_signal and has_quantitative_signal:
-        add(2, "图示与变量或数量关系需要对应标注")
-    if has_problem_signal and re.search(r"=|\\frac|\\sum|\\sqrt|表达式|方程|函数|导数|切线|斜率|曲线|坐标|图像|图象|抛物线", text):
-        add(2, "表达式或函数关系可落到坐标、曲线或标注图")
-
-    if len(context) < 180 and not (
-        (has_problem_signal and has_quantitative_signal)
-        or has_problem_signal
-    ):
-        score -= 2
-    if len(re.findall(r"[-*]\s+|^\s*\d+[).、]", context, flags=re.MULTILINE)) >= 3:
-        score += 1 if has_problem_signal else 0
-    score = max(0, min(10, score))
-    if score < 6:
-        return score, "", figure_type
-    goal = "；".join(reasons[:3]) or "把正文里的关键关系画成讲义辅助图。"
-    return score, goal, figure_type
-
-
 def _iter_static_figure_candidates(markdown: str, *, fallback_title: str) -> list[_StaticFigureCandidate]:
     text = str(markdown or "")
     headings = list(_ANY_HEADING_RE.finditer(text))
@@ -140,7 +122,6 @@ def _iter_static_figure_candidates(markdown: str, *, fallback_title: str) -> lis
         end = _section_end_for_heading(headings, heading_index, len(text))
         body = text[heading.end() : end].strip()
         context = f"{title}\n\n{body[:2200].rstrip()}".strip()
-        score, goal, figure_type = _score_static_figure_signal(title, context)
         candidates.append(
             _StaticFigureCandidate(
                 index=len(candidates) + 1,
@@ -149,9 +130,8 @@ def _iter_static_figure_candidates(markdown: str, *, fallback_title: str) -> lis
                 level=level,
                 context=context,
                 insert_at=end,
-                score=score,
-                goal=goal,
-                figure_type=figure_type,
+                goal="",
+                figure_type="problem_diagram",
             )
         )
 
@@ -162,7 +142,6 @@ def _iter_static_figure_candidates(markdown: str, *, fallback_title: str) -> lis
     fallback_heading = _plain_heading_text(fallback_title)
     if not fallback_context or not fallback_heading:
         return []
-    score, goal, figure_type = _score_static_figure_signal(fallback_title, fallback_context)
     return [
         _StaticFigureCandidate(
             index=1,
@@ -171,32 +150,164 @@ def _iter_static_figure_candidates(markdown: str, *, fallback_title: str) -> lis
             level=1,
             context=fallback_context,
             insert_at=len(text),
-            score=score,
-            goal=goal,
-            figure_type=figure_type,
+            goal="",
+            figure_type="problem_diagram",
         )
     ]
 
 
-def _select_static_figure_candidates(
+def _static_figure_candidate_pool(
     markdown: str,
     *,
     fallback_title: str,
-    max_assets: int = 1,
+    max_candidates: int = 12,
 ) -> list[_StaticFigureCandidate]:
     candidates = _iter_static_figure_candidates(markdown, fallback_title=fallback_title)
-    qualified = [item for item in candidates if item.score >= 6]
-    if not qualified:
+    if not candidates:
+        return []
+    return candidates[: max(1, max_candidates)]
+
+
+async def _select_static_figure_candidates(
+    candidates: list[_StaticFigureCandidate],
+    *,
+    draft: ChapterDraft,
+    traced_context: TracedExecutionContext,
+    digest_mode: str,
+    max_assets: int,
+) -> list[_StaticFigureCandidate]:
+    if not candidates:
         return []
 
+    candidate_payload = [
+        {
+            "index": item.index,
+            "title": item.title,
+            "context": item.context[:900],
+        }
+        for item in candidates
+    ]
+    try:
+        response = await acompletion_with_fallback(
+            build_static_html_figure_selection_messages(
+                chapter_title=draft.title,
+                digest_mode=digest_mode,
+                candidates=candidate_payload,
+                max_assets=max(1, max_assets),
+            ),
+            response_model=_StaticFigureSelection,
+            **docgen_completion_kwargs_with_metadata(
+                DocGenModelStep.STATIC_HTML_FIGURE,
+                digest_mode=digest_mode,
+                extra_metadata=traced_context.trace_metadata(
+                    docgen_stage="static_html_figure_selection",
+                    asset_kind="static_html_figure",
+                    chapter_index=draft.chapter_index,
+                    candidate_count=len(candidates),
+                ),
+            ),
+        )
+    except Exception as exc:
+        logger.warning(
+            "docgen_static_html_figure_selection_failed",
+            chapter_index=draft.chapter_index,
+            chapter_title=draft.title,
+            error=str(exc)[:240],
+        )
+        return []
+
+    try:
+        selection = (
+            response
+            if isinstance(response, _StaticFigureSelection)
+            else _StaticFigureSelection.model_validate(response)
+        )
+    except Exception as exc:
+        logger.warning(
+            "docgen_static_html_figure_selection_invalid",
+            chapter_index=draft.chapter_index,
+            chapter_title=draft.title,
+            error=str(exc)[:240],
+        )
+        return []
+    by_index = {item.index: item for item in candidates}
     selected: list[_StaticFigureCandidate] = []
-    for item in sorted(qualified, key=lambda candidate: (-candidate.score, candidate.insert_at)):
-        if any(abs(item.insert_at - existing.insert_at) < 160 for existing in selected):
+    seen: set[int] = set()
+    for item in selection.selected:
+        if item.index in seen:
             continue
-        selected.append(item)
+        visual_kind = (item.visual_kind or "static_svg").strip().lower()
+        if visual_kind not in {"static_svg", "svg", "problem_diagram"}:
+            logger.info(
+                "docgen_static_html_figure_selection_skipped_non_static_intent",
+                chapter_index=draft.chapter_index,
+                chapter_title=draft.title,
+                selected_index=item.index,
+                visual_kind=visual_kind,
+                reason=item.reason,
+            )
+            continue
+        candidate = by_index.get(item.index)
+        if candidate is None:
+            continue
+        seen.add(item.index)
+        selected.append(
+            replace(
+                candidate,
+                goal=item.figure_goal or item.reason or "模型判断该片段需要静态教学示意图。",
+                figure_type=item.figure_type or "problem_diagram",
+                visual_kind="static_svg",
+                example_seed=item.example_seed,
+                selection_reason=item.reason,
+            )
+        )
         if len(selected) >= max(1, max_assets):
             break
-    return sorted(selected, key=lambda candidate: candidate.insert_at)
+    return selected
+
+
+def _compact_visual_text(value: str) -> str:
+    return re.sub(r"\s+", "", str(value or "")).casefold()
+
+
+def _coordinate_bucket(value: float) -> int:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        parsed = 50.0
+    return int(round(parsed / 8.0) * 8)
+
+
+def _figure_spec_visual_signature(spec: FigureSpec) -> str:
+    """Return a stable visual signature used to skip repeated sidecar figures."""
+
+    parts: list[str] = [str(spec.type)]
+    for item in spec.elements[:18]:
+        label = _compact_visual_text(item.label or item.text)
+        if item.kind == "shape":
+            node_key = _compact_visual_text(item.id or item.label)
+            parts.append(f"shape:{item.shape_type}:{node_key}:{label}")
+            continue
+        if item.kind in {"line", "vector"}:
+            start = _compact_visual_text(item.from_id)
+            end = _compact_visual_text(item.to_id)
+            if start or end:
+                parts.append(f"{item.kind}:{start}->{end}:{label}")
+            else:
+                parts.append(
+                    f"{item.kind}:{_coordinate_bucket(item.x)},{_coordinate_bucket(item.y)}"
+                    f"->{_coordinate_bucket(item.x2)},{_coordinate_bucket(item.y2)}:{label}"
+                )
+            continue
+        if item.kind in {"axis", "curve", "point"}:
+            parts.append(
+                f"{item.kind}:{_coordinate_bucket(item.x)},{_coordinate_bucket(item.y)}"
+                f":{_coordinate_bucket(item.x2)},{_coordinate_bucket(item.y2)}:{label}"
+            )
+            continue
+        if label:
+            parts.append(f"{item.kind}:{label}")
+    return "|".join(part for part in parts if part)
 
 
 async def generate_static_html_figure_assets(
@@ -207,10 +318,19 @@ async def generate_static_html_figure_assets(
     markdown: str,
     claim_ledger: ClaimLedger | None = None,
     max_assets: int = 1,
+    used_visual_signatures: set[str] | None = None,
 ) -> list[dict[str, object]]:
-    candidates = _select_static_figure_candidates(
+    candidate_pool = _static_figure_candidate_pool(
         markdown,
         fallback_title=draft.title,
+    )
+    if not candidate_pool:
+        return []
+    candidates = await _select_static_figure_candidates(
+        candidate_pool,
+        draft=draft,
+        traced_context=traced_context,
+        digest_mode=digest_mode,
         max_assets=max_assets,
     )
     if not candidates:
@@ -221,45 +341,26 @@ async def generate_static_html_figure_assets(
         for item in list((claim_ledger or ClaimLedger()).items or [])
         if item.claim_text
     ][:4]
+    stored_visual_signatures = used_visual_signatures if used_visual_signatures is not None else set()
 
     async def _generate_one(candidate: _StaticFigureCandidate) -> dict[str, object] | None:
         figure_title = f"{candidate.title} 图示"
         context = "\n".join([candidate.context, *claim_targets]).strip()
         spec_validation: dict[str, object] = {}
 
-        def _fallback_spec(reason: str) -> FigureSpec:
-            fallback = build_fallback_figure_spec(
-                title=figure_title,
-                figure_type="problem_diagram",
-                context=context,
-                goal=candidate.goal,
-            )
-            normalized, validation = normalize_figure_spec(
-                fallback,
-                fallback_title=figure_title,
-                context=context,
-                allow_fallback_elements=False,
-            )
-            spec_validation["fallback_validation"] = validation
-            warnings = list(spec_validation.get("warnings") or [])
-            warnings.append(reason)
-            spec_validation["warnings"] = warnings
-            return normalized
-
         def _normalize_model_spec(raw_spec: FigureSpec) -> FigureSpec:
-            forced = raw_spec.model_copy(update={"type": "problem_diagram"})
             normalized, validation = normalize_figure_spec(
-                forced,
+                raw_spec,
                 fallback_title=figure_title,
                 context=context,
                 allow_fallback_elements=False,
             )
             spec_validation.update(validation)
-            if is_renderable_problem_diagram(normalized):
+            if is_renderable_static_figure(normalized):
                 return normalized
-            fallback = _fallback_spec("fallback_problem_diagram_used")
-            if is_renderable_problem_diagram(fallback):
-                return fallback
+            warnings = list(spec_validation.get("warnings") or [])
+            warnings.append("model_returned_nonvisual_or_unsafe_figure")
+            spec_validation["warnings"] = warnings
             logger.warning(
                 "docgen_static_html_figure_skipped_after_nonvisual_spec",
                 chapter_index=draft.chapter_index,
@@ -271,7 +372,19 @@ async def generate_static_html_figure_assets(
             return normalized
 
         async def _store_spec(spec: FigureSpec) -> dict[str, object] | None:
-            if not is_renderable_problem_diagram(spec):
+            if not is_renderable_static_figure(spec):
+                return None
+            layout_report = assess_static_figure_layout(spec)
+            spec_validation["layout_quality"] = layout_report
+            if not layout_report.get("ok"):
+                logger.warning(
+                    "docgen_static_html_figure_skipped_after_layout_audit",
+                    chapter_index=draft.chapter_index,
+                    chapter_title=draft.title,
+                    section_title=candidate.title,
+                    layout_issues=layout_report.get("issues"),
+                    layout_metrics=layout_report.get("metrics"),
+                )
                 return None
             html = render_figure_spec_html(spec, title=figure_title)
             cleaned_html = _sanitize_static_html(str(html), title=figure_title)
@@ -285,6 +398,18 @@ async def generate_static_html_figure_assets(
                     validation_issues=validation_issues,
                 )
                 return None
+
+            visual_signature = _figure_spec_visual_signature(spec)
+            spec_validation["visual_signature"] = visual_signature[:240]
+            if visual_signature in stored_visual_signatures:
+                logger.warning(
+                    "docgen_static_html_figure_skipped_after_duplicate_signature",
+                    chapter_index=draft.chapter_index,
+                    chapter_title=draft.title,
+                    section_title=candidate.title,
+                )
+                return None
+            stored_visual_signatures.add(visual_signature)
 
             cs = get_content_store()
             course_scope = resolve_course_storage_scope(traced_context.course_id)
@@ -316,6 +441,7 @@ async def generate_static_html_figure_assets(
                 "open_mode": "inline_static",
                 "link_markdown": f"[图示：{candidate.title}]({preview_url})",
                 "validation_issues": validation_issues,
+                "visual_kind": candidate.visual_kind,
                 "figure_type": spec.type,
                 "figure_spec": spec.model_dump(mode="json"),
                 "validation_report": spec_validation,
@@ -327,6 +453,7 @@ async def generate_static_html_figure_assets(
                     figure_title=figure_title,
                     figure_goal=candidate.goal,
                     figure_type=candidate.figure_type,
+                    example_seed=candidate.example_seed,
                     digest_mode=digest_mode,
                     section_context=context,
                 ),
@@ -346,6 +473,9 @@ async def generate_static_html_figure_assets(
             raw_spec = response if isinstance(response, FigureSpec) else FigureSpec.model_validate(response)
             return await _store_spec(_normalize_model_spec(raw_spec))
         except Exception as exc:
+            warnings = list(spec_validation.get("warnings") or [])
+            warnings.append("model_error_no_fallback_figure")
+            spec_validation["warnings"] = warnings
             logger.warning(
                 "docgen_static_html_figure_skipped_after_error",
                 chapter_index=draft.chapter_index,
@@ -353,13 +483,13 @@ async def generate_static_html_figure_assets(
                 section_title=candidate.title,
                 error=str(exc)[:240],
             )
-            return await _store_spec(_fallback_spec("fallback_after_model_error"))
+            return None
 
     results = await run_llm_tasks(
         candidates,
         _generate_one,
     )
-    return [item for item in results if item is not None]
+    return [item for item in results if item is not None][: max(1, max_assets)]
 
 
 __all__ = ["generate_static_html_figure_assets"]

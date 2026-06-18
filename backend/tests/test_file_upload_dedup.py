@@ -12,6 +12,7 @@ from sqlmodel import Session, SQLModel, create_engine, select
 from app.models import RawFile, Course, CourseFileLink, IngestStatus, TaskStatus, User
 from app.repositories.files_repo import list_raw_files_by_user
 from app.shared.infra.exceptions import FileCountLimitError, FileTooLargeError, UnsupportedFileTypeError
+from app.shared.infra.settings import DEFAULT_INGEST_MAX_UPLOAD_SIZE_MB
 from app.shared.infra.storage.course_scope import build_user_file_storage_scope
 from app.workflows.ingest.intake import catalog, uploads
 from app.workflows.ingest.intake.parse_dispatch import ready_file_ids_for_course_indexing
@@ -111,6 +112,7 @@ def test_upload_batch_rejects_more_than_max_files(monkeypatch) -> None:
 
 def test_upload_batch_rejects_total_size_over_limit(monkeypatch) -> None:
     fake_store = _install_fake_store(monkeypatch)
+    max_total_bytes = DEFAULT_INGEST_MAX_UPLOAD_SIZE_MB * 1024 * 1024
     with _session() as session:
         with pytest.raises(FileTooLargeError):
             asyncio.run(
@@ -118,8 +120,8 @@ def test_upload_batch_rejects_total_size_over_limit(monkeypatch) -> None:
                     session,
                     owner_user_id="user_a",
                     files=[
-                        _upload("part-a.txt", b"a" * (6 * 1024 * 1024)),
-                        _upload("part-b.txt", b"b" * (5 * 1024 * 1024)),
+                        _upload("part-a.txt", b"a" * (max_total_bytes // 2)),
+                        _upload("part-b.txt", b"b" * ((max_total_bytes // 2) + 1)),
                     ],
                 )
             )

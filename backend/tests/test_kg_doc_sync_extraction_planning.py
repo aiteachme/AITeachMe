@@ -295,7 +295,7 @@ def test_legacy_support_edge_type_is_normalized_before_literal_validation() -> N
     )
 
     assert result.nodes[0].knowledge_unit_type == "procedure"
-    assert result.nodes[1].knowledge_unit_type == "resource"
+    assert result.nodes[1].knowledge_unit_type == "misconception"
     assert result.edges[0].edge_type == "explains"
 
 
@@ -440,6 +440,40 @@ def test_preliminary_kg_creates_rule_seed_units_and_edges() -> None:
     assert edges[0].target_name == "矩阵基础"
     assert edges[0].edge_type == "part_of"
     assert edges[0].source_kind == "docgen_preliminary_kg"
+
+
+def test_docgen_kg_draft_takes_precedence_over_preliminary_kg() -> None:
+    structured_context = {
+        "docgen_manifest": {
+            "preliminary_kg": {
+                "nodes": [
+                    {"name": "粗略节点", "knowledge_unit_type": "concept", "chapter_index": 1},
+                ],
+            },
+            "docgen_kg_draft": {
+                "nodes": [
+                    {
+                        "name": "细化节点",
+                        "knowledge_unit_type": "skill",
+                        "chapter_index": 1,
+                        "summary": "来自发布前图谱草稿。",
+                        "source": "kg_prefetch_llm",
+                    },
+                ],
+            },
+        }
+    }
+
+    units, edges = _build_backbone_graph_items(
+        structured_context=structured_context,
+        chapter_contexts={1: ChapterSourceContext(knowledge_document_id=10, chapter_index=1, source_file_ids=["file-a"])},
+        existing_normalized_names=set(),
+    )
+
+    assert edges == []
+    assert [unit.name for unit in units] == ["细化节点"]
+    assert units[0].knowledge_unit_type == "skill"
+    assert units[0].source_kind == "kg_prefetch_llm"
 
 
 def test_chunk_extraction_result_caps_candidate_counts() -> None:

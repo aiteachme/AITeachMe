@@ -6,9 +6,21 @@ import pytest
 
 from app.workflows.digest.kg_doc_sync.lib import extraction
 from app.workflows.digest.kg_doc_sync.lib.extraction import (
+    CandidateEdge,
     CandidateNode,
     ChunkExtractionResult,
 )
+from app.workflows.digest.kg_doc_sync.prompts.section_graph import SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
+
+
+def test_kg_prompt_requires_renderable_formula_names() -> None:
+    assert "$...$" in SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
+    assert "$$...$$" in SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
+    assert "不要输出裸" in SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
+    assert "\\sqrt{}" in SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
+    assert "\\frac{}" in SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
+    assert "\\infty" in SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
+    assert "端点必须精确匹配本次返回的节点名" in SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
 
 
 @pytest.mark.anyio
@@ -53,3 +65,78 @@ async def test_kg_section_extraction_uses_run_llm_tasks(monkeypatch) -> None:
     assert diagnostics.llm_attempted is True
     assert diagnostics.node_count == 1
     assert scheduler_calls == [{"items": [None], "max_concurrent": 1}]
+
+
+@pytest.mark.anyio
+async def test_kg_section_extraction_drops_generic_task_nodes_and_cleans_markdown(monkeypatch) -> None:
+    async def fake_run_llm_tasks(items, worker, *, max_concurrent=None, on_result=None):
+        del max_concurrent, on_result
+        return [await worker(item) for item in items]
+
+    async def fake_structured(*args, **kwargs):
+        del args, kwargs
+        return ChunkExtractionResult(
+            nodes=[
+                CandidateNode(
+                    name="任务 1",
+                    knowledge_unit_type="application_case",
+                    local_summary="只是编号任务。",
+                ),
+                CandidateNode(
+                    name="**分部积分法**：把积分拆成两部分",
+                    knowledge_unit_type="procedure",
+                    local_summary="说明分部积分法的拆分思路。",
+                ),
+                CandidateNode(
+                    name="检查点",
+                    knowledge_unit_type="skill",
+                    local_summary="泛化检查点。",
+                ),
+                CandidateNode(
+                    name="$\\int u\\,dv = uv-\\int v\\,du$",
+                    knowledge_unit_type="formula_model",
+                    local_summary="分部积分公式。",
+                ),
+            ],
+            edges=[
+                CandidateEdge(
+                    source_name="$\\int u\\,dv = uv-\\int v\\,du$",
+                    target_name="**分部积分法**：把积分拆成两部分",
+                    edge_type="applies_to",
+                    description="方法使用公式。",
+                ),
+                CandidateEdge(
+                    source_name="任务 1",
+                    target_name="检查点",
+                    edge_type="assesses",
+                    description="脏关系应随节点丢弃。",
+                ),
+            ],
+        )
+
+    monkeypatch.setattr(extraction, "run_llm_tasks", fake_run_llm_tasks)
+    monkeypatch.setattr(extraction, "acompletion_structured", fake_structured)
+
+    result, diagnostics = await extraction.extract_candidates_with_diagnostics(
+        "分部积分法把积分拆成两个因子处理，公式为 $\\int u\\,dv = uv-\\int v\\,du$。",
+        "分部积分法",
+        "不定积分 / 分部积分法",
+        doc_source_type="knowledge_doc_markdown",
+        allow_markdown_anchor_short_circuit=False,
+    )
+
+    assert [node.name for node in result.nodes] == ["分部积分法", "\\int u\\,dv = uv-\\int v\\,du"]
+    assert all("**" not in node.name and "$" not in node.name for node in result.nodes)
+    assert [(edge.source_name, edge.target_name, edge.edge_type) for edge in result.edges] == [
+        ("\\int u\\,dv = uv-\\int v\\,du", "分部积分法", "applies_to")
+    ]
+    assert diagnostics.node_count == 2
+
+
+def test_kg_prompt_rejects_lesson_plan_wrappers_at_generation_time() -> None:
+    prompt = SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
+
+    assert "不要做关键词提取" in prompt
+    assert "可复习、可教学、可出题的知识单元" in prompt
+    assert "学习目标、课程安排、题量计划、检测说明和纯流程壳不入图" in prompt
+    assert "只保留那个真实知识对象" in prompt

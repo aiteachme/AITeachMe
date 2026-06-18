@@ -18,6 +18,7 @@ import {
   StickyNote,
   Highlighter,
   Loader2,
+  MessageCircle,
   Sparkles,
   RefreshCw,
   ExternalLink,
@@ -271,11 +272,29 @@ function stripMarkdownSyntax(value: string | null | undefined): string {
   return sanitizeExportText(value)
     .replace(/```[\s\S]*?```/g, " ")
     .replace(/`([^`]+)`/g, "$1")
+    .replace(/\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION|EXAMPLE|PRACTICE)\]/gi, "")
     .replace(/!\[[^\]]*]\([^)]*\)/g, "")
     .replace(/\[([^\]]+)]\([^)]*\)/g, "$1")
     .replace(/^#{1,6}\s+/gm, "")
     .replace(/^[\s>*-]+/gm, "")
     .replace(/[*_~]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isMarkdownTableLine(value: string): boolean {
+  const text = String(value || "").trim();
+  return /^\|.*\|\s*$/.test(text) || /^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(text);
+}
+
+function cleanKnowledgeCardMarkdownLine(value: string | null | undefined): string {
+  return sanitizeExportText(value)
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/!\[[^\]]*]\([^)]*\)/g, "")
+    .replace(/\[([^\]]+)]\([^)]*\)/g, "$1")
+    .replace(/^#{1,6}\s+/g, "")
+    .replace(/^>\s*\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION|EXAMPLE|PRACTICE)\]\s*/i, "")
+    .replace(/^>\s?/g, "")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -390,7 +409,10 @@ function buildKnowledgeCardsFromMarkdown(markdown: string, toc: TocItem[]): Know
     if (!currentTitle) {
       continue;
     }
-    const cleanLine = stripMarkdownSyntax(line);
+    if (isMarkdownTableLine(line)) {
+      continue;
+    }
+    const cleanLine = cleanKnowledgeCardMarkdownLine(line);
     if (!cleanLine || cleanLine.length < 8) {
       continue;
     }
@@ -401,7 +423,7 @@ function buildKnowledgeCardsFromMarkdown(markdown: string, toc: TocItem[]): Know
   if (cards.length === 0) {
     const fallbackParagraphs = sanitizeExportText(markdown)
       .split(/\n{2,}/)
-      .map((item) => stripMarkdownSyntax(item))
+      .map((item) => item.split(/\n/).filter((line) => !isMarkdownTableLine(line)).map(cleanKnowledgeCardMarkdownLine).join("\n"))
       .filter((item) => item.length >= 32)
       .slice(0, 12);
     fallbackParagraphs.forEach((paragraph, index) => {
@@ -2230,8 +2252,9 @@ export function KnowledgeDocsPage() {
     typeof window !== "undefined" ? initialViewportWidth : COMMENT_DRAWER_BREAKPOINT
   );
   const [viewPrefs, setViewPrefs] = useState<KnowledgeDocsViewPrefs>(() => readKnowledgeDocsViewPrefs(courseId));
-  const [isSettingsPanelOpen, setIsSettingsPanelOpen] = useState(false);
   const [isCardsPanelOpen, setIsCardsPanelOpen] = useState(false);
+  const [knowledgeCards, setKnowledgeCards] = useState<KnowledgeCard[]>([]);
+  const [cardsGenerated, setCardsGenerated] = useState(false);
   const [activeDrawer, setActiveDrawer] = useState<"toc" | "comment" | null>(null);
   const [isTocScrollbarVisible, setIsTocScrollbarVisible] = useState(false);
   const [tocScrollThumbStyle, setTocScrollThumbStyle] = useState<TocScrollThumbStyle>({ top: 0, height: 0 });
@@ -2268,8 +2291,6 @@ export function KnowledgeDocsPage() {
   const desktopCommentTrackRef = useRef<HTMLDivElement>(null);
   const floatingComposerCardRef = useRef<HTMLDivElement>(null);
   const floatingComposerTextareaRef = useRef<HTMLTextAreaElement>(null);
-  const settingsPanelRef = useRef<HTMLDivElement>(null);
-  const settingsButtonRef = useRef<HTMLButtonElement>(null);
   const selectedRangeRef = useRef<Range | null>(null);
   const selectedRangeThreadIdRef = useRef<string | null>(null);
   const commentsRef = useRef<Comment[]>([]);
@@ -2590,7 +2611,6 @@ export function KnowledgeDocsPage() {
   }, []);
 
   const openGraphPanel = useCallback(() => {
-    setIsSettingsPanelOpen(false);
     setIsCardsPanelOpen(false);
     setIsGraphDrawerOpen(true);
   }, []);
@@ -2780,17 +2800,6 @@ export function KnowledgeDocsPage() {
       setActiveDrawer(null);
     }
   }, [activeDrawer, isAssistantOpen]);
-
-  useEffect(() => {
-    if (!isSettingsPanelOpen) return;
-    const handlePointerDown = (event: MouseEvent) => {
-      if (settingsPanelRef.current?.contains(event.target as Node)) return;
-      if (settingsButtonRef.current?.contains(event.target as Node)) return;
-      setIsSettingsPanelOpen(false);
-    };
-    document.addEventListener("mousedown", handlePointerDown);
-    return () => document.removeEventListener("mousedown", handlePointerDown);
-  }, [isSettingsPanelOpen]);
 
   useEffect(() => {
     return () => {
@@ -4204,7 +4213,6 @@ export function KnowledgeDocsPage() {
       newSession: true,
       showSelectionContext: true,
     });
-    setIsSettingsPanelOpen(false);
     setFloatingToolbar(null);
     setFloatingComment(null);
     setFloatingInput("");
@@ -4569,10 +4577,21 @@ export function KnowledgeDocsPage() {
       .filter((item) => item.anchorId)
       .sort(compareCommentThreadViewOrder)
   ), [commentsByThread, hasRenderedMarkdown, renderedMarkdown, tocOrderMap]);
-  const knowledgeCards = useMemo(
-    () => (isCardsPanelOpen ? buildKnowledgeCardsFromMarkdown(renderedMarkdown, toc) : []),
-    [isCardsPanelOpen, renderedMarkdown, toc],
-  );
+  useEffect(() => {
+    setKnowledgeCards([]);
+    setCardsGenerated(false);
+  }, [renderedMarkdown]);
+
+  const generateKnowledgeCards = useCallback(() => {
+    const cards = buildKnowledgeCardsFromMarkdown(renderedMarkdown, toc);
+    setKnowledgeCards(cards);
+    setCardsGenerated(true);
+    toast({
+      title: cards.length > 0 ? "知识卡片已生成" : "暂未生成卡片",
+      description: cards.length > 0 ? `已整理 ${cards.length} 张正反面卡片。` : "当前文档内容还不足以整理成稳定卡片。",
+      variant: cards.length > 0 ? "success" : "info",
+    });
+  }, [renderedMarkdown, toast, toc]);
   const commentThreadIds = useMemo(
     () => commentThreads.map((item) => item.threadId),
     [commentThreads]
@@ -5082,15 +5101,25 @@ export function KnowledgeDocsPage() {
   }, [commentListOriginTop, desktopThreadLayout.totalHeight, isCommentVisible, showDesktopCommentPanel]);
   const threadCountByAnchor = useMemo(() => {
     const next = new Map<string, number>();
+    const countedThreadIds = new Set<string>();
     for (const item of commentThreads) {
+      countedThreadIds.add(item.threadId);
       next.set(item.anchorId, (next.get(item.anchorId) ?? 0) + 1);
     }
+    for (const item of selectionHighlights) {
+      const anchorId = item.anchorId.trim();
+      if (
+        !anchorId ||
+        item.threadId === FLOATING_COMPOSER_THREAD_ID ||
+        isStandaloneHighlightThreadId(item.threadId) ||
+        countedThreadIds.has(item.threadId)
+      ) {
+        continue;
+      }
+      next.set(anchorId, (next.get(anchorId) ?? 0) + 1);
+    }
     return next;
-  }, [commentThreads]);
-  const commentsForAnchor = useCallback(
-    (anchorId: string) => threadCountByAnchor.get(anchorId) ?? 0,
-    [threadCountByAnchor]
-  );
+  }, [commentThreads, selectionHighlights]);
   const highlightCountByAnchor = useMemo(() => {
     const next = new Map<string, number>();
     for (const item of selectionHighlights) {
@@ -5102,9 +5131,39 @@ export function KnowledgeDocsPage() {
     }
     return next;
   }, [selectionHighlights]);
-  const highlightsForAnchor = useCallback(
-    (anchorId: string) => highlightCountByAnchor.get(anchorId) ?? 0,
-    [highlightCountByAnchor]
+  const tocAnchorDescendantIds = useMemo(() => {
+    const next = new Map<string, string[]>();
+    const visit = (node: TocTreeNode): string[] => {
+      const ids = [node.item.id];
+      for (const child of node.children) {
+        ids.push(...visit(child));
+      }
+      next.set(node.item.id, ids);
+      return ids;
+    };
+    for (const node of tocTree) {
+      visit(node);
+    }
+    return next;
+  }, [tocTree]);
+  const countTocAnchorItems = useCallback(
+    (anchorId: string, source: Map<string, number>) => {
+      const ids = tocAnchorDescendantIds.get(anchorId) ?? [anchorId];
+      let total = 0;
+      for (const id of ids) {
+        total += source.get(id) ?? 0;
+      }
+      return total;
+    },
+    [tocAnchorDescendantIds]
+  );
+  const commentsForTocAnchor = useCallback(
+    (anchorId: string) => countTocAnchorItems(anchorId, threadCountByAnchor),
+    [countTocAnchorItems, threadCountByAnchor]
+  );
+  const highlightsForTocAnchor = useCallback(
+    (anchorId: string) => countTocAnchorItems(anchorId, highlightCountByAnchor),
+    [countTocAnchorItems, highlightCountByAnchor]
   );
 
   useEffect(() => {
@@ -5633,9 +5692,8 @@ export function KnowledgeDocsPage() {
       const hasChildren = node.children.length > 0;
       const isCollapsed = collapsedTocIds.has(item.id);
       const isActive = visibleActiveHeading === item.id;
-      const count = commentsForAnchor(item.id);
-      const highlightCount = highlightsForAnchor(item.id);
-      const hasSelectionMark = count > 0 || highlightCount > 0;
+      const count = commentsForTocAnchor(item.id);
+      const highlightCount = highlightsForTocAnchor(item.id);
       const indent = depth * 12;
       const displayText = splitTocDisplayText(item.text);
 
@@ -5723,13 +5781,22 @@ export function KnowledgeDocsPage() {
                 交互
               </span>
             )}
-            {hasSelectionMark && (
+            {count > 0 && (
+              <span
+                className="mr-1 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-sky-50 text-sky-600 ring-1 ring-sky-100 dark:bg-sky-500/10 dark:text-sky-300 dark:ring-sky-400/15"
+                title={`本章节${node.children.length > 0 ? "或子章节" : ""}有 ${count} 个划选问答`}
+                aria-label={`本章节${node.children.length > 0 ? "或子章节" : ""}有划选问答`}
+              >
+                <MessageCircle className="h-3 w-3" />
+              </span>
+            )}
+            {highlightCount > 0 && (
               <span
                 className="mr-1 inline-flex h-2.5 w-2.5 shrink-0 rounded-full bg-amber-400 shadow-[0_0_0_3px_rgba(251,191,36,0.16)]"
-                title={count > 0 ? "本章节有划选问答" : "本章节有高亮"}
-                aria-label={count > 0 ? "本章节有划选问答" : "本章节有高亮"}
+                title={`本章节${node.children.length > 0 ? "或子章节" : ""}有 ${highlightCount} 个高亮`}
+                aria-label={`本章节${node.children.length > 0 ? "或子章节" : ""}有高亮`}
               >
-                <span className="sr-only">{count > 0 ? "本章节有划选问答" : "本章节有高亮"}</span>
+                <span className="sr-only">本章节有高亮</span>
               </span>
             )}
           </div>
@@ -5743,7 +5810,7 @@ export function KnowledgeDocsPage() {
         </div>
       );
     });
-  }, [collapsedTocIds, commentsForAnchor, handleTocItemClick, highlightsForAnchor, toggleTocCollapse, visibleActiveHeading]);
+  }, [collapsedTocIds, commentsForTocAnchor, handleTocItemClick, highlightsForTocAnchor, toggleTocCollapse, visibleActiveHeading]);
 
   useEffect(() => {
     if (!isTocVisible) {
@@ -6187,76 +6254,58 @@ export function KnowledgeDocsPage() {
 
   if (!hasRenderedMarkdown && docMarkdownQuery.isError) {
     return (
-      <div className="relative flex h-full min-h-0 flex-1 w-full items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
-        <DocLoadErrorState
-          message={getApiErrorMessage(docMarkdownQuery.error, "获取知识文档失败，请稍后重试。")}
-          onRetry={() => {
-            void docMarkdownQuery.refetch();
-          }}
+      <div className="relative flex h-full min-h-0 flex-1 w-full flex-col overflow-hidden bg-white dark:bg-slate-950">
+        <CoursePagePillTitle
+          icon={BookOpen}
+          label="知识库"
+          className="shrink-0 bg-white/92 backdrop-blur-md dark:bg-slate-900/92"
+          href={courseId ? buildCoursePath(courseId, "nav") : undefined}
         />
+        <div className="relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
+          <DocLoadErrorState
+            message={getApiErrorMessage(docMarkdownQuery.error, "获取知识文档失败，请稍后重试。")}
+            onRetry={() => {
+              void docMarkdownQuery.refetch();
+            }}
+          />
+        </div>
       </div>
     );
   }
 
   if (!hasRenderedMarkdown && showDocBuildFailureState) {
     return (
-      <div className="relative flex h-full min-h-0 flex-1 w-full items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
-        <DocLoadErrorState
-          message={buildStatusText}
-          onRetry={() => {
-            void docMarkdownQuery.refetch();
-          }}
+      <div className="relative flex h-full min-h-0 flex-1 w-full flex-col overflow-hidden bg-white dark:bg-slate-950">
+        <CoursePagePillTitle
+          icon={BookOpen}
+          label="知识库"
+          className="shrink-0 bg-white/92 backdrop-blur-md dark:bg-slate-900/92"
+          href={courseId ? buildCoursePath(courseId, "nav") : undefined}
         />
+        <div className="relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
+          <DocLoadErrorState
+            message={buildStatusText}
+            onRetry={() => {
+              void docMarkdownQuery.refetch();
+            }}
+          />
+        </div>
       </div>
     );
   }
 
   if (!hasRenderedMarkdown && showDocEmptyState) {
     return (
-      <div className="relative flex h-full min-h-0 flex-1 w-full items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
-        <DocEmptyState />
-      </div>
-    );
-  }
-
-  if (!hasRenderedMarkdown && showDocLoadingState) {
-    return (
-      <div className="relative flex h-full min-h-0 flex-1 w-full items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
-        <DocLoadingState />
-      </div>
-    );
-  }
-
-  if (!hasRenderedMarkdown && docMarkdownQuery.isError) {
-    return (
-      <div className="relative flex h-full min-h-0 flex-1 w-full items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
-        <DocLoadErrorState
-          message={getApiErrorMessage(docMarkdownQuery.error, "获取知识文档失败，请稍后重试。")}
-          onRetry={() => {
-            void docMarkdownQuery.refetch();
-          }}
+      <div className="relative flex h-full min-h-0 flex-1 w-full flex-col overflow-hidden bg-white dark:bg-slate-950">
+        <CoursePagePillTitle
+          icon={BookOpen}
+          label="知识库"
+          className="shrink-0 bg-white/92 backdrop-blur-md dark:bg-slate-900/92"
+          href={courseId ? buildCoursePath(courseId, "nav") : undefined}
         />
-      </div>
-    );
-  }
-
-  if (!hasRenderedMarkdown && showDocBuildFailureState) {
-    return (
-      <div className="relative flex h-full min-h-0 flex-1 w-full items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
-        <DocLoadErrorState
-          message={buildStatusText}
-          onRetry={() => {
-            void docMarkdownQuery.refetch();
-          }}
-        />
-      </div>
-    );
-  }
-
-  if (!hasRenderedMarkdown && showDocEmptyState) {
-    return (
-      <div className="relative flex h-full min-h-0 flex-1 w-full items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
-        <DocEmptyState />
+        <div className="relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
+          <DocEmptyState />
+        </div>
       </div>
     );
   }
@@ -6426,12 +6475,6 @@ export function KnowledgeDocsPage() {
           icon={BookOpen}
           label="知识库"
           className="shrink-0 bg-white/92 backdrop-blur-md dark:bg-slate-900/92 transition-all duration-300 ease-in-out"
-          innerClassName={cn(
-            "transition-all duration-300 ease-in-out",
-            (!isCompactToc && viewPrefs.showToc) && (
-              !isTocCollapsed ? "-translate-x-[clamp(7rem,8vw,9rem)]" : "-translate-x-[28px]"
-            )
-          )}
           href={courseId ? buildCoursePath(courseId, "nav") : undefined}
         />
 
@@ -6712,16 +6755,16 @@ export function KnowledgeDocsPage() {
             <div className="min-w-0">
               <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">知识卡片</p>
               <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
-                自动整理为 Anki/Quizlet 可导入的正反面卡片。
+                从当前知识文档整理正反面复习卡。
               </p>
             </div>
             <button
               type="button"
               onClick={exportKnowledgeCards}
-              disabled={knowledgeCards.length === 0}
+              disabled={!cardsGenerated || knowledgeCards.length === 0}
               className={cn(
                 "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition",
-                knowledgeCards.length === 0
+                !cardsGenerated || knowledgeCards.length === 0
                   ? "cursor-not-allowed bg-slate-100 text-slate-300 dark:bg-slate-800 dark:text-slate-600"
                   : "bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
               )}
@@ -6731,83 +6774,47 @@ export function KnowledgeDocsPage() {
             </button>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto p-3">
-            {knowledgeCards.length === 0 ? (
+            {!cardsGenerated ? (
+              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center dark:border-slate-800 dark:bg-slate-900">
+                <p className="text-sm font-medium text-slate-700 dark:text-slate-200">文档生成后再整理卡片</p>
+                <p className="mx-auto mt-1 max-w-[18rem] text-xs leading-5 text-slate-500 dark:text-slate-400">
+                  会按章节标题和重点段落提取正面问题、背面答案和来源。
+                </p>
+                <button
+                  type="button"
+                  onClick={generateKnowledgeCards}
+                  className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg bg-slate-900 px-3 text-xs font-semibold text-white transition hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-slate-200"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  生成知识卡片
+                </button>
+              </div>
+            ) : knowledgeCards.length === 0 ? (
               <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
-                当前文档还没有可生成卡片的稳定知识点。
+                当前文档还没有足够稳定的知识点可生成卡片。
               </div>
             ) : (
               <div className="space-y-2.5">
                 {knowledgeCards.slice(0, 10).map((card) => (
                   <div
                     key={card.id}
-                    className="rounded-xl border border-slate-200/80 bg-white px-3 py-2.5 text-left dark:border-slate-800 dark:bg-slate-900/70"
+                    className="overflow-hidden rounded-xl border border-slate-200/90 bg-white text-left shadow-sm dark:border-slate-800 dark:bg-slate-900/80"
                   >
-                    <p className="text-xs font-semibold leading-5 text-slate-900 dark:text-slate-100">{card.front}</p>
-                    <p className="mt-1 line-clamp-3 text-xs leading-5 text-slate-500 dark:text-slate-400">{card.back}</p>
-                    <p className="mt-2 truncate text-[11px] text-slate-400 dark:text-slate-500">{card.source}</p>
+                    <div className="border-b border-slate-100 bg-slate-50/80 px-3 py-2 dark:border-slate-800 dark:bg-slate-950/50">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">正面</p>
+                      <p className="mt-1 text-sm font-semibold leading-5 text-slate-900 dark:text-slate-100">{card.front}</p>
+                    </div>
+                    <div className="px-3 py-2.5">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">背面</p>
+                      <div className="mt-1 max-h-[7.5rem] overflow-hidden text-xs leading-5 text-slate-600 dark:text-slate-300 [&_.katex]:text-[1em] [&_li]:my-0 [&_ol]:my-1 [&_p]:my-0 [&_p]:text-xs [&_p]:leading-5 [&_strong]:font-semibold [&_ul]:my-1">
+                        <MarkdownViewer content={card.back} variant="default" />
+                      </div>
+                      <p className="mt-2 truncate rounded-full bg-slate-100 px-2 py-1 text-[11px] text-slate-500 dark:bg-slate-800 dark:text-slate-400">{card.source}</p>
+                    </div>
                   </div>
                 ))}
               </div>
             )}
-          </div>
-        </div>
-      )}
-
-      {showFloatingActions && isSettingsPanelOpen && (
-        <div
-          ref={settingsPanelRef}
-          className="fixed bottom-[11.75rem] right-6 z-[87] w-[min(23rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-slate-200/90 bg-white/96 shadow-[0_22px_60px_-32px_rgba(15,23,42,0.42)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/96 dark:shadow-[0_24px_64px_-28px_rgba(0,0,0,0.9)]"
-        >
-          <div className="border-b border-slate-200/80 px-4 py-3 dark:border-slate-800">
-            <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">课程设置</p>
-            <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">仅作用于当前课程的知识文档阅读体验。</p>
-          </div>
-          <div className="p-3">
-            <button
-              type="button"
-              onClick={() => {
-                updateViewPrefs((prev) => ({ ...prev, widePage: !prev.widePage }));
-              }}
-              className="flex w-full items-center justify-between rounded-xl px-3 py-3 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800/70"
-              aria-pressed={pageWideMode}
-            >
-              <div className="flex min-w-0 items-start gap-3">
-                <span className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                  <ExternalLink className="h-4 w-4" />
-                </span>
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-slate-900 dark:text-slate-100">宽页模式</p>
-                  <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">正文根据剩余空间自适应铺开。</p>
-                </div>
-              </div>
-              <span className={cn("ml-3 flex h-6 w-11 shrink-0 rounded-full p-0.5 transition", pageWideMode ? "bg-slate-900 dark:bg-slate-100" : "bg-slate-200 dark:bg-slate-700")}>
-                <span className={cn("h-5 w-5 rounded-full bg-white shadow-sm transition", pageWideMode ? "translate-x-5" : "translate-x-0")} />
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                updateViewPrefs((prev) => ({ ...prev, showToc: !prev.showToc }));
-                if (!viewPrefs.showToc) {
-                  setIsTocCollapsed(false);
-                }
-              }}
-              className="flex w-full items-center justify-between rounded-xl px-3 py-3 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800/70"
-              aria-pressed={viewPrefs.showToc}
-            >
-              <div className="flex min-w-0 items-start gap-3">
-                <span className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                  <FileText className="h-4 w-4" />
-                </span>
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-slate-900 dark:text-slate-100">显示目录</p>
-                  <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">保留左侧目录轨道，跟随正文标题高亮。</p>
-                </div>
-              </div>
-              <span className={cn("ml-3 flex h-6 w-11 shrink-0 rounded-full p-0.5 transition", viewPrefs.showToc ? "bg-slate-900 dark:bg-slate-100" : "bg-slate-200 dark:bg-slate-700")}>
-                <span className={cn("h-5 w-5 rounded-full bg-white shadow-sm transition", viewPrefs.showToc ? "translate-x-5" : "translate-x-0")} />
-              </span>
-            </button>
           </div>
         </div>
       )}
@@ -6817,7 +6824,6 @@ export function KnowledgeDocsPage() {
           type="button"
           onClick={() => {
             setIsCardsPanelOpen((prev) => !prev);
-            setIsSettingsPanelOpen(false);
           }}
           className={cn(
             "fixed bottom-[10.5rem] right-6 z-[88] inline-flex h-10 w-10 items-center justify-center gap-2 rounded-xl border border-slate-200/70 bg-white/90 text-[13px] font-medium text-slate-700 shadow-[0_12px_32px_-24px_rgba(15,23,42,0.55)] backdrop-blur-md transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/30 active:translate-y-0 active:scale-[0.98] sm:w-[9.25rem] sm:justify-start sm:px-3 dark:border-slate-800/80 dark:bg-slate-950/88 dark:text-slate-300 dark:shadow-[0_18px_44px_-28px_rgba(0,0,0,0.9)] dark:hover:border-slate-700 dark:hover:bg-slate-950 dark:hover:text-slate-100",
@@ -6833,21 +6839,19 @@ export function KnowledgeDocsPage() {
 
       {showFloatingActions && (
         <button
-          ref={settingsButtonRef}
           type="button"
           onClick={() => {
-            setIsSettingsPanelOpen((prev) => !prev);
-            setIsCardsPanelOpen(false);
+            updateViewPrefs((prev) => ({ ...prev, widePage: !prev.widePage }));
           }}
           className={cn(
             "fixed bottom-[7.5rem] right-6 z-[88] inline-flex h-10 w-10 items-center justify-center gap-2 rounded-xl border border-slate-200/70 bg-white/90 text-[13px] font-medium text-slate-700 shadow-[0_12px_32px_-24px_rgba(15,23,42,0.55)] backdrop-blur-md transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/30 active:translate-y-0 active:scale-[0.98] sm:w-[9.25rem] sm:justify-start sm:px-3 dark:border-slate-800/80 dark:bg-slate-950/88 dark:text-slate-300 dark:shadow-[0_18px_44px_-28px_rgba(0,0,0,0.9)] dark:hover:border-slate-700 dark:hover:bg-slate-950 dark:hover:text-slate-100",
-            isSettingsPanelOpen && "border-indigo-200 bg-indigo-50/95 text-indigo-700 shadow-[0_14px_34px_-22px_rgba(79,70,229,0.45)] dark:border-indigo-500/40 dark:bg-indigo-500/12 dark:text-indigo-200"
+            pageWideMode && "border-indigo-200 bg-indigo-50/95 text-indigo-700 shadow-[0_14px_34px_-22px_rgba(79,70,229,0.45)] dark:border-indigo-500/40 dark:bg-indigo-500/12 dark:text-indigo-200"
           )}
-          aria-label="打开课程设置"
-          aria-expanded={isSettingsPanelOpen}
+          aria-label={pageWideMode ? "关闭宽页模式" : "开启宽页模式"}
+          aria-pressed={pageWideMode}
         >
-          <SlidersHorizontal className="h-4 w-4 shrink-0" />
-          <span className="hidden truncate sm:inline">课程设置</span>
+          <ExternalLink className="h-4 w-4 shrink-0" />
+          <span className="hidden truncate sm:inline">{pageWideMode ? "标准宽度" : "宽页模式"}</span>
         </button>
       )}
 

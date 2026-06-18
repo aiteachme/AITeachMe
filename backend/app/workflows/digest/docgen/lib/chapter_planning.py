@@ -268,7 +268,7 @@ def compose_seed_plan_and_backbone_agenda(
         source_policy=docgen_context.source_strategy,
         writing_rules=list(global_rules),
         chapter_format=chapter_format,
-        budget_policy={"chapter_count": len(confirmed_chapters), "max_writer_retries": 1},
+        budget_policy={"chapter_count": len(confirmed_chapters), "max_writer_retries": 0},
         chapters=task_seeds,
         plan_mismatch_warnings=clean_string_list(warnings),
     )
@@ -321,11 +321,15 @@ def assemble_chapter_generation_plan(
         if brief is None:
             raise ValueError(f"missing execution brief for chapter {chapter_index}")
         build_constraints = dict(docgen_context.build_constraints or {})
+        # Planner's target_length is a document-level granularity hint. Do not
+        # turn that product-wide range into a per-chapter writer target unless a
+        # concrete total word budget is present.
+        explicit_total_words = build_constraints.get("target_total_words")
         min_words, target_words = mode_profile.word_budget(
             chapter_count=chapter_count,
             depth_level=intent_profile.depth_level,
-            target_length=str(build_constraints.get("target_length") or ""),
-            target_total_words=build_constraints.get("target_total_words"),
+            target_length=str(build_constraints.get("target_length") or "") if explicit_total_words else "",
+            target_total_words=explicit_total_words,
         )
         affinity = _affinity_for_chapter(
             chapter_index=chapter_index,
@@ -475,7 +479,7 @@ def assemble_chapter_generation_plan(
         source_policy=docgen_context.source_strategy,
         writing_rules=list(global_rules),
         chapter_format=chapter_format,
-        budget_policy={"chapter_count": chapter_count, "max_writer_retries": 1},
+        budget_policy={"chapter_count": chapter_count, "max_writer_retries": 0},
         chapters=tasks,
         plan_mismatch_warnings=clean_string_list(warnings),
     )

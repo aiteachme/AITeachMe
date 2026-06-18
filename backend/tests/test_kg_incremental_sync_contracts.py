@@ -5,11 +5,21 @@ from collections.abc import Iterator
 
 import pytest
 from sqlalchemy.pool import StaticPool
-from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel import Session, SQLModel, create_engine, select
 
 import app.models  # noqa: F401 - ensure all SQLModel tables are registered
 from app.models import Course, KnowledgeEdge, KnowledgeUnit
+from app.shared.infra.exceptions import KnowledgeUnitNotFoundError
 import app.workflows.digest.kg_doc_sync.lib.incremental_sync as sync
+import app.workflows.digest.kg_doc_sync.nodes.extract_node as extract_node_module
+from app.workflows.digest.kg_doc_sync.lib.query import (
+    get_focus_subgraph,
+    get_full_graph,
+    get_knowledge_unit_detail,
+    get_knowledge_unit_relations,
+    get_knowledge_units,
+)
+from app.workflows.digest.kg_doc_sync.lib.overview import get_knowledge_overview
 from app.workflows.digest.common.markdown_knowledge_anchors import (
     MarkdownKnowledgeUnit,
     MarkdownSectionChunk,
@@ -25,6 +35,81 @@ from app.workflows.digest.kg_doc_sync.lib.models import (
 
 
 COURSE_ID = "course_kgsync000000"
+
+
+def _quality_ready_draft_context() -> dict[str, object]:
+    return {
+        "chapters": [
+            {
+                "chapter_index": 1,
+                "knowledge_document_id": 10,
+                "source_file_ids": ["file-a"],
+            },
+            {
+                "chapter_index": 2,
+                "knowledge_document_id": 20,
+                "source_file_ids": ["file-b"],
+            },
+        ],
+        "docgen_manifest": {
+            "docgen_kg_draft": {
+                "quality_ready": True,
+                "fast_visible_ready": True,
+                "covered_chapter_indices": [1, 2],
+                "nodes": [
+                    {
+                        "name": "矩阵乘法",
+                        "knowledge_unit_type": "concept",
+                        "chapter_index": 1,
+                        "summary": "按行列配对求和。",
+                        "source": "kg_prefetch_llm",
+                    },
+                    {
+                        "name": "单元测试",
+                        "knowledge_unit_type": "skill",
+                        "chapter_index": 1,
+                        "summary": "检查本章掌握情况。",
+                        "source": "docgen_reviewed_heading",
+                    },
+                    {
+                        "name": "应用题训练",
+                        "knowledge_unit_type": "skill",
+                        "chapter_index": 2,
+                        "summary": "把矩阵乘法迁移到应用题。",
+                        "source": "kg_prefetch_llm",
+                    },
+                ],
+                "edges": [
+                    {
+                        "source_name": "单元测试",
+                        "target_name": "矩阵乘法",
+                        "edge_type": "assesses",
+                        "chapter_index": 1,
+                    },
+                    {
+                        "source_name": "矩阵乘法",
+                        "target_name": "应用题训练",
+                        "edge_type": "applies_to",
+                        "chapter_index": 2,
+                    },
+                ],
+                "quality_audit": {
+                    "quality_ready": True,
+                    "quality_status": "ready",
+                    "warning_count": 0,
+                    "missing_chapter_count": 0,
+                    "edge_endpoint_issue_count": 0,
+                    "edge_endpoint_ambiguity_count": 0,
+                    "relation_direction_issue_count": 0,
+                    "downstream_unit_count": 3,
+                    "diagnostic_unit_count": 2,
+                    "valid_relation_edge_count": 2,
+                    "structure_edge_count": 1,
+                    "examine_profile_ready": True,
+                },
+            }
+        },
+    }
 
 
 @pytest.fixture
@@ -372,6 +457,639 @@ def test_prefetched_units_payload_uses_docgen_seed_when_prefetch_empty() -> None
     assert result.units[0].knowledge_document_id == 10
     assert result.diagnostics_totals["docgen_seed_unit_count"] == 1
     assert result.diagnostics_totals["early_unit_count"] == 1
+
+
+def test_prefetched_units_payload_persists_resolved_edges_early(session: Session) -> None:
+    markdown = "# Chapter\n\n## Parent\nParent body\n\n## Child\nChild body"
+    chapters = extract_markdown_chapter_chunks(markdown, max_body_chars=None)
+    tasks, _ = sync._build_extraction_tasks(chapters, {})
+    parent = _unit("ku_parent", "Parent")
+    child = _unit("ku_child", "Child")
+    payload = SectionExtractionPayload(
+        units=[parent, child],
+        pending_edges=[
+            PendingMarkdownExtractedEdge(
+                source_candidate_id="parent",
+                target_candidate_id="child",
+                source_name="Parent",
+                target_name="Child",
+                edge_type="prerequisite_for",
+                description="Parent is learned before Child.",
+                source_kind="kg_prefetch_llm",
+            )
+        ],
+        candidate_id_to_anchor={"parent": parent.anchor, "child": child.anchor},
+        anchors_by_name={"Parent": [parent.anchor], "Child": [child.anchor]},
+        anchors_by_normalized_name={
+            sync.normalize_name("Parent"): [parent.anchor],
+            sync.normalize_name("Child"): [child.anchor],
+        },
+        node_contexts_by_anchor={},
+        section_context=SectionExtractionContext(
+            section_index=1,
+            title="Chapter",
+            header_path="Chapter",
+            body_markdown="Parent before Child",
+            primary_anchor=parent.anchor,
+            primary_name=parent.name,
+            primary_type=parent.knowledge_unit_type,
+        ),
+        diagnostics={
+            "successful_section_count": 1,
+            "llm_section_count": 1,
+            "total_extracted_node_count": 2,
+            "total_extracted_edge_count": 1,
+        },
+    )
+    record = sync._section_record_for_task(tasks[0], payload=payload)
+
+    result = sync.build_prefetched_knowledge_graph_units_payload(
+        markdown=markdown,
+        prefetched_records=[record],
+    )
+
+    assert [unit.name for unit in result.units] == ["Parent", "Child"]
+    assert [(edge.source_anchor, edge.target_anchor, edge.edge_type) for edge in result.extracted_edges] == [
+        ("ku_parent", "ku_child", "prerequisite_for")
+    ]
+    assert result.diagnostics_totals["prefetch_early_edge_count"] == 1
+    assert result.diagnostics_totals["early_edge_count"] == 1
+
+    sync_run = sync.create_sync_run(
+        session,
+        course_id=COURSE_ID,
+        build_session_id="build_seed_edges",
+        doc_version_no=1,
+        graph_revision_no=1,
+    )
+    assert sync_run.id is not None
+    metrics = sync.persist_knowledge_graph_units_early(
+        session,
+        run_context=sync.KnowledgeSyncRunContext(
+            course_id=COURSE_ID,
+            build_revision_no=1,
+            sync_run_id=sync_run.id,
+            doc_version_no=1,
+        ),
+        payload=result,
+    )
+
+    assert metrics["unit_count"] == 2
+    assert metrics["edge_count"] == 1
+    assert metrics["created_edge_count"] == 1
+    edges = session.exec(select(KnowledgeEdge).where(KnowledgeEdge.course_id == COURSE_ID)).all()
+    assert len(edges) == 1
+    assert edges[0].edge_type == "prerequisite_for"
+
+
+def test_docgen_kg_draft_graph_persists_before_publish_when_quality_ready(session: Session) -> None:
+    metrics = sync.persist_docgen_kg_draft_graph_early(
+        session,
+        course_id=COURSE_ID,
+        docgen_kg_draft={
+            "quality_ready": True,
+            "fast_visible_ready": True,
+            "nodes": [
+                {
+                    "name": "矩阵乘法",
+                    "knowledge_unit_type": "concept",
+                    "chapter_index": 1,
+                    "summary": "按行列配对求和。",
+                    "source": "docgen_review_refinement",
+                },
+                {
+                    "name": "单元测试",
+                    "knowledge_unit_type": "skill",
+                    "chapter_index": 1,
+                    "summary": "检查本章掌握情况。",
+                    "source": "docgen_reviewed_heading",
+                },
+            ],
+            "edges": [{"source_name": "单元测试", "target_name": "矩阵乘法", "edge_type": "assesses"}],
+            "quality_status": "ready",
+            "quality_audit": {
+                "quality_ready": True,
+                "quality_status": "ready",
+                "warning_count": 0,
+                "missing_chapter_count": 0,
+                "edge_endpoint_issue_count": 0,
+                "edge_endpoint_ambiguity_count": 0,
+                "relation_direction_issue_count": 0,
+                "downstream_unit_count": 2,
+                "diagnostic_unit_count": 1,
+                "valid_relation_edge_count": 1,
+                "structure_edge_count": 1,
+                "examine_profile_ready": True,
+            },
+        },
+    )
+
+    units = session.exec(
+        select(KnowledgeUnit).where(
+            KnowledgeUnit.course_id == COURSE_ID,
+            KnowledgeUnit.status == "active",
+        )
+    ).all()
+    edges = session.exec(
+        select(KnowledgeEdge).where(
+            KnowledgeEdge.course_id == COURSE_ID,
+            KnowledgeEdge.status == "active",
+        )
+    ).all()
+
+    assert metrics["skipped"] is False
+    assert metrics["unit_count"] == 2
+    assert metrics["edge_count"] == 1
+    assert {unit.canonical_name for unit in units} == {"矩阵乘法", "单元测试"}
+    assert {unit.knowledge_unit_type for unit in units} == {"concept", "skill"}
+    assert len(edges) == 1
+    assert edges[0].edge_type == "assesses"
+
+
+def test_docgen_kg_draft_graph_persists_fast_visible_quality_catchup(session: Session) -> None:
+    metrics = sync.persist_docgen_kg_draft_graph_early(
+        session,
+        course_id=COURSE_ID,
+        require_quality_ready=False,
+        docgen_kg_draft={
+            "quality_ready": False,
+            "fast_visible_ready": True,
+            "nodes": [
+                {
+                    "name": "指针模型",
+                    "knowledge_unit_type": "concept",
+                    "chapter_index": 1,
+                    "summary": "变量、地址、指针、解引用的关系。",
+                    "source": "docgen_review_refinement",
+                },
+                {
+                    "name": "指针自检",
+                    "knowledge_unit_type": "skill",
+                    "chapter_index": 1,
+                    "summary": "用输出判断题检查指针掌握情况。",
+                    "source": "docgen_reviewed_heading",
+                },
+            ],
+            "edges": [{"source_name": "指针自检", "target_name": "指针模型", "edge_type": "assesses"}],
+            "quality_status": "needs_catchup",
+            "quality_audit": {
+                "quality_ready": False,
+                "quality_status": "needs_catchup",
+                "warning_count": 1,
+                "warnings": ["review_repair_warning"],
+                "missing_chapter_count": 0,
+                "edge_endpoint_issue_count": 0,
+                "edge_endpoint_ambiguity_count": 0,
+                "relation_direction_issue_count": 0,
+                "downstream_unit_count": 2,
+                "diagnostic_unit_count": 1,
+                "valid_relation_edge_count": 1,
+                "structure_edge_count": 1,
+                "examine_profile_ready": True,
+            },
+        },
+    )
+
+    units = session.exec(select(KnowledgeUnit).where(KnowledgeUnit.course_id == COURSE_ID)).all()
+    edges = session.exec(select(KnowledgeEdge).where(KnowledgeEdge.course_id == COURSE_ID)).all()
+
+    assert metrics["skipped"] is False
+    assert metrics["docgen_draft_quality_ready"] == 0
+    assert metrics["unit_count"] == 2
+    assert metrics["edge_count"] == 1
+    assert {unit.canonical_name for unit in units} == {"指针模型", "指针自检"}
+    assert len(edges) == 1
+    assert edges[0].edge_type == "assesses"
+
+
+def test_docgen_kg_draft_graph_is_query_visible_before_publish(session: Session) -> None:
+    draft = _quality_ready_draft_context()["docgen_manifest"]["docgen_kg_draft"]  # type: ignore[index]
+
+    metrics = sync.persist_docgen_kg_draft_graph_early(
+        session,
+        course_id=COURSE_ID,
+        docgen_kg_draft=draft,  # type: ignore[arg-type]
+    )
+
+    graph = get_full_graph(session, course_id=COURSE_ID)
+    page = get_knowledge_units(session, course_id=COURSE_ID, page=1, size=10)
+
+    assert metrics["skipped"] is False
+    assert metrics["unit_count"] == 3
+    assert metrics["edge_count"] == 2
+    assert {node.canonical_name for node in graph.nodes} == {"矩阵乘法", "单元测试", "应用题训练"}
+    node_id_by_name = {node.canonical_name: node.id for node in graph.nodes}
+    assert {(edge.source_node_id, edge.target_node_id, edge.edge_type) for edge in graph.edges} == {
+        (node_id_by_name["单元测试"], node_id_by_name["矩阵乘法"], "assesses"),
+        (node_id_by_name["矩阵乘法"], node_id_by_name["应用题训练"], "applies_to"),
+    }
+    assert page.total == 3
+    assert [item.status for item in page.items] == ["active", "active", "active"]
+
+
+def test_graph_queries_hide_legacy_resource_units_and_edges(session: Session) -> None:
+    concept = KnowledgeUnit(
+        course_id=COURSE_ID,
+        knowledge_unit_type="concept",
+        canonical_name="指针变量",
+        normalized_name=sync.normalize_name("指针变量"),
+        summary="指针变量保存地址。",
+        body_markdown="指针变量保存地址。",
+        status="active",
+    )
+    skill = KnowledgeUnit(
+        course_id=COURSE_ID,
+        knowledge_unit_type="skill",
+        canonical_name="指针练习",
+        normalized_name=sync.normalize_name("指针练习"),
+        summary="通过题目检查指针变量。",
+        body_markdown="通过题目检查指针变量。",
+        status="active",
+    )
+    resource = KnowledgeUnit(
+        course_id=COURSE_ID,
+        knowledge_unit_type="resource",
+        canonical_name="教材页码说明",
+        normalized_name=sync.normalize_name("教材页码说明"),
+        summary="来源材料说明，不应进入主图谱。",
+        body_markdown="来源材料说明，不应进入主图谱。",
+        status="active",
+    )
+    legacy_resource = KnowledgeUnit(
+        course_id=COURSE_ID,
+        knowledge_unit_type="explanation_support",
+        canonical_name="课件原文",
+        normalized_name=sync.normalize_name("课件原文"),
+        summary="旧类型来源材料说明，不应进入主图谱。",
+        body_markdown="旧类型来源材料说明，不应进入主图谱。",
+        status="active",
+    )
+    session.add_all([concept, skill, resource, legacy_resource])
+    session.commit()
+    session.refresh(concept)
+    session.refresh(skill)
+    session.refresh(resource)
+    session.refresh(legacy_resource)
+
+    assert concept.id is not None
+    assert skill.id is not None
+    assert resource.id is not None
+    assert legacy_resource.id is not None
+    session.add_all(
+        [
+            KnowledgeEdge(
+                course_id=COURSE_ID,
+                source_node_id=concept.id,
+                target_node_id=skill.id,
+                edge_type="applies_to",
+                status="active",
+            ),
+            KnowledgeEdge(
+                course_id=COURSE_ID,
+                source_node_id=resource.id,
+                target_node_id=concept.id,
+                edge_type="explains",
+                status="active",
+            ),
+            KnowledgeEdge(
+                course_id=COURSE_ID,
+                source_node_id=concept.id,
+                target_node_id=resource.id,
+                edge_type="explains",
+                status="active",
+            ),
+            KnowledgeEdge(
+                course_id=COURSE_ID,
+                source_node_id=legacy_resource.id,
+                target_node_id=concept.id,
+                edge_type="explains",
+                status="active",
+            ),
+        ]
+    )
+    session.commit()
+
+    graph = get_full_graph(session, course_id=COURSE_ID)
+    subgraph = get_focus_subgraph(session, course_id=COURSE_ID, center_knowledge_unit_id=concept.id, hops=1)
+    page = get_knowledge_units(session, course_id=COURSE_ID, page=1, size=10)
+    resource_page = get_knowledge_units(session, course_id=COURSE_ID, knowledge_unit_type="resource", page=1, size=10)
+    legacy_resource_page = get_knowledge_units(
+        session,
+        course_id=COURSE_ID,
+        knowledge_unit_type="explanation_support",
+        page=1,
+        size=10,
+    )
+    detail = get_knowledge_unit_detail(session, course_id=COURSE_ID, knowledge_unit_id=concept.id)
+    relations = get_knowledge_unit_relations(session, course_id=COURSE_ID, knowledge_unit_id=concept.id)
+    overview = get_knowledge_overview(session, course_id=COURSE_ID, include=["stats"], full=False)
+
+    assert {node.canonical_name for node in graph.nodes} == {"指针变量", "指针练习"}
+    assert {(edge.source_node_id, edge.target_node_id, edge.edge_type) for edge in graph.edges} == {
+        (concept.id, skill.id, "applies_to")
+    }
+    assert {node.canonical_name for node in subgraph.nodes} == {"指针变量", "指针练习"}
+    assert {(edge.source_node_id, edge.target_node_id, edge.edge_type) for edge in subgraph.edges} == {
+        (concept.id, skill.id, "applies_to")
+    }
+    assert page.total == 2
+    assert {node.canonical_name for node in page.items} == {"指针变量", "指针练习"}
+    assert resource_page.total == 0
+    assert resource_page.items == []
+    assert legacy_resource_page.total == 0
+    assert legacy_resource_page.items == []
+    assert overview.stats.node_count == 2
+    assert overview.stats.edge_count == 1
+    assert [(edge.other_node_name, edge.edge_type) for edge in detail.incident_edges] == [("指针练习", "applies_to")]
+    assert {(edge.source_node_name, edge.target_node_name, edge.edge_type) for edge in relations} == {
+        ("指针变量", "指针练习", "applies_to")
+    }
+    with pytest.raises(KnowledgeUnitNotFoundError):
+        get_knowledge_unit_detail(session, course_id=COURSE_ID, knowledge_unit_id=resource.id)
+    with pytest.raises(KnowledgeUnitNotFoundError):
+        get_knowledge_unit_relations(session, course_id=COURSE_ID, knowledge_unit_id=resource.id)
+    with pytest.raises(KnowledgeUnitNotFoundError):
+        get_knowledge_unit_detail(session, course_id=COURSE_ID, knowledge_unit_id=legacy_resource.id)
+    with pytest.raises(KnowledgeUnitNotFoundError):
+        get_knowledge_unit_relations(session, course_id=COURSE_ID, knowledge_unit_id=legacy_resource.id)
+
+
+def test_focus_subgraph_without_center_prefers_high_degree_backbone_late_nodes(session: Session) -> None:
+    low_value_units = [
+        KnowledgeUnit(
+            course_id=COURSE_ID,
+            knowledge_unit_type="concept",
+            canonical_name=f"低连接节点 {index}",
+            normalized_name=sync.normalize_name(f"低连接节点 {index}"),
+            summary="低连接节点",
+            body_markdown="低连接节点",
+            status="active",
+        )
+        for index in range(18)
+    ]
+    session.add_all(low_value_units)
+    session.commit()
+
+    hub = KnowledgeUnit(
+        course_id=COURSE_ID,
+        knowledge_unit_type="principle",
+        canonical_name="核心主干节点",
+        normalized_name=sync.normalize_name("核心主干节点"),
+        summary="高连接主干",
+        body_markdown="高连接主干",
+        status="active",
+    )
+    spokes = [
+        KnowledgeUnit(
+            course_id=COURSE_ID,
+            knowledge_unit_type="concept",
+            canonical_name=f"关键相邻节点 {index}",
+            normalized_name=sync.normalize_name(f"关键相邻节点 {index}"),
+            summary="关键相邻节点",
+            body_markdown="关键相邻节点",
+            status="active",
+        )
+        for index in range(6)
+    ]
+    session.add(hub)
+    session.add_all(spokes)
+    session.commit()
+    session.refresh(hub)
+    for spoke in spokes:
+        session.refresh(spoke)
+
+    assert hub.id is not None
+    session.add_all(
+        [
+            KnowledgeEdge(
+                course_id=COURSE_ID,
+                source_node_id=hub.id,
+                target_node_id=spoke.id,
+                edge_type="prerequisite_for",
+                status="active",
+            )
+            for spoke in spokes
+            if spoke.id is not None
+        ]
+    )
+    session.commit()
+
+    subgraph = get_focus_subgraph(session, course_id=COURSE_ID, limit=4)
+
+    names = {node.canonical_name for node in subgraph.nodes}
+    assert "核心主干节点" in names
+    assert any(name.startswith("关键相邻节点") for name in names)
+    assert not names <= {unit.canonical_name for unit in low_value_units[:4]}
+
+
+def test_docgen_kg_draft_graph_rolls_back_when_publish_fails(session: Session) -> None:
+    existing = KnowledgeUnit(
+        course_id=COURSE_ID,
+        knowledge_unit_type="concept",
+        canonical_name="矩阵乘法",
+        normalized_name=sync.normalize_name("矩阵乘法"),
+        summary="旧摘要",
+        body="旧正文",
+        body_markdown="旧正文",
+        status="active",
+        build_revision_no=3,
+    )
+    session.add(existing)
+    session.commit()
+    session.refresh(existing)
+
+    metrics = sync.persist_docgen_kg_draft_graph_early(
+        session,
+        course_id=COURSE_ID,
+        build_revision_no=4,
+        docgen_kg_draft={
+            "quality_ready": True,
+            "fast_visible_ready": True,
+            "nodes": [
+                {
+                    "name": "矩阵乘法",
+                    "knowledge_unit_type": "concept",
+                    "chapter_index": 1,
+                    "summary": "新草稿摘要",
+                    "source": "docgen_review_refinement",
+                },
+                {
+                    "name": "单元测试",
+                    "knowledge_unit_type": "skill",
+                    "chapter_index": 1,
+                    "summary": "检查本章掌握情况。",
+                    "source": "docgen_reviewed_heading",
+                },
+            ],
+            "edges": [{"source_name": "单元测试", "target_name": "矩阵乘法", "edge_type": "assesses"}],
+            "quality_audit": {
+                "quality_ready": True,
+                "quality_status": "ready",
+                "warning_count": 0,
+                "missing_chapter_count": 0,
+                "edge_endpoint_issue_count": 0,
+                "edge_endpoint_ambiguity_count": 0,
+                "relation_direction_issue_count": 0,
+                "downstream_unit_count": 2,
+                "diagnostic_unit_count": 1,
+                "valid_relation_edge_count": 1,
+                "structure_edge_count": 1,
+                "examine_profile_ready": True,
+            },
+        },
+    )
+    session.commit()
+
+    assert metrics["created_unit_count"] == 1
+    assert metrics["updated_unit_count"] == 1
+    assert metrics["created_edge_count"] == 1
+    assert session.get(KnowledgeUnit, existing.id).summary == "新草稿摘要"
+    assert get_knowledge_units(session, course_id=COURSE_ID, page=1, size=10).total == 2
+
+    rollback_metrics = sync.rollback_docgen_kg_draft_graph_early(
+        session,
+        course_id=COURSE_ID,
+        early_persist_metrics=metrics,
+        reason="publish_failed",
+    )
+    session.commit()
+
+    restored = session.get(KnowledgeUnit, existing.id)
+    graph = get_full_graph(session, course_id=COURSE_ID)
+
+    assert rollback_metrics["deleted_unit_count"] == 1
+    assert rollback_metrics["restored_unit_count"] == 1
+    assert rollback_metrics["deleted_edge_count"] == 1
+    assert restored.summary == "旧摘要"
+    assert restored.body_markdown == "旧正文"
+    assert restored.build_revision_no == 3
+    assert {node.canonical_name for node in graph.nodes} == {"矩阵乘法"}
+    assert graph.edges == []
+
+
+def test_docgen_kg_draft_graph_skips_before_publish_when_quality_not_ready(session: Session) -> None:
+    metrics = sync.persist_docgen_kg_draft_graph_early(
+        session,
+        course_id=COURSE_ID,
+        docgen_kg_draft={
+            "quality_ready": False,
+            "nodes": [
+                {
+                    "name": "孤立节点",
+                    "knowledge_unit_type": "concept",
+                    "summary": "没有通过质量门。",
+                }
+            ],
+            "quality_audit": {"warning_count": 1},
+        },
+    )
+
+    units = session.exec(select(KnowledgeUnit).where(KnowledgeUnit.course_id == COURSE_ID)).all()
+
+    assert metrics["skipped"] is True
+    assert metrics["skip_reason"] == "docgen_kg_draft_quality_not_ready"
+    assert units == []
+
+
+def test_docgen_kg_draft_graph_skips_before_publish_without_quality_audit(session: Session) -> None:
+    metrics = sync.persist_docgen_kg_draft_graph_early(
+        session,
+        course_id=COURSE_ID,
+        docgen_kg_draft={
+            "quality_ready": True,
+            "fast_visible_ready": True,
+            "nodes": [
+                {
+                    "name": "看似可用节点",
+                    "knowledge_unit_type": "concept",
+                    "summary": "缺少质量审计时不能提前发布。",
+                }
+            ],
+        },
+    )
+
+    units = session.exec(select(KnowledgeUnit).where(KnowledgeUnit.course_id == COURSE_ID)).all()
+
+    assert metrics["skipped"] is True
+    assert metrics["skip_reason"] == "docgen_kg_draft_quality_not_ready"
+    assert metrics["docgen_draft_quality_audit_present"] == 0
+    assert units == []
+
+
+def test_docgen_kg_draft_final_payload_uses_published_context_without_llm() -> None:
+    payload = sync.build_docgen_kg_draft_final_payload(
+        markdown="# 矩阵基础\n\n正文\n\n# 应用训练\n\n正文",
+        structured_context=_quality_ready_draft_context(),
+    )
+
+    assert payload is not None
+    assert [unit.name for unit in payload.units] == ["矩阵乘法", "单元测试", "应用题训练"]
+    assert payload.units[0].knowledge_document_id == 10
+    assert payload.units[2].knowledge_document_id == 20
+    assert payload.units[2].source_file_ids == ["file-b"]
+    assert [(edge.edge_type, edge.knowledge_document_id) for edge in payload.extracted_edges] == [
+        ("assesses", 10),
+        ("applies_to", 20),
+    ]
+    assert payload.diagnostics_totals["docgen_draft_fast_finalize"] == 1
+    assert payload.diagnostics_totals["docgen_draft_final_unit_count"] == 3
+    assert payload.diagnostics_totals["docgen_draft_final_edge_count"] == 2
+    assert payload.diagnostics_totals["llm_section_count"] == 0
+
+
+def test_docgen_kg_draft_final_payload_requires_full_chapter_coverage() -> None:
+    context = _quality_ready_draft_context()
+    draft = context["docgen_manifest"]["docgen_kg_draft"]  # type: ignore[index]
+    draft["covered_chapter_indices"] = [1]  # type: ignore[index]
+
+    payload = sync.build_docgen_kg_draft_final_payload(
+        markdown="# 矩阵基础\n\n正文\n\n# 应用训练\n\n正文",
+        structured_context=context,
+    )
+
+    assert payload is None
+
+
+def test_docgen_kg_draft_final_payload_rejects_stale_quality_flag_without_audit() -> None:
+    context = _quality_ready_draft_context()
+    draft = context["docgen_manifest"]["docgen_kg_draft"]  # type: ignore[index]
+    draft.pop("quality_audit", None)  # type: ignore[attr-defined]
+
+    payload = sync.build_docgen_kg_draft_final_payload(
+        markdown="# 矩阵基础\n\n正文\n\n# 应用训练\n\n正文",
+        structured_context=context,
+    )
+
+    assert payload is None
+
+
+def test_extract_node_uses_quality_ready_docgen_draft_without_section_llm(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fail_extract(*args, **kwargs):
+        raise AssertionError("section LLM extraction should not run for quality-ready DocGen KG draft")
+
+    monkeypatch.setattr(extract_node_module, "extract_knowledge_graph_items_async", fail_extract)
+
+    state = {
+        "course_id": COURSE_ID,
+        "markdown": "# 矩阵基础\n\n正文\n\n# 应用训练\n\n正文",
+        "structured_context": _quality_ready_draft_context(),
+        "sync_run_context": sync.KnowledgeSyncRunContext(
+            course_id=COURSE_ID,
+            build_revision_no=7,
+            sync_run_id=99,
+            doc_version_no=7,
+            structured_context=_quality_ready_draft_context(),
+        ),
+        "node_metrics": {},
+    }
+
+    result = asyncio.run(extract_node_module.extract_node(state))
+
+    assert result["error"] is None
+    assert result["extraction_payload"] is not None
+    assert result["node_metrics"]["extract"]["course_context_source"] == "docgen_kg_draft"
+    assert result["node_metrics"]["extract"]["docgen_draft_fast_finalize"] == 1
+    assert result["node_metrics"]["extract"]["llm_section_count"] == 0
 
 
 def test_async_section_record_extraction_captures_success_and_failure(monkeypatch: pytest.MonkeyPatch) -> None:

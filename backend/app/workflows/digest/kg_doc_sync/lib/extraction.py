@@ -7,7 +7,7 @@ import re
 from typing import Literal
 from time import perf_counter
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 import structlog
 
 from app.shared.infra.llm_support import acompletion_structured, run_llm_tasks
@@ -24,6 +24,7 @@ from app.workflows.digest.kg_doc_sync.lib.ontology import relation_endpoint_type
 from app.workflows.digest.kg_doc_sync.lib.candidate_identity import build_candidate_stable_id
 from app.workflows.digest.kg_doc_sync.lib.question_blocks import parse_question_blocks
 from app.models.knowledge_taxonomy import (
+    normalize_generated_knowledge_unit_type,
     normalize_knowledge_unit_type,
     normalize_relation_type,
     normalize_type_source,
@@ -46,13 +47,29 @@ logger = structlog.get_logger()
 _MARKDOWN_DECORATION_RE = re.compile(r"[#*_`>]+")
 _MULTISPACE_RE = re.compile(r"\s+")
 _CALLOUT_MARKER_LINE_RE = re.compile(
-    r"(?im)^\s*>?\s*\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*$",
+    r"(?im)^\s*>?\s*\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION|EXAMPLE|PRACTICE|QUESTION)\]\s*$",
 )
 _MAX_SECTION_CANDIDATE_NODES = 8
 _MAX_SECTION_CANDIDATE_EDGES = 12
 _MAX_CANDIDATE_NAME_CHARS = 90
 _MAX_CANDIDATE_SUMMARY_CHARS = 140
 _MAX_EDGE_DESCRIPTION_CHARS = 140
+_CANDIDATE_STYLE_RE = re.compile(r"(\*\*|__|==|`+)")
+_CANDIDATE_MATH_DELIMITER_RE = re.compile(r"(\\\(|\\\)|\\\[|\\\]|\$\$?|\{\s*#ku_[^}]+\s*\})")
+_CANDIDATE_LABEL_PREFIX_RE = re.compile(
+    r"^\s*(?:[-*]\s*)?(?:定义|定理|公式|例题|示例|练习|证明|备注|任务|步骤|检查点|答案|解析|Q\d+)"
+    r"(?:\s*\d+)?(?:\s*[（(][^）)]{1,18}[）)])?\s*[:：]\s*",
+    re.IGNORECASE,
+)
+_GENERIC_CANDIDATE_NAME_RE = re.compile(
+    r"^(?:"
+    r"任务\s*\d*|步骤\s*\d*(?:\s*[（(][^）)]{1,18}[）)])?|检查点|求解步骤|"
+    r"单元测试|单元小测|章末测试|章末小测|章末练习|本章目标|学习目标|"
+    r"答案|解析|参考答案|判定依据|Q\d+|第\s*\d+\s*题|题目|本题|练习|测试"
+    r")$",
+    re.IGNORECASE,
+)
+_SENTENCE_LIKE_NAME_RE = re.compile(r"[。！？!?]|\s(?:是|指|表示|意味着|定义为|用于|可以|需要)\s")
 
 # 概念性内容检测
 _CONCEPTUAL_SIGNAL_RE = re.compile(
@@ -87,7 +104,6 @@ class CandidateNode(BaseModel):
         "skill",
         "misconception",
         "application_case",
-        "resource",
     ] = Field(
         description="允许的节点类型，必须使用枚举值本身。"
     )
@@ -100,6 +116,19 @@ class CandidateNode(BaseModel):
         description="解释辅助、练习评估、方法示范等节点所属的父知识、方法或主题。",
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_legacy_resource_like_type(cls, value: object) -> object:
+        if isinstance(value, dict):
+            data = dict(value)
+            data["knowledge_unit_type"] = normalize_generated_knowledge_unit_type(
+                str(data.get("knowledge_unit_type") or ""),
+                name=str(data.get("name") or ""),
+                summary=str(data.get("local_summary") or ""),
+            )
+            return data
+        return value
+
     @field_validator("knowledge_unit_type", mode="before")
     @classmethod
     def _normalize_knowledge_unit_type(cls, value: object) -> str:
@@ -109,6 +138,15 @@ class CandidateNode(BaseModel):
     @classmethod
     def _normalize_type_source(cls, value: object) -> str:
         return normalize_type_source(str(value or ""))
+
+    @model_validator(mode="after")
+    def _avoid_new_resource_nodes(self) -> "CandidateNode":
+        self.knowledge_unit_type = normalize_generated_knowledge_unit_type(
+            self.knowledge_unit_type,
+            name=self.name,
+            summary=self.local_summary,
+        )
+        return self
 
 
 class CandidateEdge(BaseModel):
@@ -200,6 +238,40 @@ def _normalize_text(text: str) -> str:
     text = _MARKDOWN_DECORATION_RE.sub(" ", text)
     text = normalize_semantic_whitespace(text)
     return _MULTISPACE_RE.sub(" ", text).strip()
+
+
+def _clean_candidate_display_name(value: object, *, unit_type: str = "", max_chars: int = _MAX_CANDIDATE_NAME_CHARS) -> str:
+    """Drop display-hostile KG names before they reach the database."""
+
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    text = _CANDIDATE_MATH_DELIMITER_RE.sub("", raw)
+    text = _CANDIDATE_STYLE_RE.sub("", text)
+    text = _normalize_text(text)
+    text = _CANDIDATE_LABEL_PREFIX_RE.sub("", text, count=1)
+    text = text.strip(" ：:，,。；;、|-")
+    if not text:
+        return ""
+
+    # Prefer the short semantic label before a colon when the rest is an explanation.
+    if re.search(r"[:：]", text):
+        head, tail = re.split(r"[:：]", text, maxsplit=1)
+        head = head.strip(" ：:，,。；;、|-")
+        tail = tail.strip(" ：:，,。；;、|-")
+        if 2 <= len(head) <= 24 and not _GENERIC_CANDIDATE_NAME_RE.fullmatch(head):
+            text = head
+        else:
+            text = tail
+
+    text = _CANDIDATE_LABEL_PREFIX_RE.sub("", text, count=1).strip(" ：:，,。；;、|-")
+    if not text or _GENERIC_CANDIDATE_NAME_RE.fullmatch(text):
+        return ""
+    if len(text) > 28 and _SENTENCE_LIKE_NAME_RE.search(text):
+        return ""
+    if normalize_knowledge_unit_type(unit_type) != "formula_model" and len(text) > max_chars:
+        return ""
+    return _clip_text(text, max_chars=max_chars)
 
 
 def _clip_text(text: str, *, max_chars: int) -> str:
@@ -372,6 +444,8 @@ def _sanitize_candidate_graph(
     semantic_topic_name = semantic_topic_path[-1] if semantic_topic_path else _clean_topic_name(chunk_title, header_path)
 
     rename_map: dict[str, str] = {}
+    filtered_nodes: list[CandidateNode] = []
+    seen_nodes: set[tuple[str, str]] = set()
     for node in result.nodes:
         original_name = node.name
         original_type = node.knowledge_unit_type
@@ -380,7 +454,13 @@ def _sanitize_candidate_graph(
         node.type_source = normalize_type_source(node.type_source)
         node.type_confidence = max(0.0, min(1.0, float(node.type_confidence)))
         if is_topic_like:
-            cleaned_name = clean_semantic_title(node.name) or semantic_topic_name
+            cleaned_name = (
+                clean_semantic_title(_clean_candidate_display_name(node.name, unit_type="topic", max_chars=72))
+                or clean_semantic_title(_clean_candidate_display_name(semantic_topic_name, unit_type="topic", max_chars=72))
+            )
+            if not cleaned_name:
+                rename_map[original_name] = ""
+                continue
             node.name = _clip_text(cleaned_name, max_chars=_MAX_CANDIDATE_NAME_CHARS)
             if not node.taxonomy_hint or is_generic_semantic_title(node.taxonomy_hint):
                 if len(semantic_topic_path) >= 2 and cleaned_name == semantic_topic_path[-1]:
@@ -388,7 +468,15 @@ def _sanitize_candidate_graph(
                 else:
                     node.taxonomy_hint = cleaned_name
         else:
-            node.name = _clip_text(_normalize_text(node.name), max_chars=_MAX_CANDIDATE_NAME_CHARS)
+            cleaned_name = _clean_candidate_display_name(
+                node.name,
+                unit_type=node.knowledge_unit_type,
+                max_chars=_MAX_CANDIDATE_NAME_CHARS,
+            )
+            if not cleaned_name:
+                rename_map[original_name] = ""
+                continue
+            node.name = cleaned_name
             node.local_summary = _clip_text(node.local_summary, max_chars=_MAX_CANDIDATE_SUMMARY_CHARS)
             if node.knowledge_unit_type in {
                 "concept",
@@ -407,19 +495,32 @@ def _sanitize_candidate_graph(
             ):
                 node.parent_entity_name = semantic_topic_name
         node.local_summary = _clip_text(node.local_summary, max_chars=_MAX_CANDIDATE_SUMMARY_CHARS)
+        node_key = (node.knowledge_unit_type, _normalize_text(node.name).casefold())
+        if node_key in seen_nodes:
+            rename_map[original_name] = node.name
+            continue
+        seen_nodes.add(node_key)
         rename_map[original_name] = node.name
+        filtered_nodes.append(node)
+    result.nodes = filtered_nodes
 
     for node in result.nodes:
         if node.parent_entity_name:
             node.parent_entity_name = rename_map.get(node.parent_entity_name, node.parent_entity_name)
+            node.parent_entity_name = _clean_candidate_display_name(node.parent_entity_name, unit_type="topic", max_chars=72) or None
         if node.taxonomy_hint:
             node.taxonomy_hint = rename_map.get(node.taxonomy_hint, node.taxonomy_hint)
+            node.taxonomy_hint = _clean_candidate_display_name(node.taxonomy_hint, unit_type="topic", max_chars=72)
 
     filtered_edges: list[CandidateEdge] = []
     node_type_by_name = {node.name: node.knowledge_unit_type for node in result.nodes}
     for edge in result.edges:
         edge.source_name = rename_map.get(edge.source_name, edge.source_name)
         edge.target_name = rename_map.get(edge.target_name, edge.target_name)
+        if not edge.source_name or not edge.target_name:
+            continue
+        if edge.source_name not in node_type_by_name or edge.target_name not in node_type_by_name:
+            continue
         edge.description = _clip_text(edge.description, max_chars=_MAX_EDGE_DESCRIPTION_CHARS)
         edge.edge_type = normalize_relation_type(edge.edge_type)
         edge.source_node_type = normalize_knowledge_unit_type(edge.source_node_type or node_type_by_name.get(edge.source_name))

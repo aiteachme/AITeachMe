@@ -11,6 +11,8 @@ from app.shared.infra.llm_support.model_catalog import PRIMARY_GATEWAY_MODEL_ALL
 
 from .support import get_llm_provider_model_defaults, resolve_runtime_llm_provider
 
+DEFAULT_INGEST_MAX_UPLOAD_SIZE_MB = 20
+
 DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
     "models": {
         "vision": None,
@@ -47,7 +49,7 @@ DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
         "generate_interactive_html": False,
     },
     "ingest": {
-        "max_upload_size_mb": 10,
+        "max_upload_size_mb": DEFAULT_INGEST_MAX_UPLOAD_SIZE_MB,
         "max_files_per_upload": 10,
         "parser_provider": "local",
     },
@@ -108,6 +110,7 @@ def merge_default_settings(override: Mapping[str, Any] | None = None) -> dict[st
 
 
 __all__ = [
+    "DEFAULT_INGEST_MAX_UPLOAD_SIZE_MB",
     "DEFAULT_SETTINGS_VALUES",
     "get_default_settings_values",
     "merge_default_settings",

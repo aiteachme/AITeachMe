@@ -59,14 +59,36 @@ def _text(value: Any) -> str:
     return " ".join(str(value).strip().split())
 
 
+def _remove_planner_self_intro(text: str) -> str:
+    return re.sub(
+        r"^\s*(?:你好[！!。]?\s*)?我是你的\s*AITeachMe\s*学习规划师[。！!，,]?\s*",
+        "",
+        str(text or ""),
+    )
+
+
 def _student_facing_text(value: Any) -> str:
     return (
-        _text(value)
+        _remove_planner_self_intro(_text(value))
         .replace("速成课模式", "紧凑节奏")
         .replace("速成课", "紧凑节奏")
         .replace("系统课", "系统节奏")
         .replace("章节合同", "学习大纲")
     )
+
+
+def compose_effective_planner_request_text(user_prompt: Any, feedback_message: Any = "") -> str:
+    """Combine the original goal and latest revision for structural parsing."""
+
+    prompt = _text(user_prompt)
+    feedback = _text(feedback_message)
+    if not feedback:
+        return prompt
+    if not prompt:
+        return feedback
+    if feedback in prompt:
+        return prompt
+    return f"{prompt}\n用户最新调整：{feedback}"
 
 
 def _strings(value: Any) -> list[str]:
@@ -80,6 +102,60 @@ def _strings(value: Any) -> list[str]:
             seen.add(key)
             cleaned.append(text)
     return cleaned
+
+
+_DIAGNOSIS_OPTION_FALLBACKS = [
+    "先补基础",
+    "例题带路",
+    "多练变式",
+    "章末小测",
+    "错因提醒",
+    "重点速查",
+]
+
+
+def _diagnosis_contract_text(value: Any, *, field: str = "text") -> str:
+    text = _student_facing_text(value)
+    if not text:
+        return ""
+    if field == "question" and "图示" in text and any(marker in text for marker in ("辅助", "重点", "怎么", "如何", "需求")):
+        return "解析要多细？"
+    replacements = {
+        "图示辅助": "错因提醒",
+        "图示重点": "解析重点",
+        "图示需求": "解析需求",
+        "多用图示": "多练变式",
+        "少用图示": "只给要点",
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    if field == "purpose":
+        text = text.replace("图示", "解析")
+    elif text == "图示":
+        text = "解析"
+    return text
+
+
+def _ensure_four_diagnosis_options(value: Any) -> list[str]:
+    """Keep planner diagnostics as real four-choice questions."""
+
+    options = _strings(value)
+    result: list[str] = []
+    seen: set[str] = set()
+    for item in [*options, *_DIAGNOSIS_OPTION_FALLBACKS]:
+        text = _diagnosis_contract_text(item)
+        if not text:
+            continue
+        if len(text) > 16:
+            text = text[:16].rstrip(" ，,。；;、")
+        key = text.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(text)
+        if len(result) >= 4:
+            break
+    return result
 
 
 def _mapping(value: Any) -> dict[str, Any]:
@@ -114,6 +190,47 @@ _CHAPTER_COUNT_UNIT_PATTERN = r"(?:个\s*)?(?:章节|章)"
 _CHAPTER_COUNT_RANGE_RE = re.compile(
     rf"(?<!\d)(?P<min>\d{{1,2}})\s*(?:[-~—–]|至|到)\s*(?P<max>\d{{1,2}})\s*{_CHAPTER_COUNT_UNIT_PATTERN}"
 )
+_TITLE_DETAIL_SEPARATOR_RE = re.compile(r"\s*[:：\-—–]\s*", re.ASCII)
+_MIDDLE_SCHOOL_MODULE_TITLE_MAP = {
+    "数与式": "实数与代数式化简",
+    "方程与不等式": "方程与不等式求解",
+    "函数": "函数图像与解析式",
+    "几何": "几何图形与证明",
+    "统计与概率": "数据分析与概率应用",
+}
+
+
+def _compact_planner_chapter_title(title: str) -> str:
+    """Keep planner chapter titles readable without collapsing them to vague tags."""
+
+    cleaned = clean_generated_chapter_title(title)
+    if not cleaned:
+        return ""
+    if len(cleaned) <= 14 and not _TITLE_DETAIL_SEPARATOR_RE.search(cleaned):
+        return cleaned
+
+    head, *tail = _TITLE_DETAIL_SEPARATOR_RE.split(cleaned, maxsplit=1)
+    head = clean_generated_chapter_title(head)
+    detail = clean_generated_chapter_title(tail[0]) if tail else ""
+    if not head:
+        return cleaned
+
+    mapped = _MIDDLE_SCHOOL_MODULE_TITLE_MAP.get(head)
+    if mapped:
+        return mapped
+    if len(head) >= 4 and any(token in head for token in ("与", "和", "及")):
+        return head[:14]
+    if len(head) >= 4 and len(head) <= 14:
+        return head
+    if len(head) <= 3 and detail:
+        if "图像" in detail and "解析" in detail:
+            return f"{head}图像与解析"[:14]
+        if "证明" in detail:
+            return f"{head}图形与证明"[:14]
+        for token in ("基础", "性质", "方法", "应用", "计算"):
+            if token in detail:
+                return f"{head}{token}"[:14]
+    return cleaned[:18] if len(cleaned) > 18 else cleaned
 
 
 def _chapter_count_range_from_text(value: Any) -> tuple[int, int] | None:
@@ -170,14 +287,14 @@ def render_planner_chapter_contract(value: Any) -> str:
                 "仅用于判断章节颗粒度。"
             ),
             f"- 划分主线：{granularity}",
-            "- 章节是可直接授课的内容模块，标题写成可独立授课的知识块名称，可对应具体知识对象、方法步骤、题型技能或应用场景。",
+            "- 章节是可直接授课的内容模块，标题写成可独立理解的课程目录名，通常 4-12 字，不使用冒号/破折号副标题；过宽的目录词只补一个短学习焦点。",
             "- required_elements/key_points 描述所属章节内部的目标、概念、例题、易错点、练习、检测、纠错和巩固安排。",
             "- 用户以“按 A、B、C 划分章节/模块/单元”给出列表时，这个列表就是完整一级章节清单，chapters 与 A/B/C 逐项对应，数组长度等于列表项数量。",
-            "- 用户给出的列表项已是知识块名称时，标题等于该列表项；进度、训练和检测安排写进 required_elements/key_points。",
+            "- 用户给出的列表项已是清晰知识块名称时，标题等于该列表项；如果只是宽泛类别，可保留原词并补一个简短限定；进度、训练和检测安排写进 required_elements/key_points。",
             "- 用户同时给出学习天数和 A/B/C 列表时，天数是 A/B/C 的进度预算；最后一个知识块按它自身的具体对象、方法和练习安排展开。",
             "- 全程巩固、检测和纠错按服务对象拆入各章节；方案说明结尾落到最后一个知识块自身的学习内容。",
             "- 每章承担一个主要学习任务，相邻章节体现依赖、递进或场景切换。",
-            "- 标题用真实课程目录名：清楚直观，保留必要限定词；细节、时间预算、练习和检测安排放到 required_elements/key_points。",
+            "- 标题用真实课程目录名：清楚直观，保留必要限定词，避免只有“函数”“几何”这类过短空标题，也避免“模块：目标/方法/应用”式长副标题；细节、时间预算、练习和检测安排放到 required_elements/key_points。",
             "- 用户列出的额外学习活动也按其服务的内容模块安排，形成讲解、例题、练习、小测的章内闭环；最后一个知识块的检测也围绕自身题型和易错点。",
         ]
     )
@@ -214,7 +331,7 @@ def _resolve_course_name(
 
 
 def _merge_chapter(raw: Mapping[str, Any], index: int) -> PlannerChapterPlan:
-    title = clean_generated_chapter_title(_text(raw.get("title")))
+    title = _compact_planner_chapter_title(_text(raw.get("title")))
     key_points = _strings(raw.get("required_elements") or raw.get("key_points"))
     if not title:
         raise ValueError(f"planner chapter #{index} is missing title")
@@ -230,10 +347,13 @@ def _merge_chapter(raw: Mapping[str, Any], index: int) -> PlannerChapterPlan:
 
 
 def _merge_diagnostic(raw: Mapping[str, Any]) -> PlannerDiagnosticQuestion | None:
-    question = _student_facing_text(raw.get("question") or raw.get("title") or raw.get("prompt"))
+    question = _diagnosis_contract_text(raw.get("question") or raw.get("title") or raw.get("prompt"), field="question")
     if not question:
         return None
-    purpose = _student_facing_text(raw.get("purpose") or raw.get("diagnosis_target") or raw.get("target"))
+    purpose = _diagnosis_contract_text(
+        raw.get("purpose") or raw.get("diagnosis_target") or raw.get("target"),
+        field="purpose",
+    )
     options = _strings(
         raw.get("options")
         or raw.get("choices")
@@ -241,14 +361,12 @@ def _merge_diagnostic(raw: Mapping[str, Any]) -> PlannerDiagnosticQuestion | Non
         or raw.get("quick_answers")
         or raw.get("example_answers")
         or raw.get("answers")
-    )[:4]
-    if not options:
-        options = ["从头讲起", "先讲基础例题", "直接进入综合应用"]
+    )
     return PlannerDiagnosticQuestion(
         question=question,
         purpose=purpose,
-        options=options,
-        answer=_student_facing_text(raw.get("answer") or raw.get("user_answer") or raw.get("selected_answer")),
+        options=_ensure_four_diagnosis_options(options),
+        answer=_diagnosis_contract_text(raw.get("answer") or raw.get("user_answer") or raw.get("selected_answer")),
     )
 
 
@@ -259,55 +377,60 @@ def _fallback_diagnostic_pool(
     digest_mode: str,
 ) -> list[PlannerDiagnosticQuestion]:
     mode_label = planner_mode_label(digest_mode)
-    result: list[PlannerDiagnosticQuestion] = []
-    for chapter in chapters[:2]:
-        options = [
-            "基本没学过，需要从概念起步",
-            "看例题能懂，独立做题不稳",
-            "基础题可以，综合题容易卡",
-            "整体较熟，想提高速度和准确率",
-        ]
-        result.append(
-            PlannerDiagnosticQuestion(
-                question=f"《{chapter.title}》这一章，你当前更接近哪种状态？",
-                purpose=f"决定《{chapter.title}》的讲解起点、例题难度和练习密度。",
-                options=options,
-            )
-        )
-
     generic_items = [
         (
-            f"这门课的文档更适合按哪种目标组织？",
-            "决定章节内讲解、例题和测验的侧重。",
-            ["考试拿分优先", "概念理解优先", "作业应用优先", "先搭框架再练题"],
+            "当前基础怎样？",
+            "文档落点：决定讲解起点、概念铺垫长度和例题难度。",
+            [
+                "零基础入门",
+                "基础需补课",
+                "中等求稳固",
+                "基础扎实",
+            ],
         ),
         (
-            "文档中的示意图应该重点服务哪类内容？",
-            "决定 DocGen 的图示密度和图示类型。",
-            ["概念关系图", "步骤流程图", "公式/结构示意", "少量关键图即可"],
+            "讲解重心放哪？",
+            "文档落点：决定正文讲解顺序、例题类型和每章小结。",
+            [
+                "概念先讲清",
+                "例题带理解",
+                "步骤拆细些",
+                "易错多提醒",
+            ],
         ),
         (
-            "每章练习更适合放在哪个位置？",
-            "决定文档中的例题、章内练习和单元测验配置。",
-            ["讲完概念立刻练", "例题后集中练", "章末小测为主", "先少量练习保持速度"],
+            "练习密度多大？",
+            "文档落点：决定正文短练习、章末单元测试和解析密度。",
+            [
+                "少量精练",
+                "每节小练",
+                "章末小测",
+                "多练变式",
+            ],
         ),
         (
-            "后续解释更应该采用哪种风格？",
-            "决定文档正文的推导深度和伴读提示风格。",
-            ["老师推导型", "清单速查型", "错题纠偏型", "例题带路型"],
+            "解析要多细？",
+            "文档落点：决定章末测试答案、判定依据和错因提示的展开程度。",
+            [
+                "只给要点",
+                "写清依据",
+                "补错因提醒",
+                "给变式建议",
+            ],
         ),
     ]
+    result: list[PlannerDiagnosticQuestion] = []
     for question, purpose, options in generic_items:
         result.append(
             PlannerDiagnosticQuestion(
                 question=question,
                 purpose=purpose,
-                options=options,
+                options=_ensure_four_diagnosis_options(options),
             )
         )
-        if len(result) >= 5:
+        if len(result) >= 4:
             break
-    return result[:5]
+    return result[:4]
 
 
 def _normalize_diagnose(
@@ -327,11 +450,27 @@ def _normalize_diagnose(
         if key in seen:
             continue
         seen.add(key)
-        result.append(item)
-        if len(result) >= 5:
+        result.append(
+            item.model_copy(update={"options": _ensure_four_diagnosis_options(item.options)})
+        )
+        if len(result) >= 4:
             break
     if result:
-        return result
+        if len(result) >= 4:
+            return result[:4]
+        fallback = _fallback_diagnostic_pool(
+            chapters=chapters,
+            user_prompt=user_prompt,
+            digest_mode=digest_mode,
+        )
+        for item in fallback:
+            key = _text(item.question).casefold()
+            if key in seen:
+                continue
+            result.append(item)
+            if len(result) >= 4:
+                break
+        return result[:4]
     return _fallback_diagnostic_pool(
         chapters=chapters,
         user_prompt=user_prompt,
@@ -483,7 +622,7 @@ def _activity_point_for_requested_title(title: str, user_prompt: str) -> str:
     has_unit_test_request = bool(re.search(r"单元测试|测试|测验|小测", user_prompt))
     activity_items = ["核心概念", "方法步骤", "典型例题", "易错点", "练习"]
     if has_visual_request:
-        activity_items.insert(1, "图示")
+        activity_items.insert(1, "图表读取")
     if has_unit_test_request:
         activity_items.append("单元测试")
     return f"围绕{title}讲清{'、'.join(activity_items)}。"
@@ -532,7 +671,7 @@ def _plan_text_for_requested_titles(requested_titles: list[str], *, user_prompt:
     has_unit_test_request = bool(re.search(r"单元测试|测试|测验|小测", user_prompt))
     activity_items = ["讲解", "例题", "易错点", "练习"]
     if has_visual_request:
-        activity_items.insert(0, "图示")
+        activity_items.insert(0, "图表读取")
     if has_unit_test_request:
         activity_items.append("单元测试")
     activities = "、".join(activity_items)
@@ -745,4 +884,5 @@ __all__ = [
     "normalize_planner_payload",
     "planner_mode_label",
     "render_planner_chapter_contract",
+    "compose_effective_planner_request_text",
 ]

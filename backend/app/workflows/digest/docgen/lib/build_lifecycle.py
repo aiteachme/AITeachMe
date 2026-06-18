@@ -765,7 +765,7 @@ async def run_docgen_background(
 
     负责把 API 接受的构建请求转成一次真实 workflow run：加载 confirmed
     plan、运行 `run_docgen_workflow`、持久化知识文档、
-    更新状态并释放构建锁。自动图谱同步已经是 DocGen 图的后置节点；异常处理也集中在这里，避免 API 层持有
+    更新状态并释放构建锁。自动图谱固化已经是 DocGen 图内的最终节点；异常处理也集中在这里，避免 API 层持有
     长任务细节。
     """
 
@@ -1022,6 +1022,7 @@ async def run_docgen_background(
             digest_mode=resolved_digest_mode,
             error_message=None,
             draft_available=False,
+            metrics=dict(final_docgen_state.get("kg_prefetch_metrics") or {}),
             current_stage_description="知识文档已发布完成。",
         )
         docgen_published = True

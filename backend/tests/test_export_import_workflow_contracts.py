@@ -407,6 +407,9 @@ def test_settings_and_foreign_key_remap_helpers_normalize_import_records() -> No
         "entity_type": "unit",
         "entity_id": "old-unit",
     }
+    disabled_record = {
+        "settings_json": {"embedding": {"mode": "disabled"}, "course_icon_key": "math"},
+    }
     warnings: list[str] = []
     id_map: dict[str, dict[Any, Any]] = {
         "raw_file": {"old-file": "new-file"},
@@ -414,6 +417,7 @@ def test_settings_and_foreign_key_remap_helpers_normalize_import_records() -> No
     }
 
     export_module._prepare_imported_course_settings(record, "Linear Algebra")
+    export_module._prepare_imported_course_settings(disabled_record, "Linear Algebra")
     export_module._remap_json_int_list_text_field(
         record,
         "source_file_ids_json",
@@ -425,6 +429,9 @@ def test_settings_and_foreign_key_remap_helpers_normalize_import_records() -> No
     export_module._remap_graph_source_ref_entity(record, id_map, warnings)
 
     assert "embedding" not in json.loads(record["settings_json"])
+    disabled_settings = json.loads(disabled_record["settings_json"])
+    assert "embedding" not in disabled_settings
+    assert disabled_settings["course_icon_key"] == "math"
     assert json.loads(record["source_file_ids_json"]) == ["new-file"]
     assert record["entity_id"] == 10
     assert warnings == ["knowledge_graph_source_ref.source_file_ids_json: ref missing not found in raw_file"]

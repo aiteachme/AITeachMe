@@ -93,7 +93,7 @@ class DocGenModeProfile:
     max_gap_queries_per_round: int
     strategy_context_chars: int
     prompt_extra_contract: str = ""
-    max_writer_retries: int = 1
+    max_writer_retries: int = 0
 
     @property
     def writing_rules(self) -> list[str]:
@@ -176,13 +176,12 @@ _SPRINT_PROFILE = DocGenModeProfile(
     content_mix_policy={
         "concept": 0.18,
         "procedure": 0.24,
-        "resource": 0.06,
         "principle": 0.06,
         "formula_model": 0.08,
         "skill": 0.30,
         "misconception": 0.12,
         "topic": 0.06,
-        "application_case": 0.16,
+        "application_case": 0.22,
     },
     example_density_policy={
         "minimum_practice_share": 0.45,
@@ -254,13 +253,12 @@ _SYSTEMATIC_PROFILE = DocGenModeProfile(
     content_mix_policy={
         "concept": 0.28,
         "procedure": 0.14,
-        "resource": 0.10,
         "principle": 0.18,
         "formula_model": 0.14,
         "skill": 0.12,
         "misconception": 0.08,
         "topic": 0.10,
-        "application_case": 0.10,
+        "application_case": 0.20,
     },
     example_density_policy={
         "minimum_practice_share": 0.3,

@@ -37,6 +37,7 @@ interface AiConversationSidebarSectionProps {
   emptyText?: string;
   className?: string;
   hideHeader?: boolean;
+  showCollapsedNewButton?: boolean;
 }
 
 type ConversationKind = "document" | "question" | "builder" | "general";
@@ -55,18 +56,14 @@ const conversationListMotion: Variants = {
 };
 
 const conversationItemMotion: Variants = {
-  hidden: { opacity: 0, x: -8, scale: 0.985 },
+  hidden: { opacity: 0 },
   visible: {
     opacity: 1,
-    x: 0,
-    scale: 1,
-    transition: { type: "spring", stiffness: 420, damping: 34 },
+    transition: { duration: 0.12, ease: [0.2, 0, 0, 1] },
   },
   exit: {
     opacity: 0,
-    x: -8,
-    scale: 0.985,
-    transition: { duration: 0.14, ease: "easeOut" },
+    transition: { duration: 0.08, ease: [0.4, 0, 1, 1] },
   },
 };
 
@@ -133,6 +130,46 @@ function getSessionId(session: ChatSessionItem): string | null {
   return legacySessionId || null;
 }
 
+function sessionTimeMs(session: ChatSessionItem): number {
+  const raw = session.last_message_at || session.updated_at || session.created_at;
+  const parsed = raw ? Date.parse(raw) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function collapseBuildPlannerSessions(items: ChatSessionItem[]): ChatSessionItem[] {
+  const latestByCourse = new Map<string, ChatSessionItem>();
+  for (const item of items) {
+    if (getSessionKind(item) !== "builder") {
+      continue;
+    }
+    const key = getSessionCourseId(item);
+    const existing = latestByCourse.get(key);
+    if (!existing || sessionTimeMs(item) > sessionTimeMs(existing)) {
+      latestByCourse.set(key, item);
+    }
+  }
+
+  if (latestByCourse.size === 0) {
+    return items;
+  }
+
+  const emittedBuildCourses = new Set<string>();
+  return items.filter((item) => {
+    if (getSessionKind(item) !== "builder") {
+      return true;
+    }
+    const key = getSessionCourseId(item);
+    if (emittedBuildCourses.has(key)) {
+      return false;
+    }
+    if (latestByCourse.get(key) !== item) {
+      return false;
+    }
+    emittedBuildCourses.add(key);
+    return true;
+  });
+}
+
 function getSessionCourseLabel(session: ChatSessionItem): string {
   const courseId = getSessionCourseId(session);
   return session.course_name?.trim() || (courseId === GLOBAL_COURSE_ID ? "通用" : "未命名课程");
@@ -143,6 +180,21 @@ function getSessionScope(session: ChatSessionItem): AiConversationScope {
   return courseId === GLOBAL_COURSE_ID
     ? { type: "global" }
     : { type: "course", courseId };
+}
+
+function getSessionPrimaryBadge(session: ChatSessionItem): { label: string; className: string } {
+  const kind = getSessionKind(session);
+  if (kind !== "general") {
+    const style = CONVERSATION_KIND_STYLES[kind];
+    return { label: style.label, className: style.badgeClassName };
+  }
+  const isGlobal = getSessionCourseId(session) === GLOBAL_COURSE_ID;
+  return {
+    label: isGlobal ? "全局" : "课程",
+    className: isGlobal
+      ? "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+      : "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-200",
+  };
 }
 
 function getSessionDeleteUrl(session: ChatSessionItem): string {
@@ -207,6 +259,7 @@ export function AiConversationSidebarSection({
   emptyText = "暂无对话",
   className,
   hideHeader = false,
+  showCollapsedNewButton = true,
 }: AiConversationSidebarSectionProps) {
   const {
     activeScope,
@@ -241,7 +294,7 @@ export function AiConversationSidebarSection({
   const hasCurrentScopeSessions = sessionsScopeKey === listScopeKey;
   const isListLoading = isLoading || (shouldLoadSessions && !hasCurrentScopeSessions);
   const visibleSessions = useMemo(
-    () => (hasCurrentScopeSessions ? sessions : []).slice(0, maxItems),
+    () => collapseBuildPlannerSessions(hasCurrentScopeSessions ? sessions : []).slice(0, maxItems),
     [hasCurrentScopeSessions, maxItems, sessions],
   );
   const updateExpanded = useCallback((next: boolean | ((current: boolean) => boolean)) => {
@@ -340,24 +393,28 @@ export function AiConversationSidebarSection({
       setError("这条会话缺少会话 ID，暂时无法删除");
       return;
     }
+    const previousSessions = sessions;
+    setSessions((current) => current.filter((item) => getSessionId(item) !== sessionId));
+    if (activeConversationSessionId === sessionId) {
+      setActiveConversationSessionId(null);
+    }
+    setError(null);
+    notifyConversationSessionsChanged();
     try {
       await apiClient({
         method: "POST",
         url: getSessionDeleteUrl(target),
         data: { session_id: sessionId },
       });
-      setSessions((current) => current.filter((item) => getSessionId(item) !== sessionId));
-      if (activeConversationSessionId === sessionId) {
-        setActiveConversationSessionId(null);
-      }
-      setError(null);
       notifyConversationSessionsChanged();
     } catch (requestError: unknown) {
+      setSessions(previousSessions);
       setError(getApiErrorMessage(requestError, "删除对话失败"));
     }
   }, [
     activeConversationSessionId,
     notifyConversationSessionsChanged,
+    sessions,
     setActiveConversationSessionId,
   ]);
 
@@ -368,9 +425,7 @@ export function AiConversationSidebarSection({
       isActiveViewForListScope &&
       sessionId !== null &&
       activeConversationSessionId === sessionId;
-    const kind = getSessionKind(session);
-    const kindStyle = CONVERSATION_KIND_STYLES[kind];
-    const shouldShowKindBadge = kind !== "general";
+    const primaryBadge = getSessionPrimaryBadge(session);
     const courseLabel = getSessionCourseLabel(session);
 
     return (
@@ -397,11 +452,9 @@ export function AiConversationSidebarSection({
           )}
           title={session.title || "未命名对话"}
         >
-          {shouldShowKindBadge ? (
-            <span className={cn("inline-flex h-4 shrink-0 items-center rounded px-1 text-[9px] font-semibold leading-none", kindStyle.badgeClassName)}>
-              {kindStyle.label}
-            </span>
-          ) : null}
+          <span className="min-w-0 flex-1 truncate text-xs leading-7">
+            {session.title || "未命名对话"}
+          </span>
           {showCourseBadge ? (
             <span
               className="inline-flex h-4 max-w-[4.75rem] shrink-0 items-center truncate rounded bg-slate-100 px-1 text-[9px] font-semibold leading-none text-slate-500 dark:bg-slate-800 dark:text-slate-300"
@@ -410,8 +463,8 @@ export function AiConversationSidebarSection({
               {courseLabel}
             </span>
           ) : null}
-          <span className="min-w-0 flex-1 truncate text-xs leading-7">
-            {session.title || "未命名对话"}
+          <span className={cn("inline-flex h-4 w-8 shrink-0 items-center justify-center rounded text-[9px] font-semibold leading-none", primaryBadge.className)}>
+            {primaryBadge.label}
           </span>
         </button>
         <button
@@ -436,23 +489,39 @@ export function AiConversationSidebarSection({
 
   if (collapsed) {
     return (
-      <section className="space-y-0.5">
-        <div className="flex h-6 items-center px-1">
-          <div className="h-px w-full bg-slate-200 dark:bg-slate-800" />
+      <section className="space-y-1">
+        <div className="flex h-5 items-center justify-center">
+          <div className="h-px w-8 bg-slate-200 dark:bg-slate-800" />
         </div>
-        <button
-          type="button"
-          onClick={openNewConversation}
-          className="flex h-7 w-full items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-[#eef3f8] hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9fb0c4]/45 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200"
-          aria-label={newConversationLabel}
-          title={newConversationLabel}
-        >
-          <SquarePen className="h-3.5 w-3.5" strokeWidth={2.1} />
-        </button>
+        {showCollapsedNewButton ? (
+          <button
+            type="button"
+            onClick={openNewConversation}
+            className="mx-auto flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-[#eef3f8] hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9fb0c4]/45 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200"
+            aria-label={newConversationLabel}
+            title={newConversationLabel}
+          >
+            <SquarePen className="h-3.5 w-3.5" strokeWidth={2.1} />
+          </button>
+        ) : null}
         {isListLoading && visibleSessions.length === 0 ? (
-          <div className="flex h-7 w-full items-center justify-center rounded-md text-slate-400 dark:text-slate-500">
+          <div className="mx-auto flex h-8 w-8 items-center justify-center rounded-md text-slate-400 dark:text-slate-500">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
           </div>
+        ) : null}
+        {!isListLoading && visibleSessions.length === 0 && !showCollapsedNewButton ? (
+          <button
+            type="button"
+            onClick={() => {
+              updateExpanded(true);
+              onExpandSidebar();
+            }}
+            className="mx-auto flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-[#eef3f8] hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9fb0c4]/45 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200"
+            aria-label={title}
+            title={title}
+          >
+            <MessageSquareText className="h-3.5 w-3.5" strokeWidth={2.2} />
+          </button>
         ) : null}
         {visibleSessions.map((session) => {
           const sessionId = getSessionId(session);
@@ -468,7 +537,7 @@ export function AiConversationSidebarSection({
               type="button"
               onClick={() => openSession(session)}
               className={cn(
-                "group flex h-7 w-full items-center justify-center rounded-md transition-colors focus-visible:outline-none",
+                "group mx-auto flex h-8 w-8 items-center justify-center rounded-md transition-colors focus-visible:outline-none",
                 CONVERSATION_FOCUS_CLASS_NAME,
                 isSelected
                   ? CONVERSATION_SELECTED_CLASS_NAME

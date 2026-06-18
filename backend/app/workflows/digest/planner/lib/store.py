@@ -51,6 +51,7 @@ from app.utils.time import utcnow
 from app.workflows.digest.common.file_status import is_markdown_ready_for_digest
 from app.workflows.digest.common.runtime_config import get_teaching_runtime_config
 from app.workflows.digest.planner.lib.plans import (
+    compose_effective_planner_request_text,
     normalize_planner_diagnosis_draft,
     normalize_planner_payload,
     planner_mode_label,
@@ -442,6 +443,18 @@ def _get_active_planning_session(session: Session, *, course_id: str, user_id: s
         if _planner_status(item) == "planning":
             return item
     return None
+
+
+def get_reusable_planner_session_id(*, course: Course, user_id: str) -> str | None:
+    """Return the course-level planner session that should receive new planning turns."""
+
+    with managed_session() as session:
+        record = _get_latest_planner_session(session, course_id=course.id, user_id=user_id)
+        if record is None:
+            return None
+        if _planner_status(record) == "planning":
+            raise BuildPlannerSessionBusyError(record.id)
+        return record.id
 
 
 def _list_planner_turns(session: Session, *, session_id: str, course_id: str, user_id: str) -> list[ChatMessage]:
@@ -867,6 +880,7 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
             course_row = session.exec(
                 select(Course).where(Course.id == course_id, Course.user_id == user_id)
             ).first()
+            requested_session_id = str(state["planner_session_id"])
             active_planning = _get_active_planning_session(session, course_id=course_id, user_id=user_id)
             if active_planning is not None:
                 raise BuildPlannerSessionBusyError(active_planning.id)
@@ -888,22 +902,51 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
                 or getattr(course_row, "name", "")
                 or "学习规划"
             )
-            record = create_chat_session(
+            meta = _planner_session_meta(
+                session_id=requested_session_id,
+                status="planning",
+                user_prompt=user_prompt,
+                digest_mode=digest_mode,
+                selected_file_ids=selected_file_ids,
+                model_override=state.get("model_override"),
+            )
+            record = _get_planner_session(
                 session,
                 course_id=course_id,
+                session_id=requested_session_id,
                 user_id=user_id,
-                session_id=str(state["planner_session_id"]),
-                title=session_title,
-                source=PLANNER_CHAT_SOURCE,
-                meta_json=_planner_session_meta(
-                    session_id=str(state["planner_session_id"]),
-                    status="planning",
-                    user_prompt=user_prompt,
-                    digest_mode=digest_mode,
-                    selected_file_ids=selected_file_ids,
-                    model_override=state.get("model_override"),
-                ),
             )
+            reused_record = record is not None
+            if record is None:
+                record = create_chat_session(
+                    session,
+                    course_id=course_id,
+                    user_id=user_id,
+                    session_id=requested_session_id,
+                    title=session_title,
+                    source=PLANNER_CHAT_SOURCE,
+                    meta_json=meta,
+                )
+            else:
+                record.title = session_title
+                current_meta = _planner_meta(record)
+                current_meta.update(
+                    {
+                        "source": PLANNER_CHAT_SOURCE,
+                        "planner_session_id": requested_session_id,
+                        "planner_status": "planning",
+                        "user_prompt": user_prompt,
+                        "digest_mode": digest_mode,
+                        "selected_file_ids": selected_file_ids,
+                        "model_override": normalize_runtime_model_override(state.get("model_override")),
+                    }
+                )
+                record.meta_json = current_meta
+                record.updated_at = utcnow()
+                record.last_message_at = record.updated_at
+                session.add(record)
+                session.commit()
+                session.refresh(record)
             user_turn = _create_planner_message(
                 session,
                 record=record,
@@ -911,7 +954,7 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
                 content=user_prompt,
             )
             logger.info(
-                "planner_prepare_run_created_session",
+                "planner_prepare_run_reused_session" if reused_record else "planner_prepare_run_created_session",
                 course_id=course_id,
                 planner_session_id=record.id,
                 selected_file_count=len(selected_file_ids),
@@ -1046,10 +1089,14 @@ def save_planner_result(
             input_chapter_count=len(list((plan or {}).get("chapters") or [])),
             has_previous_plan=bool(meta.get("latest_plan")),
         )
+        effective_user_prompt = compose_effective_planner_request_text(
+            str(meta.get("user_prompt") or ""),
+            state.get("feedback_message") or "",
+        )
         persisted_plan = _normalize_persisted_plan(
             plan,
             course_id=course_id,
-            user_prompt=str(meta.get("user_prompt") or ""),
+            user_prompt=effective_user_prompt,
             digest_mode=str(meta.get("digest_mode") or ""),
             material_context=material_context,
             latest_plan=_planner_plan(record),
@@ -1565,6 +1612,7 @@ __all__ = [
     "get_confirmed_plan_or_raise",
     "get_planner_adjust_click_context",
     "get_latest_planner_session",
+    "get_reusable_planner_session_id",
     "mark_confirmed_plan_status",
     "mark_planner_session_cancelled",
     "mark_planner_session_draft",

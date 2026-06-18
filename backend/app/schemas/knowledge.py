@@ -720,6 +720,13 @@ class ClearKnowledgeResponse(BaseModel):
 class BuildPlannerCreateRequest(BaseModel):
     """Create a new planner session and generate the first plan draft."""
 
+    planner_session_id: str | None = Field(
+        default=None,
+        description=(
+            "Optional existing planner session ID to reuse. When omitted, the backend reuses the latest "
+            "course planner session or creates a new one."
+        ),
+    )
     file_ids: list[str] | None = Field(
         default=None,
         description=(

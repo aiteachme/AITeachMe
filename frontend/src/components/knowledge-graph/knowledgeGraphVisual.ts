@@ -59,15 +59,20 @@ export interface GraphLink extends d3.SimulationLinkDatum<GraphNode> {
 
 export const NODE_COLORS: Record<string, NodeVisualStyle> = {
   topic: { fill: "#6366f1", dark: "#4f46e5", soft: "#e0e7ff", label: "主题模块", role: "context", roleLabel: "结构" },
-  concept: { fill: "#2563eb", dark: "#1d4ed8", soft: "#dbeafe", label: "概念术语", role: "assessment_core", roleLabel: "知道什么" },
+  concept: { fill: "#2563eb", dark: "#1d4ed8", soft: "#dbeafe", label: "核心概念", role: "assessment_core", roleLabel: "知识点" },
   principle: { fill: "#0f766e", dark: "#115e59", soft: "#ccfbf1", label: "原理性质", role: "assessment_core", roleLabel: "为什么" },
   formula_model: { fill: "#0891b2", dark: "#0e7490", soft: "#cffafe", label: "公式模型", role: "assessment_core", roleLabel: "怎么算" },
   procedure: { fill: "#f59e0b", dark: "#d97706", soft: "#fef3c7", label: "方法步骤", role: "assessment_core", roleLabel: "怎么做" },
   skill: { fill: "#f43f5e", dark: "#e11d48", soft: "#ffe4e6", label: "解题技能", role: "assessment_core", roleLabel: "练会了吗" },
   misconception: { fill: "#dc2626", dark: "#b91c1c", soft: "#fee2e2", label: "易错辨析", role: "assessment_core", roleLabel: "别踩坑" },
   application_case: { fill: "#a855f7", dark: "#9333ea", soft: "#f3e8ff", label: "应用案例", role: "support", roleLabel: "能做什么" },
-  resource: { fill: "#64748b", dark: "#475569", soft: "#f1f5f9", label: "学习资源", role: "support", roleLabel: "补充" },
 };
+
+export const SUPPRESSED_GRAPH_NODE_TYPES = new Set(["resource"]);
+
+export function isSuppressedGraphNodeType(unitType: string | null | undefined): boolean {
+  return SUPPRESSED_GRAPH_NODE_TYPES.has(String(unitType || "").trim());
+}
 
 export const DEFAULT_COLOR: NodeVisualStyle = {
   fill: "#94a3b8",
@@ -111,7 +116,7 @@ export const GRAPH_LAYERS: GraphLayer[] = [
   { label: "知识", description: "概念 / 公式 / 事实" },
   { label: "原理", description: "推理 / 机制 / 条件" },
   { label: "方法", description: "步骤 / 技能 / 纠错" },
-  { label: "应用", description: "案例 / 迁移 / 资源" },
+  { label: "应用", description: "案例 / 迁移 / 练习" },
 ];
 
 export const EDGE_TYPE_PRIORITY: Record<string, number> = {
@@ -137,11 +142,33 @@ const NODE_TYPE_LAYER: Record<string, number> = {
   skill: 3,
   misconception: 3,
   application_case: 4,
-  resource: 4,
 };
 
+export function normalizeGraphTextLabel(value: string): string {
+  return String(value || "")
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/\{#ku_[^}]+\}/g, " ")
+    .replace(/\*\*([^*\n]{1,120})\*\*/g, "$1")
+    .replace(/__([^_\n]{1,120})__/g, "$1")
+    .replace(/==([^=\n]{1,120})==/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\\\[([\s\S]*?)\\\]/g, "$1")
+    .replace(/\\\(([\s\S]*?)\\\)/g, "$1")
+    .replace(/\$\$([\s\S]*?)\$\$/g, "$1")
+    .replace(/\$([^$]+)\$/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function isSuppressedGraphNode(node: {
+  canonical_name?: string | null;
+  knowledge_unit_type?: string | null;
+}): boolean {
+  return isSuppressedGraphNodeType(node.knowledge_unit_type) || !normalizeGraphTextLabel(node.canonical_name || "");
+}
+
 export function truncateGraphLabel(value: string, maxChars = 12): string {
-  const text = String(value || "").trim();
+  const text = normalizeGraphTextLabel(value);
   if (text.length <= maxChars) return text;
   return `${text.slice(0, maxChars - 1)}...`;
 }
@@ -254,12 +281,75 @@ export function shouldShowSmartNodeLabel(
   selectedNodeId: number | null,
   selectedNeighbors: Set<number>,
   showAllNodeLabels: boolean,
+  zoomScale = 1,
+  visibleNodeCount = 0,
 ): boolean {
-  if (showAllNodeLabels) return true;
+  const scale = Number.isFinite(zoomScale) ? zoomScale : 1;
   if (node.id === selectedNodeId || selectedNeighbors.has(node.id)) return true;
+  const budget = graphNodeLabelBudget(visibleNodeCount, scale, showAllNodeLabels);
+  if (showAllNodeLabels) {
+    if (scale >= 1.8) return node.label_rank <= Math.max(budget, Math.min(220, Math.round(visibleNodeCount * 0.72)));
+    if (scale >= 0.9) return node.label_rank <= Math.max(budget, Math.min(120, Math.round(visibleNodeCount * 0.48)));
+    return scale >= 0.24 && node.label_rank <= budget;
+  }
+  if (scale >= 1.26) {
+    return node.label_rank <= Math.max(budget, scale >= 1.9 ? 150 : 96) || node.degree >= 3 || (isAssessmentCoreNode(node) && node.label_rank <= 140);
+  }
+  if (scale >= 1.08) {
+    return node.label_rank <= Math.max(budget, 76) || node.degree >= 4 || (isAssessmentCoreNode(node) && node.label_rank <= 96);
+  }
+  if (node.label_rank > budget) return false;
+  if (scale < 0.42) {
+    return isAssessmentCoreNode(node) && node.label_rank <= Math.max(10, Math.min(18, budget));
+  }
+  if (scale < 0.68) {
+    if (isAssessmentCoreNode(node)) return node.label_rank <= budget;
+    return node.degree >= 5 && node.label_rank <= budget;
+  }
+  if (scale >= 1.12) {
+    if (isAssessmentCoreNode(node)) return node.label_rank <= Math.max(42, budget) || node.degree >= 4;
+    return (node.degree >= 3 || node.label_rank <= 48) && node.label_rank <= Math.max(64, budget);
+  }
   if (isAssessmentCoreNode(node)) {
     if (node.label_rank <= 24) return true;
     return node.degree >= 5 && node.label_rank <= 36;
   }
   return node.degree >= 6 && node.label_rank <= 28;
+}
+
+export function graphNodeLabelBudget(
+  visibleNodeCount: number,
+  zoomScale = 1,
+  showAllNodeLabels = false,
+): number {
+  const count = Math.max(1, Math.round(visibleNodeCount || 1));
+  const scale = Number.isFinite(zoomScale) ? zoomScale : 1;
+  const base = showAllNodeLabels
+    ? Math.round(24 + scale * 36)
+    : Math.round(20 + scale * 32);
+  const densityPenalty = count > 220 ? 0.74 : count > 160 ? 0.82 : count > 100 ? 0.9 : 1;
+  const maxByCount = showAllNodeLabels
+    ? Math.min(count, Math.round(count * Math.min(1, 0.42 + scale * 0.32)))
+    : Math.min(count, Math.round(28 + Math.sqrt(count) * 3.4 + scale * 18));
+  return Math.max(showAllNodeLabels ? 18 : 14, Math.min(count, maxByCount, Math.round(base * densityPenalty)));
+}
+
+export function shouldShowSmartEdgeLabel(
+  edge: GraphLink,
+  selectedNodeId: number | null,
+  showEdgeLabels: boolean,
+  zoomScale = 1,
+  visibleEdgeCount = 0,
+): boolean {
+  if (!showEdgeLabels) return false;
+  const scale = Number.isFinite(zoomScale) ? zoomScale : 1;
+  const connectedToSelection =
+    selectedNodeId !== null && (edge.source_node_id === selectedNodeId || edge.target_node_id === selectedNodeId);
+  if (connectedToSelection) return true;
+  const count = Math.max(1, Math.round(visibleEdgeCount || 1));
+  const crowded = count > 160;
+  if (scale < (crowded ? 1.12 : 0.98)) return false;
+  if (scale >= 1.72) return edge.is_backbone || edgePriority(edge) >= (crowded ? 5.2 : 4.6);
+  if (scale >= 1.32) return edge.is_backbone && edgePriority(edge) >= (crowded ? 6.1 : 5.4);
+  return edge.is_backbone && edgePriority(edge) >= 6.6;
 }

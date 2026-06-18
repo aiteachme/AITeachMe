@@ -194,6 +194,10 @@ def _base_doc_sync_metrics(
         "prefetch_catchup_section_count": 0,
         "prefetch_stale_section_count": 0,
         "prefetch_failed_section_count": 0,
+        "docgen_draft_fast_finalize": 0,
+        "docgen_draft_final_unit_count": 0,
+        "docgen_draft_final_edge_count": 0,
+        "docgen_draft_final_skipped_edge_count": 0,
     }
 
 
@@ -248,6 +252,10 @@ def _completed_doc_sync_metrics(
             "prefetch_catchup_section_count": sync_report.prefetch_catchup_section_count,
             "prefetch_stale_section_count": sync_report.prefetch_stale_section_count,
             "prefetch_failed_section_count": sync_report.prefetch_failed_section_count,
+            "docgen_draft_fast_finalize": sync_report.docgen_draft_fast_finalize,
+            "docgen_draft_final_unit_count": sync_report.docgen_draft_final_unit_count,
+            "docgen_draft_final_edge_count": sync_report.docgen_draft_final_edge_count,
+            "docgen_draft_final_skipped_edge_count": sync_report.docgen_draft_final_skipped_edge_count,
         }
     )
     return metrics

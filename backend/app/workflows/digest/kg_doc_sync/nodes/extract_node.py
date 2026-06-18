@@ -9,6 +9,7 @@ import structlog
 
 from app.shared.infra.database import managed_session
 from app.workflows.digest.kg_doc_sync.lib.incremental_sync import (
+    build_docgen_kg_draft_final_payload,
     extract_knowledge_graph_items_async,
     graph_extraction_parallelism,
 )
@@ -58,6 +59,10 @@ def _payload_metrics(
         "prefetch_catchup_section_count": int(diagnostics.get("prefetch_catchup_section_count", 0) or 0),
         "prefetch_stale_section_count": int(diagnostics.get("prefetch_stale_section_count", 0) or 0),
         "prefetch_failed_section_count": int(diagnostics.get("prefetch_failed_section_count", 0) or 0),
+        "docgen_draft_fast_finalize": int(diagnostics.get("docgen_draft_fast_finalize", 0) or 0),
+        "docgen_draft_final_unit_count": int(diagnostics.get("docgen_draft_final_unit_count", 0) or 0),
+        "docgen_draft_final_edge_count": int(diagnostics.get("docgen_draft_final_edge_count", 0) or 0),
+        "docgen_draft_final_skipped_edge_count": int(diagnostics.get("docgen_draft_final_skipped_edge_count", 0) or 0),
         **graph_extraction_parallelism(),
     }
 
@@ -81,6 +86,25 @@ async def extract_node(state: DocsSyncState) -> DocsSyncState:
         )
 
     try:
+        fast_payload = build_docgen_kg_draft_final_payload(
+            markdown=state["markdown"],
+            structured_context=state.get("structured_context"),
+        )
+        if fast_payload is not None:
+            elapsed_ms = int((perf_counter() - started_at) * 1000)
+            return with_node_metrics(
+                state,
+                "extract",
+                _payload_metrics(
+                    fast_payload,
+                    elapsed_ms=elapsed_ms,
+                    course_context_source="docgen_kg_draft",
+                ),
+                course_context=state.get("course_context") or "",
+                extraction_payload=fast_payload,
+                error=None,
+            )
+
         course_context, course_context_source = _load_course_context(state)
         payload = await extract_knowledge_graph_items_async(
             markdown=state["markdown"],

@@ -2,12 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import {
   ChevronRight,
   ExternalLink,
-  Eye,
   FileText,
   Link2,
   Loader2,
   Tag,
-  Target,
   X,
 } from "lucide-react";
 
@@ -38,6 +36,16 @@ type KnowledgeGraphNodeDetailPanelProps = {
   showTeachingRole?: boolean;
 };
 
+function hasMarkdownMathDelimiter(value: string): boolean {
+  return /(?:\\\(|\\\[|\$)/.test(String(value || ""));
+}
+
+function graphNodeTitleMarkdown(name: string, unitType: string): string {
+  const text = String(name || "").trim();
+  if (!text || unitType !== "formula_model" || hasMarkdownMathDelimiter(text)) return text;
+  return `$${text}$`;
+}
+
 export function KnowledgeGraphNodeDetailPanel({
   course,
   nodeId,
@@ -45,7 +53,7 @@ export function KnowledgeGraphNodeDetailPanel({
   onNavigate,
   onEvidenceClick,
   onSourceRefClick,
-  showTeachingRole = true,
+  showTeachingRole = false,
 }: KnowledgeGraphNodeDetailPanelProps) {
   const { data, isLoading } = useQuery({
     queryKey: ["graph-node-detail", course, nodeId],
@@ -69,11 +77,11 @@ export function KnowledgeGraphNodeDetailPanel({
   if (!data) return null;
 
   const color = NODE_COLORS[data.knowledge_unit_type] ?? DEFAULT_COLOR;
-  const isCoreNode = color.role === "assessment_core";
   const aliases = data.aliases ?? [];
   const incidentEdges = data.incident_edges ?? [];
   const evidenceList = data.evidence ?? [];
   const sourceRefs = data.source_refs ?? [];
+  const titleMarkdown = graphNodeTitleMarkdown(data.canonical_name, data.knowledge_unit_type);
 
   return (
     <div className="animate-in slide-in-from-right-4 space-y-4 duration-200">
@@ -81,7 +89,7 @@ export function KnowledgeGraphNodeDetailPanel({
         <div className="min-w-0">
           <div className="mb-1 flex flex-wrap items-center gap-2">
             <h3 className="min-w-0 break-words text-lg font-semibold text-slate-800 dark:text-slate-100">
-              <MarkdownViewer content={data.canonical_name} />
+              <MarkdownViewer content={titleMarkdown} />
             </h3>
             <span
               className="rounded-full px-2 py-0.5 text-xs font-medium text-white"
@@ -90,7 +98,6 @@ export function KnowledgeGraphNodeDetailPanel({
               {color.label}
             </span>
           </div>
-          <p className="text-xs text-slate-400">置信度：{Math.round(data.confidence * 100)}%</p>
         </div>
         <button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-200">
           <X className="h-4 w-4" />
@@ -98,20 +105,24 @@ export function KnowledgeGraphNodeDetailPanel({
       </div>
 
       {showTeachingRole ? (
-        <div className="grid grid-cols-2 gap-2">
-          <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-900/70">
-            <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-slate-500 dark:text-slate-400">
-              <Target className="h-3.5 w-3.5" />
-              教学角色
-            </div>
-            <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{color.roleLabel}</p>
+        <div className="space-y-2 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2.5 dark:border-slate-800 dark:bg-slate-900/70">
+          <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-medium">
+            <span className="rounded-full bg-white px-2 py-0.5 text-slate-600 shadow-sm dark:bg-slate-950 dark:text-slate-300">
+              {color.roleLabel}
+            </span>
+            <span className="rounded-full bg-white px-2 py-0.5 text-slate-600 shadow-sm dark:bg-slate-950 dark:text-slate-300">
+              {color.role === "assessment_core" ? "核心可测" : "辅助理解"}
+            </span>
+            <span className="ml-auto text-slate-400">{Math.round(data.confidence * 100)}%</span>
           </div>
-          <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-900/70">
-            <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-slate-500 dark:text-slate-400">
-              <Eye className="h-3.5 w-3.5" />
-              出题权重
-            </div>
-            <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{isCoreNode ? "优先锚点" : "辅助材料"}</p>
+          <div className="h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+            <div
+              className="h-full rounded-full"
+              style={{
+                width: `${Math.max(4, Math.round(data.confidence * 100))}%`,
+                backgroundColor: color.fill,
+              }}
+            />
           </div>
         </div>
       ) : null}
@@ -149,7 +160,7 @@ export function KnowledgeGraphNodeDetailPanel({
       {incidentEdges.length > 0 ? (
         <div>
           <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-slate-500">
-            <Link2 className="h-3 w-3" />关联知识 ({incidentEdges.length})
+            <Link2 className="h-3 w-3" />关联 ({incidentEdges.length})
           </div>
           <div className="max-h-40 space-y-1 overflow-y-auto">
             {incidentEdges.map((edge: { id: number; other_node_id: number; direction: string; other_node_name: string; edge_type: string }) => (
@@ -173,7 +184,7 @@ export function KnowledgeGraphNodeDetailPanel({
       {sourceRefs.length > 0 ? (
         <div>
           <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-slate-500">
-            <FileText className="h-3 w-3" />图谱来源 ({sourceRefs.length})
+            <FileText className="h-3 w-3" />来源 ({sourceRefs.length})
           </div>
           <div className="max-h-40 space-y-1.5 overflow-y-auto">
             {sourceRefs.map((ref: KnowledgeGraphSourceRefNavigationTarget) => (
@@ -194,10 +205,6 @@ export function KnowledgeGraphNodeDetailPanel({
                     {onSourceRefClick ? <ExternalLink className="h-3 w-3 text-slate-300 transition-colors group-hover:text-blue-500" /> : null}
                   </span>
                 </div>
-                <div className="mt-1 flex flex-wrap gap-1 text-[10px] text-slate-400">
-                  {ref.source_kind ? <span>{ref.source_kind}</span> : null}
-                  {ref.source_file_ids?.length ? <span>资料 {ref.source_file_ids.join(", ")}</span> : null}
-                </div>
                 {ref.quote_text ? <p className="mt-1 line-clamp-2 text-slate-500 dark:text-slate-400">{ref.quote_text}</p> : null}
               </button>
             ))}
@@ -216,7 +223,7 @@ export function KnowledgeGraphNodeDetailPanel({
                 className="group w-full cursor-pointer rounded border-l-2 border-slate-300 bg-slate-50 p-2 text-left text-xs text-slate-600 transition-colors hover:border-amber-400 hover:bg-amber-50/50 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300 dark:hover:border-amber-400/70 dark:hover:bg-amber-500/10">
                 <p className="line-clamp-3">{ev.quote_text}</p>
                 <div className="mt-1 flex items-center justify-between">
-                  <p className="text-[10px] text-slate-400">{ev.evidence_role} 路 {Math.round(ev.confidence * 100)}%</p>
+                  <p className="text-[10px] text-slate-400">文档片段</p>
                   <ExternalLink className="h-3 w-3 text-slate-300 transition-colors group-hover:text-amber-500" />
                 </div>
               </button>

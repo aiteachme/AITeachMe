@@ -13,6 +13,8 @@ from app.models import ChatMessage, ChatSession, Course
 from app.utils.time import utcnow
 from app.utils.course import GLOBAL_COURSE
 
+PLANNER_CHAT_SOURCE = "build_planner"
+
 
 def create_chat_session(
     session: Session,
@@ -105,14 +107,15 @@ def list_sessions_by_course(
     offset: int,
     user_id: str = "local",
 ) -> tuple[list[ChatSession], int]:
+    visible_builder_session = _visible_singleton_build_planner_session_condition()
     total = session.exec(
         select(func.count())
         .select_from(ChatSession)
-        .where(ChatSession.course_id == course_id, ChatSession.user_id == user_id)
+        .where(ChatSession.course_id == course_id, ChatSession.user_id == user_id, visible_builder_session)
     ).one()
     stmt = (
         select(ChatSession)
-        .where(ChatSession.course_id == course_id, ChatSession.user_id == user_id)
+        .where(ChatSession.course_id == course_id, ChatSession.user_id == user_id, visible_builder_session)
         .order_by(ChatSession.last_message_at.desc(), ChatSession.created_at.desc())
         .offset(offset)
         .limit(limit)
@@ -136,19 +139,47 @@ def list_sessions_by_user(
         .exists()
     )
     visible_session = sa.or_(ChatSession.course_id == GLOBAL_COURSE, course_exists)
+    visible_builder_session = _visible_singleton_build_planner_session_condition()
     total = session.exec(
         select(func.count())
         .select_from(ChatSession)
-        .where(ChatSession.user_id == user_id, visible_session)
+        .where(ChatSession.user_id == user_id, visible_session, visible_builder_session)
     ).one()
     stmt = (
         select(ChatSession)
-        .where(ChatSession.user_id == user_id, visible_session)
+        .where(ChatSession.user_id == user_id, visible_session, visible_builder_session)
         .order_by(ChatSession.last_message_at.desc(), ChatSession.created_at.desc())
         .offset(offset)
         .limit(limit)
     )
     return list(session.exec(stmt).all()), total
+
+
+def _visible_singleton_build_planner_session_condition() -> sa.ColumnElement[bool]:
+    """Only expose the latest build planner session per course in chat lists."""
+
+    latest_planner = sa.orm.aliased(ChatSession)
+    latest_planner_session_id = (
+        select(latest_planner.id)
+        .where(
+            latest_planner.course_id == ChatSession.course_id,
+            latest_planner.user_id == ChatSession.user_id,
+            latest_planner.source == PLANNER_CHAT_SOURCE,
+        )
+        .order_by(
+            latest_planner.last_message_at.desc(),
+            latest_planner.updated_at.desc(),
+            latest_planner.created_at.desc(),
+            latest_planner.id.desc(),
+        )
+        .limit(1)
+        .scalar_subquery()
+    )
+    return sa.or_(
+        ChatSession.source.is_(None),
+        ChatSession.source != PLANNER_CHAT_SOURCE,
+        ChatSession.id == latest_planner_session_id,
+    )
 
 
 def list_session_selection_heads_by_session_ids(

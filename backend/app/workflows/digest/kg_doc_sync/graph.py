@@ -27,7 +27,7 @@ from app.workflows.digest.kg_doc_sync.nodes.prepare_node import prepare_node
 from app.workflows.digest.kg_doc_sync.nodes.stitch_node import stitch_node
 from app.workflows.digest.kg_doc_sync.state import DocsSyncState
 
-RUN_NAME_KG_DOC_SYNC = "织网引擎：同步课程知识图谱（DocGen 后置）"
+RUN_NAME_KG_DOC_SYNC = "织网引擎：固化课程知识图谱"
 
 NODE_PREPARE = "prepare"
 NODE_INIT_RUN = "init_run"
@@ -85,7 +85,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, object]] = {
         "description": (
             "在正式 section 抽取前，先写入 DocGen 已有的 KnowledgeUnit 种子。"
             "优先复用已匹配最终文档的 LLM 预抽取；如果预抽取尚未产出，则退到 DocGen preliminary_kg/backbone 规则种子。"
-            "这样后置抽取被取消时也不会让课程图谱完全为空。"
+            "这样正式抽取被取消时也不会让课程图谱完全为空。"
         ),
         "reads": ["markdown", "structured_context", "prefetched_sections", "sync_run_context", "knowledge_unit"],
         "writes": ["knowledge_unit", "node_metrics.persist_seed_units"],
@@ -96,6 +96,8 @@ NODE_TRACE_DETAILS: dict[str, dict[str, object]] = {
         "description": (
             "把知识文档切成章节任务，特别长的大章会继续拆成子章节任务，并以配置的并发上限调用结构化 LLM "
             "抽取候选 KnowledgeUnit 和关系；随后合并 DocGen backbone、标题结构边和跨章节语义边。"
+            "如果 DocGen 发布前已经产出 quality-ready 的 docgen_kg_draft，"
+            "本节点会直接用该草稿补齐已发布章节来源并构造最终 payload，避免发布后再等待一轮完整 LLM 抽取。"
             "本节点只产出 extraction_payload，不写图谱表；缺失 payload 会直接进入 fail，不会继续写入。"
             "语义候选必须来自 LLM/LLM 修复或显式结构化来源。"
         ),

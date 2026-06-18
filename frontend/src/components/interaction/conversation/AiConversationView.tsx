@@ -365,6 +365,50 @@ function getChatSessionItemId(session: ChatSessionItem | null): string | null {
   return legacySessionId || null;
 }
 
+function getSessionCourseKey(session: ChatSessionItem): string {
+  return session.course_id?.trim() || "global";
+}
+
+function sessionTimeMs(session: ChatSessionItem): number {
+  const raw = session.last_message_at || session.updated_at || session.created_at;
+  const parsed = raw ? Date.parse(raw) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function collapseBuildPlannerSessions(items: ChatSessionItem[]): ChatSessionItem[] {
+  const latestByCourse = new Map<string, ChatSessionItem>();
+  for (const item of items) {
+    if (getHistoryKind(item) !== "builder") {
+      continue;
+    }
+    const key = getSessionCourseKey(item);
+    const existing = latestByCourse.get(key);
+    if (!existing || sessionTimeMs(item) > sessionTimeMs(existing)) {
+      latestByCourse.set(key, item);
+    }
+  }
+
+  if (latestByCourse.size === 0) {
+    return items;
+  }
+
+  const emitted = new Set<string>();
+  return items.filter((item) => {
+    if (getHistoryKind(item) !== "builder") {
+      return true;
+    }
+    const key = getSessionCourseKey(item);
+    if (emitted.has(key)) {
+      return false;
+    }
+    if (latestByCourse.get(key) !== item) {
+      return false;
+    }
+    emitted.add(key);
+    return true;
+  });
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -609,6 +653,7 @@ export const AiConversationView = memo(function AiConversationView({
     enabled: active && Boolean(courseId),
     loadWithoutSession: false,
     preserveMessagesWithoutSession: true,
+    abortOnUnmount: false,
     onSessionResolved: (nextSessionId) => {
       preferEmptySessionRef.current = false;
       requestedSessionIdRef.current = nextSessionId;
@@ -875,22 +920,23 @@ export const AiConversationView = memo(function AiConversationView({
     scope,
     selectedSessionId,
   ]);
+  const collapsedHistorySessions = useMemo(() => collapseBuildPlannerSessions(sessions), [sessions]);
   const historyGroups = useMemo(() =>
     HISTORY_KIND_ORDER
       .map((kind) => ({
         kind,
-        sessions: sessions.filter((session) => getHistoryKind(session) === kind),
+        sessions: collapsedHistorySessions.filter((session) => getHistoryKind(session) === kind),
       }))
       .filter((group) => group.sessions.length > 0),
-  [sessions]);
+  [collapsedHistorySessions]);
   const filteredHistorySessions = useMemo(() => {
     const query = historySearchQuery.trim().toLowerCase();
 
     if (!query) {
-      return sessions;
+      return collapsedHistorySessions;
     }
 
-    return sessions.filter((session) => {
+    return collapsedHistorySessions.filter((session) => {
       const title = session.title ?? "";
       const selectedText = session.selected_text ?? "";
       const date = formatSessionDate(session.last_message_at || session.updated_at);
@@ -900,8 +946,8 @@ export const AiConversationView = memo(function AiConversationView({
         value.toLowerCase().includes(query),
       );
     });
-  }, [historySearchQuery, sessions]);
-  const hasAnyHistorySessions = sessions.length > 0;
+  }, [collapsedHistorySessions, historySearchQuery]);
+  const hasAnyHistorySessions = collapsedHistorySessions.length > 0;
   const historyTitle = scope?.type === "global" ? "全局历史" : "课程历史";
 
   useEffect(() => {

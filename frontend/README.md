@@ -101,6 +101,7 @@ infra/deployment/docker/frontend.Dockerfile
 
 ```env
 AITEACHME_API_UPSTREAM=<backend-internal-upstream>
+AITEACHME_NGINX_IMPORT_CLIENT_MAX_BODY_SIZE=260m
 ```
 
 完整说明见 [Sealos 前端 Nginx 部署](../docs/deployment/sealos-frontend.md)。
