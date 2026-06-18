@@ -578,7 +578,9 @@ jobs:
             set -e
 
             printf '%s\n' \"\${output}\"
-            status=\"\$(printf '%s\n' \"\${output}\" | awk '/HTTP\\/[0-9.]+/ { code=\$2 } END { print code }')\"
+            status=\"\$(printf '%s\n' \"\${output}\" \
+              | sed -n 's/.*HTTP\\/[0-9.][0-9.]*[[:space:]][[:space:]]*\\([0-9][0-9][0-9]\\).*/\\1/p' \
+              | tail -n 1)\"
             echo \"Frontend proxy upload smoke: ${upload_probe_label} raw body -> status=\${status:-unknown}, wget_rc=\${rc}\"
 
             rm -f \"\${probe_file}\" \"\${response_file}\"
