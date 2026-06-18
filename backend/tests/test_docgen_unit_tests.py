@@ -41,11 +41,12 @@ def test_unit_test_renderer_replaces_existing_unit_test_section_once() -> None:
 
     assert "旧测试" not in strip_existing_unit_test_sections(body)
     assert markdown.count("## 单元测试") == 1
-    assert '<div class="atm-unit-tests" data-unit-test-count="2">' in markdown
-    assert '<div class="atm-unit-tests__overview">' in markdown
+    assert '<div class="atm-unit-tests"' not in markdown
+    assert "> [!PRACTICE]" in markdown
+    assert "**2 题覆盖**" in markdown
     assert "概念判断 / 短答题" in markdown
-    assert '<details class="atm-unit-test-answer">' in markdown
-    assert "<summary>答案与依据</summary>" in markdown
+    assert "**答案与依据**" in markdown
+    assert "**判定依据**" in markdown
     assert "总和除以个数。" in markdown
     assert "围绕“中位数”按本章定义、条件和步骤作答。" in markdown
     assert "###" not in unit_test
@@ -101,13 +102,12 @@ def test_unit_test_renderer_normalizes_type_and_difficulty_metadata() -> None:
         fallback_targets=[],
     )
 
-    assert 'data-question-type="选择题"' in unit_test
-    assert 'data-difficulty="挑战"' in unit_test
-    assert '<span class="atm-unit-test-card__number">Q01</span>' in unit_test
-    assert '<span class="atm-unit-test-card__type">选择题</span>' in unit_test
-    assert '<span class="atm-unit-test-card__difficulty">挑战</span>' in unit_test
-    assert '<span class="atm-unit-tests__chip">选择题</span>' in unit_test
-    assert '<span class="atm-unit-tests__chip">挑战</span>' in unit_test
+    assert "**Q01｜选择题｜挑战｜考点：函数单调性**" in unit_test
+    assert "选择题；挑战" in unit_test
+    assert unit_test.count("- A.") == 1
+    assert unit_test.count("- B.") == 1
+    assert unit_test.count("- C.") == 1
+    assert unit_test.count("- D.") == 1
 
 
 def test_unit_test_renderer_enforces_type_diversity_and_max_items() -> None:
@@ -132,9 +132,9 @@ def test_unit_test_renderer_enforces_type_diversity_and_max_items() -> None:
         fallback_targets=["函数定义", "对应关系", "函数值"],
     )
 
-    assert unit_test.count('<article class="atm-unit-test-card"') == 4
-    assert 'data-unit-test-count="4"' in unit_test
-    question_types = set(re.findall(r'data-question-type="([^"]+)"', unit_test))
+    assert unit_test.count("**Q") == 4
+    assert "**4 题覆盖**" in unit_test
+    question_types = set(re.findall(r"Q\d+｜([^｜]+)｜", unit_test))
     assert len(question_types) == 4
     assert "短答题" in question_types
 

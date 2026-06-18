@@ -42,6 +42,8 @@ _SKIPPABLE_HEADING_PATTERNS = (
     re.compile(r"\u5982\u4f55\u4f7f\u7528"),
     re.compile(r"\u5b66\u4e60\u76ee\u6807"),
     re.compile(r"\u5b66\u4e60\u5efa\u8bae"),
+    re.compile(r"\u5355\u5143(?:\u6d4b\u8bd5|\u5c0f\u6d4b)"),
+    re.compile(r"\u7ae0\u672b(?:\u6d4b\u8bd5|\u5c0f\u6d4b|\u7ec3\u4e60)"),
     re.compile(r"\u672c\u7ae0\u5bfc\u8bfb"),
     re.compile(r"\u7ae0\u8282\u5bfc\u8bfb"),
     re.compile(r"^(?:\u672c\u7ae0|\u7ae0\u8282).*(?:\u8def\u7ebf\u56fe|\u81ea\u68c0|\u5b66\u4e60\u76ee\u6807|\u5b66\u4e60\u5efa\u8bae|\u9605\u8bfb\u6307\u5357|\u4f7f\u7528\u8bf4\u660e)$"),
@@ -55,6 +57,11 @@ _SKIPPABLE_HEADING_EXACT = {
     "\u53c2\u8003\u8d44\u6599\u4e0e\u5ef6\u4f38\u9605\u8bfb",
     "\u7ae0\u8282\u8def\u7ebf\u56fe",
     "\u672c\u7ae0\u81ea\u68c0",
+    "\u5355\u5143\u6d4b\u8bd5",
+    "\u5355\u5143\u5c0f\u6d4b",
+    "\u7ae0\u672b\u6d4b\u8bd5",
+    "\u7ae0\u672b\u5c0f\u6d4b",
+    "\u7ae0\u672b\u7ec3\u4e60",
 }
 _SKIPPABLE_HEADING_PREFIXES = (
     "\u672c\u7ae0\u5728\u8003\u4ec0\u4e48",

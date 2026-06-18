@@ -45,7 +45,7 @@ def _planner_payload(*, chapter_count: int = 3) -> dict[str, object]:
             {
                 "question": "极限、导数、积分里你现在最怕哪一块？",
                 "purpose": "识别高数复习的第一薄弱入口。",
-                "options": ["极限定义", "导数应用", "积分计算"],
+                "options": ["极限定义", "导数应用", "积分计算", "综合应用"],
             }
         ],
         "chapters": [
@@ -79,7 +79,7 @@ def test_normalize_planner_draft_uses_new_planner_fields() -> None:
     assert draft.plan.startswith("本课程会先用极限")
     assert [chapter.title for chapter in draft.chapters] == ["任务切片 1", "任务切片 2", "任务切片 3"]
     assert draft.diagnose[0].question == "极限、导数、积分里你现在最怕哪一块？"
-    assert draft.diagnose[0].options == ["极限定义", "导数应用", "积分计算"]
+    assert draft.diagnose[0].options == ["极限定义", "导数应用", "积分计算", "综合应用"]
 
 
 def test_diagnose_resolution_merges_answers_into_latest_questions() -> None:
@@ -141,9 +141,9 @@ def test_normalize_planner_draft_builds_fallback_diagnose() -> None:
         requested_digest_mode="sprint",
     )
 
-    assert len(draft.diagnose) == 5
-    assert draft.diagnose[0].question.startswith("《任务切片 1》")
-    assert len(draft.diagnose[0].options) >= 3
+    assert len(draft.diagnose) == 4
+    assert draft.diagnose[0].question == "当前基础怎样？"
+    assert all(len(item.options) == 4 for item in draft.diagnose)
 
 
 def test_normalize_planner_draft_does_not_use_full_prompt_as_course_name() -> None:
@@ -425,7 +425,7 @@ def test_parse_diagnosis_response_reads_choice_questions() -> None:
         f"""
 {DIAGNOSE_START}
 [
-  {{"question": "函数图像里你最容易混淆什么？", "purpose": "影响函数章节的例题和图示重点", "options": ["一次函数", "二次函数", "图像变换"]}},
+  {{"question": "函数图像里你最容易混淆什么？", "purpose": "影响函数章节的例题和图示重点", "options": ["一次函数", "二次函数", "图像变换", "函数性质"]}},
   {{"question": "这个空题会被丢弃", "purpose": "缺少选项", "options": []}}
 ]
 {DIAGNOSE_END}
@@ -436,7 +436,7 @@ def test_parse_diagnosis_response_reads_choice_questions() -> None:
         {
             "question": "函数图像里你最容易混淆什么？",
             "purpose": "影响函数章节的例题和图示重点",
-            "options": ["一次函数", "二次函数", "图像变换"],
+            "options": ["一次函数", "二次函数", "图像变换", "函数性质"],
             "answer": "",
         }
     ]
@@ -486,7 +486,7 @@ def test_planner_node_create_generates_diagnosis_before_plan(monkeypatch: pytest
     raw_output = (
         f'{DIAGNOSE_START}[{{"question":"你当前最想先补哪类能力？",'
         f'"purpose":"影响章节优先级和练习密度",'
-        f'"options":["概念理解","基础计算","综合应用"]}}]{DIAGNOSE_END}'
+        f'"options":["概念理解","基础计算","综合应用","图示辅助"]}}]{DIAGNOSE_END}'
     )
 
     def fake_acompletion_stream(*args, **kwargs) -> Iterator[str]:
@@ -531,7 +531,7 @@ def test_planner_node_create_generates_diagnosis_before_plan(monkeypatch: pytest
     assert result["build_plan_draft"]["plan"] == ""
     assert result["build_plan_draft"]["chapters"] == []
     assert result["build_plan_draft"]["diagnose_status"] == "pending"
-    assert result["build_plan_draft"]["diagnose"][0]["options"] == ["概念理解", "基础计算", "综合应用"]
+    assert result["build_plan_draft"]["diagnose"][0]["options"] == ["概念理解", "基础计算", "综合应用", "图示辅助"]
     assert [event for event, _payload in emitted_events] == [
         "planner.diagnose.started",
         "planner.diagnose.ready",

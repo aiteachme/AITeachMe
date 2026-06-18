@@ -125,13 +125,17 @@ function stripInlineMathDelimiters(value: string): string {
 
 function isFormulaLikeGraphLabel(node: GraphNode): boolean {
   const label = String(node.canonical_name || "");
-  if (node.knowledge_unit_type === "formula_model") return true;
-  return /\\(?:frac|sqrt|sum|int|left|right|cdot|times|leq|geq)|[$^_=<>≤≥+\-*/]/.test(label) && label.length <= 90;
+  const normalized = normalizeGraphTextLabel(label);
+  const hasFormulaSyntax = /\\(?:frac|sqrt|sum|int|lim|left|right|cdot|times|leq|geq)|[$^_=<>≤≥+\-*/]/.test(label);
+  if (!hasFormulaSyntax || label.length > 90 || /[:：，。；;]/.test(label)) return false;
+  if (/[\u4e00-\u9fff]{2,}/.test(normalized)) return false;
+  if (/^(?:任务|步骤|检查点|答案|解析|Q\d+)/i.test(normalized)) return false;
+  return node.knowledge_unit_type === "formula_model" || /^\s*(?:\$|\\\(|\\\[|\w+\s*[=<>≤≥])/.test(label);
 }
 
 function graphFormulaLabelHtml(node: GraphNode): string {
   const rawLabel = String(node.canonical_name || "").trim();
-  const formula = stripInlineMathDelimiters(rawLabel);
+  const formula = stripInlineMathDelimiters(rawLabel) || normalizeGraphTextLabel(rawLabel);
   if (!formula) return escapeGraphHtml(normalizeGraphTextLabel(rawLabel));
   try {
     return katex.renderToString(formula, {
@@ -1150,10 +1154,14 @@ export function ForceGraphView({
     const query = nodeSearchQuery.trim().toLocaleLowerCase();
     if (!query) return [];
     return [...nodes]
-      .filter((node) =>
-        node.canonical_name.toLocaleLowerCase().includes(query) ||
-        nodeStyle(node.knowledge_unit_type).label.toLocaleLowerCase().includes(query),
-      )
+      .filter((node) => {
+        const displayName = normalizeGraphTextLabel(node.canonical_name);
+        return (
+          node.canonical_name.toLocaleLowerCase().includes(query) ||
+          displayName.toLocaleLowerCase().includes(query) ||
+          nodeStyle(node.knowledge_unit_type).label.toLocaleLowerCase().includes(query)
+        );
+      })
       .sort((left, right) =>
         graphNodePriority(right) - graphNodePriority(left) ||
         left.layout_layer - right.layout_layer ||

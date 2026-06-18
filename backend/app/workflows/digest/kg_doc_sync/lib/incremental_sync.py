@@ -964,8 +964,6 @@ def _docgen_draft_quality_gate_passed(draft: dict[str, object]) -> bool:
         return False
     if int(audit.get("downstream_unit_count", 0) or 0) <= 0:
         return False
-    if int(audit.get("diagnostic_unit_count", 0) or 0) <= 0:
-        return False
     node_count = len(_as_list(draft.get("nodes")))
     if node_count > 1:
         if int(audit.get("valid_relation_edge_count", 0) or 0) <= 0:

@@ -96,6 +96,38 @@ def _strings(value: Any) -> list[str]:
     return cleaned
 
 
+_DIAGNOSIS_OPTION_FALLBACKS = [
+    "先补基础",
+    "例题带路",
+    "多练变式",
+    "章末小测",
+    "图示辅助",
+    "重点速查",
+]
+
+
+def _ensure_four_diagnosis_options(value: Any) -> list[str]:
+    """Keep planner diagnostics as real four-choice questions."""
+
+    options = _strings(value)
+    result: list[str] = []
+    seen: set[str] = set()
+    for item in [*options, *_DIAGNOSIS_OPTION_FALLBACKS]:
+        text = _student_facing_text(item)
+        if not text:
+            continue
+        if len(text) > 16:
+            text = text[:16].rstrip(" ，,。；;、")
+        key = text.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(text)
+        if len(result) >= 4:
+            break
+    return result
+
+
 def _mapping(value: Any) -> dict[str, Any]:
     if isinstance(value, BaseModel):
         return value.model_dump(mode="json")
@@ -296,13 +328,11 @@ def _merge_diagnostic(raw: Mapping[str, Any]) -> PlannerDiagnosticQuestion | Non
         or raw.get("quick_answers")
         or raw.get("example_answers")
         or raw.get("answers")
-    )[:4]
-    if not options:
-        options = ["先补基础", "例题带路", "直接综合"]
+    )
     return PlannerDiagnosticQuestion(
         question=question,
         purpose=purpose,
-        options=options,
+        options=_ensure_four_diagnosis_options(options),
         answer=_student_facing_text(raw.get("answer") or raw.get("user_answer") or raw.get("selected_answer")),
     )
 
@@ -314,75 +344,60 @@ def _fallback_diagnostic_pool(
     digest_mode: str,
 ) -> list[PlannerDiagnosticQuestion]:
     mode_label = planner_mode_label(digest_mode)
-    result: list[PlannerDiagnosticQuestion] = []
-    for chapter in chapters[:2]:
-        options = [
-            "先补基础",
-            "例题带路",
-            "多练变式",
-            "查漏提速",
-        ]
-        result.append(
-            PlannerDiagnosticQuestion(
-                question=f"《{chapter.title}》现在到哪了？",
-                purpose=f"文档落点：决定《{chapter.title}》的讲解起点、例题难度和练习密度。",
-                options=options,
-            )
-        )
-
     generic_items = [
         (
-            "每章怎么讲？",
-            "文档落点：决定每章正文的讲解顺序和例题位置。",
+            "当前基础怎样？",
+            "文档落点：决定讲解起点、概念铺垫长度和例题难度。",
             [
-                "考点速查",
-                "原理推导",
-                "任务步骤",
-                "先看地图",
+                "零基础入门",
+                "基础需补课",
+                "中等求稳固",
+                "基础扎实",
             ],
         ),
         (
-            "图示重点？",
-            "文档落点：决定图示类型、图注和需要画清楚的对象关系。",
+            "讲解重心放哪？",
+            "文档落点：决定正文讲解顺序、例题类型和每章小结。",
             [
-                "概念关系",
-                "步骤流程",
-                "公式结构",
-                "少量关键图",
+                "概念先讲清",
+                "例题带理解",
+                "步骤拆细些",
+                "易错多提醒",
             ],
         ),
         (
-            "练习放哪里？",
+            "练习密度多大？",
             "文档落点：决定正文短练习、章末单元测试和解析密度。",
             [
-                "边学边练",
-                "例题后练",
+                "少量精练",
+                "每节小练",
                 "章末小测",
-                "少练重解析",
+                "多练变式",
             ],
         ),
         (
-            "解释重哪里？",
-            "文档落点：决定推导深度、清单密度和易错提醒位置。",
+            "图示怎么使用？",
+            "文档落点：决定是否加入 Mermaid 图、图示位置和图注重点。",
             [
-                "关键步骤",
-                "速查清单",
-                "易错辨析",
-                "例题带路",
+                "少量关键图",
+                "概念关系图",
+                "步骤流程图",
+                "公式结构图",
             ],
         ),
     ]
+    result: list[PlannerDiagnosticQuestion] = []
     for question, purpose, options in generic_items:
         result.append(
             PlannerDiagnosticQuestion(
                 question=question,
                 purpose=purpose,
-                options=options,
+                options=_ensure_four_diagnosis_options(options),
             )
         )
-        if len(result) >= 5:
+        if len(result) >= 4:
             break
-    return result[:5]
+    return result[:4]
 
 
 def _normalize_diagnose(
@@ -402,11 +417,27 @@ def _normalize_diagnose(
         if key in seen:
             continue
         seen.add(key)
-        result.append(item)
-        if len(result) >= 5:
+        result.append(
+            item.model_copy(update={"options": _ensure_four_diagnosis_options(item.options)})
+        )
+        if len(result) >= 4:
             break
     if result:
-        return result
+        if len(result) >= 4:
+            return result[:4]
+        fallback = _fallback_diagnostic_pool(
+            chapters=chapters,
+            user_prompt=user_prompt,
+            digest_mode=digest_mode,
+        )
+        for item in fallback:
+            key = _text(item.question).casefold()
+            if key in seen:
+                continue
+            result.append(item)
+            if len(result) >= 4:
+                break
+        return result[:4]
     return _fallback_diagnostic_pool(
         chapters=chapters,
         user_prompt=user_prompt,

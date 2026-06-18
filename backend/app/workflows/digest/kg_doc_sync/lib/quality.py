@@ -124,7 +124,6 @@ def audit_knowledge_sync_payload(
     )
     examine_profile_ready = (
         downstream_unit_count > 0
-        and diagnostic_unit_count > 0
         and (len(units) <= 1 or structure_edge_count > 0)
     )
     missing_chapter_count = len(expected_chapters - covered_chapters) if expected_chapters else 0

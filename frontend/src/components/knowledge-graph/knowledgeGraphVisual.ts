@@ -146,10 +146,17 @@ const NODE_TYPE_LAYER: Record<string, number> = {
 
 export function normalizeGraphTextLabel(value: string): string {
   return String(value || "")
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/\{#ku_[^}]+\}/g, " ")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/==([^=]+)==/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
     .replace(/\\\[([\s\S]*?)\\\]/g, "$1")
     .replace(/\\\(([\s\S]*?)\\\)/g, "$1")
     .replace(/\$\$([\s\S]*?)\$\$/g, "$1")
     .replace(/\$([^$]+)\$/g, "$1")
+    .replace(/^\s*(?:定义|定理|公式|例题|示例|练习|证明|备注|任务|步骤|检查点|答案|解析|Q\d+)\s*(?:\d+)?(?:[（(][^）)]{1,18}[）)])?\s*[:：]\s*/i, "")
     .replace(/\\left\b|\\right\b/g, "")
     .replace(/\\times\b/g, "×")
     .replace(/\\cdot\b/g, "·")
@@ -292,16 +299,15 @@ export function shouldShowSmartNodeLabel(
   if (node.id === selectedNodeId || selectedNeighbors.has(node.id)) return true;
   const budget = graphNodeLabelBudget(visibleNodeCount, scale, showAllNodeLabels);
   if (showAllNodeLabels) {
-    if (scale >= 0.9) return true;
+    if (scale >= 1.8) return node.label_rank <= Math.max(budget, Math.min(220, Math.round(visibleNodeCount * 0.72)));
+    if (scale >= 0.9) return node.label_rank <= Math.max(budget, Math.min(120, Math.round(visibleNodeCount * 0.48)));
     return scale >= 0.24 && node.label_rank <= budget;
   }
   if (scale >= 1.26) {
-    if (visibleNodeCount <= 260) return true;
-    return node.label_rank <= Math.max(budget, 180) || node.degree >= 2 || isAssessmentCoreNode(node);
+    return node.label_rank <= Math.max(budget, scale >= 1.9 ? 150 : 96) || node.degree >= 3 || (isAssessmentCoreNode(node) && node.label_rank <= 140);
   }
   if (scale >= 1.08) {
-    if (visibleNodeCount <= 140) return true;
-    return node.label_rank <= Math.max(budget, 96) || node.degree >= 3 || isAssessmentCoreNode(node);
+    return node.label_rank <= Math.max(budget, 76) || node.degree >= 4 || (isAssessmentCoreNode(node) && node.label_rank <= 96);
   }
   if (node.label_rank > budget) return false;
   if (scale < 0.42) {

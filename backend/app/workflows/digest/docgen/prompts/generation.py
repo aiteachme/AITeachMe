@@ -166,7 +166,7 @@ def build_docgen_writer_messages(
         f"- 最低覆盖分：{execution_contract.get('min_coverage_score') or '未指定'}\n"
         f"- 最低证据支撑：{execution_contract.get('min_evidence_support') or '未指定'}\n"
         f"- 解释深度：{execution_contract.get('explanation_depth') or '未指定'}\n"
-        f"- 图示写作：正文写清变量、对象位置、图形关系和图注；静态图节点负责绘制 SVG\n"
+        f"- 图示写作：只有当关系、流程、结构或空间位置靠文字不直观时才请求 Mermaid；能用一句话讲清的内容不要配图\n"
         f"- 练习目标：学习活动约 {activity_quota} 个；完整例题/案例 {min_worked_examples} 个；短练习/自测/变式约 {short_practice_quota} 个\n"
         f"- 例题密度：{example_density_policy.get('policy_text') or '例题、案例和任务服务当前知识点。'}\n"
         f"- 内容角色目标：{content_role_targets}\n"
@@ -207,8 +207,8 @@ def build_docgen_writer_messages(
 4. 例题、案例、变式训练和自测贴合本章材料；每个可判断任务给解析、答案或判定依据。
 5. 执行合同中的“本章边界外主题”只作必要前后联系，不扩写成独立小节。
 6. 学习者画像只调整解释节奏、练习密度和易错提醒；如果含前置诊断信号，把它落实到讲解起点、例题/图示/练习配置中，不在正文复述问卷。
-7. 需要图形辅助时，正文写清题设、变量、图形关系和图注；静态图示节点会绘制 SVG。代码块只用于代码、命令或伪代码。
-8. 较长章节自然加入 1-2 个短提示块：`> [!IMPORTANT]` 写关键前提/结论，`> [!TIP]` 写快速抓手，`> [!WARNING]` 写易错边界；不要把完整例题、长解析或章末练习放进 callout。
+7. 只有当概念关系、方法流程、几何/坐标/结构关系、实验路径等靠文字不直观时，才请求 Mermaid 图示；不要为公式展开、三步文字清单或单条箭头线生成图。代码块只用于代码、命令、伪代码或 Mermaid。
+8. 较长章节自然加入 2-3 个短提示块：`> [!IMPORTANT]` 写关键前提/结论，`> [!TIP]` 写快速抓手，`> [!WARNING]` 写易错边界；不要把完整例题、长解析或章末练习放进 callout。
 
 版式合同：
 {_presentation_contract(digest_mode=normalized_mode)}
@@ -393,6 +393,7 @@ def build_docgen_mermaid_prompt(*, topic: str, context: str) -> str:
 6. 如果使用 flowchart，可以用 2-3 个简单 `classDef` 给核心概念、方法步骤、易错提醒区分颜色；不要使用 click、HTML、复杂 style 或外链。
 7. 如果上下文噪声很多，优先保留最核心的 3 到 6 个概念节点，宁可简洁也不要产出脏 Mermaid。
 8. 绝对不要复制上下文中的 Markdown 标题、正文段落、`---` 分隔线或反引号。
+9. Mermaid 必须有示意价值：表达关系、层级、流程、对比或结构；不要把一段文字拆成三行流程，也不要画只有单条箭头的一维伪图。
 
 主题：{topic}
 上下文：{context}

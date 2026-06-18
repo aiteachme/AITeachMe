@@ -21,7 +21,6 @@ from app.workflows.digest.docgen.lib.models import (
     PracticeManifest,
 )
 from app.workflows.digest.docgen.lib.presentation_policy import normalize_docgen_presentation
-from app.workflows.digest.docgen.lib.static_html_figure import generate_static_html_figure_assets
 
 _MERMAID_FENCE_RE = re.compile(
     r"(?im)^\s*```\s*(?:mermaid|mindmap|graph|flowchart|sequenceDiagram|classDiagram|"
@@ -149,24 +148,6 @@ async def enhance_chapter_draft(
             draft.title,
         ],
     )
-
-    static_figure_assets: list[dict[str, object]] = []
-    try:
-        traced_context.asset_kind = "static_html_figure"
-        static_figure_assets = await generate_static_html_figure_assets(
-            draft=draft,
-            traced_context=traced_context,
-            digest_mode=digest_mode,
-            markdown=markdown,
-            claim_ledger=claim_ledger,
-            max_assets=1,
-            used_visual_signatures=used_static_figure_signatures,
-        )
-        if static_figure_assets:
-            markdown = _insert_asset_links(markdown, static_figure_assets)
-            assets.extend(static_figure_assets)
-    except Exception as exc:
-        warnings.append(f"静态讲义图生成失败，已跳过图示增强：{str(exc)[:120]}")
 
     interactive_assets: list[dict[str, object]] = []
     if settings.docgen.generate_interactive_html:

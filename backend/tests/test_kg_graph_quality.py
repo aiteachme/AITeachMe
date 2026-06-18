@@ -87,5 +87,5 @@ def test_audit_node_updates_payload_and_node_metrics() -> None:
     assert result["node_metrics"]["audit_graph"]["exam_ready_unit_count"] == 1
     assert result["node_metrics"]["audit_graph"]["profile_ready_unit_count"] == 1
     assert result["node_metrics"]["audit_graph"]["diagnostic_unit_count"] == 0
-    assert result["node_metrics"]["audit_graph"]["examine_profile_ready"] == 0
+    assert result["node_metrics"]["audit_graph"]["examine_profile_ready"] == 1
     assert result["extraction_payload"].diagnostics_totals["graph_audit_warning_count"] == 0

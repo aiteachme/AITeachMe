@@ -180,7 +180,7 @@ def _plan(*, plan_text: str = "围绕矩阵和线性映射生成一份可执行�
             {
                 "question": "矩阵乘法和秩的直觉里，你现在更卡哪一个？",
                 "purpose": "区分计算规则与空间直觉薄弱点。",
-                "options": ["矩阵乘法", "秩的直觉", "都还不熟"],
+                "options": ["矩阵乘法", "秩的直觉", "都还不熟", "先看例题"],
             }
         ],
         "chapters": [
@@ -423,7 +423,7 @@ def test_prepare_save_confirm_and_status_round_trip(managed_planner_session: Ses
     assert stored_plan.plan == "加入习题复盘后的三段式学习计划。"
     assert stored_plan.plan_json["planner_context"]["assistant_revision_count"] == 2
     assert "再补一个习题复盘章节" in stored_plan.plan_json["docgen_history_brief"]
-    assert stored_plan.plan_json["diagnose"][0]["options"] == ["矩阵乘法", "秩的直觉", "都还不熟"]
+    assert stored_plan.plan_json["diagnose"][0]["options"] == ["矩阵乘法", "秩的直觉", "都还不熟", "先看例题"]
     assert stored_plan.plan_json["chapters"][2]["title"] == "习题复盘"
 
     planner_store.mark_confirmed_plan_status(
@@ -483,7 +483,7 @@ def test_save_planner_result_persists_diagnosis_draft_before_plan(managed_planne
                 {
                     "question": "矩阵和线性映射里你更想先补哪块？",
                     "purpose": "决定正式方案的章节优先级和例题密度。",
-                    "options": ["矩阵乘法", "线性映射", "秩的直觉"],
+                    "options": ["矩阵乘法", "线性映射", "秩的直觉", "例题带路"],
                 }
             ],
             "diagnose_status": "pending",
@@ -495,7 +495,7 @@ def test_save_planner_result_persists_diagnosis_draft_before_plan(managed_planne
     assert response.latest_plan.diagnose_status == "pending"
     assert response.latest_plan.plan == ""
     assert response.latest_plan.chapters == []
-    assert response.latest_plan.diagnose[0].options == ["矩阵乘法", "线性映射", "秩的直觉"]
+    assert response.latest_plan.diagnose[0].options == ["矩阵乘法", "线性映射", "秩的直觉", "例题带路"]
     assert response.turns[-1].role == "assistant"
     assert response.turns[-1].plan_json is not None
     assert response.turns[-1].plan_json["diagnose_status"] == "pending"

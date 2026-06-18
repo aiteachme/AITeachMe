@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from html import escape
 import re
 from typing import Any
 
@@ -81,6 +80,8 @@ _DIFFICULTY_ALIASES = {
     "提升": "挑战",
 }
 _DIFFICULTY_ORDER = ["基础", "进阶", "挑战"]
+_CHOICE_LABEL_RE = re.compile(r"^\s*(?:[A-Da-d][.)、:：]\s*)?(?P<text>.+?)\s*$")
+_CHOICE_FALLBACK_OPTIONS = ["条件成立", "条件缺失", "只适合特例", "无法判断"]
 
 
 def _compact_label(value: str) -> str:
@@ -101,6 +102,45 @@ def _normalize_difficulty(value: str) -> str:
     if not compact:
         return "基础"
     return _DIFFICULTY_ALIASES.get(compact) or _DIFFICULTY_ALIASES.get(text) or (text if text in _DIFFICULTY_ORDER else "进阶")
+
+
+def _normalize_choice_options(value: Any) -> list[str]:
+    if value is None:
+        raw_items: list[Any] = []
+    elif isinstance(value, dict):
+        raw_items = [value[key] for key in sorted(value)]
+    elif isinstance(value, (list, tuple, set)):
+        raw_items = list(value)
+    else:
+        raw_text = str(value or "")
+        raw_items = [item for item in re.split(r"\n|[;；]", raw_text) if item.strip()]
+
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for item in raw_items:
+        text = clean_text(item)
+        match = _CHOICE_LABEL_RE.match(text)
+        if match:
+            text = match.group("text").strip()
+        if not text:
+            continue
+        if len(text) > 28:
+            text = text[:27].rstrip(" ，,。；;、") + "…"
+        key = _compact_label(text)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(text)
+        if len(cleaned) >= 4:
+            break
+    for fallback in _CHOICE_FALLBACK_OPTIONS:
+        if len(cleaned) >= 4:
+            break
+        key = _compact_label(fallback)
+        if key not in seen:
+            cleaned.append(fallback)
+            seen.add(key)
+    return cleaned[:4]
 
 
 def _is_body_generated_test_or_recap_heading(title: str) -> bool:
@@ -137,6 +177,7 @@ class ChapterUnitTestItem(DocGenBaseModel):
     difficulty: str = "基础"
     target: str = ""
     stem: str = ""
+    options: list[str] = Field(default_factory=list)
     answer: str = ""
     basis: str = ""
 
@@ -145,10 +186,19 @@ class ChapterUnitTestItem(DocGenBaseModel):
     def _text(cls, value: Any) -> str:
         return clean_text(value)
 
+    @field_validator("options", mode="before")
+    @classmethod
+    def _options(cls, value: Any) -> list[str]:
+        return _normalize_choice_options(value)
+
     @model_validator(mode="after")
     def _fallback_fields(self) -> "ChapterUnitTestItem":
         self.type = _normalize_question_type(self.type)
         self.difficulty = _normalize_difficulty(self.difficulty)
+        if self.type == "选择题":
+            self.options = _normalize_choice_options(self.options)
+        else:
+            self.options = []
         if not self.target:
             self.target = "本章要点"
         if not self.stem:
@@ -183,15 +233,11 @@ def strip_existing_unit_test_sections(markdown: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", cleaned).strip() + "\n"
 
 
-def _html_text(value: str, *, limit: int | None = None) -> str:
+def _markdown_text(value: str, *, limit: int | None = None) -> str:
     text = " ".join(str(value or "").strip().split())
     if limit is not None and len(text) > limit:
-        text = text[: max(1, limit - 1)].rstrip() + "..."
-    return escape(text, quote=False)
-
-
-def _html_attr(value: str, *, limit: int | None = None) -> str:
-    return escape(_html_text(value, limit=limit), quote=True)
+        text = text[: max(1, limit - 1)].rstrip(" ，,。；;、") + "…"
+    return text
 
 
 def _ordered_unique(values: list[str], order: list[str]) -> list[str]:
@@ -281,53 +327,40 @@ def _prepare_unit_test_items(
     return prepared[:limit]
 
 
-def _render_unit_test_overview_html(items: list[ChapterUnitTestItem]) -> str:
+def _render_unit_test_overview_markdown(items: list[ChapterUnitTestItem]) -> str:
     types = _ordered_unique([_normalize_question_type(item.type) for item in items], _QUESTION_TYPE_ORDER)
     difficulties = _ordered_unique([_normalize_difficulty(item.difficulty) for item in items], _DIFFICULTY_ORDER)
     type_text = " / ".join(types[:5]) + (" ..." if len(types) > 5 else "")
     difficulty_text = " / ".join(difficulties)
+    targets = clean_string_list([item.target for item in items], limit=8)
+    coverage_text = "、".join(targets[:6]) + ("…" if len(targets) > 6 else "")
     return "\n".join(
         [
-            '  <div class="atm-unit-tests__overview">',
-            f'    <span class="atm-unit-tests__metric"><strong>{len(items)}</strong> 题</span>',
-            f'    <span class="atm-unit-tests__chip">{_html_text(type_text, limit=64)}</span>',
-            f'    <span class="atm-unit-tests__chip">{_html_text(difficulty_text, limit=32)}</span>',
-            "  </div>",
+            "> [!PRACTICE]",
+            f"> **{len(items)} 题覆盖**：{coverage_text or '本章核心考点'}",
+            f"> **题型与难度**：{type_text}；{difficulty_text}",
         ]
     )
 
 
-def _render_unit_test_item_html(item: ChapterUnitTestItem, *, index: int) -> str:
+def _render_unit_test_item_markdown(item: ChapterUnitTestItem, *, index: int) -> str:
     question_type = _normalize_question_type(item.type)
     difficulty = _normalize_difficulty(item.difficulty)
-    answer = _html_text(item.answer, limit=420)
-    basis = _html_text(item.basis, limit=420)
-    return "\n".join(
+    lines = [
+        f"**Q{index:02d}｜{question_type}｜{difficulty}｜考点：{_markdown_text(item.target, limit=36)}**",
+        "",
+        _markdown_text(item.stem, limit=420),
+    ]
+    if question_type == "选择题":
+        lines.extend(["", *[f"- {label}. {_markdown_text(option, limit=42)}" for label, option in zip("ABCD", item.options)]])
+    lines.extend(
         [
-            (
-                '<article class="atm-unit-test-card" '
-                f'data-question-type="{_html_attr(question_type, limit=24)}" '
-                f'data-difficulty="{_html_attr(difficulty, limit=12)}">'
-            ),
-            '  <div class="atm-unit-test-card__head">',
-            f'    <span class="atm-unit-test-card__number">Q{index:02d}</span>',
-            f'    <span class="atm-unit-test-card__type">{_html_text(question_type, limit=24)}</span>',
-            f'    <span class="atm-unit-test-card__difficulty">{_html_text(difficulty, limit=12)}</span>',
-            f'    <span class="atm-unit-test-card__target">{_html_text(item.target, limit=64)}</span>',
-            "  </div>",
-            '  <div class="atm-unit-test-card__prompt">',
-            f'    <p>{_html_text(item.stem, limit=360)}</p>',
-            "  </div>",
-            '  <details class="atm-unit-test-answer">',
-            "    <summary>答案与依据</summary>",
-            '    <div class="atm-unit-test-answer__body">',
-            f"      <p><strong>参考答案：</strong>{answer}</p>",
-            f"      <p><strong>判定依据：</strong>{basis}</p>",
-            "    </div>",
-            "  </details>",
-            "</article>",
+            "",
+            f"> **答案与依据**：{_markdown_text(item.answer, limit=360)}",
+            f"> **判定依据**：{_markdown_text(item.basis, limit=360)}",
         ]
     )
+    return "\n".join(lines).strip()
 
 
 def render_unit_test_markdown(
@@ -338,7 +371,7 @@ def render_unit_test_markdown(
     fallback_targets: list[str],
     max_items: int | None = None,
 ) -> str:
-    """Render unit tests as readable HTML cards with collapsed answers."""
+    """Render unit tests as native Markdown so math and typography stay consistent."""
 
     items = _prepare_unit_test_items(
         list(result.items or []),
@@ -350,12 +383,10 @@ def render_unit_test_markdown(
     lines = [
         "## 单元测试",
         "",
-        f'<div class="atm-unit-tests" data-unit-test-count="{len(items)}">',
-        _render_unit_test_overview_html(items),
+        _render_unit_test_overview_markdown(items),
     ]
     for index, item in enumerate(items, start=1):
-        lines.append(_render_unit_test_item_html(item, index=index))
-    lines.append("</div>")
+        lines.extend(["", _render_unit_test_item_markdown(item, index=index)])
     return "\n".join(lines).strip() + "\n"
 
 
@@ -507,6 +538,7 @@ def _fallback_items(*, title: str, targets: list[str], count: int) -> list[Chapt
     items: list[ChapterUnitTestItem] = []
     templates = [
         ("概念判断", "基础", "判断并说明理由：“{target}”成立时最关键的条件是什么？", "能说清对象、条件和结论。"),
+        ("选择题", "基础", "关于“{target}”，下列哪一项最符合本章结论？", "应选择符合本章定义、条件或结论的选项。"),
         ("填空题", "基础", "补全“{target}”的关键步骤或公式空缺，并写出必要条件。", "答案应包含本章给出的核心条件、步骤或表达式。"),
         ("步骤排序", "进阶", "把解决“{target}”的关键步骤按先后顺序写出。", "顺序应先检查条件，再执行方法，最后验证结论。"),
         ("错因辨析", "进阶", "指出学习“{target}”时最容易踩坑的一处限制，并给出反例或纠正方式。", "能写出限制条件、常见错因或反例即可。"),
@@ -524,6 +556,16 @@ def _fallback_items(*, title: str, targets: list[str], count: int) -> list[Chapt
                 difficulty=difficulty,
                 target=target,
                 stem=stem_template.format(target=target),
+                options=_normalize_choice_options(
+                    [
+                        f"{target}的适用条件成立",
+                        "忽略必要前提也可使用",
+                        "只记结论不用判断条件",
+                        "与本章方法无关",
+                    ]
+                    if item_type == "选择题"
+                    else []
+                ),
                 answer=f"围绕“{target}”按本章定义、条件和步骤作答。",
                 basis=basis,
             )

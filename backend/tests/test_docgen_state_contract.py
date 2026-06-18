@@ -489,7 +489,7 @@ def test_docgen_kg_draft_merges_preliminary_and_reviewed_headings() -> None:
     assert any(node["name"] == "维度匹配" and node["source"] == "docgen_review_refinement" for node in draft["nodes"])
     assert any(node["name"] == "矩阵乘法" and node["source"] == "docgen_preliminary_kg" for node in draft["nodes"])
     assert any(node["name"] == "矩阵运算" and node["knowledge_unit_type"] == "topic" for node in draft["nodes"])
-    assert any(node["name"] == "单元测试" and node["knowledge_unit_type"] == "skill" for node in draft["nodes"])
+    assert all(node["name"] != "单元测试" for node in draft["nodes"])
     assert any(edge["source_name"] == "行列配对" and edge["target_name"] == "矩阵运算" for edge in draft["edges"])
 
 
@@ -517,7 +517,8 @@ def test_docgen_kg_draft_extracts_learning_bullets_without_generic_template_node
     assert "执行范围" not in node_names
     assert "指针变量的定义" in node_names
     assert "文件读写流程与 fopen/fclose/printf/fscanf 的使用" in node_names
-    assert any(node["knowledge_unit_type"] == "skill" for node in draft["nodes"])
+    assert "单元测试" not in node_names
+    assert "判断 `int *p` 与 `&a` 的含义" not in node_names
     assert draft["quality_ready"] is True
     assert draft["fast_visible_ready"] is True
 
@@ -552,37 +553,31 @@ def test_prepare_knowledge_graph_chapters_keep_markdown_when_metadata_locks_titl
     ]
 
 
-def test_docgen_kg_draft_requires_examine_profile_diagnostic_shape() -> None:
+def test_docgen_kg_draft_requires_real_learning_units_for_examine_profile_shape() -> None:
     draft = build_docgen_kg_draft(
         preliminary_kg={
             "nodes": [
                 {
-                    "name": "矩阵乘法",
-                    "knowledge_unit_type": "concept",
+                    "name": "课程目录",
+                    "knowledge_unit_type": "topic",
                     "chapter_index": 1,
-                    "summary": "按行列配对求和。",
+                    "summary": "只是一条材料来源。",
                     "source": "docgen_preliminary_kg",
                 }
             ],
             "edges": [],
         },
-        reviewed_chapters=[
-            {
-                "chapter_index": 1,
-                "title": "矩阵乘法",
-                "markdown": "# 矩阵乘法\n\n## 行列配对\n\n内容。",
-            }
-        ],
+        reviewed_chapters=[],
         prefetched_records=[],
         prefetch_metrics={"prefetch_status": "missing", "prefetch_ready": 0},
     )
 
     assert draft["quality_status"] == "needs_catchup"
     assert draft["quality_ready"] is False
-    assert draft["fast_visible_ready"] is True
-    assert draft["quality_audit"]["diagnostic_unit_count"] == 0
+    assert draft["fast_visible_ready"] is False
+    assert draft["quality_audit"]["downstream_unit_count"] == 0
     assert draft["quality_audit"]["examine_profile_ready"] is False
-    assert "no_examine_profile_diagnostic_unit" in draft["quality_audit"]["warnings"]
+    assert "no_downstream_learning_unit" in draft["quality_audit"]["warnings"]
 
 
 def test_docgen_kg_draft_blocks_fast_visible_when_edge_endpoint_is_missing() -> None:
@@ -624,12 +619,12 @@ def test_docgen_kg_draft_dedupes_same_name_nodes_before_fast_visible_gate() -> N
         preliminary_kg={
             "nodes": [
                 {"name": "矩阵运算", "knowledge_unit_type": "topic", "chapter_index": 1},
-                {"name": "单元测试", "knowledge_unit_type": "skill", "chapter_index": 1},
+                {"name": "矩阵乘法步骤", "knowledge_unit_type": "procedure", "chapter_index": 1},
                 {"name": "维度匹配", "knowledge_unit_type": "concept", "chapter_index": 1},
                 {"name": "维度匹配", "knowledge_unit_type": "misconception", "chapter_index": 1},
             ],
             "edges": [
-                {"source_name": "单元测试", "target_name": "矩阵运算", "edge_type": "part_of", "chapter_index": 1},
+                {"source_name": "矩阵乘法步骤", "target_name": "矩阵运算", "edge_type": "part_of", "chapter_index": 1},
                 {"source_name": "维度匹配", "target_name": "矩阵运算", "edge_type": "part_of", "chapter_index": 1},
             ],
         },
@@ -654,12 +649,12 @@ def test_docgen_kg_draft_blocks_fast_visible_when_relation_direction_is_invalid(
         preliminary_kg={
             "nodes": [
                 {"name": "矩阵运算", "knowledge_unit_type": "topic", "chapter_index": 1},
-                {"name": "单元测试", "knowledge_unit_type": "skill", "chapter_index": 1},
+                {"name": "矩阵乘法步骤", "knowledge_unit_type": "procedure", "chapter_index": 1},
                 {"name": "维度误区", "knowledge_unit_type": "misconception", "chapter_index": 1},
             ],
             "edges": [
-                {"source_name": "单元测试", "target_name": "矩阵运算", "edge_type": "part_of", "chapter_index": 1},
-                {"source_name": "矩阵运算", "target_name": "单元测试", "edge_type": "assesses", "chapter_index": 1},
+                {"source_name": "矩阵乘法步骤", "target_name": "矩阵运算", "edge_type": "part_of", "chapter_index": 1},
+                {"source_name": "矩阵运算", "target_name": "维度误区", "edge_type": "assesses", "chapter_index": 1},
             ],
         },
         reviewed_chapters=[],
@@ -1804,7 +1799,6 @@ async def test_prepare_knowledge_graph_node_starts_missing_prefetch_from_reviewe
     assert int(result["kg_prefetch_metrics"]["docgen_kg_quality_warning_count"]) >= 0
     assert result["kg_prefetch_metrics"]["docgen_kg_exam_ready_unit_count"] >= 1
     assert result["kg_prefetch_metrics"]["docgen_kg_profile_ready_unit_count"] >= 1
-    assert result["kg_prefetch_metrics"]["docgen_kg_diagnostic_unit_count"] >= 1
     assert result["kg_prefetch_metrics"]["docgen_kg_structure_edge_count"] >= 1
     assert result["kg_prefetch_metrics"]["docgen_kg_examine_profile_ready"] == 1
     assert result["kg_draft_early_persist_metrics"]["unit_count"] == 2
@@ -1819,7 +1813,6 @@ async def test_prepare_knowledge_graph_node_starts_missing_prefetch_from_reviewe
     assert captured["progress_payload"]["docgen_kg_quality_status"] == "ready"
     assert captured["progress_payload"]["docgen_kg_quality_audit"]["missing_chapter_count"] == 0
     assert captured["progress_payload"]["docgen_kg_examine_profile_ready"] is True
-    assert captured["progress_payload"]["docgen_kg_diagnostic_unit_count"] >= 1
     assert captured["progress_payload"]["docgen_kg_pre_publish_unit_count"] == 2
     assert captured["progress_payload"]["docgen_kg_pre_publish_edge_count"] == 1
 
@@ -1926,7 +1919,7 @@ async def test_prepare_knowledge_graph_refreshes_after_locked_title_changes(monk
 
 
 @pytest.mark.anyio
-async def test_prepare_knowledge_graph_waits_once_more_when_prefetch_is_still_running(monkeypatch) -> None:
+async def test_prepare_knowledge_graph_uses_ready_draft_when_prefetch_is_still_running(monkeypatch) -> None:
     await_calls = 0
     snapshot_calls = 0
     captured: dict[str, object] = {}
@@ -1942,29 +1935,29 @@ async def test_prepare_knowledge_graph_waits_once_more_when_prefetch_is_still_ru
                 quote_text="按行列配对求和。",
             ),
             MarkdownKnowledgeUnit(
-                anchor="ku_unit_test",
-                name="单元测试",
+                anchor="ku_dimension_check",
+                name="维度匹配检查",
                 knowledge_unit_type="skill",
-                summary="检查本章掌握情况。",
-                body_markdown="检查本章掌握情况。",
+                summary="矩阵乘法前检查行列维度是否匹配。",
+                body_markdown="矩阵乘法前检查行列维度是否匹配。",
                 chapter_index=1,
-                quote_text="检查本章掌握情况。",
+                quote_text="矩阵乘法前检查行列维度是否匹配。",
             ),
         ],
         pending_edges=[
             PendingMarkdownExtractedEdge(
-                source_candidate_id="test",
+                source_candidate_id="dimension_check",
                 target_candidate_id="concept",
-                source_name="单元测试",
+                source_name="维度匹配检查",
                 target_name="矩阵乘法",
                 edge_type="assesses",
-                description="单元测试用于检查矩阵乘法掌握情况。",
+                description="维度匹配检查用于判断矩阵乘法掌握情况。",
                 chapter_index=1,
             )
         ],
-        candidate_id_to_anchor={"concept": "ku_matrix_multiply", "test": "ku_unit_test"},
-        anchors_by_name={"矩阵乘法": ["ku_matrix_multiply"], "单元测试": ["ku_unit_test"]},
-        anchors_by_normalized_name={"矩阵乘法": ["ku_matrix_multiply"], "单元测试": ["ku_unit_test"]},
+        candidate_id_to_anchor={"concept": "ku_matrix_multiply", "dimension_check": "ku_dimension_check"},
+        anchors_by_name={"矩阵乘法": ["ku_matrix_multiply"], "维度匹配检查": ["ku_dimension_check"]},
+        anchors_by_normalized_name={"矩阵乘法": ["ku_matrix_multiply"], "维度匹配检查": ["ku_dimension_check"]},
         node_contexts_by_anchor={},
         section_context=SectionExtractionContext(
             section_index=1,
@@ -2096,10 +2089,11 @@ async def test_prepare_knowledge_graph_waits_once_more_when_prefetch_is_still_ru
         }
     )
 
-    assert await_calls == 2
-    assert captured["wait_timeouts"] == [None, prepare_knowledge_graph._QUALITY_READY_RECHECK_WAIT_S]
-    assert result["kg_prefetch_metrics"]["docgen_kg_quality_recheck_waited"] == 1
-    assert result["kg_prefetch_ready"] is True
+    assert await_calls == 1
+    assert snapshot_calls == 1
+    assert captured["wait_timeouts"] == [None]
+    assert result["kg_prefetch_metrics"]["docgen_kg_quality_recheck_waited"] == 0
+    assert result["kg_prefetch_ready"] is False
     assert result["docgen_kg_draft"]["quality_ready"] is True
     assert result["docgen_kg_draft"]["quality_status"] == "ready"
     assert result["kg_prefetch_metrics"]["docgen_kg_pre_publish_unit_count"] == 3
