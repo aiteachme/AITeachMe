@@ -21,4 +21,6 @@ export interface BuildPlannerCreateRequest {
   title?: string | null;
   /** Optional per-request planner model. Omit or use settings for configured defaults. */
   model?: string | null;
+  /** Optional analytics-only entry source for the first planner request. */
+  entry_source?: 'home_arrow' | null;
 }

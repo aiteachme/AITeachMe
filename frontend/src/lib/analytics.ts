@@ -33,6 +33,7 @@ const BACKEND_OWNED_EVENTS = new Set([
   "exam_generated",
   "exam_graded",
   "exam_submitted",
+  "home_course_build_requested",
   "knowledge_build_submitted",
   "knowledge_build_started",
   "knowledge_build_completed",

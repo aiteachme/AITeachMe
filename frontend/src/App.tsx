@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useState, type ReactElement } from "react";
 import { BrowserRouter, HashRouter, Routes, Route, Navigate, useLocation, useParams } from "react-router-dom";
-import { onlineManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { apiClient, BACKEND_OFFLINE_EVENT, BACKEND_ONLINE_EVENT, isBackendOffline, isBackendOfflineError } from "./api/client";
+import { onlineManager, QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
+import { BACKEND_OFFLINE_EVENT, BACKEND_ONLINE_EVENT, isBackendOffline, isBackendOfflineError } from "./api/client";
 import { ThemeProvider, THEME_STORAGE_KEY } from "./components/providers/ThemeProvider";
 import { FrontendModeProvider } from "./components/providers/FrontendModeProvider";
 import { RouteAnalyticsBridge } from "./components/providers/RouteAnalyticsBridge";
@@ -12,6 +12,7 @@ import { buildCoursePath, buildCourseSubPath, COURSE_ROUTE_REDIRECTS, type Cours
 import { ensureSystemSettingsOverviewLoaded, getStoredSystemSettingsOverview } from "./lib/systemSettings";
 import { isElectronRuntime } from "./lib/electronRuntime";
 import { syncAnalyticsUserIdentity } from "./lib/analytics";
+import { AUTH_SESSION_QUERY_KEY, AUTH_SESSION_STALE_TIME_MS, fetchAuthSession } from "./lib/authSession";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -107,21 +108,14 @@ function RuntimeSettingsBootstrap() {
   return null;
 }
 
-type RuntimeUser = {
-  user_id: string;
-  email?: string | null;
-  is_authenticated?: boolean;
-};
-
-type AuthSessionData = {
-  current_user?: RuntimeUser | null;
-};
-
-type ApiResponse<T> = {
-  data: T;
-};
-
 function AnalyticsIdentityBootstrap({ onReady }: { onReady: () => void }) {
+  const authSessionQuery = useQuery({
+    queryKey: AUTH_SESSION_QUERY_KEY,
+    queryFn: ({ signal }) => fetchAuthSession(signal),
+    staleTime: AUTH_SESSION_STALE_TIME_MS,
+    retry: 1,
+  });
+
   useEffect(() => {
     let cancelled = false;
     const markReady = () => {
@@ -130,36 +124,23 @@ function AnalyticsIdentityBootstrap({ onReady }: { onReady: () => void }) {
       }
     };
 
-    const syncCurrentUser = async () => {
-      try {
-        const response = await apiClient<ApiResponse<AuthSessionData>>({
-          url: "/api/v1/auth/user",
-          method: "POST",
-          data: {},
-        });
-        if (cancelled) {
-          return;
-        }
-        const currentUser = response.data.current_user ?? null;
-        syncAnalyticsUserIdentity({
-          userId: currentUser?.user_id,
-          email: currentUser?.email,
-          isAuthenticated: currentUser?.is_authenticated,
-        });
-        markReady();
-      } catch {
-        if (!cancelled) {
-          syncAnalyticsUserIdentity(null);
-          markReady();
-        }
-      }
-    };
+    if (authSessionQuery.isSuccess) {
+      const currentUser = authSessionQuery.data?.current_user ?? null;
+      syncAnalyticsUserIdentity({
+        userId: currentUser?.user_id,
+        email: currentUser?.email,
+        isAuthenticated: currentUser?.is_authenticated,
+      });
+      markReady();
+    } else if (authSessionQuery.isError) {
+      syncAnalyticsUserIdentity(null);
+      markReady();
+    }
 
-    void syncCurrentUser();
     return () => {
       cancelled = true;
     };
-  }, [onReady]);
+  }, [authSessionQuery.data, authSessionQuery.isError, authSessionQuery.isSuccess, onReady]);
 
   return null;
 }

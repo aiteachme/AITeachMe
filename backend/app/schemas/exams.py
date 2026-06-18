@@ -81,6 +81,7 @@ class ExamGenerateResponse(RuntimeStatusResponse):
     num_questions: int
     exam_paper_id: int | None = None
     sample_file_ids: list[str] = Field(default_factory=list)
+    served_from_prepared: bool
 
 
 class ExamPrewarmStatusResponse(BaseModel):

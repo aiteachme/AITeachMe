@@ -41,6 +41,7 @@ from app.models import EmailConfirmation, User
 from app.repositories.user_repo import (
     attach_device_key,
     create_user,
+    get_or_create_user_by_device_key,
     get_user_by_device_key,
     get_user_by_email,
     get_user_by_id,
@@ -876,6 +877,8 @@ def create_guest_user(session: Session, *, device_key: str | None = None) -> Use
     owner = get_user_by_device_key(session, normalized_device_key)
     if owner is not None and not owner.is_registered:
         return owner
+    if owner is None:
+        return get_or_create_user_by_device_key(session, device_key=normalized_device_key)
 
     guest = _persist_guest_user(session)
     return attach_device_key(session, user=guest, device_key=normalized_device_key)

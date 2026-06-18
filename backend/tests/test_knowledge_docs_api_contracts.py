@@ -303,6 +303,60 @@ def test_build_planner_create_and_confirm_capture_backend_analytics(monkeypatch)
     assert captured[2][2]["confirmed_plan_id_suffix"] == "12345678"
 
 
+def test_home_course_build_requested_is_captured_for_home_entry_source(monkeypatch) -> None:
+    captured: list[tuple[str, str, dict[str, object]]] = []
+    planner_response = _planner_session_response()
+
+    async def fake_create_build_planner_session(**kwargs):
+        assert kwargs["course"].id == COURSE_ID
+        assert kwargs["user_id"] == USER_ID
+        assert kwargs["payload"].entry_source == "home_arrow"
+        return planner_response
+
+    monkeypatch.setattr(api, "get_course_record", lambda _session, course_id, owner_user_id: _course(course_id))
+    monkeypatch.setattr(api, "create_build_planner_session", fake_create_build_planner_session)
+    monkeypatch.setattr(api, "capture_course_build_event_later", _capture_course_build_event_inline)
+    monkeypatch.setattr(
+        posthog_analytics,
+        "capture_posthog_event",
+        lambda event, *, distinct_id, properties=None, timestamp=None: captured.append(
+            (event, distinct_id, properties or {})
+        )
+        or True,
+    )
+
+    response = asyncio.run(
+        api.knowledge_build_plan_create(
+            request=_request(request_id="req-home-plan"),
+            course_id=COURSE_ID,
+            body=BuildPlannerCreateRequest(
+                file_ids=["file-a"],
+                user_prompt="learn from home",
+                model="model-a",
+                entry_source="home_arrow",
+            ),
+            user=_user(),
+            session=object(),
+        )
+    )
+
+    assert response.data is planner_response
+    assert [event for event, _distinct_id, _properties in captured] == [
+        "home_course_build_requested",
+        "course_plan_requested",
+        "course_plan_generated",
+    ]
+    home_event = captured[0][2]
+    assert home_event["analytics_source"] == "backend"
+    assert home_event["entry_source"] == "home_arrow"
+    assert home_event["file_count"] == 1
+    assert home_event["has_prompt"] is True
+    assert home_event["mode"] == "create"
+    assert home_event["source"] == "api"
+    assert "learn from home" not in str(home_event)
+    assert captured[1][2]["entry_source"] == "home_arrow"
+
+
 def test_build_planner_create_failure_does_not_capture_generated(monkeypatch) -> None:
     captured: list[tuple[str, str, dict[str, object]]] = []
 

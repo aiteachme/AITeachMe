@@ -812,6 +812,7 @@ async def test_generate_exam_endpoint_creates_paper_and_schedules_background(
     assert response.data.status == "generating"
     assert response.data.num_questions == 2
     assert response.data.sample_file_ids == ["file-b", "file-a"]
+    assert response.data.served_from_prepared is False
     assert len(background_tasks.tasks) == 1
     assert len(papers) == 1
     assert json.loads(papers[0].config_snapshot_json)["knowledge_unit_ids"] == [
@@ -822,6 +823,80 @@ async def test_generate_exam_endpoint_creates_paper_and_schedules_background(
     assert captured[0][1]["properties"]["exam_mode"] == "web_practice"
     assert captured[0][1]["properties"]["requested_question_count"] == 2
     assert "focus on matrices" not in str(captured[0][1]["properties"])
+
+
+@pytest.mark.anyio
+async def test_generate_exam_endpoint_claims_prepared_paper(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    units = _seed_exam_course(session)
+    unit_ids = [int(unit.id or 0) for unit in units]
+    background_tasks = BackgroundTasks()
+    captured: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(
+        exams_api,
+        "capture_product_event_later",
+        lambda event, **kwargs: captured.append((event, kwargs)) or None,
+    )
+    config_snapshot = exams_api._build_exam_config_snapshot(
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        exam_mode="web_practice",
+        question_count=2,
+        user_prompt="focus on matrices",
+        sample_file_ids=["file-b", "file-a"],
+        knowledge_unit_ids=unit_ids,
+        mastery_fingerprint=exams_api._exam_mastery_fingerprint(session, course_id=COURSE_ID, user_id=USER_ID),
+    )
+    prepared = exams_api._create_exam_generation_paper(
+        session,
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        exam_mode="web_practice",
+        question_count=2,
+        user_prompt="focus on matrices",
+        sample_file_ids=["file-b", "file-a"],
+        unit_ids=unit_ids,
+        config_snapshot=config_snapshot,
+        config_hash=exams_api._exam_config_hash(config_snapshot),
+        visibility="hidden",
+        generation_origin="prewarm",
+    )
+    prepared.status = "ready"
+    prepared.total_items = 2
+    session.add(prepared)
+    session.commit()
+
+    response = await exams_api.generate_exam(
+        request=SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(background_task_registry=None))),
+        background_tasks=background_tasks,
+        course_id=COURSE_ID,
+        body=ExamGenerateRequest(
+            exam_mode="web_practice",
+            user_prompt="  focus on matrices  ",
+            sample_file_ids=["file-b", "file-a"],
+            num_questions=2,
+        ),
+        user=CurrentUserContext(user_id=USER_ID, email=None, is_local=True),
+        session=session,
+    )
+    session.refresh(prepared)
+    visible_papers = session.exec(select(ExamPaper).where(ExamPaper.visibility == "visible")).all()
+
+    assert response.data is not None
+    assert response.data.exam_paper_id == prepared.id
+    assert response.data.status == "ready"
+    assert response.data.num_questions == 2
+    assert response.data.served_from_prepared is True
+    assert prepared.visibility == "visible"
+    assert prepared.generation_origin == "prewarm"
+    assert len(visible_papers) == 1
+    assert len(background_tasks.tasks) == 1
+    assert captured[0][0] == "exam_generation_requested"
+    assert captured[0][1]["properties"]["served_from_prepared"] is True
+    assert captured[1][0] == "exam_generated"
+    assert captured[1][1]["properties"]["served_from_prepared"] is True
 
 
 @pytest.mark.anyio

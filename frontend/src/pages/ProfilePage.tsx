@@ -4,6 +4,7 @@ import {
   Activity,
   ArrowRight,
   BarChart3,
+  BookOpen,
   CalendarClock,
   CheckCircle2,
   Gauge,
@@ -49,6 +50,12 @@ import { useCourseDisplayName } from "../hooks/useCourseDisplayName";
 import { buildCoursePath, buildCourseSubPath } from "../lib/courseNavigation";
 import { CoursePagePillTitle } from "../components/course/CoursePagePillTitle";
 import {
+  COURSE_PAGE_HEADER_ACTION_BUTTON_CLASS,
+  COURSE_PAGE_CONTENT_CLASS,
+  COURSE_PAGE_SHELL_CLASS,
+  CoursePageHeader,
+} from "../components/course/CoursePageHeader";
+import {
   buildExamTitle,
 } from "../components/exams";
 import { formatModeLabel } from "../components/exams/examDisplay";
@@ -66,7 +73,7 @@ import {
   masteryTone,
 } from "../components/profile";
 
-const pageShellClass = "mx-auto min-h-full w-full max-w-[1400px] px-6 pb-24 sm:px-8 lg:px-12";
+const pageShellClass = COURSE_PAGE_SHELL_CLASS;
 const PROFILE_PROMPT_STORAGE_PREFIX = "aiteachme.profile.userPrompt.v1";
 
 
@@ -610,40 +617,37 @@ export function ProfilePage() {
 
   return (
     <div className={pageShellClass}>
-      <div className="flex w-full flex-col gap-8">
+      <div className={`${COURSE_PAGE_CONTENT_CLASS} gap-5`}>
 
         {/* Breadcrumb pill title */}
         <CoursePagePillTitle icon={BarChart3} label="学习画像" href={buildCoursePath(courseId, "nav")} />
 
-        {/* Header Section */}
-        <section className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-          <div className="max-w-3xl space-y-2">
-            <h1 className="break-words text-3xl font-semibold text-slate-900 dark:text-slate-100 tracking-tight sm:text-[34px]">
-              {courseName ?? "当前课程"}
-            </h1>
-            <p className="max-w-2xl text-[14px] font-light leading-relaxed text-slate-500 dark:text-slate-400">
-              基于您的测验历史与复习习惯自动沉淀的多维诊断。在这里您可以查看学习重点，获取 AI 突击训练计划。
-            </p>
-          </div>
-          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap xl:justify-end shrink-0">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => navigate(buildCoursePath(courseId, "knowledge-docs"))}
-              className="h-10 rounded-full px-5 text-xs font-semibold text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100 bg-white hover:bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800"
-            >
-              看知识库
-            </Button>
-            <Button
-              type="button"
-              onClick={() => navigate(buildCoursePath(courseId, "exams"))}
-              className="h-10 rounded-full px-6 text-xs font-semibold shadow-sm bg-indigo-650 text-white hover:bg-indigo-700"
-            >
-              去练习
-              <ArrowRight className="h-4 w-4 ml-1" />
-            </Button>
-          </div>
-        </section>
+        <CoursePageHeader
+          title={courseName ?? "当前课程"}
+          description="查看学习诊断、复习重点与下一步训练建议。"
+          actions={
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => navigate(buildCoursePath(courseId, "knowledge-docs"))}
+                className={COURSE_PAGE_HEADER_ACTION_BUTTON_CLASS}
+              >
+                <BookOpen className="h-4 w-4 shrink-0" />
+                看知识库
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => navigate(buildCoursePath(courseId, "exams"))}
+                className={COURSE_PAGE_HEADER_ACTION_BUTTON_CLASS}
+              >
+                <FileText className="h-4 w-4 shrink-0" />
+                去练习
+              </Button>
+            </>
+          }
+        />
 
         {(masteryQuery.error || reviewsQuery.error) && (
           <div className="rounded-xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">

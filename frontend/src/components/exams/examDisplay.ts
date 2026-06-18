@@ -39,7 +39,7 @@ export const DIFFICULTIES = [
   { value: "hard", label: "难" },
 ] as const;
 
-function parseBackendDateTime(value: string) {
+export function parseBackendDateTime(value: string) {
   const normalized = value.trim();
   const hasExplicitTimeZone = /(?:z|[+-]\d{2}:?\d{2})$/i.test(normalized);
   return new Date(hasExplicitTimeZone ? normalized : `${normalized}Z`);
@@ -72,8 +72,8 @@ export function formatQuestionTypeLabel(type: string) {
   if (!normalized || normalized === "pending") return "题型生成中";
   const labels: Record<string, string> = {
     single_choice: "单选题",
-    multiple_choice: "不定项选择题",
-    multi_choice: "不定项选择题",
+    multiple_choice: "多选题",
+    multi_choice: "多选题",
     fill_blank: "填空题",
     true_false: "判断题",
     short_answer: "简答题",
@@ -86,11 +86,27 @@ export function getOptionLabel(index: number) {
   return String.fromCharCode(65 + index);
 }
 
-export function formatTrueFalseOptionLabel(value?: string | null) {
+export function normalizeTrueFalseAnswer(value?: string | null) {
   const normalized = String(value ?? "").trim();
   const normalizedLower = normalized.toLowerCase();
-  if (["true", "t", "yes", "y", "正确", "对", "是"].includes(normalizedLower)) return "正确";
-  if (["false", "f", "no", "n", "错误", "错", "否"].includes(normalizedLower)) return "错误";
+  if (["true", "t", "yes", "y", "正确", "对", "是"].includes(normalizedLower)) return "true";
+  if (["false", "f", "no", "n", "错误", "错", "否"].includes(normalizedLower)) return "false";
+  return normalizedLower;
+}
+
+export function isTrueFalsePositive(value?: string | null) {
+  return normalizeTrueFalseAnswer(value) === "true";
+}
+
+export function isTrueFalseAnswerMatch(left?: string | null, right?: string | null) {
+  return normalizeTrueFalseAnswer(left) === normalizeTrueFalseAnswer(right);
+}
+
+export function formatTrueFalseOptionLabel(value?: string | null) {
+  const normalized = String(value ?? "").trim();
+  const normalizedAnswer = normalizeTrueFalseAnswer(normalized);
+  if (normalizedAnswer === "true") return "正确";
+  if (normalizedAnswer === "false") return "错误";
   return normalized;
 }
 

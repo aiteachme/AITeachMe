@@ -3,8 +3,16 @@ import { AlertTriangle, Bookmark, Lightbulb, MessageSquareText } from "lucide-re
 
 import type { ExamPaperDetailResponse, ExamPaperItemResponse, PaperPreviewRow } from "../../api/generated/model";
 import { cn } from "../../lib/utils";
-import { ExamMarkdown } from "./ExamMarkdown";
+import {
+  EXAM_ANSWER_TEXT_CLASS,
+  EXAM_OPTION_BUTTON_TEXT_CLASS,
+  EXAM_OPTION_MARKDOWN_CLASS,
+  EXAM_QUESTION_TEXT_CLASS,
+  EXAM_TEXTAREA_TEXT_CLASS,
+  ExamMarkdown,
+} from "./ExamMarkdown";
 import { PaperExamCanvasSheet } from "./PaperExamCanvasSheet";
+import { buildExamQuestionAnchorId } from "../interaction";
 import {
   formatAnswerDisplayValue,
   formatQuestionTypeLabel,
@@ -14,6 +22,8 @@ import {
   getExamPaperDisplayTitle,
   getExamTotalScore,
   getOptionLabel,
+  isTrueFalseAnswerMatch,
+  isTrueFalsePositive,
   splitMultiChoiceAnswer,
 } from "./examDisplay";
 
@@ -26,11 +36,14 @@ interface ExamPaperSheetProps {
   setAnswers: Dispatch<SetStateAction<Record<number, string>>>;
   selectedItemId?: number | null;
   showInlineReviewDetails?: boolean;
+  isReviewAnalysisVisible?: boolean;
   footerContent?: ReactNode;
   onSelectQuestion?: (item: ExamPaperItemResponse) => void;
+  onReviewAnalysisToggle?: (item: ExamPaperItemResponse) => void;
   onQuestionAi?: (item: ExamPaperItemResponse, isReviewStage: boolean, answerValue: string) => void;
   onQuestionMarkToggle?: (item: ExamPaperItemResponse, isMarked: boolean) => void;
   markingQuestionTemplateId?: number | null;
+  activeAiAnchorId?: string | null;
 }
 
 function buildGeneratingRows(paper: ExamPaperDetailResponse): PaperPreviewRow[] {
@@ -132,36 +145,41 @@ function GeneratingQuestionPlaceholder({ row }: { row: PaperPreviewRow }) {
       data-question-order={row.order}
       className="exam-preview-unified-flow scroll-mt-28 border-b-[1.5px] border-dashed border-slate-200/90 px-0 py-7 last:border-b-0 dark:border-slate-800/90 sm:py-9"
     >
-      <div className="grid min-w-0 gap-5 md:grid-cols-[72px_minmax(0,1fr)]">
-        <aside className="flex items-start gap-4 border-b border-slate-100 pb-4 text-slate-500 dark:border-slate-800 dark:text-slate-400 md:flex-col md:items-center md:border-b-0 md:border-r md:pb-0 md:pr-4">
-          <div className="font-serif text-2xl font-bold leading-none text-slate-950 dark:text-slate-100">{row.order}.</div>
-          <div className="flex flex-wrap gap-2 text-xs font-semibold text-slate-400 md:flex-col md:gap-2">
-            <span className="inline-flex flex-col items-center gap-1">
-              <Bookmark className="h-4 w-4" />
-              标记
+      <div className="min-w-0 overflow-hidden">
+        <div className="mb-4 flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="font-sans text-lg font-bold text-slate-800 dark:text-slate-200">
+              {row.order}.
             </span>
-          </div>
-        </aside>
-
-        <div className="min-w-0 overflow-hidden">
-          {isFailed ? (
-            <div className="mb-4 flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">
+            {isFailed ? (
+              <span className="inline-flex items-center gap-1 rounded-md bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">
                 <AlertTriangle className="h-3.5 w-3.5" />
                 生成失败
               </span>
+            ) : (
+              <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                {formatQuestionTypeLabel(row.type)}
+              </span>
+            )}
+            <span className="text-slate-200 dark:text-slate-800 select-none">|</span>
+            <div className="flex items-center gap-3 text-xs font-semibold text-slate-300">
+              <span className="inline-flex items-center gap-1.5 px-2 py-1">
+                <Bookmark className="h-4 w-4" />
+                <span>标记</span>
+              </span>
             </div>
-          ) : null}
+          </div>
+        </div>
 
-          {isFailed ? (
-            <div className="rounded-xl border border-rose-200 bg-rose-50 px-5 py-6 text-sm leading-7 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300 sm:px-6">
-              <div className="flex items-center gap-2 font-semibold text-rose-800 dark:text-rose-200">
-                <AlertTriangle className="h-4 w-4" />
-                本题生成失败
-              </div>
-              <p className="mt-2 text-rose-600">这道题已跳过，不会计入本次试卷题量和批改。</p>
+        {isFailed ? (
+          <div className="rounded-xl border border-rose-200 bg-rose-50 px-5 py-6 text-sm leading-7 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300 sm:px-6">
+            <div className="flex items-center gap-2 font-semibold text-rose-800 dark:text-rose-200">
+              <AlertTriangle className="h-4 w-4" />
+              本题生成失败
             </div>
-          ) : (
+            <p className="mt-2 text-rose-600">这道题已跳过，不会计入本次试卷题量和批改。</p>
+          </div>
+        ) : (
           <div className="exam-preview-skeleton-panel rounded-xl border border-slate-200 p-5 dark:border-slate-800 sm:p-6">
             <div className="space-y-3">
               {lineWidths.map((width, index) => (
@@ -172,34 +190,33 @@ function GeneratingQuestionPlaceholder({ row }: { row: PaperPreviewRow }) {
               ))}
             </div>
           </div>
-          )}
+        )}
 
-          {!isFailed && isChoice ? (
-            <div className="mt-6 grid gap-3">
-              {[0, 1, 2, 3].map((optionIndex) => (
-                <div
-                  key={optionIndex}
-                  className="exam-preview-skeleton-panel flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-3 dark:border-slate-800 sm:gap-4 sm:px-4 sm:py-3.5"
-                >
-                  <span className="relative z-[1] h-5 w-5 shrink-0 rounded-full border-2 border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-900" />
-                  <span
-                    className={`exam-preview-flow-line relative z-[1] block h-2.5 rounded-full ${
-                      optionIndex % 2 === 0 ? "w-8/12" : "w-6/12"
-                    }`}
-                  />
-                </div>
-              ))}
-            </div>
-          ) : !isFailed ? (
-            <div className="exam-preview-skeleton-panel mt-6 min-h-32 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-              <div className="relative z-[1] space-y-3">
-                <span className="exam-preview-flow-line block h-3 w-7/12 rounded-full" />
-                <span className="exam-preview-flow-line block h-3 w-10/12 rounded-full" />
-                <span className="exam-preview-flow-line block h-3 w-5/12 rounded-full" />
+        {!isFailed && isChoice ? (
+          <div className="mt-6 grid gap-3">
+            {[0, 1, 2, 3].map((optionIndex) => (
+              <div
+                key={optionIndex}
+                className="exam-preview-skeleton-panel flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-3 dark:border-slate-800 sm:gap-4 sm:px-4 sm:py-3.5"
+              >
+                <span className="relative z-[1] h-5 w-5 shrink-0 rounded-full border-2 border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-900" />
+                <span
+                  className={`exam-preview-flow-line relative z-[1] block h-2.5 rounded-full ${
+                    optionIndex % 2 === 0 ? "w-8/12" : "w-6/12"
+                  }`}
+                />
               </div>
+            ))}
+          </div>
+        ) : !isFailed ? (
+          <div className="exam-preview-skeleton-panel mt-6 min-h-32 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+            <div className="relative z-[1] space-y-3">
+              <span className="exam-preview-flow-line block h-3 w-7/12 rounded-full" />
+              <span className="exam-preview-flow-line block h-3 w-10/12 rounded-full" />
+              <span className="exam-preview-flow-line block h-3 w-5/12 rounded-full" />
             </div>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -293,11 +310,14 @@ export function ExamPaperSheet({
   setAnswers,
   selectedItemId,
   showInlineReviewDetails = true,
+  isReviewAnalysisVisible = true,
   footerContent,
   onSelectQuestion,
+  onReviewAnalysisToggle,
   onQuestionAi,
   onQuestionMarkToggle,
   markingQuestionTemplateId,
+  activeAiAnchorId,
 }: ExamPaperSheetProps) {
   const items = paper.items ?? [];
   const itemsByOrder = new Map(items.map((item: ExamPaperItemResponse) => [item.item_order, item]));
@@ -314,18 +334,21 @@ export function ExamPaperSheet({
         setAnswers={setAnswers}
         selectedItemId={selectedItemId}
         showInlineReviewDetails={showInlineReviewDetails}
+        isReviewAnalysisVisible={isReviewAnalysisVisible}
         footerContent={footerContent}
         onSelectQuestion={onSelectQuestion}
+        onReviewAnalysisToggle={onReviewAnalysisToggle ? () => {} : undefined}
         onQuestionAi={onQuestionAi}
         onQuestionMarkToggle={onQuestionMarkToggle}
         markingQuestionTemplateId={markingQuestionTemplateId}
+        activeAiAnchorId={activeAiAnchorId}
       />
     );
   }
 
   return (
                 <div
-                  className="relative mx-auto max-w-[1040px] pb-12"
+                  className="relative mx-auto w-full max-w-[1040px] pb-12"
                   style={
                     pageScale < 1
                       ? {
@@ -338,7 +361,7 @@ export function ExamPaperSheet({
                 >
                   <div className="absolute bottom-8 -right-5 top-5 hidden w-full border border-slate-200 bg-white shadow-[0_18px_36px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-900/80 dark:shadow-[0_18px_36px_rgba(0,0,0,0.42)] lg:block" />
                   <div className="absolute bottom-4 -right-2 top-2 hidden w-full border border-slate-200 bg-white shadow-[0_14px_30px_rgba(15,23,42,0.06)] dark:border-slate-800 dark:bg-slate-900/90 dark:shadow-[0_14px_30px_rgba(0,0,0,0.36)] lg:block" />
-                  <article className="relative overflow-hidden border border-slate-200 bg-white shadow-[0_26px_70px_rgba(15,23,42,0.15)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_28px_76px_-34px_rgba(0,0,0,0.9)]">
+                  <article className="relative min-h-[1470px] overflow-hidden border border-slate-200 bg-white shadow-[0_26px_70px_rgba(15,23,42,0.15)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_28px_76px_-34px_rgba(0,0,0,0.9)]">
                     <header className="px-6 pb-6 pt-12 text-center sm:px-10 sm:pt-16 lg:px-16">
                       <h1 className="font-serif text-3xl font-bold tracking-[0.08em] text-slate-950 dark:text-slate-100 sm:text-4xl">
                         {getExamPaperDisplayTitle(paper)}
@@ -351,7 +374,7 @@ export function ExamPaperSheet({
                       <p className="mt-4 font-serif text-base font-semibold text-slate-600 dark:text-slate-400">
                         本试卷共 {paper.total_items} 题，满分 {getExamTotalScore(paper)} 分，预计用时 {getEstimatedExamMinutes(paper)} 分钟
                       </p>
-                      <div className="mt-8 border-b border-dashed border-slate-300 pb-5 text-left font-serif text-sm leading-8 text-slate-700 dark:border-slate-700 dark:text-slate-300 sm:text-base">
+                      <div className="mt-8 border-y border-dashed border-slate-300 py-5 text-left font-serif text-sm leading-8 text-slate-700 dark:border-slate-700 dark:text-slate-300 sm:text-base">
                         <p className="font-bold text-slate-800 dark:text-slate-200">注意事项：</p>
                         <p>1. 请在作答区内选择或填写答案，系统会自动保存当前选择。</p>
                         <p>2. 可使用右侧工具调整页面与字体大小；提交前请检查题号导航状态。</p>
@@ -395,7 +418,7 @@ export function ExamPaperSheet({
                           }
                         }}
                         className={cn(
-                          "relative scroll-mt-28 border-b-[1.5px] border-dashed border-slate-200/90 px-0 py-7 transition-[background-color,box-shadow] duration-300 last:border-b-0 dark:border-slate-800/90 sm:py-9",
+                          "group relative scroll-mt-28 border-b border-slate-100 px-0 py-8 transition-[background-color,box-shadow] duration-300 last:border-b-0 dark:border-slate-900 sm:py-10",
                           (isReviewStage || isQuestionHighlighted) && "px-4 sm:px-5 lg:px-6",
                           isReviewStage && "cursor-pointer rounded-xl",
                           isSelectedReviewItem && "bg-slate-50/80 outline outline-1 outline-slate-200 dark:bg-slate-900/70 dark:outline-slate-700",
@@ -404,64 +427,110 @@ export function ExamPaperSheet({
                         aria-selected={isSelectedReviewItem || undefined}
                       >
                         {isReviewStage ? <QuestionReviewResultMark item={item} /> : null}
-                        <div className="grid min-w-0 gap-5 md:grid-cols-[72px_minmax(0,1fr)]">
-                          <aside className="flex items-start gap-4 border-b border-slate-100 pb-4 text-slate-500 dark:border-slate-800 dark:text-slate-400 md:flex-col md:items-center md:border-b-0 md:border-r md:pb-0 md:pr-4">
-                            <div className="font-serif text-2xl font-bold leading-none text-slate-950 dark:text-slate-100">
-                              {item.item_order}.
-                            </div>
-                            <div className="flex flex-wrap gap-2 text-xs font-semibold text-slate-400 md:flex-col md:gap-2">
-                              {onQuestionAi && (
-                                <button
-                                  type="button"
-                                  onClick={() => onQuestionAi(item, isReviewStage, answerValue)}
-                                  className="inline-flex flex-col items-center gap-1 rounded-md text-slate-400 transition hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:hover:text-slate-200 dark:focus-visible:ring-slate-600 dark:focus-visible:ring-offset-slate-950"
-                                  title={`围绕第 ${item.item_order} 题问 AI`}
-                                  aria-label={`围绕第 ${item.item_order} 题问 AI`}
-                                >
-                                  <MessageSquareText className="h-4 w-4" />
-                                  问AI
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  onQuestionMarkToggle?.(item, !isMarked);
-                                }}
-                                disabled={!onQuestionMarkToggle || isMarking}
-                                className={cn(
-                                  "inline-flex flex-col items-center gap-1 rounded-md transition focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 focus-visible:ring-offset-2 focus-visible:ring-offset-white",
-                                  isMarked ? "text-slate-700 hover:text-slate-900" : "text-slate-400 hover:text-slate-600",
-                                  (!onQuestionMarkToggle || isMarking) && "cursor-default opacity-70",
-                                )}
-                                title={isMarked ? `取消标记第 ${item.item_order} 题` : `标记第 ${item.item_order} 题`}
-                                aria-label={isMarked ? `取消标记第 ${item.item_order} 题` : `标记第 ${item.item_order} 题`}
-                                aria-pressed={isMarked}
-                              >
-                                <Bookmark className={cn("h-4 w-4", isMarked && "fill-current")} />
-                                {isMarked ? "已标记" : "标记"}
-                              </button>
-                              {isReviewStage && (
-                                <span className="inline-flex flex-col items-center gap-1">
-                                  <Lightbulb className="h-4 w-4" />
-                                  解析
-                                </span>
-                              )}
-                            </div>
-                          </aside>
-
+                        <div className="w-full">
                           <div className="min-w-0 overflow-hidden">
-                            <div className="mb-3 flex items-center gap-2">
-                              <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold leading-4 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                                {formatQuestionTypeLabel(item.question_type)}
-                              </span>
+                            <div className="mb-4 flex items-center gap-4">
+                              <div className="flex flex-wrap items-center gap-3">
+                                <div className="font-sans text-lg font-bold text-slate-800 dark:text-slate-200">
+                                  {item.item_order}.
+                                </div>
+                                <span className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold leading-4 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                                  <span className={cn(
+                                    "h-1.5 w-1.5 rounded-full",
+                                    isSingleChoice
+                                      ? "bg-indigo-500"
+                                      : isMultipleChoice
+                                        ? "bg-sky-500"
+                                        : isTrueFalse
+                                          ? "bg-teal-500"
+                                          : "bg-slate-500"
+                                  )} />
+                                  {formatQuestionTypeLabel(item.question_type)}
+                                </span>
+                                <span className="text-slate-200 dark:text-slate-800 select-none">|</span>
+
+                                <div className={cn(
+                                  "flex items-center gap-1.5 text-xs font-semibold transition-opacity duration-300",
+                                  (isMarked || (selectedItemId === item.id && isReviewAnalysisVisible))
+                                    ? "opacity-100"
+                                    : "opacity-40 group-hover:opacity-100 group-focus-within:opacity-100"
+                                )}>
+                                  {onQuestionAi && (
+                                    <button
+                                      type="button"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        onQuestionAi(item, isReviewStage, answerValue);
+                                      }}
+                                      className={cn(
+                                        "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md border transition focus:outline-none",
+                                        (activeAiAnchorId === buildExamQuestionAnchorId(paper.id, item.item_order))
+                                          ? "border-indigo-200 bg-indigo-50/60 text-indigo-700 hover:bg-indigo-100/60 dark:border-indigo-900/60 dark:bg-indigo-950/30 dark:text-indigo-400"
+                                          : "border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-900",
+                                      )}
+                                      title={`围绕第 ${item.item_order} 题问 AI`}
+                                      aria-label={`围绕第 ${item.item_order} 题问 AI`}
+                                    >
+                                      <MessageSquareText className="h-3.5 w-3.5" />
+                                      <span>问AI</span>
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      onQuestionMarkToggle?.(item, !isMarked);
+                                    }}
+                                    disabled={!onQuestionMarkToggle || isMarking}
+                                    className={cn(
+                                      "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md border transition focus:outline-none",
+                                      isMarked
+                                        ? "border-amber-200 bg-amber-50/60 text-amber-700 hover:bg-amber-100/60 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-400 font-bold"
+                                        : "border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-900",
+                                      (!onQuestionMarkToggle || isMarking) && "cursor-default opacity-70",
+                                    )}
+                                    title={isMarked ? `取消标记第 ${item.item_order} 题` : `标记第 ${item.item_order} 题`}
+                                    aria-label={isMarked ? `取消标记第 ${item.item_order} 题` : `标记第 ${item.item_order} 题`}
+                                    aria-pressed={isMarked}
+                                  >
+                                    <Bookmark className={cn("h-3.5 w-3.5", isMarked && "fill-current")} />
+                                    <span>{isMarked ? "已标记" : "标记"}</span>
+                                  </button>
+                                  {isReviewStage && (
+                                    <button
+                                      type="button"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        onReviewAnalysisToggle?.(item);
+                                      }}
+                                      className={cn(
+                                        "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md border transition focus:outline-none",
+                                        (selectedItemId === item.id && isReviewAnalysisVisible)
+                                          ? "border-emerald-200 bg-emerald-50/60 text-emerald-700 hover:bg-emerald-100/60 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-400 font-bold"
+                                          : "border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-900",
+                                      )}
+                                      title={selectedItemId === item.id && isReviewAnalysisVisible ? "收起右侧解析" : "展开右侧解析"}
+                                      aria-label={selectedItemId === item.id && isReviewAnalysisVisible ? "收起右侧解析" : "展开右侧解析"}
+                                      aria-pressed={selectedItemId === item.id && isReviewAnalysisVisible}
+                                    >
+                                      <Lightbulb className="h-3.5 w-3.5" />
+                                      <span>解析</span>
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
                             </div>
-                            <div className="break-words font-serif text-base font-semibold leading-8 text-slate-950 dark:text-slate-100 sm:text-lg [&_p]:mb-0 [&_p]:leading-8 [&_.katex-display]:my-4 [&_.katex]:text-inherit">
+                            <div className={EXAM_QUESTION_TEXT_CLASS}>
                               <ExamMarkdown content={item.stem} />
                             </div>
                           {isChoice ? (
                             <div
-                              className="mt-6 grid gap-3"
+                              className={cn(
+                                "mt-6 grid gap-3 max-w-[720px]",
+                                choiceOptions.every((opt: string) => opt.toString().length < 12)
+                                  ? "grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3"
+                                  : "grid-cols-1"
+                              )}
                               role={isMultipleChoice ? "group" : "radiogroup"}
                               aria-label={`第 ${item.item_order} 题选项`}
                             >
@@ -474,9 +543,14 @@ export function ExamPaperSheet({
                                   : answerValue === optionValue;
                                 const isCorrectOption = isMultipleChoice
                                   ? correctMultiChoice.has(optionValue)
-                                  : (item.correct_answer ?? "") === optionValue;
+                                  : isTrueFalse
+                                    ? isTrueFalseAnswerMatch(item.correct_answer, optionValue)
+                                    : (item.correct_answer ?? "") === optionValue;
                                 const isWrongSelectedOption = isReviewStage && isSelected && !isCorrectOption;
                                 const isRightOption = isReviewStage && isCorrectOption;
+                                const innerSymbol = isTrueFalse
+                                  ? (isTrueFalsePositive(optionValue) ? "✓" : "✗")
+                                  : optionLabel;
                                 return (
                                   <button
                                     key={`${item.id}-${optionIndex}`}
@@ -504,7 +578,7 @@ export function ExamPaperSheet({
                                         };
                                       });
                                     }}
-                                    className={`flex items-center gap-3 rounded-lg border px-3 py-3 text-left font-serif text-base leading-8 transition sm:gap-4 sm:px-4 sm:py-3.5 sm:text-lg ${
+                                    className={`flex items-center gap-3 rounded-lg border px-4 py-2.5 text-left transition duration-200 sm:gap-4 sm:px-4 sm:py-3 ${EXAM_OPTION_BUTTON_TEXT_CLASS} ${
                                       isReviewStage
                                         ? isRightOption
                                            ? "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-100"
@@ -513,49 +587,36 @@ export function ExamPaperSheet({
                                              : "border-slate-200 bg-white text-slate-500 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-400"
                                         : isReadonly
                                           ? isSelected
-                                             ? "border-transparent bg-indigo-50 text-indigo-900 dark:bg-indigo-500/10 dark:text-indigo-100"
+                                             ? "border-indigo-200 bg-indigo-50/50 text-indigo-900 dark:border-indigo-500/30 dark:bg-indigo-500/5 dark:text-indigo-100"
                                              : "border-slate-200 bg-white text-slate-700 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300"
                                         : isSelected
-                                            ? "border-transparent bg-indigo-50 text-indigo-900 dark:bg-indigo-500/10 dark:text-indigo-100"
-                                           : "border-transparent bg-white text-slate-800 hover:border-slate-200 hover:bg-slate-50 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:border-slate-700 dark:hover:bg-slate-900"
+                                            ? "border-indigo-200 bg-indigo-50/50 text-indigo-900 dark:border-indigo-500/30 dark:bg-indigo-500/5 dark:text-indigo-100"
+                                           : "border-slate-100 bg-slate-50/20 text-slate-700 hover:border-slate-200 hover:bg-slate-50 hover:translate-x-0.5 dark:border-slate-800/80 dark:bg-slate-900/40 dark:text-slate-300 dark:hover:border-slate-700 dark:hover:bg-slate-900"
                                     } ${isReadonly ? "cursor-default" : ""} disabled:cursor-not-allowed`}
                                   >
                                     <span
-                                      className={`relative h-5 w-5 shrink-0 border-2 ${isMultipleChoice ? "rounded-[5px]" : "rounded-full"} ${
+                                      className={cn(
+                                        "flex h-6 w-6 shrink-0 items-center justify-center border-2 text-[11px] font-extrabold transition-all duration-200",
+                                        isMultipleChoice ? "rounded-md" : "rounded-full",
                                         isReviewStage
                                           ? isRightOption
-                                            ? "border-emerald-600 bg-white dark:border-emerald-400 dark:bg-slate-950"
+                                            ? "border-emerald-600 bg-emerald-600 text-white"
                                             : isWrongSelectedOption
-                                              ? "border-rose-600 bg-white dark:border-rose-400 dark:bg-slate-950"
-                                              : "border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-950"
+                                              ? "border-rose-600 bg-rose-600 text-white"
+                                              : "border-slate-300 bg-white text-slate-400 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-500"
                                           : isReadonly
                                             ? isSelected
-                                              ? "border-indigo-600 bg-white dark:border-indigo-400 dark:bg-slate-950"
-                                              : "border-slate-400 bg-white dark:border-slate-600 dark:bg-slate-950"
-                                          : isSelected
-                                            ? "border-indigo-600 bg-white dark:border-indigo-400 dark:bg-slate-950"
-                                            : "border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-950"
-                                      }`}
-                                    >
-                                      <span
-                                        className={`absolute left-1/2 top-1/2 block h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 ${isMultipleChoice ? "rounded-[3px]" : "rounded-full"} ${
-                                          isReviewStage
-                                            ? isRightOption
-                                              ? "bg-emerald-600"
-                                              : isWrongSelectedOption
-                                                ? "bg-rose-600"
-                                                : "bg-transparent"
-                                            : isReadonly
-                                              ? isSelected
-                                                ? "bg-indigo-600"
-                                                : "bg-transparent"
+                                              ? "border-indigo-600 bg-indigo-600 text-white"
+                                              : "border-slate-400 bg-white text-slate-400 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-500"
                                             : isSelected
-                                              ? "bg-indigo-600"
-                                              : "bg-transparent"
-                                        }`}
-                                      />
+                                              ? "border-indigo-600 bg-indigo-600 text-white"
+                                              : "border-slate-300 bg-slate-50 hover:border-slate-400 hover:bg-slate-100 text-slate-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-400"
+                                      )}
+                                    >
+                                      {innerSymbol}
                                     </span>
-                                    <div className={`min-w-0 flex-1 [&_p]:mb-0 [&_p]:text-base [&_p]:leading-8 sm:[&_p]:text-lg sm:[&_p]:leading-8 [&_.katex-display]:my-3 [&_.katex]:text-inherit ${
+                                    <div className={cn(
+                                      EXAM_OPTION_MARKDOWN_CLASS,
                                       isReviewStage
                                         ? isRightOption
                                           ? "[&_p]:text-emerald-900 dark:[&_p]:text-emerald-100"
@@ -566,17 +627,12 @@ export function ExamPaperSheet({
                                           ? isSelected
                                             ? "[&_p]:text-indigo-900 dark:[&_p]:text-indigo-100"
                                             : "[&_p]:text-slate-700 dark:[&_p]:text-slate-300"
-                                        : isSelected
-                                          ? "[&_p]:text-indigo-900 dark:[&_p]:text-indigo-100"
-                                          : "[&_p]:text-slate-800 dark:[&_p]:text-slate-200"
-                                    }`}>
-                                      <div className="flex gap-3">
-                                        {!isTrueFalse && (
-                                          <span className="shrink-0 font-semibold">{optionLabel}.</span>
-                                        )}
-                                        <div className="min-w-0 flex-1">
-                                          <ExamMarkdown content={optionDisplay} />
-                                        </div>
+                                          : isSelected
+                                            ? "[&_p]:text-indigo-900 dark:[&_p]:text-indigo-100"
+                                            : "[&_p]:text-slate-800 dark:[&_p]:text-slate-200",
+                                    )}>
+                                      <div className="min-w-0 flex-1">
+                                        <ExamMarkdown content={optionDisplay} />
                                       </div>
                                     </div>
                                   </button>
@@ -586,7 +642,7 @@ export function ExamPaperSheet({
                           ) : (
                             <div className="mt-6 min-w-0">
                               <textarea
-                                className={`min-h-32 w-full max-w-full rounded-lg border px-4 py-3 font-serif text-base leading-8 outline-none transition sm:text-lg ${
+                                className={`min-h-32 w-full max-w-full rounded-lg border px-4 py-3 outline-none transition ${EXAM_TEXTAREA_TEXT_CLASS} ${
                                   isReviewStage
                                     ? isCorrect
                                       ? "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-100"
@@ -607,18 +663,24 @@ export function ExamPaperSheet({
                         </div>
 
                         {isReviewStage && showInlineReviewDetails && (
-                          <div className="mt-6 border-t border-dashed border-slate-200 pt-5 text-sm leading-7 text-slate-600 dark:border-slate-800 dark:text-slate-300 md:col-start-2">
-                            <div className="font-serif text-base leading-8 text-slate-700 dark:text-slate-300 sm:text-lg [&_p]:mb-2 [&_p]:leading-8 [&_.katex-display]:my-3 [&_.katex]:text-inherit">
+                          <div className="mt-6 border-t border-dashed border-slate-200 pt-5 text-sm leading-7 text-slate-600 dark:border-slate-800 dark:text-slate-300">
+                            <div>
                               <p className="mb-2 font-sans text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">你的答案</p>
-                              <ExamMarkdown content={formatAnswerDisplayValue(item.question_type, item.user_answer)} />
+                              <div className={EXAM_ANSWER_TEXT_CLASS}>
+                                <ExamMarkdown content={formatAnswerDisplayValue(item.question_type, item.user_answer)} />
+                              </div>
                             </div>
-                            <div className="mt-3 font-serif text-base leading-8 text-slate-700 dark:text-slate-300 sm:text-lg [&_p]:mb-2 [&_p]:leading-8 [&_.katex-display]:my-3 [&_.katex]:text-inherit">
+                            <div className="mt-3">
                               <p className="mb-2 font-sans text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">正确答案</p>
-                              <ExamMarkdown content={formatAnswerDisplayValue(item.question_type, item.correct_answer, "无标准答案")} />
+                              <div className={EXAM_ANSWER_TEXT_CLASS}>
+                                <ExamMarkdown content={formatAnswerDisplayValue(item.question_type, item.correct_answer, "无标准答案")} />
+                              </div>
                             </div>
-                            <div className="mt-3 font-serif text-base leading-8 text-slate-700 dark:text-slate-300 sm:text-lg [&_p]:mb-2 [&_p]:leading-8 [&_.katex-display]:my-3 [&_.katex]:text-inherit">
+                            <div className="mt-3">
                               <p className="mb-2 font-sans text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">解析</p>
-                              <ExamMarkdown content={item.explanation || "暂无解析"} />
+                              <div className={EXAM_ANSWER_TEXT_CLASS}>
+                                <ExamMarkdown content={item.explanation || "暂无解析"} />
+                              </div>
                             </div>
                             <div className="mt-4 flex items-center gap-2 border-t border-slate-200 pt-4 dark:border-slate-800">
                               <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">结果</span>

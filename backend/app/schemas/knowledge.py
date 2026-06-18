@@ -738,6 +738,10 @@ class BuildPlannerCreateRequest(BaseModel):
     digest_mode: Literal["sprint", "systematic"] | None = Field(default=None, description="Optional requested digest mode.")
     title: str | None = Field(default=None, description="Optional planner session title.")
     model: str | None = Field(default=None, description="Optional per-request planner model. Omit or use settings for configured defaults.")
+    entry_source: Literal["home_arrow"] | None = Field(
+        default=None,
+        description="Optional analytics-only entry source for the first planner request.",
+    )
 
 
 class BuildPlannerDiagnosticAnswerRequest(BaseModel):

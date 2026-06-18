@@ -13,11 +13,9 @@ import {
 
 import { cn } from "../../lib/utils";
 import { buildCoursePath, getCourseRouteSegmentFromPathname } from "../../lib/courseNavigation";
-import { useExamHistoryApiV1CoursesCourseIdExamsHistoryGet } from "../../api/generated/exams";
-import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { apiClient } from "../../api/client";
 import type { ApiResponse } from "../../api/types";
-import type { DocGenGetResponse, ExamHistoryItem } from "../../api/generated/model";
+import type { DocGenGetResponse } from "../../api/generated/model";
 import { TopBar } from "../layout/TopBar";
 
 interface CoursePagePillTitleProps {
@@ -97,18 +95,6 @@ export function CoursePagePillTitle({ icon: Icon, label, href, className, innerC
     return isBuilt || hasDraftDoc || Boolean(buildStatus && buildStatus !== "idle");
   }, [buildStatus, hasDraftDoc, isBuilt]);
 
-  // 2. Query Exam History
-  const historyQuery = useExamHistoryApiV1CoursesCourseIdExamsHistoryGet(
-    courseId ?? "",
-    { page: 1, size: 24 },
-    { query: { enabled: Boolean(courseId) } }
-  );
-
-  const hasExams = useMemo(() => {
-    const historyItems = unwrapOrvalResponse<{ items?: ExamHistoryItem[] }>(historyQuery.data)?.items ?? [];
-    return historyItems.length > 0;
-  }, [historyQuery.data]);
-
   const currentSegment = getCourseRouteSegmentFromPathname(pathname);
 
   const navItems = [
@@ -146,8 +132,6 @@ export function CoursePagePillTitle({ icon: Icon, label, href, className, innerC
           } else if (item.id === "profile") {
             if (!isBuilt || isBuilding) {
               disabledReason = isBuilding ? "知识库构建中" : "请先构建知识库";
-            } else if (!hasExams) {
-              disabledReason = "需先完成测验";
             }
           }
 

@@ -833,7 +833,7 @@ export function HomePage() {
       const userGoal = prompt.trim() || "请基于我选择的资料，直接生成一份课程构建规划。";
       const selectedModel = toChatRequestModel(chatModel);
       navigate(buildCoursePath(courseId, "build"), {
-        state: { initialPrompt: userGoal, autoStart: true, model: selectedModel },
+        state: { initialPrompt: userGoal, autoStart: true, entrySource: "home_arrow", model: selectedModel },
       });
     } catch {
       // ensureDraftCourseId already writes user-facing error.
