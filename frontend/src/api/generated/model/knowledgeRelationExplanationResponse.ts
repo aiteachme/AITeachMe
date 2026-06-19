@@ -4,8 +4,8 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { KnowledgePathResponse } from './knowledgePathResponse';
-import type { KnowledgeRelationEvidenceItem } from './knowledgeRelationEvidenceItem';
+import type { KnowledgePathResponse } from './knowledgePathResponse.ts';
+import type { KnowledgeRelationEvidenceItem } from './knowledgeRelationEvidenceItem.ts';
 
 /**
  * Explainable relation path result.

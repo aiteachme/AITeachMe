@@ -4,8 +4,8 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { UpdateUserSettingsRequestEnv } from './updateUserSettingsRequestEnv';
-import type { UpdateUserSettingsRequestSettings } from './updateUserSettingsRequestSettings';
+import type { UpdateUserSettingsRequestEnv } from './updateUserSettingsRequestEnv.ts';
+import type { UpdateUserSettingsRequestSettings } from './updateUserSettingsRequestSettings.ts';
 
 /**
  * 更新本地模式下的系统级 settings 覆盖。

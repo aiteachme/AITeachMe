@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { ChatMessageItem } from './chatMessageItem';
+import type { ChatMessageItem } from './chatMessageItem.ts';
 
 /**
  * One persisted turn with thread metadata for doc-selection QA.

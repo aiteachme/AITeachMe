@@ -4,9 +4,9 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { SettingEntrySource } from './settingEntrySource';
-import type { SettingEntryStatus } from './settingEntryStatus';
-import type { SettingOption } from './settingOption';
+import type { SettingEntrySource } from './settingEntrySource.ts';
+import type { SettingEntryStatus } from './settingEntryStatus.ts';
+import type { SettingOption } from './settingOption.ts';
 
 /**
  * 单个后端设置项的展示模型。

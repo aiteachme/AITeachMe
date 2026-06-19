@@ -4,9 +4,9 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { ModelProbeResultApiMode } from './modelProbeResultApiMode';
-import type { ModelProbeResultEndpointRole } from './modelProbeResultEndpointRole';
-import type { ModelProbeResultModelSlot } from './modelProbeResultModelSlot';
+import type { ModelProbeResultApiMode } from './modelProbeResultApiMode.ts';
+import type { ModelProbeResultEndpointRole } from './modelProbeResultEndpointRole.ts';
+import type { ModelProbeResultModelSlot } from './modelProbeResultModelSlot.ts';
 
 /**
  * 设置页模型连通性测试结果。

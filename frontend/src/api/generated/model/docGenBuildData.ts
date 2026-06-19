@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { CourseVectorStatusResponse } from './courseVectorStatusResponse';
+import type { CourseVectorStatusResponse } from './courseVectorStatusResponse.ts';
 
 /**
  * Knowledge docs build response data.

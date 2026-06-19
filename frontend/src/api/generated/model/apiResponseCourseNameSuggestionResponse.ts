@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { CourseNameSuggestionResponse } from './courseNameSuggestionResponse';
+import type { CourseNameSuggestionResponse } from './courseNameSuggestionResponse.ts';
 
 export interface ApiResponseCourseNameSuggestionResponse {
   /** 业务码，0 表示成功。 */

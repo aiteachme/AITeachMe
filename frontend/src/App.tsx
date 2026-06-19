@@ -215,7 +215,7 @@ function App() {
           <AnalyticsIdentityBootstrap onReady={markAnalyticsIdentityReady} />
           <ToastProvider>
             <DesktopUpdatePromptMount />
-            <Router unstable_useTransitions={false}>
+            <Router>
               <RouteAnalyticsBridge analyticsIdentityReady={analyticsIdentityReady} />
               <ElectronWindowFrame>
                 <Routes>

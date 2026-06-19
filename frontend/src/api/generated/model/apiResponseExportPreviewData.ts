@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { ExportPreviewData } from './exportPreviewData';
+import type { ExportPreviewData } from './exportPreviewData.ts';
 
 export interface ApiResponseExportPreviewData {
   /** 业务码，0 表示成功。 */

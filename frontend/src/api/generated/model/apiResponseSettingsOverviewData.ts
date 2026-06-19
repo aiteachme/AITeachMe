@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { SettingsOverviewData } from './settingsOverviewData';
+import type { SettingsOverviewData } from './settingsOverviewData.ts';
 
 export interface ApiResponseSettingsOverviewData {
   /** 业务码，0 表示成功。 */

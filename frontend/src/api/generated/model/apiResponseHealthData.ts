@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { HealthData } from './healthData';
+import type { HealthData } from './healthData.ts';
 
 export interface ApiResponseHealthData {
   /** 业务码，0 表示成功。 */

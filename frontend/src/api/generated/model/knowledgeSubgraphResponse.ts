@@ -4,8 +4,8 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { KnowledgeRelationResponse } from './knowledgeRelationResponse';
-import type { KnowledgeUnitResponse } from './knowledgeUnitResponse';
+import type { KnowledgeRelationResponse } from './knowledgeRelationResponse.ts';
+import type { KnowledgeUnitResponse } from './knowledgeUnitResponse.ts';
 
 /**
  * Focused subgraph payload.

@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { AuthSessionData } from './authSessionData';
+import type { AuthSessionData } from './authSessionData.ts';
 
 export interface ApiResponseAuthSessionData {
   /** 业务码，0 表示成功。 */

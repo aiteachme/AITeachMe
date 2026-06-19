@@ -114,7 +114,7 @@ def test_create_app_registers_core_routes_and_cors(monkeypatch) -> None:
     monkeypatch.setenv("CORS_ALLOWED_ORIGINS", "https://example.test, http://localhost:5173")
 
     app = app_main.create_app()
-    route_paths = {route.path for route in app.routes}
+    route_paths = set(app.openapi()["paths"])
 
     assert "/api/health" in route_paths
     assert "/api/v1/courses/list" in route_paths

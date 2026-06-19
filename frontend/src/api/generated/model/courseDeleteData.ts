@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { CourseDeleteDataDeletedCounts } from './courseDeleteDataDeletedCounts';
+import type { CourseDeleteDataDeletedCounts } from './courseDeleteDataDeletedCounts.ts';
 
 export interface CourseDeleteData {
   /** Whether deletion succeeded. */

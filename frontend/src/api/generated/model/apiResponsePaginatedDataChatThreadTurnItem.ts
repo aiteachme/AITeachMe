@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { PaginatedDataChatThreadTurnItem } from './paginatedDataChatThreadTurnItem';
+import type { PaginatedDataChatThreadTurnItem } from './paginatedDataChatThreadTurnItem.ts';
 
 export interface ApiResponsePaginatedDataChatThreadTurnItem {
   /** 业务码，0 表示成功。 */

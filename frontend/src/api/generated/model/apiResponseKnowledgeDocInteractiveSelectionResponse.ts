@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { KnowledgeDocInteractiveSelectionResponse } from './knowledgeDocInteractiveSelectionResponse';
+import type { KnowledgeDocInteractiveSelectionResponse } from './knowledgeDocInteractiveSelectionResponse.ts';
 
 export interface ApiResponseKnowledgeDocInteractiveSelectionResponse {
   /** 业务码，0 表示成功。 */

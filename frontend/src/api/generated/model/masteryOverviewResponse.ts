@@ -4,9 +4,9 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { CourseProfileSummary } from './courseProfileSummary';
-import type { MasteryStateResponse } from './masteryStateResponse';
-import type { UserProfileSummary } from './userProfileSummary';
+import type { CourseProfileSummary } from './courseProfileSummary.ts';
+import type { MasteryStateResponse } from './masteryStateResponse.ts';
+import type { UserProfileSummary } from './userProfileSummary.ts';
 
 export interface MasteryOverviewResponse {
   course_id: string;

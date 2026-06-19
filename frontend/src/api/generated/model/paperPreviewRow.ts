@@ -4,9 +4,9 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { PaperPreviewRowGenerationStatus } from './paperPreviewRowGenerationStatus';
-import type { PaperPreviewRowResultStatus } from './paperPreviewRowResultStatus';
-import type { PaperPreviewRowShape } from './paperPreviewRowShape';
+import type { PaperPreviewRowGenerationStatus } from './paperPreviewRowGenerationStatus.ts';
+import type { PaperPreviewRowResultStatus } from './paperPreviewRowResultStatus.ts';
+import type { PaperPreviewRowShape } from './paperPreviewRowShape.ts';
 
 export interface PaperPreviewRow {
   order: number;

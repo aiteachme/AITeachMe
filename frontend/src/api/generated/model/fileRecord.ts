@@ -4,8 +4,8 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { FileAssetItem } from './fileAssetItem';
-import type { TaskStatusValue } from './taskStatusValue';
+import type { FileAssetItem } from './fileAssetItem.ts';
+import type { TaskStatusValue } from './taskStatusValue.ts';
 
 /**
  * Unified file record for list, preview, and upload responses.

@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { BuildPlannerSessionResponse } from './buildPlannerSessionResponse';
+import type { BuildPlannerSessionResponse } from './buildPlannerSessionResponse.ts';
 
 export interface ApiResponseBuildPlannerSessionResponse {
   /** 业务码，0 表示成功。 */

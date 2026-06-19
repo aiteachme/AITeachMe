@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { QuestionTypeRegistryItemResponse } from './questionTypeRegistryItemResponse';
+import type { QuestionTypeRegistryItemResponse } from './questionTypeRegistryItemResponse.ts';
 
 export interface ApiResponseListQuestionTypeRegistryItemResponse {
   /** 业务码，0 表示成功。 */

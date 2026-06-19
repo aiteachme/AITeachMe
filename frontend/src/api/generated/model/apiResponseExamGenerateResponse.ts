@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { ExamGenerateResponse } from './examGenerateResponse';
+import type { ExamGenerateResponse } from './examGenerateResponse.ts';
 
 export interface ApiResponseExamGenerateResponse {
   /** 业务码，0 表示成功。 */

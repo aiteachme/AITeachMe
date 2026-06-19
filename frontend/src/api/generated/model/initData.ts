@@ -4,8 +4,8 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { InitDataFeatureFlags } from './initDataFeatureFlags';
-import type { RuntimeUser } from './runtimeUser';
+import type { InitDataFeatureFlags } from './initDataFeatureFlags.ts';
+import type { RuntimeUser } from './runtimeUser.ts';
 
 /**
  * 系统初始化返回数据。

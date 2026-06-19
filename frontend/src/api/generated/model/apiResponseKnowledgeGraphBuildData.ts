@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { KnowledgeGraphBuildData } from './knowledgeGraphBuildData';
+import type { KnowledgeGraphBuildData } from './knowledgeGraphBuildData.ts';
 
 export interface ApiResponseKnowledgeGraphBuildData {
   /** 业务码，0 表示成功。 */

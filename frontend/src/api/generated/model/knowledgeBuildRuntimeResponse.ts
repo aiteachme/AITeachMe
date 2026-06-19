@@ -4,10 +4,10 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { KnowledgeBuildLaneRuntimeResponse } from './knowledgeBuildLaneRuntimeResponse';
-import type { KnowledgeBuildMetricsResponse } from './knowledgeBuildMetricsResponse';
-import type { KnowledgeBuildPreviewResponse } from './knowledgeBuildPreviewResponse';
-import type { KnowledgeGraphBuildMetricsResponse } from './knowledgeGraphBuildMetricsResponse';
+import type { KnowledgeBuildLaneRuntimeResponse } from './knowledgeBuildLaneRuntimeResponse.ts';
+import type { KnowledgeBuildMetricsResponse } from './knowledgeBuildMetricsResponse.ts';
+import type { KnowledgeBuildPreviewResponse } from './knowledgeBuildPreviewResponse.ts';
+import type { KnowledgeGraphBuildMetricsResponse } from './knowledgeGraphBuildMetricsResponse.ts';
 
 /**
  * Unified runtime response for aggregate/docgen/graph lanes.
