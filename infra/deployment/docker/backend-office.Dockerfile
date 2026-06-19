@@ -1,4 +1,4 @@
-FROM ghcr.io/astral-sh/uv:python3.11-bookworm-slim
+FROM astral/uv:python3.12-trixie-slim
 
 # Office 镜像用于后续恢复 .doc / .ppt / .pptx 本地转 PDF 能力。
 # 系统依赖必须在镜像构建期安装，不在 Sealos/Render 容器启动时临时 apt install。

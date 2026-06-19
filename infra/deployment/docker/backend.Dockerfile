@@ -1,4 +1,4 @@
-FROM ghcr.io/astral-sh/uv:python3.11-bookworm-slim
+FROM astral/uv:python3.12-trixie-slim
 
 # 后端统一使用这份镜像定义；Render / Sealos / Compose 都应从仓库根目录构建。
 # 这是轻量镜像，不包含 LibreOffice / soffice；需要本地 Office 转 PDF 时使用
