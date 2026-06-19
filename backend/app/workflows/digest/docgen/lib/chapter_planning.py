@@ -29,6 +29,8 @@ from app.workflows.digest.docgen.lib.models import (
 from app.workflows.digest.docgen.lib.mode_profiles import get_docgen_mode_profile
 
 _SCOPE_PUNCT_RE = re.compile(r"[\s,，、;；:：/／|｜()（）《》“”\"'`]+")
+_MERMAID_STRUCTURE_HINT_TERMS = ("图", "结构", "流程", "关系", "路径", "层次", "机制", "过程", "框架", "脉络")
+_MERMAID_ROLE_TYPES = ("topic", "concept", "principle", "formula_model", "procedure", "skill", "misconception")
 
 
 def _priority_files_for_chapter(
@@ -81,6 +83,34 @@ def _briefs_by_index(
     briefs: Sequence[ChapterExecutionBrief],
 ) -> dict[int, ChapterExecutionBrief]:
     return {int(item.chapter_index): item for item in briefs if int(item.chapter_index or 0) > 0}
+
+
+def _suggest_mermaid_placeholder_requests(
+    *,
+    title: str,
+    required_elements: Sequence[str],
+    concept_targets: Sequence[str],
+    content_role_targets: Mapping[str, Sequence[str]],
+) -> list[dict[str, str]]:
+    """Suggest one chapter-level Mermaid request when the chapter has structure worth drawing."""
+
+    role_items = [
+        item
+        for role in _MERMAID_ROLE_TYPES
+        for item in list(content_role_targets.get(role) or [])
+        if str(item).strip()
+    ]
+    visual_terms = " ".join([title, *required_elements, *concept_targets, *role_items])
+    strong_targets = clean_string_list([*concept_targets, *required_elements, *role_items], limit=8)
+    has_structure_marker = any(marker in visual_terms for marker in _MERMAID_STRUCTURE_HINT_TERMS)
+    has_rich_knowledge_structure = len(strong_targets) >= 4
+    if not has_structure_marker and not has_rich_knowledge_structure:
+        return []
+    focus = "、".join(strong_targets[:4])
+    description = f"{title}的知识结构或方法路径图"
+    if focus:
+        description = f"{description}，围绕：{focus}"
+    return [{"kind": "mermaid", "description": description}]
 
 
 def _example_coverage_plan(
@@ -349,7 +379,6 @@ def assemble_chapter_generation_plan(
             priority_file_ids = seed.priority_file_ids
         if seed.source_slices:
             source_slices = list(seed.source_slices)
-        placeholder_requests: list[dict[str, str]] = []
         content_role_targets = clean_content_role_targets(brief.content_role_targets, item_limit=10)
         local_scope = _chapter_local_scope(
             title=locked.enhanced_title or confirmed_title,
@@ -374,6 +403,12 @@ def assemble_chapter_generation_plan(
         )
         if not content_role_targets:
             raise ValueError(f"chapter execution brief is missing role targets for chapter {chapter_index}")
+        placeholder_requests = _suggest_mermaid_placeholder_requests(
+            title=locked.enhanced_title or confirmed_title,
+            required_elements=seed.required_elements,
+            concept_targets=brief.concept_targets,
+            content_role_targets=content_role_targets,
+        )
         example_coverage_plan = _example_coverage_plan(
             brief=brief,
             required=list(seed.required_elements),

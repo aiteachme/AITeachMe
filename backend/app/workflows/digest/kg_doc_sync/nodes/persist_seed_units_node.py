@@ -25,9 +25,9 @@ def _seed_source_from_diagnostics(diagnostics: dict[str, object]) -> str:
     prefetch_units = int(diagnostics.get("prefetch_early_unit_count", 0) or 0)
     docgen_seed_units = int(diagnostics.get("docgen_seed_unit_count", 0) or 0)
     if prefetch_units > 0 and docgen_seed_units > 0:
-        return "prefetch_and_docgen_seed"
+        return "prefetch_and_structural_anchor"
     if docgen_seed_units > 0:
-        return "docgen_seed"
+        return "structural_anchor"
     return "prefetch"
 
 
@@ -62,7 +62,7 @@ async def _notify_early_units_callback(
 
 
 async def persist_seed_units_node(state: DocsSyncState) -> DocsSyncState:
-    """在正式抽取前，提前写入 DocGen 已知的种子知识点。"""
+    """在正式抽取前，提前写入结构锚点和已预取知识点。"""
 
     started_at = perf_counter()
     run_context = state.get("sync_run_context")

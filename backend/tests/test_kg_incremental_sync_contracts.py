@@ -65,11 +65,11 @@ def _quality_ready_draft_context() -> dict[str, object]:
                         "source": "kg_prefetch_llm",
                     },
                     {
-                        "name": "单元测试",
+                        "name": "矩阵乘法维度检查",
                         "knowledge_unit_type": "skill",
                         "chapter_index": 1,
-                        "summary": "检查本章掌握情况。",
-                        "source": "docgen_reviewed_heading",
+                        "summary": "检查矩阵乘法前后的行列维度是否匹配。",
+                        "source": "kg_prefetch_llm",
                     },
                     {
                         "name": "应用题训练",
@@ -81,7 +81,7 @@ def _quality_ready_draft_context() -> dict[str, object]:
                 ],
                 "edges": [
                     {
-                        "source_name": "单元测试",
+                        "source_name": "矩阵乘法维度检查",
                         "target_name": "矩阵乘法",
                         "edge_type": "assesses",
                         "chapter_index": 1,
@@ -247,7 +247,7 @@ def test_context_payloads_build_chapter_hints_and_backbone() -> None:
     assert backbone["concept_dependency_graph"][0]["from"] == "GuidelineLimit"
 
 
-def test_guideline_backbone_creates_missing_skeleton_units_and_edges() -> None:
+def test_guideline_backbone_does_not_create_rule_seed_units_and_edges() -> None:
     structured_context = {
         "docgen_manifest": {
             "guideline": {
@@ -278,11 +278,8 @@ def test_guideline_backbone_creates_missing_skeleton_units_and_edges() -> None:
         existing_normalized_names=set(),
     )
 
-    assert {unit.name for unit in units} == {"动量", "冲量"}
-    assert {unit.knowledge_unit_type for unit in units} == {"principle", "concept"}
-    assert all(unit.source_kind == "docgen_backbone" for unit in units)
-    assert all(unit.source_file_ids == ["file-x"] for unit in units)
-    assert [(edge.source_name, edge.target_name, edge.edge_type) for edge in edges] == [("动量", "冲量", "prerequisite_for")]
+    assert units == []
+    assert edges == []
 
 
 def test_extraction_task_planning_splits_large_chapters_and_hashes_content(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -395,7 +392,7 @@ def test_section_payload_context_uniqueness_namespace_and_combination() -> None:
     assert unique.candidate_id_to_anchor["dup"] == unique.units[0].anchor
     assert namespaced.candidate_id_to_anchor == {"s1:child": "ku_child"}
     assert {unit.name for unit in units} == {"Parent", "Child"}
-    assert {"part_of", "prerequisite_for"} <= {edge.edge_type for edge in edges}
+    assert {edge.edge_type for edge in edges} == {"part_of"}
     assert diagnostics["successful_section_count"] == 2
     assert diagnostics["planned_task_count"] == 2
 
@@ -424,7 +421,7 @@ def test_prefetched_units_payload_reuses_matching_sections_and_reports_stale(mon
     assert result.diagnostics_totals["prefetch_early_unit_count"] == 1
 
 
-def test_prefetched_units_payload_uses_docgen_seed_when_prefetch_empty() -> None:
+def test_prefetched_units_payload_does_not_use_docgen_seed_when_prefetch_empty() -> None:
     markdown = "# 矩阵基础\n\n## 矩阵乘法\n正文"
     result = sync.build_prefetched_knowledge_graph_units_payload(
         markdown=markdown,
@@ -452,11 +449,10 @@ def test_prefetched_units_payload_uses_docgen_seed_when_prefetch_empty() -> None
         prefetched_records=[],
     )
 
-    assert [unit.name for unit in result.units] == ["矩阵乘法"]
-    assert result.units[0].source_kind == "docgen_preliminary_kg"
-    assert result.units[0].knowledge_document_id == 10
-    assert result.diagnostics_totals["docgen_seed_unit_count"] == 1
-    assert result.diagnostics_totals["early_unit_count"] == 1
+    assert result.units == []
+    assert result.extracted_edges == []
+    assert result.diagnostics_totals["docgen_seed_unit_count"] == 0
+    assert result.diagnostics_totals["early_unit_count"] == 0
 
 
 def test_prefetched_units_payload_persists_resolved_edges_early(session: Session) -> None:
@@ -558,14 +554,14 @@ def test_docgen_kg_draft_graph_persists_before_publish_when_quality_ready(sessio
                     "source": "docgen_review_refinement",
                 },
                 {
-                    "name": "单元测试",
+                    "name": "矩阵乘法维度检查",
                     "knowledge_unit_type": "skill",
                     "chapter_index": 1,
-                    "summary": "检查本章掌握情况。",
-                    "source": "docgen_reviewed_heading",
+                    "summary": "检查矩阵乘法前后的行列维度是否匹配。",
+                    "source": "kg_prefetch_llm",
                 },
             ],
-            "edges": [{"source_name": "单元测试", "target_name": "矩阵乘法", "edge_type": "assesses"}],
+            "edges": [{"source_name": "矩阵乘法维度检查", "target_name": "矩阵乘法", "edge_type": "assesses"}],
             "quality_status": "ready",
             "quality_audit": {
                 "quality_ready": True,
@@ -600,10 +596,10 @@ def test_docgen_kg_draft_graph_persists_before_publish_when_quality_ready(sessio
     assert metrics["skipped"] is False
     assert metrics["unit_count"] == 2
     assert metrics["edge_count"] == 1
-    assert {unit.canonical_name for unit in units} == {"矩阵乘法", "单元测试"}
+    assert metrics["skipped_edge_count"] == 0
+    assert {unit.canonical_name for unit in units} == {"矩阵乘法", "矩阵乘法维度检查"}
     assert {unit.knowledge_unit_type for unit in units} == {"concept", "skill"}
     assert len(edges) == 1
-    assert edges[0].edge_type == "assesses"
 
 
 def test_docgen_kg_draft_graph_persists_fast_visible_quality_catchup(session: Session) -> None:
@@ -662,6 +658,134 @@ def test_docgen_kg_draft_graph_persists_fast_visible_quality_catchup(session: Se
     assert edges[0].edge_type == "assesses"
 
 
+def test_unit_upsert_prefers_existing_name_over_stale_anchor(session: Session) -> None:
+    stale = KnowledgeUnit(
+        course_id=COURSE_ID,
+        knowledge_unit_type="concept",
+        canonical_name="自变量与因变量",
+        normalized_name=sync.normalize_name("自变量与因变量"),
+        summary="旧节点。",
+        body_markdown="旧节点。",
+        status="active",
+        aliases_json='[{"normalized_alias":"ku-stale","source":"markdown_anchor"}]',
+    )
+    target = KnowledgeUnit(
+        course_id=COURSE_ID,
+        knowledge_unit_type="concept",
+        canonical_name="自变量",
+        normalized_name=sync.normalize_name("自变量"),
+        summary="已有节点。",
+        body_markdown="已有节点。",
+        status="deprecated",
+    )
+    session.add_all([stale, target])
+    session.commit()
+    session.refresh(stale)
+    session.refresh(target)
+
+    unit, created = sync._upsert_unit(  # noqa: SLF001
+        session,
+        course_id=COURSE_ID,
+        item=MarkdownKnowledgeUnit(
+            anchor="ku-stale",
+            name="自变量",
+            knowledge_unit_type="concept",
+            summary="函数输入量。",
+            body_markdown="函数输入量。",
+            source_kind="kg_prefetch_llm",
+        ),
+        build_revision_no=5,
+        lookup_cache=sync._build_unit_lookup_cache(session, course_id=COURSE_ID),  # noqa: SLF001
+    )
+
+    assert created is False
+    assert unit.id == target.id
+    assert unit.status == "active"
+    assert '"normalized_alias": "ku-stale"' in unit.aliases_json
+    assert session.get(KnowledgeUnit, stale.id).canonical_name == "自变量与因变量"
+
+
+def test_deprecate_removed_units_keeps_same_identity_when_anchor_changes(session: Session) -> None:
+    kept = KnowledgeUnit(
+        course_id=COURSE_ID,
+        knowledge_unit_type="procedure",
+        canonical_name="函数值求解方法",
+        normalized_name=sync.normalize_name("函数值求解方法"),
+        summary="旧 anchor 但本轮同名同类型仍存在。",
+        body_markdown="旧 anchor 但本轮同名同类型仍存在。",
+        status="active",
+        aliases_json='[{"normalized_alias":"ku_old_method","source":"markdown_anchor"}]',
+    )
+    stale = KnowledgeUnit(
+        course_id=COURSE_ID,
+        knowledge_unit_type="procedure",
+        canonical_name="错题回看方法",
+        normalized_name=sync.normalize_name("错题回看方法"),
+        summary="本轮不再出现的旧节点。",
+        body_markdown="本轮不再出现的旧节点。",
+        status="active",
+        aliases_json='[{"normalized_alias":"ku_old_review","source":"markdown_anchor"}]',
+    )
+    session.add_all([kept, stale])
+    session.commit()
+    session.refresh(kept)
+    session.refresh(stale)
+
+    deprecated_units = sync._deprecate_removed_anchor_units(  # noqa: SLF001
+        session,
+        course_id=COURSE_ID,
+        active_anchors={"ku_new_method"},
+        active_identity_keys={("procedure", sync.normalize_name("函数值求解方法"))},
+        build_revision_no=9,
+    )
+    session.commit()
+
+    assert deprecated_units == [stale.id]
+    assert session.get(KnowledgeUnit, kept.id).status == "active"
+    assert session.get(KnowledgeUnit, stale.id).status == "deprecated"
+
+
+def test_deprecate_removed_units_prefers_current_run_unit_ids(session: Session) -> None:
+    old_same_identity = KnowledgeUnit(
+        course_id=COURSE_ID,
+        knowledge_unit_type="procedure",
+        canonical_name="简单概率判断步骤",
+        normalized_name=sync.normalize_name("简单概率判断步骤"),
+        summary="上一轮的同名节点。",
+        body_markdown="上一轮的同名节点。",
+        status="active",
+        aliases_json='[{"normalized_alias":"ku_old_probability","source":"markdown_anchor"}]',
+    )
+    current = KnowledgeUnit(
+        course_id=COURSE_ID,
+        knowledge_unit_type="topic",
+        canonical_name="统计与概率",
+        normalized_name=sync.normalize_name("统计与概率"),
+        summary="本轮触达节点。",
+        body_markdown="本轮触达节点。",
+        status="active",
+        aliases_json='[{"normalized_alias":"ku_current_topic","source":"markdown_anchor"}]',
+    )
+    session.add_all([old_same_identity, current])
+    session.commit()
+    session.refresh(old_same_identity)
+    session.refresh(current)
+
+    deprecated_units = sync._deprecate_removed_anchor_units(  # noqa: SLF001
+        session,
+        course_id=COURSE_ID,
+        active_anchors={"ku_current_topic", "ku_old_probability"},
+        active_unit_ids={int(current.id or 0)},
+        active_identity_keys={("procedure", sync.normalize_name("简单概率判断步骤"))},
+        build_revision_no=10,
+    )
+    session.commit()
+
+    assert deprecated_units == [old_same_identity.id]
+    assert session.get(KnowledgeUnit, old_same_identity.id).status == "deprecated"
+    assert session.get(KnowledgeUnit, current.id).status == "active"
+
+
 def test_docgen_kg_draft_graph_is_query_visible_before_publish(session: Session) -> None:
     draft = _quality_ready_draft_context()["docgen_manifest"]["docgen_kg_draft"]  # type: ignore[index]
 
@@ -677,10 +801,11 @@ def test_docgen_kg_draft_graph_is_query_visible_before_publish(session: Session)
     assert metrics["skipped"] is False
     assert metrics["unit_count"] == 3
     assert metrics["edge_count"] == 2
-    assert {node.canonical_name for node in graph.nodes} == {"矩阵乘法", "单元测试", "应用题训练"}
+    assert metrics["skipped_edge_count"] == 0
+    assert {node.canonical_name for node in graph.nodes} == {"矩阵乘法", "矩阵乘法维度检查", "应用题训练"}
     node_id_by_name = {node.canonical_name: node.id for node in graph.nodes}
     assert {(edge.source_node_id, edge.target_node_id, edge.edge_type) for edge in graph.edges} == {
-        (node_id_by_name["单元测试"], node_id_by_name["矩阵乘法"], "assesses"),
+        (node_id_by_name["矩阵乘法维度检查"], node_id_by_name["矩阵乘法"], "assesses"),
         (node_id_by_name["矩阵乘法"], node_id_by_name["应用题训练"], "applies_to"),
     }
     assert page.total == 3
@@ -914,14 +1039,14 @@ def test_docgen_kg_draft_graph_rolls_back_when_publish_fails(session: Session) -
                     "source": "docgen_review_refinement",
                 },
                 {
-                    "name": "单元测试",
+                    "name": "矩阵乘法维度检查",
                     "knowledge_unit_type": "skill",
                     "chapter_index": 1,
-                    "summary": "检查本章掌握情况。",
-                    "source": "docgen_reviewed_heading",
+                    "summary": "检查矩阵乘法前后的行列维度是否匹配。",
+                    "source": "kg_prefetch_llm",
                 },
             ],
-            "edges": [{"source_name": "单元测试", "target_name": "矩阵乘法", "edge_type": "assesses"}],
+            "edges": [{"source_name": "矩阵乘法维度检查", "target_name": "矩阵乘法", "edge_type": "assesses"}],
             "quality_audit": {
                 "quality_ready": True,
                 "quality_status": "ready",
@@ -943,6 +1068,7 @@ def test_docgen_kg_draft_graph_rolls_back_when_publish_fails(session: Session) -
     assert metrics["created_unit_count"] == 1
     assert metrics["updated_unit_count"] == 1
     assert metrics["created_edge_count"] == 1
+    assert metrics["skipped_edge_count"] == 0
     assert session.get(KnowledgeUnit, existing.id).summary == "新草稿摘要"
     assert get_knowledge_units(session, course_id=COURSE_ID, page=1, size=10).total == 2
 
@@ -1023,7 +1149,7 @@ def test_docgen_kg_draft_final_payload_uses_published_context_without_llm() -> N
     )
 
     assert payload is not None
-    assert [unit.name for unit in payload.units] == ["矩阵乘法", "单元测试", "应用题训练"]
+    assert [unit.name for unit in payload.units] == ["矩阵乘法", "矩阵乘法维度检查", "应用题训练"]
     assert payload.units[0].knowledge_document_id == 10
     assert payload.units[2].knowledge_document_id == 20
     assert payload.units[2].source_file_ids == ["file-b"]
@@ -1034,6 +1160,7 @@ def test_docgen_kg_draft_final_payload_uses_published_context_without_llm() -> N
     assert payload.diagnostics_totals["docgen_draft_fast_finalize"] == 1
     assert payload.diagnostics_totals["docgen_draft_final_unit_count"] == 3
     assert payload.diagnostics_totals["docgen_draft_final_edge_count"] == 2
+    assert payload.diagnostics_totals["docgen_draft_final_skipped_endpoint_count"] == 0
     assert payload.diagnostics_totals["llm_section_count"] == 0
 
 

@@ -44,33 +44,7 @@ def _safe_int(value: Any) -> int:
         return 0
 
 
-_KG_ROLE_LABEL_RE = re.compile(
-    r"^\s*(?P<label>学习目标|目标|核心概念|知识点|典型例题|例题|易错点|易错提醒|课后练习|练习)\s*[:：]\s*"
-)
-_KG_ITEM_SPLIT_RE = re.compile(r"[、,，;；]\s*")
-_KG_ACTION_PREFIX_RE = re.compile(
-    r"^\s*(?:熟练)?(?:掌握|理解|重建|建立|学会|会用|能够|能|提升|复习|巩固|完成|明确|识别|判断|训练)\s*"
-)
-_KG_ACTION_ONLY_RE = re.compile(r"^(?:提升|复习|巩固|完成|明确|训练|形成|减少|避免|帮助|便于)")
-_KG_NOISE_NODE_RE = re.compile(r"^(?:学习目标|目标|核心概念|知识点|典型例题|例题|易错点|易错提醒|课后练习|练习)$")
 _KG_MARKDOWN_STYLE_RE = re.compile(r"(\*\*|__|==|`+|\\\(|\\\)|\\\[|\\\]|\$\$?)")
-_KG_GENERIC_NODE_RE = re.compile(
-    r"^(?:任务\s*\d*|步骤\s*\d*(?:\s*[（(][^）)]{1,18}[）)])?|检查点|求解步骤|"
-    r"单元测试|单元小测|章末测试|章末小测|章末练习|Q\d+|第\s*\d+\s*题|答案|解析|判定依据)$",
-    re.IGNORECASE,
-)
-_KG_TRAINING_PLAN_RE = re.compile(r"(?:每日|每章|第\s*\d+\s*天|课后|章末).{0,10}(?:\d+\s*道|练习|测试|小测|训练)")
-_KG_ASSESSMENT_CONTAINER_HEADING_RE = re.compile(r"^(?:单元测试|单元小测|章末测试|章末小测|章末练习)$")
-_KG_ROLE_LABEL_TYPES = {
-    "核心概念": "concept",
-    "知识点": "concept",
-    "典型例题": "application_case",
-    "例题": "application_case",
-    "易错点": "misconception",
-    "易错提醒": "misconception",
-    "课后练习": "skill",
-    "练习": "skill",
-}
 
 
 def _evidence_chapter_indices(item: HighConfidenceEvidenceUnit) -> list[int]:
@@ -213,24 +187,8 @@ def _clean_preliminary_node_name(value: object, *, max_chars: int = 42) -> str:
     text = str(value or "").strip()
     text = _KG_MARKDOWN_STYLE_RE.sub("", text)
     text = re.sub(r"\{#ku_[^}]+\}", "", text)
-    text = _KG_ROLE_LABEL_RE.sub("", text, count=1)
-    text = re.sub(
-        r"^\s*(?:任务|步骤|检查点|答案|解析|参考答案|Q\d+)(?:\s*\d+)?(?:\s*[（(][^）)]{1,18}[）)])?\s*[:：]\s*",
-        "",
-        text,
-        count=1,
-    )
     text = re.sub(r"\s+", " ", text).strip(" ：:，,。；;、|-")
-    text = re.sub(r"^(?:本章|本节|这一章|这部分)\s*", "", text).strip(" ：:，,。；;、|-")
-    if (
-        not text
-        or _KG_NOISE_NODE_RE.fullmatch(text)
-        or _KG_GENERIC_NODE_RE.fullmatch(text)
-        or _KG_ACTION_ONLY_RE.match(text)
-        or _KG_TRAINING_PLAN_RE.search(text)
-    ):
-        return ""
-    if len(text) > 28 and re.search(r"[。！？!?]|(?:是|指|表示|意味着|用于|可以|需要)", text):
+    if not text:
         return ""
     if len(text) > max_chars:
         for delimiter in ("；", ";", "。", "，", ","):
@@ -238,33 +196,17 @@ def _clean_preliminary_node_name(value: object, *, max_chars: int = 42) -> str:
             if 3 <= len(head) <= max_chars:
                 text = head
                 break
-    if len(text) > max_chars or _KG_GENERIC_NODE_RE.fullmatch(text):
+    if len(text) > max_chars:
         return ""
     return text
 
 
-def _preliminary_items(value: object, *, unit_type: str) -> list[tuple[str, str]]:
+def _preliminary_target(value: object, *, unit_type: str) -> tuple[str, str] | None:
     raw = str(value or "").strip()
     if not raw:
-        return []
-    label_type = ""
-    match = _KG_ROLE_LABEL_RE.match(raw)
-    if match is not None:
-        label = match.group("label")
-        raw = raw[match.end():].strip()
-        label_type = _KG_ROLE_LABEL_TYPES.get(label, "")
-    effective_type = label_type or unit_type
-    normalized: list[tuple[str, str]] = []
-    for part in _KG_ITEM_SPLIT_RE.split(raw):
-        if _KG_ACTION_ONLY_RE.match(part.strip()):
-            continue
-        cleaned = _clean_preliminary_node_name(_KG_ACTION_PREFIX_RE.sub("", part, count=1))
-        if cleaned:
-            normalized.append((cleaned, effective_type))
-    if normalized:
-        return normalized[:8]
-    cleaned = _clean_preliminary_node_name(_KG_ACTION_PREFIX_RE.sub("", raw, count=1))
-    return [(cleaned, effective_type)] if cleaned else []
+        return None
+    cleaned = _clean_preliminary_node_name(raw)
+    return (cleaned, unit_type) if cleaned else None
 
 
 def _append_preliminary_items(
@@ -280,7 +222,11 @@ def _append_preliminary_items(
     source: str,
 ) -> None:
     for value in values:
-        for item_name, item_type in _preliminary_items(value, unit_type=unit_type):
+        item = _preliminary_target(value, unit_type=unit_type)
+        if item is None:
+            continue
+        item_name, item_type = item
+        if item_name:
             _append_preliminary_node(
                 nodes,
                 seen_nodes,
@@ -300,6 +246,20 @@ def _append_preliminary_items(
                 chapter_index=chapter_index,
                 source=source,
             )
+
+
+def _plan_target_values(value: object, *, limit: int = 12) -> list[str]:
+    targets: list[str] = []
+    for item in list(value or []) if isinstance(value, Sequence) and not isinstance(value, (str, bytes)) else []:
+        if isinstance(item, Mapping):
+            target = str(item.get("target") or item.get("knowledge_unit") or item.get("topic") or "").strip()
+        else:
+            target = str(item or "").strip()
+        if target:
+            targets.append(target)
+        if len(targets) >= limit:
+            break
+    return clean_string_list(targets, limit=limit)
 
 
 def build_preliminary_kg(
@@ -351,7 +311,6 @@ def build_preliminary_kg(
                 source="docgen_chapter_contract",
             )
         for key, unit_type in (
-            ("required_elements", "concept"),
             ("concept_targets", "concept"),
             ("definition_targets", "concept"),
             ("formula_targets", "formula_model"),
@@ -366,6 +325,21 @@ def build_preliminary_kg(
                 seen_nodes,
                 seen_edges,
                 values=clean_string_list([*chapter_values, *dispatch_values], limit=12),
+                unit_type=unit_type,
+                chapter_index=chapter_index,
+                chapter_title=title,
+                source="docgen_chapter_contract",
+            )
+        for values, unit_type in (
+            (_plan_target_values(chapter.get("example_coverage_plan"), limit=12), "application_case"),
+            (_plan_target_values(chapter.get("chapter_end_practice_plan"), limit=12), "skill"),
+        ):
+            _append_preliminary_items(
+                nodes,
+                edges,
+                seen_nodes,
+                seen_edges,
+                values=values,
                 unit_type=unit_type,
                 chapter_index=chapter_index,
                 chapter_title=title,
@@ -429,21 +403,6 @@ def build_preliminary_kg(
         },
     }
 
-
-_MARKDOWN_HEADING_RE = re.compile(r"^\s{0,3}(?P<level>#{1,4})\s+(?P<title>.+?)\s*$")
-_MARKDOWN_BULLET_RE = re.compile(r"^\s{0,6}(?:[-*+]|(?:\d+|[一二三四五六七八九十]+)[.)、])\s+(?P<text>.+?)\s*$")
-_GENERIC_DOCGEN_HEADING_NAMES = {
-    "执行范围",
-    "即将覆盖的重点",
-    "检索线索",
-    "写作路径",
-    "学习路径",
-    "章节位置",
-}
-_SKILL_TEXT_TOKENS = ("测试", "练习", "自检", "题", "训练", "测验", "考试", "刷题")
-_MISCONCEPTION_TEXT_TOKENS = ("易错", "误区", "混淆", "陷阱", "不要", "错误", "边界", "纠错", "错因")
-_APPLICATION_TEXT_TOKENS = ("案例", "示例", "例题", "应用", "场景", "图示", "图表", "表格", "实验")
-_PROCEDURE_TEXT_TOKENS = ("步骤", "流程", "方法", "路径", "操作", "检查", "策略")
 _DOCGEN_KG_DOWNSTREAM_UNIT_TYPES = {
     "concept",
     "principle",
@@ -818,9 +777,9 @@ def _append_markdown_heading_nodes(
     topic_source: str = "docgen_reviewed_chapter",
     heading_source: str = "docgen_reviewed_heading",
 ) -> None:
+    del edges, seen_edges, heading_source
     chapter_index = _safe_int(chapter.get("chapter_index")) or fallback_index
     title = _chapter_title(chapter, fallback_index)
-    markdown = str(chapter.get("markdown") or "").strip()
     if not _draft_has_node_name(nodes, title):
         _append_draft_node(
             nodes,
@@ -831,94 +790,6 @@ def _append_markdown_heading_nodes(
             summary=chapter.get("summary") or chapter.get("summary_draft") or title,
             source=topic_source,
         )
-    heading_count = 0
-    bullet_count = 0
-    current_heading = ""
-    current_heading_type = "concept"
-    for line in markdown.splitlines():
-        match = _MARKDOWN_HEADING_RE.match(line)
-        if match is not None:
-            level = len(match.group("level"))
-            heading = match.group("title").strip(" #")
-            if not heading or heading == title or level <= 1:
-                current_heading = ""
-                current_heading_type = "concept"
-                continue
-            if _KG_ASSESSMENT_CONTAINER_HEADING_RE.fullmatch(heading):
-                current_heading = ""
-                current_heading_type = "concept"
-                continue
-            current_heading = heading
-            current_heading_type = _markdown_unit_type_for_text(heading)
-            if heading not in _GENERIC_DOCGEN_HEADING_NAMES:
-                _append_draft_node(
-                    nodes,
-                    seen_nodes,
-                    name=heading,
-                    unit_type=current_heading_type,
-                    chapter_index=chapter_index,
-                    summary=heading,
-                    source=heading_source,
-                )
-                _append_draft_edge(
-                    edges,
-                    seen_edges,
-                    source_name=heading,
-                    target_name=title,
-                    edge_type="part_of",
-                    description=f"{heading} 是《{title}》中的章节知识单元。",
-                    chapter_index=chapter_index,
-                    source=heading_source,
-                )
-                heading_count += 1
-            if heading_count >= 8:
-                current_heading = ""
-            continue
-
-        bullet_match = _MARKDOWN_BULLET_RE.match(line)
-        if bullet_match is None or not current_heading:
-            continue
-        bullet_text = bullet_match.group("text").strip()
-        unit_type = _markdown_unit_type_for_text(f"{current_heading} {bullet_text}", fallback=current_heading_type)
-        for item_name, item_type in _preliminary_items(bullet_text, unit_type=unit_type):
-            if item_name == title or item_name in _GENERIC_DOCGEN_HEADING_NAMES:
-                continue
-            _append_draft_node(
-                nodes,
-                seen_nodes,
-                name=item_name,
-                unit_type=item_type,
-                chapter_index=chapter_index,
-                summary=bullet_text,
-                source=heading_source,
-            )
-            _append_draft_edge(
-                edges,
-                seen_edges,
-                source_name=item_name,
-                target_name=title,
-                edge_type="part_of",
-                description=f"{item_name} 属于《{title}》的学习内容。",
-                chapter_index=chapter_index,
-                source=heading_source,
-                quote_text=bullet_text,
-            )
-            bullet_count += 1
-            if bullet_count >= 12:
-                return
-
-
-def _markdown_unit_type_for_text(text: object, *, fallback: str = "concept") -> str:
-    raw = str(text or "")
-    if any(token in raw for token in _SKILL_TEXT_TOKENS):
-        return "skill"
-    if any(token in raw for token in _MISCONCEPTION_TEXT_TOKENS):
-        return "misconception"
-    if any(token in raw for token in _APPLICATION_TEXT_TOKENS):
-        return "application_case"
-    if any(token in raw for token in _PROCEDURE_TEXT_TOKENS):
-        return "procedure"
-    return fallback
 
 
 def build_chapter_kg_refinement_item(

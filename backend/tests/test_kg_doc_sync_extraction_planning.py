@@ -9,6 +9,7 @@ from app.workflows.digest.kg_doc_sync.lib.extraction import _assign_candidate_id
 from app.workflows.digest.kg_doc_sync.lib.extraction import _prepare_llm_chunk_content
 from app.workflows.digest.kg_doc_sync.lib.incremental_sync import (
     _build_backbone_graph_items,
+    _build_chapter_membership_edges,
     _build_extraction_tasks,
 )
 from app.workflows.digest.kg_doc_sync.lib.models import (
@@ -295,7 +296,7 @@ def test_legacy_support_edge_type_is_normalized_before_literal_validation() -> N
     )
 
     assert result.nodes[0].knowledge_unit_type == "procedure"
-    assert result.nodes[1].knowledge_unit_type == "misconception"
+    assert result.nodes[1].knowledge_unit_type == "concept"
     assert result.edges[0].edge_type == "explains"
 
 
@@ -372,7 +373,7 @@ def test_prefetch_payload_reused_when_only_heading_changes() -> None:
     assert [unit.anchor for unit in units] == ["ku_a"]
 
 
-def test_docgen_backbone_links_existing_units_and_fills_missing_skeleton_units() -> None:
+def test_docgen_backbone_payload_does_not_seed_knowledge_units_by_rule() -> None:
     structured_context = {
         "docgen_manifest": {
             "document_backbone_snapshot": {
@@ -395,18 +396,12 @@ def test_docgen_backbone_links_existing_units_and_fills_missing_skeleton_units()
         existing_normalized_names={"alpha", "beta"},
     )
 
-    assert [unit.name for unit in units] == ["Gamma"]
-    assert units[0].source_kind == "docgen_backbone"
-    assert len(edges) == 2
-    assert edges[0].source_name == "Alpha"
-    assert edges[0].target_name == "Beta"
-    assert edges[0].source_kind == "docgen_backbone"
-    assert edges[1].source_name == "Alpha"
-    assert edges[1].target_name == "Gamma"
-    assert edges[1].source_kind == "docgen_backbone"
+    assert [unit.name for unit in units] == ["Chapter 1"]
+    assert units[0].source_kind == "structural_heading"
+    assert edges == []
 
 
-def test_preliminary_kg_creates_rule_seed_units_and_edges() -> None:
+def test_preliminary_kg_does_not_seed_rule_units_and_edges() -> None:
     structured_context = {
         "docgen_manifest": {
             "preliminary_kg": {
@@ -433,47 +428,193 @@ def test_preliminary_kg_creates_rule_seed_units_and_edges() -> None:
         existing_normalized_names=set(),
     )
 
-    assert {unit.name for unit in units} == {"矩阵基础", "矩阵乘法"}
-    assert {unit.knowledge_unit_type for unit in units} == {"topic", "concept"}
-    assert all(unit.source_kind == "docgen_preliminary_kg" for unit in units)
-    assert edges[0].source_name == "矩阵乘法"
-    assert edges[0].target_name == "矩阵基础"
-    assert edges[0].edge_type == "part_of"
-    assert edges[0].source_kind == "docgen_preliminary_kg"
+    assert units == []
+    assert edges == []
 
 
-def test_docgen_kg_draft_takes_precedence_over_preliminary_kg() -> None:
+def test_course_root_links_chapter_topics_from_structured_context() -> None:
     structured_context = {
-        "docgen_manifest": {
-            "preliminary_kg": {
-                "nodes": [
-                    {"name": "粗略节点", "knowledge_unit_type": "concept", "chapter_index": 1},
-                ],
-            },
-            "docgen_kg_draft": {
-                "nodes": [
-                    {
-                        "name": "细化节点",
-                        "knowledge_unit_type": "skill",
-                        "chapter_index": 1,
-                        "summary": "来自发布前图谱草稿。",
-                        "source": "kg_prefetch_llm",
-                    },
-                ],
-            },
+        "document_summary_json": {
+            "course_name": "初中数学",
         }
     }
 
     units, edges = _build_backbone_graph_items(
         structured_context=structured_context,
-        chapter_contexts={1: ChapterSourceContext(knowledge_document_id=10, chapter_index=1, source_file_ids=["file-a"])},
+        chapter_contexts={
+            1: ChapterSourceContext(knowledge_document_id=10, chapter_index=1, title="函数"),
+            2: ChapterSourceContext(knowledge_document_id=11, chapter_index=2, title="几何"),
+        },
         existing_normalized_names=set(),
     )
 
-    assert edges == []
+    assert {unit.name for unit in units} == {"初中数学", "函数", "几何"}
+    assert {unit.name: unit.knowledge_unit_type for unit in units} == {
+        "初中数学": "topic",
+        "函数": "topic",
+        "几何": "topic",
+    }
+    assert {
+        (edge.source_name, edge.target_name, edge.edge_type, edge.source_kind)
+        for edge in edges
+    } == {
+        ("函数", "初中数学", "part_of", "structural_heading"),
+        ("几何", "初中数学", "part_of", "structural_heading"),
+    }
+
+
+def test_chapter_membership_edges_attach_llm_units_to_chapter_topic() -> None:
+    units = [
+        MarkdownKnowledgeUnit(
+            anchor="ku_chapter",
+            name="函数的基本概念、图像与读图方法",
+            knowledge_unit_type="topic",
+            summary="章节主题",
+            body_markdown="章节主题",
+            chapter_index=1,
+        ),
+        MarkdownKnowledgeUnit(
+            anchor="ku_method",
+            name="代入求函数值",
+            knowledge_unit_type="procedure",
+            summary="把自变量代入表达式求函数值。",
+            body_markdown="把自变量代入表达式求函数值。",
+            chapter_index=1,
+        ),
+    ]
+
+    edges = _build_chapter_membership_edges(
+        units=units,
+        chapter_contexts={1: ChapterSourceContext(chapter_index=1, title="函数的基本概念、图像与读图方法")},
+        anchors_by_normalized_name={
+            "函数的基本概念图像与读图方法": ["ku_chapter"],
+            "代入求函数值": ["ku_method"],
+        },
+    )
+
+    assert [
+        (edge.source_name, edge.target_name, edge.edge_type, edge.source_kind)
+        for edge in edges
+    ] == [
+        ("代入求函数值", "函数的基本概念、图像与读图方法", "part_of", "structural_heading")
+    ]
+
+
+def test_stale_docgen_context_only_contributes_structural_topics() -> None:
+    structured_context = {
+        "document_summary_json": {
+            "course_name": "函数课程",
+        },
+        "docgen_manifest": {
+            "document_backbone_snapshot": {
+                "canonical_glossary": [
+                    {
+                        "term": "围绕函数讲清核心概念、图示、方法步骤、典型例题、易错点、练习、单元测试。",
+                        "definition": "教学安排句。",
+                        "target_chapters": [1],
+                    },
+                    {
+                        "term": "函数图像",
+                        "definition": "用坐标图表示函数关系。",
+                        "target_chapters": [1],
+                    },
+                    {
+                        "term": "建立函数、变量、自变量与因变量的基本概念，理解函数关系的表达方式",
+                        "definition": "教学动作句。",
+                        "target_chapters": [1],
+                    },
+                ],
+                "concept_dependency_graph": [
+                    {
+                        "from_concept": "围绕函数讲清核心概念、图示、方法步骤、典型例题、易错点、练习、单元测试。",
+                        "to_concept": "函数",
+                        "relation": "prerequisite_for",
+                    },
+                    {
+                        "from_concept": "函数",
+                        "to_concept": "函数图像",
+                        "relation": "prerequisite_for",
+                    },
+                ],
+            },
+            "preliminary_kg": {
+                "nodes": [
+                    {"name": "函数", "knowledge_unit_type": "concept", "chapter_index": 1},
+                    {"name": "图示", "knowledge_unit_type": "application_case", "chapter_index": 1},
+                    {"name": "方法步骤", "knowledge_unit_type": "procedure", "chapter_index": 1},
+                    {"name": "单元测试", "knowledge_unit_type": "skill", "chapter_index": 1},
+                    {"name": "重点检查概念理解", "knowledge_unit_type": "procedure", "chapter_index": 1},
+                    {"name": "讲后纠错与回顾", "knowledge_unit_type": "misconception", "chapter_index": 1},
+                    {"name": "为后续章节打底", "knowledge_unit_type": "concept", "chapter_index": 1},
+                    {"name": "结合图示认识函数图像", "knowledge_unit_type": "concept", "chapter_index": 1},
+                    {"name": "配套例题：函数值求解", "knowledge_unit_type": "application_case", "chapter_index": 1},
+                    {"name": "常见易错点：自变量与因变量混淆", "knowledge_unit_type": "misconception", "chapter_index": 1},
+                    {"name": "整理", "knowledge_unit_type": "procedure", "chapter_index": 1},
+                    {"name": "判定题", "knowledge_unit_type": "skill", "chapter_index": 1},
+                    {"name": "图表分析", "knowledge_unit_type": "skill", "chapter_index": 1},
+                    {
+                        "name": "在本章内完成总结巩固，围绕自身题型完成检测、纠错与复习收束",
+                        "knowledge_unit_type": "misconception",
+                        "chapter_index": 1,
+                    },
+                    {"name": "自变量与因变量", "knowledge_unit_type": "concept", "chapter_index": 1},
+                ],
+                "edges": [
+                    {"source_name": "图示", "target_name": "函数", "edge_type": "part_of", "chapter_index": 1},
+                    {"source_name": "配套例题：函数值求解", "target_name": "函数", "edge_type": "applies_to", "chapter_index": 1},
+                    {"source_name": "自变量与因变量", "target_name": "函数", "edge_type": "part_of", "chapter_index": 1},
+                ],
+            }
+        }
+    }
+
+    units, edges = _build_backbone_graph_items(
+        structured_context=structured_context,
+        chapter_contexts={1: ChapterSourceContext(knowledge_document_id=10, chapter_index=1, title="函数的基本概念")},
+        existing_normalized_names=set(),
+    )
+
+    assert {unit.name for unit in units} == {"函数课程", "函数的基本概念"}
+    assert [(edge.source_name, edge.target_name, edge.edge_type) for edge in edges] == [
+        ("函数的基本概念", "函数课程", "part_of")
+    ]
+
+
+def test_quality_checked_docgen_kg_draft_uses_dedicated_payload_path() -> None:
+    payload = incremental_sync.build_docgen_kg_draft_units_payload(
+        docgen_kg_draft={
+            "quality_ready": True,
+            "fast_visible_ready": True,
+            "quality_status": "ready",
+            "quality_audit": {
+                "quality_ready": True,
+                "warning_count": 0,
+                "missing_chapter_count": 0,
+                "edge_endpoint_issue_count": 0,
+                "edge_endpoint_ambiguity_count": 0,
+                "relation_direction_issue_count": 0,
+                "examine_profile_ready": True,
+                "downstream_unit_count": 1,
+            },
+            "nodes": [
+                {
+                    "name": "细化节点",
+                    "knowledge_unit_type": "skill",
+                    "chapter_index": 1,
+                    "summary": "来自发布前图谱草稿。",
+                    "source": "kg_prefetch_llm",
+                },
+            ],
+        }
+    )
+
+    units = payload.units
+    edges = payload.extracted_edges
+    assert payload.diagnostics_totals["docgen_draft_quality_ready"] == 1
     assert [unit.name for unit in units] == ["细化节点"]
     assert units[0].knowledge_unit_type == "skill"
     assert units[0].source_kind == "kg_prefetch_llm"
+    assert edges == []
 
 
 def test_chunk_extraction_result_caps_candidate_counts() -> None:
@@ -486,7 +627,7 @@ def test_chunk_extraction_result_caps_candidate_counts() -> None:
                     "knowledge_unit_type": "concept",
                     "local_summary": "summary",
                 }
-                for index in range(12)
+            for index in range(16)
             ],
             "edges": [
                 {
@@ -495,13 +636,13 @@ def test_chunk_extraction_result_caps_candidate_counts() -> None:
                     "edge_type": "prerequisite_for",
                     "description": "description",
                 }
-                for _index in range(14)
+            for _index in range(20)
             ],
         }
     )
 
-    assert len(result.nodes) == 8
-    assert len(result.edges) == 12
+    assert len(result.nodes) == 12
+    assert len(result.edges) == 18
 
 
 def test_chunk_extraction_drops_edges_with_unreturned_endpoints() -> None:
@@ -561,3 +702,12 @@ def test_prepare_llm_chunk_content_removes_callout_markers_but_keeps_body() -> N
     assert "[!TIP]" not in prepared
     assert "易错点" in prepared
     assert "快速抓手" in prepared
+
+
+def test_prepare_llm_chunk_content_does_not_trim_normal_long_sections() -> None:
+    long_body = "函数连续性判定需要同时比较左极限、右极限和函数值。\n" * 700
+
+    prepared = _prepare_llm_chunk_content(long_body)
+
+    assert prepared == long_body.strip()
+    assert "中间内容已压缩" not in prepared

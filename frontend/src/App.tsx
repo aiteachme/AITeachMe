@@ -8,7 +8,13 @@ import { RouteAnalyticsBridge } from "./components/providers/RouteAnalyticsBridg
 import { ElectronWindowFrame } from "./components/layout/ElectronWindowFrame";
 import { Layout } from "./components/layout/Layout";
 import { ToastProvider } from "./components/ui/Toast";
-import { buildCoursePath, buildCourseSubPath, COURSE_ROUTE_REDIRECTS, type CourseRouteId } from "./lib/courseNavigation";
+import {
+  buildCoursePath,
+  buildCourseSubPath,
+  buildPreferredCourseEntryPath,
+  COURSE_ROUTE_REDIRECTS,
+  type CourseRouteId,
+} from "./lib/courseNavigation";
 import { ensureSystemSettingsOverviewLoaded, getStoredSystemSettingsOverview } from "./lib/systemSettings";
 import { isElectronRuntime } from "./lib/electronRuntime";
 import { syncAnalyticsUserIdentity } from "./lib/analytics";
@@ -88,6 +94,19 @@ function LegacyCourseRouteRedirect({ buildPath }: { buildPath: (params: Record<s
   return (
     <Navigate
       to={`${buildPath(params)}${location.search}${location.hash}`}
+      replace
+      state={location.state}
+    />
+  );
+}
+
+function CourseEntryRedirect() {
+  const params = useParams<{ courseId: string }>();
+  const location = useLocation();
+  const courseId = params.courseId ?? "";
+  return (
+    <Navigate
+      to={buildPreferredCourseEntryPath(courseId)}
       replace
       state={location.state}
     />
@@ -224,6 +243,7 @@ function App() {
                     <Route path="assistant" element={withRouteFallback(<GlobalAssistantPage />)} />
                     <Route path="library" element={withRouteFallback(<LibraryPage />)} />
                     <Route path="library/:fileId" element={withRouteFallback(<LibraryFilePage />)} />
+                    <Route path="courses/:courseId" element={<CourseEntryRedirect />} />
                     {(Object.entries(COURSE_PAGE_ELEMENTS) as Array<[CourseRouteId, ReactElement]>).map(
                       ([routeId, element]) => (
                         <Route key={routeId} path={`courses/:courseId/${routeId}`} element={element} />
@@ -271,6 +291,7 @@ function App() {
                         }
                       />
                     ))}
+                    <Route path="course/:courseId" element={<CourseEntryRedirect />} />
                     <Route
                       path="course/:courseId/knowledge-docs/interactive"
                       element={

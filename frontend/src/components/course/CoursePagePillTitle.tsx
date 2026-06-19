@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link, useParams, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { LucideIcon } from "lucide-react";
@@ -26,38 +27,49 @@ interface CoursePagePillTitleProps {
   href?: string;
   className?: string;
   innerClassName?: string;
+  placement?: "layout" | "page";
 }
 
-export function CoursePagePillTitle({ icon: Icon, label, href, className, innerClassName }: CoursePagePillTitleProps) {
+interface CourseNavTooltipState {
+  text: string;
+  left: number;
+  top: number;
+}
+
+function courseNavTooltipFromTarget(text: string, target: HTMLElement): CourseNavTooltipState {
+  const rect = target.getBoundingClientRect();
+  return {
+    text,
+    left: rect.left + rect.width / 2,
+    top: rect.bottom + 8,
+  };
+}
+
+export const ENABLE_PERSISTENT_COURSE_NAV = true;
+export const SHOW_COURSE_OVERVIEW_NAV_ENTRY = false;
+
+export function CoursePagePillTitle({
+  icon: Icon,
+  label,
+  href,
+  className,
+  innerClassName,
+  placement = "page",
+}: CoursePagePillTitleProps) {
   const params = useParams<{ courseId: string }>();
   const { pathname } = useLocation();
+  const [tooltip, setTooltip] = useState<CourseNavTooltipState | null>(null);
   const courseId = params.courseId || (href ? href.split("/")[2] : undefined);
+  const shouldHideInlineCourseNav = Boolean(courseId && ENABLE_PERSISTENT_COURSE_NAV && placement === "page");
+
   const shellClassName = cn(
     "sticky top-0 z-30 grid h-16 w-full shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center border-b border-slate-200/70 bg-[#fafafa]/92 px-4 backdrop-blur-md dark:border-slate-800/60 dark:bg-[#0b0f19]/92",
     className,
   );
   const navClassName = cn(
-    "flex max-w-full items-center gap-1.5 overflow-x-auto rounded-lg border border-slate-200/80 bg-white/95 p-1.5 shadow-[0_2px_12px_rgba(15,23,42,0.05)] scrollbar-none dark:border-slate-800/80 dark:bg-slate-900/95",
+    "flex max-w-full items-center gap-1 overflow-x-auto rounded-[10px] border border-slate-200/80 bg-white/95 p-1 shadow-[0_2px_12px_rgba(15,23,42,0.05)] scrollbar-none dark:border-slate-800/80 dark:bg-slate-900/95",
     innerClassName,
   );
-
-  if (!courseId) {
-    const inner = (
-      <div className={cn("inline-flex h-8 items-center gap-2 rounded-md px-3 text-[12px] font-semibold text-slate-600 dark:text-slate-300", innerClassName)}>
-        <Icon className="h-3 w-3 shrink-0" />
-        <span>{label}</span>
-      </div>
-    );
-    return (
-      <div className={shellClassName}>
-        <div />
-        {inner}
-        <div className="flex justify-end">
-          <TopBar />
-        </div>
-      </div>
-    );
-  }
 
   // 1. Query Document Build Status
   const docMarkdownQuery = useQuery({
@@ -71,7 +83,7 @@ export function CoursePagePillTitle({ icon: Icon, label, href, className, innerC
       if (!response.data) throw new Error("加载知识文档状态失败");
       return response.data;
     },
-    enabled: Boolean(courseId),
+    enabled: Boolean(courseId) && !shouldHideInlineCourseNav,
     staleTime: 30000,
   });
 
@@ -101,7 +113,7 @@ export function CoursePagePillTitle({ icon: Icon, label, href, className, innerC
   const historyQuery = useExamHistoryApiV1CoursesCourseIdExamsHistoryGet(
     courseId ?? "",
     { page: 1, size: 24 },
-    { query: { enabled: Boolean(courseId) } }
+    { query: { enabled: Boolean(courseId) && !shouldHideInlineCourseNav } }
   );
 
   const hasExams = useMemo(() => {
@@ -111,39 +123,98 @@ export function CoursePagePillTitle({ icon: Icon, label, href, className, innerC
 
   const currentSegment = getCourseRouteSegmentFromPathname(pathname);
 
+  const showTooltip = (text: string, target: HTMLElement) => {
+    setTooltip(courseNavTooltipFromTarget(text, target));
+  };
+
+  const hideTooltip = () => {
+    setTooltip(null);
+  };
+
+  if (!courseId) {
+    const inner = (
+      <div className={cn("inline-flex h-8 items-center gap-2 rounded-md px-3 text-[12px] font-semibold text-slate-600 dark:text-slate-300", innerClassName)}>
+        <Icon className="h-3 w-3 shrink-0" />
+        <span>{label}</span>
+      </div>
+    );
+    return (
+      <div className={shellClassName}>
+        <div />
+        {inner}
+        <div className="flex justify-end">
+          <TopBar />
+        </div>
+      </div>
+    );
+  }
+
+  if (shouldHideInlineCourseNav) {
+    return null;
+  }
+
   const navItems = [
-    { id: "build", label: "方案规划", icon: Sparkles, href: buildCoursePath(courseId, "build") },
-    { id: "knowledge-docs", label: "知识库", icon: BookOpen, href: buildCoursePath(courseId, "knowledge-docs") },
-    { id: "exams", label: "训练中心", icon: FileText, href: buildCoursePath(courseId, "exams") },
-    { id: "profile", label: "学习画像", icon: BarChart3, href: buildCoursePath(courseId, "profile") },
+    {
+      id: "build",
+      label: "方案规划",
+      icon: Sparkles,
+      href: buildCoursePath(courseId, "build"),
+      description: "上传资料、完成前置诊断，并确认本轮学习路径。",
+    },
+    {
+      id: "knowledge-docs",
+      label: "知识库",
+      icon: BookOpen,
+      href: buildCoursePath(courseId, "knowledge-docs"),
+      description: "查看知识文档、课程图谱和伴读式划选问答。",
+    },
+    {
+      id: "exams",
+      label: "训练中心",
+      icon: FileText,
+      href: buildCoursePath(courseId, "exams"),
+      description: "生成测验或考卷，围绕薄弱点进行专项训练。",
+    },
+    {
+      id: "profile",
+      label: "学习画像",
+      icon: BarChart3,
+      href: buildCoursePath(courseId, "profile"),
+      description: "查看掌握分布、测验记录和后续复习方向。",
+    },
   ] as const;
 
   return (
     <div className={shellClassName}>
       <div />
       <nav className={navClassName} aria-label="课程页面导航">
-        {href && (
-          <Link
-            to={href}
-            className="group flex h-8 shrink-0 items-center gap-2 rounded-md px-3 text-[12px] font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
-            title="返回课程导航页"
-            aria-label="返回课程导航页"
-          >
-            <Compass className="h-3.5 w-3.5 shrink-0 text-slate-400 transition-colors group-hover:text-indigo-600 dark:group-hover:text-indigo-400" />
-            <span className="hidden whitespace-nowrap sm:inline">导航页</span>
-          </Link>
-        )}
-
-        {href ? <div className="h-5 w-px shrink-0 bg-slate-200 dark:bg-slate-800" /> : null}
+        {SHOW_COURSE_OVERVIEW_NAV_ENTRY && href ? (
+          <>
+            <Link
+              to={href}
+              className="group relative flex h-9 shrink-0 items-center gap-2 rounded-lg px-3 text-[12px] font-semibold text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white dark:focus-visible:ring-indigo-500"
+              title="课程总览：回到课程入口与近期状态。"
+              aria-label="课程总览：回到课程入口与近期状态。"
+              onMouseEnter={(event) => showTooltip("课程总览：回到课程入口与近期状态。", event.currentTarget)}
+              onMouseLeave={hideTooltip}
+              onFocus={(event) => showTooltip("课程总览：回到课程入口与近期状态。", event.currentTarget)}
+              onBlur={hideTooltip}
+            >
+              <Compass className="h-3.5 w-3.5 shrink-0 text-slate-400 transition-colors group-hover:text-indigo-600 dark:group-hover:text-indigo-300" />
+              <span className="whitespace-nowrap">总览</span>
+            </Link>
+            <div className="h-5 w-px shrink-0 bg-slate-200 dark:bg-slate-800" />
+          </>
+        ) : null}
 
         {navItems.map((item) => {
           const isActive = item.id === currentSegment || (item.id === "exams" && label === "训练中心");
           let disabledReason = "";
-          if (item.id === "knowledge-docs" && docMarkdownQuery.isFetched && !hasBuildStarted) {
+          if (!isActive && item.id === "knowledge-docs" && docMarkdownQuery.isFetched && !hasBuildStarted) {
             disabledReason = "请先开始构建知识库";
-          } else if (item.id === "exams" && (!isBuilt || isBuilding)) {
+          } else if (!isActive && item.id === "exams" && (!isBuilt || isBuilding)) {
             disabledReason = isBuilding ? "知识库构建中" : "请先构建知识库";
-          } else if (item.id === "profile") {
+          } else if (!isActive && item.id === "profile") {
             if (!isBuilt || isBuilding) {
               disabledReason = isBuilding ? "知识库构建中" : "请先构建知识库";
             } else if (!hasExams) {
@@ -151,10 +222,14 @@ export function CoursePagePillTitle({ icon: Icon, label, href, className, innerC
             }
           }
 
+          const ItemIcon = item.icon;
+          const tooltipText = disabledReason
+            ? `${item.label}：${disabledReason}`
+            : `${item.label}：${item.description}`;
           const itemClassName = cn(
-            "flex h-8 shrink-0 items-center gap-2 rounded-md px-3 text-[12px] font-medium transition-colors",
+            "group relative flex h-9 shrink-0 items-center gap-2 rounded-lg px-3 text-[12px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 dark:focus-visible:ring-indigo-500",
             isActive
-              ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/45 dark:text-indigo-300"
+              ? "bg-slate-950 text-white shadow-sm dark:bg-slate-100 dark:text-slate-950"
               : "text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white",
           );
 
@@ -162,11 +237,18 @@ export function CoursePagePillTitle({ icon: Icon, label, href, className, innerC
             return (
               <div
                 key={item.id}
-                title={disabledReason}
+                role="link"
+                tabIndex={0}
+                title={tooltipText}
+                aria-label={tooltipText}
                 aria-disabled="true"
-                className="flex h-8 shrink-0 cursor-not-allowed select-none items-center gap-2 rounded-md px-3 text-[12px] font-medium text-slate-400 dark:text-slate-600"
+                onMouseEnter={(event) => showTooltip(tooltipText, event.currentTarget)}
+                onMouseLeave={hideTooltip}
+                onFocus={(event) => showTooltip(tooltipText, event.currentTarget)}
+                onBlur={hideTooltip}
+                className="flex h-9 shrink-0 cursor-not-allowed select-none items-center gap-2 rounded-lg px-3 text-[12px] font-semibold text-slate-400 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-indigo-400 dark:text-slate-600 dark:focus-visible:ring-indigo-500"
               >
-                <item.icon className="h-3.5 w-3.5 shrink-0 text-slate-300 dark:text-slate-700" />
+                <ItemIcon className="h-3.5 w-3.5 shrink-0 text-slate-300 dark:text-slate-700" />
                 <span className="whitespace-nowrap">{item.label}</span>
                 <Lock className="h-3 w-3 shrink-0 text-slate-300 dark:text-slate-700" strokeWidth={1.5} />
               </div>
@@ -179,10 +261,18 @@ export function CoursePagePillTitle({ icon: Icon, label, href, className, innerC
               to={item.href}
               className={itemClassName}
               aria-current={isActive ? "page" : undefined}
-              title={item.label}
+              aria-label={tooltipText}
+              title={tooltipText}
+              onMouseEnter={(event) => showTooltip(tooltipText, event.currentTarget)}
+              onMouseLeave={hideTooltip}
+              onFocus={(event) => showTooltip(tooltipText, event.currentTarget)}
+              onBlur={hideTooltip}
             >
-              <item.icon className={cn("h-3.5 w-3.5 shrink-0", isActive ? "text-indigo-600 dark:text-indigo-300" : "text-slate-400")} />
+              <ItemIcon className={cn("h-3.5 w-3.5 shrink-0", isActive ? "text-white dark:text-slate-950" : "text-slate-400 transition-colors group-hover:text-indigo-600 dark:group-hover:text-indigo-300")} />
               <span className="whitespace-nowrap">{item.label}</span>
+              {isActive ? (
+                <span className="absolute inset-x-2 -bottom-1 h-0.5 rounded-full bg-indigo-400 dark:bg-indigo-500" />
+              ) : null}
             </Link>
           );
         })}
@@ -190,6 +280,18 @@ export function CoursePagePillTitle({ icon: Icon, label, href, className, innerC
       <div className="flex justify-end pr-1">
         <TopBar />
       </div>
+      {tooltip && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              className="pointer-events-none fixed z-[140] max-w-[260px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-[12px] font-medium leading-5 text-slate-700 shadow-[0_12px_32px_-18px_rgba(15,23,42,0.55)] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+              style={{ left: tooltip.left, top: tooltip.top, transform: "translateX(-50%)" }}
+              role="tooltip"
+            >
+              {tooltip.text}
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }

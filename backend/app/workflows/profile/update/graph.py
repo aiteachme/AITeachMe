@@ -282,7 +282,7 @@ async def run_profile_update_workflow(
         metadata={
             "build_session_id": f"profile_exam:{exam_paper_id}",
             "lane": "update",
-            "langsmith_run_name": "profile.update.after_exam",
+            "langsmith_run_name": "画像引擎：考后更新画像",
             "profile_trigger": trigger,
             "exam_paper_id": exam_paper_id,
             "user_id": user_id or "",
@@ -305,10 +305,9 @@ async def run_profile_update_workflow(
 WORKFLOW_EXPORTS = (
     WorkflowGraphExport(
         key="profile_update",
-        title="Profile Update Workflow",
+        title="考后画像更新链路",
         description=(
-            "Exam-driven profile update: context resolution, mastery update, "
-            "review scheduling, weakness analysis, and persisted profile refresh."
+            "测验驱动的画像更新：解析上下文、更新掌握度、安排复习、分析薄弱点并刷新画像摘要。"
         ),
         build_graph=get_langgraph_dev_profile_update_graph,
         prompts=PROMPTS,

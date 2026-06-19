@@ -54,6 +54,10 @@ def test_graph_quality_audit_records_taxonomy_direction_endpoint_and_coverage_me
     assert diagnostics["graph_audit_edge_count"] == 3
     assert diagnostics["graph_audit_downstream_unit_count"] == 1
     assert diagnostics["graph_audit_exam_ready_unit_count"] == 1
+    assert diagnostics["graph_audit_exam_ready_target_count"] == 32
+    assert diagnostics["graph_audit_exam_ready_gap_count"] == 31
+    assert diagnostics["graph_audit_exam_ready_chapter_floor"] == 4
+    assert diagnostics["graph_audit_exam_ready_low_chapter_count"] == 2
     assert diagnostics["graph_audit_profile_ready_unit_count"] == 1
     assert diagnostics["graph_audit_diagnostic_unit_count"] == 0
     assert diagnostics["graph_audit_valid_relation_edge_count"] == 0
@@ -85,7 +89,27 @@ def test_audit_node_updates_payload_and_node_metrics() -> None:
     assert result["node_metrics"]["audit_graph"]["ok"] is True
     assert result["node_metrics"]["audit_graph"]["chapter_coverage_pct"] == 100.0
     assert result["node_metrics"]["audit_graph"]["exam_ready_unit_count"] == 1
+    assert result["node_metrics"]["audit_graph"]["exam_ready_target_count"] == 32
+    assert result["node_metrics"]["audit_graph"]["exam_ready_gap_count"] == 31
+    assert result["node_metrics"]["audit_graph"]["exam_ready_chapter_floor"] == 4
+    assert result["node_metrics"]["audit_graph"]["exam_ready_low_chapter_count"] == 1
     assert result["node_metrics"]["audit_graph"]["profile_ready_unit_count"] == 1
     assert result["node_metrics"]["audit_graph"]["diagnostic_unit_count"] == 0
     assert result["node_metrics"]["audit_graph"]["examine_profile_ready"] == 1
     assert result["extraction_payload"].diagnostics_totals["graph_audit_warning_count"] == 0
+
+
+def test_graph_quality_counts_application_cases_as_exam_ready_units() -> None:
+    payload = audit_knowledge_sync_payload(
+        _payload(
+            [_unit("ku_case", "分段函数连续参数求解例题", unit_type="application_case", chapter_index=1)],
+            [],
+        ),
+        structured_context={"chapters": [{"chapter_index": 1}]},
+    )
+    diagnostics = payload.diagnostics_totals
+
+    assert diagnostics["graph_audit_downstream_unit_count"] == 0
+    assert diagnostics["graph_audit_exam_ready_unit_count"] == 1
+    assert diagnostics["graph_audit_diagnostic_unit_count"] == 1
+    assert diagnostics["graph_audit_warning_count"] == 0

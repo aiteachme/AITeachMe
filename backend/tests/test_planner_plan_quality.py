@@ -24,6 +24,7 @@ from app.workflows.digest.planner.prompts.build_plan_composer import (
     SUGGESTION_END,
     SUGGESTION_START,
     build_planner_diagnosis_messages,
+    build_planner_stream_messages,
 )
 
 
@@ -149,6 +150,8 @@ def test_docgen_diagnose_brief_renders_user_answers() -> None:
 
     assert "用户补充：希望后续例题对齐函数薄弱点。" in brief
     assert "用户回答：函数" in brief
+    assert "硬性生成约束" in brief
+    assert "章末检测配置" in brief
     assert "快速回答" not in brief
 
 
@@ -280,6 +283,12 @@ def test_normalize_planner_draft_aligns_explicit_chapter_titles() -> None:
     assert len(draft.chapters) == 2
     assert "函数概念与自变量取值" in draft.plan
     assert "一次函数图像与斜率截距" in draft.plan
+    required_text = "、".join(item for chapter in draft.chapters for item in chapter.required_elements)
+    assert "围绕" not in required_text
+    assert "方法步骤" not in required_text
+    assert "单元测试" not in required_text
+    assert "函数概念与自变量取值图表读取方法" in required_text
+    assert "一次函数图像与斜率截距综合练习题型" in required_text
 
 
 def test_normalize_planner_draft_compacts_verbose_module_titles() -> None:
@@ -479,6 +488,27 @@ def test_planner_diagnosis_prompt_keeps_questions_actionable_and_short() -> None
     assert "每题都必须能在 DocGen 文档中看见结果" in prompt_text
     assert "重竞赛思维" in prompt_text
     assert "文档落点" in prompt_text
+
+
+def test_planner_prompt_requires_object_level_key_points() -> None:
+    messages = build_planner_stream_messages(
+        course_name="初中函数",
+        user_prompt="每章要有图示、例题、易错点和单元测试。",
+        digest_mode="sprint",
+        material_context=_material_context(),
+        planning_note="用户需要函数复习路径。",
+        material_note="暂无绑定资料。",
+        message_history=[],
+    )
+    prompt_text = "\n".join(message["content"] for message in messages)
+
+    assert "key_points 中能进入知识图谱的内容必须写成具体课程对象" in prompt_text
+    assert "不要把“图示”“方法步骤”“单元测试”" in prompt_text
+    assert "整理”“判定题”“图表分析" in prompt_text
+    assert "统计数据整理方法" in prompt_text
+    assert "几何判定条件识别" in prompt_text
+    assert "函数图像读图" in prompt_text
+    assert "函数综合练习题型" in prompt_text
 
 
 def test_partial_chapters_supports_streaming_preview() -> None:

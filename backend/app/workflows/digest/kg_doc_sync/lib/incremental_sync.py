@@ -72,8 +72,8 @@ _RAG_DEDUP_TOP_K = 6
 _RAG_DEDUP_SIMILARITY_THRESHOLD = 0.82
 _DEFAULT_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS = 16
 _DOCS_SYNC_SPLIT_MIN_CHILD_SECTIONS = 2
-_DOCS_SYNC_SPLIT_MIN_CHAPTER_CHARS = 2400
-_DOCS_SYNC_SPLIT_TARGET_TASK_CHARS = 1800
+_DOCS_SYNC_SPLIT_MIN_CHAPTER_CHARS = 1800
+_DOCS_SYNC_SPLIT_TARGET_TASK_CHARS = 1400
 _DEFAULT_DOCS_SYNC_CHAPTER_MAX_RETRIES = 2
 _DEFAULT_DOCS_SYNC_CHAPTER_RETRY_DELAY_S = 0.4
 _DOCS_SYNC_CHAPTER_MAX_RETRIES = _DEFAULT_DOCS_SYNC_CHAPTER_MAX_RETRIES
@@ -161,6 +161,11 @@ def _source_quote(text: str, *, max_chars: int = 500) -> str:
     if len(cleaned) > max_chars:
         return cleaned[: max(0, max_chars - 3)].rstrip() + "..."
     return cleaned
+
+
+def _clean_docgen_draft_name(value: object) -> str:
+    text = " ".join(str(value or "").split()).strip(" ：:，,。；;、|-")
+    return text
 
 
 def _clean_context_list(value: object, *, limit: int = 6, max_chars: int = 100) -> list[str]:
@@ -446,6 +451,28 @@ def _preliminary_kg_payload(structured_context: dict[str, object]) -> dict[str, 
     return _as_mapping(summary.get("docgen_kg_draft") or summary.get("preliminary_kg"))
 
 
+def _clean_course_root_name(value: object) -> str:
+    text = " ".join(str(value or "").split()).strip()
+    if not text:
+        return ""
+    if text in {"课程", "未命名课程", "默认课程", "学习课程"}:
+        return ""
+    return text[:80].rstrip()
+
+
+def _course_root_name_from_context(structured_context: dict[str, object]) -> str:
+    manifest = _as_mapping(structured_context.get("docgen_manifest"))
+    summary = _as_mapping(structured_context.get("document_summary_json"))
+    confirmed_plan = _as_mapping(manifest.get("confirmed_plan") or summary.get("confirmed_plan"))
+    docgen_context = _as_mapping(manifest.get("docgen_context"))
+    for payload in (structured_context, summary, confirmed_plan, docgen_context, manifest):
+        for key in ("course_name", "course_title", "title", "generated_course_name"):
+            name = _clean_course_root_name(payload.get(key) if isinstance(payload, dict) else "")
+            if name:
+                return name
+    return ""
+
+
 def sync_markdown_knowledge_graph(
     session: Session,
     *,
@@ -586,11 +613,10 @@ def build_prefetched_knowledge_graph_units_payload(
     structured_context: dict[str, object] | None = None,
     prefetched_records: list[SectionExtractionRecord] | None = None,
 ) -> KnowledgeSyncExtractionPayload:
-    """把 DocGen 已有图谱信号合成早期知识点。
+    """把 DocGen 已有图谱信号合成早期可见图谱。
 
-    优先复用已匹配最终文档的 section LLM 预抽取；即使预抽取为空，也会使用
-    DocGen 规划阶段产出的 preliminary_kg/backbone 规则种子，避免自动图谱
-    在正式抽取被取消时完全没有可用知识点。
+    这里只复用已匹配最终文档的 section LLM 预抽取，并补充课程/章节结构锚点。
+    DocGen preliminary_kg/backbone 只作为上下文，不再以规则方式生成语义知识点。
     """
 
     records = list(prefetched_records or [])
@@ -683,6 +709,7 @@ def build_prefetched_knowledge_graph_units_payload(
     for unit in units:
         if not unit.anchor:
             continue
+        candidate_id_to_anchor.setdefault(unit.anchor, unit.anchor)
         name_bucket = anchors_by_name.setdefault(unit.name, [])
         if unit.anchor not in name_bucket:
             name_bucket.append(unit.anchor)
@@ -691,6 +718,13 @@ def build_prefetched_knowledge_graph_units_payload(
             normalized_bucket = anchors_by_normalized_name.setdefault(normalized_name, [])
             if unit.anchor not in normalized_bucket:
                 normalized_bucket.append(unit.anchor)
+    pending_edges.extend(
+        _build_chapter_membership_edges(
+            units=units,
+            chapter_contexts=chapter_contexts,
+            anchors_by_normalized_name=anchors_by_normalized_name,
+        )
+    )
     edges = _resolve_pending_edges_to_extracted(
         pending_edges,
         candidate_id_to_anchor=candidate_id_to_anchor,
@@ -735,7 +769,7 @@ def build_docgen_kg_draft_units_payload(
     units: list[MarkdownKnowledgeUnit] = []
     for item in _as_list(draft.get("nodes")):
         payload = _as_mapping(item)
-        name = str(payload.get("name") or "").strip()
+        name = _clean_docgen_draft_name(payload.get("name"))
         normalized_name = normalize_name(name)
         if not name or not normalized_name:
             continue
@@ -805,7 +839,7 @@ def build_docgen_kg_draft_final_payload(
 
     for item in _as_list(draft.get("nodes")):
         payload = _as_mapping(item)
-        name = str(payload.get("name") or "").strip()
+        name = _clean_docgen_draft_name(payload.get("name"))
         normalized_name = normalize_name(name)
         if not name or not normalized_name:
             continue
@@ -851,7 +885,7 @@ def build_docgen_kg_draft_final_payload(
         return None
 
     def _resolve_anchor(name: object) -> str:
-        normalized = normalize_name(str(name or "").strip())
+        normalized = normalize_name(_clean_docgen_draft_name(name))
         if not normalized:
             return ""
         candidates = anchors_by_normalized_name.get(normalized, [])
@@ -864,8 +898,12 @@ def build_docgen_kg_draft_final_payload(
     skipped_edge_direction_count = 0
     for item in _as_list(draft.get("edges")):
         payload = _as_mapping(item)
-        source_name = str(payload.get("source_name") or payload.get("source") or "").strip()
-        target_name = str(payload.get("target_name") or payload.get("target") or "").strip()
+        source_name = _clean_docgen_draft_name(payload.get("source_name") or payload.get("source"))
+        target_name = _clean_docgen_draft_name(payload.get("target_name") or payload.get("target"))
+        if not source_name or not target_name:
+            skipped_edge_count += 1
+            skipped_edge_endpoint_count += 1
+            continue
         source_anchor = _resolve_anchor(source_name)
         target_anchor = _resolve_anchor(target_name)
         edge_type = normalize_relation_type(str(payload.get("edge_type") or payload.get("relation") or "related_to"))
@@ -1497,7 +1535,7 @@ def persist_knowledge_graph_units_early(
     payload: KnowledgeSyncExtractionPayload,
     enable_rag_dedup: bool = False,
 ) -> dict[str, object]:
-    """提前写入可验证的 KnowledgeUnit/KnowledgeEdge 种子。
+    """提前写入可验证的 KnowledgeUnit/KnowledgeEdge。
 
     这里刻意不写 source ref、废弃标记，也不结束 sync run。
     关系缝合完成后，原本的 persist 节点仍然负责最终权威写入。
@@ -1683,6 +1721,12 @@ def _apply_extracted_graph_items(
             session,
             course_id=course_id,
             active_anchors=set(report.synced_unit_keys),
+            active_unit_ids={int(unit.id) for unit in unit_by_anchor.values() if unit.id is not None},
+            active_identity_keys={
+                (normalize_knowledge_unit_type(item.knowledge_unit_type), normalize_name(item.name))
+                for item in units
+                if normalize_name(item.name)
+            },
             build_revision_no=build_revision_no,
         )
     )
@@ -2128,7 +2172,7 @@ def _apply_task_context_to_payload(
         section_index=task.task_index,
         title=task.chunk.title,
         header_path=task.chunk.header_path,
-        body_markdown=(task.chunk.body_markdown or "")[:8000],
+        body_markdown=task.chunk.body_markdown or "",
         knowledge_document_id=knowledge_document_id,
         source_file_ids=source_file_ids,
     )
@@ -2291,6 +2335,7 @@ def _combine_section_payloads(
         units = [*backbone_units, *units]
         diagnostics_totals["backbone_unit_count"] = len(backbone_units)
         for unit in backbone_units:
+            candidate_id_to_anchor.setdefault(unit.anchor, unit.anchor)
             anchors_by_name.setdefault(unit.name, []).append(unit.anchor)
             normalized_name = normalize_name(unit.name)
             if normalized_name:
@@ -2308,10 +2353,21 @@ def _combine_section_payloads(
         pending_edges.extend(backbone_edges)
         diagnostics_totals["backbone_edge_count"] = len(backbone_edges)
 
+    for unit in units:
+        if unit.anchor:
+            candidate_id_to_anchor.setdefault(unit.anchor, unit.anchor)
+
     pending_edges.extend(
         _build_structural_heading_edges(
             sections=sections,
             anchors_by_name=anchors_by_name,
+            anchors_by_normalized_name=anchors_by_normalized_name,
+        )
+    )
+    pending_edges.extend(
+        _build_chapter_membership_edges(
+            units=units,
+            chapter_contexts=chapter_contexts,
             anchors_by_normalized_name=anchors_by_normalized_name,
         )
     )
@@ -2482,7 +2538,7 @@ def _empty_failed_section_payload(
             section_index=task.task_index,
             title=task.chunk.title,
             header_path=task.chunk.header_path,
-            body_markdown=(task.chunk.body_markdown or "")[:8000],
+            body_markdown=task.chunk.body_markdown or "",
             knowledge_document_id=chapter_context.knowledge_document_id,
             source_file_ids=list(chapter_context.source_file_ids),
         ),
@@ -2608,167 +2664,87 @@ def _build_backbone_graph_items(
     chapter_contexts: dict[int, ChapterSourceContext],
     existing_normalized_names: set[str] | None = None,
 ) -> tuple[list[MarkdownKnowledgeUnit], list[PendingMarkdownExtractedEdge]]:
-    backbone = _document_backbone_payload(structured_context)
-    preliminary_kg = _preliminary_kg_payload(structured_context)
-    if not backbone and not preliminary_kg:
+    course_root_name = _course_root_name_from_context(structured_context)
+    if not course_root_name and not chapter_contexts:
         return [], []
 
     existing_normalized_names = set(existing_normalized_names or set())
-    target_chapters_by_term: dict[str, list[int]] = {}
     units: list[MarkdownKnowledgeUnit] = []
     used_backbone_anchors: set[str] = set()
-    for item in _as_list(preliminary_kg.get("nodes")):
-        payload = _as_mapping(item)
-        name = str(payload.get("name") or "").strip()
-        normalized_name = normalize_name(name)
-        if not name or not normalized_name or normalized_name in existing_normalized_names:
-            continue
-        target_chapters = _clean_int_list(payload.get("target_chapters")) or _clean_int_list(payload.get("chapter_index"))
-        target_chapters_by_term[normalized_name] = target_chapters
-        chapter_index = target_chapters[0] if target_chapters else 0
-        chapter_context = chapter_contexts.get(chapter_index) or ChapterSourceContext(chapter_index=chapter_index)
-        summary = _source_quote(str(payload.get("summary") or name), max_chars=300)
-        unit_type = normalize_generated_knowledge_unit_type(
-            str(payload.get("knowledge_unit_type") or payload.get("type") or "concept"),
-            name=name,
-            summary=summary,
-        )
-        source_kind = str(payload.get("source") or "docgen_preliminary_kg").strip() or "docgen_preliminary_kg"
+    course_root_key = normalize_name(course_root_name)
+    if course_root_name and course_root_key and course_root_key not in existing_normalized_names:
         units.append(
             MarkdownKnowledgeUnit(
-                anchor=build_knowledge_unit_anchor(f"docgen-preliminary-{name}", used=used_backbone_anchors),
-                name=name,
-                knowledge_unit_type=unit_type,
+                anchor=build_knowledge_unit_anchor(f"docgen-course-root-{course_root_name}", used=used_backbone_anchors),
+                name=course_root_name,
+                knowledge_unit_type="topic",
+                summary=f"{course_root_name} 的课程级知识图谱根主题。",
+                body_markdown=f"{course_root_name} 的课程级知识图谱根主题。",
+                source_kind="docgen_backbone",
+                chapter_index=0,
+                quote_text=course_root_name,
+            )
+        )
+        existing_normalized_names.add(course_root_key)
+
+    chapter_topic_names: list[tuple[str, int, ChapterSourceContext]] = []
+    for chapter_context in sorted(
+        chapter_contexts.values(),
+        key=lambda item: (int(item.chapter_index or 0), item.title),
+    ):
+        chapter_title = _clean_docgen_draft_name(chapter_context.title)
+        if not chapter_title:
+            continue
+        chapter_key = normalize_name(chapter_title)
+        if not chapter_key or chapter_key == course_root_key:
+            continue
+        chapter_index = int(chapter_context.chapter_index or 0)
+        chapter_topic_names.append((chapter_title, chapter_index, chapter_context))
+        if chapter_key in existing_normalized_names:
+            continue
+        summary = _source_quote(chapter_context.summary or f"{chapter_title} 是课程章节主题。", max_chars=300)
+        units.append(
+            MarkdownKnowledgeUnit(
+                anchor=build_knowledge_unit_anchor(f"docgen-chapter-topic-{chapter_title}", used=used_backbone_anchors),
+                name=chapter_title,
+                knowledge_unit_type="topic",
                 summary=summary,
                 body_markdown=summary,
-                source_kind=source_kind,
+                source_kind="structural_heading",
                 knowledge_document_id=chapter_context.knowledge_document_id,
                 chapter_index=chapter_index,
                 source_file_ids=list(chapter_context.source_file_ids),
-                quote_text=summary,
+                quote_text=chapter_title,
             )
         )
-        existing_normalized_names.add(normalized_name)
-
-    for item in _as_list(backbone.get("canonical_glossary")):
-        payload = _as_mapping(item)
-        term = str(payload.get("term") or "").strip()
-        if not term:
-            continue
-        target_chapters = _clean_int_list(payload.get("target_chapters"))
-        normalized_term = normalize_name(term)
-        if not normalized_term:
-            continue
-        target_chapters_by_term[normalized_term] = target_chapters
-        if normalized_term in existing_normalized_names:
-            continue
-        chapter_index = target_chapters[0] if target_chapters else 0
-        chapter_context = chapter_contexts.get(chapter_index) or ChapterSourceContext(chapter_index=chapter_index)
-        definition = _source_quote(str(payload.get("definition") or payload.get("summary") or term), max_chars=300)
-        unit_type = normalize_generated_knowledge_unit_type(
-            str(payload.get("knowledge_unit_type") or payload.get("type") or "concept"),
-            name=term,
-            summary=definition,
-        )
-        units.append(
-            MarkdownKnowledgeUnit(
-                anchor=build_knowledge_unit_anchor(f"docgen-backbone-{term}", used=used_backbone_anchors),
-                name=term,
-                knowledge_unit_type=unit_type,
-                summary=definition,
-                body_markdown=definition,
-                source_kind="docgen_backbone",
-                knowledge_document_id=chapter_context.knowledge_document_id,
-                chapter_index=chapter_index,
-                source_file_ids=list(chapter_context.source_file_ids),
-                quote_text=definition,
-            )
-        )
-        existing_normalized_names.add(normalized_term)
+        existing_normalized_names.add(chapter_key)
 
     edges: list[PendingMarkdownExtractedEdge] = []
     seen_edges: set[tuple[str, str, str]] = set()
-    for item in _as_list(preliminary_kg.get("edges")):
-        payload = _as_mapping(item)
-        source_name = str(payload.get("source_name") or payload.get("source") or "").strip()
-        target_name = str(payload.get("target_name") or payload.get("target") or "").strip()
-        if not source_name or not target_name:
-            continue
-        edge_type = normalize_relation_type(str(payload.get("edge_type") or payload.get("relation") or "applies_to"))
-        source_key = normalize_name(source_name)
-        target_key = normalize_name(target_name)
-        if source_key not in existing_normalized_names or target_key not in existing_normalized_names:
-            continue
-        key = (source_key, target_key, edge_type)
-        if not key[0] or not key[1] or key[0] == key[1] or key in seen_edges:
-            continue
-        seen_edges.add(key)
-        chapter_candidates = (
-            _clean_int_list(payload.get("target_chapters"))
-            or _clean_int_list(payload.get("chapter_index"))
-            or target_chapters_by_term.get(target_key)
-            or target_chapters_by_term.get(source_key)
-            or []
-        )
-        chapter_index = chapter_candidates[0] if chapter_candidates else 0
-        chapter_context = chapter_contexts.get(chapter_index) or ChapterSourceContext(chapter_index=chapter_index)
-        description = str(payload.get("description") or "").strip()
-        source_kind = str(payload.get("source") or "docgen_preliminary_kg").strip() or "docgen_preliminary_kg"
-        edges.append(
-            PendingMarkdownExtractedEdge(
-                source_candidate_id=None,
-                target_candidate_id=None,
-                source_name=source_name,
-                target_name=target_name,
-                edge_type=edge_type,
-                description=description or f"{source_name} 关联 {target_name}。",
-                source_kind=source_kind,
-                knowledge_document_id=chapter_context.knowledge_document_id,
-                chapter_index=chapter_index,
-                source_file_ids=list(chapter_context.source_file_ids),
-                quote_text=description,
+    if course_root_name and course_root_key in existing_normalized_names:
+        for chapter_title, chapter_index, chapter_context in chapter_topic_names:
+            chapter_key = normalize_name(chapter_title)
+            if not chapter_key or chapter_key == course_root_key or chapter_key not in existing_normalized_names:
+                continue
+            key = (chapter_key, course_root_key, "part_of")
+            if key in seen_edges:
+                continue
+            seen_edges.add(key)
+            edges.append(
+                PendingMarkdownExtractedEdge(
+                    source_candidate_id=None,
+                    target_candidate_id=None,
+                    source_name=chapter_title,
+                    target_name=course_root_name,
+                    edge_type="part_of",
+                    description=f"{chapter_title} 属于课程主题 {course_root_name}。",
+                    source_kind="structural_heading",
+                    knowledge_document_id=chapter_context.knowledge_document_id,
+                    chapter_index=chapter_index,
+                    source_file_ids=list(chapter_context.source_file_ids),
+                    quote_text=chapter_title,
+                )
             )
-        )
-
-    for item in _as_list(backbone.get("concept_dependency_graph")):
-        payload = _as_mapping(item)
-        source_name = str(payload.get("from_concept") or payload.get("from") or "").strip()
-        target_name = str(payload.get("to_concept") or payload.get("to") or "").strip()
-        if not source_name or not target_name:
-            continue
-        raw_relation = str(payload.get("relation") or "").strip()
-        edge_type = "prerequisite_for" if raw_relation == "chapter_order" else normalize_relation_type(raw_relation)
-        source_key = normalize_name(source_name)
-        target_key = normalize_name(target_name)
-        if source_key not in existing_normalized_names or target_key not in existing_normalized_names:
-            continue
-        key = (source_key, target_key, edge_type)
-        if not key[0] or not key[1] or key[0] == key[1] or key in seen_edges:
-            continue
-        seen_edges.add(key)
-        chapter_candidates = (
-            target_chapters_by_term.get(normalize_name(target_name))
-            or target_chapters_by_term.get(normalize_name(source_name))
-            or []
-        )
-        chapter_index = chapter_candidates[0] if chapter_candidates else 0
-        chapter_context = chapter_contexts.get(chapter_index) or ChapterSourceContext(chapter_index=chapter_index)
-        reason = str(payload.get("reason") or "").strip()
-        edges.append(
-            PendingMarkdownExtractedEdge(
-                source_candidate_id=None,
-                target_candidate_id=None,
-                source_name=source_name,
-                target_name=target_name,
-                edge_type=edge_type,
-                description=reason or f"{source_name} 支撑 {target_name}。",
-                source_kind="docgen_backbone",
-                knowledge_document_id=chapter_context.knowledge_document_id,
-                chapter_index=chapter_index,
-                source_file_ids=list(chapter_context.source_file_ids),
-                quote_text=reason,
-            )
-        )
 
     return units, edges
 
@@ -2822,6 +2798,54 @@ def _build_structural_heading_edges(
             )
         )
 
+    return pending_edges
+
+
+def _build_chapter_membership_edges(
+    *,
+    units: list[MarkdownKnowledgeUnit],
+    chapter_contexts: dict[int, ChapterSourceContext],
+    anchors_by_normalized_name: dict[str, list[str]],
+) -> list[PendingMarkdownExtractedEdge]:
+    pending_edges: list[PendingMarkdownExtractedEdge] = []
+    seen: set[tuple[str, str, str]] = set()
+    for unit in units:
+        source_name = str(unit.name or "").strip()
+        source_key = normalize_name(source_name)
+        chapter_index = int(unit.chapter_index or 0)
+        chapter_context = chapter_contexts.get(chapter_index)
+        chapter_title = str(chapter_context.title if chapter_context is not None else "").strip()
+        target_key = normalize_name(chapter_title)
+        if (
+            not source_name
+            or not source_key
+            or not chapter_title
+            or not target_key
+            or source_key == target_key
+        ):
+            continue
+        target_anchors = anchors_by_normalized_name.get(target_key) or []
+        if not target_anchors:
+            continue
+        key = (source_key, target_key, "part_of")
+        if key in seen:
+            continue
+        seen.add(key)
+        pending_edges.append(
+            PendingMarkdownExtractedEdge(
+                source_candidate_id=unit.anchor,
+                target_candidate_id=target_anchors[0],
+                source_name=source_name,
+                target_name=chapter_title,
+                edge_type="part_of",
+                description=f"{source_name} 属于章节主题 {chapter_title}。",
+                source_kind="structural_heading",
+                knowledge_document_id=unit.knowledge_document_id,
+                chapter_index=chapter_index,
+                source_file_ids=list(unit.source_file_ids),
+                quote_text=chapter_title,
+            )
+        )
     return pending_edges
 
 
@@ -3107,7 +3131,7 @@ async def _extract_chapter_graph_items(
     anchors_by_name: dict[str, list[str]] = {}
     anchors_by_normalized_name: dict[str, list[str]] = {}
     node_contexts_by_anchor: dict[str, dict[str, object]] = {}
-    body_markdown = chapter.body_markdown[:8000]
+    body_markdown = chapter.body_markdown
     knowledge_images = list(chapter.knowledge_images)
     primary_anchor: str | None = None
     primary_name = ""
@@ -3322,7 +3346,7 @@ def _remember_unit_lookup(cache: _UnitLookupCache, unit: KnowledgeUnit) -> None:
     for key, cached in list(cache.by_type_name.items()):
         if cached.id == unit.id:
             cache.by_type_name.pop(key, None)
-    if unit.status in {"active", "pending"} and unit.normalized_name:
+    if unit.normalized_name:
         cache.by_type_name[(normalize_knowledge_unit_type(unit.knowledge_unit_type), unit.normalized_name)] = unit
     for alias in _load_aliases(unit.aliases_json):
         if alias.get("source") != _ANCHOR_ALIAS_SOURCE:
@@ -3359,14 +3383,28 @@ def _upsert_unit(
 ) -> tuple[KnowledgeUnit, bool]:
     knowledge_unit_type = normalize_knowledge_unit_type(item.knowledge_unit_type)
     normalized_name = normalize_name(item.name)
-    unit = (
+    type_name_key = (knowledge_unit_type, normalized_name)
+    name_matched_unit = (
+        lookup_cache.by_type_name.get(type_name_key)
+        if lookup_cache is not None
+        else _find_unit_by_any_status_normalized_name(
+            session,
+            course_id=course_id,
+            normalized_name=normalized_name,
+            knowledge_unit_type=knowledge_unit_type,
+        )
+    )
+    anchor_matched_unit = (
         lookup_cache.by_anchor.get(item.anchor)
         if lookup_cache is not None
         else _find_unit_by_anchor(session, course_id=course_id, anchor=item.anchor)
     )
+    # Exact type/name identity must win over stale anchor identity because the
+    # database uniqueness constraint is defined on (course, type, normalized_name).
+    unit = name_matched_unit or anchor_matched_unit
     if unit is None:
         unit = (
-            lookup_cache.by_type_name.get((knowledge_unit_type, normalized_name))
+            lookup_cache.by_type_name.get(type_name_key)
             if lookup_cache is not None
             else _find_unit_by_exact_name(
                 session,
@@ -3383,13 +3421,13 @@ def _upsert_unit(
             knowledge_unit_type=knowledge_unit_type,
         )
     name_conflict_unit = (
-        lookup_cache.by_type_name.get((knowledge_unit_type, normalized_name))
+        lookup_cache.by_type_name.get(type_name_key)
         if lookup_cache is not None
-        else knowledge_unit_repo.find_knowledge_unit_by_normalized_name(
+        else _find_unit_by_any_status_normalized_name(
             session,
-            course_id,
-            normalized_name,
-            knowledge_unit_type,
+            course_id=course_id,
+            normalized_name=normalized_name,
+            knowledge_unit_type=knowledge_unit_type,
         )
     )
     if name_conflict_unit is not None and (unit is None or name_conflict_unit.id != unit.id):
@@ -3502,6 +3540,25 @@ def _find_unit_by_anchor(session: Session, *, course_id: str, anchor: str) -> Kn
             if alias.get("source") == _ANCHOR_ALIAS_SOURCE and alias.get("normalized_alias") == anchor:
                 return unit
     return None
+
+
+def _find_unit_by_any_status_normalized_name(
+    session: Session,
+    *,
+    course_id: str,
+    normalized_name: str,
+    knowledge_unit_type: str,
+) -> KnowledgeUnit | None:
+    if not normalized_name:
+        return None
+    return session.exec(
+        select(KnowledgeUnit).where(
+            KnowledgeUnit.course_id == course_id,
+            KnowledgeUnit.knowledge_unit_type == normalize_knowledge_unit_type(knowledge_unit_type),
+            KnowledgeUnit.normalized_name == normalized_name,
+            KnowledgeUnit.status.in_(["active", "pending", "deprecated"]),
+        )
+    ).first()
 
 
 def _find_unit_by_exact_name(
@@ -3673,9 +3730,13 @@ def _deprecate_removed_anchor_units(
     *,
     course_id: str,
     active_anchors: set[str],
+    active_unit_ids: set[int] | None = None,
+    active_identity_keys: set[tuple[str, str]] | None = None,
     build_revision_no: int,
 ) -> list[int]:
     deprecated: list[int] = []
+    active_unit_ids = set(active_unit_ids or set())
+    active_identity_keys = set(active_identity_keys or set())
     units = session.exec(
         select(KnowledgeUnit).where(
             KnowledgeUnit.course_id == course_id,
@@ -3683,6 +3744,9 @@ def _deprecate_removed_anchor_units(
         )
     ).all()
     for unit in units:
+        unit_id = int(unit.id or 0)
+        if unit_id > 0 and unit_id in active_unit_ids:
+            continue
         anchors = [
             str(alias.get("normalized_alias", ""))
             for alias in _load_aliases(unit.aliases_json)
@@ -3690,7 +3754,18 @@ def _deprecate_removed_anchor_units(
         ]
         if not anchors:
             continue
+        if active_unit_ids:
+            unit.status = "deprecated"
+            unit.build_revision_no = build_revision_no
+            unit.updated_at = utcnow()
+            session.add(unit)
+            if unit.id is not None:
+                deprecated.append(unit.id)
+            continue
         if any(anchor in active_anchors for anchor in anchors):
+            continue
+        identity_key = (normalize_knowledge_unit_type(unit.knowledge_unit_type), normalize_name(unit.canonical_name))
+        if identity_key in active_identity_keys:
             continue
         unit.status = "deprecated"
         unit.build_revision_no = build_revision_no

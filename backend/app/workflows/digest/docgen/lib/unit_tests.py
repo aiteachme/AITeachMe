@@ -92,6 +92,13 @@ _RAW_LATEX_FRAGMENT_RE = re.compile(
     r")"
     r"(?![$])"
 )
+_MATH_HINT_RE = re.compile(
+    r"(\${1,2}|\\\(|\\\[|\\(?:sqrt|frac|lim|sin|cos|tan|cot|ln|log|sum|int|Delta|delta|epsilon|varepsilon|theta|pi|infty|cdot|times|leq|geq|neq|to|sim)\b)"
+)
+_LEADING_TABLE_PIPE_BEFORE_MATH_RE = re.compile(
+    r"(?m)(^|[\s(（])(?:\\\||\|)+\s*(?=(?:\\?\${1,2}|\\\(|\\\[|\\(?:sqrt|frac|lim|sin|cos|tan|ln|log|sum|int)\b))"
+)
+_ESCAPED_MATH_DOLLAR_RE = re.compile(r"\\(\${1,2})")
 
 
 def _compact_label(value: str) -> str:
@@ -128,14 +135,12 @@ def _normalize_choice_options(value: Any) -> list[str]:
     cleaned: list[str] = []
     seen: set[str] = set()
     for item in raw_items:
-        text = clean_text(item)
+        text = _sanitize_unit_test_math_text(item)
         match = _CHOICE_LABEL_RE.match(text)
         if match:
             text = match.group("text").strip()
         if not text:
             continue
-        if len(text) > 28:
-            text = text[:27].rstrip(" ，,。；;、") + "…"
         key = _compact_label(text)
         if not key or key in seen:
             continue
@@ -241,10 +246,26 @@ def strip_existing_unit_test_sections(markdown: str) -> str:
 
 
 def _markdown_text(value: str, *, limit: int | None = None) -> str:
-    text = " ".join(str(value or "").strip().split())
-    if limit is not None and len(text) > limit:
+    text = " ".join(_sanitize_unit_test_math_text(value).strip().split())
+    text = _wrap_raw_latex_fragments(text)
+    if limit is not None and len(text) > limit and not _MATH_HINT_RE.search(text):
         text = text[: max(1, limit - 1)].rstrip(" ，,。；;、") + "…"
-    return _wrap_raw_latex_fragments(text)
+    return text
+
+
+def _markdown_explanation_lines(value: str, *, limit: int = 520) -> list[str]:
+    text = _markdown_text(value, limit=limit)
+    if not text:
+        return []
+    numbered_parts = re.split(r"\s*(?=\d+[.、]\s*)", text)
+    if len([part for part in numbered_parts if part.strip()]) > 1:
+        return [re.sub(r"^\d+[.、]\s*", "", part).strip() for part in numbered_parts if part.strip()]
+    parts = [
+        part.strip()
+        for part in re.split(r"[；;]\s*|(?<=[。！？!?])\s+", text)
+        if part.strip()
+    ]
+    return parts if len(parts) > 1 else [text]
 
 
 def _wrap_raw_latex_fragments(text: str) -> str:
@@ -267,6 +288,17 @@ def _wrap_raw_latex_fragments(text: str) -> str:
 
         parts[index] = _RAW_LATEX_FRAGMENT_RE.sub(replace, part)
     return "".join(parts)
+
+
+def _sanitize_unit_test_math_text(value: Any) -> str:
+    """Fix common model artifacts before Markdown/KaTeX rendering."""
+
+    text = clean_text(value)
+    if not text:
+        return ""
+    text = _ESCAPED_MATH_DOLLAR_RE.sub(r"\1", text)
+    text = _LEADING_TABLE_PIPE_BEFORE_MATH_RE.sub(r"\1", text)
+    return text.strip()
 
 
 def _ordered_unique(values: list[str], order: list[str]) -> list[str]:
@@ -377,17 +409,23 @@ def _render_unit_test_item_markdown(item: ChapterUnitTestItem, *, index: int) ->
     lines = [
         f"> [!QUESTION] **Q{index:02d}｜{question_type}｜{difficulty}｜考点：{_markdown_text(item.target, limit=36)}**",
         ">",
+        "> **题目**",
+        ">",
         f"> {_markdown_text(item.stem, limit=420)}",
     ]
-    lines.extend([">", "> **选项**"])
-    lines.extend([f"> - {label}. {_markdown_text(option, limit=42)}" for label, option in zip("ABCD", item.options)])
-    lines.extend(
-        [
-            "",
-            f"**答案与依据**：{_markdown_text(item.answer, limit=360)}",
-            f"**判定依据**：{_markdown_text(item.basis, limit=360)}",
-        ]
-    )
+    if item.options:
+        lines.extend([">", "> **选项**", ">"])
+        lines.extend([f"> - {label}. {_markdown_text(option, limit=42)}" for label, option in zip("ABCD", item.options)])
+    explanation_lines = _markdown_explanation_lines(item.basis)
+    lines.extend(["", "> [!ANSWER]", ">", "> **答案**", ">"])
+    answer_text = _markdown_text(item.answer, limit=360) or "见解析。"
+    lines.append(f"> {answer_text}")
+    if explanation_lines:
+        lines.extend([">", "> **解析步骤**", ">"])
+        if len(explanation_lines) == 1:
+            lines.append(f"> {explanation_lines[0]}")
+        else:
+            lines.extend(f"> {step}. {line}" for step, line in enumerate(explanation_lines[:5], start=1))
     return "\n".join(lines).strip()
 
 

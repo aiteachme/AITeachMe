@@ -643,35 +643,6 @@ export function CourseDashboardPage() {
 
       <div className="flex w-full flex-col gap-8 relative z-10">
 
-        {/* Active DocGen Progress Banner */}
-        {isDocGenerating && (
-          <div className="relative overflow-hidden rounded-2xl border border-indigo-100/80 bg-gradient-to-r from-indigo-50/50 via-white/80 to-indigo-50/30 p-5 shadow-[0_4px_20px_rgba(99,102,241,0.04)] backdrop-blur-sm dark:border-indigo-950/80 dark:from-indigo-950/20 dark:via-slate-900/70 dark:to-indigo-950/15 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 transition-all duration-300">
-            <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/[0.02] to-transparent pointer-events-none" />
-            <div className="flex items-center gap-4 relative z-10">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-650 dark:bg-indigo-500/20 dark:text-indigo-405 border border-indigo-200/20 dark:border-indigo-800/35 shadow-inner">
-                <Loader2 className="h-5 w-5 animate-spin" />
-              </span>
-              <div>
-                <h4 className="text-[15px] font-bold text-slate-850 dark:text-slate-205">
-                  知识库正在后台构建中...
-                </h4>
-                <p className="mt-1 text-[13px] text-slate-500 dark:text-slate-400 font-light leading-relaxed">
-                  系统正在智能解析资料、整理课程考点与深度讲义。您可以随时在此查看实时进度与日志。
-                </p>
-              </div>
-            </div>
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => navigate(buildCoursePath(courseId, "knowledge-docs"))}
-              className="self-start sm:self-auto shrink-0 bg-indigo-650 hover:bg-indigo-700 text-white dark:bg-indigo-700 dark:hover:bg-indigo-800 text-xs font-semibold px-4 h-9 rounded-xl shadow-md shadow-indigo-500/10 hover:shadow-indigo-500/20 flex items-center gap-1.5 transition-all duration-300 relative z-10"
-            >
-              查看构建进度
-              <ArrowRight className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        )}
-
         {/* Top Header & Version Switcher */}
         <section className="flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between pt-4 relative z-10">
           <div className="max-w-4xl space-y-3">

@@ -289,6 +289,7 @@ def render_planner_chapter_contract(value: Any) -> str:
             f"- 划分主线：{granularity}",
             "- 章节是可直接授课的内容模块，标题写成可独立理解的课程目录名，通常 4-12 字，不使用冒号/破折号副标题；过宽的目录词只补一个短学习焦点。",
             "- required_elements/key_points 描述所属章节内部的目标、概念、例题、易错点、练习、检测、纠错和巩固安排。",
+            "- required_elements/key_points 中的知识对象必须具体：写成概念名、方法名、题型名或错因名；不要把“图示”“方法步骤”“单元测试”“讲后纠错与回顾”“为后续章节打底”当成独立要点。图示/小测/纠错需求要落成具体对象，例如“函数图像读图”“函数值求解例题”“自变量与因变量混淆”“函数综合练习题型”。",
             "- 用户以“按 A、B、C 划分章节/模块/单元”给出列表时，这个列表就是完整一级章节清单，chapters 与 A/B/C 逐项对应，数组长度等于列表项数量。",
             "- 用户给出的列表项已是清晰知识块名称时，标题等于该列表项；如果只是宽泛类别，可保留原词并补一个简短限定；进度、训练和检测安排写进 required_elements/key_points。",
             "- 用户同时给出学习天数和 A/B/C 列表时，天数是 A/B/C 的进度预算；最后一个知识块按它自身的具体对象、方法和练习安排展开。",
@@ -620,12 +621,12 @@ def _cap_chapters_to_maximum(
 def _activity_point_for_requested_title(title: str, user_prompt: str) -> str:
     has_visual_request = bool(re.search(r"图示|示意|图像|配图|画图|图片", user_prompt))
     has_unit_test_request = bool(re.search(r"单元测试|测试|测验|小测", user_prompt))
-    activity_items = ["核心概念", "方法步骤", "典型例题", "易错点", "练习"]
+    activity_items = [f"{title}核心概念", f"{title}方法与典型题型", f"{title}易错边界"]
     if has_visual_request:
-        activity_items.insert(1, "图表读取")
+        activity_items.insert(1, f"{title}图表读取方法")
     if has_unit_test_request:
-        activity_items.append("单元测试")
-    return f"围绕{title}讲清{'、'.join(activity_items)}。"
+        activity_items.append(f"{title}综合练习题型")
+    return "、".join(activity_items)
 
 
 def _align_chapters_to_requested_titles(

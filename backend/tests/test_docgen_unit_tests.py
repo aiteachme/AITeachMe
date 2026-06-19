@@ -8,6 +8,8 @@ from app.workflows.digest.docgen.lib.unit_tests import (
     render_unit_test_markdown,
     strip_existing_unit_test_sections,
 )
+from app.workflows.digest.docgen.lib.models import ChapterGenerationTask
+from app.workflows.digest.docgen.nodes.generate_unit_tests import _unit_test_bounds
 
 
 def test_unit_test_renderer_replaces_existing_unit_test_section_once() -> None:
@@ -43,14 +45,31 @@ def test_unit_test_renderer_replaces_existing_unit_test_section_once() -> None:
     assert markdown.count("## 单元测试") == 1
     assert '<div class="atm-unit-tests"' not in markdown
     assert "> [!QUESTION]" in markdown
+    assert "> [!ANSWER]" in markdown
     assert "**2 题覆盖**" in markdown
     assert "概念判断 / 短答题" in markdown
-    assert "**答案与依据**" in markdown
-    assert "**判定依据**" in markdown
+    assert "**答案**" in markdown
+    assert "**解析步骤**" in markdown
     assert "总和除以个数。" in markdown
     assert "A. 中位数的定义和适用条件要同时满足" in markdown
     assert "###" not in unit_test
     assert "> **答案与依据**" not in unit_test
+    assert "**判定依据**" not in unit_test
+
+
+def test_unit_test_bounds_keep_chapter_coverage_above_six_items() -> None:
+    task = ChapterGenerationTask(
+        chapter_end_practice_plan=[{"target": f"考点 {index}"} for index in range(1, 7)],
+        required_elements=[f"知识点 {index}" for index in range(1, 10)],
+        practice_seed_policy={
+            "example_density_policy": {
+                "chapter_end_practice_min_tasks": 4,
+                "chapter_end_practice_max_tasks": 6,
+            }
+        },
+    )
+
+    assert _unit_test_bounds(task, digest_mode="systematic") == (7, 8)
 
 
 def test_unit_test_renderer_strips_body_writer_test_and_recap_sections() -> None:
@@ -135,6 +154,39 @@ def test_unit_test_renderer_wraps_raw_latex_options_for_katex() -> None:
     assert r"$[0, \sqrt{2}]$" in unit_test
     assert r"$[-\sqrt{2}, \sqrt{2}]$" in unit_test
     assert r"$0 \leq x^2 \leq 2$" in unit_test
+
+
+def test_unit_test_renderer_repairs_escaped_display_math_options() -> None:
+    unit_test = render_unit_test_markdown(
+        ChapterUnitTestSet(
+            chapter_index=1,
+            items=[
+                ChapterUnitTestItem(
+                    type="single_choice",
+                    difficulty="medium",
+                    target="连续定义",
+                    stem=r"函数 f(x) 在 x_0 处连续的充要条件是哪一项？",
+                    options=[
+                        r"\|$$\lim_{x \to x_0} f(x)$$ 存在",
+                        r"\|$$f(x_0)$$ 有定义",
+                        r"\|$$\lim_{x \to x_0} f(x)=f(x_0)$$",
+                        r"\|$$\lim_{x \to x_0^-} f(x)=\lim_{x \to x_0^+} f(x)$$",
+                    ],
+                    answer=r"C. $$\lim_{x \to x_0} f(x)=f(x_0)$$",
+                    basis=r"连续要求极限存在、函数值存在，并且二者相等。",
+                )
+            ],
+        ),
+        title="函数连续性",
+        min_items=1,
+        fallback_targets=[],
+    )
+
+    assert r"\|$$" not in unit_test
+    assert r"$$\lim_{x \to x_0} f(x)=f(x_0)$$" in unit_test
+    assert r"$$\lim_{x \to x_0^-} f(x)=\lim_{x \to x_0^+} f(x)$$" in unit_test
+    assert r"..." not in unit_test
+    assert "…" not in re.search(r"> - C\..+", unit_test).group(0)
 
 
 def test_unit_test_renderer_keeps_four_options_for_every_question_type() -> None:

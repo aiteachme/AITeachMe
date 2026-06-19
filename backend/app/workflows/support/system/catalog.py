@@ -463,7 +463,7 @@ SETTINGS_CATALOG: tuple[SettingsCatalogSection, ...] = (
             setting(
                 "knowledge_graph.prefetch_concurrency",
                 "图谱预抽取并发",
-                description="DocGen 仍在运行时，知识图谱预抽取最多占用的 LLM 并发路数；默认 2 路，并受全局 LLM 并发限制约束。",
+                description="DocGen 仍在运行时，知识图谱预抽取最多占用的 LLM 并发路数；默认跟随全局 LLM 并发，并受全局 LLM 并发限制约束。",
                 ui_group="图谱联动",
                 ui_order=150,
             ),

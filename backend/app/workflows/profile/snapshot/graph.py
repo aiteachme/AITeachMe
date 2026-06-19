@@ -222,7 +222,7 @@ async def run_profile_snapshot_workflow(
         metadata={
             "build_session_id": f"profile_snapshot:{course_id}:{user_id}",
             "lane": "snapshot",
-            "langsmith_run_name": "profile.snapshot.mastery_overview",
+            "langsmith_run_name": "画像引擎：生成画像快照",
             "profile_trigger": trigger,
             "user_id": user_id,
         },
@@ -243,10 +243,9 @@ async def run_profile_snapshot_workflow(
 WORKFLOW_EXPORTS = (
     WorkflowGraphExport(
         key="profile_snapshot",
-        title="Profile Snapshot Workflow",
+        title="画像快照链路",
         description=(
-            "Read-only profile snapshot for Profile pages: context validation, "
-            "mastery overview, course profile, and user profile."
+            "Profile 页面只读画像快照：校验上下文、读取掌握度概览、生成课程画像和用户画像。"
         ),
         build_graph=get_langgraph_dev_profile_snapshot_graph,
         prompts=PROMPTS,

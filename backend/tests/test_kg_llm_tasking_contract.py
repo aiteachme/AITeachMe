@@ -68,7 +68,7 @@ async def test_kg_section_extraction_uses_run_llm_tasks(monkeypatch) -> None:
 
 
 @pytest.mark.anyio
-async def test_kg_section_extraction_drops_generic_task_nodes_and_cleans_markdown(monkeypatch) -> None:
+async def test_kg_section_extraction_keeps_llm_contract_names_and_cleans_display_wrappers(monkeypatch) -> None:
     async def fake_run_llm_tasks(items, worker, *, max_concurrent=None, on_result=None):
         del max_concurrent, on_result
         return [await worker(item) for item in items]
@@ -78,19 +78,9 @@ async def test_kg_section_extraction_drops_generic_task_nodes_and_cleans_markdow
         return ChunkExtractionResult(
             nodes=[
                 CandidateNode(
-                    name="任务 1",
-                    knowledge_unit_type="application_case",
-                    local_summary="只是编号任务。",
-                ),
-                CandidateNode(
-                    name="**分部积分法**：把积分拆成两部分",
+                    name="**分部积分法**",
                     knowledge_unit_type="procedure",
                     local_summary="说明分部积分法的拆分思路。",
-                ),
-                CandidateNode(
-                    name="检查点",
-                    knowledge_unit_type="skill",
-                    local_summary="泛化检查点。",
                 ),
                 CandidateNode(
                     name="$\\int u\\,dv = uv-\\int v\\,du$",
@@ -101,15 +91,9 @@ async def test_kg_section_extraction_drops_generic_task_nodes_and_cleans_markdow
             edges=[
                 CandidateEdge(
                     source_name="$\\int u\\,dv = uv-\\int v\\,du$",
-                    target_name="**分部积分法**：把积分拆成两部分",
+                    target_name="**分部积分法**",
                     edge_type="applies_to",
                     description="方法使用公式。",
-                ),
-                CandidateEdge(
-                    source_name="任务 1",
-                    target_name="检查点",
-                    edge_type="assesses",
-                    description="脏关系应随节点丢弃。",
                 ),
             ],
         )
@@ -140,3 +124,59 @@ def test_kg_prompt_rejects_lesson_plan_wrappers_at_generation_time() -> None:
     assert "可复习、可教学、可出题的知识单元" in prompt
     assert "学习目标、课程安排、题量计划、检测说明和纯流程壳不入图" in prompt
     assert "只保留那个真实知识对象" in prompt
+    assert "节点命名决策流程" in prompt
+    assert "图示”“方法步骤”“单元测试”“重点检查概念理解”“讲后纠错与回顾" in prompt
+    assert "小测与错题回看" in prompt
+    assert "错题回看方法" in prompt
+    assert "不能把它包装成 `procedure`" in prompt
+    assert "计算条件遗漏" in prompt
+    assert "学习活动不能直接入图" in prompt
+    assert "概率事件判断误区" in prompt
+    assert "图表分析结论表达" in prompt
+    assert "整理”“判定题”“图表分析" in prompt
+    assert "统计数据整理方法" in prompt
+    assert "几何判定条件识别" in prompt
+    assert "节点名去掉课程上下文后仍必须是一个可教学、可出题的学科对象" in prompt
+
+
+def test_candidate_node_schema_rejects_review_container_names_in_contract_text() -> None:
+    schema = CandidateNode.model_json_schema()
+    name_description = schema["properties"]["name"]["description"]
+
+    assert "禁止输出学习活动/复盘容器" in name_description
+    assert "错题回看方法" in name_description
+    assert "小测与错题回看" in name_description
+    assert "整理" in name_description
+    assert "判定题" in name_description
+
+
+def test_kg_prompt_rejects_symbol_fragments_and_placeholder_case_names_at_generation_time() -> None:
+    prompt = SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
+
+    assert "\\delta_2" in prompt
+    assert "\\dots" in prompt
+    assert "案例一" in prompt
+    assert "ε-δ 证明中的 δ 取值策略" in prompt
+    assert "三角不等式放缩法" in prompt
+    assert "procedure` 必须是可复用的具体方法或流程名" in prompt
+
+
+def test_kg_prompt_requires_connected_course_graph_at_generation_time() -> None:
+    prompt = SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
+
+    assert "图谱必须尽量连通" in prompt
+    assert "不要让一批节点只以孤岛形式出现" in prompt
+    assert "必须填写 `taxonomy_hint`" in prompt
+    assert "优先返回能互相连起来的一组节点和关系" in prompt
+
+
+def test_kg_extraction_contract_allows_richer_section_outputs() -> None:
+    schema = ChunkExtractionResult.model_json_schema()
+
+    assert "内容充实的知识小节通常应覆盖 4-7 个真实节点" in SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
+    assert "本片段最多 12 个节点、18 条关系" in SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
+    assert "默认 8 题练习会从约 32 个候选知识单元中规划题目" in SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
+    assert "完整试卷最多会使用 60 个候选单元" in SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
+    assert "`topic` 主要用于连通结构，不能替代可出题单元" in SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
+    assert schema["properties"]["nodes"]["maxItems"] == 12
+    assert schema["properties"]["edges"]["maxItems"] == 18

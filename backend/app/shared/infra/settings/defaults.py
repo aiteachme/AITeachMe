@@ -65,7 +65,7 @@ DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
     "knowledge_graph": {
         "sync_after_docgen": True,
         "prefetch_during_docgen": True,
-        "prefetch_concurrency": 2,
+        "prefetch_concurrency": DEFAULT_LLM_CONCURRENCY_LIMIT,
         "max_parallel_extractions": 16,
     },
     "observability": {

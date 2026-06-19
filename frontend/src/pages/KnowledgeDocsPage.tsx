@@ -491,6 +491,7 @@ const COMMENT_DRAWER_BREAKPOINT = 1280;
 const THREAD_HISTORY_PAGE_SIZE = 100;
 const KNOWLEDGE_DOCS_VIEW_PREFS_VERSION = 2;
 const FLOATING_COMPOSER_THREAD_ID = "__floating-composer__";
+const ENABLE_KNOWLEDGE_CARDS = false;
 const QUICK_CHAT_UPDATED_EVENT = "aiteachme:quick-chat-updated";
 const SELECTION_JUMP_EVENT = "aiteachme:selection-jump";
 const AI_INTERACTION_CLOSED_EVENT = "aiteachme:ai-sidebar-closed";
@@ -894,6 +895,141 @@ function getElementContentTop(container: HTMLElement, element: HTMLElement): num
   const containerRect = container.getBoundingClientRect();
   const rect = element.getBoundingClientRect();
   return rect.top - containerRect.top + container.scrollTop;
+}
+
+type ScrollSpyScrollTarget = HTMLElement | Window;
+
+function isWindowScrollTarget(target: ScrollSpyScrollTarget): target is Window {
+  return target === window;
+}
+
+function isScrollableScrollSpyElement(element: HTMLElement): boolean {
+  const style = window.getComputedStyle(element);
+  if (!/(auto|scroll|overlay)/.test(style.overflowY)) {
+    return false;
+  }
+  return element.scrollHeight > element.clientHeight + 1;
+}
+
+function collectScrollSpyScrollTargets(container: HTMLElement): ScrollSpyScrollTarget[] {
+  const targets: ScrollSpyScrollTarget[] = [container];
+  let node = container.parentElement;
+  while (node) {
+    if (isScrollableScrollSpyElement(node)) {
+      targets.push(node);
+    }
+    node = node.parentElement;
+  }
+  targets.push(window);
+  return targets.filter((target, index) => targets.indexOf(target) === index);
+}
+
+function isScrollSpyTargetAtBottom(target: ScrollSpyScrollTarget): boolean {
+  if (isWindowScrollTarget(target)) {
+    const scroller = document.scrollingElement;
+    if (!scroller) return false;
+    return scroller.scrollHeight > scroller.clientHeight &&
+      scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 15;
+  }
+  return target.scrollHeight > target.clientHeight &&
+    target.scrollTop + target.clientHeight >= target.scrollHeight - 15;
+}
+
+function isScrollSpyTargetScrollable(target: ScrollSpyScrollTarget): boolean {
+  if (isWindowScrollTarget(target)) {
+    const scroller = document.scrollingElement;
+    return Boolean(scroller && scroller.scrollHeight > scroller.clientHeight + 1);
+  }
+  return target.scrollHeight > target.clientHeight + 1;
+}
+
+function getScrollSpyTargetTop(target: ScrollSpyScrollTarget): number {
+  if (isWindowScrollTarget(target)) {
+    return document.scrollingElement?.scrollTop ?? window.scrollY;
+  }
+  return target.scrollTop;
+}
+
+function getPrimaryKnowledgeScrollTarget(container: HTMLElement): ScrollSpyScrollTarget {
+  const targets = collectScrollSpyScrollTargets(container).filter(isScrollSpyTargetScrollable);
+  return targets.find((target) => getScrollSpyTargetTop(target) > 0) ?? targets[0] ?? container;
+}
+
+function getKnowledgeScrollTop(container: HTMLElement): number {
+  return getScrollSpyTargetTop(getPrimaryKnowledgeScrollTarget(container));
+}
+
+function setKnowledgeScrollTop(container: HTMLElement, top: number) {
+  const targets = collectScrollSpyScrollTargets(container).filter(isScrollSpyTargetScrollable);
+  const nextTop = Math.max(0, top);
+  for (const target of targets) {
+    if (isWindowScrollTarget(target)) {
+      const scroller = document.scrollingElement;
+      if (!scroller) {
+        continue;
+      }
+      const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+      window.scrollTo({ top: Math.min(maxScrollTop, nextTop), behavior: "auto" });
+      continue;
+    }
+    const maxScrollTop = Math.max(0, target.scrollHeight - target.clientHeight);
+    target.scrollTop = Math.min(maxScrollTop, nextTop);
+  }
+}
+
+function getScrollSpyActivationY(container: HTMLElement, targets: ScrollSpyScrollTarget[]): number {
+  let top = 0;
+  let bottom = window.innerHeight;
+  const includeElementBounds = (element: HTMLElement) => {
+    const rect = element.getBoundingClientRect();
+    top = Math.max(top, rect.top);
+    bottom = Math.min(bottom, rect.bottom);
+  };
+
+  includeElementBounds(container);
+  for (const target of targets) {
+    if (!isWindowScrollTarget(target)) {
+      includeElementBounds(target);
+    }
+  }
+
+  if (bottom <= top) {
+    const rect = container.getBoundingClientRect();
+    top = Math.max(0, rect.top);
+    bottom = Math.min(window.innerHeight, rect.bottom);
+  }
+
+  const height = Math.max(1, bottom - top);
+  const offset = Math.min(128, Math.max(48, height * 0.18));
+  return Math.min(bottom - 1, top + offset);
+}
+
+function scrollElementToKnowledgeHeading(container: HTMLElement, element: HTMLElement, behavior: ScrollBehavior) {
+  const targets = collectScrollSpyScrollTargets(container);
+  for (const target of targets) {
+    const elementRect = element.getBoundingClientRect();
+    if (isWindowScrollTarget(target)) {
+      const scroller = document.scrollingElement;
+      if (!scroller || scroller.scrollHeight <= scroller.clientHeight + 1) {
+        continue;
+      }
+      const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+      const targetTop = Math.max(0, Math.min(maxScrollTop, scroller.scrollTop + elementRect.top - 88));
+      window.scrollTo({ top: targetTop, behavior });
+      continue;
+    }
+
+    if (target.scrollHeight <= target.clientHeight + 1) {
+      continue;
+    }
+    const targetRect = target.getBoundingClientRect();
+    const maxScrollTop = Math.max(0, target.scrollHeight - target.clientHeight);
+    const targetTop = Math.max(
+      0,
+      Math.min(maxScrollTop, target.scrollTop + (elementRect.top - targetRect.top) - getHeadingActivationOffset(target)),
+    );
+    target.scrollTo({ top: targetTop, behavior });
+  }
 }
 
 function collectSectionNodes(heading: HTMLElement): Node[] {
@@ -2634,6 +2770,7 @@ export function KnowledgeDocsPage() {
 
   // Build hierarchical tree from flat TOC (Feishu-style)
   const tocTree = useMemo(() => buildTocTree(toc), [toc]);
+  const tocSignature = useMemo(() => toc.map((item) => item.id).join("\u001f"), [toc]);
 
   const visibleActiveHeading = useMemo(
     () => resolveVisibleActiveTocId(tocTree, activeHeading, collapsedTocIds),
@@ -2974,7 +3111,6 @@ export function KnowledgeDocsPage() {
         ? contentAreaRef.current?.querySelector<HTMLElement>(`[data-heading-id="${CSS.escape(saved.headingId)}"]`) ?? null
         : null;
 
-      let nextScrollTop = saved.scrollTop;
       if (saved.headingId && !targetHeading) {
         // Heading is specified but not yet in the DOM, we should wait and retry
         // (the Markdown rendering is in progress)
@@ -2982,28 +3118,18 @@ export function KnowledgeDocsPage() {
       }
 
       if (targetHeading) {
-        const containerRect = container.getBoundingClientRect();
-        const headingRect = targetHeading.getBoundingClientRect();
-        nextScrollTop = container.scrollTop + (headingRect.top - containerRect.top) - 28;
+        scrollElementToKnowledgeHeading(container, targetHeading, "auto");
+        return true;
       }
-
-      const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
 
       // If the container's scrollHeight is still loading and cannot support the scroll top yet,
       // and we are not at the very top, we should wait and retry
-      if (nextScrollTop > 0 && maxScrollTop < nextScrollTop && container.scrollHeight < 500) {
+      const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
+      if (saved.scrollTop > 0 && maxScrollTop < saved.scrollTop && container.scrollHeight < 500) {
         return false;
       }
 
-      const previousScrollBehavior = container.style.scrollBehavior;
-      container.style.scrollBehavior = "auto";
-      container.scrollTop = Math.max(0, Math.min(maxScrollTop, nextScrollTop));
-      if (previousScrollBehavior) {
-        container.style.scrollBehavior = previousScrollBehavior;
-      } else {
-        container.style.removeProperty("scroll-behavior");
-      }
-      container.dispatchEvent(new Event("scroll"));
+      setKnowledgeScrollTop(container, saved.scrollTop);
       return true;
     };
 
@@ -3033,10 +3159,11 @@ export function KnowledgeDocsPage() {
     if (!courseId || !renderedMarkdown.trim() || !container) {
       return;
     }
+    const scrollTargets = collectScrollSpyScrollTargets(container);
 
     const saveNow = () => {
       persistKnowledgeDocsReadingPosition(courseId, {
-        scrollTop: container.scrollTop,
+        scrollTop: getKnowledgeScrollTop(container),
         headingId: activeHeadingRef.current,
         contentLength: renderedMarkdown.length,
         updatedAt: Date.now(),
@@ -3053,11 +3180,15 @@ export function KnowledgeDocsPage() {
       }, 240);
     };
 
-    container.addEventListener("scroll", scheduleSave, { passive: true });
+    scrollTargets.forEach((target) => {
+      target.addEventListener("scroll", scheduleSave, { passive: true });
+    });
     window.addEventListener("beforeunload", saveNow);
 
     return () => {
-      container.removeEventListener("scroll", scheduleSave);
+      scrollTargets.forEach((target) => {
+        target.removeEventListener("scroll", scheduleSave);
+      });
       window.removeEventListener("beforeunload", saveNow);
       if (readingPositionSaveTimerRef.current !== null) {
         window.clearTimeout(readingPositionSaveTimerRef.current);
@@ -3067,11 +3198,11 @@ export function KnowledgeDocsPage() {
     };
   }, [courseId, renderedMarkdown]);
 
-  // Track active heading from a single scroll position so the TOC highlight does not bounce.
+  // Track active heading from the actual scroll targets so the TOC follows both inner and shell scrolling.
   useEffect(() => {
     const container = scrollRef.current;
     if (!container) return;
-    const scrollParent = container;
+    const scrollTargets = collectScrollSpyScrollTargets(container);
 
     const headingRoot = contentAreaRef.current;
     const headings = Array.from((headingRoot ?? container).querySelectorAll<HTMLElement>("[data-heading-id]"))
@@ -3083,61 +3214,42 @@ export function KnowledgeDocsPage() {
 
     let rafId = 0;
     let positionRafId = 0;
-    let headingPositions: Array<{ id: string; top: number }> = [];
-
-    const refreshHeadingPositions = () => {
-      headingPositions = headings
-        .map((heading) => {
-          const id = heading.getAttribute("data-heading-id") ?? "";
-          if (!id || !isVisibleHeading(heading)) {
-            return null;
-          }
-          return {
-            id,
-            top: getElementContentTop(scrollParent, heading),
-          };
-        })
-        .filter((item): item is { id: string; top: number } => item !== null)
-        .sort((left, right) => left.top - right.top);
-    };
 
     const schedulePositionRefresh = () => {
       window.cancelAnimationFrame(positionRafId);
       positionRafId = window.requestAnimationFrame(() => {
         positionRafId = 0;
-        refreshHeadingPositions();
         syncActiveHeading();
       });
     };
 
     const findActiveHeadingId = () => {
-      const isScrollable = scrollParent.scrollHeight > scrollParent.clientHeight;
-      const isAtBottom = isScrollable && (scrollParent.scrollTop + scrollParent.clientHeight >= scrollParent.scrollHeight - 15);
-      if (isAtBottom) {
-        const lastHeading = headingPositions[headingPositions.length - 1];
+      const visibleHeadings = headings.filter(isVisibleHeading);
+      if (scrollTargets.some(isScrollSpyTargetAtBottom)) {
+        const lastHeading = visibleHeadings[visibleHeadings.length - 1];
         if (lastHeading) {
-          return lastHeading.id;
+          return lastHeading.getAttribute("data-heading-id") ?? "";
         }
       }
 
-      if (headingPositions.length === 0) {
+      if (visibleHeadings.length === 0) {
         return "";
       }
 
-      const activationTop = scrollParent.scrollTop + getHeadingActivationOffset(scrollParent);
-      let left = 0;
-      let right = headingPositions.length - 1;
-      let activeIndex = 0;
-      while (left <= right) {
-        const mid = Math.floor((left + right) / 2);
-        if (headingPositions[mid].top <= activationTop) {
-          activeIndex = mid;
-          left = mid + 1;
+      const activationY = getScrollSpyActivationY(container, scrollTargets);
+      let activeId = visibleHeadings[0].getAttribute("data-heading-id") ?? "";
+      for (const heading of visibleHeadings) {
+        const id = heading.getAttribute("data-heading-id") ?? "";
+        if (!id) {
+          continue;
+        }
+        if (heading.getBoundingClientRect().top <= activationY) {
+          activeId = id;
         } else {
-          right = mid - 1;
+          break;
         }
       }
-      return headingPositions[activeIndex]?.id ?? "";
+      return activeId;
     };
 
     const syncActiveHeading = () => {
@@ -3166,9 +3278,10 @@ export function KnowledgeDocsPage() {
       syncActiveHeading();
     };
 
-    refreshHeadingPositions();
-    scrollParent.addEventListener("scroll", handleScroll, { passive: true });
-    scrollParent.addEventListener("scrollend", handleScrollEnd, { passive: true });
+    scrollTargets.forEach((target) => {
+      target.addEventListener("scroll", handleScroll, { passive: true });
+      target.addEventListener("scrollend", handleScrollEnd, { passive: true });
+    });
     window.addEventListener("resize", schedulePositionRefresh);
     const resizeObserverTarget = headingRoot;
     const resizeObserver = typeof ResizeObserver !== "undefined" && resizeObserverTarget
@@ -3182,12 +3295,14 @@ export function KnowledgeDocsPage() {
     return () => {
       window.cancelAnimationFrame(rafId);
       window.cancelAnimationFrame(positionRafId);
-      scrollParent.removeEventListener("scroll", handleScroll);
-      scrollParent.removeEventListener("scrollend", handleScrollEnd);
+      scrollTargets.forEach((target) => {
+        target.removeEventListener("scroll", handleScroll);
+        target.removeEventListener("scrollend", handleScrollEnd);
+      });
       window.removeEventListener("resize", schedulePositionRefresh);
       resizeObserver?.disconnect();
     };
-  }, [renderedMarkdown]);
+  }, [renderedMarkdown, tocSignature]);
 
   // Keep the active TOC item aligned when layout changes or window resizes
   useEffect(() => {
@@ -3234,12 +3349,6 @@ export function KnowledgeDocsPage() {
 
       setActiveHeading((prev) => (prev === headingId ? prev : headingId));
 
-      const containerRect = container.getBoundingClientRect();
-      const elRect = el.getBoundingClientRect();
-      const headingTop = container.scrollTop + (elRect.top - containerRect.top);
-      const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
-      const targetTop = Math.max(0, Math.min(maxScrollTop, headingTop - getHeadingActivationOffset(container)));
-
       scrollingToHeadingTargetRef.current = headingId;
       if (scrollspyIgnoreTimerRef.current !== null) {
         window.clearTimeout(scrollspyIgnoreTimerRef.current);
@@ -3249,7 +3358,7 @@ export function KnowledgeDocsPage() {
         scrollspyIgnoreTimerRef.current = null;
       }, 1000);
 
-      container.scrollTo({ top: targetTop, behavior: "smooth" });
+      scrollElementToKnowledgeHeading(container, el, "smooth");
       flashHeading(el);
     };
 
@@ -3259,12 +3368,7 @@ export function KnowledgeDocsPage() {
   const scrollElementIntoDocView = useCallback((element: HTMLElement, behavior: ScrollBehavior = "smooth") => {
     const container = scrollRef.current;
     if (!container) return;
-    const containerRect = container.getBoundingClientRect();
-    const elementRect = element.getBoundingClientRect();
-    const elementTop = container.scrollTop + (elementRect.top - containerRect.top);
-    const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
-    const targetTop = Math.max(0, Math.min(maxScrollTop, elementTop - 88));
-    container.scrollTo({ top: targetTop, behavior });
+    scrollElementToKnowledgeHeading(container, element, behavior);
   }, []);
 
   const scrollToPendingInteractiveBlock = useCallback((pendingId: string, anchorId: string) => {
@@ -6311,10 +6415,16 @@ export function KnowledgeDocsPage() {
   }
 
   return (
-    <div className="relative flex h-full min-h-0 flex-1 w-full overflow-hidden bg-slate-50 dark:bg-slate-900">
-      <div className="relative z-10 flex min-h-0 h-full w-full bg-white dark:bg-slate-900">
+    <div className="relative flex h-full min-h-0 flex-1 w-full flex-col overflow-hidden bg-slate-50 dark:bg-slate-900">
+      <CoursePagePillTitle
+        icon={BookOpen}
+        label="知识库"
+        className="z-40 shrink-0 bg-white/92 backdrop-blur-md dark:bg-slate-900/92 transition-all duration-300 ease-in-out"
+        href={courseId ? buildCoursePath(courseId, "nav") : undefined}
+      />
+      <div className="relative z-10 flex min-h-0 flex-1 w-full bg-white dark:bg-slate-900">
       {hasCompactTocControl && (
-          <div className="fixed left-[4.75rem] top-[calc(1.25rem+env(safe-area-inset-top))] z-[79] flex items-center gap-2">
+          <div className="fixed left-[4.75rem] top-[calc(4.75rem+env(safe-area-inset-top))] z-[79] flex items-center gap-2">
             <button
               onClick={openTocDrawer}
               className={cn(
@@ -6330,7 +6440,7 @@ export function KnowledgeDocsPage() {
       )}
 
       {hasCompactCommentControl && (
-          <div className="fixed top-3 right-6 z-[79] flex items-center gap-2">
+          <div className="fixed right-6 top-[calc(4.75rem+env(safe-area-inset-top))] z-[79] flex items-center gap-2">
             <button
               onClick={openCommentDrawer}
               className={cn(
@@ -6361,7 +6471,7 @@ export function KnowledgeDocsPage() {
       {hasCompactTocControl && (
           <aside
             className={cn(
-              "fixed bottom-4 left-3 top-[calc(3.875rem+env(safe-area-inset-top))] z-[78] flex w-[min(20rem,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl transition-transform duration-200 dark:border-slate-800 dark:bg-slate-950",
+              "fixed bottom-4 left-3 top-[calc(7.25rem+env(safe-area-inset-top))] z-[78] flex w-[min(20rem,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl transition-transform duration-200 dark:border-slate-800 dark:bg-slate-950",
               isTocVisible ? "translate-x-0" : "-translate-x-[110%] pointer-events-none"
             )}
           >
@@ -6385,7 +6495,7 @@ export function KnowledgeDocsPage() {
       {hasCompactCommentControl && (
         <aside
           className={cn(
-            "fixed right-3 top-[calc(3.875rem+env(safe-area-inset-top))] bottom-4 z-[78] w-[min(24rem,calc(100vw-1.5rem))] transition-transform duration-200",
+            "fixed right-3 top-[calc(7.25rem+env(safe-area-inset-top))] bottom-4 z-[78] w-[min(24rem,calc(100vw-1.5rem))] transition-transform duration-200",
             isCommentVisible ? "translate-x-0" : "translate-x-[110%] pointer-events-none"
           )}
         >
@@ -6470,13 +6580,6 @@ export function KnowledgeDocsPage() {
             </button>
           </aside>
         )}
-
-        <CoursePagePillTitle
-          icon={BookOpen}
-          label="知识库"
-          className="shrink-0 bg-white/92 backdrop-blur-md dark:bg-slate-900/92 transition-all duration-300 ease-in-out"
-          href={courseId ? buildCoursePath(courseId, "nav") : undefined}
-        />
 
         <div
           ref={scrollRef}
@@ -6749,7 +6852,7 @@ export function KnowledgeDocsPage() {
 
       </div>
 
-      {showFloatingActions && isCardsPanelOpen && (
+      {ENABLE_KNOWLEDGE_CARDS && showFloatingActions && isCardsPanelOpen && (
         <div className="fixed bottom-[17.75rem] right-6 z-[87] flex max-h-[min(30rem,calc(100dvh-10rem))] w-[min(24rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white/96 shadow-[0_22px_60px_-32px_rgba(15,23,42,0.42)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/96 dark:shadow-[0_24px_64px_-28px_rgba(0,0,0,0.9)]">
           <div className="flex items-start justify-between gap-3 border-b border-slate-200/80 px-4 py-3 dark:border-slate-800">
             <div className="min-w-0">
@@ -6819,7 +6922,7 @@ export function KnowledgeDocsPage() {
         </div>
       )}
 
-      {showFloatingActions && (
+      {ENABLE_KNOWLEDGE_CARDS && showFloatingActions && (
         <button
           type="button"
           onClick={() => {

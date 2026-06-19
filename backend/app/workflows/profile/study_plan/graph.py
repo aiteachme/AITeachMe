@@ -170,7 +170,7 @@ async def run_profile_study_plan_workflow(
         metadata={
             "build_session_id": f"profile_study_plan:{course_id}:{user_id}",
             "lane": "study_plan",
-            "langsmith_run_name": "profile.study_plan.generate",
+            "langsmith_run_name": "画像引擎：生成学习计划",
             "profile_trigger": trigger,
             "user_id": user_id,
         },
@@ -190,10 +190,9 @@ async def run_profile_study_plan_workflow(
 WORKFLOW_EXPORTS = (
     WorkflowGraphExport(
         key="profile_study_plan",
-        title="Profile Study Plan Workflow",
+        title="画像学习计划链路",
         description=(
-            "Generate a short actionable study plan from Profile signals. "
-            "This does not replace digest/planner."
+            "根据画像信号生成短学习计划；该链路不替代 Digest Planner。"
         ),
         build_graph=get_langgraph_dev_profile_study_plan_graph,
         prompts=PROMPTS,

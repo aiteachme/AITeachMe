@@ -7,6 +7,8 @@ from typing import Any
 
 from app.schemas.llm import ChatMessage, SYSTEM, USER
 
+_TEXT_EXAM_SOURCE_MAX_CHARS = 80000
+
 _LATEX_FORMAT_RULES = (
     "\n数学公式格式规则：\n"
     "- 如果 stem、correct_answer 或 explanation 包含数学公式，只使用合法 LaTeX。\n"
@@ -37,6 +39,20 @@ SYSTEM_PROMPT_EXAM_QUESTION_BUILD = """
 优先生成能考查理解、分析、应用和迁移能力的题目，而不是只考浅层定义记忆。
 只能返回符合指定结构化 schema 的数据，不要输出评论、解释或额外文本。
 """.strip()
+
+
+def _limit_text_exam_source(knowledge_text: str) -> tuple[str, bool]:
+    text = str(knowledge_text or "").strip()
+    if len(text) <= _TEXT_EXAM_SOURCE_MAX_CHARS:
+        return text, False
+    head_chars = _TEXT_EXAM_SOURCE_MAX_CHARS * 2 // 3
+    tail_chars = max(0, _TEXT_EXAM_SOURCE_MAX_CHARS - head_chars - 48)
+    return (
+        text[:head_chars].rstrip()
+        + "\n\n...[学习资料过长，已保留开头和结尾；中段需另建知识库后出题]...\n\n"
+        + text[-tail_chars:].lstrip(),
+        True,
+    )
 
 
 def _course_payload(
@@ -286,11 +302,14 @@ def build_text_exam_messages(
     num_questions: int,
     difficulty: str,
 ) -> list[ChatMessage]:
+    limited_knowledge_text, knowledge_text_truncated = _limit_text_exam_source(knowledge_text)
     payload = {
         "course_name": course_name,
         "num_questions": num_questions,
         "difficulty": difficulty,
-        "knowledge_text": knowledge_text[:12000],
+        "source_chars": len(str(knowledge_text or "")),
+        "knowledge_text_truncated": knowledge_text_truncated,
+        "knowledge_text": limited_knowledge_text,
     }
     user_prompt_text = (
         "请直接根据给定学习资料生成一组高质量考题。\n"

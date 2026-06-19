@@ -31,7 +31,7 @@ import { resolveCourseIcon, resolveCourseTone } from "../../lib/courseIcons";
 import { COURSES_IMPORTED_EVENT } from "../../lib/courseEvents";
 import { cn } from "../../lib/utils";
 import { publicAssetPath } from "../../lib/publicAsset";
-import { buildCoursePath, getCourseIdFromPathname } from "../../lib/courseNavigation";
+import { buildPreferredCourseEntryPath, getCourseIdFromPathname } from "../../lib/courseNavigation";
 
 import { CourseExportModal } from "../course/CourseExportModal";
 import { CourseImportModal } from "../course/CourseImportModal";
@@ -890,7 +890,7 @@ export function Sidebar({
                       if (isMobileOpen) {
                         setIsMobileOpen(false);
                       }
-                      navigate(buildCoursePath(course.course_id, "nav"));
+                      navigate(buildPreferredCourseEntryPath(course.course_id));
                     }}
                     className={cn(
                       "flex items-center transition-colors min-w-0 w-full",

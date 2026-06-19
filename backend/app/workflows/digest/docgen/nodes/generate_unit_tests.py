@@ -38,8 +38,8 @@ def _chapter_tasks_by_index(state: DocGenState) -> dict[int, ChapterGenerationTa
 def _unit_test_bounds(task: ChapterGenerationTask | None, *, digest_mode: str) -> tuple[int, int]:
     policy = dict((task.practice_seed_policy if task is not None else {}) or {})
     density = dict(policy.get("example_density_policy") or {})
-    default_min = 6 if str(digest_mode or "").lower() == "sprint" else 2
-    default_max = 8 if str(digest_mode or "").lower() == "sprint" else 4
+    default_min = 6
+    default_max = 8 if str(digest_mode or "").lower() == "sprint" else 7
     try:
         min_items = int(density.get("chapter_end_practice_min_tasks") or default_min)
     except (TypeError, ValueError):
@@ -48,7 +48,13 @@ def _unit_test_bounds(task: ChapterGenerationTask | None, *, digest_mode: str) -
         max_items = int(density.get("chapter_end_practice_max_tasks") or default_max)
     except (TypeError, ValueError):
         max_items = default_max
-    min_items = max(1, min(min_items, 10))
+    plan_count = len(list((task.chapter_end_practice_plan if task is not None else []) or []))
+    required_count = len(list((task.required_elements if task is not None else []) or []))
+    min_items = max(6, min_items)
+    if plan_count >= 6 or required_count >= 8:
+        min_items = max(min_items, 7)
+        max_items = max(max_items, 8)
+    min_items = max(4, min(min_items, 10))
     max_items = max(min_items, min(max_items, 12))
     return min_items, max_items
 

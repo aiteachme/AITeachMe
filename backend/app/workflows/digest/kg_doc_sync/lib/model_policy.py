@@ -14,7 +14,7 @@ from app.workflows.common.model_policy import ProviderNativeToolPolicy, compact_
 KGDocSyncModelSlot = Literal["light", "primary", "reason"]
 
 _SECTION_GRAPH_TIMEOUT_S = 300
-_SECTION_GRAPH_MAX_CONTENT_CHARS = 12000
+_SECTION_GRAPH_MAX_CONTENT_CHARS = 60000
 _SECTION_GRAPH_COURSE_CONTEXT_MAX_CHARS = 2400
 
 
@@ -90,7 +90,7 @@ _POLICIES: dict[KGDocSyncModelStep, KGDocSyncModelPolicy] = {
         max_content_chars=_SECTION_GRAPH_MAX_CONTENT_CHARS,
         course_context_max_chars=_SECTION_GRAPH_COURSE_CONTEXT_MAX_CHARS,
         temperature=0.1,
-        note="从单个知识文档章节抽取高置信候选知识单元和关系；输出预算要容纳最多 8 个节点和 10 条关系的结构化 JSON。",
+        note="从单个知识文档章节抽取高置信候选知识单元和关系；输出预算要容纳最多 12 个节点和 18 条关系的结构化 JSON。",
     ),
     KGDocSyncModelStep.EMPTY_REPAIR: KGDocSyncModelPolicy(
         step=KGDocSyncModelStep.EMPTY_REPAIR,

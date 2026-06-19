@@ -1,10 +1,16 @@
-import { lazy, Suspense, useCallback, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { AiInteractionProvider, AiInteractionWindow, type AiConversationScope } from "../interaction";
-import { getCourseIdFromPathname, isFullBleedCoursePath, getCourseRouteSegmentFromPathname } from "../../lib/courseNavigation";
+import {
+  buildCoursePath,
+  getCourseIdFromPathname,
+  isFullBleedCoursePath,
+  getCourseRouteSegmentFromPathname,
+  rememberCourseRoute,
+} from "../../lib/courseNavigation";
 import {
   buildKnowledgeBuildRuntimeQueryKey,
   buildRuntimeFailureBackoffMs,
@@ -13,13 +19,29 @@ import {
 import { cn } from "../../lib/utils";
 import { isElectronRuntime } from "../../lib/electronRuntime";
 import { ACTIVE_DOC_BUILD_STATUSES } from "../knowledge-docs/utils";
+import { CoursePagePillTitle, ENABLE_PERSISTENT_COURSE_NAV } from "../course/CoursePagePillTitle";
+import {
+  BarChart3,
+  BookOpen,
+  ClipboardCheck,
+  Sparkles,
+  type LucideIcon,
+} from "lucide-react";
 
 const SettingsDialog = lazy(() =>
   import("../settings/SettingsDialog").then((module) => ({ default: module.SettingsDialog })),
 );
 
+const COURSE_TOP_NAV_META: Record<string, { icon: LucideIcon; label: string }> = {
+  build: { icon: Sparkles, label: "方案规划" },
+  "knowledge-docs": { icon: BookOpen, label: "知识库" },
+  exams: { icon: ClipboardCheck, label: "训练中心" },
+  profile: { icon: BarChart3, label: "学习画像" },
+};
+
 export function Layout() {
-  const { pathname } = useLocation();
+  const location = useLocation();
+  const { pathname } = location;
   const isElectron = isElectronRuntime();
   const isFullBleed = isFullBleedCoursePath(pathname);
   const isExamFocusPage = /^\/courses?\/[^/]+\/exams\/\d+$/.test(pathname);
@@ -69,9 +91,21 @@ export function Layout() {
     return { type: "global" };
   }, [isAssistantPage, courseId]);
 
+  useEffect(() => {
+    rememberCourseRoute(`${location.pathname}${location.search}${location.hash}`);
+  }, [location.hash, location.pathname, location.search]);
+
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [hasLoadedSettingsDialog, setHasLoadedSettingsDialog] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const courseTopNavMeta = routeSegment ? COURSE_TOP_NAV_META[routeSegment] : null;
+  const shouldShowCourseTopNav = Boolean(
+    ENABLE_PERSISTENT_COURSE_NAV &&
+    courseId &&
+    courseTopNavMeta &&
+    hasCoursePageTopNavigation &&
+    !isExamFocusPage,
+  );
   const shouldShowTopBar = !isExamFocusPage && !isAssistantPage && !hasCoursePageTopNavigation;
   const routeOutlet = <Outlet key={pathname} />;
   const contentContainerClassName = shouldShowTopBar
@@ -113,6 +147,14 @@ export function Layout() {
                 </div>
               </header>
             )}
+            {shouldShowCourseTopNav && courseId && courseTopNavMeta ? (
+              <CoursePagePillTitle
+                icon={courseTopNavMeta.icon}
+                label={courseTopNavMeta.label}
+                href={buildCoursePath(courseId, "nav")}
+                placement="layout"
+              />
+            ) : null}
 
             <main className="relative flex min-h-0 w-full flex-1 flex-col overflow-x-hidden overflow-y-auto bg-transparent">
               {isFullBleed || pathname === "/" || isAssistantPage ? (

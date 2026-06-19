@@ -6,7 +6,7 @@ import pytest
 from pydantic import BaseModel
 
 from app.shared.infra.llm_support import structured_calls
-from app.shared.infra.llm_support.structured import _build_structured_fallback_messages
+from app.shared.infra.llm_support.structured import _build_structured_fallback_messages, _parse_structured_response_text
 from app.shared.infra.llm_support.structured_calls import _structured_failure_feedback
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.settings import set_system_settings_override
@@ -25,6 +25,10 @@ class _RepairOutline(BaseModel):
     chapters: list[_RepairChapter]
 
 
+class _FormulaPayload(BaseModel):
+    text: str
+
+
 def test_structured_repair_prompt_carries_validation_context() -> None:
     messages = [{"role": "user", "content": "生成课程大纲"}]
 
@@ -39,6 +43,33 @@ def test_structured_repair_prompt_carries_validation_context() -> None:
     repair_prompt = repaired[-1]["content"]
     assert "chapters.1 Input should be an object" in repair_prompt
     assert '"chapters":[{"title":"函数","key_points":["定义"]},-1]' in repair_prompt
+
+
+def test_structured_parser_repairs_invalid_latex_json_escapes() -> None:
+    result = _parse_structured_response_text(
+        _FormulaPayload,
+        r'{"text":"极限公式为 $\lim_{x \to 0} \frac{1-\cos x}{x \tan x}$。"}',
+    )
+
+    assert result.text == r"极限公式为 $\lim_{x \to 0} \frac{1-\cos x}{x \tan x}$。"
+
+
+def test_structured_parser_repairs_latex_commands_that_look_like_json_escapes() -> None:
+    result = _parse_structured_response_text(
+        _FormulaPayload,
+        r'{"text":"使用 $\frac{a}{b}$、$\tan x$ 和 $\nabla f$，矩阵为 $\begin{bmatrix}1\\\\0\end{bmatrix}$，向量 $\langle x \rangle$。"}',
+    )
+
+    assert result.text == (
+        r"使用 $\frac{a}{b}$、$\tan x$ 和 $\nabla f$，矩阵为 "
+        r"$\begin{bmatrix}1\\0\end{bmatrix}$，向量 $\langle x \rangle$。"
+    )
+
+
+def test_structured_parser_keeps_intentional_json_newlines() -> None:
+    result = _parse_structured_response_text(_FormulaPayload, r'{"text":"第一行\n第二行"}')
+
+    assert result.text == "第一行\n第二行"
 
 
 def test_structured_failure_feedback_extracts_instructor_failed_completion() -> None:

@@ -12,6 +12,10 @@ from app.models.knowledge_taxonomy import (
     validate_relation_direction,
 )
 from app.workflows.digest.kg_doc_sync.lib.models import KnowledgeSyncExtractionPayload
+from app.workflows.support.exam_pool_policy import (
+    exam_ready_units_per_chapter_floor,
+    exam_readiness_candidate_target,
+)
 
 
 _DOWNSTREAM_UNIT_TYPES = {
@@ -25,6 +29,9 @@ _DOWNSTREAM_UNIT_TYPES = {
 _DIAGNOSTIC_UNIT_TYPES = {
     KnowledgeUnitType.SKILL.value,
     KnowledgeUnitType.MISCONCEPTION.value,
+    KnowledgeUnitType.APPLICATION_CASE.value,
+}
+_EXAM_READY_UNIT_TYPES = _DOWNSTREAM_UNIT_TYPES | {
     KnowledgeUnitType.APPLICATION_CASE.value,
 }
 _STRUCTURE_EDGE_TYPES = {
@@ -66,6 +73,14 @@ def _expected_chapter_indices(structured_context: dict[str, Any]) -> set[int]:
             if index > 0:
                 indices.add(index)
     return indices
+
+
+def _chapter_count_for_exam_readiness(
+    *,
+    expected_chapters: set[int],
+    covered_chapters: set[int],
+) -> int:
+    return max(len(expected_chapters), len(covered_chapters), 0)
 
 
 def audit_knowledge_sync_payload(
@@ -119,6 +134,9 @@ def audit_knowledge_sync_payload(
     downstream_unit_count = sum(
         1 for unit in units if unit.knowledge_unit_type in _DOWNSTREAM_UNIT_TYPES
     )
+    exam_ready_unit_count = sum(
+        1 for unit in units if unit.knowledge_unit_type in _EXAM_READY_UNIT_TYPES
+    )
     diagnostic_unit_count = sum(
         1 for unit in units if unit.knowledge_unit_type in _DIAGNOSTIC_UNIT_TYPES
     )
@@ -132,6 +150,28 @@ def audit_knowledge_sync_payload(
         if expected_chapters
         else 100.0
     )
+    exam_readiness_chapter_count = _chapter_count_for_exam_readiness(
+        expected_chapters=expected_chapters,
+        covered_chapters=covered_chapters,
+    )
+    exam_ready_target_count = exam_readiness_candidate_target(exam_readiness_chapter_count)
+    exam_ready_gap_count = max(0, exam_ready_target_count - exam_ready_unit_count)
+    exam_ready_chapter_floor = exam_ready_units_per_chapter_floor(exam_readiness_chapter_count)
+    chapter_exam_ready_counts: dict[int, int] = {
+        chapter_index: 0 for chapter_index in (expected_chapters or covered_chapters)
+    }
+    for unit in units:
+        if unit.knowledge_unit_type not in _EXAM_READY_UNIT_TYPES:
+            continue
+        chapter_index = int(unit.chapter_index or 0)
+        if chapter_index <= 0:
+            continue
+        chapter_exam_ready_counts[chapter_index] = chapter_exam_ready_counts.get(chapter_index, 0) + 1
+    exam_ready_low_chapter_count = (
+        sum(1 for count in chapter_exam_ready_counts.values() if count < exam_ready_chapter_floor)
+        if exam_ready_chapter_floor
+        else 0
+    )
     quality_warning_count = sum(
         1
         for value in [
@@ -140,7 +180,7 @@ def audit_knowledge_sync_payload(
             edge_endpoint_issue_count,
             relation_direction_issue_count,
             missing_chapter_count,
-            0 if downstream_unit_count else 1 if units else 0,
+            0 if exam_ready_unit_count else 1 if units else 0,
         ]
         if value
     )
@@ -150,7 +190,11 @@ def audit_knowledge_sync_payload(
             "graph_audit_unit_count": len(units),
             "graph_audit_edge_count": len(edges),
             "graph_audit_downstream_unit_count": downstream_unit_count,
-            "graph_audit_exam_ready_unit_count": downstream_unit_count,
+            "graph_audit_exam_ready_unit_count": exam_ready_unit_count,
+            "graph_audit_exam_ready_target_count": exam_ready_target_count,
+            "graph_audit_exam_ready_gap_count": exam_ready_gap_count,
+            "graph_audit_exam_ready_chapter_floor": exam_ready_chapter_floor,
+            "graph_audit_exam_ready_low_chapter_count": exam_ready_low_chapter_count,
             "graph_audit_profile_ready_unit_count": downstream_unit_count,
             "graph_audit_diagnostic_unit_count": diagnostic_unit_count,
             "graph_audit_valid_relation_edge_count": valid_relation_edge_count,

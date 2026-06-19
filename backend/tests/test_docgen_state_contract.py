@@ -128,6 +128,55 @@ def test_chapter_generation_plan_ignores_planner_default_length_for_writer_budge
     assert task.target_word_count == 1850
 
 
+def test_chapter_generation_plan_requests_mermaid_for_structured_chapter() -> None:
+    plan = chapter_planning.assemble_chapter_generation_plan(
+        docgen_context=DocGenContext(
+            course_name="高等数学",
+            digest_mode="systematic",
+        ),
+        confirmed_chapters=[
+            {"chapter_index": 1, "title": "函数与极限结构", "objective": "讲清函数、极限和连续的关系"},
+        ],
+        locked_titles=[
+            LockedChapterTitle(chapter_index=1, confirmed_title="函数与极限结构", enhanced_title="函数与极限结构"),
+        ],
+        intent_profile=DocGenIntentProfile(depth_level="standard"),
+        file_summaries=[],
+        task_seeds=[
+            ChapterGenerationTaskSeed(
+                chapter_index=1,
+                confirmed_title="函数与极限结构",
+                enhanced_title="函数与极限结构",
+                chapter_goal="讲清函数、极限和连续的关系",
+                required_elements=["函数概念", "极限定义", "连续性", "间断点"],
+                retrieval_queries=["函数与极限"],
+            )
+        ],
+        chapter_execution_briefs=[
+            ChapterExecutionBrief(
+                chapter_index=1,
+                teaching_outline=["先搭结构图，再讲定义和例题"],
+                content_role_targets={
+                    "concept": ["函数概念", "极限定义", "连续性"],
+                    "procedure": ["间断点判定流程"],
+                    "misconception": ["把极限存在误当作函数连续"],
+                },
+                concept_targets=["函数概念", "极限定义", "连续性"],
+                example_coverage_plan=[{"target": "连续性", "form": "worked_example"}],
+            )
+        ],
+    )
+
+    task = plan.chapters[0]
+    assert task.allowed_assets == ["mermaid"]
+    assert task.placeholder_requests == [
+        {
+            "kind": "mermaid",
+            "description": "函数与极限结构的知识结构或方法路径图，围绕：函数概念、极限定义、连续性、间断点",
+        }
+    ]
+
+
 def test_docgen_pipeline_artifacts_keep_stage_outputs_compact() -> None:
     context = DocGenContext(
         course_name="线性代数",
@@ -312,7 +361,7 @@ def test_learner_profile_text_for_branch_deduplicates_repeated_profile_fragments
     assert profile_text.count("诊断画像：应加强例题。") == 1
 
 
-def test_preliminary_kg_splits_labeled_contract_items_into_short_chinese_nodes() -> None:
+def test_preliminary_kg_uses_explicit_object_targets_without_keyword_splitting() -> None:
     preliminary_kg = build_preliminary_kg(
         chapters_enhanced=[
             {
@@ -321,9 +370,10 @@ def test_preliminary_kg_splits_labeled_contract_items_into_short_chinese_nodes()
                 "required_elements": [
                     "学习目标：熟练掌握有理数、实数、整式与分式运算基础，提升计算准确率",
                 ],
+                "concept_targets": ["有理数", "实数", "整式与分式运算基础"],
                 "content_role_targets": {
-                    "concept": ["核心概念：绝对值、平方根"],
-                    "pitfall": ["易错点：忽略分母不为零、符号错误"],
+                    "concept": ["绝对值", "平方根"],
+                    "pitfall": ["忽略分母不为零", "符号错误"],
                 },
             }
         ]
@@ -335,6 +385,79 @@ def test_preliminary_kg_splits_labeled_contract_items_into_short_chinese_nodes()
     assert {"有理数", "实数", "整式与分式运算基础", "绝对值", "平方根", "忽略分母不为零", "符号错误"} <= set(nodes_by_name)
     assert nodes_by_name["忽略分母不为零"]["knowledge_unit_type"] == "misconception"
     assert nodes_by_name["绝对值"]["knowledge_unit_type"] == "concept"
+
+
+def test_preliminary_kg_does_not_turn_required_elements_into_graph_nodes() -> None:
+    preliminary_kg = build_preliminary_kg(
+        chapters_enhanced=[
+            {
+                "chapter_index": 1,
+                "title": "函数的基本概念、图像与读图方法",
+                "required_elements": [
+                    "围绕函数讲清核心概念、图示、方法步骤、典型例题、易错点、练习、单元测试",
+                    "建立函数、变量、自变量与因变量的基本概念，理解函数关系的表达方式",
+                    "结合图示认识函数图像",
+                    "配套例题：函数值求解",
+                    "常见易错点：自变量与因变量混淆",
+                    "用图示辅助理解函数性质关系",
+                    "安排基础练习与小测，重点检查概念理解、读图能力与基础计算",
+                    "讲后纠错与回顾，巩固函数表达、图像判断和简单应用，为后续章节打底",
+                    "梳理初中几何常见对象与性质",
+                    "整理",
+                    "判定题",
+                    "图表分析",
+                ],
+                "concept_targets": [
+                    "函数",
+                    "变量",
+                    "自变量与因变量",
+                    "函数图像",
+                    "函数性质关系",
+                    "初中几何常见对象与性质",
+                ],
+                "example_targets": ["函数值求解例题"],
+                "pitfall_targets": ["自变量与因变量混淆"],
+                "chapter_end_practice_plan": [
+                    {"target": "读图能力与基础计算", "task": "基础练习"},
+                ],
+            }
+        ]
+    )
+
+    node_names = {node["name"] for node in preliminary_kg["nodes"]}
+    assert {
+        "围绕函数讲清核心概念",
+        "图示",
+        "方法步骤",
+        "单元测试",
+        "安排基础练习与小测",
+        "重点检查概念理解",
+        "讲后纠错与回顾",
+        "为后续章节打底",
+        "结合图示认识函数图像",
+        "配套例题：函数值求解",
+        "常见易错点：自变量与因变量混淆",
+        "用图示辅助理解函数性质关系",
+        "梳理初中几何常见对象与性质",
+        "整理",
+        "判定题",
+        "图表分析",
+    }.isdisjoint(node_names)
+    assert {
+        "函数",
+        "变量",
+        "自变量与因变量",
+        "函数图像",
+        "函数值求解例题",
+        "自变量与因变量混淆",
+        "函数性质关系",
+        "读图能力与基础计算",
+        "初中几何常见对象与性质",
+    } <= node_names
+    nodes_by_name = {node["name"]: node for node in preliminary_kg["nodes"]}
+    assert nodes_by_name["函数图像"]["knowledge_unit_type"] == "concept"
+    assert nodes_by_name["函数值求解例题"]["knowledge_unit_type"] == "application_case"
+    assert nodes_by_name["自变量与因变量混淆"]["knowledge_unit_type"] == "misconception"
 
 
 @pytest.mark.anyio
@@ -435,6 +558,12 @@ def test_docgen_kg_draft_merges_preliminary_and_reviewed_headings() -> None:
         preliminary_kg={
             "nodes": [
                 {
+                    "name": "矩阵运算",
+                    "knowledge_unit_type": "topic",
+                    "chapter_index": 1,
+                    "summary": "矩阵运算章节主题。",
+                },
+                {
                     "name": "矩阵乘法",
                     "knowledge_unit_type": "concept",
                     "chapter_index": 1,
@@ -442,7 +571,15 @@ def test_docgen_kg_draft_merges_preliminary_and_reviewed_headings() -> None:
                     "source": "docgen_preliminary_kg",
                 }
             ],
-            "edges": [],
+            "edges": [
+                {
+                    "source_name": "矩阵乘法",
+                    "target_name": "矩阵运算",
+                    "edge_type": "part_of",
+                    "chapter_index": 1,
+                    "source": "docgen_preliminary_kg",
+                }
+            ],
         },
         kg_refinement_items=[
             {
@@ -457,7 +594,15 @@ def test_docgen_kg_draft_merges_preliminary_and_reviewed_headings() -> None:
                         "source": "docgen_review_refinement",
                     }
                 ],
-                "edges": [],
+                "edges": [
+                    {
+                        "source_name": "维度匹配",
+                        "target_name": "矩阵运算",
+                        "edge_type": "part_of",
+                        "chapter_index": 1,
+                        "source": "docgen_review_refinement",
+                    }
+                ],
             }
         ],
         reviewed_chapters=[
@@ -490,10 +635,10 @@ def test_docgen_kg_draft_merges_preliminary_and_reviewed_headings() -> None:
     assert any(node["name"] == "矩阵乘法" and node["source"] == "docgen_preliminary_kg" for node in draft["nodes"])
     assert any(node["name"] == "矩阵运算" and node["knowledge_unit_type"] == "topic" for node in draft["nodes"])
     assert all(node["name"] != "单元测试" for node in draft["nodes"])
-    assert any(edge["source_name"] == "行列配对" and edge["target_name"] == "矩阵运算" for edge in draft["edges"])
+    assert any(edge["source_name"] == "矩阵乘法" and edge["target_name"] == "矩阵运算" for edge in draft["edges"])
 
 
-def test_docgen_kg_draft_extracts_learning_bullets_without_generic_template_nodes() -> None:
+def test_docgen_kg_draft_does_not_extract_learning_bullets_as_rule_nodes() -> None:
     draft = build_docgen_kg_draft(
         reviewed_chapters=[
             {
@@ -515,12 +660,13 @@ def test_docgen_kg_draft_extracts_learning_bullets_without_generic_template_node
 
     node_names = {node["name"] for node in draft["nodes"]}
     assert "执行范围" not in node_names
-    assert "指针变量的定义" in node_names
-    assert "文件读写流程与 fopen/fclose/printf/fscanf 的使用" in node_names
+    assert "指针变量的定义" not in node_names
+    assert "文件读写流程与 fopen/fclose/printf/fscanf 的使用" not in node_names
     assert "单元测试" not in node_names
     assert "判断 `int *p` 与 `&a` 的含义" not in node_names
-    assert draft["quality_ready"] is True
-    assert draft["fast_visible_ready"] is True
+    assert node_names == {"指针结构体文件"}
+    assert draft["quality_ready"] is False
+    assert draft["fast_visible_ready"] is False
 
 
 def test_prepare_knowledge_graph_chapters_keep_markdown_when_metadata_locks_title() -> None:
@@ -706,7 +852,10 @@ def test_docgen_kg_draft_blocks_unresolved_repair_warning_but_accepts_applied_re
                     "chapter_index": 1,
                     "summary": "按行列配对求和。",
                 }
-            ]
+            ],
+            "edges": [
+                {"source_name": "矩阵乘法", "target_name": "矩阵运算", "edge_type": "part_of", "chapter_index": 1}
+            ],
         },
         kg_refinement_items=[unresolved_refinement],
         reviewed_chapters=[reviewed.model_dump(mode="json")],
@@ -717,12 +866,21 @@ def test_docgen_kg_draft_blocks_unresolved_repair_warning_but_accepts_applied_re
         preliminary_kg={
             "nodes": [
                 {
+                    "name": "矩阵运算",
+                    "knowledge_unit_type": "topic",
+                    "chapter_index": 1,
+                    "summary": "矩阵运算章节主题。",
+                },
+                {
                     "name": "矩阵乘法",
                     "knowledge_unit_type": "concept",
                     "chapter_index": 1,
                     "summary": "按行列配对求和。",
                 }
-            ]
+            ],
+            "edges": [
+                {"source_name": "矩阵乘法", "target_name": "矩阵运算", "edge_type": "part_of", "chapter_index": 1}
+            ],
         },
         kg_refinement_items=[unresolved_refinement, applied_refinement],
         reviewed_chapters=[reviewed.model_dump(mode="json")],
@@ -779,7 +937,15 @@ async def test_chapter_brief_node_receives_dispatch_sources_evidence_and_profile
             "summary_enhanced": {"concepts": ["矩阵乘法"]},
             "guideline": {"writing_rules": ["先定义再举例"]},
             "dispatch_table": {"items": [{"chapter_index": 1, "source_section_refs": ["s1"]}]},
-            "preliminary_kg": {"nodes": [{"name": "矩阵乘法"}]},
+            "preliminary_kg": {
+                "nodes": [
+                    {"name": "矩阵乘法", "knowledge_unit_type": "topic", "chapter_index": 1},
+                    {"name": "矩阵乘法维度检查", "knowledge_unit_type": "skill", "chapter_index": 1},
+                ],
+                "edges": [
+                    {"source_name": "矩阵乘法维度检查", "target_name": "矩阵乘法", "edge_type": "part_of", "chapter_index": 1}
+                ],
+            },
             "docgen_context": DocGenContext(
                 course_id="course_state_contract",
                 course_name="线性代数",
@@ -1784,7 +1950,15 @@ async def test_prepare_knowledge_graph_node_starts_missing_prefetch_from_reviewe
                 ).model_dump(mode="json")
             ],
             "document_backbone": DocumentBackbone().model_dump(mode="json"),
-            "preliminary_kg": {"nodes": [{"name": "矩阵乘法"}]},
+            "preliminary_kg": {
+                "nodes": [
+                    {"name": "矩阵乘法", "knowledge_unit_type": "topic", "chapter_index": 1},
+                    {"name": "矩阵乘法维度检查", "knowledge_unit_type": "skill", "chapter_index": 1},
+                ],
+                "edges": [
+                    {"source_name": "矩阵乘法维度检查", "target_name": "矩阵乘法", "edge_type": "part_of", "chapter_index": 1}
+                ],
+            },
         }
     )
 
@@ -1902,7 +2076,17 @@ async def test_prepare_knowledge_graph_refreshes_after_locked_title_changes(monk
                 ).model_dump(mode="json")
             ],
             "document_backbone": DocumentBackbone().model_dump(mode="json"),
-            "preliminary_kg": {"nodes": [{"name": "矩阵乘法", "knowledge_unit_type": "concept", "chapter_index": 1}]},
+            "preliminary_kg": {
+                "nodes": [
+                    {"name": "最终矩阵运算", "knowledge_unit_type": "topic", "chapter_index": 1},
+                    {"name": "矩阵乘法", "knowledge_unit_type": "concept", "chapter_index": 1},
+                    {"name": "矩阵乘法维度检查", "knowledge_unit_type": "skill", "chapter_index": 1},
+                ],
+                "edges": [
+                    {"source_name": "矩阵乘法", "target_name": "最终矩阵运算", "edge_type": "part_of", "chapter_index": 1},
+                    {"source_name": "矩阵乘法维度检查", "target_name": "矩阵乘法", "edge_type": "assesses", "chapter_index": 1},
+                ],
+            },
         }
     )
 
@@ -1926,6 +2110,15 @@ async def test_prepare_knowledge_graph_uses_ready_draft_when_prefetch_is_still_r
     payload = SectionExtractionPayload(
         units=[
             MarkdownKnowledgeUnit(
+                anchor="ku_matrix_topic",
+                name="矩阵基础",
+                knowledge_unit_type="topic",
+                summary="矩阵基础章节主题。",
+                body_markdown="矩阵基础章节主题。",
+                chapter_index=1,
+                quote_text="矩阵基础",
+            ),
+            MarkdownKnowledgeUnit(
                 anchor="ku_matrix_multiply",
                 name="矩阵乘法",
                 knowledge_unit_type="concept",
@@ -1946,6 +2139,15 @@ async def test_prepare_knowledge_graph_uses_ready_draft_when_prefetch_is_still_r
         ],
         pending_edges=[
             PendingMarkdownExtractedEdge(
+                source_candidate_id="concept",
+                target_candidate_id="topic",
+                source_name="矩阵乘法",
+                target_name="矩阵基础",
+                edge_type="part_of",
+                description="矩阵乘法属于矩阵基础。",
+                chapter_index=1,
+            ),
+            PendingMarkdownExtractedEdge(
                 source_candidate_id="dimension_check",
                 target_candidate_id="concept",
                 source_name="维度匹配检查",
@@ -1955,9 +2157,21 @@ async def test_prepare_knowledge_graph_uses_ready_draft_when_prefetch_is_still_r
                 chapter_index=1,
             )
         ],
-        candidate_id_to_anchor={"concept": "ku_matrix_multiply", "dimension_check": "ku_dimension_check"},
-        anchors_by_name={"矩阵乘法": ["ku_matrix_multiply"], "维度匹配检查": ["ku_dimension_check"]},
-        anchors_by_normalized_name={"矩阵乘法": ["ku_matrix_multiply"], "维度匹配检查": ["ku_dimension_check"]},
+        candidate_id_to_anchor={
+            "topic": "ku_matrix_topic",
+            "concept": "ku_matrix_multiply",
+            "dimension_check": "ku_dimension_check",
+        },
+        anchors_by_name={
+            "矩阵基础": ["ku_matrix_topic"],
+            "矩阵乘法": ["ku_matrix_multiply"],
+            "维度匹配检查": ["ku_dimension_check"],
+        },
+        anchors_by_normalized_name={
+            "矩阵基础": ["ku_matrix_topic"],
+            "矩阵乘法": ["ku_matrix_multiply"],
+            "维度匹配检查": ["ku_dimension_check"],
+        },
         node_contexts_by_anchor={},
         section_context=SectionExtractionContext(
             section_index=1,
@@ -1978,8 +2192,8 @@ async def test_prepare_knowledge_graph_uses_ready_draft_when_prefetch_is_still_r
             "empty_llm_result_count": 0,
             "empty_repair_attempt_count": 0,
             "empty_repair_success_count": 0,
-            "total_extracted_node_count": 2,
-            "total_extracted_edge_count": 1,
+            "total_extracted_node_count": 3,
+            "total_extracted_edge_count": 2,
         },
     )
     record = SectionExtractionRecord(
@@ -2013,18 +2227,11 @@ async def test_prepare_knowledge_graph_uses_ready_draft_when_prefetch_is_still_r
     def fake_snapshot_docgen_kg_prefetch(*args, **kwargs):
         nonlocal snapshot_calls
         snapshot_calls += 1
-        if snapshot_calls == 1:
-            return [], {
-                "prefetch_status": "running",
-                "prefetch_section_count": 0,
-                "prefetch_failed_section_count": 0,
-                "prefetch_ready": 0,
-            }
         return [record], {
-            "prefetch_status": "completed",
+            "prefetch_status": "running",
             "prefetch_section_count": 1,
             "prefetch_failed_section_count": 0,
-            "prefetch_ready": 1,
+            "prefetch_ready": 0,
         }
 
     async def fake_publish_docgen_progress(*args, **kwargs):

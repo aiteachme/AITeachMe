@@ -170,24 +170,42 @@
   display: none !important;
 }
 
+.katex {
+  font-size: 1.02em;
+  line-height: 1.35;
+}
+
+.katex .mfrac,
+.katex .sqrt,
+.katex .mroot {
+  font-size: 1.06em;
+}
+
+.katex .mfrac {
+  padding-inline: 0.02em;
+}
+
 .build-live-markdown .katex-display {
   margin: 0.85rem 0;
 }
 
 .atm-unit-tests {
   display: grid;
-  gap: 0;
-  margin: 14px 0 28px;
-  border-block: 1px solid rgba(226, 232, 240, 0.9);
-  background: #ffffff;
+  gap: 14px;
+  margin: 20px 0 34px;
+  border: 0;
+  background: transparent;
 }
 
 .atm-unit-tests__overview {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  padding: 10px 2px;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  border-radius: 12px;
+  background: #f8fafc;
   color: #64748b;
 }
 
@@ -236,21 +254,20 @@
 }
 
 .atm-unit-test-card {
-  overflow: visible;
-  border: 0;
-  border-top: 1px solid rgba(226, 232, 240, 0.9);
-  border-radius: 0;
+  overflow: hidden;
+  border: 1px solid rgba(203, 213, 225, 0.85);
+  border-radius: 14px;
   background: #ffffff;
-  box-shadow: none;
+  box-shadow: 0 14px 34px -28px rgba(15, 23, 42, 0.45);
 }
 
 .atm-unit-test-card__head {
   display: grid;
   grid-template-columns: auto auto auto minmax(0, 1fr);
   align-items: center;
-  gap: 8px;
-  background: #ffffff;
-  padding: 14px 2px 4px;
+  gap: 9px;
+  background: linear-gradient(180deg, #f8fafc, #ffffff);
+  padding: 16px 18px 8px;
 }
 
 .atm-unit-test-card__number {
@@ -302,7 +319,7 @@
 }
 
 .atm-unit-test-card__prompt {
-  padding: 4px 2px 14px 44px;
+  padding: 10px 18px 18px 58px;
 }
 
 .atm-unit-test-card__label {
@@ -315,15 +332,35 @@
 
 .atm-unit-test-card__prompt p,
 .atm-unit-test-answer__body p {
-  margin: 0;
+  margin: 0 0 0.7rem;
   color: #1f2937;
   font-size: 15px;
-  line-height: 1.76;
+  line-height: 1.88;
+}
+
+.atm-unit-test-card__prompt p:last-child,
+.atm-unit-test-answer__body p:last-child {
+  margin-bottom: 0;
+}
+
+.atm-unit-test-card__prompt :where(ul, ol),
+.atm-unit-test-answer__body :where(ul, ol) {
+  margin: 0.55rem 0 0.9rem;
+  padding-left: 1.35rem;
+}
+
+.atm-unit-test-card__prompt li,
+.atm-unit-test-answer__body li {
+  margin: 0.32rem 0;
+  line-height: 1.82;
 }
 
 .atm-unit-test-answer {
-  border-top: 0;
-  background: transparent;
+  overflow: hidden;
+  margin: 0.65rem 0 1.35rem;
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  border-radius: 12px;
+  background: #ffffff;
 }
 
 .atm-unit-test-answer > summary {
@@ -333,7 +370,7 @@
   align-items: center;
   justify-content: flex-start;
   gap: 8px;
-  padding: 0 2px 14px 44px;
+  padding: 12px 16px;
   color: #64748b;
   font-size: 12px;
   font-weight: 620;
@@ -370,10 +407,10 @@
 
 .atm-unit-test-answer__body {
   display: grid;
-  gap: 8px;
-  border-top: 0;
-  padding: 0 2px 16px 44px;
-  background: transparent;
+  gap: 10px;
+  border-top: 1px solid rgba(241, 245, 249, 0.95);
+  padding: 8px 16px 18px;
+  background: #ffffff;
 }
 
 .atm-unit-test-answer__body strong {
@@ -381,12 +418,13 @@
 }
 
 .dark .atm-unit-tests {
-  border-color: rgba(51, 65, 85, 0.95);
   background: transparent;
   box-shadow: none;
 }
 
 .dark .atm-unit-tests__overview {
+  border-color: rgba(51, 65, 85, 0.95);
+  background: rgba(15, 23, 42, 0.74);
   color: #94a3b8;
 }
 
@@ -403,15 +441,17 @@
 
 .dark .atm-unit-test-card {
   border-color: rgba(51, 65, 85, 0.95);
-  background: transparent;
+  background: rgba(15, 23, 42, 0.9);
+  box-shadow: 0 16px 38px -30px rgba(0, 0, 0, 0.9);
 }
 
 .dark .atm-unit-test-answer {
   border-color: rgba(51, 65, 85, 0.9);
+  background: rgba(15, 23, 42, 0.9);
 }
 
 .dark .atm-unit-test-card__head {
-  background: transparent;
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.88), rgba(15, 23, 42, 0.92));
 }
 
 .dark .atm-unit-test-card__number {
@@ -443,7 +483,7 @@
 }
 
 .dark .atm-unit-test-answer {
-  background: transparent;
+  background: rgba(15, 23, 42, 0.9);
 }
 
 .dark .atm-unit-test-answer > summary {
@@ -462,7 +502,7 @@
 
 .dark .atm-unit-test-answer__body {
   border-color: rgba(51, 65, 85, 0.9);
-  background: transparent;
+  background: rgba(15, 23, 42, 0.9);
 }
 
 .dark .atm-unit-test-answer__body strong {
@@ -482,10 +522,14 @@
     padding-left: 0;
   }
 
-  .atm-unit-test-card__prompt,
+  .atm-unit-test-card__prompt {
+    padding-left: 0;
+  }
+
   .atm-unit-test-answer > summary,
   .atm-unit-test-answer__body {
-    padding-left: 0;
+    padding-left: 16px;
+    padding-right: 16px;
   }
 }
 
@@ -1013,16 +1057,20 @@
   }
 
   .feishu-doc-content :where(p, ul, ol, blockquote, pre, table, figure, aside) + :where(p, ul, ol, blockquote, pre, table, figure, aside) {
-    margin-top: 0.15rem;
+    margin-top: 0.72rem;
   }
 
   .feishu-doc-content :where(h2, h3, h4) + :where(p, ul, ol, blockquote, pre, table, figure, aside) {
-    margin-top: 0;
+    margin-top: 0.38rem;
   }
 
   .feishu-doc-content :where(ul, ol) :where(ul, ol) {
     margin-top: 0.35rem;
-    margin-bottom: 0.15rem;
+    margin-bottom: 0.3rem;
+  }
+
+  .feishu-doc-content :where(li + li) {
+    margin-top: 0.28rem;
   }
 
   .feishu-doc-content li > p:last-child {
@@ -1053,6 +1101,15 @@
     overflow-x: auto;
   }
 
+  .feishu-doc-content .katex {
+    font-size: 1.04em;
+    line-height: 1.45;
+  }
+
+  .feishu-doc-content .katex-display > .katex {
+    font-size: 1.08em;
+  }
+
   .dark .feishu-doc-content .katex-display {
     background: transparent;
   }
@@ -1063,12 +1120,12 @@
 
   .feishu-doc-content :where(aside) :where(p, li) {
     font-size: 0.98em;
-    line-height: 1.74;
+    line-height: 1.78;
   }
 
   .feishu-doc-content :where(aside) :where(ul, ol) {
-    margin-top: 0.55rem;
-    margin-bottom: 0.25rem;
+    margin-top: 0.72rem;
+    margin-bottom: 0.42rem;
   }
 
   .feishu-doc-content :where(code):not(pre code) {

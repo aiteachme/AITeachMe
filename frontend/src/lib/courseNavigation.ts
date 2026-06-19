@@ -75,6 +75,14 @@ const FULL_BLEED_COURSE_SEGMENTS = new Set<string>([
 
 export const COURSE_ROUTE_BASE = "/courses";
 export const LEGACY_COURSE_ROUTE_BASE = "/course";
+const LAST_COURSE_ROUTE_STORAGE_PREFIX = "aiteachme.course.lastRoute";
+const COURSE_ENTRY_FALLBACK_ROUTE: CourseRouteId = "knowledge-docs";
+const REMEMBERABLE_COURSE_ROUTES = new Set<CourseRouteId>([
+  "build",
+  "knowledge-docs",
+  "exams",
+  "profile",
+]);
 
 const COURSE_PATH_PATTERN = /^\/courses?\/([^/?#]+)(?:\/([^?#]*))?/;
 
@@ -94,6 +102,58 @@ export function buildCourseSubPath(courseId: string, ...segments: Array<string |
   return suffix
     ? `${COURSE_ROUTE_BASE}/${encodeCoursePathSegment(courseId)}/${suffix}`
     : `${COURSE_ROUTE_BASE}/${encodeCoursePathSegment(courseId)}`;
+}
+
+function courseLastRouteStorageKey(courseId: string): string {
+  return `${LAST_COURSE_ROUTE_STORAGE_PREFIX}.${courseId}`;
+}
+
+function normalizeRememberableCoursePath(courseId: string, path: string): string | null {
+  const expectedPrefix = `${COURSE_ROUTE_BASE}/${encodeCoursePathSegment(courseId)}`;
+  if (!path.startsWith(`${expectedPrefix}/`)) {
+    return null;
+  }
+  const segment = getCourseRouteSegmentFromPathname(path);
+  if (!segment || !REMEMBERABLE_COURSE_ROUTES.has(segment as CourseRouteId)) {
+    return null;
+  }
+  return path;
+}
+
+export function rememberCourseRoute(path: string): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  const courseId = getCourseIdFromPathname(path);
+  if (!courseId) {
+    return;
+  }
+  const normalized = normalizeRememberableCoursePath(courseId, path);
+  if (!normalized) {
+    return;
+  }
+  try {
+    window.localStorage.setItem(courseLastRouteStorageKey(courseId), normalized);
+  } catch {
+    // Restricted webviews may block storage; route fallback still works.
+  }
+}
+
+export function buildPreferredCourseEntryPath(courseId: string): string {
+  if (typeof window !== "undefined") {
+    try {
+      const stored = window.localStorage.getItem(courseLastRouteStorageKey(courseId));
+      if (stored) {
+        const normalized = normalizeRememberableCoursePath(courseId, stored);
+        if (normalized) {
+          return normalized;
+        }
+      }
+    } catch {
+      // Keep navigation usable even when localStorage is unavailable.
+    }
+  }
+  return buildCoursePath(courseId, COURSE_ENTRY_FALLBACK_ROUTE);
 }
 
 export function getCourseIdFromPathname(pathname: string): string | null {

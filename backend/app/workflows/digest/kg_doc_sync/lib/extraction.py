@@ -49,44 +49,13 @@ _MULTISPACE_RE = re.compile(r"\s+")
 _CALLOUT_MARKER_LINE_RE = re.compile(
     r"(?im)^\s*>?\s*\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION|EXAMPLE|PRACTICE|QUESTION)\]\s*$",
 )
-_MAX_SECTION_CANDIDATE_NODES = 8
-_MAX_SECTION_CANDIDATE_EDGES = 12
+_MAX_SECTION_CANDIDATE_NODES = 12
+_MAX_SECTION_CANDIDATE_EDGES = 18
 _MAX_CANDIDATE_NAME_CHARS = 90
 _MAX_CANDIDATE_SUMMARY_CHARS = 140
 _MAX_EDGE_DESCRIPTION_CHARS = 140
 _CANDIDATE_STYLE_RE = re.compile(r"(\*\*|__|==|`+)")
 _CANDIDATE_MATH_DELIMITER_RE = re.compile(r"(\\\(|\\\)|\\\[|\\\]|\$\$?|\{\s*#ku_[^}]+\s*\})")
-_CANDIDATE_LABEL_PREFIX_RE = re.compile(
-    r"^\s*(?:[-*]\s*)?(?:定义|定理|公式|例题|示例|练习|证明|备注|任务|步骤|检查点|答案|解析|Q\d+)"
-    r"(?:\s*\d+)?(?:\s*[（(][^）)]{1,18}[）)])?\s*[:：]\s*",
-    re.IGNORECASE,
-)
-_GENERIC_CANDIDATE_NAME_RE = re.compile(
-    r"^(?:"
-    r"任务\s*\d*|步骤\s*\d*(?:\s*[（(][^）)]{1,18}[）)])?|检查点|求解步骤|"
-    r"单元测试|单元小测|章末测试|章末小测|章末练习|本章目标|学习目标|"
-    r"答案|解析|参考答案|判定依据|Q\d+|第\s*\d+\s*题|题目|本题|练习|测试"
-    r")$",
-    re.IGNORECASE,
-)
-_SENTENCE_LIKE_NAME_RE = re.compile(r"[。！？!?]|\s(?:是|指|表示|意味着|定义为|用于|可以|需要)\s")
-
-# 概念性内容检测
-_CONCEPTUAL_SIGNAL_RE = re.compile(
-    r"(?:定义|定理|性质|引理|推论|公理|命题|概念|原理|法则|公式)",
-)
-_INDEPENDENT_FORMULA_RE = re.compile(r"\$\$[^$]+\$\$", re.DOTALL)
-_DOCS_TYPED_LINE_RE = re.compile(
-    r"^\s*(?:[-*]\s*)?(?:\*\*)?"
-    r"(?P<label>定义|定理|公式|例题|示例|练习|证明|备注|Definition|Theorem|Formula|Example|Exercise|Proof|Remark)"
-    r"(?:\*\*)?\s*[:：]\s*(?P<value>.+?)\s*$",
-    re.IGNORECASE | re.MULTILINE,
-)
-_DOCS_SUMMARY_SENTENCE_RE = re.compile(r"(?P<sentence>[^。！？.!?]{0,80}(?:是|指|表示|意味着|可理解为|定义为)[^。！？.!?]{4,120}[。！？.!?])")
-_DOCS_RETRY_SIGNAL_RE = re.compile(
-    r"(?:定义|定理|公式|性质|法则|原理|几何意义|物理意义|判定|判别|方法|步骤|证明|推论|注意|易错|Remark|Definition|Theorem|Formula|Example|Proof)",
-    re.IGNORECASE,
-)
 
 
 class CandidateNode(BaseModel):
@@ -94,7 +63,14 @@ class CandidateNode(BaseModel):
 
     candidate_id: str = Field(default="", description="内部稳定候选 ID。")
     anchor_id: str = Field(default="", description="Markdown 中已有的 KnowledgeUnit anchor ID。")
-    name: str = Field(description="知识单元名称，要求短、准、可展示；不超过 90 个字符。")
+    name: str = Field(
+        description=(
+            "知识单元名称，要求短、准、可展示；不超过 90 个字符。"
+            "只能写具体学科对象、方法、题型或错因；禁止输出学习活动/复盘容器，"
+            "例如“错题回看方法”“小测与错题回看”“复盘方法”“纠错流程”；"
+            "也禁止独立输出“整理”“判定题”“图表分析”等短泛词，必须限定成具体对象。"
+        )
+    )
     knowledge_unit_type: Literal[
         "topic",
         "concept",
@@ -186,12 +162,12 @@ class ChunkExtractionResult(BaseModel):
 
     nodes: list[CandidateNode] = Field(
         default_factory=list,
-        description="本片段最多 8 个高置信候选节点。",
+        description="本片段最多 12 个高置信候选节点。",
         json_schema_extra={"maxItems": _MAX_SECTION_CANDIDATE_NODES},
     )
     edges: list[CandidateEdge] = Field(
         default_factory=list,
-        description="本片段最多 12 条高置信候选关系。",
+        description="本片段最多 18 条高置信候选关系。",
         json_schema_extra={"maxItems": _MAX_SECTION_CANDIDATE_EDGES},
     )
 
@@ -241,7 +217,7 @@ def _normalize_text(text: str) -> str:
 
 
 def _clean_candidate_display_name(value: object, *, unit_type: str = "", max_chars: int = _MAX_CANDIDATE_NAME_CHARS) -> str:
-    """Drop display-hostile KG names before they reach the database."""
+    """Normalize display wrappers without re-interpreting LLM-selected names."""
 
     raw = str(value or "").strip()
     if not raw:
@@ -249,25 +225,8 @@ def _clean_candidate_display_name(value: object, *, unit_type: str = "", max_cha
     text = _CANDIDATE_MATH_DELIMITER_RE.sub("", raw)
     text = _CANDIDATE_STYLE_RE.sub("", text)
     text = _normalize_text(text)
-    text = _CANDIDATE_LABEL_PREFIX_RE.sub("", text, count=1)
     text = text.strip(" ：:，,。；;、|-")
     if not text:
-        return ""
-
-    # Prefer the short semantic label before a colon when the rest is an explanation.
-    if re.search(r"[:：]", text):
-        head, tail = re.split(r"[:：]", text, maxsplit=1)
-        head = head.strip(" ：:，,。；;、|-")
-        tail = tail.strip(" ：:，,。；;、|-")
-        if 2 <= len(head) <= 24 and not _GENERIC_CANDIDATE_NAME_RE.fullmatch(head):
-            text = head
-        else:
-            text = tail
-
-    text = _CANDIDATE_LABEL_PREFIX_RE.sub("", text, count=1).strip(" ：:，,。；;、|-")
-    if not text or _GENERIC_CANDIDATE_NAME_RE.fullmatch(text):
-        return ""
-    if len(text) > 28 and _SENTENCE_LIKE_NAME_RE.search(text):
         return ""
     if normalize_knowledge_unit_type(unit_type) != "formula_model" and len(text) > max_chars:
         return ""
@@ -312,24 +271,30 @@ def _prepare_llm_course_context(course_context: str | None) -> str:
     )
 
 
-def has_conceptual_content(content: str) -> bool:
-    """检测文本是否包含概念性内容（定义/定理/公式块等）。
-
-    用于 fast_path 判断：包含概念性内容的 chunk 不应走 fast_path。
-    """
-    # 包含多处明确知识信号
-    if len(_CONCEPTUAL_SIGNAL_RE.findall(content)) >= 2:
-        return True
-    # 包含独立公式块
-    if len(_INDEPENDENT_FORMULA_RE.findall(content)) >= 2:
-        return True
-    # 非题目文本占比检测：去掉题目块后剩余文本占比 > 30%
+def _question_free_text_metrics(content: str) -> tuple[int, float]:
     question_blocks = parse_question_blocks(content)
-    if question_blocks:
-        question_chars = sum(len(q.content) for q in question_blocks)
-        total_chars = len(content)
-        if total_chars > 0 and (total_chars - question_chars) / total_chars > 0.3:
-            return True
+    total_chars = len(content)
+    if not question_blocks or total_chars <= 0:
+        non_question_chars = len(str(content or "").strip())
+        return non_question_chars, 1.0 if non_question_chars else 0.0
+    question_chars = sum(len(q.content) for q in question_blocks)
+    non_question_chars = max(0, total_chars - question_chars)
+    return non_question_chars, non_question_chars / total_chars
+
+
+def has_conceptual_content(content: str) -> bool:
+    """Detect whether a chunk has enough structured learning content for LLM extraction.
+
+    This intentionally avoids keyword extraction. It only looks at explicit
+    anchors, formula blocks, and the amount of prose outside parsed questions.
+    """
+    if extract_markdown_knowledge_units(content):
+        return True
+    if str(content or "").count("$$") >= 2:
+        return True
+    non_question_chars, non_question_ratio = _question_free_text_metrics(content)
+    if non_question_chars >= 160 and non_question_ratio > 0.3:
+        return True
     return False
 
 
@@ -357,7 +322,10 @@ async def _repair_docs_extraction_after_empty(
             "role": USER,
             "content": (
                 "上一次抽取结果为空。请重新阅读片段：如果其中包含任何概念、定义、公式、方法、例题、"
-                "定理、推导、方法步骤、解题技能、易错点或应用案例，请返回非空图谱。若标题本身是一个真实主题，至少包含该主题或概念。"
+                "定理、推导、具体解题方法、解题技能、易错点或应用案例，请返回非空图谱。"
+                "若标题本身是一个真实课程主题，至少包含该主题或概念；但“图示”“方法步骤”“单元测试”"
+                "“重点检查概念理解”“讲后纠错与回顾”“为后续章节打底”等教学脚手架不能作为节点名。"
+                "找不到可复习、可教学、可出题的具体知识对象时，继续返回空结果。"
             ),
         }
     )
@@ -382,11 +350,14 @@ def _should_retry_docs_extraction_after_empty(
     chunk_title: str,
 ) -> bool:
     normalized_title = _normalize_text(chunk_title)
-    if _DOCS_TYPED_LINE_RE.search(chunk_content):
+    if extract_markdown_knowledge_units(chunk_content):
         return True
-    if _DOCS_SUMMARY_SENTENCE_RE.search(chunk_content):
+    if str(chunk_content or "").count("$$") >= 2:
         return True
-    if _DOCS_RETRY_SIGNAL_RE.search(chunk_content) or _DOCS_RETRY_SIGNAL_RE.search(normalized_title):
+    non_question_chars, non_question_ratio = _question_free_text_metrics(chunk_content)
+    if non_question_chars >= 120 and non_question_ratio > 0.25:
+        return True
+    if len(normalized_title) >= 4 and not _looks_like_question_chunk(chunk_content):
         return True
     return False
 

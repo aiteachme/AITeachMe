@@ -21,7 +21,13 @@ from app.schemas.exams import ExamGenerateRequest, ExamSubmitRequest, PaperPrevi
 from app.shared.infra.exceptions import AITeachMeError
 from app.utils.time import utcnow
 from app.workflows.examine.exam_grade.lib.grader import ExamItemGradeDecision
+from app.workflows.examine.question_build import prompts as question_prompts
 from app.workflows.examine.question_build.lib import generator
+from app.workflows.support.exam_pool_policy import (
+    exam_candidate_unit_limit,
+    exam_ready_units_per_chapter_floor,
+    exam_readiness_candidate_target,
+)
 
 
 COURSE_ID = "course_exam00000000"
@@ -99,6 +105,42 @@ def _workflow_result(payload: dict[str, object]) -> SimpleNamespace:
         value=payload,
         require_value=lambda: payload,
     )
+
+
+def test_exam_candidate_pool_policy_matches_default_practice_and_paper_needs() -> None:
+    assert exam_candidate_unit_limit(1) == 24
+    assert exam_candidate_unit_limit(8) == 32
+    assert exam_candidate_unit_limit(24) == 60
+    assert exam_readiness_candidate_target(2) == 32
+    assert exam_readiness_candidate_target(12) == 48
+    assert exam_ready_units_per_chapter_floor(8) == 4
+
+
+def test_text_exam_prompt_keeps_source_until_context_safety_limit() -> None:
+    marker = "SOURCE_MIDDLE_MARKER"
+    messages = question_prompts.build_text_exam_messages(
+        course_name="测试课程",
+        knowledge_text=f"开头\n{marker}\n结尾",
+        num_questions=2,
+        difficulty="medium",
+    )
+
+    payload_text = messages[-1]["content"]
+    assert marker in payload_text
+    assert '"knowledge_text_truncated": false' in payload_text
+
+
+def test_text_exam_prompt_marks_only_extreme_source_compression() -> None:
+    messages = question_prompts.build_text_exam_messages(
+        course_name="测试课程",
+        knowledge_text="甲" * 90000,
+        num_questions=2,
+        difficulty="medium",
+    )
+
+    payload_text = messages[-1]["content"]
+    assert '"knowledge_text_truncated": true' in payload_text
+    assert "学习资料过长，已保留开头和结尾" in payload_text
 
 
 def test_exam_config_snapshot_normalizes_hash_inputs(monkeypatch: pytest.MonkeyPatch) -> None:

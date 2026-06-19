@@ -35,9 +35,10 @@ type CalloutKind =
   | "caution"
   | "example"
   | "practice"
-  | "question";
+  | "question"
+  | "answer";
 type CollapsibleHeadings = boolean | readonly number[];
-const CALLOUT_PATTERN = "note|tip|important|warning|caution|example|practice|question";
+const CALLOUT_PATTERN = "note|tip|important|warning|caution|example|practice|question|answer";
 const CALLOUT_FIELD_LABEL_PATTERN =
   "题目\\/任务|解析\\/判定依据|答案\\/结论|判定依据|正确答案|参考答案|题目|题干|任务|案例|例题|选项|解析|解法|思路|步骤|答案|结论|易错点|错因|注意";
 const CALLOUT_FIELD_MARKER_RE = new RegExp(
@@ -83,6 +84,10 @@ const INTERACTIVE_LOADING_STEPS = [
   "正在校验 HTML 结构与资源边界",
   "正在加载沙箱预览",
 ];
+
+function noopMarkdownPlugin() {
+  return undefined;
+}
 
 type MarkdownAstNode = {
   type?: string;
@@ -155,6 +160,7 @@ const CALLOUT_META: Record<CalloutKind, { label: string; Icon: LucideIcon }> = {
   example: { label: "例题", Icon: BadgeCheck },
   practice: { label: "练习", Icon: Lightbulb },
   question: { label: "题目", Icon: CircleHelp },
+  answer: { label: "答案", Icon: BadgeCheck },
 };
 
 const CALLOUT_STYLES: Record<MarkdownViewerVariant, Record<CalloutKind, { shell: string; badge: string }>> = {
@@ -191,6 +197,10 @@ const CALLOUT_STYLES: Record<MarkdownViewerVariant, Record<CalloutKind, { shell:
       shell: "my-5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-slate-800 shadow-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100",
       badge: "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900",
     },
+    answer: {
+      shell: "my-4 rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-800 shadow-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100",
+      badge: "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300",
+    },
   },
   document: {
     note: {
@@ -225,6 +235,10 @@ const CALLOUT_STYLES: Record<MarkdownViewerVariant, Record<CalloutKind, { shell:
       shell: "my-6 rounded-md border border-[#DEE3EA] bg-[#F7F9FC] px-4 py-4 text-[#1F2329] shadow-[0_8px_24px_rgba(15,23,42,0.04)] dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 sm:px-6 sm:py-5",
       badge: "text-[#172033] dark:text-slate-100",
     },
+    answer: {
+      shell: "my-4 rounded-md border border-[#DEE3EA] bg-white px-4 py-4 text-[#1F2329] dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 sm:px-6",
+      badge: "text-[#245FD6] dark:text-blue-300",
+    },
   },
   planner: {
     note: {
@@ -258,6 +272,10 @@ const CALLOUT_STYLES: Record<MarkdownViewerVariant, Record<CalloutKind, { shell:
     question: {
       shell: "my-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-zinc-800 shadow-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100",
       badge: "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900",
+    },
+    answer: {
+      shell: "my-4 rounded-xl border border-slate-200 bg-white px-4 py-3 text-zinc-800 shadow-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100",
+      badge: "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300",
     },
   },
 };
@@ -1226,6 +1244,22 @@ function inlineMathBodyHasSignal(body: string): boolean {
   );
 }
 
+function inlineMathBodyNeedsDisplayStyle(body: string): boolean {
+  const trimmed = body.trim();
+  return (
+    /\\(?:frac|dfrac|tfrac|lim|sum|prod|int|binom)\b/.test(trimmed) ||
+    /\\begin\{(?:cases|matrix|pmatrix|bmatrix|aligned|alignedat)\}/.test(trimmed)
+  );
+}
+
+function makeInlineMathReadableForRender(body: string): string {
+  const trimmed = body.trim();
+  if (!trimmed || !inlineMathBodyNeedsDisplayStyle(trimmed)) return body;
+  if (/\\(?:displaystyle|textstyle|scriptstyle|scriptscriptstyle)\b/.test(trimmed)) return body;
+  if (/^\\dfrac\b/.test(trimmed)) return body;
+  return `\\displaystyle ${trimmed}`;
+}
+
 function inlineMathBodyLooksUnsafe(body: string): boolean {
   const trimmed = body.trim();
   if (!trimmed) return true;
@@ -1267,14 +1301,18 @@ function repairInlineMathLineForRender(line: string): string {
     const right = positions[index + 1];
     const body = working.slice(left + 1, right);
     output.push(working.slice(cursor, left));
+    const normalizedBody = body.trim();
     if (inlineMathBodyLooksUnsafe(body)) {
       output.push("\\$", body, "\\$");
       changed = true;
-    } else if (body !== body.trim()) {
-      output.push("$", body.trim(), "$");
-      changed = true;
     } else {
-      output.push(working.slice(left, right + 1));
+      const readableBody = makeInlineMathReadableForRender(normalizedBody);
+      if (body !== normalizedBody || readableBody !== normalizedBody) {
+        output.push("$", readableBody, "$");
+        changed = true;
+      } else {
+        output.push(working.slice(left, right + 1));
+      }
     }
     cursor = right + 1;
   }
@@ -1712,7 +1750,8 @@ function normalizeCalloutKind(value: string | undefined): CalloutKind | null {
     normalized === "caution" ||
     normalized === "example" ||
     normalized === "practice" ||
-    normalized === "question"
+    normalized === "question" ||
+    normalized === "answer"
   ) {
     return normalized;
   }
@@ -1732,7 +1771,7 @@ function extractCalloutMarker(paragraph: MarkdownAstNode): CalloutKind | null {
 
   const firstText = children[firstTextIndex];
   const match = String(firstText.value ?? "").match(
-    /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION|EXAMPLE|PRACTICE|QUESTION)\][ \t]*/i,
+    /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION|EXAMPLE|PRACTICE|QUESTION|ANSWER)\][ \t]*/i,
   );
   const kind = normalizeCalloutKind(match?.[1]);
   if (!match || !kind || firstTextIndex > 0) {
@@ -1816,6 +1855,20 @@ function formatHeadingNumber(level: number, counters: number[]): string {
   return parts.map(String).join(".");
 }
 
+function escapeRegExpLiteral(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function headingTextAlreadyStartsWithNumber(text: string, headingNumber: string): boolean {
+  const normalizedText = text.trim().replace(/\u00a0/g, " ");
+  const normalizedNumber = headingNumber.trim().replace(/\.$/, "");
+  if (!normalizedText || !normalizedNumber) {
+    return false;
+  }
+  const prefixPattern = new RegExp(`^${escapeRegExpLiteral(normalizedNumber)}(?:\\s+|[、:：\\-]|(?=[^\\d.])|$)`);
+  return prefixPattern.test(normalizedText);
+}
+
 function annotateHeadingIds(
   node: MarkdownAstNode,
   nextHeadingId: (text: string) => string,
@@ -1854,9 +1907,14 @@ function annotateHeadingNumbers(
       for (let index = level + 1; index < counters.length; index += 1) {
         counters[index] = 0;
       }
+      const headingNumber = formatHeadingNumber(level, counters);
+      const text = extractMarkdownAstText(node);
+      if (headingTextAlreadyStartsWithNumber(text, headingNumber)) {
+        return;
+      }
       const hProperties = {
         ...(node.data?.hProperties ?? {}),
-        "data-heading-number": formatHeadingNumber(level, counters),
+        "data-heading-number": headingNumber,
       };
       node.data = {
         ...(node.data ?? {}),
@@ -2660,7 +2718,7 @@ function parseCallout(children: ReactNode): { kind: CalloutKind; body: ReactNode
 
   const firstText = extractText(nodes[0]).trim();
   const match = firstText.match(
-    /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION|EXAMPLE|PRACTICE|QUESTION)\](?:\s+(.+))?$/i,
+    /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION|EXAMPLE|PRACTICE|QUESTION|ANSWER)\](?:\s+(.+))?$/i,
   );
   if (!match) {
     return null;
@@ -2760,7 +2818,7 @@ export function MarkdownViewer({
   const remarkPlugins = useMemo(
     () => [
       remarkGfm,
-      ...(hasMathContent ? [remarkMath] : []),
+      hasMathContent ? remarkMath : noopMarkdownPlugin,
       remarkBlankTokens,
       remarkSafeHighlights,
       remarkCallouts,
@@ -2771,9 +2829,9 @@ export function MarkdownViewer({
 
   const rehypePlugins = useMemo(
     () => [
-      ...(variant === "document" && hasRawHtmlContent ? [rehypeRaw] : []),
-      ...(hasMathContent ? [[rehypeKatex, { throwOnError: false, strict: false, errorColor: "#1F2329", output: "html" }]] : []),
-      ...(hasHighlightableCode ? [rehypeHighlight] : []),
+      variant === "document" && hasRawHtmlContent ? rehypeRaw : noopMarkdownPlugin,
+      hasMathContent ? [rehypeKatex, { throwOnError: false, strict: false, errorColor: "#1F2329", output: "html" }] : noopMarkdownPlugin,
+      hasHighlightableCode ? rehypeHighlight : noopMarkdownPlugin,
     ] as any[],
     [hasHighlightableCode, hasMathContent, hasRawHtmlContent, variant],
   );
@@ -2893,6 +2951,17 @@ export function MarkdownViewer({
         }
         if (containsInteractiveEmbed(callout.body, assetCourse)) {
           return <div className="my-4">{callout.body}</div>;
+        }
+
+        if (callout.kind === "answer") {
+          return (
+            <details className="atm-unit-test-answer">
+              <summary>答案与解析</summary>
+              <div className="atm-unit-test-answer__body">
+                {callout.body}
+              </div>
+            </details>
+          );
         }
 
         const tone = CALLOUT_STYLES[variant][callout.kind];

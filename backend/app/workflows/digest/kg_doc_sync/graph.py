@@ -43,7 +43,7 @@ NODE_FAIL = "fail"
 NODE_DISPLAY_NAMES = {
     NODE_PREPARE: "图谱同步：校验知识文档",
     NODE_INIT_RUN: "图谱同步：创建同步批次",
-    NODE_PERSIST_SEED_UNITS: "图谱同步：写入 DocGen 种子知识点",
+    NODE_PERSIST_SEED_UNITS: "图谱同步：写入结构锚点与预取知识点",
     NODE_EXTRACT: "图谱同步：并发抽取知识点与关系",
     NODE_PERSIST_UNITS: "图谱同步：提前写入可用知识点",
     NODE_STITCH_RELATIONS: "图谱同步：补全课程关系",
@@ -83,9 +83,9 @@ NODE_TRACE_DETAILS: dict[str, dict[str, object]] = {
     },
     NODE_PERSIST_SEED_UNITS: {
         "description": (
-            "在正式 section 抽取前，先写入 DocGen 已有的 KnowledgeUnit 种子。"
-            "优先复用已匹配最终文档的 LLM 预抽取；如果预抽取尚未产出，则退到 DocGen preliminary_kg/backbone 规则种子。"
-            "这样正式抽取被取消时也不会让课程图谱完全为空。"
+            "在正式 section 抽取前，先写入可验证的结构锚点和已匹配最终文档的 LLM 预抽取知识点。"
+            "DocGen preliminary_kg/backbone 只作为上下文，不再以规则派生方式生成语义知识点。"
+            "这样正式抽取被取消时也能保留课程级、章节级结构锚点。"
         ),
         "reads": ["markdown", "structured_context", "prefetched_sections", "sync_run_context", "knowledge_unit"],
         "writes": ["knowledge_unit", "node_metrics.persist_seed_units"],
@@ -222,7 +222,7 @@ def route_after_finalize(state: DocsSyncState) -> str:
 
 route_after_prepare_for_trace = named_route(route_after_prepare, "检查输入后继续同步")
 route_after_init_run_for_trace = named_route(route_after_init_run, "检查同步批次是否初始化")
-route_after_persist_seed_units_for_trace = named_route(route_after_persist_seed_units, "检查种子知识点是否已提前写入")
+route_after_persist_seed_units_for_trace = named_route(route_after_persist_seed_units, "检查结构锚点是否已提前写入")
 route_after_extract_for_trace = named_route(route_after_extract, "检查图谱候选是否抽取成功")
 route_after_persist_units_for_trace = named_route(route_after_persist_units, "检查知识点是否可提前使用")
 route_after_stitch_for_trace = named_route(route_after_stitch, "检查图谱关系缝合是否成功")

@@ -86,11 +86,11 @@ DocGen 的 `prepare_knowledge_graph` 会在 `merge_review / sync_locked_titles` 
 
 输入：`prefetched_sections`, `markdown`, `sync_run_context`
 
-动作：复用 hash 命中的预抽取 section，提前 upsert 命中的 KnowledgeUnit，可触发默认试卷预热。
+动作：复用 hash 命中的 section LLM 预抽取结果，并提前写入课程/章节结构锚点，可触发默认试卷预热。
 
 输出：`created_unit_ids`, `updated_unit_ids`, `unit_count`
 
-边界：只提前写 unit，不写 edge/source ref。
+边界：只提前写可验证的 unit/edge，不写 source ref；DocGen preliminary_kg/backbone 只作为上下文，不再以规则方式生成语义知识点。
 
 ## 4. `extract`
 
