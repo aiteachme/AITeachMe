@@ -14,12 +14,18 @@ import {
 
 import { cn } from "../../lib/utils";
 import { buildCoursePath, getCourseRouteSegmentFromPathname } from "../../lib/courseNavigation";
+import {
+  buildKnowledgeBuildRuntimeQueryKey,
+  buildRuntimeFailureBackoffMs,
+  fetchKnowledgeBuildRuntime,
+} from "../../lib/knowledgeBuildRuntime";
 import { useExamHistoryApiV1CoursesCourseIdExamsHistoryGet } from "../../api/generated/exams";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { apiClient } from "../../api/client";
 import type { ApiResponse } from "../../api/types";
 import type { DocGenGetResponse, ExamHistoryItem } from "../../api/generated/model";
 import { TopBar } from "../layout/TopBar";
+import { ACTIVE_DOC_BUILD_STATUSES } from "../knowledge-docs/utils";
 
 interface CoursePagePillTitleProps {
   icon: LucideIcon;
@@ -87,14 +93,48 @@ export function CoursePagePillTitle({
     staleTime: 30000,
   });
 
+  const runtimeQuery = useQuery({
+    queryKey: courseId
+      ? [...buildKnowledgeBuildRuntimeQueryKey(courseId), "course-nav"]
+      : ["knowledge-doc-build-nav-empty"],
+    queryFn: () => fetchKnowledgeBuildRuntime(courseId as string),
+    enabled: Boolean(courseId) && !shouldHideInlineCourseNav,
+    staleTime: 2500,
+    refetchInterval: (query) => {
+      const failureBackoff = buildRuntimeFailureBackoffMs(query.state.fetchFailureCount);
+      if (failureBackoff !== null) return failureBackoff;
+      const statuses = [
+        query.state.data?.aggregate?.status,
+        query.state.data?.docgen?.status,
+        query.state.data?.graph?.status,
+      ].map((status) => (status ?? "").trim());
+      return statuses.some((status) => ACTIVE_DOC_BUILD_STATUSES.has(status)) ? 2500 : false;
+    },
+  });
+
+  const runtimeStatuses = useMemo(() => {
+    return [
+      runtimeQuery.data?.aggregate?.status,
+      runtimeQuery.data?.docgen?.status,
+      runtimeQuery.data?.graph?.status,
+    ].map((status) => (status ?? "").trim());
+  }, [
+    runtimeQuery.data?.aggregate?.status,
+    runtimeQuery.data?.docgen?.status,
+    runtimeQuery.data?.graph?.status,
+  ]);
+
   const buildStatus = useMemo(() => {
-    return (docMarkdownQuery.data?.build?.status ?? "").trim();
-  }, [docMarkdownQuery.data?.build?.status]);
+    return (runtimeQuery.data?.docgen?.status ?? runtimeQuery.data?.aggregate?.status ?? docMarkdownQuery.data?.build?.status ?? "").trim();
+  }, [
+    docMarkdownQuery.data?.build?.status,
+    runtimeQuery.data?.aggregate?.status,
+    runtimeQuery.data?.docgen?.status,
+  ]);
 
   const isBuilding = useMemo(() => {
-    const status = buildStatus;
-    return status === "accepted" || status === "running" || status === "publishing";
-  }, [buildStatus]);
+    return ACTIVE_DOC_BUILD_STATUSES.has(buildStatus) || runtimeStatuses.some((status) => ACTIVE_DOC_BUILD_STATUSES.has(status));
+  }, [buildStatus, runtimeStatuses]);
 
   const isBuilt = useMemo(() => {
     return Boolean(docMarkdownQuery.data?.exists);
@@ -105,9 +145,15 @@ export function CoursePagePillTitle({
     return Boolean(String(data?.draft_markdown ?? "").trim());
   }, [docMarkdownQuery.data]);
 
+  const hasRuntimeBuildStarted = useMemo(() => {
+    return Boolean(runtimeQuery.data?.build_group_id) || runtimeStatuses.some((status) => Boolean(status && status !== "idle"));
+  }, [runtimeQuery.data?.build_group_id, runtimeStatuses]);
+
   const hasBuildStarted = useMemo(() => {
-    return isBuilt || hasDraftDoc || Boolean(buildStatus && buildStatus !== "idle");
-  }, [buildStatus, hasDraftDoc, isBuilt]);
+    return isBuilt || hasDraftDoc || hasRuntimeBuildStarted || Boolean(buildStatus && buildStatus !== "idle");
+  }, [buildStatus, hasDraftDoc, hasRuntimeBuildStarted, isBuilt]);
+
+  const hasResolvedBuildAvailability = docMarkdownQuery.isFetched && (runtimeQuery.isFetched || runtimeQuery.isError);
 
   // 2. Query Exam History
   const historyQuery = useExamHistoryApiV1CoursesCourseIdExamsHistoryGet(
@@ -210,7 +256,7 @@ export function CoursePagePillTitle({
         {navItems.map((item) => {
           const isActive = item.id === currentSegment || (item.id === "exams" && label === "训练中心");
           let disabledReason = "";
-          if (!isActive && item.id === "knowledge-docs" && docMarkdownQuery.isFetched && !hasBuildStarted) {
+          if (!isActive && item.id === "knowledge-docs" && hasResolvedBuildAvailability && !hasBuildStarted) {
             disabledReason = "请先开始构建知识库";
           } else if (!isActive && item.id === "exams" && (!isBuilt || isBuilding)) {
             disabledReason = isBuilding ? "知识库构建中" : "请先构建知识库";

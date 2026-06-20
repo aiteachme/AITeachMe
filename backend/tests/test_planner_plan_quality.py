@@ -7,6 +7,7 @@ from app.workflows.digest.common.models import DigestMaterialContext, DigestMode
 from app.workflows.digest.planner.lib.constants import get_planner_mode_contract
 from app.workflows.digest.planner.lib.plans import (
     compose_effective_planner_request_text,
+    normalize_planner_diagnosis_draft,
     normalize_planner_draft,
     planner_mode_label,
 )
@@ -23,8 +24,6 @@ from app.workflows.digest.planner.prompts.build_plan_composer import (
     PLAN_START,
     SUGGESTION_END,
     SUGGESTION_START,
-    build_planner_diagnosis_messages,
-    build_planner_stream_messages,
 )
 
 
@@ -473,42 +472,41 @@ def test_parse_diagnosis_response_reads_choice_questions() -> None:
     ]
 
 
-def test_planner_diagnosis_prompt_keeps_questions_actionable_and_short() -> None:
-    messages = build_planner_diagnosis_messages(
-        course_name="初中数学",
+def test_normalize_planner_diagnosis_draft_returns_docgen_ready_questions() -> None:
+    normalized = normalize_planner_diagnosis_draft(
+        {
+            "diagnose": [
+                {
+                    "question": "图示辅助的重点？",
+                    "purpose": "影响图示重点。",
+                    "options": [
+                        "图示辅助",
+                        "图示辅助",
+                        "这是一个非常非常非常长的选项标签",
+                        "少用图示",
+                    ],
+                    "answer": "图示辅助",
+                },
+                {"question": "", "purpose": "空问题应该丢弃。", "options": ["概念", "练习"]},
+            ],
+            "diagnose_status": "unknown",
+        },
+        course_id="初中函数",
         user_prompt="14 天复习函数、几何和统计",
-        digest_mode="sprint",
-        material_context=_material_context(),
-        planning_note="用户需要按考试范围构建复习路径。",
-        material_note="暂无绑定资料。",
-        message_history=[],
+        requested_digest_mode="sprint",
     )
-    prompt_text = "\n".join(message["content"] for message in messages)
 
-    assert "每题都必须能在 DocGen 文档中看见结果" in prompt_text
-    assert "重竞赛思维" in prompt_text
-    assert "文档落点" in prompt_text
-
-
-def test_planner_prompt_requires_object_level_key_points() -> None:
-    messages = build_planner_stream_messages(
-        course_name="初中函数",
-        user_prompt="每章要有图示、例题、易错点和单元测试。",
-        digest_mode="sprint",
-        material_context=_material_context(),
-        planning_note="用户需要函数复习路径。",
-        material_note="暂无绑定资料。",
-        message_history=[],
-    )
-    prompt_text = "\n".join(message["content"] for message in messages)
-
-    assert "key_points 中能进入知识图谱的内容必须写成具体课程对象" in prompt_text
-    assert "不要把“图示”“方法步骤”“单元测试”" in prompt_text
-    assert "整理”“判定题”“图表分析" in prompt_text
-    assert "统计数据整理方法" in prompt_text
-    assert "几何判定条件识别" in prompt_text
-    assert "函数图像读图" in prompt_text
-    assert "函数综合练习题型" in prompt_text
+    diagnose = normalized["diagnose"]
+    assert normalized["planner_stage"] == "diagnosis"
+    assert normalized["diagnose_status"] == "pending"
+    assert len(diagnose) == 4
+    assert diagnose[0]["question"] == "解析要多细？"
+    assert diagnose[0]["answer"] == "错因提醒"
+    assert diagnose[0]["answer"] in diagnose[0]["options"]
+    assert all(item["question"] for item in diagnose)
+    assert all(len(item["options"]) == 4 for item in diagnose)
+    assert all(len(set(item["options"])) == 4 for item in diagnose)
+    assert all(len(option) <= 16 for item in diagnose for option in item["options"])
 
 
 def test_partial_chapters_supports_streaming_preview() -> None:

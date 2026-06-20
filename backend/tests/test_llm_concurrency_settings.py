@@ -234,6 +234,211 @@ async def test_llm_limiter_temporarily_reduces_after_concurrency_rate_limit() ->
 
 
 @pytest.mark.anyio
+async def test_retry_backoff_does_not_hold_limiter_slot(monkeypatch) -> None:
+    set_system_settings_override({"llm": {"concurrency_limit": 1}})
+    limiter = get_llm_concurrency_limiter()
+    sleep_started = asyncio.Event()
+    sleep_can_finish = asyncio.Event()
+    second_inside = asyncio.Event()
+
+    async def fake_sleep(_delay: float) -> None:
+        sleep_started.set()
+        await sleep_can_finish.wait()
+
+    monkeypatch.setattr(llm_common.asyncio, "sleep", fake_sleep)
+
+    async def retrying_call() -> None:
+        async with limiter:
+            await llm_common.sleep_before_retry(1, error=RuntimeError("retryable"))
+
+    async def second_call() -> None:
+        async with limiter:
+            second_inside.set()
+
+    retry_task = asyncio.create_task(retrying_call())
+    await asyncio.wait_for(sleep_started.wait(), timeout=1)
+
+    second_task = asyncio.create_task(second_call())
+    await asyncio.wait_for(second_inside.wait(), timeout=1)
+
+    sleep_can_finish.set()
+    await asyncio.gather(retry_task, second_task)
+
+
+@pytest.mark.anyio
+async def test_retry_backoff_reacquires_slot_before_returning(monkeypatch) -> None:
+    set_system_settings_override({"llm": {"concurrency_limit": 1}})
+    limiter = get_llm_concurrency_limiter()
+    sleep_started = asyncio.Event()
+    sleep_can_finish = asyncio.Event()
+    blocker_inside = asyncio.Event()
+    blocker_can_finish = asyncio.Event()
+    retry_returned = asyncio.Event()
+
+    async def fake_sleep(_delay: float) -> None:
+        sleep_started.set()
+        await sleep_can_finish.wait()
+
+    monkeypatch.setattr(llm_common.asyncio, "sleep", fake_sleep)
+
+    async def retrying_call() -> None:
+        async with limiter:
+            await llm_common.sleep_before_retry(1, error=RuntimeError("retryable"))
+            retry_returned.set()
+
+    async def blocker_call() -> None:
+        async with limiter:
+            blocker_inside.set()
+            await blocker_can_finish.wait()
+
+    retry_task = asyncio.create_task(retrying_call())
+    await asyncio.wait_for(sleep_started.wait(), timeout=1)
+
+    blocker_task = asyncio.create_task(blocker_call())
+    await asyncio.wait_for(blocker_inside.wait(), timeout=1)
+
+    sleep_can_finish.set()
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(retry_returned.wait(), timeout=0.05)
+
+    blocker_can_finish.set()
+    await asyncio.wait_for(retry_returned.wait(), timeout=1)
+    await asyncio.gather(retry_task, blocker_task)
+
+
+@pytest.mark.anyio
+async def test_retry_backoff_cancelled_while_sleeping_leaves_slot_available(monkeypatch) -> None:
+    set_system_settings_override({"llm": {"concurrency_limit": 1}})
+    limiter = get_llm_concurrency_limiter()
+    sleep_started = asyncio.Event()
+    sleep_can_finish = asyncio.Event()
+
+    async def fake_sleep(_delay: float) -> None:
+        sleep_started.set()
+        await sleep_can_finish.wait()
+
+    monkeypatch.setattr(llm_common.asyncio, "sleep", fake_sleep)
+
+    async def retrying_call() -> None:
+        async with limiter:
+            await llm_common.sleep_before_retry(1, error=RuntimeError("retryable"))
+
+    retry_task = asyncio.create_task(retrying_call())
+    await asyncio.wait_for(sleep_started.wait(), timeout=1)
+    retry_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await retry_task
+
+    async def next_call() -> bool:
+        async with limiter:
+            return True
+
+    assert await asyncio.wait_for(next_call(), timeout=1)
+
+
+@pytest.mark.anyio
+async def test_retry_backoff_nested_limiter_releases_only_current_slot(monkeypatch) -> None:
+    set_system_settings_override({"llm": {"concurrency_limit": 2}})
+    limiter = get_llm_concurrency_limiter()
+    sleep_started = asyncio.Event()
+    sleep_can_finish = asyncio.Event()
+    blocker_inside = asyncio.Event()
+    blocker_can_finish = asyncio.Event()
+    third_inside = asyncio.Event()
+    retry_returned = asyncio.Event()
+    retry_can_finish = asyncio.Event()
+
+    async def fake_sleep(_delay: float) -> None:
+        sleep_started.set()
+        await sleep_can_finish.wait()
+
+    monkeypatch.setattr(llm_common.asyncio, "sleep", fake_sleep)
+
+    async def retrying_call() -> None:
+        async with limiter:
+            async with limiter:
+                await llm_common.sleep_before_retry(1, error=RuntimeError("retryable"))
+                retry_returned.set()
+                await retry_can_finish.wait()
+
+    async def blocker_call() -> None:
+        async with limiter:
+            blocker_inside.set()
+            await blocker_can_finish.wait()
+
+    async def third_call() -> None:
+        async with limiter:
+            third_inside.set()
+
+    retry_task = asyncio.create_task(retrying_call())
+    await asyncio.wait_for(sleep_started.wait(), timeout=1)
+
+    blocker_task = asyncio.create_task(blocker_call())
+    await asyncio.wait_for(blocker_inside.wait(), timeout=1)
+
+    third_task = asyncio.create_task(third_call())
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(third_inside.wait(), timeout=0.05)
+
+    sleep_can_finish.set()
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(retry_returned.wait(), timeout=0.05)
+
+    blocker_can_finish.set()
+    await asyncio.wait_for(retry_returned.wait(), timeout=1)
+    retry_can_finish.set()
+    await asyncio.gather(retry_task, blocker_task)
+    await asyncio.wait_for(third_inside.wait(), timeout=1)
+    await third_task
+
+
+@pytest.mark.anyio
+async def test_retry_backoff_child_task_does_not_release_parent_slot(monkeypatch) -> None:
+    set_system_settings_override({"llm": {"concurrency_limit": 1}})
+    limiter = get_llm_concurrency_limiter()
+    sleep_started = asyncio.Event()
+    sleep_can_finish = asyncio.Event()
+    parent_can_finish = asyncio.Event()
+    parent_inside = asyncio.Event()
+    second_inside = asyncio.Event()
+
+    async def fake_sleep(_delay: float) -> None:
+        sleep_started.set()
+        await sleep_can_finish.wait()
+
+    monkeypatch.setattr(llm_common.asyncio, "sleep", fake_sleep)
+
+    async def child_retry() -> None:
+        await llm_common.sleep_before_retry(1, error=RuntimeError("retryable"))
+
+    async def parent_call() -> None:
+        async with limiter:
+            parent_inside.set()
+            child_task = asyncio.create_task(child_retry())
+            await asyncio.wait_for(sleep_started.wait(), timeout=1)
+            sleep_can_finish.set()
+            await child_task
+            await parent_can_finish.wait()
+
+    async def second_call() -> None:
+        async with limiter:
+            second_inside.set()
+
+    parent_task = asyncio.create_task(parent_call())
+    await asyncio.wait_for(parent_inside.wait(), timeout=1)
+    await asyncio.wait_for(sleep_started.wait(), timeout=1)
+
+    second_task = asyncio.create_task(second_call())
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(second_inside.wait(), timeout=0.05)
+
+    parent_can_finish.set()
+    await parent_task
+    await asyncio.wait_for(second_inside.wait(), timeout=1)
+    await second_task
+
+
+@pytest.mark.anyio
 async def test_llm_limiter_is_process_wide_across_event_loops() -> None:
     set_system_settings_override({"llm": {"concurrency_limit": 1}})
     limiter = get_llm_concurrency_limiter()
