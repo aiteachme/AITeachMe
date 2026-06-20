@@ -37,27 +37,12 @@ from app.models import (
     CourseFileLink,
     UserKnowledgeState,
 )
-from app.schemas.course import CourseDeleteImpactItem, CourseDeletePreviewData
+from app.schemas.course import CourseDeletePreviewData
 from app.utils.path_helpers import build_course_dir
 
 logger = structlog.get_logger()
 _POSTGRES_IDENTIFIER_RE = re.compile(r"[a-z_][a-z0-9_]*")
 
-_EXAM_KEYS = [
-    "question_template",
-    "question_type_registry",
-    "exam_paper",
-    "exam_paper_item",
-    "exam_study_guide_cache",
-]
-_PROFILE_KEYS = ["user_knowledge_state"]
-_KNOWLEDGE_KEYS = [
-    "knowledge_graph_source_ref",
-    "knowledge_graph_sync_run",
-    "knowledge_document",
-    "knowledge_edge",
-    "knowledge_unit",
-]
 
 
 def _count_query(session: Session, statement) -> int:
@@ -66,10 +51,6 @@ def _count_query(session: Session, statement) -> int:
 
 def _count_rows(session: Session, model: type, *conditions: object) -> int:
     return _count_query(session, select(func.count()).select_from(model).where(*conditions))
-
-
-def _sum_counts(counts: dict[str, int], keys: list[str]) -> int:
-    return sum(counts.get(key, 0) for key in keys)
 
 
 def _bulk_delete_by_course(session: Session, model: type, *, course_id: str) -> None:
@@ -130,44 +111,12 @@ def collect_course_delete_counts(session: Session, *, course_id: str) -> dict[st
 def build_course_delete_preview(session: Session, *, course: Course) -> CourseDeletePreviewData:
     detail_counts = collect_course_delete_counts(session, course_id=course.id)
     total_related_records = sum(detail_counts.values())
-    impact_items = [
-        CourseDeleteImpactItem(
-            key="files",
-            label="关联文件与切块",
-            count=detail_counts["raw_file"] + detail_counts["retrieval_chunk"],
-            description="会移除文件与该课程的关联，并删除该课程下的切块与向量索引。",
-        ),
-        CourseDeleteImpactItem(
-            key="knowledge",
-            label="知识结构与讲义",
-            count=_sum_counts(detail_counts, _KNOWLEDGE_KEYS),
-            description="会删除知识文档、图谱、课程树与依赖结构。",
-        ),
-        CourseDeleteImpactItem(
-            key="exam",
-            label="考试记录",
-            count=_sum_counts(detail_counts, _EXAM_KEYS),
-            description="会删除题模板、试卷与试卷题目快照。",
-        ),
-        CourseDeleteImpactItem(
-            key="chat",
-            label="对话记录",
-            count=detail_counts["chat_message"] + detail_counts["chat_session"],
-            description="会删除该课程下的会话与聊天消息。",
-        ),
-        CourseDeleteImpactItem(
-            key="profile",
-            label="学习画像",
-            count=_sum_counts(detail_counts, _PROFILE_KEYS),
-            description="会删除 mastery 与复习状态。",
-        ),
-    ]
     return CourseDeletePreviewData(
         course_id=course.id,
         course_name=course.name,
         has_content=total_related_records > 0,
         total_related_records=total_related_records,
-        impact_items=[item for item in impact_items if item.count > 0],
+        impact_items=[],
         detail_counts=detail_counts,
     )
 

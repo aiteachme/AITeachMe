@@ -96,26 +96,7 @@ export const courseHandlers = [
         course_name: course?.name ?? "未命名课程",
         has_content: true,
         total_related_records: 12,
-        impact_items: [
-          {
-            key: "files",
-            label: "关联文件与解析产物",
-            count: 5,
-            description: "会移除文件与该课程的关联，并删除解析后的文档切块。",
-          },
-          {
-            key: "knowledge",
-            label: "知识文档与知识图谱",
-            count: 4,
-            description: "会删除知识文档、知识点、边、证据和构建任务等派生数据。",
-          },
-          {
-            key: "chat",
-            label: "对话记录",
-            count: 3,
-            description: "会删除该课程下的全部聊天消息。",
-          },
-        ],
+        impact_items: [],
         detail_counts: {
           raw_file: 1,
           document: 1,
