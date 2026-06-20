@@ -157,30 +157,30 @@ const HOME_PROMPT_STARTERS = [
   {
     id: "middle-school-math",
     label: "初中数学",
-    description: "先理清重点",
-    prompt: "初中数学最近有点乱，想先把函数、几何和常见易错题梳理清楚，最好能边讲边练。",
+    description: "函数基础",
+    prompt: "构建一门初中数学函数复习课，覆盖函数图像、一次函数、二次函数和常见易错题，配套概念讲解、例题和练习。",
     icon: BookOpen,
   },
   {
     id: "high-school-physics",
     label: "高中物理",
-    description: "从力学开始",
-    prompt: "高中物理力学我基础一般，帮我从受力分析和牛顿定律开始学，遇到公式希望能讲清楚适用场景。",
+    description: "力学入门",
+    prompt: "生成一门高中物理力学入门课，从受力分析、牛顿定律到列式解题逐步展开，重点讲清公式适用条件和典型题型。",
     icon: Target,
   },
   {
     id: "college-calculus",
     label: "大学高数",
-    description: "补概念和题感",
-    prompt: "我在学高数上册，极限、导数和积分总是连不起来，想要一条清晰的学习路线和一些典型例题。",
+    description: "期末复习",
+    prompt: "制定大学高数期末复习课程，系统梳理极限、导数和积分，突出核心概念、常见题型和容易混淆的解题方法。",
     icon: ClipboardList,
   },
   {
-    id: "college-english",
-    label: "大学英语",
-    description: "阅读写作提升",
-    prompt: "大学英语想提高阅读和写作，不用太像背单词计划，希望能围绕长难句、阅读理解和表达积累来安排。",
-    icon: CalendarCheck,
+    id: "python-basics",
+    label: "Python入门",
+    description: "边写边练",
+    prompt: "生成一门 Python 入门课程，从变量、条件判断、循环和函数开始，每节包含代码示例、动手练习和常见错误说明。",
+    icon: FileCode,
   },
 ] as const;
 
@@ -188,29 +188,29 @@ const HOME_FILE_PROMPT_STARTERS = [
   {
     id: "files-high-school-chemistry",
     label: "高中化学",
-    description: "先抓考试重点",
-    prompt: "这几份化学资料我想复习考试重点，帮我先整理知识主线，再指出哪些概念和题型最该优先看。",
+    description: "先抓考点",
+    prompt: "基于上传的化学复习资料，提炼考试重点，整理常见易混概念和高频题型，生成适合考前复习的课程结构。",
     icon: BookOpen,
   },
   {
     id: "files-linear-algebra",
     label: "大学线代",
-    description: "把课件串起来",
-    prompt: "这些线代课件有点散，帮我整理成能顺着学的路线，重点讲矩阵、方程组和特征值之间的关系。",
+    description: "课件整理",
+    prompt: "基于上传的线性代数课件，按学习顺序整理课程路线，重点讲清矩阵、方程组、向量空间和特征值之间的关系。",
     icon: Target,
   },
   {
-    id: "files-high-school-english",
-    label: "高中英语",
-    description: "阅读语法整理",
-    prompt: "帮我看看上传的英语资料，整理阅读和语法相关内容，顺便给一些练习和错题复盘建议。",
+    id: "files-marxism-basics",
+    label: "大学马原",
+    description: "考前梳理",
+    prompt: "基于上传的马原资料，按章节生成考前复习课程，重点区分唯物论、辩证法、认识论和历史观等容易混淆的内容。",
     icon: ClipboardList,
   },
   {
     id: "files-computer-basics",
     label: "计算机基础",
-    description: "快速抓核心",
-    prompt: "这些计算机基础资料我想快速入门，帮我抓住系统、网络、数据库和程序设计里最核心的概念。",
+    description: "快速入门",
+    prompt: "基于上传的计算机基础资料，整理一条入门学习路线，串联操作系统、网络、数据库和程序设计的核心概念。",
     icon: CalendarCheck,
   },
 ] as const;
@@ -965,7 +965,7 @@ export function HomePage() {
           transition={{ delay: 3.0, duration: 0.6 }}
           className="mb-8 px-4 text-center text-base leading-relaxed text-zinc-500 dark:text-slate-400"
         >
-          有资料就上传；没资料也可以随便说想学什么。
+          让天下没有难学的课程
         </motion.p>
 
         {/* ── Unified Input Area ── */}
@@ -984,7 +984,7 @@ export function HomePage() {
           )}>
             <textarea
               ref={textareaRef}
-              placeholder="随便写点想学的内容：一门课、一个考试、几份资料里的困惑都可以"
+              placeholder={"输入学习目标或课程主题\n可以说明考试范围、当前基础、重点章节；有课件、讲义、教材也可以直接上传。"}
               className="w-full min-h-[148px] max-h-[320px] resize-none border-0 bg-transparent px-5 pb-3 pt-5 text-[15px] leading-7 text-zinc-900 focus:outline-none placeholder:text-zinc-400 dark:text-slate-100 dark:placeholder:text-slate-500 sm:min-h-[156px] sm:px-6 sm:pt-6"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
@@ -1115,7 +1115,7 @@ export function HomePage() {
           <div className="mt-3 w-full px-2">
             <div className="mb-1 flex items-center gap-3 text-[11px] font-medium text-zinc-400 dark:text-slate-500">
               <span className="h-px flex-1 bg-gradient-to-r from-transparent via-zinc-200 to-zinc-200/60 dark:via-slate-800 dark:to-slate-800/60" />
-              <span>{hasEntryFiles ? "有资料时可以这样说" : "随手写也可以"}</span>
+              <span>{hasEntryFiles ? "基于资料的完整提示模板" : "完整提示模板"}</span>
               <span className="h-px flex-1 bg-gradient-to-l from-transparent via-zinc-200 to-zinc-200/60 dark:via-slate-800 dark:to-slate-800/60" />
             </div>
             <div className="divide-y divide-zinc-200/60 dark:divide-slate-800/70">
@@ -1126,7 +1126,7 @@ export function HomePage() {
                     type="button"
                     onClick={() => handlePromptStarterClick(starter.prompt)}
                     disabled={isWorking}
-                    aria-label={`套用示例提示词：${starter.prompt}`}
+                    aria-label={`套用${starter.label}提示模板`}
                     title={starter.prompt}
                     className="group relative flex w-full items-baseline gap-2 py-2 pl-1 pr-3 text-left transition-colors hover:bg-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/15 disabled:cursor-not-allowed disabled:opacity-55"
                   >
