@@ -136,7 +136,7 @@ Planner handoff:
 6. `chapter_end_practice_plan` 是最终 `## 单元测试` 模块的测试计划：每章默认 {chapter_end_min}-{chapter_end_max} 个小题/案例检查/操作任务/边界辨析/迁移任务；传统题不适合的学科也要转成可判断的任务，并规划答案、判定依据或解析要点。
 7. 紧凑节奏先判断本章角色：概念章安排短例子、反例和条件辨析；方法章安排步骤、检查点和例题；训练章围绕真实题型或任务差异安排标准例题、变式检查和错误诊断。
 8. 每个 `example_coverage_plan` 和 `chapter_end_practice_plan` 项的 `purpose` 写清这道例题/案例帮助学生学会什么；自测、辨析或思考题同步规划参考答案、判定依据或解题要点。
-9. 如果 learner_profile 含“前置诊断信号”或“文档落点”，把相关选择落到 `teaching_outline`、`example_coverage_plan`、`chapter_end_practice_plan`、错因提醒或测后反馈中，不要只复述诊断答案。
+9. 如果 learner_profile 含“前置诊断信号”或“文档落点”，把相关选择落到 `teaching_outline`、`example_coverage_plan`、`chapter_end_practice_plan`、文档内练习解析、错因提醒或章末小测答案依据中，不要只复述诊断答案；不要把解析类诊断写成真实考试后的反馈流程。
 10. 旧字段 `concept_targets`、`definition_targets`、`formula_targets`、`example_targets`、`pitfall_targets` 只做兼容输出，各最多 2 条。
 11. `retrieval_queries` 最多 2 条。
 12. 不允许顺带修改标题。

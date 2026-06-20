@@ -24,6 +24,7 @@ from app.workflows.digest.planner.prompts.build_plan_composer import (
     PLAN_START,
     SUGGESTION_END,
     SUGGESTION_START,
+    build_planner_diagnosis_messages,
 )
 
 
@@ -150,7 +151,8 @@ def test_docgen_diagnose_brief_renders_user_answers() -> None:
     assert "用户补充：希望后续例题对齐函数薄弱点。" in brief
     assert "用户回答：函数" in brief
     assert "硬性生成约束" in brief
-    assert "章末检测配置" in brief
+    assert "文档内解析方式" in brief
+    assert "章末小测配置" in brief
     assert "快速回答" not in brief
 
 
@@ -470,6 +472,25 @@ def test_parse_diagnosis_response_reads_choice_questions() -> None:
             "answer": "",
         }
     ]
+
+
+def test_planner_diagnosis_prompt_keeps_resolution_inside_docgen_document() -> None:
+    messages = build_planner_diagnosis_messages(
+        course_name="初中数学",
+        user_prompt="14 天复习函数、几何和统计",
+        digest_mode="sprint",
+        material_context=_material_context(),
+        planning_note="用户需要按考试范围构建复习路径。",
+        material_note="暂无绑定资料。",
+        message_history=[],
+    )
+    prompt_text = "\n".join(message["content"] for message in messages)
+
+    assert "练后解析方式" in prompt_text
+    assert "文档内例题、随堂练习和章末小测" in prompt_text
+    assert "后续 examine/profile 流程" in prompt_text
+    assert "测后反馈方式" not in prompt_text
+    assert "测后怎么看" not in prompt_text
 
 
 def test_normalize_planner_diagnosis_draft_returns_docgen_ready_questions() -> None:

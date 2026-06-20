@@ -64,7 +64,7 @@ def _render_diagnose_brief(
         return ""
     if normalized_status == "answered":
         lines.append(
-            "硬性生成约束：每章至少在讲解起点、例题/练习、错因提醒或章末检测配置中响应上述诊断；"
+            "硬性生成约束：每章至少在讲解起点、例题/练习配置、文档内解析方式、错因提醒或章末小测配置中响应上述诊断；"
             "优先补用户回答暴露的薄弱点，不要只复述问卷。"
         )
     return "前置诊断信号：\n" + "\n".join(lines)

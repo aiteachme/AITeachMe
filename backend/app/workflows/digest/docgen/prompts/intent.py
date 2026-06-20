@@ -66,7 +66,7 @@ Planner plan：{plan or "未提供"}
 3. `example_ratio` / `practice_ratio` 表示正文中例子和练习应占的相对权重，取 0.0-1.0。
 4. `evidence_strictness` / `review_strictness` 表示来源和复核要求强度，取 0.0-1.0。
 5. 模式只影响节奏：紧凑节奏更聚焦可练路径和练习，系统节奏更强调结构和推理；章节数量、顺序和主题由规划方案决定。
-6. 如果学习者画像补充包含“前置诊断信号”或“文档落点”，必须把它转成 `content_strategy_text` 和 `example_practice_policy` 中的具体写作策略。
+6. 如果学习者画像补充包含“前置诊断信号”或“文档落点”，必须把它转成 `content_strategy_text` 和 `example_practice_policy` 中的具体写作策略；其中解析类诊断只影响文档内例题、练习和章末小测的解析写法，不要扩展成真实考试后的反馈流程。
 7. 只输出文档级短字段；不要生成按章 `chapter_style_hints`。
 """.strip()
     messages = [
