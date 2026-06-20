@@ -101,6 +101,7 @@ class ChatScene(str, Enum):
     BUILD_ASSISTANT = "build_assistant"
     HOME_INTAKE = "home_intake"
     WEB_RESEARCH = "web_research"
+    LIBRARY_SELECTION = "library_selection"
 
 
 class ChatPromptScene(str, Enum):
@@ -113,6 +114,7 @@ class ChatPromptScene(str, Enum):
     DOCUMENT_SELECTION = "document_selection"
     EXAM_QUESTION = "exam_question"
     BUILD_ASSISTANT = "build_assistant"
+    LIBRARY_LEARNING = "library_learning"
 
 
 def has_entry_context(
@@ -196,6 +198,8 @@ def resolve_prompt_scene(
     """Resolve the dedicated prompt template scene for one turn."""
 
     explicit_scene = parse_chat_scene(scene)
+    if explicit_scene == ChatScene.LIBRARY_SELECTION:
+        return ChatPromptScene.LIBRARY_LEARNING
     if explicit_scene == ChatScene.DOCUMENT_SELECTION:
         return ChatPromptScene.DOCUMENT_SELECTION
     if explicit_scene == ChatScene.EXAM_QUESTION:

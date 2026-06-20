@@ -1,7 +1,7 @@
 """Central model exports."""
 
 from app.models.build_planner import ConfirmedBuildPlan
-from app.models.chat import ChatMessage, ChatSession
+from app.models.chat import ChatMessage, ChatSession, Highlight
 from app.models.enums import (
     AsyncJobStatus,
     Difficulty,
@@ -52,6 +52,7 @@ __all__ = [
     "ChatMessage",
     "ChatSession",
     "ConfirmedBuildPlan",
+    "Highlight",
     "Difficulty",
     "DigestStep",
     "DocGenStep",

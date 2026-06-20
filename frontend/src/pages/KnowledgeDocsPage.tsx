@@ -3895,7 +3895,10 @@ export function KnowledgeDocsPage() {
   useEffect(() => {
     const handleQuickChatUpdated = (event: Event) => {
       const detail = (event as CustomEvent<QuickChatSyncEventDetail>).detail;
-      if (detail?.courseId && !routeIdsEqual(detail.courseId, courseId)) {
+      if (detail?.source && detail.source !== "quick_chat") {
+        return;
+      }
+      if (!detail?.courseId || !routeIdsEqual(detail.courseId, courseId)) {
         return;
       }
       if (!detail?.phase) {

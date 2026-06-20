@@ -12,7 +12,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import type { ChatSessionMessage } from "../../hooks/useChatSession";
 import type { AiConversationScope, AiInteractionDisplayMode, AiInteractionOpenRequest, OpenAiInteractionOptions } from "./types";
-import { getAiConversationScopeKey } from "./types";
+import { getAiConversationScopeKey, isLibrarySelectionSource } from "./types";
 
 interface AiInteractionProviderProps {
   activeScope: AiConversationScope | null;
@@ -70,6 +70,19 @@ function isSameSelectionTarget(
     left.anchorId === right.anchorId &&
     left.selectedText === right.selectedText
   );
+}
+
+function buildSelectionTargetFromOpenOptions(options?: OpenAiInteractionOptions): AiConversationSelectionTargetState | null {
+  const nextAnchorId = options?.anchorId?.trim() ?? "";
+  const nextSelectedText = options?.selectedText?.trim() ?? "";
+  if (!nextSelectedText || (!nextAnchorId && !isLibrarySelectionSource(options?.source))) {
+    return null;
+  }
+  return {
+    sessionId: typeof options?.sessionId === "string" ? options.sessionId.trim() || null : null,
+    anchorId: nextAnchorId,
+    selectedText: nextSelectedText,
+  };
 }
 
 export function AiInteractionProvider({ activeScope, children }: AiInteractionProviderProps) {
@@ -243,15 +256,7 @@ export function AiInteractionProvider({ activeScope, children }: AiInteractionPr
       setDisplayMode("fullscreen");
       setFullscreenScope(nextScope);
       setFullscreenRequest(request);
-      const nextAnchorId = options?.anchorId?.trim() ?? "";
-      const nextSelectedText = options?.selectedText?.trim() ?? "";
-      setActiveConversationSelectionTarget(nextAnchorId && nextSelectedText
-        ? {
-            sessionId: typeof options?.sessionId === "string" ? options.sessionId.trim() || null : null,
-            anchorId: nextAnchorId,
-            selectedText: nextSelectedText,
-          }
-        : null);
+      setActiveConversationSelectionTarget(buildSelectionTargetFromOpenOptions(options));
       if (options?.sessionId !== undefined) {
         setActiveConversationSessionId(options.sessionId);
       }
@@ -265,15 +270,7 @@ export function AiInteractionProvider({ activeScope, children }: AiInteractionPr
     setSidebarRequest(request);
     setFullscreenScope(null);
     setFullscreenRequest(null);
-    const nextAnchorId = options?.anchorId?.trim() ?? "";
-    const nextSelectedText = options?.selectedText?.trim() ?? "";
-    setActiveConversationSelectionTarget(nextAnchorId && nextSelectedText
-      ? {
-          sessionId: typeof options?.sessionId === "string" ? options.sessionId.trim() || null : null,
-          anchorId: nextAnchorId,
-          selectedText: nextSelectedText,
-        }
-      : null);
+    setActiveConversationSelectionTarget(buildSelectionTargetFromOpenOptions(options));
     if (options?.sessionId !== undefined) {
       setActiveConversationSessionId(options.sessionId);
     }

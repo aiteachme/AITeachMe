@@ -8,6 +8,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Body, Depends, File, Form, Path, Query, Request, UploadFile
 from fastapi.responses import Response
+from pydantic import BaseModel
 from sqlmodel import Session
 
 from app.api.deps import CurrentUserContext, get_current_user_context, get_db
@@ -211,3 +212,278 @@ async def serve_user_file_asset(
         return Response(content=data, media_type=media_type)
     except Exception:
         return Response(status_code=404, content=b"Not found")
+
+
+# ── Highlight CRUD ──────────────────────────────────────────────────────────
+
+
+class HighlightCreateRequest(BaseModel):
+    selected_text: str
+    anchor_id: str | None = None
+    color: str = "amber"
+    segments: list[dict[str, float]] | None = None
+
+
+class HighlightData(BaseModel):
+    id: int
+    file_id: str
+    selected_text: str
+    anchor_id: str | None = None
+    color: str
+    description: str | None = None
+    interactive_html: str | None = None
+    segments: list[dict[str, float]] | None = None
+    created_at: str
+
+
+class HighlightListData(BaseModel):
+    items: list[HighlightData]
+
+
+def _clean_highlight_segments(value: list[dict[str, float]] | None) -> list[dict[str, float]] | None:
+    if not value:
+        return None
+    cleaned: list[dict[str, float]] = []
+    for item in value[:200]:
+        try:
+            top = float(item.get("top", 0))
+            left = float(item.get("left", 0))
+            width = float(item.get("width", 0))
+            height = float(item.get("height", 0))
+        except (TypeError, ValueError):
+            continue
+        if width <= 0 or height <= 0:
+            continue
+        cleaned.append({
+            "top": round(top, 3),
+            "left": round(left, 3),
+            "width": round(width, 3),
+            "height": round(height, 3),
+        })
+    return cleaned or None
+
+
+def _highlight_data(highlight) -> HighlightData:
+    return HighlightData(
+        id=highlight.id,
+        file_id=highlight.file_id,
+        selected_text=highlight.selected_text,
+        anchor_id=highlight.anchor_id,
+        color=highlight.color,
+        description=highlight.description,
+        interactive_html=highlight.interactive_html,
+        segments=highlight.segments_json if isinstance(highlight.segments_json, list) else None,
+        created_at=highlight.created_at.isoformat(),
+    )
+
+
+@router.get(
+    "/{file_id}/highlights",
+    response_model=ApiResponse[HighlightListData],
+    summary="List highlights for a library file",
+    responses=build_error_responses([404, 500]),
+)
+async def list_highlights(
+    file_id: str = Path(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[HighlightListData]:
+    from sqlmodel import select
+    from app.models.chat import Highlight
+
+    raw_file = get_raw_file_by_id_for_user(session, user_id=user.user_id, file_id=file_id)
+    if raw_file is None:
+        return Response(status_code=404, content=b"Not found")
+
+    stmt = select(Highlight).where(
+        Highlight.user_id == user.user_id,
+        Highlight.file_id == file_id,
+    ).order_by(Highlight.created_at.asc())
+    items = session.exec(stmt).all()
+    return ok_response(HighlightListData(
+        items=[_highlight_data(h) for h in items]
+    ))
+
+
+@router.post(
+    "/{file_id}/highlights",
+    response_model=ApiResponse[HighlightData],
+    summary="Create a highlight",
+    responses=build_error_responses([404, 500]),
+)
+async def create_highlight(
+    file_id: str = Path(...),
+    body: HighlightCreateRequest = Body(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[HighlightData]:
+    from app.models.chat import Highlight
+
+    raw_file = get_raw_file_by_id_for_user(session, user_id=user.user_id, file_id=file_id)
+    if raw_file is None:
+        return Response(status_code=404, content=b"Not found")
+
+    selected_text = body.selected_text.strip()
+    if not selected_text:
+        return Response(status_code=400, content=b"Selected text is required")
+
+    highlight = Highlight(
+        user_id=user.user_id,
+        file_id=file_id,
+        selected_text=selected_text,
+        anchor_id=body.anchor_id,
+        color=body.color if body.color in {"amber", "sky"} else "amber",
+        segments_json=_clean_highlight_segments(body.segments),
+    )
+    session.add(highlight)
+    session.commit()
+    session.refresh(highlight)
+
+    return ok_response(_highlight_data(highlight))
+
+
+@router.delete(
+    "/{file_id}/highlights/{highlight_id}",
+    response_model=ApiResponse[dict],
+    summary="Delete a highlight",
+    responses=build_error_responses([404, 500]),
+)
+async def delete_highlight(
+    file_id: str = Path(...),
+    highlight_id: int = Path(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[dict]:
+    from sqlmodel import select
+    from app.models.chat import Highlight
+
+    stmt = select(Highlight).where(
+        Highlight.id == highlight_id,
+        Highlight.user_id == user.user_id,
+        Highlight.file_id == file_id,
+    )
+    highlight = session.exec(stmt).first()
+    if highlight is None:
+        return Response(status_code=404, content=b"Not found")
+
+    session.delete(highlight)
+    session.commit()
+    return ok_response({"deleted": True})
+
+
+# ── Interactive Generation ──────────────────────────────────────────────────
+
+
+class InteractiveGenerateRequest(BaseModel):
+    selected_text: str
+    description: str | None = None
+    segments: list[dict[str, float]] | None = None
+
+
+class InteractiveGenerateData(BaseModel):
+    html: str
+    highlight_id: int | None = None
+    highlight: HighlightData | None = None
+
+
+@router.post(
+    "/{file_id}/interactive",
+    response_model=ApiResponse[InteractiveGenerateData],
+    summary="Generate interactive content from selected text",
+    responses=build_error_responses([400, 404, 500]),
+)
+async def generate_interactive(
+    file_id: str = Path(...),
+    body: InteractiveGenerateRequest = Body(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[InteractiveGenerateData]:
+    raw_file = get_raw_file_by_id_for_user(session, user_id=user.user_id, file_id=file_id)
+    if raw_file is None:
+        return Response(status_code=404, content=b"Not found")
+
+    markdown_content = raw_file.markdown_content or ""
+    if not markdown_content:
+        return Response(status_code=400, content=b"No markdown content available")
+
+    # 找到选中文本在 markdown 中的上下文
+    selected_text = body.selected_text.strip()
+    if not selected_text:
+        return Response(status_code=400, content=b"Selected text is required")
+
+    context_before = ""
+    context_after = ""
+    idx = markdown_content.find(selected_text)
+    if idx >= 0:
+        start = max(0, idx - 500)
+        end = min(len(markdown_content), idx + len(selected_text) + 500)
+        context_before = markdown_content[start:idx]
+        context_after = markdown_content[idx + len(selected_text) : end]
+
+    # 使用 LLM 生成交互式内容
+    from app.shared.infra.llm_support import acompletion
+    system_prompt = """你是一个教学内容生成助手。根据用户选中的文本和可选的描述，生成一个交互式的学习内容。
+
+要求：
+1. 生成一个完整的 HTML 片段（不需要 html/head/body 标签）
+2. 内容要有趣、交互性强，可以是：测验题、填空题、对比表格、思维导图、代码示例等
+3. 使用内联 CSS 样式，不要依赖外部资源
+4. 风格简洁现代，适合暗色和亮色主题
+5. 直接输出 HTML，不要加 markdown 代码块标记"""
+
+    user_message = f"""选中的文本：
+{selected_text}
+
+上下文（选中前）：
+{context_before[-200:] if context_before else "无"}
+
+上下文（选中后）：
+{context_after[:200] if context_after else "无"}"""
+
+    if body.description:
+        user_message += f"\n\n用户要求：{body.description}"
+
+    try:
+        html_content = await acompletion(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ],
+            model="primary",
+            temperature=0.7,
+            max_tokens=2000,
+            extra_metadata={"substep": "library_file_interactive"},
+        )
+        html_content = html_content.strip()
+        # 清理 markdown 代码块标记
+        if html_content.startswith("```"):
+            html_content = html_content.split("\n", 1)[1] if "\n" in html_content else html_content[3:]
+        if html_content.endswith("```"):
+            html_content = html_content[:-3]
+        html_content = html_content.strip()
+    except Exception as exc:
+        import structlog
+        logger = structlog.get_logger()
+        logger.error("interactive_generation_failed", error=str(exc))
+        return Response(status_code=500, content=b"Generation failed")
+
+    # 创建高亮记录
+    from app.models.chat import Highlight
+    highlight = Highlight(
+        user_id=user.user_id,
+        file_id=file_id,
+        selected_text=selected_text,
+        color="sky",
+        description=body.description.strip() if body.description else None,
+        interactive_html=html_content,
+        segments_json=_clean_highlight_segments(body.segments),
+    )
+    session.add(highlight)
+    session.commit()
+    session.refresh(highlight)
+
+    return ok_response(InteractiveGenerateData(
+        html=html_content,
+        highlight_id=highlight.id,
+        highlight=_highlight_data(highlight),
+    ))

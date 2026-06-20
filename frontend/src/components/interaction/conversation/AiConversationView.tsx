@@ -41,11 +41,16 @@ import {
   AI_SCENE_EXAM_QUESTION,
   AI_SCENE_GLOBAL_ASSISTANT,
   AI_SCENE_HOME_INTAKE,
+  AI_SCENE_LIBRARY_SELECTION,
   AI_SCENE_WEB_RESEARCH,
   AI_SOURCE_DOCUMENT_SELECTION,
   AI_SOURCE_EXAM_QUESTION,
+  AI_SOURCE_LIBRARY_SELECTION,
   EXAM_QUESTION_JUMP_EVENT,
   getAiConversationBackendCourseId,
+  getLibrarySelectionSource,
+  isLibrarySelectionSource,
+  parseLibrarySelectionSource,
   parseExamQuestionAnchorId,
 } from "../types";
 
@@ -60,7 +65,7 @@ interface AiConversationViewProps {
 }
 
 type QuickChatSyncPhase = "start" | "session" | "token" | "status" | "done" | "error" | "settled";
-type ConversationHistoryKind = "general" | "document" | "question" | "builder";
+type ConversationHistoryKind = "general" | "document" | "question" | "builder" | "library";
 
 interface QuickChatInputContext {
   scene: AiConversationScene;
@@ -81,7 +86,7 @@ interface PendingAutoSendRequest {
 const QUICK_CHAT_UPDATED_EVENT = "aiteachme:quick-chat-updated";
 const SELECTION_JUMP_EVENT = "aiteachme:selection-jump";
 const AUTO_SCROLL_BOTTOM_THRESHOLD = 96;
-const HISTORY_KIND_ORDER: ConversationHistoryKind[] = ["general", "document", "question", "builder"];
+const HISTORY_KIND_ORDER: ConversationHistoryKind[] = ["general", "document", "question", "builder", "library"];
 const HOME_INTAKE_CREATE_KEYWORDS = [
   "\u521b\u5efa",
   "\u65b0\u5efa",
@@ -137,16 +142,24 @@ const HISTORY_KIND_META: Record<ConversationHistoryKind, {
     icon: Sparkles,
     badgeClassName: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-200",
   },
+  library: {
+    label: "资料库对话",
+    icon: BookOpen,
+    badgeClassName: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200",
+  },
 };
 
 function getQuickChatInputContext(input: ChatSendRequest): QuickChatInputContext | null {
   const source = input.source?.trim() ?? "";
   const anchorId = input.anchor_id?.trim() ?? "";
   const selectedText = input.selected_text?.trim() ?? input.selection_context?.selected_text?.trim() ?? "";
-  if (source !== AI_SOURCE_DOCUMENT_SELECTION || !anchorId || !selectedText) {
-    return null;
+  if (source === AI_SOURCE_DOCUMENT_SELECTION && anchorId && selectedText) {
+    return { scene: AI_SCENE_DOCUMENT_SELECTION, source, anchorId, selectedText };
   }
-  return { scene: AI_SCENE_DOCUMENT_SELECTION, source, anchorId, selectedText };
+  if (parseLibrarySelectionSource(source) !== null && selectedText) {
+    return { scene: AI_SCENE_LIBRARY_SELECTION, source, anchorId, selectedText };
+  }
+  return null;
 }
 
 function looksLikeHomeIntakeTurn(value: string): boolean {
@@ -176,7 +189,8 @@ function normalizeScene(value: string | null | undefined): AiConversationScene |
     scene === AI_SCENE_EXAM_QUESTION ||
     scene === AI_SCENE_BUILD_ASSISTANT ||
     scene === AI_SCENE_HOME_INTAKE ||
-    scene === AI_SCENE_WEB_RESEARCH
+    scene === AI_SCENE_WEB_RESEARCH ||
+    scene === AI_SCENE_LIBRARY_SELECTION
   ) {
     return scene;
   }
@@ -187,6 +201,9 @@ function sceneFromSource(source: string | null | undefined, hasSelectionContext 
   const normalizedSource = source?.trim() ?? "";
   if (normalizedSource === AI_SOURCE_EXAM_QUESTION) {
     return AI_SCENE_EXAM_QUESTION;
+  }
+  if (isLibrarySelectionSource(normalizedSource)) {
+    return AI_SCENE_LIBRARY_SELECTION;
   }
   if (normalizedSource === AI_SOURCE_DOCUMENT_SELECTION && hasSelectionContext) {
     return AI_SCENE_DOCUMENT_SELECTION;
@@ -215,6 +232,9 @@ function sourceForScene(scene: AiConversationScene): string | null {
   }
   if (scene === AI_SCENE_EXAM_QUESTION) {
     return AI_SOURCE_EXAM_QUESTION;
+  }
+  if (scene === AI_SCENE_LIBRARY_SELECTION) {
+    return AI_SOURCE_LIBRARY_SELECTION;
   }
   if (scene === AI_SCENE_HOME_INTAKE) {
     return "home_intake";
@@ -253,6 +273,9 @@ function resolveConversationScene(input: {
   const sourceScene = sceneFromSource(input.requestedSource, false) ?? sceneFromSource(input.selectedSessionSource, false);
   if (sourceScene) {
     return sourceScene;
+  }
+  if (input.scope?.type === "library") {
+    return AI_SCENE_LIBRARY_SELECTION;
   }
   if (
     input.scope?.type === "global" &&
@@ -296,7 +319,8 @@ function getSessionSelectionTarget(session: ChatSessionItem | null): ChatSession
   }
   const anchorId = session.anchor_id?.trim() ?? "";
   const selectedText = session.selected_text?.trim() ?? "";
-  if (!anchorId || !selectedText) {
+  const source = session.source?.trim() ?? "";
+  if (!selectedText || (!anchorId && !isLibrarySelectionSource(source))) {
     return null;
   }
   if (session.source === AI_SOURCE_EXAM_QUESTION) {
@@ -313,7 +337,7 @@ function getSessionSelectionTarget(session: ChatSessionItem | null): ChatSession
       questionOrder: parsed.questionOrder,
     };
   }
-  if (session.source !== AI_SOURCE_DOCUMENT_SELECTION) {
+  if (source !== AI_SOURCE_DOCUMENT_SELECTION && !isLibrarySelectionSource(source)) {
     return null;
   }
   return {
@@ -332,6 +356,9 @@ function getHistoryKind(session: ChatSessionItem): ConversationHistoryKind {
   const source = session.source?.trim() ?? "";
   if (source === AI_SOURCE_EXAM_QUESTION) {
     return "question";
+  }
+  if (isLibrarySelectionSource(source)) {
+    return "library";
   }
   if (source === AI_SOURCE_DOCUMENT_SELECTION || hasAnchoredTarget(session)) {
     return "document";
@@ -534,9 +561,6 @@ export const AiConversationView = memo(function AiConversationView({
       turnId?: string;
     },
   ) => {
-    if (!docsCourseId) {
-      return;
-    }
     const quickChatContext = getQuickChatInputContext(payload.input);
     if (!quickChatContext) {
       return;
@@ -807,15 +831,18 @@ export const AiConversationView = memo(function AiConversationView({
   const draftHomeTitle =
     scope?.type === "course"
       ? `你想问“${courseName?.trim() || "当前课程"}”什么？`
+      : scope?.type === "library"
+        ? "想围绕这份资料问什么？"
       : "今天想讨论什么？";
   const isQuestionContext = (pendingSelectionContext ?? activeQuickChatContext)?.source === AI_SOURCE_EXAM_QUESTION;
+  const isLibraryContext = isLibrarySelectionSource((pendingSelectionContext ?? activeQuickChatContext)?.source);
   const panelTitle = selectedSession?.title ?? (
     selectedSessionId
       ? pendingSelectionContext || activeQuickChatContext
-        ? isQuestionContext ? "题目提问" : "划词提问"
+        ? isQuestionContext ? "题目提问" : isLibraryContext ? "资料库提问" : "划词提问"
         : "加载会话..."
       : pendingSelectionContext || activeQuickChatContext
-        ? isQuestionContext ? "题目提问" : "划词提问"
+        ? isQuestionContext ? "题目提问" : isLibraryContext ? "资料库提问" : "划词提问"
         : "新会话"
   );
   const activeQuickChatThreadId = activeQuickChatContext?.clientThreadId?.trim() ?? "";
@@ -948,7 +975,12 @@ export const AiConversationView = memo(function AiConversationView({
     });
   }, [collapsedHistorySessions, historySearchQuery]);
   const hasAnyHistorySessions = collapsedHistorySessions.length > 0;
-  const historyTitle = scope?.type === "global" ? "全局历史" : "课程历史";
+  const historyTitle =
+    scope?.type === "global"
+      ? "全局历史"
+      : scope?.type === "library"
+        ? "资料库历史"
+        : "课程历史";
 
   useEffect(() => {
     if (presentation !== "sidebar") {
@@ -1062,10 +1094,13 @@ export const AiConversationView = memo(function AiConversationView({
     try {
       const res = await apiClient<ApiResponsePaginatedDataChatSessionItem>({
         method: "POST",
-        url: `/api/v1/courses/${courseId}/chats/sessions/list`,
+        url: scope?.type === "course"
+          ? `/api/v1/courses/${courseId}/chats/sessions/list`
+          : "/api/v1/chats/sessions/list",
         data: {
           page: 1,
           size: 100,
+          ...(scope?.type === "library" ? { source: getLibrarySelectionSource(scope.fileId) } : {}),
         },
       });
       const items = res.data?.items ?? [];
@@ -1094,7 +1129,7 @@ export const AiConversationView = memo(function AiConversationView({
     } catch (error: unknown) {
       setSessionsError(getApiErrorMessage(error, "加载会话历史失败"));
     }
-  }, [isStreaming, request?.sessionId, courseId]);
+  }, [isStreaming, request?.sessionId, courseId, scope]);
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -1454,7 +1489,7 @@ export const AiConversationView = memo(function AiConversationView({
         selectionContext: null,
         requestedSource: autoRequest.source,
       }),
-      source: autoRequest.source,
+      source: autoRequest.source ?? (scope?.type === "library" ? getLibrarySelectionSource(scope.fileId) : undefined),
       attached_file_ids: autoRequest.attachedFileIds,
     });
     if (!result.accepted) {
@@ -1514,7 +1549,10 @@ export const AiConversationView = memo(function AiConversationView({
       selectionContext,
       selectedSessionSource,
     });
-    const resolvedSource = selectionContext?.source ?? sourceForScene(resolvedScene) ?? undefined;
+    const resolvedSource =
+      selectionContext?.source ??
+      (scope?.type === "library" ? getLibrarySelectionSource(scope.fileId) : sourceForScene(resolvedScene)) ??
+      undefined;
     setDraft("");
     const result = await sendMessage(
       {

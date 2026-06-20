@@ -117,6 +117,7 @@ class ChatSessionListRequest(PageParams):
         default=False,
         description="When true, list recent sessions across all courses owned by the user.",
     )
+    source: str | None = Field(default=None, description="Optional source tag filter.")
 
 
 class ChatThreadListRequest(PageParams):

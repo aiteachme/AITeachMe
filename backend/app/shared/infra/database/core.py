@@ -61,6 +61,7 @@ from app.models.knowledge_relation import KnowledgeEdge
 from app.models.knowledge_unit import KnowledgeUnit
 from app.models.profile import UserKnowledgeState
 from app.models.raw_file import RawFile, CourseFileLink
+from app.models.chat import Highlight
 from app.models.course import Course
 from app.models.system import SystemRuntimeSettings
 from app.models.user import User
@@ -89,6 +90,7 @@ _SCHEMA_MODELS = (
     UserKnowledgeState,
     ChatSession,
     ChatMessage,
+    Highlight,
     SystemRuntimeSettings,
 )
 _SCHEMA_TABLES = [model.__table__ for model in _SCHEMA_MODELS]
@@ -167,6 +169,14 @@ _SQLITE_ADDITIVE_COLUMNS = {
     ),
     "raw_file": (
         ("parse_request_signature", "TEXT NOT NULL DEFAULT 'default'"),
+    ),
+    "chat_session": (
+        ("library_file_id", "TEXT NULL"),
+    ),
+    "highlight": (
+        ("description", "TEXT NULL"),
+        ("interactive_html", "TEXT NULL"),
+        ("segments_json", "JSON NULL"),
     ),
 }
 _SQLITE_ADDITIVE_INDEXES = {
@@ -949,6 +959,24 @@ def _apply_sqlite_additive_schema_updates(engine: sa.Engine) -> None:
                 )
 
 
+def _create_sqlite_missing_schema_tables(engine: sa.Engine) -> None:
+    inspector = sa.inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+    missing_tables = [
+        table
+        for table in _SCHEMA_TABLES
+        if table.name not in existing_tables
+    ]
+    if not missing_tables:
+        return
+    with engine.begin() as connection:
+        SQLModel.metadata.create_all(connection, tables=missing_tables)
+    logger.info(
+        "sqlite_missing_schema_tables_created",
+        tables=[table.name for table in missing_tables],
+    )
+
+
 def _backfill_sqlite_raw_file_parse_signatures(engine: sa.Engine) -> None:
     inspector = sa.inspect(engine)
     if "raw_file" not in set(inspector.get_table_names()):
@@ -1012,6 +1040,71 @@ def _backfill_sqlite_raw_file_parse_signatures(engine: sa.Engine) -> None:
             )
 
 
+def _backfill_sqlite_library_chat_sessions(engine: sa.Engine) -> None:
+    inspector = sa.inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+    if "chat_session" not in existing_tables:
+        return
+
+    chat_session_columns = {
+        column["name"]
+        for column in inspector.get_columns("chat_session")
+    }
+    if not {"source", "library_file_id"} <= chat_session_columns:
+        return
+
+    prefix = "library_selection:"
+    source_like = f"{prefix}%"
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                """
+                UPDATE chat_session
+                SET library_file_id = substr(source, :start_index)
+                WHERE (library_file_id IS NULL OR library_file_id = '')
+                AND source LIKE :source_like
+                AND length(source) >= :min_length
+                """
+            ),
+            {
+                "start_index": len(prefix) + 1,
+                "source_like": source_like,
+                "min_length": len(prefix) + 1,
+            },
+        )
+        if "course_id" in chat_session_columns:
+            connection.execute(
+                sa.text(
+                    """
+                    UPDATE chat_session
+                    SET course_id = ''
+                    WHERE course_id = 'global'
+                    AND source LIKE :source_like
+                    """
+                ),
+                {"source_like": source_like},
+            )
+
+        if "chat_message" not in existing_tables:
+            return
+        chat_message_columns = {
+            column["name"]
+            for column in inspector.get_columns("chat_message")
+        }
+        if {"course_id", "source"} <= chat_message_columns:
+            connection.execute(
+                sa.text(
+                    """
+                    UPDATE chat_message
+                    SET course_id = ''
+                    WHERE course_id = 'global'
+                    AND source LIKE :source_like
+                    """
+                ),
+                {"source_like": source_like},
+            )
+
+
 def _apply_sqlite_additive_index_updates(engine: sa.Engine) -> None:
     inspector = sa.inspect(engine)
     existing_tables = set(inspector.get_table_names())
@@ -1069,8 +1162,10 @@ def _ensure_local_sqlite_schema(engine: sa.Engine) -> sa.Engine:
 
     _migrate_sqlite_course_schema(engine)
     _drop_sqlite_removed_schema(engine)
+    _create_sqlite_missing_schema_tables(engine)
     _apply_sqlite_additive_schema_updates(engine)
     _backfill_sqlite_raw_file_parse_signatures(engine)
+    _backfill_sqlite_library_chat_sessions(engine)
     _apply_sqlite_additive_index_updates(engine)
     drift = _inspect_sqlite_schema_drift(engine)
     if drift is None:

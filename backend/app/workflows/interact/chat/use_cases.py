@@ -58,6 +58,7 @@ def list_chat_sessions(
     user_id: str,
     page: int,
     size: int,
+    source: str | None = None,
 ) -> PaginatedData[ChatSessionItem]:
     items, total = list_sessions_by_course(
         session,
@@ -65,6 +66,7 @@ def list_chat_sessions(
         user_id=user_id,
         limit=size,
         offset=(page - 1) * size,
+        source=_clean_optional(source),
     )
     counts = count_messages_by_session_ids(
         session,
@@ -77,6 +79,7 @@ def list_chat_sessions(
         course_id=course_id,
         user_id=user_id,
         session_ids=[item.id for item in items],
+        source=_clean_optional(source),
     )
     course_names = _load_course_names(
         session,
@@ -105,12 +108,14 @@ def list_recent_chat_sessions(
     user_id: str,
     page: int,
     size: int,
+    source: str | None = None,
 ) -> PaginatedData[ChatSessionItem]:
     items, total = list_sessions_by_user(
         session,
         user_id=user_id,
         limit=size,
         offset=(page - 1) * size,
+        source=_clean_optional(source),
     )
     counts = count_messages_by_session_ids_for_user(
         session,
@@ -121,6 +126,7 @@ def list_recent_chat_sessions(
         session,
         user_id=user_id,
         session_ids=[item.id for item in items],
+        source=_clean_optional(source),
     )
     course_names = _load_course_names(
         session,
