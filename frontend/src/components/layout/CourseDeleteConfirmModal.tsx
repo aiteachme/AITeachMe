@@ -28,7 +28,6 @@ export function CourseDeleteConfirmModal({
   onConfirm,
 }: CourseDeleteConfirmModalProps) {
   const courseName = preview?.course_name || course?.name || "该课程";
-  const impactItems = preview?.impact_items ?? [];
 
   if (!open) {
     return null;
@@ -83,27 +82,6 @@ export function CourseDeleteConfirmModal({
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
             正在核对关联内容，不影响直接删除。
           </div>
-        ) : null}
-
-        {!isPreviewLoading && preview ? (
-          impactItems.length > 0 ? (
-            <div className="flex flex-wrap gap-2">
-              {impactItems.map((item) => (
-                <span
-                  key={item.key}
-                  className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300"
-                  title={item.description}
-                >
-                  <span>{item.label}</span>
-                  <span className="text-slate-400 dark:text-slate-500">{item.count}</span>
-                </span>
-              ))}
-            </div>
-          ) : (
-            <div className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:bg-slate-900 dark:text-slate-400">
-              当前没有发现关联内容，只会删除课程本身。
-            </div>
-          )
         ) : null}
 
         {previewError || deleteError ? (
