@@ -25,6 +25,7 @@ from app.workflows.digest.planner.prompts.build_plan_composer import (
     SUGGESTION_END,
     SUGGESTION_START,
     build_planner_diagnosis_messages,
+    build_planner_stream_messages,
 )
 
 
@@ -150,10 +151,35 @@ def test_docgen_diagnose_brief_renders_user_answers() -> None:
 
     assert "用户补充：希望后续例题对齐函数薄弱点。" in brief
     assert "用户回答：函数" in brief
+    assert "执行策略" in brief
     assert "硬性生成约束" in brief
     assert "文档内解析方式" in brief
     assert "章末小测配置" in brief
     assert "快速回答" not in brief
+
+
+def test_docgen_diagnose_brief_maps_different_answers_to_different_actions() -> None:
+    brief = _render_diagnose_brief(
+        [
+            {
+                "question": "解析怎么写？",
+                "purpose": "文档落点：影响文档内例题、练习和章末小测的解析配置。",
+                "options": ["只给要点", "写清依据", "补错因提醒", "补变式题"],
+                "answer": "写清依据",
+            },
+            {
+                "question": "练习怎么放？",
+                "purpose": "文档落点：影响随堂练习和章末小测密度。",
+                "options": ["少量精练", "每节小练", "章末小测", "多练变式"],
+                "answer": "多练变式",
+            },
+        ],
+        status="answered",
+    )
+
+    assert "分步依据、检查点和答案判定口径" in brief
+    assert "同目标变式检查" in brief
+    assert "诊断选项执行策略" in brief
 
 
 def test_normalize_planner_draft_builds_fallback_diagnose() -> None:
@@ -491,6 +517,36 @@ def test_planner_diagnosis_prompt_keeps_resolution_inside_docgen_document() -> N
     assert "后续 examine/profile 流程" in prompt_text
     assert "测后反馈方式" not in prompt_text
     assert "测后怎么看" not in prompt_text
+
+
+def test_planner_stream_prompt_maps_diagnose_answers_to_generation_actions() -> None:
+    latest_plan = _planner_payload()
+    latest_plan["diagnose"] = [
+        {
+            "question": "解析怎么写？",
+            "purpose": "文档落点：影响文档内例题、练习和章末小测的解析配置。",
+            "options": ["只给要点", "写清依据", "补错因提醒", "补变式题"],
+            "answer": "补变式题",
+        }
+    ]
+    latest_plan["diagnose_status"] = "answered"
+
+    messages = build_planner_stream_messages(
+        course_name="初中数学",
+        user_prompt="14 天复习函数、几何和统计",
+        digest_mode="sprint",
+        material_context=_material_context(),
+        planning_note="用户需要按考试范围构建复习路径。",
+        material_note="暂无绑定资料。",
+        message_history=[],
+        latest_plan=latest_plan,
+    )
+    prompt_text = "\n".join(message["content"] for message in messages)
+
+    assert "前置诊断执行策略" in prompt_text
+    assert "选择“补变式题”" in prompt_text
+    assert "example_coverage_plan 或 chapter_end_practice_plan" in prompt_text
+    assert "不要编造诊断偏好" not in prompt_text
 
 
 def test_normalize_planner_diagnosis_draft_returns_docgen_ready_questions() -> None:

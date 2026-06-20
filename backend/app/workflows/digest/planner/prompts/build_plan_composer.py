@@ -6,6 +6,7 @@ import json
 from typing import Any
 
 from app.workflows.digest.common.models import DigestMaterialContext
+from app.workflows.digest.common.diagnose_policy import render_diagnose_action_policy
 from app.workflows.digest.common.prompt_tracing import trace_prompt_build
 from app.workflows.digest.planner.lib.plans import planner_mode_label, render_planner_chapter_contract
 from app.workflows.digest.planner.prompts.context import (
@@ -48,6 +49,10 @@ def build_planner_stream_messages(
     is_revision = bool(has_previous_formal_plan and str(latest_feedback or "").strip())
     mode_label = planner_mode_label(digest_mode)
     plan_fields = _render_previous_planner(latest_plan)
+    diagnose_action_policy = render_diagnose_action_policy(
+        list((latest_plan or {}).get("diagnose") or []),
+        status=str((latest_plan or {}).get("diagnose_status") or ""),
+    )
     revision_rules = (
         """
 这是调整已有方案。
@@ -110,6 +115,9 @@ def build_planner_stream_messages(
 
 上一版 planner：
 {plan_fields}
+
+前置诊断执行策略：
+{diagnose_action_policy}
 
 上一版方案摘要：
 {render_latest_plan(latest_plan)}
