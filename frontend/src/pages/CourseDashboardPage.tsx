@@ -29,6 +29,11 @@ import type {
 import { apiClient, getApiErrorMessage } from "../api/client";
 import type { ApiResponse } from "../api/types";
 import { Button } from "../components/ui/Button";
+import {
+  COURSE_PAGE_CONTENT_CLASS,
+  COURSE_PAGE_HEADER_ACTION_BUTTON_CLASS,
+  COURSE_PAGE_SHELL_CLASS,
+} from "../components/course/CoursePageHeader";
 import { isReviewDueSoon } from "../components/profile";
 import { buildCoursePath, buildCourseSubPath } from "../lib/courseNavigation";
 import { cn } from "../lib/utils";
@@ -42,7 +47,7 @@ import {
   graphFullApiV1CoursesCourseIdKnowledgeGraphFullPost,
 } from "../api/generated/knowledge";
 
-const pageShellClass = "mx-auto min-h-full w-full max-w-[1400px] px-6 pb-24 sm:px-8 lg:px-12 pt-8 relative";
+const pageShellClass = `${COURSE_PAGE_SHELL_CLASS} relative pt-8 sm:pt-10`;
 const alertClass = "rounded-2xl border border-amber-250 bg-amber-500/5 px-6 py-5 text-sm text-amber-900 dark:border-amber-500/20 dark:text-amber-300 backdrop-blur-sm";
 const INITIAL_FOCUSED_GRAPH_THRESHOLD = 180;
 const INITIAL_FOCUSED_GRAPH_EDGE_THRESHOLD = 520;
@@ -258,7 +263,7 @@ function RecentExamsWidget({
           <div className="h-14 w-14 rounded-full bg-slate-50 dark:bg-slate-800/40 flex items-center justify-center mb-3 text-slate-300 dark:text-slate-700">
             <FileText className="h-6.5 w-6.5" strokeWidth={1.5} />
           </div>
-          <p className="max-w-[280px] leading-relaxed">暂无测验记录，您可以进入“考试中心”开始您的第一次测验。</p>
+          <p className="max-w-[280px] leading-relaxed">暂无测验记录，您可以进入“训练中心”开始您的第一次测验。</p>
         </div>
       ) : (
         <div className="flex-1 space-y-3">
@@ -355,7 +360,7 @@ function MiniStatsWidget({
         </p>
       </div>
     );
-  } else if (!hasExams) {
+  } else if (!hasExams && totalCount === 0) {
     emptyStateContent = (
       <div className="flex-1 flex flex-col items-center justify-center text-center p-4">
         <div className="h-14 w-14 rounded-full bg-slate-50 dark:bg-slate-800/45 flex items-center justify-center text-slate-400 dark:text-slate-555 mb-3 border border-slate-100 dark:border-slate-800">
@@ -530,7 +535,7 @@ export function CourseDashboardPage() {
             });
             return response.data;
           },
-          staleTime: 30000,
+          staleTime: 0,
         });
 
         // 2. Prefetch knowledge doc build runtime
@@ -641,37 +646,40 @@ export function CourseDashboardPage() {
       <div className="absolute top-1/4 left-1/4 -z-10 h-96 w-96 rounded-full bg-indigo-500/[0.04] blur-[120px] dark:bg-indigo-500/[0.02] pointer-events-none" />
       <div className="absolute bottom-1/3 right-1/4 -z-10 h-96 w-96 rounded-full bg-teal-500/[0.04] blur-[120px] dark:bg-teal-500/[0.02] pointer-events-none" />
 
-      <div className="flex w-full flex-col gap-8 relative z-10">
+      <div className={`${COURSE_PAGE_CONTENT_CLASS} gap-5 relative z-10`}>
 
         {/* Top Header & Version Switcher */}
-        <section className="flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between pt-4 relative z-10">
-          <div className="max-w-4xl space-y-3">
-            <div className="flex flex-wrap items-center gap-3.5">
-              <h1 className="break-words text-[38px] font-extrabold tracking-tight text-slate-905 dark:text-slate-55 leading-tight">
-                {courseName ?? "当前课程"}
-              </h1>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/5 px-3 py-1 text-[13px] font-semibold text-emerald-600 dark:text-emerald-400 select-none shadow-[0_2px_8px_rgba(16,185,129,0.05)]">
-                <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse"></span>
-                v1.0 (当前版本)
-              </span>
+        <section className="border-b border-slate-200 pb-5 dark:border-slate-800">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-3">
+                  <h1 className="break-words text-[30px] font-black leading-[1.06] tracking-normal text-slate-950 dark:text-slate-50 sm:text-[38px] lg:text-[42px]">
+                    {courseName ?? "当前课程"}
+                  </h1>
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/5 px-3 py-1 text-xs font-semibold text-emerald-600 shadow-[0_2px_8px_rgba(16,185,129,0.05)] dark:text-emerald-400">
+                    <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
+                    v1.0 (当前版本)
+                  </span>
+                </div>
+                <div className="mt-3 h-1.5 w-20 rounded-full bg-indigo-500 dark:bg-indigo-400" />
+              </div>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400 sm:text-[15px]">
+                欢迎回到课程空间。您的专属学习大盘已准备就绪，在这里您可以纵览全局知识脉络，追踪学习动态。
+              </p>
             </div>
-            <p className="max-w-3xl text-[15px] font-light leading-relaxed text-slate-500 dark:text-slate-400">
-              欢迎回到课程空间。您的专属学习大盘已准备就绪，在这里您可以纵览全局知识脉络，追踪学习动态。
-            </p>
-          </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center xl:justify-end shrink-0">
-            <Button
-              type="button"
-              size="lg"
-              onClick={() => navigate(buildCoursePath(courseId, "build"))}
-              className="group/btn h-11 rounded-[16px] px-6 text-[14.5px] font-bold text-slate-700 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5 flex items-center justify-center gap-2.5 w-full sm:w-auto"
-            >
-              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400">
-                <RefreshCw className="h-3.5 w-3.5 transition-transform duration-700 ease-in-out group-hover/btn:rotate-180" strokeWidth={2.5} />
-              </span>
-              <span>课程配置与重构</span>
-            </Button>
+            <div className="flex shrink-0 flex-wrap gap-2 lg:justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => navigate(buildCoursePath(courseId, "build"))}
+                className={COURSE_PAGE_HEADER_ACTION_BUTTON_CLASS}
+              >
+                <RefreshCw className="h-4 w-4 shrink-0" />
+                课程配置与重构
+              </Button>
+            </div>
           </div>
         </section>
 
@@ -787,10 +795,10 @@ export function CourseDashboardPage() {
             }
           />
 
-          {/* Card 2: 考试中心 */}
+          {/* Card 2: 训练中心 */}
           <NavTile
             icon={FileText}
-            title="考试中心"
+            title="训练中心"
             description="查看全部试卷，进行专项练习与题库测试。"
             theme="violet"
             disabled={!isBuilt || isDocGenerating}
@@ -806,14 +814,14 @@ export function CourseDashboardPage() {
               ) : undefined
             }
             connector={
-              (!isBuilt || isDocGenerating || historyItems.length === 0) ? (
+              (!isBuilt || isDocGenerating) ? (
                 <>
                   {/* Desktop Connector - Disabled */}
                   <div className="absolute right-[-56px] top-1/2 -translate-y-1/2 w-[56px] h-[56px] flex items-center justify-center z-10 pointer-events-none hidden md:flex">
                     <div className="absolute w-full h-[2px] bg-slate-200 dark:bg-slate-800/60" />
                     <div
                       className="relative w-8 h-8 rounded-full bg-slate-50 dark:bg-[#0b0f19] flex items-center justify-center cursor-not-allowed pointer-events-auto"
-                      title={isDocGenerating ? "知识库构建中" : !isBuilt ? "请先构建知识库" : "需先完成测验"}
+                      title={isDocGenerating ? "知识库构建中" : "请先构建知识库"}
                     >
                       <div className="absolute inset-0 rounded-full border-2 border-slate-200 dark:border-slate-800" />
                       <ChevronRight className="w-4 h-4 text-slate-300 dark:text-slate-600 stroke-[3]" />
@@ -824,7 +832,7 @@ export function CourseDashboardPage() {
                     <div className="absolute h-full w-[2px] bg-slate-200 dark:bg-slate-800/60" />
                     <div
                       className="relative w-7 h-7 rounded-full bg-slate-50 dark:bg-[#0b0f19] flex items-center justify-center cursor-not-allowed pointer-events-auto"
-                      title={isDocGenerating ? "知识库构建中" : !isBuilt ? "请先构建知识库" : "需先完成测验"}
+                      title={isDocGenerating ? "知识库构建中" : "请先构建知识库"}
                     >
                       <div className="absolute inset-0 rounded-full border-2 border-slate-200 dark:border-slate-800" />
                       <ChevronRight className="w-3.5 h-3.5 text-slate-300 dark:text-slate-600 stroke-[3] rotate-90" />
@@ -914,15 +922,13 @@ export function CourseDashboardPage() {
             title="学习画像"
             description="基于测验 data、复习进度实时生成的深度诊断报告与今日学习计划。"
             theme="teal"
-            disabled={!isBuilt || isDocGenerating || historyItems.length === 0}
+            disabled={!isBuilt || isDocGenerating}
             disabledReason={
               isDocGenerating
                 ? "知识库构建中"
                 : !isBuilt
                   ? "请先构建知识库"
-                  : historyItems.length === 0
-                    ? "需先完成测验"
-                    : undefined
+                  : undefined
             }
             onClick={() => navigate(buildCoursePath(courseId, "profile"))}
             zIndexClass="z-10"

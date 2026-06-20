@@ -110,12 +110,19 @@ def get_or_create_user_by_device_key(session: Session, *, device_key: str) -> Us
         suffix += 1
         username = f"{base_username}_{suffix}"
 
-    return create_user(
-        session,
-        username=username,
-        device_key=normalized_device_key,
-        is_registered=False,
-    )
+    try:
+        return create_user(
+            session,
+            username=username,
+            device_key=normalized_device_key,
+            is_registered=False,
+        )
+    except IntegrityError:
+        session.rollback()
+        user = get_user_by_device_key(session, normalized_device_key)
+        if user is not None:
+            return user
+        raise
 
 
 def attach_device_key(
@@ -190,4 +197,3 @@ def touch_user_last_seen(
     session.commit()
     session.refresh(user)
     return user
-

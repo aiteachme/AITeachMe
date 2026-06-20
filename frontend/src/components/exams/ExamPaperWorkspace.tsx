@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bookmark, ListChecks, ZoomIn, ZoomOut } from "lucide-react";
+import { Bookmark, CheckCircle2, ChevronLeft, ChevronRight, ListChecks, Loader2, Sparkles, ZoomIn, ZoomOut } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import {
@@ -42,6 +42,7 @@ import {
 } from "./examGenerationStream";
 import type { ExamStudyGuideResponse } from "./types";
 import {
+  buildExamTitle,
   buildQuestionAiDraft,
   buildQuestionSelectedText,
   buildQuestionSelectionContext,
@@ -131,15 +132,26 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
-  const { openAiInteraction, isSidebarOpen } = useAiInteraction();
+  const {
+    openAiInteraction,
+    closeAiInteraction,
+    displayMode,
+    isSidebarOpen,
+    sidebarRequest,
+  } = useAiInteraction();
   const { toast } = useToast();
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [pageScale, setPageScale] = useState(1);
   const [activeStage, setActiveStage] = useState<1 | 2 | 3>(1);
   const [isQuestionNavOpen, setIsQuestionNavOpen] = useState(false);
   const [selectedReviewItemId, setSelectedReviewItemId] = useState<number | null>(null);
+  const [isReviewAnalysisVisible, setIsReviewAnalysisVisible] = useState(true);
   const [highlightedQuestionOrder, setHighlightedQuestionOrder] = useState<number | null>(null);
+  const [showSubmitOverlay, setShowSubmitOverlay] = useState(false);
+  const [submitProgress, setSubmitProgress] = useState(0);
+  const [submitStage, setSubmitStage] = useState<1 | 2 | 3 | 4>(1);
   const handledJumpMarkerRef = useRef<number | string | null>(null);
+  const isSubmitOverlayClosedManuallyRef = useRef(false);
   const answerStorageKey = useMemo(
     () => `aiteachme:exam-draft-answers:${courseId}:${paperId}`,
     [paperId, courseId],
@@ -180,6 +192,12 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
   );
   const isReviewLayout = paper?.status === "graded" && activeStage === 2 && !isPaperExamMode;
   const isPaperCanvasLayout = isPaperExamMode && activeStage !== 3 && paper?.status !== "failed";
+
+  useEffect(() => {
+    if (!isReviewLayout) {
+      setIsReviewAnalysisVisible(true);
+    }
+  }, [isReviewLayout]);
 
   useEffect(() => {
     if (!paper) return;
@@ -322,7 +340,7 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
       queryClient.setQueryData(detailQueryKey, (current: unknown) =>
         patchExamDetailQueryData(current, payload),
       );
-      queryClient.setQueryData(historyQueryKey, (current: unknown) =>
+      queryClient.setQueriesData({ queryKey: historyQueryKey }, (current: unknown) =>
         patchExamHistoryQueryData(current, payload),
       );
       return payload;
@@ -419,6 +437,16 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
     setHighlightedQuestionOrder(questionOrder);
   }, []);
 
+  const handleToggleQuestionAnalysis = useCallback((item: ExamPaperItemResponse) => {
+    if (selectedReviewItemId === item.id) {
+      setIsReviewAnalysisVisible((current) => !current);
+    } else {
+      setSelectedReviewItemId(item.id);
+      keepQuestionHighlight(item.item_order);
+      setIsReviewAnalysisVisible(true);
+    }
+  }, [selectedReviewItemId, keepQuestionHighlight]);
+
   const revealQuestion = useCallback((questionOrder: number, behavior: ScrollBehavior = "smooth") => {
     if (!Number.isFinite(questionOrder) || questionOrder <= 0) {
       return;
@@ -482,6 +510,10 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
       return;
     }
     const anchorId = buildExamQuestionAnchorId(paper.id, item.item_order);
+    if (displayMode === "sidebar" && isSidebarOpen && sidebarRequest?.anchorId === anchorId) {
+      closeAiInteraction();
+      return;
+    }
     const selectedText = buildQuestionSelectedText(item);
     keepQuestionHighlight(item.item_order);
     openAiInteraction({
@@ -498,7 +530,16 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
       newSession: true,
       showSelectionContext: true,
     });
-  }, [keepQuestionHighlight, openAiInteraction, paper, courseId]);
+  }, [
+    closeAiInteraction,
+    courseId,
+    displayMode,
+    isSidebarOpen,
+    keepQuestionHighlight,
+    openAiInteraction,
+    paper,
+    sidebarRequest?.anchorId,
+  ]);
 
   const questionTemplateMarkMutation = useMutation({
     mutationFn: ({ questionTemplateId, isMarked }: QuestionTemplateMarkVariables) =>
@@ -565,6 +606,13 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
     mutation: {
       onSuccess: async (response) => {
         const graded = unwrapOrvalResponse(response);
+        const isManuallyClosed = isSubmitOverlayClosedManuallyRef.current;
+
+        if (!isManuallyClosed) {
+          setSubmitProgress(100);
+          setSubmitStage(4);
+        }
+
         await Promise.all([
           queryClient.invalidateQueries({
             queryKey: getExamHistoryApiV1CoursesCourseIdExamsHistoryGetQueryKey(courseId, { page: 1, size: 24 }),
@@ -576,31 +624,96 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
             queryKey: getMasteryOverviewApiV1CoursesCourseIdProfileMasteryGetQueryKey(courseId),
           }),
         ]);
-        toast({
-          title: "交卷成功",
-          description: `本次得分 ${graded?.score ?? 0}，掌握度已同步更新。`,
-          variant: "success",
-        });
-        try {
-          window.localStorage.removeItem(answerStorageKey);
-        } catch {
-          // Best-effort local draft cleanup.
+
+        if (!isManuallyClosed) {
+          await new Promise((resolve) => window.setTimeout(resolve, 850));
+          setShowSubmitOverlay(false);
+
+          toast({
+            title: "交卷成功",
+            description: `本次得分 ${graded?.score ?? 0}，掌握度已同步更新。`,
+            variant: "success",
+          });
+          try {
+            window.localStorage.removeItem(answerStorageKey);
+          } catch {
+            // Best-effort local draft cleanup.
+          }
+          setActiveStage(2);
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        } else {
+          try {
+            window.localStorage.removeItem(answerStorageKey);
+          } catch {
+            // Best-effort local draft cleanup.
+          }
+          toast({
+            title: "后台判卷完成",
+            description: `您的试卷“${(paper && buildExamTitle(paper)) || "试卷"}”已判分完成，得分 ${graded?.score ?? 0}。`,
+            variant: "success",
+          });
         }
-        setActiveStage(2);
-        window.scrollTo({ top: 0, behavior: "smooth" });
       },
       onError: (error) => {
-        toast({
-          title: "交卷失败",
-          description: getApiErrorMessage(error, "请稍后重试"),
-          variant: "error",
-        });
+        const isManuallyClosed = isSubmitOverlayClosedManuallyRef.current;
+        if (!isManuallyClosed) {
+          setShowSubmitOverlay(false);
+          toast({
+            title: "交卷失败",
+            description: getApiErrorMessage(error, "请稍后重试"),
+            variant: "error",
+          });
+        } else {
+          toast({
+            title: "后台判卷失败",
+            description: getApiErrorMessage(error, "请稍后重试"),
+            variant: "error",
+          });
+        }
       },
     },
   });
 
+  useEffect(() => {
+    let timer: number = 0;
+    if (submitExam.isPending) {
+      setShowSubmitOverlay(true);
+      setSubmitProgress(0);
+      setSubmitStage(1);
+
+      let currentProgress = 0;
+      const startTime = Date.now();
+
+      const update = () => {
+        const elapsed = Date.now() - startTime;
+        if (elapsed < 1200) {
+          currentProgress = Math.min(30, (elapsed / 1200) * 30);
+          setSubmitStage(1);
+        } else if (elapsed < 5000) {
+          currentProgress = 30 + Math.min(35, ((elapsed - 1200) / 3800) * 35);
+          setSubmitStage(2);
+        } else {
+          const extraTime = elapsed - 5000;
+          currentProgress = 65 + (31 * extraTime) / (extraTime + 6000);
+          setSubmitStage(3);
+        }
+        setSubmitProgress(Math.round(currentProgress));
+        timer = window.requestAnimationFrame(update);
+      };
+
+      timer = window.requestAnimationFrame(update);
+    }
+
+    return () => {
+      if (timer) {
+        cancelAnimationFrame(timer);
+      }
+    };
+  }, [submitExam.isPending]);
+
   const submitCurrentExam = useCallback(() => {
     if (!paper) return;
+    isSubmitOverlayClosedManuallyRef.current = false;
     submitExam.mutate({
       courseId,
       examPaperId: paperId,
@@ -636,7 +749,7 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
               window.scrollTo({ top: 0, behavior: "smooth" });
             }}
           >
-            查看学习指南
+            查看复习指南
           </Button>
           <p className="text-sm text-slate-500 dark:text-slate-400">进入第 3 步，根据本次结果继续查漏补缺。</p>
         </>
@@ -740,7 +853,8 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
                     isCompleting={submitExam.isPending}
                     onBack={() => navigate(backHref)}
                     onGradeSubjectiveAnswer={gradeSubjectiveAnswer}
-                    onComplete={(finalAnswers) =>
+                    onComplete={(finalAnswers) => {
+                      isSubmitOverlayClosedManuallyRef.current = false;
                       submitExam.mutate({
                         courseId,
                         examPaperId: paperId,
@@ -751,14 +865,16 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
                             answer: finalAnswers[item.item_order] ?? "",
                           })),
                         },
-                      })
-                    }
+                      });
+                    }}
                     onQuestionAi={openQuestionAi}
                     onQuestionMarkToggle={toggleQuestionMark}
                     markingQuestionTemplateId={markingQuestionTemplateId}
                   />
                 ) : (
-                  <>
+                  <div
+                    className={isPaperCanvasLayout ? "h-full min-h-0 transition-all duration-150" : "transition-all duration-150"}
+                  >
               <aside className="hidden lg:block">
                 <div className="fixed right-4 top-28 z-30 flex items-start gap-3 xl:right-6">
                   {isQuestionNavOpen && (
@@ -863,10 +979,10 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
                 </div>
               </aside>
 
-              <div
-                className={isPaperCanvasLayout ? "h-full min-h-0 transition-all duration-150" : "transition-all duration-150"}
-                style={!isPaperExamMode ? { zoom: pageScale } : undefined}
-              >
+                <div
+                  className={isPaperCanvasLayout ? "h-full min-h-0" : undefined}
+                  style={!isPaperExamMode ? { zoom: pageScale } : undefined}
+                >
                 {isReviewLayout ? (
                   <div className="pb-4">
                     <div className="grid w-full grid-cols-1 items-start justify-center gap-6 xl:grid-cols-[minmax(0,900px)_minmax(360px,420px)] 2xl:gap-8">
@@ -879,15 +995,22 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
                         setAnswers={setAnswers}
                         selectedItemId={selectedReviewItem?.id ?? null}
                         showInlineReviewDetails={false}
+                        isReviewAnalysisVisible={isReviewAnalysisVisible}
                         onSelectQuestion={(item) => {
                           setSelectedReviewItemId(item.id);
                           keepQuestionHighlight(item.item_order);
                         }}
+                        onReviewAnalysisToggle={handleToggleQuestionAnalysis}
                         onQuestionAi={openQuestionAi}
                         onQuestionMarkToggle={toggleQuestionMark}
                         markingQuestionTemplateId={markingQuestionTemplateId}
+                        activeAiAnchorId={isSidebarOpen ? sidebarRequest?.anchorId : null}
                       />
-                      <ExamQuestionAnalysisSheet item={selectedReviewItem} />
+                      {isReviewAnalysisVisible ? (
+                        <ExamQuestionAnalysisSheet item={selectedReviewItem} />
+                      ) : (
+                        <div className="hidden xl:block" aria-hidden="true" />
+                      )}
                     </div>
                   </div>
                 ) : (
@@ -898,10 +1021,14 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
                     pageScale={pageScale}
                     highlightedQuestionOrder={highlightedQuestionOrder}
                     setAnswers={setAnswers}
+                    showInlineReviewDetails={isReviewAnalysisVisible}
+                    isReviewAnalysisVisible={isReviewAnalysisVisible}
                     footerContent={paperExamFooterContent}
+                    onReviewAnalysisToggle={handleToggleQuestionAnalysis}
                     onQuestionAi={openQuestionAi}
                     onQuestionMarkToggle={toggleQuestionMark}
                     markingQuestionTemplateId={markingQuestionTemplateId}
+                    activeAiAnchorId={isSidebarOpen ? sidebarRequest?.anchorId : null}
                   />
                 )}
 
@@ -911,7 +1038,7 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
                   </section>
                 ) : null}
                 </div>
-                </>
+                </div>
                 )
               )}
 
@@ -919,13 +1046,13 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
                 <div className="mx-auto max-w-6xl">
                   {studyGuideQuery.isLoading && (
                     <div className="rounded-[28px] border border-slate-200 bg-white px-6 py-12 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-950/80 dark:text-slate-400">
-                      正在生成学习指南...
+                      正在生成复习指南...
                     </div>
                   )}
 
                   {studyGuideQuery.error && (
                     <div className="rounded-[28px] border border-red-200 bg-red-50 px-6 py-4 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
-                      {getApiErrorMessage(studyGuideQuery.error, "学习指南生成失败")}
+                      {getApiErrorMessage(studyGuideQuery.error, "复习指南生成失败")}
                     </div>
                   )}
 
@@ -933,7 +1060,6 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
                     <ExamStudyGuideView
                       guide={studyGuideQuery.data}
                       paper={paper}
-                      onBackToReview={() => setActiveStage(2)}
                     />
                   )}
                 </div>
@@ -942,6 +1068,111 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
           )}
         </div>
       </div>
+
+      {/* 阶段切换悬浮导航 */}
+      {paper?.status === "graded" && (
+        <>
+          {(activeStage === 2 || activeStage === 3) && (
+            <button
+              type="button"
+              onClick={() => setActiveStage(activeStage === 3 ? 2 : 1)}
+              className="fixed left-6 top-1/2 z-40 hidden -translate-y-1/2 items-center justify-center rounded-full border border-slate-200/80 bg-white/80 p-3 text-slate-500 shadow-md backdrop-blur transition duration-200 hover:scale-105 hover:bg-white hover:text-slate-800 active:scale-95 dark:border-slate-800/80 dark:bg-slate-950/80 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-200 lg:flex"
+              title={activeStage === 3 ? "返回讲评页面" : "返回答题页面"}
+              aria-label={activeStage === 3 ? "返回讲评页面" : "返回答题页面"}
+            >
+              <ChevronLeft className="h-6 w-6" />
+            </button>
+          )}
+
+          {(activeStage === 1 || activeStage === 2) && (
+            <button
+              type="button"
+              onClick={() => setActiveStage(activeStage === 1 ? 2 : 3)}
+              className="fixed right-6 top-1/2 z-40 hidden -translate-y-1/2 items-center justify-center rounded-full border border-slate-200/80 bg-white/80 p-3 text-slate-500 shadow-md backdrop-blur transition duration-200 hover:scale-105 hover:bg-white hover:text-slate-800 active:scale-95 dark:border-slate-800/80 dark:bg-slate-950/80 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-200 lg:flex"
+              title={activeStage === 1 ? "前往讲评页面" : "前往复习页面"}
+              aria-label={activeStage === 1 ? "前往讲评页面" : "前往复习页面"}
+            >
+              <ChevronRight className="h-6 w-6" />
+            </button>
+          )}
+        </>
+      )}
+
+      {showSubmitOverlay ? (
+        <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-slate-900/50 backdrop-blur-md transition-all duration-300">
+          <div className="w-[85%] max-w-sm rounded-[24px] border border-slate-200 bg-white/95 p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-950/92 animate-[scaleIn_0.3s_cubic-bezier(0.34,1.56,0.64,1)_both]">
+            <style>{`
+              @keyframes scaleIn {
+                0% { transform: scale(0.92); opacity: 0; }
+                100% { transform: scale(1); opacity: 1; }
+              }
+            `}</style>
+            <div className="flex flex-col items-center text-center">
+
+              {/* 头部图标与仪式感动效 */}
+              <div className="relative mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-50 dark:bg-slate-900 shadow-inner">
+                {submitProgress === 100 ? (
+                  <CheckCircle2 className="h-7 w-7 text-emerald-500 animate-[scaleIn_0.3s_cubic-bezier(0.34,1.56,0.64,1)_both]" />
+                ) : (
+                  <div className="relative h-6 w-6">
+                    <Loader2 className="absolute inset-0 h-6 w-6 animate-spin text-indigo-600 dark:text-indigo-400" />
+                    <Sparkles className="absolute -right-2 -top-2 h-4.5 w-4.5 animate-[pulse_1.5s_infinite] text-amber-500/80" />
+                  </div>
+                )}
+              </div>
+
+              {/* 阶段标题 */}
+              <h3 className="text-base font-black text-slate-950 dark:text-slate-100">
+                {submitProgress === 100 ? "智能判分完成" : "已安全提交答卷"}
+              </h3>
+
+              {/* 动态描述 */}
+              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400 min-h-[2.5rem] leading-5 px-3">
+                {submitStage === 1 && "正在将您的答卷安全上传至云端服务器..."}
+                {submitStage === 2 && "答卷已送达！AI 正在认真批阅您的客观题目..."}
+                {submitStage === 3 && "AI 正在细致分析主观题解答，并同步更新掌握度..."}
+                {submitStage === 4 && "判分结果已生成，正在为您准备成绩单页面..."}
+              </p>
+
+              {/* 进度条轨道 */}
+              <div className="relative mt-6 h-2 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-900">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-500 transition-all duration-300 ease-out"
+                  style={{ width: `${submitProgress}%` }}
+                />
+              </div>
+
+              {/* 百分比数字 */}
+              <span className="mt-2 text-[10px] font-black tabular-nums text-indigo-600/80 dark:text-indigo-400/80">
+                {submitProgress}%
+              </span>
+
+              {/* 后台判卷并返回训练中心按钮 */}
+              {submitProgress < 100 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-6 rounded-full border-slate-200/85 px-4 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-50 dark:border-slate-850 dark:text-slate-400 dark:hover:bg-slate-900 shadow-sm transition"
+                  onClick={() => {
+                    isSubmitOverlayClosedManuallyRef.current = true;
+                    setShowSubmitOverlay(false);
+                    navigate(backHref);
+                    toast({
+                      title: "已转入后台判卷",
+                      description: "判卷完成后，您可以在“训练记录”中查看您的得分。",
+                      variant: "info",
+                    });
+                  }}
+                >
+                  后台判卷，返回训练中心
+                </Button>
+              )}
+
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

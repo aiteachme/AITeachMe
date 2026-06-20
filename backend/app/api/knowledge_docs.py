@@ -239,6 +239,32 @@ def _capture_course_build_event(
     )
 
 
+def _capture_home_course_build_requested(
+    *,
+    course_id: str,
+    user_id: str,
+    request_id: str,
+    body: BuildPlannerCreateRequest,
+    source: str,
+) -> None:
+    if body.entry_source != "home_arrow":
+        return
+    _capture_course_build_event(
+        "home_course_build_requested",
+        course_id=course_id,
+        user_id=user_id,
+        insert_id_parts=[request_id, "home_arrow", source],
+        properties={
+            "entry_source": "home_arrow",
+            "file_count": len(body.file_ids or []),
+            "has_prompt": bool((body.user_prompt or "").strip()),
+            "mode": "create",
+            "model_override_present": bool((body.model or "").strip()),
+            "source": source,
+        },
+    )
+
+
 def _planner_stream_response(
     *,
     request: Request,
@@ -325,12 +351,21 @@ async def knowledge_build_plan_create(
 ) -> ApiResponse[BuildPlannerSessionResponse]:
     normalized = normalize_course_id(course_id)
     course_record = get_course_record(session, normalized, owner_user_id=user.user_id)
+    request_id = _request_id(request)
+    _capture_home_course_build_requested(
+        course_id=normalized,
+        user_id=user.user_id,
+        request_id=request_id,
+        body=body,
+        source="api",
+    )
     _capture_course_build_event(
         "course_plan_requested",
         course_id=normalized,
         user_id=user.user_id,
-        insert_id_parts=[_request_id(request), "create", "api"],
+        insert_id_parts=[request_id, "create", "api"],
         properties={
+            "entry_source": body.entry_source,
             "file_count": len(body.file_ids or []),
             "has_prompt": bool((body.user_prompt or "").strip()),
             "mode": "create",
@@ -410,12 +445,21 @@ async def knowledge_build_plan_create_stream(
         file_id_count=len(body.file_ids or []),
         user_prompt_preview=(body.user_prompt or "")[:80],
     )
+    request_id = _request_id(request)
+    _capture_home_course_build_requested(
+        course_id=normalized,
+        user_id=user.user_id,
+        request_id=request_id,
+        body=body,
+        source="stream",
+    )
     _capture_course_build_event(
         "course_plan_requested",
         course_id=normalized,
         user_id=user.user_id,
-        insert_id_parts=[_request_id(request), "create", "stream"],
+        insert_id_parts=[request_id, "create", "stream"],
         properties={
+            "entry_source": body.entry_source,
             "file_count": len(body.file_ids or []),
             "has_prompt": bool((body.user_prompt or "").strip()),
             "mode": "create",

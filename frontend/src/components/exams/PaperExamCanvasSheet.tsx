@@ -23,12 +23,14 @@ import {
 import type { ExamPaperDetailResponse, ExamPaperItemResponse, PaperPreviewRow } from "../../api/generated/model";
 import { cn } from "../../lib/utils";
 import { ExamMarkdown } from "./ExamMarkdown";
+import { buildExamQuestionAnchorId } from "../interaction";
 import {
   formatAnswerDisplayValue,
   formatTrueFalseOptionLabel,
   getExamPaperDisplayTitle,
   getExamTotalScore,
   getOptionLabel,
+  isTrueFalseAnswerMatch,
   splitMultiChoiceAnswer,
 } from "./examDisplay";
 
@@ -87,11 +89,14 @@ interface PaperExamCanvasSheetProps {
   setAnswers: Dispatch<SetStateAction<Record<number, string>>>;
   selectedItemId?: number | null;
   showInlineReviewDetails?: boolean;
+  isReviewAnalysisVisible?: boolean;
   footerContent?: ReactNode;
   onSelectQuestion?: (item: ExamPaperItemResponse) => void;
+  onReviewAnalysisToggle?: () => void;
   onQuestionAi?: (item: ExamPaperItemResponse, isReviewStage: boolean, answerValue: string) => void;
   onQuestionMarkToggle?: (item: ExamPaperItemResponse, isMarked: boolean) => void;
   markingQuestionTemplateId?: number | null;
+  activeAiAnchorId?: string | null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -261,9 +266,15 @@ type PaperPageSpec = {
   contentColumnGap: number;
 };
 
+type PageRenderItem =
+  | { type: "section_heading"; sectionNumber: number }
+  | { type: "question_main"; order: number }
+  | { type: "question_review"; order: number };
+
 type RenderPaperPage = PaperLayoutPage & {
   sideNumber: number;
   sideLabel: string;
+  items: PageRenderItem[];
 };
 
 type PageSpread = {
@@ -282,12 +293,13 @@ const GAOKAO_COVER_ESTIMATED_HEIGHT = 330;
 const GAOKAO_QUESTION_GAP = 10;
 const VIEWER_HORIZONTAL_PADDING = 48;
 const GAOKAO_TEXT_FONT_FAMILY = [
+  "Times New Roman",
+  "Times",
   "SimSun",
   "宋体",
   "Songti SC",
   "STSong",
   "Noto Serif CJK SC",
-  "Times New Roman",
   "serif",
 ].join(", ");
 const GAOKAO_HEADING_FONT_FAMILY = [
@@ -298,7 +310,11 @@ const GAOKAO_HEADING_FONT_FAMILY = [
   "宋体",
   "serif",
 ].join(", ");
-const gaokaoTextStyle: CSSProperties = { fontFamily: GAOKAO_TEXT_FONT_FAMILY };
+const gaokaoTextStyle: CSSProperties = {
+  fontFamily: GAOKAO_TEXT_FONT_FAMILY,
+  textAlign: "justify",
+  textJustify: "inter-ideograph" as any,
+};
 const gaokaoHeadingStyle: CSSProperties = { fontFamily: GAOKAO_HEADING_FONT_FAMILY };
 const gaokaoPageContentStyle: CSSProperties = {
   padding: `${GAOKAO_PAGE_PADDING_TOP}px ${GAOKAO_PAGE_PADDING_X}px ${GAOKAO_PAGE_PADDING_BOTTOM}px`,
@@ -372,9 +388,28 @@ function getSectionNumberForOrder(
   return layout.sections.find((section) => section.question_orders.includes(order))?.section_number ?? 1;
 }
 
-function estimateWrappedTextHeight(text: unknown, visualCharsPerLine: number, lineHeight = 24) {
-  const visualLength = Math.max(1, getOptionVisualLength(text));
-  return Math.max(lineHeight, Math.ceil(visualLength / visualCharsPerLine) * lineHeight);
+function estimateWrappedTextHeight(text: unknown, visualCharsPerLine: number, lineHeight = 24, paragraphGap = 4) {
+  const str = String(text ?? "").trim();
+  if (!str) return 0;
+
+  const paragraphs = str.split(/\n+/);
+  let totalHeight = 0;
+  paragraphs.forEach((p, index) => {
+    const visualLength = Math.max(1, getOptionVisualLength(p));
+    let paragraphHeight = Math.ceil(visualLength / visualCharsPerLine) * lineHeight;
+
+    const hasMath = p.includes("$") || p.includes("\\(") || p.includes("\\[");
+    if (hasMath) {
+      paragraphHeight = Math.ceil(paragraphHeight * 1.15);
+    }
+
+    totalHeight += paragraphHeight;
+    if (index < paragraphs.length - 1) {
+      totalHeight += paragraphGap;
+    }
+  });
+
+  return totalHeight;
 }
 
 function estimateOptionsHeight(options: unknown[]) {
@@ -390,12 +425,12 @@ function estimateOptionsHeight(options: unknown[]) {
   return 10 + rowLineCounts.reduce((total, lines) => total + lines * 24, 0);
 }
 
-function estimateQuestionBlockHeight(entry: QuestionEntry | null, includeReviewDetails: boolean) {
+function estimateQuestionMainHeight(entry: QuestionEntry | null) {
   if (!entry?.item) return 74;
 
   const item = entry.item;
   const type = String(item.question_type ?? "").toLowerCase();
-  const stemHeight = estimateWrappedTextHeight(item.stem, 70);
+  const stemHeight = estimateWrappedTextHeight(item.stem, 70, 24, 6);
   let height = Math.max(32, stemHeight + 12);
 
   if (type === "single_choice" || type === "multiple_choice" || type === "multi_choice" || type === "true_false") {
@@ -409,19 +444,29 @@ function estimateQuestionBlockHeight(entry: QuestionEntry | null, includeReviewD
     height += 64;
   }
 
-  if (includeReviewDetails) {
-    height += 190;
-  }
+  // 加上底部操作栏的高度
+  height += 36;
 
   return Math.max(48, height);
+}
+
+function estimateQuestionReviewHeight(entry: QuestionEntry | null) {
+  if (!entry?.item) return 0;
+  const item = entry.item;
+  let reviewHeight = 20; // border + padding + margin
+  reviewHeight += 16 + estimateWrappedTextHeight(formatAnswerDisplayValue(item.question_type, item.user_answer), 70, 24, 6);
+  reviewHeight += 24 + estimateWrappedTextHeight(formatAnswerDisplayValue(item.question_type, item.correct_answer), 70, 24, 6);
+  reviewHeight += 24 + estimateWrappedTextHeight(item.explanation || "暂无解析", 70, 24, 6);
+  return reviewHeight;
 }
 
 function estimateSectionHeadingHeight(
   section: PaperLayoutSection | undefined,
   allocationByOrder: Map<number, PaperLayoutAllocation>,
+  entryByOrder?: Map<number, QuestionEntry>,
 ) {
   if (!section) return 0;
-  const text = getSectionHeadingText(section, allocationByOrder);
+  const text = getSectionHeadingText(section, allocationByOrder, entryByOrder);
   return 8 + estimateWrappedTextHeight(text, 66, 28);
 }
 
@@ -429,58 +474,76 @@ function buildDynamicRenderedPages(
   layout: PaperLayout,
   questionEntries: QuestionEntry[],
   allocationByOrder: Map<number, PaperLayoutAllocation>,
-  includeReviewDetails: boolean,
+  expandedQuestionIds: Set<number>,
 ): RenderPaperPage[] {
   const entryByOrder = new Map(questionEntries.map((entry) => [getQuestionOrder(entry), entry] as const));
   const sectionByNumber = new Map(layout.sections.map((section) => [section.section_number, section] as const));
   const orders = getOrderedQuestionOrders(layout, questionEntries);
   const pagesPerSide = Math.max(1, layout.pages_per_side || 2);
   const pages: RenderPaperPage[] = [];
-  let currentOrders: number[] = [];
-  let currentSections = new Set<number>();
+
+  let currentItems: PageRenderItem[] = [];
   let currentHeight = GAOKAO_COVER_ESTIMATED_HEIGHT;
-  let lastSectionNumber: number | null = null;
+  const renderedSections = new Set<number>();
 
   const pushPage = () => {
     const pageNumber = pages.length + 1;
     const sideNumber = Math.max(1, Math.ceil(pageNumber / pagesPerSide));
+
+    const pageOrders = currentItems
+      .filter((x): x is { type: "question_main"; order: number } => x.type === "question_main")
+      .map((x) => x.order);
+    const pageSections = currentItems
+      .filter((x): x is { type: "section_heading"; sectionNumber: number } => x.type === "section_heading")
+      .map((x) => x.sectionNumber);
+
     pages.push({
       page_number: pageNumber,
-      question_orders: currentOrders,
-      section_numbers: [...currentSections],
+      question_orders: pageOrders,
+      section_numbers: pageSections.length ? pageSections : [1],
+      items: currentItems,
       sideNumber,
       sideLabel: sideNumber % 2 === 1 ? "正面" : "背面",
     });
-    currentOrders = [];
-    currentSections = new Set<number>();
+    currentItems = [];
     currentHeight = 0;
-    lastSectionNumber = null;
   };
 
   orders.forEach((order) => {
     const entry = entryByOrder.get(order) ?? null;
     const sectionNumber = getSectionNumberForOrder(order, layout, allocationByOrder);
-    const questionHeight = estimateQuestionBlockHeight(entry, includeReviewDetails);
-    const getBlockHeight = () => {
-      const needsSectionHeading = sectionNumber !== lastSectionNumber;
-      return (currentOrders.length ? GAOKAO_QUESTION_GAP : 0)
-        + (needsSectionHeading ? estimateSectionHeadingHeight(sectionByNumber.get(sectionNumber), allocationByOrder) : 0)
-        + questionHeight;
-    };
 
-    let blockHeight = getBlockHeight();
-    if (currentOrders.length && currentHeight + blockHeight > GAOKAO_CONTENT_HEIGHT) {
-      pushPage();
-      blockHeight = getBlockHeight();
+    if (!renderedSections.has(sectionNumber)) {
+      const section = sectionByNumber.get(sectionNumber);
+      const headingHeight = estimateSectionHeadingHeight(section, allocationByOrder, entryByOrder);
+      if (currentItems.length && currentHeight + headingHeight > GAOKAO_CONTENT_HEIGHT) {
+        pushPage();
+      }
+      currentItems.push({ type: "section_heading", sectionNumber });
+      currentHeight += headingHeight;
+      renderedSections.add(sectionNumber);
     }
 
-    currentOrders.push(order);
-    currentSections.add(sectionNumber);
-    currentHeight += blockHeight;
-    lastSectionNumber = sectionNumber;
+    const mainHeight = estimateQuestionMainHeight(entry);
+    const mainGap = currentItems.length ? GAOKAO_QUESTION_GAP : 0;
+    if (currentItems.length && currentHeight + mainGap + mainHeight > GAOKAO_CONTENT_HEIGHT) {
+      pushPage();
+    }
+    currentItems.push({ type: "question_main", order });
+    currentHeight += (currentItems.length > 1 ? GAOKAO_QUESTION_GAP : 0) + mainHeight;
+
+    const includeReview = entry?.item ? expandedQuestionIds.has(entry.item.id) : false;
+    if (includeReview) {
+      const reviewHeight = estimateQuestionReviewHeight(entry);
+      if (currentHeight + reviewHeight > GAOKAO_CONTENT_HEIGHT) {
+        pushPage();
+      }
+      currentItems.push({ type: "question_review", order });
+      currentHeight += reviewHeight;
+    }
   });
 
-  if (currentOrders.length || pages.length === 0) {
+  if (currentItems.length || pages.length === 0) {
     pushPage();
   }
 
@@ -490,6 +553,7 @@ function buildDynamicRenderedPages(
 function getSectionHeadingText(
   section: PaperLayoutSection,
   allocationByOrder: Map<number, PaperLayoutAllocation>,
+  entryByOrder?: Map<number, QuestionEntry>,
 ) {
   const title = section.title.replace(/\s*共\s*\d+(?:\.\d+)?\s*分\s*$/, "").replace(/[：:]\s*$/, "");
   const scores = section.question_orders
@@ -503,14 +567,46 @@ function getSectionHeadingText(
   const scoreText = hasSameScore
     ? `每小题 ${formatScore(firstScore)} 分，共 ${formatScore(totalScore)} 分`
     : `共 ${formatScore(totalScore)} 分`;
-  const typeGroup = section.question_type_group ?? "";
-  const instruction = typeGroup.includes("multiple") || section.title.includes("多选")
-    ? "在每小题给出的选项中，有多项符合题目要求。"
-    : typeGroup.includes("single") || section.title.includes("选择")
-      ? "在每小题给出的四个选项中，只有一项是符合题目要求的。"
-      : section.title.includes("解答")
-        ? "解答应写出文字说明、证明过程或演算步骤。"
-        : "";
+
+  let instruction = "";
+  if (entryByOrder) {
+    const sectionItems = section.question_orders
+      .map((order) => entryByOrder.get(order)?.item)
+      .filter((item): item is ExamPaperItemResponse => !!item);
+
+    const singleOrders = sectionItems
+      .filter((item) => item.question_type === "single_choice")
+      .map((item) => item.item_order)
+      .sort((a, b) => a - b);
+    const multiOrders = sectionItems
+      .filter((item) => item.question_type === "multiple_choice" || item.question_type === "multi_choice")
+      .map((item) => item.item_order)
+      .sort((a, b) => a - b);
+
+    if (singleOrders.length && multiOrders.length) {
+      const getRangeStr = (orders: number[]) => {
+        if (orders.length === 1) return `第 ${orders[0]} 题`;
+        return `第 ${orders[0]}～${orders[orders.length - 1]} 题`;
+      };
+      instruction = `在每小题给出的四个选项中，${getRangeStr(singleOrders)}只有一项符合题目要求，${getRangeStr(multiOrders)}有多项符合题目要求。`;
+    } else if (multiOrders.length) {
+      instruction = "在每小题给出的四个选项中，有多项符合题目要求。";
+    } else if (singleOrders.length) {
+      instruction = "在每小题给出的四个选项中，只有一项是符合题目要求的。";
+    }
+  }
+
+  if (!instruction) {
+    const typeGroup = section.question_type_group ?? "";
+    instruction = typeGroup.includes("multiple") || section.title.includes("多选")
+      ? "在每小题给出的选项中，有多项符合题目要求。"
+      : typeGroup.includes("single") || section.title.includes("选择")
+        ? "在每小题给出的四个选项中，只有一项是符合题目要求的。"
+        : section.title.includes("解答")
+          ? "解答应写出文字说明、证明过程或演算步骤。"
+          : "";
+  }
+
   return `${title}：本题共 ${section.question_orders.length} 小题，${scoreText}。${instruction}`;
 }
 
@@ -596,12 +692,14 @@ function PaperExamQuestionBlock({
   highlightedQuestionOrder,
   setAnswers,
   selectedItemId,
-  showInlineReviewDetails,
+  isReviewAnalysisVisible,
   onSelectQuestion,
+  onReviewAnalysisToggle,
   onQuestionAi,
   onQuestionMarkToggle,
   markingQuestionTemplateId,
   score,
+  activeAiAnchorId,
 }: PaperExamCanvasSheetProps & {
   entry: QuestionEntry;
   score?: number;
@@ -642,7 +740,7 @@ function PaperExamQuestionBlock({
       }}
       className={cn(
         "group relative scroll-mt-28 border border-transparent py-0.5 transition",
-        isReviewStage && "cursor-pointer",
+        isReviewStage && "cursor-pointer pr-12",
         (isSelectedReviewItem || isQuestionHighlighted) && "border-slate-300 bg-slate-50/70 px-2 dark:border-slate-700 dark:bg-slate-900/70",
       )}
       aria-selected={isSelectedReviewItem || undefined}
@@ -680,7 +778,9 @@ function PaperExamQuestionBlock({
                 const isSelected = isMultipleChoice ? selectedMultiChoice.has(optionValue) : answerValue === optionValue;
                 const isCorrectOption = isMultipleChoice
                   ? correctMultiChoice.has(optionValue)
-                  : (item.correct_answer ?? "") === optionValue;
+                  : isTrueFalse
+                    ? isTrueFalseAnswerMatch(item.correct_answer, optionValue)
+                    : (item.correct_answer ?? "") === optionValue;
                 const isWrongSelectedOption = isReviewStage && isSelected && !isCorrectOption;
                 const isRightOption = isReviewStage && isCorrectOption;
                 return (
@@ -719,7 +819,7 @@ function PaperExamQuestionBlock({
                       isReadonly && "cursor-default",
                     )}
                   >
-                    <span className="shrink-0">{isTrueFalse ? "" : `${optionLabel}．`}</span>
+                    <span className="shrink-0">{isTrueFalse ? "" : `${optionLabel}. `}</span>
                     <span className="min-w-0 flex-1 [&_p]:mb-0 [&_p]:text-[14px] [&_p]:leading-6">
                       <ExamMarkdown content={optionDisplay} />
                     </span>
@@ -747,7 +847,7 @@ function PaperExamQuestionBlock({
             />
           )}
 
-          <div className="pointer-events-none absolute right-0 top-0 flex flex-wrap items-center gap-2 text-[10px] font-semibold leading-4 text-slate-400 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100">
+          <div className="mt-3 flex items-center justify-end gap-2.5 border-t border-dashed border-slate-200/60 dark:border-slate-800/80 pt-2">
             {onQuestionAi ? (
               <button
                 type="button"
@@ -755,51 +855,101 @@ function PaperExamQuestionBlock({
                   event.stopPropagation();
                   onQuestionAi(item, isReviewStage, answerValue);
                 }}
-                className="pointer-events-auto inline-flex items-center gap-1 rounded-md bg-white/90 px-1 text-slate-400 transition hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 dark:bg-slate-950/90 dark:hover:text-slate-200"
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium transition",
+                  (activeAiAnchorId === buildExamQuestionAnchorId(paper.id, item.item_order))
+                    ? "border-indigo-200 bg-indigo-50/60 text-indigo-700 hover:bg-indigo-100/60 dark:border-indigo-900/60 dark:bg-indigo-950/30 dark:text-indigo-400"
+                    : "border-slate-200 bg-slate-50/30 text-slate-500 hover:bg-slate-100/50 dark:border-slate-800 dark:bg-slate-900/30 dark:text-slate-400",
+                )}
                 title={`围绕第 ${item.item_order} 题问 AI`}
-                aria-label={`围绕第 ${item.item_order} 题问 AI`}
               >
                 <MessageSquareText className="h-3 w-3" />
                 问AI
               </button>
             ) : null}
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                onQuestionMarkToggle?.(item, !isMarked);
-              }}
-              disabled={!onQuestionMarkToggle || isMarking}
-              className={cn(
-                "pointer-events-auto inline-flex items-center gap-1 rounded-md bg-white/90 px-1 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 dark:bg-slate-950/90",
-                isMarked ? "text-slate-800 dark:text-slate-100" : "text-slate-400 hover:text-slate-700 dark:hover:text-slate-200",
-                (!onQuestionMarkToggle || isMarking) && "cursor-default opacity-70",
-              )}
-              title={isMarked ? `取消标记第 ${item.item_order} 题` : `标记第 ${item.item_order} 题`}
-              aria-label={isMarked ? `取消标记第 ${item.item_order} 题` : `标记第 ${item.item_order} 题`}
-              aria-pressed={isMarked}
-            >
-              <Bookmark className={cn("h-3 w-3", isMarked && "fill-current")} />
-              {isMarked ? "已标记" : "标记"}
-            </button>
-            {isReviewStage ? (
-              <span className="inline-flex items-center gap-1">
+
+            {onQuestionMarkToggle ? (
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onQuestionMarkToggle?.(item, !isMarked);
+                }}
+                disabled={isMarking}
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium transition",
+                  isMarked
+                    ? "border-amber-200 bg-amber-50/60 text-amber-700 hover:bg-amber-100/60 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-400"
+                    : "border-slate-200 bg-slate-50/30 text-slate-500 hover:bg-slate-100/50 dark:border-slate-800 dark:bg-slate-900/30 dark:text-slate-400",
+                )}
+                title={isMarked ? `取消标记第 ${item.item_order} 题` : `标记第 ${item.item_order} 题`}
+              >
+                <Bookmark className={cn("h-3 w-3", isMarked && "fill-current")} />
+                {isMarked ? "已标记" : "标记"}
+              </button>
+            ) : null}
+
+            {isReviewStage && onReviewAnalysisToggle ? (
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onReviewAnalysisToggle?.();
+                }}
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium transition",
+                  isReviewAnalysisVisible
+                    ? "border-emerald-200 bg-emerald-50/60 text-emerald-700 hover:bg-emerald-100/60 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-400"
+                    : "border-slate-200 bg-slate-50/30 text-slate-500 hover:bg-slate-100/50 dark:border-slate-800 dark:bg-slate-900/30 dark:text-slate-400",
+                )}
+                title={isReviewAnalysisVisible ? "收起解析" : "展开解析"}
+              >
                 <Lightbulb className="h-3 w-3" />
                 解析
-              </span>
+              </button>
             ) : null}
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-          {isReviewStage && showInlineReviewDetails ? (
-            <div className="mt-3 border-t border-dashed border-slate-200 pt-2 text-[14px] leading-6 text-slate-600 dark:border-slate-800 dark:text-slate-300 [&_p]:mb-1 [&_p]:leading-6">
-              <p className="text-xs font-semibold text-slate-400">你的答案</p>
-              <ExamMarkdown content={formatAnswerDisplayValue(item.question_type, item.user_answer)} />
-              <p className="mt-2 text-xs font-semibold text-slate-400">正确答案</p>
-              <ExamMarkdown content={formatAnswerDisplayValue(item.question_type, item.correct_answer, "无标准答案")} />
-              <p className="mt-2 text-xs font-semibold text-slate-400">解析</p>
-              <ExamMarkdown content={item.explanation || "暂无解析"} />
-            </div>
-          ) : null}
+function PaperExamQuestionReviewBlock({
+  entry,
+  isContinuation,
+}: {
+  entry: QuestionEntry;
+  isContinuation: boolean;
+}) {
+  if (!entry.item) return null;
+  const item = entry.item;
+  return (
+    <div
+      className={cn(
+        "group relative border border-transparent py-0.5 transition",
+        isContinuation && "pl-6 pr-12 border-l-2 border-dashed border-indigo-200/60 dark:border-indigo-800/40"
+      )}
+      style={gaokaoTextStyle}
+    >
+      <div className="flex items-start gap-2">
+        <div className="w-6 shrink-0 text-right text-[14px] leading-6 text-slate-950 dark:text-slate-100 font-bold">
+          {isContinuation ? `${item.item_order}.` : ""}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="border-t border-dashed border-slate-200 pt-2 text-[14px] leading-6 text-slate-600 dark:border-slate-800 dark:text-slate-300 [&_p]:mb-1 [&_p]:leading-6">
+            {isContinuation ? (
+              <div className="mb-2 text-xs font-semibold text-indigo-600 dark:text-indigo-400">
+                [第 {item.item_order} 题解析 · 承前页]
+              </div>
+            ) : null}
+            <p className="text-xs font-semibold text-slate-400">你的答案</p>
+            <ExamMarkdown content={formatAnswerDisplayValue(item.question_type, item.user_answer)} />
+            <p className="mt-2 text-xs font-semibold text-slate-400">正确答案</p>
+            <ExamMarkdown content={formatAnswerDisplayValue(item.question_type, item.correct_answer, "无标准答案")} />
+            <p className="mt-2 text-xs font-semibold text-slate-400">解析</p>
+            <ExamMarkdown content={item.explanation || "暂无解析"} />
+          </div>
         </div>
       </div>
     </div>
@@ -820,10 +970,38 @@ export function PaperExamCanvasSheet({
   onQuestionAi,
   onQuestionMarkToggle,
   markingQuestionTemplateId,
+  activeAiAnchorId,
 }: PaperExamCanvasSheetProps) {
   const layout = useMemo(() => getPaperLayout(paper, questionEntries), [paper, questionEntries]);
   const [pageViewMode, setPageViewMode] = useState<"single" | "double">("double");
   const [activePageNumber, setActivePageNumber] = useState(1);
+  const [expandedQuestionIds, setExpandedQuestionIds] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    if (activeStage === 2 && showInlineReviewDetails) {
+      const ids = new Set<number>();
+      questionEntries.forEach((entry) => {
+        if (entry.item) {
+          ids.add(entry.item.id);
+        }
+      });
+      setExpandedQuestionIds(ids);
+    } else {
+      setExpandedQuestionIds(new Set());
+    }
+  }, [activeStage, questionEntries, showInlineReviewDetails]);
+
+  const handleToggleQuestionAnalysis = useCallback((itemId: number) => {
+    setExpandedQuestionIds((current) => {
+      const next = new Set(current);
+      if (next.has(itemId)) {
+        next.delete(itemId);
+      } else {
+        next.add(itemId);
+      }
+      return next;
+    });
+  }, []);
   const [viewerWidth, setViewerWidth] = useState(1280);
   const viewerRef = useRef<HTMLDivElement | null>(null);
   const scrollFrameRef = useRef<number | null>(null);
@@ -837,6 +1015,7 @@ export function PaperExamCanvasSheet({
       ),
     [questionEntries],
   );
+
   const sectionByNumber = useMemo(
     () => new Map(layout.sections.map((section) => [section.section_number, section] as const)),
     [layout.sections],
@@ -850,9 +1029,9 @@ export function PaperExamCanvasSheet({
       layout,
       questionEntries,
       allocationByOrder,
-      activeStage === 2 && showInlineReviewDetails,
+      expandedQuestionIds,
     );
-  }, [activeStage, allocationByOrder, layout, questionEntries, showInlineReviewDetails]);
+  }, [layout, questionEntries, allocationByOrder, expandedQuestionIds]);
   const renderedPageCount = renderedPages.length;
 
   const pageSpec = useMemo(() => buildPaperPageSpec(layout.pages_per_side), [layout.pages_per_side]);
@@ -1064,7 +1243,6 @@ export function PaperExamCanvasSheet({
               style={{ gap: isJoinedSpread ? 0 : displayedPageGap }}
             >
               {spread.pages.map((page, pageIndex) => {
-                  let lastSectionNumber: number | null = null;
                   return (
                     <div
                       key={page.page_number}
@@ -1098,10 +1276,24 @@ export function PaperExamCanvasSheet({
                           ...gaokaoTextStyle,
                         }}
                       >
+                        {page.page_number === 1 ? (
+                          <div
+                            className="absolute left-0 top-[104px] bottom-[104px] w-[60px] border-r border-dashed border-slate-300/80 dark:border-slate-800/80 flex flex-row items-center justify-between pointer-events-none text-slate-400 select-none text-[12px] py-16"
+                            style={{ writingMode: "vertical-rl" }}
+                            aria-hidden="true"
+                          >
+                            <div className="font-semibold text-slate-500/90 tracking-[4px]">装订线内不要答题</div>
+                            <span className="text-[13px] tracking-normal font-medium text-slate-500/80">学校：____</span>
+                            <span className="text-[13px] tracking-normal font-medium text-slate-500/80">姓名：____</span>
+                            <span className="text-[13px] tracking-normal font-medium text-slate-500/80">班级：____</span>
+                            <span className="text-[13px] tracking-normal font-medium text-slate-500/80">考号：____</span>
+                            <div className="font-semibold text-slate-500/90 tracking-[4px]">装订线内不要答题</div>
+                          </div>
+                        ) : null}
                         <div className="min-h-0 flex-1 overflow-hidden" style={gaokaoPageContentStyle}>
                           {page.page_number === 1 ? <PaperExamCoverIntro paper={paper} layout={layout} /> : null}
 
-                          {page.question_orders.length === 0 ? (
+                          {page.items.length === 0 ? (
                             <div className="flex flex-col justify-end gap-5 pt-12 text-slate-200 dark:text-slate-800" aria-hidden="true">
                               {Array.from({ length: 18 }, (_, index) => (
                                 <span key={index} className="h-px w-full bg-current" />
@@ -1109,40 +1301,59 @@ export function PaperExamCanvasSheet({
                             </div>
                           ) : (
                             <div className="space-y-2.5">
-                            {page.question_orders.map((order) => {
-                              const entry = entryByOrder.get(order) ?? null;
-                              const allocation = allocationByOrder.get(order);
-                              const sectionNumber = allocation?.section_number ?? page.section_numbers?.[0] ?? 1;
-                              const section = sectionByNumber.get(sectionNumber);
-                              const shouldShowSection = sectionNumber !== lastSectionNumber;
-                              lastSectionNumber = sectionNumber;
-                              return (
-                                <div key={order} className="space-y-2">
-                                  {shouldShowSection && section ? (
-                                    <div className="pt-1 text-[15px] font-bold leading-7 text-slate-950 dark:text-slate-100">
-                                      {getSectionHeadingText(section, allocationByOrder)}
-                                    </div>
-                                  ) : null}
-                                  {entry ? (
-                                    <PaperExamQuestionBlock
-                                      paper={paper}
-                                      answers={answers}
-                                      activeStage={activeStage}
-                                      questionEntries={questionEntries}
-                                      highlightedQuestionOrder={highlightedQuestionOrder}
-                                      setAnswers={setAnswers}
-                                      selectedItemId={selectedItemId}
-                                      showInlineReviewDetails={showInlineReviewDetails}
-                                      onSelectQuestion={onSelectQuestion}
-                                      onQuestionAi={onQuestionAi}
-                                      onQuestionMarkToggle={onQuestionMarkToggle}
-                                      markingQuestionTemplateId={markingQuestionTemplateId}
-                                      entry={entry}
-                                      score={allocation?.score}
-                                    />
-                                  ) : null}
-                                </div>
-                              );
+                            {page.items.map((renderItem) => {
+                              if (renderItem.type === "section_heading") {
+                                const section = sectionByNumber.get(renderItem.sectionNumber);
+                                if (!section) return null;
+                                return (
+                                  <div key={`heading-${renderItem.sectionNumber}`} className="pt-1 text-[15px] font-bold leading-7 text-slate-950 dark:text-slate-100" style={gaokaoHeadingStyle}>
+                                    {getSectionHeadingText(section, allocationByOrder, entryByOrder)}
+                                  </div>
+                                );
+                              }
+
+                              if (renderItem.type === "question_main") {
+                                const entry = entryByOrder.get(renderItem.order) ?? null;
+                                const allocation = allocationByOrder.get(renderItem.order);
+                                if (!entry) return null;
+                                return (
+                                  <PaperExamQuestionBlock
+                                    key={`main-${renderItem.order}`}
+                                    paper={paper}
+                                    answers={answers}
+                                    activeStage={activeStage}
+                                    questionEntries={questionEntries}
+                                    highlightedQuestionOrder={highlightedQuestionOrder}
+                                    setAnswers={setAnswers}
+                                    selectedItemId={selectedItemId}
+                                    showInlineReviewDetails={false}
+                                    isReviewAnalysisVisible={entry.item ? expandedQuestionIds.has(entry.item.id) : false}
+                                    onSelectQuestion={onSelectQuestion}
+                                    onReviewAnalysisToggle={entry.item ? () => handleToggleQuestionAnalysis(entry.item!.id) : undefined}
+                                    onQuestionAi={onQuestionAi}
+                                    onQuestionMarkToggle={onQuestionMarkToggle}
+                                    markingQuestionTemplateId={markingQuestionTemplateId}
+                                    entry={entry}
+                                    score={allocation?.score}
+                                    activeAiAnchorId={activeAiAnchorId}
+                                  />
+                                );
+                              }
+
+                              if (renderItem.type === "question_review") {
+                                const entry = entryByOrder.get(renderItem.order) ?? null;
+                                if (!entry || !entry.item) return null;
+                                const isSamePage = page.items.some(x => x.type === "question_main" && x.order === renderItem.order);
+                                return (
+                                  <PaperExamQuestionReviewBlock
+                                    key={`review-${renderItem.order}`}
+                                    entry={entry}
+                                    isContinuation={!isSamePage}
+                                  />
+                                );
+                              }
+
+                              return null;
                             })}
                             </div>
                           )}

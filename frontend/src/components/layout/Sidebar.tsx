@@ -562,67 +562,65 @@ export function Sidebar({
           )}
         >
           {renderCollapsedChrome ? (
-              <motion.div
-                key="sidebar-header-collapsed"
-                variants={sidebarChromeSwitchMotion}
-                initial={false}
-                animate="visible"
-                exit="exit"
-                className="group relative h-8 w-8"
+            <motion.div
+              key="sidebar-header-collapsed"
+              variants={sidebarChromeSwitchMotion}
+              initial={false}
+              animate="visible"
+              exit="exit"
+              className="group relative h-8 w-8"
+            >
+              <img
+                src={LOGO_SRC}
+                alt="AITeachMe"
+                className="pointer-events-none absolute inset-0 m-auto h-6 w-6 object-contain opacity-100 transition-opacity duration-150 group-hover:opacity-0 dark:invert dark:opacity-90 dark:group-hover:opacity-0"
+              />
+              <button
+                type="button"
+                onClick={() => setIsCollapsed(false)}
+                className="absolute inset-0 flex h-8 w-8 items-center justify-center rounded text-slate-400 opacity-0 transition-all duration-150 group-hover:opacity-100 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800/50 dark:hover:text-slate-300"
+                title="展开侧边栏"
               >
-                <img
-                  src={LOGO_SRC}
-                  alt="AITeachMe"
-                  className="pointer-events-none absolute inset-0 m-auto h-6 w-6 object-contain opacity-100 transition-opacity duration-150 group-hover:opacity-0 dark:invert dark:opacity-90 dark:group-hover:opacity-0"
-                />
-                <button
-                  type="button"
-                  onClick={() => setIsCollapsed(false)}
-                  className="absolute inset-0 flex h-8 w-8 items-center justify-center rounded text-slate-400 opacity-0 transition-all duration-150 group-hover:opacity-100 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800/50 dark:hover:text-slate-300"
-                  title="展开侧边栏"
-                >
-                  <PanelLeftOpen className="h-4 w-4" />
-                </button>
-              </motion.div>
-            ) : (
-              <motion.div
-                key="sidebar-header-expanded"
-                variants={sidebarChromeSwitchMotion}
-                initial={false}
-                animate="visible"
-                exit="exit"
-                className="flex min-w-0 flex-1 items-center justify-between"
+                <PanelLeftOpen className="h-4 w-4" />
+              </button>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="sidebar-header-expanded"
+              variants={sidebarChromeSwitchMotion}
+              initial={false}
+              animate="visible"
+              exit="exit"
+              className="flex min-w-0 flex-1 items-center justify-between"
+            >
+              <Link
+                to="/"
+                className="flex h-11 min-w-0 items-center gap-2 pl-2 text-slate-900 dark:text-slate-100"
+                aria-label="回到导航页"
+                title="回到导航页"
               >
-                <Link
-                  to="/"
-                  className="flex h-11 min-w-0 items-center gap-2 pl-2 text-slate-900 dark:text-slate-100"
-                  aria-label="回到导航页"
-                  title="回到导航页"
-                >
-                  <img src={LOGO_SRC} alt="AITeachMe" className="h-5 w-auto shrink-0 dark:invert dark:opacity-90" />
-                  {isMobileOpen ? (
-                    <span className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
-                      AITeachMe
-                    </span>
-                  ) : null}
-                </Link>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (isMobileOpen) {
-                      setIsMobileOpen(false);
-                      return;
-                    }
-                    setIsCollapsed(true);
-                  }}
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800/50 dark:hover:text-slate-300 lg:h-8 lg:w-8 lg:rounded"
-                  aria-label={isMobileOpen ? "关闭导航" : "收起侧边栏"}
-                  title={isMobileOpen ? "关闭导航" : "收起侧边栏"}
-                >
-                  <PanelLeftClose className="h-5 w-5 lg:h-4 lg:w-4" />
-                </button>
-              </motion.div>
-            )}
+                <img src={LOGO_SRC} alt="AITeachMe" className="h-5 w-auto shrink-0 dark:invert dark:opacity-90" />
+                <span className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
+                  AITeachMe
+                </span>
+              </Link>
+              <button
+                type="button"
+                onClick={() => {
+                  if (isMobileOpen) {
+                    setIsMobileOpen(false);
+                    return;
+                  }
+                  setIsCollapsed(true);
+                }}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800/50 dark:hover:text-slate-300 lg:h-8 lg:w-8 lg:rounded"
+                aria-label={isMobileOpen ? "关闭导航" : "收起侧边栏"}
+                title={isMobileOpen ? "关闭导航" : "收起侧边栏"}
+              >
+                <PanelLeftClose className="h-5 w-5 lg:h-4 lg:w-4" />
+              </button>
+            </motion.div>
+          )}
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">

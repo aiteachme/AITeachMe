@@ -115,6 +115,7 @@ interface BuildPlanLocationState {
   initialFiles?: File[];
   initialPrompt?: string;
   autoStart?: boolean;
+  entrySource?: "home_arrow";
   model?: string | null;
 }
 
@@ -1890,7 +1891,13 @@ async function streamPlannerSession(
 
 async function createPlannerSessionStream(
   course: string,
-  payload: { file_ids: string[]; user_prompt: string; model?: string; planner_session_id?: string | null },
+  payload: {
+    file_ids: string[];
+    user_prompt: string;
+    model?: string;
+    planner_session_id?: string | null;
+    entry_source?: "home_arrow";
+  },
   options: {
     signal?: AbortSignal;
     onStatus?: (payload: unknown) => void;
@@ -2373,6 +2380,7 @@ export function BuildPlanPage() {
             user_prompt: prompt,
             model: selectedModel,
             planner_session_id: plannerSessionIdRef.current,
+            entry_source: navState.entrySource === "home_arrow" ? "home_arrow" : undefined,
           },
           {
             signal: controller.signal,
@@ -2441,7 +2449,15 @@ export function BuildPlanPage() {
       }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [handlePlannerStatusPayload, markPlannerLocalInteraction, courseId, navState?.autoStart, plannerSessionId, plannerStreaming]);
+  }, [
+    handlePlannerStatusPayload,
+    markPlannerLocalInteraction,
+    courseId,
+    navState?.autoStart,
+    navState?.entrySource,
+    plannerSessionId,
+    plannerStreaming,
+  ]);
 
   const uploadMutation = useMutation({
     mutationFn: (selected: File[]) => uploadFiles(courseId, selected),

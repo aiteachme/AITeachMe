@@ -9508,6 +9508,19 @@
             ],
             "title": "Model",
             "description": "Optional per-request planner model. Omit or use settings for configured defaults."
+          },
+          "entry_source": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "home_arrow"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entry Source",
+            "description": "Optional analytics-only entry source for the first planner request."
           }
         },
         "type": "object",
@@ -12231,6 +12244,10 @@
             },
             "type": "array",
             "title": "Sample File Ids"
+          },
+          "served_from_prepared": {
+            "type": "boolean",
+            "title": "Served From Prepared"
           }
         },
         "type": "object",
@@ -12242,7 +12259,8 @@
           "course_id",
           "user_id",
           "exam_mode",
-          "num_questions"
+          "num_questions",
+          "served_from_prepared"
         ],
         "title": "ExamGenerateResponse"
       },

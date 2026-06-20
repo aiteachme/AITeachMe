@@ -1,15 +1,19 @@
-import type { CSSProperties, KeyboardEvent, MouseEvent } from "react";
-import { AlertTriangle, Loader2, MoreVertical, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent } from "react";
+import { AlertTriangle, Loader2, MoreVertical, Sparkles, Trash2 } from "lucide-react";
 
 import type { ExamHistoryItem, PaperPreview, PaperPreviewRow } from "../../api/generated/model";
 import { Button } from "../ui/Button";
 import type { ExamResultDisplayMode } from "../../lib/examResultDisplayPreference";
-import { buildExamTitle } from "./examDisplay";
+import { buildExamTitle, parseBackendDateTime } from "./examDisplay";
 
 type PreviewShape = PaperPreviewRow["shape"];
 type PreviewResultStatus = "ungraded" | "correct" | "incorrect";
 
-const PREVIEW_ROW_LIMIT = 6;
+const PREVIEW_ROW_LIMIT = 4;
+const GRADING_PROGRESS_REFRESH_MS = 1000;
+const GRADING_PROGRESS_MIN = 8;
+const GRADING_PROGRESS_MAX = 95;
+const GRADING_PROGRESS_FULL_SCALE_SECONDS = 120;
 
 function buildFallbackPaperPreview(item: ExamHistoryItem): PaperPreview {
   const rowCount = Math.min(Math.max(item.total_items || 1, 1), PREVIEW_ROW_LIMIT);
@@ -46,6 +50,23 @@ function getExamScorePercent(item: ExamHistoryItem): number | null {
     return null;
   }
   return Math.max(0, Math.min(100, Math.round((score / total) * 100)));
+}
+
+function parseTimestampMs(value?: string | null): number | null {
+  if (!value) return null;
+  const parsed = parseBackendDateTime(value).getTime();
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getPaperGradingProgress(startedAtMs: number, nowMs: number): number {
+  const elapsedSeconds = Math.max(0, (nowMs - startedAtMs) / 1000);
+  const normalized = Math.min(
+    1,
+    Math.log1p(elapsedSeconds) / Math.log1p(GRADING_PROGRESS_FULL_SCALE_SECONDS),
+  );
+  return Math.round(
+    GRADING_PROGRESS_MIN + (GRADING_PROGRESS_MAX - GRADING_PROGRESS_MIN) * normalized,
+  );
 }
 
 function ScoreDigit({ digit, x }: { digit: string; x: number }) {
@@ -553,6 +574,46 @@ function FailedPaperPreview() {
   );
 }
 
+function PaperGradingPreview({ submittedAt }: { submittedAt?: string | null }) {
+  const mountedAtRef = useRef(Date.now());
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const startedAtMs = parseTimestampMs(submittedAt) ?? mountedAtRef.current;
+  const progress = getPaperGradingProgress(startedAtMs, nowMs);
+
+  useEffect(() => {
+    setNowMs(Date.now());
+    const interval = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, GRADING_PROGRESS_REFRESH_MS);
+    return () => window.clearInterval(interval);
+  }, [submittedAt]);
+
+  return (
+    <div
+      className="relative z-10 mt-3 flex flex-1 flex-col items-center justify-center overflow-hidden rounded-xl border border-indigo-100/50 bg-indigo-50/10 px-4 py-4 text-center dark:border-indigo-900/40 dark:bg-indigo-950/10 animate-pulse"
+      aria-label={`智能阅卷中，进度 ${progress}%`}
+    >
+      <div className="relative flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-indigo-50 dark:bg-slate-900 dark:ring-indigo-950">
+        <Loader2 className="h-5 w-5 animate-spin text-indigo-500" />
+        <Sparkles className="absolute -right-1.5 -top-1.5 h-3.5 w-3.5 animate-pulse text-amber-500" />
+      </div>
+      <div className="mt-2 text-xs font-black text-slate-800 dark:text-slate-200">AI 智能阅卷中</div>
+      <div className="mt-1 max-w-[11rem] text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
+        正在深度解析作答并同步掌握度数据
+      </div>
+      <div className="mt-3.5 w-24 overflow-hidden rounded-full bg-slate-200/60 dark:bg-slate-800 h-1.5 relative">
+        <div
+          className="h-full rounded-full bg-indigo-500 transition-all duration-1000 ease-out"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+      <span className="mt-1 text-[9px] font-bold tabular-nums text-indigo-600/80 dark:text-indigo-400/80">
+        {progress}%
+      </span>
+    </div>
+  );
+}
+
 export function ExamPaperCard({
   item,
   resultDisplayMode,
@@ -570,6 +631,7 @@ export function ExamPaperCard({
   const isGraded = item.status === "graded";
   const isGenerating = item.status === "generating";
   const isFailed = item.status === "failed";
+  const isGrading = item.status === "submitted" || item.status === "grading";
   const showDetailedResult = isGraded && resultDisplayMode === "score";
   const showPassMark = isGraded && resultDisplayMode === "completed";
   const scorePercent = getExamScorePercent(item);
@@ -586,45 +648,52 @@ export function ExamPaperCard({
       tabIndex={0}
       onClick={onOpen}
       onKeyDown={handleCardKeyDown}
-      className="group w-full max-w-[250px] cursor-pointer rounded-[22px] bg-transparent p-1.5 text-left transition duration-200 hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
+      className="group w-full max-w-[300px] cursor-pointer rounded-[22px] bg-transparent p-1.5 text-left transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] hover:-translate-y-2 hover:scale-[1.02] hover:rotate-[-0.5deg] focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
     >
       <div
-        className={`relative mx-auto aspect-[210/297] w-full max-w-[250px] transition ${
+        className={`relative mx-auto aspect-[300/230] w-full max-w-[300px] transition-all duration-300 ${
           isFailed
             ? "drop-shadow-[0_16px_24px_rgba(190,18,60,0.14)] group-hover:drop-shadow-[0_22px_34px_rgba(190,18,60,0.18)]"
-            : "drop-shadow-[0_16px_24px_rgba(15,23,42,0.10)] group-hover:drop-shadow-[0_22px_34px_rgba(15,23,42,0.14)]"
+            : "drop-shadow-[0_16px_24px_rgba(15,23,42,0.08)] group-hover:drop-shadow-[0_22px_34px_rgba(15,23,42,0.12)] dark:drop-shadow-[0_16px_24px_rgba(0,0,0,0.4)] dark:group-hover:drop-shadow-[0_24px_36px_rgba(0,0,0,0.55)]"
         }`}
       >
         <div
-          className={`absolute inset-0 flex flex-col overflow-hidden rounded-[18px] border bg-white px-4 py-5 text-slate-950 dark:bg-slate-900 dark:text-slate-100 ${
+          className={`absolute inset-0 flex flex-col overflow-hidden rounded-[18px] border bg-white px-4 py-4 text-slate-950 dark:bg-slate-900 dark:text-slate-100 ${
             isFailed ? "border-rose-200 dark:border-rose-900/70" : "border-slate-200 dark:border-slate-800"
           }`}
           style={{ clipPath: "polygon(0 0, calc(100% - 48px) 0, 100% 48px, 100% 100%, 0 100%)" }}
         >
 
-        <div className="relative z-10 px-3 pt-2 text-center">
-          <h3 className="mx-auto line-clamp-2 max-w-[180px] text-base font-semibold leading-snug text-slate-950 dark:text-slate-100">
+        <div className="relative z-10 px-3 pt-1 text-center">
+          <h3 className="mx-auto line-clamp-1 max-w-[220px] text-base font-semibold leading-snug text-slate-950 dark:text-slate-100">
             {buildExamTitle(item)}
           </h3>
           <div className="mx-auto mt-2 h-px w-16 bg-slate-200 dark:bg-slate-700" />
         </div>
 
         <div
-          className={`relative z-10 mt-4 border-y px-1 py-2 text-center text-xs font-semibold ${
+          className={`relative z-10 mt-3 border-y px-1 py-1.5 text-center text-xs font-semibold ${
             isFailed
               ? "border-rose-100 text-rose-600 dark:border-rose-900/60 dark:text-rose-300"
-              : "border-slate-100 text-slate-600 dark:border-slate-800 dark:text-slate-300"
+              : isGrading
+                ? "border-indigo-100 text-indigo-600 dark:border-indigo-900/50 dark:text-indigo-300"
+                : "border-slate-100 text-slate-600 dark:border-slate-800 dark:text-slate-300"
           }`}
         >
           {isFailed ? (
             <span className="inline-flex items-center justify-center gap-1">
               <AlertTriangle className="h-3.5 w-3.5" />
-              内容生成失败
+               内容生成失败
             </span>
           ) : isGenerating ? (
             <span className="inline-flex items-center justify-center gap-1.5" aria-label="题目生成中">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
               生成中
+            </span>
+          ) : isGrading ? (
+            <span className="inline-flex items-center justify-center gap-1.5 text-indigo-600 dark:text-indigo-400 font-bold" aria-label="智能阅卷中">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              AI 智能阅卷中
             </span>
           ) : (
             <PaperTagLine preview={preview} />
@@ -633,6 +702,8 @@ export function ExamPaperCard({
 
         {isFailed ? (
           <FailedPaperPreview />
+        ) : isGrading ? (
+          <PaperGradingPreview submittedAt={item.submitted_at} />
         ) : (
           <PaperFingerprintPreview
             preview={preview}
@@ -644,7 +715,7 @@ export function ExamPaperCard({
         {showDetailedResult && scorePercent !== null ? <ExamPaperScoreMark score={scorePercent} /> : null}
         {showPassMark ? <ExamPaperPassMark /> : null}
 
-        <div className="absolute bottom-5 right-5 z-20 flex items-center gap-2">
+        <div className="absolute bottom-4 right-4 z-20 flex items-center gap-2 opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 pointer-events-none group-hover:pointer-events-auto transition-all duration-300">
             <Button
               type="button"
               size="icon"
@@ -670,23 +741,33 @@ export function ExamPaperCard({
             </button>
         </div>
         </div>
+        <style>{`
+          .stop-fold-0-${item.id} { stop-color: #d2dbe7; }
+          .stop-fold-1-${item.id} { stop-color: #e7edf5; }
+          .stop-fold-2-${item.id} { stop-color: #f7f9fc; }
+          .stop-fold-3-${item.id} { stop-color: #ffffff; }
+          .dark .stop-fold-0-${item.id} { stop-color: #0f172a; }
+          .dark .stop-fold-1-${item.id} { stop-color: #1e293b; }
+          .dark .stop-fold-2-${item.id} { stop-color: #334155; }
+          .dark .stop-fold-3-${item.id} { stop-color: #475569; }
+        `}</style>
         <svg
-          className="pointer-events-none absolute right-0 top-0 z-30 h-12 w-12 overflow-visible drop-shadow-[-6px_7px_10px_rgba(15,23,42,0.18)]"
+          className="pointer-events-none absolute right-0 top-0 z-30 h-12 w-12 overflow-visible drop-shadow-[-6px_7px_10px_rgba(15,23,42,0.18)] dark:drop-shadow-[-6px_7px_10px_rgba(0,0,0,0.4)]"
           viewBox="0 0 48 48"
           role="presentation"
           aria-hidden="true"
         >
           <defs>
-            <linearGradient id="exam-paper-fold" x1="48" y1="0" x2="0" y2="48" gradientUnits="userSpaceOnUse">
-              <stop offset="0" stopColor="#d2dbe7" />
-              <stop offset="0.36" stopColor="#e7edf5" />
-              <stop offset="0.72" stopColor="#f7f9fc" />
-              <stop offset="1" stopColor="#ffffff" />
+            <linearGradient id={`exam-paper-fold-${item.id}`} x1="48" y1="0" x2="0" y2="48" gradientUnits="userSpaceOnUse">
+              <stop offset="0" className={`stop-fold-0-${item.id}`} />
+              <stop offset="0.36" className={`stop-fold-1-${item.id}`} />
+              <stop offset="0.72" className={`stop-fold-2-${item.id}`} />
+              <stop offset="1" className={`stop-fold-3-${item.id}`} />
             </linearGradient>
           </defs>
-          <path d="M0 0L48 48H7Q0 48 0 41Z" fill="url(#exam-paper-fold)" stroke="#e2e8f0" strokeWidth="1" strokeLinejoin="round" />
-          <path d="M0 0L48 48" fill="none" stroke="#dbe3ee" strokeWidth="1" strokeLinecap="round" />
-          <path d="M1 2V40Q1 47 8 47H47" fill="none" stroke="#f8fafc" strokeWidth="0.75" strokeLinejoin="round" />
+          <path d="M0 0L48 48H7Q0 48 0 41Z" fill={`url(#exam-paper-fold-${item.id})`} className="stroke-slate-200 dark:stroke-slate-700" strokeWidth="1" strokeLinejoin="round" />
+          <path d="M0 0L48 48" fill="none" className="stroke-slate-300 dark:stroke-slate-800" strokeWidth="1" strokeLinecap="round" />
+          <path d="M1 2V40Q1 47 8 47H47" fill="none" className="stroke-slate-50 dark:stroke-slate-950/40" strokeWidth="0.75" strokeLinejoin="round" />
         </svg>
       </div>
     </article>

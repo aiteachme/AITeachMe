@@ -1648,7 +1648,47 @@ function preprocessMarkdownContent(content: string): string {
 }
 
 function hasLikelyMathContent(content: string): boolean {
-  return /\\[([]/.test(content) || /\$\$/.test(content) || /(^|[^\\])\$[^$\n]{1,240}(^|[^\\])\$/.test(content);
+  return /\\[([]/.test(content) || /\$\$/.test(content) || hasLikelyInlineDollarMath(content);
+}
+
+function hasLikelyInlineDollarMath(content: string): boolean {
+  const source = String(content || "");
+  let start = findNextUnescaped(source, "$", 0);
+
+  while (start >= 0) {
+    if (source.startsWith("$$", start)) {
+      start = findNextUnescaped(source, "$", start + 2);
+      continue;
+    }
+
+    const end = findNextUnescaped(source, "$", start + 1);
+    if (end < 0) {
+      return false;
+    }
+
+    const body = source.slice(start + 1, end);
+    const nextChar = source[end + 1] ?? "";
+    if (
+      isLikelyInlineMathBody(body) &&
+      !/[A-Za-z0-9_]/.test(nextChar)
+    ) {
+      return true;
+    }
+
+    start = findNextUnescaped(source, "$", end + 1);
+  }
+
+  return false;
+}
+
+function isLikelyInlineMathBody(body: string): boolean {
+  if (!body || body.length > 240 || body.includes("\n") || body.trim() !== body) {
+    return false;
+  }
+  if (body.length === 1) {
+    return /[A-Za-z\u0370-\u03ff]/.test(body);
+  }
+  return true;
 }
 
 function hasLikelyHighlightableCode(content: string): boolean {

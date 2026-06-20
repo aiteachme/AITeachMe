@@ -3132,6 +3132,7 @@ async def generate_exam(
                 num_questions=paper.total_items or question_count,
                 exam_paper_id=paper_id,
                 sample_file_ids=body.sample_file_ids or [],
+                served_from_prepared=True,
             )
         )
 
@@ -3193,6 +3194,7 @@ async def generate_exam(
             num_questions=question_count,
             exam_paper_id=paper_id,
             sample_file_ids=body.sample_file_ids or [],
+            served_from_prepared=False,
         )
     )
 

@@ -25,10 +25,12 @@ export function ExamStageHeader({
         <button
           type="button"
           onClick={onBack}
-          className="inline-flex min-h-11 items-center gap-2 justify-self-start text-sm font-medium text-slate-900 transition hover:text-slate-600 dark:text-slate-100 dark:hover:text-slate-300 sm:gap-3 sm:text-base"
+          className="group inline-flex h-9 items-center gap-2 justify-self-start rounded-full border border-slate-200/80 bg-white/80 pl-2.5 pr-4 text-sm font-semibold text-slate-600 shadow-sm backdrop-blur transition hover:border-slate-300 hover:bg-white hover:text-slate-950 dark:border-slate-700/80 dark:bg-slate-900/80 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:bg-slate-900 dark:hover:text-slate-50"
         >
-          <ArrowLeft className="h-5 w-5" />
-          返回记录列表
+          <span className="grid h-5 w-5 place-items-center rounded-full bg-slate-100 text-slate-500 transition group-hover:bg-slate-200 group-hover:text-slate-900 dark:bg-slate-800 dark:text-slate-400 dark:group-hover:bg-slate-700 dark:group-hover:text-slate-100">
+            <ArrowLeft className="h-3 w-3 transition-transform group-hover:-translate-x-0.5" />
+          </span>
+          返回训练中心
         </button>
 
         <div className="flex max-w-full items-center justify-center sm:col-start-2">
