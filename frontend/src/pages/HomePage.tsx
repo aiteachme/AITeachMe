@@ -157,29 +157,29 @@ const HOME_PROMPT_STARTERS = [
   {
     id: "middle-school-math",
     label: "初中数学",
-    description: "基础到压轴题",
-    prompt: "我想学习初中数学，请构建一门 14 天课程：按数与式、方程与不等式、函数、几何、统计与概率划分章节；每章包含学习目标、核心概念、典型例题、易错点和课后练习。",
+    description: "先理清重点",
+    prompt: "初中数学最近有点乱，想先把函数、几何和常见易错题梳理清楚，最好能边讲边练。",
     icon: BookOpen,
   },
   {
     id: "high-school-physics",
     label: "高中物理",
-    description: "力学主线入门",
-    prompt: "我想学习高中物理力学，请构建一门 10 天入门课程：按运动学、受力分析、牛顿定律、功和能、动量守恒划分章节；每章包含概念解释、公式适用条件、典型题型和实验情境。",
+    description: "从力学开始",
+    prompt: "高中物理力学我基础一般，帮我从受力分析和牛顿定律开始学，遇到公式希望能讲清楚适用场景。",
     icon: Target,
   },
   {
     id: "college-calculus",
     label: "大学高数",
-    description: "微积分体系课",
-    prompt: "我要学习大学高等数学上册，请构建一门 4 周系统课程：按函数与极限、连续、导数与微分、中值定理、不定积分、定积分拆成 8-10 章；每章给出知识框架、重点难点、例题练习和阶段测验。",
+    description: "补概念和题感",
+    prompt: "我在学高数上册，极限、导数和积分总是连不起来，想要一条清晰的学习路线和一些典型例题。",
     icon: ClipboardList,
   },
   {
     id: "college-english",
     label: "大学英语",
-    description: "听说读写规划",
-    prompt: "我想提升大学英语，请构建一门 6 周课程：按词汇、长难句、阅读理解、听力训练、写作表达和口语输出划分章节；每章包含学习目标、练习材料、训练方法、常见错误和每周验收任务。",
+    description: "阅读写作提升",
+    prompt: "大学英语想提高阅读和写作，不用太像背单词计划，希望能围绕长难句、阅读理解和表达积累来安排。",
     icon: CalendarCheck,
   },
 ] as const;
@@ -188,29 +188,29 @@ const HOME_FILE_PROMPT_STARTERS = [
   {
     id: "files-high-school-chemistry",
     label: "高中化学",
-    description: "教材重点成课",
-    prompt: "请基于我上传的高中化学资料构建一门系统课程：先识别章节范围和知识主线，再按物质分类、离子反应、氧化还原、物质的量和实验题拆分章节；每章包含核心概念、典型例题、易错点和练习任务。",
+    description: "先抓考试重点",
+    prompt: "这几份化学资料我想复习考试重点，帮我先整理知识主线，再指出哪些概念和题型最该优先看。",
     icon: BookOpen,
   },
   {
     id: "files-linear-algebra",
     label: "大学线代",
-    description: "课件整理大纲",
-    prompt: "请基于我上传的大学线性代数课件构建一门 3 周课程：按行列式、矩阵运算、线性方程组、向量空间、特征值与特征向量划分章节；每章包含定义、定理、计算方法、典型题和复盘问题。",
+    description: "把课件串起来",
+    prompt: "这些线代课件有点散，帮我整理成能顺着学的路线，重点讲矩阵、方程组和特征值之间的关系。",
     icon: Target,
   },
   {
     id: "files-high-school-english",
     label: "高中英语",
-    description: "阅读语法专题",
-    prompt: "请基于我上传的高中英语资料构建一门专题课程：按词汇积累、语法结构、阅读理解、完形填空、作文表达拆分章节；每章包含学习目标、例句讲解、题型方法、练习安排和错题整理方式。",
+    description: "阅读语法整理",
+    prompt: "帮我看看上传的英语资料，整理阅读和语法相关内容，顺便给一些练习和错题复盘建议。",
     icon: ClipboardList,
   },
   {
     id: "files-computer-basics",
     label: "计算机基础",
-    description: "大学公共课",
-    prompt: "请基于我上传的大学计算机基础资料构建一门课程：按计算机系统、操作系统、网络基础、数据库基础、程序设计入门和信息安全划分章节；每章包含核心概念、课堂练习、实践任务和阶段测验。",
+    description: "快速抓核心",
+    prompt: "这些计算机基础资料我想快速入门，帮我抓住系统、网络、数据库和程序设计里最核心的概念。",
     icon: CalendarCheck,
   },
 ] as const;
@@ -965,7 +965,7 @@ export function HomePage() {
           transition={{ delay: 3.0, duration: 0.6 }}
           className="mb-8 px-4 text-center text-base leading-relaxed text-zinc-500 dark:text-slate-400"
         >
-          上传资料或写下目标，生成一门可学习的课程。
+          有资料就上传；没资料也可以随便说想学什么。
         </motion.p>
 
         {/* ── Unified Input Area ── */}
@@ -984,7 +984,7 @@ export function HomePage() {
           )}>
             <textarea
               ref={textareaRef}
-              placeholder="输入课程目标：学什么、多久学完、希望怎么安排"
+              placeholder="随便写点想学的内容：一门课、一个考试、几份资料里的困惑都可以"
               className="w-full min-h-[148px] max-h-[320px] resize-none border-0 bg-transparent px-5 pb-3 pt-5 text-[15px] leading-7 text-zinc-900 focus:outline-none placeholder:text-zinc-400 dark:text-slate-100 dark:placeholder:text-slate-500 sm:min-h-[156px] sm:px-6 sm:pt-6"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
@@ -1115,7 +1115,7 @@ export function HomePage() {
           <div className="mt-3 w-full px-2">
             <div className="mb-1 flex items-center gap-3 text-[11px] font-medium text-zinc-400 dark:text-slate-500">
               <span className="h-px flex-1 bg-gradient-to-r from-transparent via-zinc-200 to-zinc-200/60 dark:via-slate-800 dark:to-slate-800/60" />
-              <span>{hasEntryFiles ? "基于资料的构建示例" : "课程构建示例"}</span>
+              <span>{hasEntryFiles ? "有资料时可以这样说" : "随手写也可以"}</span>
               <span className="h-px flex-1 bg-gradient-to-l from-transparent via-zinc-200 to-zinc-200/60 dark:via-slate-800 dark:to-slate-800/60" />
             </div>
             <div className="divide-y divide-zinc-200/60 dark:divide-slate-800/70">
