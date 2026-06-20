@@ -60,10 +60,18 @@ def _escape_text_underscore_placeholders(value: str) -> str:
 
 def _clean_multiline_text(value: object) -> str:
     text = str(value or "").replace("\r\n", "\n").replace("\r", "\n")
-    lines = [_INLINE_WHITESPACE_RE.sub(" ", line).strip() for line in text.split("\n")]
     cleaned_lines: list[str] = []
     previous_blank = False
-    for line in lines:
+    in_code_fence = False
+    for raw_line in text.split("\n"):
+        stripped_line = raw_line.strip()
+        if stripped_line.startswith("```"):
+            line = stripped_line
+            in_code_fence = not in_code_fence
+        elif in_code_fence:
+            line = raw_line.rstrip()
+        else:
+            line = _INLINE_WHITESPACE_RE.sub(" ", raw_line).strip()
         if not line:
             if cleaned_lines and not previous_blank:
                 cleaned_lines.append("")
@@ -431,7 +439,7 @@ class ExamQuestionDraft(BaseModel):
     def _strip_answer_text(cls, value: object) -> str:
         if isinstance(value, bool):
             return "True" if value else "False"
-        cleaned = " ".join(str(value or "").split()).strip()
+        cleaned = _clean_multiline_text(value)
         return _escape_text_underscore_placeholders(cleaned) if cleaned else ""
 
     @field_validator("correct_indices", mode="before")
@@ -490,7 +498,7 @@ class ExamQuestionDraft(BaseModel):
         else:
             raise ValueError("options must be a list or label-to-option mapping")
 
-        cleaned = [" ".join(str(item or "").split()).strip() for item in raw_items]
+        cleaned = [_clean_multiline_text(item) for item in raw_items]
         cleaned = [_choice_body(item) for item in cleaned]
         cleaned = [_escape_text_underscore_placeholders(item) for item in cleaned if item]
         return cleaned or None
@@ -631,10 +639,10 @@ def _choice_answer_key(value: str) -> str:
 
 
 def _choice_body(value: str) -> str:
-    cleaned = " ".join(str(value or "").split()).strip()
-    label_match = _CHOICE_LABEL_RE.match(cleaned)
-    if label_match and label_match.group(2):
-        return str(label_match.group(2) or "").strip()
+    cleaned = _clean_multiline_text(value)
+    label_prefix_match = re.match(r"^\s*[A-Da-d](?:[\.\)\]:：、\s]+)", cleaned)
+    if label_prefix_match:
+        return cleaned[label_prefix_match.end():].strip()
     return cleaned
 
 

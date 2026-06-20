@@ -76,13 +76,17 @@ def _writer_target_word_count(execution_contract: Mapping[str, Any]) -> int:
     return min(target_words, WRITER_MAX_EFFECTIVE_TARGET_WORDS)
 
 
-def _writer_max_tokens_for_contract(execution_contract: Mapping[str, Any]) -> int:
+def _writer_max_tokens_for_contract(execution_contract: Mapping[str, Any], *, digest_mode: str | None = None) -> int:
     target_words = _writer_target_word_count(execution_contract)
+    if str(digest_mode or "").strip().lower() == "sprint":
+        return max(1200, min(2800, int(target_words * 1.15) + 650))
     return max(1800, min(5600, int(target_words * 1.8) + 900))
 
 
-def _writer_stream_char_limit(execution_contract: Mapping[str, Any]) -> int:
+def _writer_stream_char_limit(execution_contract: Mapping[str, Any], *, digest_mode: str | None = None) -> int:
     target_words = _writer_target_word_count(execution_contract)
+    if str(digest_mode or "").strip().lower() == "sprint":
+        return max(3600, min(7200, int(target_words * 3.2)))
     return max(5000, min(14000, int(target_words * 4.5)))
 
 
@@ -137,19 +141,20 @@ class DocGenWriterRuntime(BaseTracedExecution):
             digest_mode=digest_mode,
             extra_metadata=self.context.trace_metadata(chapter_index=self.context.chapter_index),
         )
-        target_max_tokens = _writer_max_tokens_for_contract(execution_contract)
+        target_max_tokens = _writer_max_tokens_for_contract(execution_contract, digest_mode=digest_mode)
         configured_max_tokens = int(writer_model_kwargs.get("max_tokens") or target_max_tokens)
         writer_model_kwargs["max_tokens"] = min(configured_max_tokens, target_max_tokens)
-        stream_char_limit = _writer_stream_char_limit(execution_contract)
+        stream_char_limit = _writer_stream_char_limit(execution_contract, digest_mode=digest_mode)
         markdown = ""
         scaffold_fallback_applied = False
         writer_fallback_reason = ""
         stream_timed_out = False
         if on_stream_update is not None and self.context.llm_caller is None:
             streamed_chars = 0
+            stream_soft_limit_logged = False
 
             async def _run_writer_stream(_: object) -> str:
-                nonlocal streamed_chars
+                nonlocal streamed_chars, stream_soft_limit_logged
                 chunks: list[str] = []
                 stream_callback_last_at = perf_counter()
                 stream_callback_last_len = 0
@@ -170,7 +175,7 @@ class DocGenWriterRuntime(BaseTracedExecution):
                         stream_callback_last_at = now
                         stream_callback_last_len = streamed_chars
                         await self._safe_stream_update(on_stream_update, "".join(chunks))
-                    if streamed_chars >= stream_char_limit:
+                    if not stream_soft_limit_logged and streamed_chars >= stream_char_limit:
                         self.logger.info(
                             "docgen_writer_stream_soft_limit_reached",
                             chapter_index=chapter_index,
@@ -178,7 +183,7 @@ class DocGenWriterRuntime(BaseTracedExecution):
                             stream_char_limit=stream_char_limit,
                             target_word_count=_writer_target_word_count(execution_contract),
                         )
-                        break
+                        stream_soft_limit_logged = True
                 result = "".join(chunks)
                 await self._safe_stream_update(on_stream_update, result)
                 return result

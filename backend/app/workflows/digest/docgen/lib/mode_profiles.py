@@ -126,7 +126,7 @@ class DocGenModeProfile:
 
         depth = str(depth_level or "").strip().lower()
         if self.is_sprint:
-            return 950, 1300 if depth == "compact" else 1650
+            return 700, 1050 if depth == "compact" else 1250
 
         base = 1850 if depth == "deep" else 1600
         return 1050, max(1400, base if chapter_count <= 8 else 1500)
@@ -185,16 +185,16 @@ _SPRINT_PROFILE = DocGenModeProfile(
     },
     example_density_policy={
         "minimum_practice_share": 0.45,
-        "total_learning_activities_per_chapter": 8,
-        "worked_examples_per_chapter": 3,
-        "practice_tasks_per_chapter": 5,
-        "training_chapter_min_examples": 8,
-        "concept_chapter_min_examples": 3,
-        "chapter_end_practice_min_tasks": 4,
-        "chapter_end_practice_max_tasks": 6,
+        "total_learning_activities_per_chapter": 5,
+        "worked_examples_per_chapter": 2,
+        "practice_tasks_per_chapter": 3,
+        "training_chapter_min_examples": 5,
+        "concept_chapter_min_examples": 2,
+        "chapter_end_practice_min_tasks": 3,
+        "chapter_end_practice_max_tasks": 4,
         "important_method_min_examples": 2,
         "quick_reference_per_chapter": 1,
-        "policy_text": "紧凑节奏采用高密度练习安排：每章一张考点速览表，完整例题或任务约 3 个，短自测、变式或边界辨析约 4-6 个；题目形态由本章材料和章节角色决定。",
+        "policy_text": "紧凑节奏采用适量练习安排：每章一张考点速览表，完整例题或任务约 2 个，短自测、变式或边界辨析约 2-3 个；题目形态由本章材料和章节角色决定。",
     },
     coverage_policy=(
         "优先覆盖本章材料中的高价值任务、关键方法和易错边界。",

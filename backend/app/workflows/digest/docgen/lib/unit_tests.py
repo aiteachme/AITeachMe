@@ -257,7 +257,7 @@ def _markdown_explanation_lines(value: str, *, limit: int = 520) -> list[str]:
     text = _markdown_text(value, limit=limit)
     if not text:
         return []
-    numbered_parts = re.split(r"\s*(?=\d+[.、]\s*)", text)
+    numbered_parts = re.split(r"(?:^|\s+)(?=\d+[.、]\s+)", text)
     if len([part for part in numbered_parts if part.strip()]) > 1:
         return [re.sub(r"^\d+[.、]\s*", "", part).strip() for part in numbered_parts if part.strip()]
     parts = [
@@ -407,18 +407,18 @@ def _render_unit_test_item_markdown(item: ChapterUnitTestItem, *, index: int) ->
     question_type = _normalize_question_type(item.type)
     difficulty = _normalize_difficulty(item.difficulty)
     lines = [
-        f"> [!QUESTION] **Q{index:02d}｜{question_type}｜{difficulty}｜考点：{_markdown_text(item.target, limit=36)}**",
+        f"> [!QUESTION] **Q{index:02d}｜{question_type}｜{difficulty}｜考点：{_markdown_text(item.target, limit=48)}**",
         ">",
         "> **题目**",
         ">",
-        f"> {_markdown_text(item.stem, limit=420)}",
+        f"> {_markdown_text(item.stem, limit=720)}",
     ]
     if item.options:
         lines.extend([">", "> **选项**", ">"])
-        lines.extend([f"> - {label}. {_markdown_text(option, limit=42)}" for label, option in zip("ABCD", item.options)])
-    explanation_lines = _markdown_explanation_lines(item.basis)
+        lines.extend([f"> - {label}. {_markdown_text(option, limit=160)}" for label, option in zip("ABCD", item.options)])
+    explanation_lines = _markdown_explanation_lines(item.basis, limit=720)
     lines.extend(["", "> [!ANSWER]", ">", "> **答案**", ">"])
-    answer_text = _markdown_text(item.answer, limit=360) or "见解析。"
+    answer_text = _markdown_text(item.answer, limit=720) or "见解析。"
     lines.append(f"> {answer_text}")
     if explanation_lines:
         lines.extend([">", "> **解析步骤**", ">"])

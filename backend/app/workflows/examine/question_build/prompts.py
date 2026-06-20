@@ -22,6 +22,7 @@ _LATEX_FORMAT_RULES = (
 _QUESTION_TYPE_FORMAT_RULES = (
     "\n题型格式规则：\n"
     "- stem 只能包含题干本身；不要在 stem 中重复或嵌入选项。\n"
+    "- 如果 stem、options、correct_answer 或 explanation 包含代码，必须使用 Markdown fenced code block；Python 代码必须保留可运行缩进，不要把函数体、循环体、条件分支或 return 顶格。\n"
     "- 选择题只能使用一种标准格式：options 必须是字符串 JSON 数组，不能是对象或映射。\n"
     "- 选择题选项必须恰好是 4 个按顺序排列的纯选项文本；不要在选项前加 A/B/C/D 标签。\n"
     "- single_choice：提供恰好 4 个互不相同的选项，并用 correct_indices 给出恰好一个从 0 开始的索引，例如 `[0]`。\n"

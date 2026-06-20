@@ -189,6 +189,39 @@ def test_unit_test_renderer_repairs_escaped_display_math_options() -> None:
     assert "…" not in re.search(r"> - C\..+", unit_test).group(0)
 
 
+def test_unit_test_renderer_keeps_decimal_steps_and_code_options_readable() -> None:
+    unit_test = render_unit_test_markdown(
+        ChapterUnitTestSet(
+            chapter_index=1,
+            items=[
+                ChapterUnitTestItem(
+                    type="错因辨析",
+                    difficulty="进阶",
+                    target="错误定位：int 转换失败",
+                    stem='下面代码在用户输入 "abc" 时会出错。哪一项给出了正确的错误类型和修正关键句？ age = int(input("请输入年龄：")) print(age)',
+                    options=[
+                        'ValueError；age_text = input("请输入年龄：").strip(); if age_text.isdigit(): age = int(age_text)',
+                        'FileNotFoundError；with open("age.txt", "r") as f: age = f.read()',
+                        'ZeroDivisionError；if len(age) != 0: print(age)',
+                        'TypeError；age = str(input("请输入年龄：")); print(age)',
+                    ],
+                    answer='ValueError；age_text = input("请输入年龄：").strip(); if age_text.isdigit(): age = int(age_text)',
+                    basis="1. input() 得到字符串。 2. int(\"abc\") 不能转换为整数。 3. 平均值示例为 270 / 3 = 90.0。 4. 应先判断再转换。",
+                )
+            ],
+        ),
+        title="Python 入门",
+        min_items=1,
+        fallback_targets=[],
+    )
+
+    assert "str…" not in unit_test
+    assert "print…" not in unit_test
+    assert 'age_text = input("请输入年龄：").strip()' in unit_test
+    assert "270 / 3 = 90.0" in unit_test
+    assert "> 5. 0" not in unit_test
+
+
 def test_unit_test_renderer_keeps_four_options_for_every_question_type() -> None:
     unit_test = render_unit_test_markdown(
         ChapterUnitTestSet(

@@ -619,6 +619,17 @@ async def test_run_llm_tasks_can_be_nested_without_deadlock() -> None:
 
 
 @pytest.mark.anyio
+async def test_run_llm_tasks_converts_generator_exit_to_failure() -> None:
+    set_system_settings_override({"llm": {"concurrency_limit": 1}})
+
+    async def worker(_value: object) -> int:
+        raise GeneratorExit()
+
+    with pytest.raises(RuntimeError, match="GeneratorExit"):
+        await asyncio.wait_for(run_llm_tasks([None], worker), timeout=1)
+
+
+@pytest.mark.anyio
 async def test_run_llm_tasks_restores_langsmith_parent_for_workers(monkeypatch) -> None:
     set_system_settings_override({"llm": {"concurrency_limit": 2}})
     parent_run = object()

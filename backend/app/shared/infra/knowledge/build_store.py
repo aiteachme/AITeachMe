@@ -770,6 +770,17 @@ def build_aggregate_knowledge_build_status(
     docgen_runtime = hydrated.docgen_runtime
     graph_runtime = hydrated.graph_runtime
     build_group_id = hydrated.build_group_id
+    graph_is_separate_build = (
+        docgen_runtime is not None
+        and graph_runtime is not None
+        and bool(graph_runtime.build_group_id)
+        and graph_runtime.build_group_id != docgen_runtime.build_group_id
+    )
+    aggregate_build_group_id = (
+        graph_runtime.build_group_id
+        if graph_is_separate_build and graph_runtime is not None
+        else build_group_id
+    )
 
     if docgen_runtime is None and graph_runtime is None:
         return None
@@ -789,7 +800,7 @@ def build_aggregate_knowledge_build_status(
             KnowledgeBuildRuntimeStatus(
                 requested_at=requested_at,
                 build_kind="aggregate",
-                build_group_id=build_group_id,
+                build_group_id=aggregate_build_group_id,
                 status=status,
                 stage=stage,
                 started_at=started_at,
@@ -859,6 +870,15 @@ def build_aggregate_knowledge_build_status(
         )
 
     if graph_runtime.status in _ACTIVE_BUILD_STATUSES:
+        if graph_is_separate_build:
+            return _new(
+                requested_at=graph_runtime.requested_at,
+                status="running",
+                stage=graph_runtime.stage,
+                description=graph_runtime.current_stage_description or "知识图谱构建进行中。",
+                started_at=graph_runtime.started_at,
+                progress_pct=min(99, int(graph_runtime.progress_pct or 0)),
+            )
         return _new(
             requested_at=docgen_runtime.requested_at,
             status="running",
@@ -869,6 +889,17 @@ def build_aggregate_knowledge_build_status(
         )
 
     if graph_runtime.status in {"failed", "cancelled", "partial_failed"}:
+        if graph_is_separate_build:
+            return _new(
+                requested_at=graph_runtime.requested_at,
+                status=graph_runtime.status,
+                stage=graph_runtime.stage,
+                description=graph_runtime.current_stage_description or "知识图谱构建未完全成功。",
+                started_at=graph_runtime.started_at,
+                finished_at=graph_runtime.finished_at,
+                error_message=graph_runtime.error_message,
+                progress_pct=100,
+            )
         return _new(
             requested_at=docgen_runtime.requested_at,
             status="partial_failed",
@@ -881,6 +912,16 @@ def build_aggregate_knowledge_build_status(
         )
 
     if graph_runtime.status == "skipped":
+        if graph_is_separate_build:
+            return _new(
+                requested_at=graph_runtime.requested_at,
+                status="skipped",
+                stage=graph_runtime.stage,
+                description=graph_runtime.current_stage_description or "知识图谱同步已跳过。",
+                started_at=graph_runtime.started_at,
+                finished_at=graph_runtime.finished_at,
+                progress_pct=100,
+            )
         return _new(
             requested_at=docgen_runtime.requested_at,
             status="completed",
@@ -888,6 +929,17 @@ def build_aggregate_knowledge_build_status(
             description=graph_runtime.current_stage_description or docgen_runtime.current_stage_description or "知识文档已发布。",
             started_at=docgen_runtime.started_at,
             finished_at=docgen_runtime.finished_at,
+            progress_pct=100,
+        )
+
+    if graph_is_separate_build:
+        return _new(
+            requested_at=graph_runtime.requested_at,
+            status=graph_runtime.status,
+            stage=graph_runtime.stage,
+            description=graph_runtime.current_stage_description or "知识图谱已完成。",
+            started_at=graph_runtime.started_at,
+            finished_at=graph_runtime.finished_at,
             progress_pct=100,
         )
 

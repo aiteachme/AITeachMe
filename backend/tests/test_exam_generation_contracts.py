@@ -1095,6 +1095,62 @@ def test_exam_question_draft_normalizes_choice_and_unit_refs() -> None:
     assert [ref.knowledge_unit_id for ref in draft.knowledge_unit_refs] == [1, 2]
 
 
+def test_exam_question_draft_preserves_fenced_code_indentation() -> None:
+    draft = generator.ExamQuestionDraft.model_validate(
+        {
+            "item_order": 1,
+            "question_type": "single_choice",
+            "difficulty": "medium",
+            "stem": (
+                "阅读下面的函数，判断它返回什么。\n\n"
+                "```python\n"
+                "def total_score(items):\n"
+                "    total = 0\n"
+                "    for item in items:\n"
+                "        total += item\n"
+                "    return total\n"
+                "```"
+            ),
+            "options": [
+                "A. ```python\nresult = total_score([1, 2, 3])\nprint(result)\n```",
+                "返回列表长度",
+                "语法错误",
+                "返回 None",
+            ],
+            "correct_indices": [0],
+            "explanation": "函数体和循环体缩进有效，循环会逐项累加。",
+            "knowledge_unit_id": 1,
+        }
+    )
+    answer_draft = generator.ExamQuestionDraft.model_validate(
+        {
+            "item_order": 2,
+            "question_type": "short_answer",
+            "difficulty": "medium",
+            "stem": "写出一个包含条件分支的最小 Python 函数示例。",
+            "correct_answer": (
+                "```python\n"
+                "def is_positive(value):\n"
+                "    if value > 0:\n"
+                "        return True\n"
+                "    return False\n"
+                "```"
+            ),
+            "explanation": "函数体、if 分支和 return 都需要保留缩进。",
+            "knowledge_unit_id": 1,
+        }
+    )
+
+    assert "\n    total = 0" in draft.stem
+    assert "\n        total += item" in draft.stem
+    assert draft.options is not None
+    assert draft.options[0].startswith("```python\n")
+    assert "\nprint(result)\n```" in draft.options[0]
+    assert draft.correct_answer == "A"
+    assert "\n    if value > 0:" in answer_draft.correct_answer
+    assert "\n        return True" in answer_draft.correct_answer
+
+
 def test_exam_question_draft_rejects_invalid_shapes() -> None:
     with pytest.raises(ValidationError, match="single_choice questions must contain exactly 4 options"):
         generator.ExamQuestionDraft.model_validate(

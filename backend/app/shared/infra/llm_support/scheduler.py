@@ -208,6 +208,10 @@ class LLMTaskScheduler:
             raise
         except Exception as exc:
             self._mark_failed(task, exc)
+        except BaseException as exc:
+            self._mark_failed(task, self._coerce_task_exception(exc))
+            if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+                raise
         else:
             self._mark_succeeded(task, result)
         finally:
@@ -231,6 +235,10 @@ class LLMTaskScheduler:
             raise
         except Exception as exc:
             self._mark_failed(task, exc)
+        except BaseException as exc:
+            self._mark_failed(task, self._coerce_task_exception(exc))
+            if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+                raise
         else:
             self._mark_succeeded(task, result)
         finally:
@@ -270,6 +278,16 @@ class LLMTaskScheduler:
         task.finished_at = time.monotonic()
         if not task.future.done():
             task.future.set_exception(exc)
+
+    @staticmethod
+    def _coerce_task_exception(exc: BaseException) -> Exception:
+        if isinstance(exc, Exception):
+            return exc
+        detail = str(exc).strip()
+        message = f"LLM task aborted with {type(exc).__name__}"
+        if detail:
+            message = f"{message}: {detail}"
+        return RuntimeError(message)
 
     def _mark_cancelled(self, task: _LLMTask[Any]) -> None:
         task.status = "cancelled"

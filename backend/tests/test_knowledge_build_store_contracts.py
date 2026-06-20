@@ -159,6 +159,25 @@ def test_aggregate_status_prefers_blocking_lane_and_preserves_metrics() -> None:
     assert graph_active.status == "running"
     assert graph_active.metrics == {"docgen_status": "completed", "graph_status": "running"}
 
+    graph_requested_at = now + timedelta(minutes=3)
+    separate_graph_active = build_store.build_aggregate_knowledge_build_status(
+        build_store.KnowledgeBuildRuntimeEnvelope(
+            docgen_runtime=docgen_done.model_copy(update={"build_group_id": "docgen-group-1"}),
+            graph_runtime=graph_running.model_copy(
+                update={
+                    "requested_at": graph_requested_at,
+                    "build_group_id": "graph-group-2",
+                    "progress_pct": 94,
+                }
+            ),
+        )
+    )
+    assert separate_graph_active is not None
+    assert separate_graph_active.status == "running"
+    assert separate_graph_active.requested_at == graph_requested_at
+    assert separate_graph_active.build_group_id == "graph-group-2"
+    assert separate_graph_active.progress_pct == 94
+
     graph_pending = build_store.build_aggregate_knowledge_build_status(
         build_store.KnowledgeBuildRuntimeEnvelope(docgen_runtime=docgen_done),
         graph_expected=True,
