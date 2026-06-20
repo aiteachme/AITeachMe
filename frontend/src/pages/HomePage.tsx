@@ -1137,9 +1137,6 @@ export function HomePage() {
                     <span className="shrink-0 text-sm font-semibold text-zinc-800 transition-colors group-hover:text-indigo-700 dark:text-slate-100 dark:group-hover:text-indigo-200">
                       {starter.label}
                     </span>
-                    <span className="hidden shrink-0 text-xs text-zinc-400 dark:text-slate-500 sm:inline">
-                      {starter.description}
-                    </span>
                     <span className="min-w-0 flex-1 truncate text-[13px] leading-6 text-zinc-500 transition-colors group-hover:text-zinc-800 dark:text-slate-400 dark:group-hover:text-slate-200">
                       {starter.prompt}
                     </span>
