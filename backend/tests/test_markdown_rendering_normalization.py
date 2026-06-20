@@ -20,6 +20,65 @@ from app.workflows.digest.docgen.lib.textbook_style import (
 )
 
 
+def test_normalize_repairs_reversed_code_fence_language_markers() -> None:
+    raw = """## Hello Python脚本格式
+
+下面是一份完整的 **Hello Python脚本**：
+```python
+
+### 交互式运行示例
+
+终端输入：
+```
+python
+```text
+
+进入后，屏幕上通常会出现版本信息，并在最后显示交互式提示符，例如：
+```
+Python 3.x.x (...)
+>
+```text
+
+如果把同样的语句保存到脚本文件中，只写这一行即可：
+```
+print("Hello")
+```text
+
+[!NOTE]
+
+这里先按“能运行、能辨认错误”的口径学习。
+
+# 这是我的第一个 Python 脚本
+print("Hello Python")
+print("我正在学习运行脚本")
+```
+"""
+
+    fixed = normalize_markdown_rendering(raw)
+
+    assert "```python\n\n### 交互式运行示例" not in fixed
+    assert "### 交互式运行示例" in fixed
+    assert "```bash\npython\n```" in fixed
+    assert "```python\nprint(\"Hello\")\n```" in fixed
+    assert "```python\n# 这是我的第一个 Python 脚本\nprint(\"Hello Python\")" in fixed
+    assert fixed.count("```") % 2 == 0
+
+
+def test_presentation_issue_reports_markdown_swallowed_by_code_fence() -> None:
+    raw = """```python
+## 被吞进代码块的小节
+
+这是一段正文，不应该在代码块里。
+```"""
+
+    issues = find_markdown_presentation_issues(raw)
+    fixed = normalize_markdown_rendering(raw)
+
+    assert "Markdown 代码块中混入了正文标题或段落。" in issues
+    assert "Markdown 代码块中混入了正文标题或段落。" not in find_markdown_presentation_issues(fixed)
+    assert "## 被吞进代码块的小节" in fixed
+
+
 def test_normalize_closes_display_math_before_markdown_and_callout() -> None:
     raw = "\n".join(
         [

@@ -54,6 +54,7 @@ RAW_MERMAID_FENCE_PATTERN = re.compile(
 )
 MALFORMED_MERMAID_FENCE_PATTERN = re.compile(r"^\s*```\s*(?P<trailing>.+)$")
 INLINE_FENCE_PATTERN = re.compile(r"^(?P<prefix>.*\S)\s*```\s*(?P<lang>[A-Za-z0-9_-]*)\s*$")
+FENCE_LINE_PATTERN = re.compile(r"^\s*```\s*(?P<lang>[A-Za-z0-9_-]*)\s*$")
 STUCK_MATH_FENCE_PATTERN = re.compile(
     r"(?m)^(?P<prefix>\s*)\$\$[ \t]*(?P<fence>```[ \t]*[A-Za-z0-9_-]*[ \t]*)$"
 )
@@ -1275,6 +1276,231 @@ def _normalize_list_embedded_headings(markdown: str) -> str:
     return "\n".join(fixed)
 
 
+def _looks_like_markdown_boundary_inside_fence(line: str, *, language: str) -> bool:
+    stripped = str(line or "").strip()
+    if not stripped:
+        return False
+    if re.match(r"^#{2,6}\s+\S", stripped):
+        return True
+    if re.match(rf"^\[!(?:{CALLOUT_KINDS_PATTERN})\]", stripped, re.IGNORECASE):
+        return True
+    if re.match(rf"^>\s*\[!(?:{CALLOUT_KINDS_PATTERN})\]", stripped, re.IGNORECASE):
+        return True
+    if _is_table_separator_line(stripped):
+        return True
+    if language not in {"python", "py"} and re.match(r"^#\s+\S", stripped):
+        return True
+    return False
+
+
+def _looks_like_narrative_text_fence(body_lines: list[str], *, language: str) -> bool:
+    if language not in {"", "text", "txt", "plain"}:
+        return False
+    meaningful = [line.strip() for line in body_lines if line.strip()]
+    if not meaningful:
+        return False
+    if len(meaningful) == 1 and len(meaningful[0]) <= 80:
+        return False
+    return any(
+        len(line) >= 28
+        and re.search(r"[\u4e00-\u9fff]", line)
+        and re.search(r"[，。；：！？]", line)
+        for line in meaningful
+    )
+
+
+def _is_suspicious_fence_block(language: str, body_lines: list[str]) -> bool:
+    normalized_language = str(language or "").strip().lower()
+    if any(_looks_like_markdown_boundary_inside_fence(line, language=normalized_language) for line in body_lines):
+        return True
+    return _looks_like_narrative_text_fence(body_lines, language=normalized_language)
+
+
+def _is_code_like_or_output_line(line: str) -> bool:
+    stripped = str(line or "").strip()
+    if not stripped:
+        return False
+    if re.match(r"^(#{1,6}\s|\[!|>\s*\[!|\|)", stripped):
+        return False
+    if len(stripped) <= 80 and re.match(r"^[A-Za-z0-9_./:\\()\"' +\-*=,<>{}\[\]]+$", stripped):
+        return True
+    if re.match(r"^(?:>>>|\$|PS>|[A-Za-z]:\\|python(?:3)?\b|pip\b|uv\b|npm\b|conda\b)", stripped):
+        return True
+    if re.search(r"\b(?:print|input|open|range|len|int|str|float|bool)\s*\(", stripped):
+        return True
+    return bool(re.match(r"^\s*(?:#|//)\s+\S", line))
+
+
+def _trailing_code_run_start(lines: list[str]) -> int | None:
+    if not lines or not str(lines[-1]).strip():
+        return None
+    if not _is_code_like_or_output_line(lines[-1]):
+        return None
+    index = len(lines) - 2
+    while index >= 0 and str(lines[index]).strip() and _is_code_like_or_output_line(lines[index]):
+        index -= 1
+    start = index + 1
+    run = lines[start:]
+    if not run or len(run) > 12:
+        return None
+    if all(_is_code_like_or_output_line(line) for line in run):
+        return start
+    return None
+
+
+def _guess_fence_language(lines: list[str], *, fallback: str = "text") -> str:
+    joined = "\n".join(str(line or "") for line in lines)
+    if re.search(r"\b(?:print|input|open|range|len|int|str|float|bool)\s*\(", joined) or re.search(
+        r"(?m)^\s*#\s+\S",
+        joined,
+    ):
+        return "python"
+    if re.search(r"(?m)^\s*(?:python(?:3)?|pip|uv|npm|conda)\b", joined):
+        return "bash"
+    normalized = str(fallback or "").strip().lower()
+    return normalized if normalized in {"bash", "python", "py", "text", "json"} else "text"
+
+
+def _wrap_orphan_code_fence_closers(markdown: str) -> tuple[str, bool]:
+    lines = str(markdown or "").split("\n")
+    fixed: list[str] = []
+    in_fence = False
+    changed = False
+    for raw_line in lines:
+        fence_match = FENCE_LINE_PATTERN.match(raw_line)
+        if fence_match is None:
+            fixed.append(raw_line)
+            continue
+
+        language = (fence_match.group("lang") or "").strip()
+        if in_fence:
+            fixed.append("```")
+            in_fence = False
+            if language:
+                changed = True
+            continue
+
+        run_start = _trailing_code_run_start(fixed)
+        if run_start is not None:
+            run = fixed[run_start:]
+            del fixed[run_start:]
+            fence_language = _guess_fence_language(run, fallback=language or "text")
+            fixed.append(f"```{fence_language}")
+            fixed.extend(run)
+            fixed.append("```")
+            changed = True
+            continue
+
+        fixed.append(f"```{language}".rstrip() if language else "```")
+        in_fence = True
+    return "\n".join(fixed), changed
+
+
+def _unwrap_suspicious_fence_blocks(markdown: str) -> tuple[str, bool]:
+    lines = str(markdown or "").split("\n")
+    fixed: list[str] = []
+    changed = False
+    index = 0
+    while index < len(lines):
+        opener_match = FENCE_LINE_PATTERN.match(lines[index])
+        if opener_match is None:
+            fixed.append(lines[index])
+            index += 1
+            continue
+
+        end = index + 1
+        while end < len(lines) and FENCE_LINE_PATTERN.match(lines[end]) is None:
+            end += 1
+        if end >= len(lines):
+            fixed.append(lines[index])
+            index += 1
+            continue
+
+        language = (opener_match.group("lang") or "").strip()
+        body = lines[index + 1 : end]
+        if _is_suspicious_fence_block(language, body):
+            fixed.extend(_trim_blank_lines(body))
+            changed = True
+        else:
+            fence_language = language or _guess_fence_language(body, fallback="text")
+            fixed.append(f"```{fence_language}".rstrip())
+            fixed.extend(body)
+            fixed.append("```")
+            if lines[end].strip() != "```" or not language:
+                changed = True
+        index = end + 1
+    return "\n".join(fixed), changed
+
+
+def _wrap_loose_python_comment_runs(markdown: str) -> tuple[str, bool]:
+    lines = str(markdown or "").split("\n")
+    fixed: list[str] = []
+    changed = False
+    index = 0
+    in_fence = False
+    while index < len(lines):
+        line = lines[index]
+        fence_match = FENCE_LINE_PATTERN.match(line)
+        if fence_match is not None:
+            fixed.append(line)
+            in_fence = not in_fence
+            index += 1
+            continue
+        if in_fence:
+            fixed.append(line)
+            index += 1
+            continue
+
+        if re.match(r"^\s*#\s+\S", line) and index + 1 < len(lines) and _is_code_like_or_output_line(lines[index + 1]):
+            end = index + 1
+            while end < len(lines) and _is_code_like_or_output_line(lines[end]):
+                end += 1
+            fixed.append("```python")
+            fixed.extend(lines[index:end])
+            fixed.append("```")
+            changed = True
+            index = end
+            continue
+
+        fixed.append(line)
+        index += 1
+    return "\n".join(fixed), changed
+
+
+def _merge_loose_python_comments_into_following_fence(markdown: str) -> tuple[str, bool]:
+    lines = str(markdown or "").split("\n")
+    fixed: list[str] = []
+    changed = False
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        if (
+            re.match(r"^\s*#\s+\S", line)
+            and index + 1 < len(lines)
+            and re.match(r"^\s*```\s*(?:python|py)\s*$", lines[index + 1], re.IGNORECASE)
+        ):
+            fixed.append(lines[index + 1].strip())
+            fixed.append(line)
+            changed = True
+            index += 2
+            continue
+        fixed.append(line)
+        index += 1
+    return "\n".join(fixed), changed
+
+
+def _repair_misplaced_code_fences(markdown: str) -> str:
+    text = str(markdown or "")
+    for _ in range(4):
+        text, wrapped = _wrap_orphan_code_fence_closers(text)
+        text, unwrapped = _unwrap_suspicious_fence_blocks(text)
+        text, loose_wrapped = _wrap_loose_python_comment_runs(text)
+        text, merged_comment = _merge_loose_python_comments_into_following_fence(text)
+        if not (wrapped or unwrapped or loose_wrapped or merged_comment):
+            break
+    return text
+
+
 def normalize_markdown_rendering(markdown: str) -> str:
     """修复学生文档里最容易破坏渲染的 Markdown 结构。
 
@@ -1286,6 +1512,7 @@ def normalize_markdown_rendering(markdown: str) -> str:
     text = _split_stuck_math_fences(str(markdown or "").replace("\r\n", "\n").replace("\r", "\n"))
     text = _repair_split_inline_code_math_literals(text)
     text = _repair_display_math_boundaries(text)
+    text = _repair_misplaced_code_fences(text)
     text = _restore_escaped_inline_math_spans(text)
     text = _escape_unpaired_inline_dollars(text)
     text = _escape_unsafe_inline_math_spans(text)
@@ -1698,17 +1925,26 @@ def _find_table_shape_issues(markdown: str) -> list[str]:
 def _find_code_fence_style_issues(markdown: str) -> list[str]:
     issues: list[str] = []
     in_fence = False
+    language = ""
+    body_lines: list[str] = []
     for raw_line in str(markdown or "").split("\n"):
         stripped = raw_line.strip()
         if not stripped.startswith("```"):
+            if in_fence:
+                body_lines.append(raw_line)
             continue
         if not in_fence:
             language = stripped[3:].strip()
             if not language:
                 issues.append("Markdown 代码块缺少语言标记。")
+            body_lines = []
             in_fence = True
         else:
+            if _is_suspicious_fence_block(language, body_lines):
+                issues.append("Markdown 代码块中混入了正文标题或段落。")
             in_fence = False
+            language = ""
+            body_lines = []
     return issues
 
 
