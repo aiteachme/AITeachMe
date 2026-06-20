@@ -938,7 +938,7 @@ export function HomePage() {
           <motion.div
             initial={{ opacity: 0, y: 10, filter: "blur(6px)" }}
             animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-            transition={{ duration: 0.8, ease: "easeOut", delay: 2.8 }}
+            transition={{ duration: 0.7, ease: "easeOut", delay: 0.25 }}
             className="flex flex-col items-center mt-3"
           >
             <h1
@@ -954,7 +954,7 @@ export function HomePage() {
         <motion.p
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 3.0, duration: 0.6 }}
+          transition={{ delay: 0.45, duration: 0.5 }}
           className="mb-8 px-4 text-center text-base leading-relaxed text-zinc-500 dark:text-slate-400"
         >
           让天下没有难学的课程

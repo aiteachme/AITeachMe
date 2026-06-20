@@ -11,6 +11,7 @@ from app.models.build_planner import ConfirmedBuildPlan
 from app.models.knowledge_doc import KnowledgeDocument
 from app.shared.infra.knowledge.build_store import KnowledgeDocsManifest
 from app.shared.infra.storage import build_course_storage_scope
+from app.workflows.digest.docgen.lib.asset_requests import build_asset_request_block
 from app.workflows.digest.docgen.lib import build_lifecycle
 from app.workflows.digest.docgen.lib.published_manifest import ensure_published_knowledge_manifest
 
@@ -72,6 +73,47 @@ def test_load_current_published_markdown_prefers_live_merged_store(monkeypatch) 
 
     assert markdown == "# 最新知识文档"
     assert updated_at == manifest.updated_at
+
+
+def test_load_current_published_markdown_sanitizes_public_output(monkeypatch) -> None:
+    course_scope = build_course_storage_scope(user_id="user_a", course_id="course_python012345")
+    manifest = KnowledgeDocsManifest(
+        updated_at=datetime(2026, 4, 28, tzinfo=timezone.utc),
+        version_no=3,
+        chapter_count=2,
+        chapter_titles=["变量与数据类型", "条件判断"],
+    )
+    raw_markdown = (
+        "# 变量与数据类型\n\n"
+        "正文。\n\n"
+        f"{build_asset_request_block('mermaid', '变量与数据类型关系图')}\n\n"
+        "# 保存用户姓名\n\n"
+        "name = \"小明\"\n\n"
+        "---\n\n"
+        "# 条件判断\n\n"
+        "正文。"
+    )
+
+    monkeypatch.setattr(build_lifecycle, "get_content_store", lambda: _FakeContentStore(raw_markdown))
+    monkeypatch.setattr(
+        build_lifecycle,
+        "get_current_published_docs",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("database fallback should not run")),
+    )
+
+    markdown, updated_at = build_lifecycle._load_current_published_markdown(
+        object(),
+        course_id="course_python012345",
+        course_scope=course_scope,
+        manifest=manifest,
+    )
+
+    assert updated_at == manifest.updated_at
+    assert "ATM_DOCGEN_ASSET_REQUEST" not in markdown
+    assert "atm-docgen-internal-asset-request" not in markdown
+    assert "\n## 保存用户姓名" in markdown
+    assert "\n# 保存用户姓名" not in markdown
+    assert markdown.count("\n# 条件判断") == 1
 
 
 def test_knowledge_manifest_is_written_outside_staging_prefix(monkeypatch) -> None:

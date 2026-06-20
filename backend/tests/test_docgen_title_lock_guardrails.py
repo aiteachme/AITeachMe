@@ -2,6 +2,7 @@ import pytest
 
 from app.workflows.digest.docgen.lib import title_lock as title_lock_module
 from app.workflows.digest.docgen.lib.models import LockedChapterTitle
+from app.workflows.digest.docgen.lib.asset_requests import build_asset_request_block
 from app.workflows.digest.docgen.lib.title_lock import (
     _resolve_locked_title,
     lock_title_for_chapter,
@@ -151,6 +152,31 @@ def test_publish_markdown_uses_locked_title_over_existing_h1() -> None:
     )
 
     assert markdown.splitlines()[0] == "# 导数应用"
+
+
+def test_publish_markdown_strips_internal_asset_requests() -> None:
+    raw = (
+        "# 函数图像\n\n"
+        "正文。\n\n"
+        f"{build_asset_request_block('mermaid', '画出函数图像与解析式的关系')}\n"
+    )
+
+    markdown = _prepare_chapter_markdown(raw, title="函数图像")
+
+    assert "ATM_DOCGEN_ASSET_REQUEST" not in markdown
+    assert "atm-docgen-internal-asset-request" not in markdown
+    assert "正文。" in markdown
+
+
+def test_publish_markdown_demotes_extra_h1_inside_chapter() -> None:
+    markdown = _prepare_chapter_markdown(
+        "# 变量与数据类型\n\n## 变量赋值\n\n正文。\n\n# 保存用户姓名\n\nname = \"小明\"",
+        title="变量与数据类型",
+    )
+
+    assert markdown.splitlines()[0] == "# 变量与数据类型"
+    assert "\n# 保存用户姓名" not in markdown
+    assert "\n## 保存用户姓名" in markdown
 
 
 def test_merged_markdown_keeps_application_title_suffix() -> None:

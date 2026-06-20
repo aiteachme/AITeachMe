@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import re
 
+from app.workflows.digest.docgen.lib.asset_requests import strip_asset_requests
+
 
 _REFERENCE_HEADING_RE = re.compile(
     r"(?ms)^##[ \t]+参考资料与延伸阅读[^\n]*\n.*?(?=^#{1,2}[ \t]+|\Z)"
@@ -65,6 +67,7 @@ def sanitize_public_markdown(markdown: str) -> str:
     text = str(markdown or "")
     if not text.strip():
         return ""
+    text = strip_asset_requests(text)
     text = _REFERENCE_HEADING_RE.sub("", text)
     text = _LLM_SOURCE_SECTION_RE.sub("", text)
     text = _SOURCE_SLICE_SUBSECTION_RE.sub("", text)

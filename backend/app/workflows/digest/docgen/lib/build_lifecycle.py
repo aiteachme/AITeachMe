@@ -8,6 +8,7 @@ execution, runtime polling, and result assembly.
 from __future__ import annotations
 
 import asyncio
+import re
 import sys
 import uuid
 from contextlib import nullcontext
@@ -216,6 +217,46 @@ def _extract_markdown_excerpt(markdown: str, *, max_lines: int = 6, max_chars: i
     return excerpt if len(excerpt) <= max_chars else excerpt[: max_chars - 3].rstrip() + "..."
 
 
+def _normalize_public_result_markdown(
+    markdown: str,
+    *,
+    allowed_h1_titles: list[str] | None = None,
+) -> str:
+    text = sanitize_public_markdown(
+        normalize_mermaid_blocks(
+            normalize_markdown_rendering(str(markdown or "").strip())
+        )
+    ).strip()
+    return _demote_unexpected_public_h1(text, allowed_titles=allowed_h1_titles or []).strip()
+
+
+def _demote_unexpected_public_h1(markdown: str, *, allowed_titles: list[str]) -> str:
+    allowed = {str(title or "").strip() for title in allowed_titles if str(title or "").strip()}
+    if not allowed:
+        return markdown
+    lines = str(markdown or "").splitlines()
+    output: list[str] = []
+    seen_allowed: set[str] = set()
+    in_fence = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            output.append(line)
+            continue
+        match = re.match(r"^(\s*)#\s+(.+?)\s*$", line)
+        if not in_fence and match is not None:
+            title = match.group(2).strip()
+            if title in allowed and title not in seen_allowed:
+                seen_allowed.add(title)
+                output.append(line)
+                continue
+            output.append(f"{match.group(1)}## {title}")
+            continue
+        output.append(line)
+    return "\n".join(output).strip() + ("\n" if output else "")
+
+
 def _load_current_published_markdown(
     session: Session | None,
     *,
@@ -224,18 +265,16 @@ def _load_current_published_markdown(
     manifest,
 ) -> tuple[str, datetime | None]:
     cs = get_content_store()
-    stored_markdown = sanitize_public_markdown(
-        normalize_mermaid_blocks(
-            normalize_markdown_rendering(
-                run_store_sync(
-                    cs.read_text,
-                    course_scope.knowledge_doc_key("merged_knowledge_base.md"),
-                    default="",
-                )
-                or ""
-            )
+    manifest_titles = [str(title).strip() for title in list(getattr(manifest, "chapter_titles", []) or []) if str(title).strip()]
+    stored_markdown = _normalize_public_result_markdown(
+        run_store_sync(
+            cs.read_text,
+            course_scope.knowledge_doc_key("merged_knowledge_base.md"),
+            default="",
         )
-    ).strip()
+        or "",
+        allowed_h1_titles=manifest_titles,
+    )
     if stored_markdown:
         return stored_markdown, manifest.updated_at if manifest is not None else None
 
@@ -244,10 +283,9 @@ def _load_current_published_markdown(
     parts: list[str] = []
     updated_at: datetime | None = None
     for doc in docs:
-        markdown = sanitize_public_markdown(
-            normalize_mermaid_blocks(
-                normalize_markdown_rendering(str(doc.markdown_content or doc.content_markdown or "").strip())
-            )
+        markdown = _normalize_public_result_markdown(
+            str(doc.markdown_content or doc.content_markdown or "").strip(),
+            allowed_h1_titles=[str(doc.title or "").strip()],
         )
         if markdown:
             parts.append(markdown)

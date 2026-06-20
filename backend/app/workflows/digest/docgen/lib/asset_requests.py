@@ -25,6 +25,12 @@ _ASSET_REQUEST_FENCE_RE = re.compile(
     rf"(?P<body>.*?{re.escape(ASSET_REQUEST_END)}\s*)```",
     re.IGNORECASE | re.DOTALL,
 )
+_ASSET_REQUEST_RAW_RE = re.compile(
+    rf"(?:```{re.escape(ASSET_REQUEST_LANGUAGE)}\s*\n)?"
+    rf"(?P<body>{re.escape(ASSET_REQUEST_BEGIN)}.*?{re.escape(ASSET_REQUEST_END)}\s*)"
+    r"(?:```)?",
+    re.IGNORECASE | re.DOTALL,
+)
 _RenderMetadata = TypeVar("_RenderMetadata")
 
 
@@ -152,7 +158,8 @@ def strip_asset_requests(markdown: str, *, kinds: Iterable[str] | None = None) -
             return match.group(0)
         return ""
 
-    return _ASSET_REQUEST_FENCE_RE.sub(replace, str(markdown or ""))
+    cleaned = _ASSET_REQUEST_FENCE_RE.sub(replace, str(markdown or ""))
+    return _ASSET_REQUEST_RAW_RE.sub(replace, cleaned)
 
 
 async def replace_asset_requests(

@@ -59,6 +59,31 @@ def _text(value: Any) -> str:
     return " ".join(str(value).strip().split())
 
 
+_DIAGNOSIS_FEEDBACK_PREFIXES = (
+    "前置诊断选择：",
+    "前置诊断选择:",
+    "跳过前置诊断，请按当前学习目标和资料继续生成可确认的学习方案。",
+)
+_DIAGNOSIS_METADATA_RE = re.compile(
+    r"(?:用户最新调整[:：]\s*)?(?:前置诊断选择[:：]|跳过前置诊断，请按当前学习目标和资料继续生成可确认的学习方案。).*$",
+    re.S,
+)
+
+
+def _is_diagnosis_feedback(value: str) -> bool:
+    text = _text(value)
+    return any(text.startswith(prefix) for prefix in _DIAGNOSIS_FEEDBACK_PREFIXES)
+
+
+def _strip_diagnosis_metadata(value: Any) -> str:
+    """Remove diagnosis-resolution chatter before parsing user-requested structure."""
+
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    return _DIAGNOSIS_METADATA_RE.sub("", text).strip()
+
+
 def _remove_planner_self_intro(text: str) -> str:
     return re.sub(
         r"^\s*(?:你好[！!。]?\s*)?我是你的\s*AITeachMe\s*学习规划师[。！!，,]?\s*",
@@ -82,6 +107,8 @@ def compose_effective_planner_request_text(user_prompt: Any, feedback_message: A
 
     prompt = _text(user_prompt)
     feedback = _text(feedback_message)
+    if _is_diagnosis_feedback(feedback):
+        return prompt
     if not feedback:
         return prompt
     if not prompt:
@@ -491,7 +518,7 @@ def normalize_planner_diagnosis_draft(
     """Normalize the first-stage planner diagnosis payload without requiring chapters."""
 
     shared = shared_inputs or _minimal_shared_inputs(course_id)
-    resolved_user_prompt = _text(user_prompt)
+    resolved_user_prompt = _text(_strip_diagnosis_metadata(user_prompt))
     current = _mapping(draft)
     previous = _mapping(latest_plan)
     mode = _normalize_digest_mode(requested_digest_mode or current.get("digest_mode") or previous.get("digest_mode"))
@@ -769,7 +796,7 @@ def normalize_planner_draft(
     """
 
     shared = shared_inputs or _minimal_shared_inputs(course_id)
-    resolved_user_prompt = _text(user_prompt)
+    resolved_user_prompt = _text(_strip_diagnosis_metadata(user_prompt))
     current = _mapping(draft)
     previous = _mapping(latest_plan)
     current_constraints = _mapping(current.get("build_constraints"))

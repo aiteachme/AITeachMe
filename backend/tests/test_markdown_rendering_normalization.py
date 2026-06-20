@@ -64,6 +64,59 @@ print("我正在学习运行脚本")
     assert fixed.count("```") % 2 == 0
 
 
+def test_normalize_unwraps_prose_trapped_in_python_fence() -> None:
+    raw = """```python
+
+`print(name)` 这里只用于观察变量 `name` 当前引用的值；后续示例里的文本会用引号表示，`#` 后面的短句只作为代码说明，不参与变量赋值和取值。
+
+个人信息卡程序请重点检查三件事：变量名要先赋值再使用，前后拼写要完全一致；在 f-string 中，`{变量名}` 会取出变量当前引用的值参与输出。
+
+---
+
+程序从键盘接收输入时，常使用 `input()`。在本节示例中，`input()` 得到的内容先按字符串 `str` 处理；如果要参与半径、温度等数值计算，需要再用 `int()` 或 `float()` 转换。
+
+```
+```python
+radius = input("请输入圆的半径：")
+print(type(radius))
+```
+
+# 保存用户姓名
+name = "小明"
+```python
+print(name)
+```
+"""
+
+    fixed = normalize_markdown_rendering(raw)
+
+    assert "```python\n\n`print(name)`" not in fixed
+    assert "程序从键盘接收输入时" in fixed
+    assert (
+        "```python\n# 保存用户姓名\nname = \"小明\"\n\nprint(name)\n```"
+        in fixed
+    )
+
+
+def test_normalize_drops_empty_code_fence_before_real_fence() -> None:
+    raw = """参考答案：
+
+```python
+
+```
+```python
+print("I am learning Python")
+print("This is my first program")
+```
+"""
+
+    fixed = normalize_markdown_rendering(raw)
+
+    assert "```python\n\n```" not in fixed
+    assert fixed.count("```python") == 1
+    assert 'print("I am learning Python")' in fixed
+
+
 def test_presentation_issue_reports_markdown_swallowed_by_code_fence() -> None:
     raw = """```python
 ## 被吞进代码块的小节

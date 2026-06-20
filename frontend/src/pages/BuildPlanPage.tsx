@@ -465,7 +465,7 @@ function buildPlannerDiagnosisPrompt(
   if (lines.length === 1) {
     return "";
   }
-  lines.push("请根据这些选择更新学习方案，并让后续知识文档的讲解起点、例题、练习和测后反馈对齐这些信号。");
+  lines.push("请根据这些选择更新学习方案，并让后续知识文档的讲解起点、例题、练习和文档内解析对齐这些信号。");
   return lines.join("\n");
 }
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from datetime import datetime
 from typing import Any
 from urllib.parse import urlparse
@@ -35,6 +36,7 @@ from app.workflows.digest.docgen.lib.presentation_policy import (
     find_docgen_presentation_issues,
     normalize_docgen_presentation,
 )
+from app.workflows.digest.docgen.lib.asset_requests import strip_asset_requests
 from app.workflows.digest.docgen.lib.public_markdown import sanitize_public_markdown
 from app.workflows.digest.docgen.lib.unit_tests import normalize_published_unit_test_sections
 from app.workflows.support.courses.learning_context import update_course_learning_context_from_docgen
@@ -79,6 +81,7 @@ def _prepare_chapter_markdown(
     digest_mode: str = "",
     focus_items: list[str] | None = None,
 ) -> str:
+    markdown = strip_asset_requests(markdown)
     cleaned = normalize_docgen_presentation(
         markdown,
         digest_mode=digest_mode,
@@ -93,6 +96,7 @@ def _prepare_chapter_markdown(
         focus_items=focus_items or [],
     )
     structured = _ensure_chapter_structure(cleaned, title=title)
+    structured = strip_asset_requests(structured)
     structured = normalize_published_unit_test_sections(structured)
     return _finalize_markdown_rendering(structured)
 
@@ -124,10 +128,7 @@ def _ensure_chapter_structure(markdown: str, *, title: str = "") -> str:
     )
 
     lines = cleaned.splitlines()
-    first_heading_index = next(
-        (index for index, line in enumerate(lines) if line.lstrip().startswith("#")),
-        None,
-    )
+    first_heading_index = _first_markdown_heading_index(lines)
     if first_heading_index is None:
         if fallback_title:
             lines.insert(0, f"# {fallback_title}")
@@ -137,7 +138,36 @@ def _ensure_chapter_structure(markdown: str, *, title: str = "") -> str:
     elif fallback_title:
         lines[first_heading_index] = f"# {fallback_title}"
 
+    lines = _demote_extra_chapter_h1(lines, keep_index=first_heading_index if first_heading_index is not None else 0)
     return "\n".join(lines).strip() + "\n"
+
+
+def _first_markdown_heading_index(lines: list[str]) -> int | None:
+    in_fence = False
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if not in_fence and line.lstrip().startswith("#"):
+            return index
+    return None
+
+
+def _demote_extra_chapter_h1(lines: list[str], *, keep_index: int) -> list[str]:
+    demoted: list[str] = []
+    in_fence = False
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            demoted.append(line)
+            continue
+        if not in_fence and index != keep_index and re.match(r"^\s*#\s+\S", line):
+            demoted.append(re.sub(r"^(\s*)#\s+", r"\1## ", line, count=1))
+            continue
+        demoted.append(line)
+    return demoted
 
 
 

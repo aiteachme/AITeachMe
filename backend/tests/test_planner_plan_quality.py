@@ -287,6 +287,35 @@ def test_normalize_planner_draft_respects_chapter_count_from_revision_feedback()
     assert any("相邻内容覆盖" in item for item in draft.chapters[0].required_elements)
 
 
+def test_normalize_planner_draft_ignores_diagnosis_metadata_for_chapter_count() -> None:
+    payload = _planner_payload(chapter_count=6)
+    original_prompt = "我想系统学习 Python 入门，从变量、条件判断、循环和函数开始。"
+    diagnosis_feedback = "\n".join(
+        [
+            "前置诊断选择：",
+            "问题：基础从哪起？",
+            "回答：从零环境",
+            "落点：文档落点：决定前置概念补多少、第一章铺垫长度、首批代码示例难度。",
+            "请根据这些选择更新学习方案，并让后续知识文档的讲解起点、例题、练习和文档内解析对齐这些信号。",
+        ]
+    )
+
+    assert compose_effective_planner_request_text(original_prompt, diagnosis_feedback) == original_prompt
+
+    draft = normalize_planner_draft(
+        payload,
+        course_id="course_python",
+        user_prompt=f"{original_prompt}\n用户最新调整：{diagnosis_feedback}",
+        requested_digest_mode="sprint",
+    )
+
+    assert len(draft.chapters) == 6
+    assert draft.build_constraints.get("requested_chapter_count") is None
+    assert draft.build_constraints.get("chapter_count_source") != "user_request"
+    assert "前置诊断选择" not in draft.user_prompt
+    assert "第一章铺垫长度" not in draft.user_prompt
+
+
 def test_normalize_planner_draft_aligns_explicit_chapter_titles() -> None:
     payload = _planner_payload(chapter_count=5)
     payload.pop("course_name")
@@ -514,6 +543,8 @@ def test_planner_diagnosis_prompt_keeps_resolution_inside_docgen_document() -> N
 
     assert "练后解析方式" in prompt_text
     assert "文档内例题、随堂练习和章末小测" in prompt_text
+    assert "开篇铺垫长度" in prompt_text
+    assert "第一章铺垫长度" not in prompt_text
     assert "后续 examine/profile 流程" in prompt_text
     assert "测后反馈方式" not in prompt_text
     assert "测后怎么看" not in prompt_text

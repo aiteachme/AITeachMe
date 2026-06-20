@@ -1294,19 +1294,50 @@ def _looks_like_markdown_boundary_inside_fence(line: str, *, language: str) -> b
 
 
 def _looks_like_narrative_text_fence(body_lines: list[str], *, language: str) -> bool:
-    if language not in {"", "text", "txt", "plain"}:
-        return False
     meaningful = [line.strip() for line in body_lines if line.strip()]
     if not meaningful:
         return False
-    if len(meaningful) == 1 and len(meaningful[0]) <= 80:
+    normalized_language = str(language or "").strip().lower()
+    if normalized_language in {"", "text", "txt", "plain"}:
+        if len(meaningful) == 1 and len(meaningful[0]) <= 80:
+            return False
+        return any(
+            len(line) >= 28
+            and re.search(r"[\u4e00-\u9fff]", line)
+            and re.search(r"[，。；：！？]", line)
+            for line in meaningful
+        )
+
+    if normalized_language not in {"python", "py", "bash", "shell", "sh", "javascript", "js", "typescript", "ts"}:
         return False
-    return any(
-        len(line) >= 28
-        and re.search(r"[\u4e00-\u9fff]", line)
-        and re.search(r"[，。；：！？]", line)
+
+    prose_lines = [
+        line
         for line in meaningful
-    )
+        if _looks_like_prose_inside_code_fence(line, language=normalized_language)
+    ]
+    if len(prose_lines) >= 2:
+        return True
+    return any(len(line) >= 80 for line in prose_lines)
+
+
+def _looks_like_prose_inside_code_fence(line: str, *, language: str) -> bool:
+    stripped = str(line or "").strip()
+    if not stripped:
+        return False
+    if stripped.startswith(("#", "//")):
+        return False
+    if re.match(r"^---+$", stripped):
+        return True
+    if stripped.startswith(("|", ">", "- ", "* ", "+ ")) or re.match(r"^\d+[.)]\s+\S", stripped):
+        return True
+    if "`" in stripped and re.search(r"[\u4e00-\u9fff]", stripped):
+        return True
+    if re.search(r"[\u4e00-\u9fff]", stripped) and re.search(r"[，。；：！？]", stripped):
+        return True
+    if _is_code_like_or_output_line(stripped):
+        return False
+    return False
 
 
 def _is_suspicious_fence_block(language: str, body_lines: list[str]) -> bool:
@@ -1323,6 +1354,8 @@ def _is_code_like_or_output_line(line: str) -> bool:
     if re.match(r"^(#{1,6}\s|\[!|>\s*\[!|\|)", stripped):
         return False
     if len(stripped) <= 80 and re.match(r"^[A-Za-z0-9_./:\\()\"' +\-*=,<>{}\[\]]+$", stripped):
+        return True
+    if len(stripped) <= 120 and re.match(r"^[A-Za-z_]\w*\s*=\s*.+$", stripped):
         return True
     if re.match(r"^(?:>>>|\$|PS>|[A-Za-z]:\\|python(?:3)?\b|pip\b|uv\b|npm\b|conda\b)", stripped):
         return True
@@ -1489,6 +1522,103 @@ def _merge_loose_python_comments_into_following_fence(markdown: str) -> tuple[st
     return "\n".join(fixed), changed
 
 
+def _drop_empty_code_fence_blocks(markdown: str) -> tuple[str, bool]:
+    lines = str(markdown or "").split("\n")
+    fixed: list[str] = []
+    changed = False
+    index = 0
+    while index < len(lines):
+        opener_match = FENCE_LINE_PATTERN.match(lines[index])
+        if opener_match is None:
+            fixed.append(lines[index])
+            index += 1
+            continue
+
+        end = index + 1
+        while end < len(lines) and FENCE_LINE_PATTERN.match(lines[end]) is None:
+            end += 1
+        if end >= len(lines):
+            fixed.append(lines[index])
+            index += 1
+            continue
+
+        body = lines[index + 1 : end]
+        if not any(line.strip() for line in body):
+            changed = True
+            index = end + 1
+            continue
+
+        fixed.append(lines[index])
+        fixed.extend(body)
+        fixed.append("```")
+        index = end + 1
+    return "\n".join(fixed), changed
+
+
+def _merge_adjacent_same_language_code_fences(markdown: str) -> tuple[str, bool]:
+    lines = str(markdown or "").split("\n")
+    fixed: list[str] = []
+    changed = False
+    index = 0
+    while index < len(lines):
+        opener_match = FENCE_LINE_PATTERN.match(lines[index])
+        if opener_match is None:
+            fixed.append(lines[index])
+            index += 1
+            continue
+
+        language = (opener_match.group("lang") or "").strip()
+        cursor = index + 1
+        body: list[str] = []
+        while cursor < len(lines) and FENCE_LINE_PATTERN.match(lines[cursor]) is None:
+            body.append(lines[cursor])
+            cursor += 1
+        if cursor >= len(lines):
+            fixed.append(lines[index])
+            index += 1
+            continue
+
+        cursor += 1
+        trailing_blanks: list[str] = []
+        while True:
+            next_cursor = cursor
+            blank_lines: list[str] = []
+            while next_cursor < len(lines) and not lines[next_cursor].strip():
+                blank_lines.append(lines[next_cursor])
+                next_cursor += 1
+
+            next_opener = FENCE_LINE_PATTERN.match(lines[next_cursor]) if next_cursor < len(lines) else None
+            next_language = (next_opener.group("lang") or "").strip() if next_opener is not None else None
+            if next_opener is None or next_language != language:
+                trailing_blanks = blank_lines
+                cursor = next_cursor
+                break
+
+            next_body: list[str] = []
+            next_body_cursor = next_cursor + 1
+            while next_body_cursor < len(lines) and FENCE_LINE_PATTERN.match(lines[next_body_cursor]) is None:
+                next_body.append(lines[next_body_cursor])
+                next_body_cursor += 1
+            if next_body_cursor >= len(lines):
+                trailing_blanks = blank_lines
+                cursor = next_cursor
+                break
+
+            trimmed_next_body = _trim_blank_lines(next_body)
+            if body and trimmed_next_body:
+                body.append("")
+            body.extend(trimmed_next_body)
+            cursor = next_body_cursor + 1
+            changed = True
+
+        fixed.append(f"```{language}".rstrip())
+        fixed.extend(body)
+        fixed.append("```")
+        fixed.extend(trailing_blanks)
+        index = cursor
+    return "\n".join(fixed), changed
+
+
 def _repair_misplaced_code_fences(markdown: str) -> str:
     text = str(markdown or "")
     for _ in range(4):
@@ -1496,7 +1626,9 @@ def _repair_misplaced_code_fences(markdown: str) -> str:
         text, unwrapped = _unwrap_suspicious_fence_blocks(text)
         text, loose_wrapped = _wrap_loose_python_comment_runs(text)
         text, merged_comment = _merge_loose_python_comments_into_following_fence(text)
-        if not (wrapped or unwrapped or loose_wrapped or merged_comment):
+        text, dropped_empty = _drop_empty_code_fence_blocks(text)
+        text, merged_adjacent = _merge_adjacent_same_language_code_fences(text)
+        if not (wrapped or unwrapped or loose_wrapped or merged_comment or dropped_empty or merged_adjacent):
             break
     return text
 
