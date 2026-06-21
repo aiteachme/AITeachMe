@@ -157,25 +157,25 @@ const HOME_PROMPT_STARTERS = [
   {
     id: "middle-school-math",
     label: "初中数学",
-    prompt: "构建一门初中数学函数复习课，覆盖函数图像、一次函数、二次函数和常见易错题，配套概念讲解、例题和练习。",
+    prompt: "初中数学函数专题复习：函数图像看得懂但不会用，想重点补一次函数、反比例函数、二次函数的图像性质、解析式、交点问题和实际应用题。",
     icon: BookOpen,
   },
   {
     id: "high-school-physics",
     label: "高中物理",
-    prompt: "生成一门高中物理力学入门课，从受力分析、牛顿定律到列式解题逐步展开，重点讲清公式适用条件和典型题型。",
+    prompt: "高中物理力学从头学，按运动学、受力分析、牛顿运动定律、摩擦力、斜面和连接体、功与机械能安排，适合基础不稳的入门复习。",
     icon: Target,
   },
   {
     id: "college-calculus",
     label: "大学高数",
-    prompt: "制定大学高数期末复习课程，系统梳理极限、导数和积分，突出核心概念、常见题型和容易混淆的解题方法。",
+    prompt: "大学高数期末复习，考试范围到定积分应用：极限与连续、导数和微分、中值定理、单调性与极值、不定积分、定积分计算和几何应用。",
     icon: ClipboardList,
   },
   {
     id: "python-basics",
     label: "Python入门",
-    prompt: "生成一门 Python 入门课程，从变量、条件判断、循环和函数开始，每节包含代码示例、动手练习和常见错误说明。",
+    prompt: "Python 入门，目标是能写简单脚本处理表格数据：先学变量、分支、循环、函数、列表和字典，再学文件读写、异常处理和 CSV 数据清洗。",
     icon: FileCode,
   },
 ] as const;
@@ -1077,12 +1077,12 @@ export function HomePage() {
                   )}
                 </div>
 
-                <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:shrink-0 sm:justify-end">
+                <div className="flex w-full items-center justify-end gap-1.5 sm:w-auto sm:shrink-0">
                   <ChatModelSelect
                     value={chatModel}
                     onChange={setChatModel}
                     disabled={isWorking}
-                    className="flex-1 sm:flex-none sm:w-[128px]"
+                    className="w-[112px] flex-none sm:w-[112px]"
                   />
                   <button
                     type="button"
