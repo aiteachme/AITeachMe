@@ -19,12 +19,14 @@ from .common import (
     extract_usage,
     get_llm_concurrency_limiter,
     logger,
+    iter_with_overall_timeout,
     log_attempt_cancelled,
     log_attempt_failed,
     log_attempt_started,
     log_attempt_timeout,
     merge_usage,
     prepare_completion_attempt,
+    pop_overall_timeout_s,
     context_request_timeout_s,
     should_try_endpoint_fallback,
     sleep_before_retry,
@@ -180,6 +182,32 @@ async def acompletion_stream(
 ) -> AsyncGenerator[str, None]:
     """Async streaming completion."""
 
+    overall_timeout_s = pop_overall_timeout_s(kwargs)
+    stream = iter_with_overall_timeout(
+        _acompletion_stream_impl(
+            messages,
+            task_type=task_type,
+            model=model,
+            extra_metadata=extra_metadata,
+            kwargs=kwargs,
+        ),
+        overall_timeout_s,
+    )
+    try:
+        async for chunk in stream:
+            yield chunk
+    finally:
+        await stream.aclose()
+
+
+async def _acompletion_stream_impl(
+    messages: list[ChatMessage],
+    *,
+    task_type: object | None,
+    model: str | None,
+    extra_metadata: Mapping[str, Any] | None,
+    kwargs: dict[str, Any],
+) -> AsyncGenerator[str, None]:
     litellm = load_litellm()
     contexts = build_completion_contexts(
         task_type=task_type,

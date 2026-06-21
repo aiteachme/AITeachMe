@@ -13,6 +13,7 @@ from app.workflows.common.model_policy import ProviderNativeToolPolicy, compact_
 from app.workflows.digest.docgen.lib.mode_profiles import get_docgen_mode_profile
 
 DocGenModelSlot = Literal["light", "primary", "reason", "image_generation"]
+_DOCGEN_OVERALL_TIMEOUT_S = 120
 
 
 class DocGenModelStep(str, Enum):
@@ -42,6 +43,7 @@ class DocGenModelPolicy:
     model: DocGenModelSlot | None
     max_tokens: int | None = None
     timeout_s: int | None = None
+    overall_timeout_s: int = _DOCGEN_OVERALL_TIMEOUT_S
     max_retries: int = 3
     temperature: float | None = None
     provider_native_tools: ProviderNativeToolPolicy = field(default_factory=ProviderNativeToolPolicy.disabled)
@@ -63,6 +65,7 @@ class DocGenModelPolicy:
             kwargs["max_tokens"] = self.max_tokens
         if self.timeout_s is not None:
             kwargs["timeout"] = self.timeout_s
+        kwargs["overall_timeout_s"] = self.overall_timeout_s
         kwargs["max_retries"] = self.max_retries
         if self.temperature is not None:
             kwargs["temperature"] = self.temperature
@@ -76,6 +79,7 @@ class DocGenModelPolicy:
             "docgen_model_slot": self.model or "",
             "docgen_call_type": self.call_type,
             "docgen_timeout_s": self.timeout_s or 0,
+            "docgen_overall_timeout_s": self.overall_timeout_s,
             "docgen_max_retries": self.max_retries,
             **self.provider_native_tools.metadata(prefix="docgen_provider_native"),
         }
@@ -105,7 +109,7 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="structured",
         model="light",
         max_tokens=12000,
-        timeout_s=240,
+        timeout_s=120,
         temperature=0.1,
         note="文件级摘要容易被长 JSON 截断，输入已采样但输出预算仍保持宽松。",
     ),
@@ -141,7 +145,7 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="text",
         model="light",
         max_tokens=6000,
-        timeout_s=180,
+        timeout_s=120,
         max_retries=5,
         temperature=0.1,
         note="清洗 dense context，不做重推理。",
@@ -171,7 +175,7 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="text",
         model="light",
         max_tokens=9000,
-        timeout_s=180,
+        timeout_s=120,
         temperature=0.1,
         note="只修结构和标题层级。",
     ),
@@ -180,7 +184,7 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="text",
         model="primary",
         max_tokens=12000,
-        timeout_s=300,
+        timeout_s=120,
         temperature=0.5,
         note="章节质量不足时的 bounded rewrite。",
     ),
@@ -198,7 +202,7 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="structured",
         model="light",
         max_tokens=2600,
-        timeout_s=180,
+        timeout_s=120,
         temperature=0.1,
         note="结构化规划静态讲义图示，由代码渲染为考试讲义式 HTML/SVG。",
     ),
@@ -207,7 +211,7 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="text",
         model="primary",
         max_tokens=12000,
-        timeout_s=300,
+        timeout_s=120,
         temperature=0.1,
         note="交互页需要较完整的 HTML 生成能力。",
     ),
@@ -216,7 +220,7 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="structured",
         model="light",
         max_tokens=4500,
-        timeout_s=180,
+        timeout_s=120,
         temperature=0.1,
         note="并行结构化审稿，优先速度与成本。",
     ),
@@ -225,7 +229,7 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="structured",
         model="reason",
         max_tokens=4200,
-        timeout_s=180,
+        timeout_s=120,
         temperature=0.1,
         note="整本文档一次性跨章一致性复核，只输出问题和可执行回流动作。",
     ),
@@ -242,7 +246,7 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         step=DocGenModelStep.COVER_IMAGE,
         call_type="image",
         model="image_generation",
-        timeout_s=600,
+        timeout_s=120,
         temperature=0.7,
         note="图片模型由 settings.models.image_generation 决定。",
     ),

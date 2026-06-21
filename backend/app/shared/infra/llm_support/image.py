@@ -27,10 +27,12 @@ from .common import (
     effective_max_retries,
     get_llm_concurrency_limiter,
     logger,
+    pop_overall_timeout_s,
     raise_last_error,
     should_enforce_request_timeout,
     trace_log_fields,
     track_call,
+    wait_for_overall_timeout,
 )
 from .litellm_loader import load_litellm
 from .observability import _end_langsmith_trace, _sanitize_langsmith_value
@@ -366,6 +368,31 @@ async def agenerate_image(
 ) -> ImageGenerationResult:
     """Generate one or more images through the configured LiteLLM image model."""
 
+    overall_timeout_s = pop_overall_timeout_s(kwargs)
+    return await wait_for_overall_timeout(
+        _agenerate_image_impl(
+            prompt,
+            model=model,
+            size=size,
+            n=n,
+            response_format=response_format,
+            extra_metadata=extra_metadata,
+            kwargs=kwargs,
+        ),
+        overall_timeout_s,
+    )
+
+
+async def _agenerate_image_impl(
+    prompt: str,
+    *,
+    model: str | None,
+    size: str,
+    n: int,
+    response_format: str,
+    extra_metadata: Mapping[str, Any] | None,
+    kwargs: dict[str, Any],
+) -> ImageGenerationResult:
     prompt_text = str(prompt or "").strip()
     if not prompt_text:
         raise LLMCallError(reason="image prompt is empty")

@@ -13,7 +13,8 @@ from app.workflows.common.model_policy import ProviderNativeToolPolicy, compact_
 
 KGDocSyncModelSlot = Literal["light", "primary", "reason"]
 
-_SECTION_GRAPH_TIMEOUT_S = 300
+_KG_DOC_SYNC_OVERALL_TIMEOUT_S = 60
+_SECTION_GRAPH_TIMEOUT_S = 60
 _SECTION_GRAPH_MAX_CONTENT_CHARS = 60000
 _SECTION_GRAPH_COURSE_CONTEXT_MAX_CHARS = 2400
 
@@ -30,6 +31,7 @@ class KGDocSyncModelPolicy:
     model: KGDocSyncModelSlot
     max_tokens: int | None = None
     timeout_s: int | None = None
+    overall_timeout_s: int = _KG_DOC_SYNC_OVERALL_TIMEOUT_S
     max_retries: int = 3
     max_content_chars: int | None = None
     course_context_max_chars: int | None = None
@@ -52,6 +54,7 @@ class KGDocSyncModelPolicy:
             kwargs["max_tokens"] = self.max_tokens
         if self.timeout_s is not None:
             kwargs["timeout"] = self.timeout_s
+        kwargs["overall_timeout_s"] = self.overall_timeout_s
         kwargs["max_retries"] = self.max_retries
         if self.temperature is not None:
             kwargs["temperature"] = self.temperature
@@ -66,6 +69,7 @@ class KGDocSyncModelPolicy:
             "kg_doc_sync_call_type": self.call_type,
             "kg_doc_sync_max_tokens": self.max_tokens,
             "kg_doc_sync_timeout_s": self.timeout_s,
+            "kg_doc_sync_overall_timeout_s": self.overall_timeout_s,
             "kg_doc_sync_max_retries": self.max_retries,
             **self.provider_native_tools.metadata(prefix="kg_doc_sync_provider_native"),
         }

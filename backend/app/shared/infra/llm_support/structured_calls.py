@@ -30,12 +30,14 @@ from .common import (
     log_attempt_timeout,
     merge_usage,
     prepare_completion_attempt,
+    pop_overall_timeout_s,
     raise_last_error,
     context_request_timeout_s,
     should_try_endpoint_fallback,
     sleep_before_retry,
     trace_log_fields,
     track_call,
+    wait_for_overall_timeout,
 )
 from .observability import _end_langsmith_trace, _langsmith_trace_kwargs, llm_api_mode_outputs
 from .native_tools import without_provider_native_tools
@@ -308,6 +310,29 @@ async def acompletion_structured(
 ) -> T:
     """Async structured completion."""
 
+    overall_timeout_s = pop_overall_timeout_s(kwargs)
+    return await wait_for_overall_timeout(
+        _acompletion_structured_impl(
+            response_model,
+            messages,
+            task_type=task_type,
+            model=model,
+            extra_metadata=extra_metadata,
+            kwargs=kwargs,
+        ),
+        overall_timeout_s,
+    )
+
+
+async def _acompletion_structured_impl(
+    response_model: type[T],
+    messages: list[ChatMessage],
+    *,
+    task_type: object | None,
+    model: str | None,
+    extra_metadata: Mapping[str, Any] | None,
+    kwargs: dict[str, Any],
+) -> T:
     litellm = load_litellm()
     instructor = _load_instructor()
     contexts = build_completion_contexts(

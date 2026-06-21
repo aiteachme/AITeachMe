@@ -8,7 +8,7 @@ import secrets
 import threading
 import time
 import weakref
-from collections.abc import Mapping
+from collections.abc import AsyncGenerator, Awaitable, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, replace
@@ -876,6 +876,60 @@ def effective_max_retries(context: CompletionContext, call_kwargs: Mapping[str, 
     except (TypeError, ValueError):
         return context.profile.max_retries
     return max(1, min(10, max_retries))
+
+
+def pop_overall_timeout_s(call_kwargs: dict[str, Any]) -> float | None:
+    """Remove and parse the optional whole-call timeout budget."""
+
+    raw_timeout = call_kwargs.pop("overall_timeout_s", None)
+    legacy_timeout = call_kwargs.pop("overall_timeout", None)
+    if raw_timeout in (None, ""):
+        raw_timeout = legacy_timeout
+    if raw_timeout in (None, ""):
+        return None
+    try:
+        timeout_s = float(raw_timeout)
+    except (TypeError, ValueError):
+        return None
+    return timeout_s if timeout_s > 0 else None
+
+
+async def wait_for_overall_timeout(awaitable: Awaitable[Any], timeout_s: float | None) -> Any:
+    """Apply an optional timeout to a whole helper call."""
+
+    if timeout_s is None:
+        return await awaitable
+    try:
+        return await asyncio.wait_for(awaitable, timeout=timeout_s)
+    except asyncio.TimeoutError as exc:
+        raise LLMTimeoutError(timeout_s=int(timeout_s)) from exc
+
+
+async def iter_with_overall_timeout(
+    stream: AsyncGenerator[Any, None],
+    timeout_s: float | None,
+) -> AsyncGenerator[Any, None]:
+    """Yield a stream while bounding the total stream lifetime."""
+
+    try:
+        if timeout_s is None:
+            async for chunk in stream:
+                yield chunk
+            return
+
+        deadline = time.monotonic() + timeout_s
+        while True:
+            remaining_s = deadline - time.monotonic()
+            if remaining_s <= 0:
+                raise asyncio.TimeoutError
+            try:
+                yield await asyncio.wait_for(stream.__anext__(), timeout=remaining_s)
+            except StopAsyncIteration:
+                break
+    except asyncio.TimeoutError as exc:
+        raise LLMTimeoutError(timeout_s=int(timeout_s)) from exc
+    finally:
+        await stream.aclose()
 
 
 def context_request_timeout_s(

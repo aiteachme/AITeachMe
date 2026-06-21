@@ -13,7 +13,8 @@ def test_course_identity_policy_uses_structured_light_model() -> None:
     kwargs = policy.completion_kwargs()
 
     assert kwargs["max_tokens"] == 240
-    assert kwargs["timeout"] == 300
+    assert kwargs["timeout"] == 60
+    assert kwargs["overall_timeout_s"] == 60
     assert kwargs["max_retries"] == 3
     assert 0 <= kwargs["temperature"] <= 1
     assert "task_type" not in kwargs
@@ -36,6 +37,7 @@ def test_planner_stream_policy_keeps_gpt55_auto_on_responses_without_native_tool
         )
         for step in (PlannerModelStep.STREAM_PLANNING_NOTE, PlannerModelStep.DRAFT_PLAN):
             policy_kwargs = planner_completion_kwargs(step)
+            assert policy_kwargs.pop("overall_timeout_s") == 60
             assert policy_kwargs[PROVIDER_NATIVE_TOOLS_KWARG] == []
             model_selector = str(policy_kwargs.pop("model"))
             context = build_completion_context(model=model_selector)

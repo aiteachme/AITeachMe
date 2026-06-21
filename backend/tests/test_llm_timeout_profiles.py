@@ -1,3 +1,10 @@
+import asyncio
+
+import pytest
+
+from app.shared.infra.exceptions import LLMTimeoutError
+from app.shared.infra.llm_support import stream as stream_module
+from app.shared.infra.llm_support import text as text_module
 from app.shared.infra.llm_support.common import (
     build_completion_context,
     build_completion_kwargs,
@@ -103,3 +110,59 @@ def test_invalid_explicit_timeout_falls_back_to_profile(monkeypatch):
 
     assert context_request_timeout_s(context, {"timeout": 0}) == context.profile.timeout_s + 2
     assert context_request_timeout_s(context, {"timeout": "bad"}) == context.profile.timeout_s + 2
+
+
+@pytest.mark.anyio
+async def test_text_completion_overall_timeout_wraps_full_call(monkeypatch):
+    async def slow_completion(*_args, **_kwargs):
+        await asyncio.sleep(0.05)
+        return "late"
+
+    monkeypatch.setattr(text_module, "_acompletion_impl", slow_completion)
+
+    with pytest.raises(LLMTimeoutError):
+        await text_module.acompletion(
+            [{"role": "user", "content": "hello"}],
+            overall_timeout_s=0.01,
+        )
+
+
+@pytest.mark.anyio
+async def test_stream_completion_overall_timeout_wraps_full_stream(monkeypatch):
+    async def slow_stream(*_args, **_kwargs):
+        await asyncio.sleep(0.05)
+        yield "late"
+
+    monkeypatch.setattr(stream_module, "_acompletion_stream_impl", slow_stream)
+
+    with pytest.raises(LLMTimeoutError):
+        async for _ in stream_module.acompletion_stream(
+            [{"role": "user", "content": "hello"}],
+            overall_timeout_s=0.01,
+        ):
+            pass
+
+
+@pytest.mark.anyio
+async def test_stream_completion_overall_timeout_closes_inner_stream_on_outer_close(monkeypatch):
+    closed = False
+
+    async def stream_with_cleanup(*_args, **_kwargs):
+        nonlocal closed
+        try:
+            yield "first"
+            await asyncio.sleep(60)
+        finally:
+            closed = True
+
+    monkeypatch.setattr(stream_module, "_acompletion_stream_impl", stream_with_cleanup)
+
+    stream = stream_module.acompletion_stream(
+        [{"role": "user", "content": "hello"}],
+        overall_timeout_s=1,
+    )
+    async for _ in stream:
+        break
+    await stream.aclose()
+
+    assert closed

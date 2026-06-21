@@ -24,11 +24,13 @@ from .common import (
     log_attempt_started,
     log_attempt_timeout,
     prepare_completion_attempt,
+    pop_overall_timeout_s,
     raise_last_error,
     context_request_timeout_s,
     should_try_endpoint_fallback,
     sleep_before_retry,
     track_call,
+    wait_for_overall_timeout,
 )
 from .litellm_loader import load_litellm
 from .native_tools import without_provider_native_tools
@@ -51,6 +53,29 @@ async def acompletion_with_tools(
 ) -> Any:
     """Async completion with tool-call support."""
 
+    overall_timeout_s = pop_overall_timeout_s(kwargs)
+    return await wait_for_overall_timeout(
+        _acompletion_with_tools_impl(
+            messages,
+            tools=tools,
+            task_type=task_type,
+            model=model,
+            extra_metadata=extra_metadata,
+            kwargs=kwargs,
+        ),
+        overall_timeout_s,
+    )
+
+
+async def _acompletion_with_tools_impl(
+    messages: list[ChatMessage],
+    *,
+    tools: list[dict] | None,
+    task_type: object | None,
+    model: str | None,
+    extra_metadata: Mapping[str, Any] | None,
+    kwargs: dict[str, Any],
+) -> Any:
     litellm = load_litellm()
     contexts = build_completion_contexts(
         task_type=task_type,
