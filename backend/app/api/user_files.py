@@ -41,6 +41,7 @@ _INTERACTIVE_HTML_BLOCKED_TAGS = {
     "svg",
     "template",
 }
+_INTERACTIVE_HTML_UNWRAPPED_TAGS = {"form"}
 _INTERACTIVE_HTML_VOID_TAGS = {"area", "br", "col", "hr", "input", "wbr"}
 _INTERACTIVE_HTML_SAFE_URL_RE = re.compile(r"^(?:https?:|mailto:|#|/(?!/))", re.IGNORECASE)
 _INTERACTIVE_HTML_UNSAFE_STYLE_RE = re.compile(
@@ -330,7 +331,19 @@ def _sanitize_interactive_attrs(tag: str, attrs: list[tuple[str, str | None]]) -
         value = "" if raw_value is None else str(raw_value)
         if not name:
             continue
-        if name.startswith("on") or name in {"formaction", "nonce", "srcdoc"}:
+        if name.startswith("on") or name in {
+            "action",
+            "enctype",
+            "form",
+            "formaction",
+            "formenctype",
+            "formmethod",
+            "formnovalidate",
+            "formtarget",
+            "method",
+            "nonce",
+            "srcdoc",
+        }:
             continue
         if name == "style":
             safe_style = _sanitize_interactive_style(value)
@@ -368,6 +381,8 @@ class _InteractiveHtmlSanitizer(HTMLParser):
             return
         if self._blocked_depth:
             return
+        if tag_name in _INTERACTIVE_HTML_UNWRAPPED_TAGS:
+            return
         safe_attrs = _sanitize_interactive_attrs(tag_name, attrs)
         attr_text = "".join(
             f' {name}="{html.escape(value, quote=True)}"'
@@ -377,7 +392,11 @@ class _InteractiveHtmlSanitizer(HTMLParser):
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag_name = tag.lower()
-        if tag_name in _INTERACTIVE_HTML_BLOCKED_TAGS or self._blocked_depth:
+        if (
+            tag_name in _INTERACTIVE_HTML_BLOCKED_TAGS
+            or tag_name in _INTERACTIVE_HTML_UNWRAPPED_TAGS
+            or self._blocked_depth
+        ):
             return
         safe_attrs = _sanitize_interactive_attrs(tag_name, attrs)
         attr_text = "".join(
@@ -391,7 +410,11 @@ class _InteractiveHtmlSanitizer(HTMLParser):
         if tag_name in _INTERACTIVE_HTML_BLOCKED_TAGS:
             self._blocked_depth = max(0, self._blocked_depth - 1)
             return
-        if self._blocked_depth or tag_name in _INTERACTIVE_HTML_VOID_TAGS:
+        if (
+            self._blocked_depth
+            or tag_name in _INTERACTIVE_HTML_UNWRAPPED_TAGS
+            or tag_name in _INTERACTIVE_HTML_VOID_TAGS
+        ):
             return
         self._parts.append(f"</{tag_name}>")
 

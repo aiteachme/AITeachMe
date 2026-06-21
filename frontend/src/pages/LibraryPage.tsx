@@ -225,6 +225,46 @@ function highlightSegmentsEqual(a: HighlightSegment[], b: HighlightSegment[]): b
   return true;
 }
 
+function getHighlightSegmentsBounds(segments: HighlightSegment[]): {
+  top: number;
+  left: number;
+  right: number;
+  bottom: number;
+} | null {
+  if (segments.length === 0) return null;
+  return {
+    top: Math.min(...segments.map((segment) => segment.top)),
+    left: Math.min(...segments.map((segment) => segment.left)),
+    right: Math.max(...segments.map((segment) => segment.left + segment.width)),
+    bottom: Math.max(...segments.map((segment) => segment.top + segment.height)),
+  };
+}
+
+function getHighlightSegmentsDistance(a: HighlightSegment[], b: HighlightSegment[]): number {
+  const boundsA = getHighlightSegmentsBounds(a);
+  const boundsB = getHighlightSegmentsBounds(b);
+  if (!boundsA || !boundsB) return Number.POSITIVE_INFINITY;
+  const centerAX = (boundsA.left + boundsA.right) / 2;
+  const centerAY = (boundsA.top + boundsA.bottom) / 2;
+  const centerBX = (boundsB.left + boundsB.right) / 2;
+  const centerBY = (boundsB.top + boundsB.bottom) / 2;
+  return Math.hypot(centerAX - centerBX, centerAY - centerBY);
+}
+
+function chooseClosestHighlightSegments(
+  candidates: HighlightSegment[][],
+  preferredSegments?: HighlightSegment[] | null,
+): HighlightSegment[] {
+  if (candidates.length === 0) return [];
+  const preferred = preferredSegments?.length ? preferredSegments : null;
+  if (!preferred || candidates.length === 1) return candidates[0];
+  return candidates.reduce((best, candidate) => (
+    getHighlightSegmentsDistance(candidate, preferred) < getHighlightSegmentsDistance(best, preferred)
+      ? candidate
+      : best
+  ), candidates[0]);
+}
+
 function medianNumber(values: number[]): number {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
@@ -347,6 +387,7 @@ const INTERACTIVE_HTML_BLOCKED_TAGS = new Set([
   "svg",
   "template",
 ]);
+const INTERACTIVE_HTML_UNWRAPPED_TAGS = new Set(["form"]);
 
 function sanitizeInteractiveStyle(value: string): string {
   return value
@@ -392,12 +433,29 @@ function sanitizeInteractiveHtml(html: string): string {
       element.remove();
       return;
     }
+    if (INTERACTIVE_HTML_UNWRAPPED_TAGS.has(tagName)) {
+      element.replaceWith(...Array.from(element.childNodes));
+      return;
+    }
 
     Array.from(element.attributes).forEach((attribute) => {
       const name = attribute.name.toLowerCase();
       const value = attribute.value;
 
-      if (name.startsWith("on") || name === "srcdoc" || name === "nonce" || name === "formaction") {
+      if (
+        name.startsWith("on") ||
+        name === "action" ||
+        name === "enctype" ||
+        name === "form" ||
+        name === "formaction" ||
+        name === "formenctype" ||
+        name === "formmethod" ||
+        name === "formnovalidate" ||
+        name === "formtarget" ||
+        name === "method" ||
+        name === "srcdoc" ||
+        name === "nonce"
+      ) {
         element.removeAttribute(attribute.name);
         return;
       }
@@ -1350,7 +1408,10 @@ export function LibraryFilePage() {
       .map(segmentFromViewportRect)
   ), [segmentFromViewportRect]);
 
-  const buildHighlightSegmentsFromText = useCallback((selectedText: string): HighlightSegment[] => {
+  const buildHighlightSegmentsFromText = useCallback((
+    selectedText: string,
+    preferredSegments?: HighlightSegment[] | null,
+  ): HighlightSegment[] => {
     const contentRoot = markdownBodyRef.current ?? contentRef.current;
     const target = selectedText.trim();
     if (!contentRoot || !target || viewMode !== "rendered") {
@@ -1362,7 +1423,7 @@ export function LibraryFilePage() {
       .map((range) => captureRangeSegments(range))
       .filter((segments) => segments.length > 0 && !highlightSegmentsSpanTooLarge(segments, target));
     if (matchedSegments.length > 0) {
-      return matchedSegments[0];
+      return chooseClosestHighlightSegments(matchedSegments, preferredSegments);
     }
 
     const approximateRange = findApproximateRangeForSelectedText(index, target);
@@ -1379,6 +1440,7 @@ export function LibraryFilePage() {
     ].map((item) => createCondensedSearchText(normalizeSelectionSearchText(item)).text).filter(Boolean)));
     if (normalizedTargets.length > 0) {
       const mathCandidates = Array.from(contentRoot.querySelectorAll<HTMLElement>(".katex"));
+      const matchedMathSegments: HighlightSegment[][] = [];
       for (const element of mathCandidates) {
         const elementTexts = Array.from(new Set([
           element.innerText || "",
@@ -1393,9 +1455,12 @@ export function LibraryFilePage() {
         if (matched) {
           const elementSegments = captureElementSegments(element);
           if (elementSegments.length > 0) {
-            return elementSegments;
+            matchedMathSegments.push(elementSegments);
           }
         }
+      }
+      if (matchedMathSegments.length > 0) {
+        return chooseClosestHighlightSegments(matchedMathSegments, preferredSegments);
       }
     }
 
@@ -1411,10 +1476,11 @@ export function LibraryFilePage() {
       let changed = false;
       const next: Record<number, HighlightSegment[]> = {};
       for (const highlight of highlights) {
-        const existingSegments = prev[highlight.id] ?? [];
-        const segments = existingSegments.length > 0
-          ? existingSegments
-          : buildHighlightSegmentsFromText(highlight.selected_text);
+        const preferredSegments = prev[highlight.id]?.length
+          ? prev[highlight.id]
+          : highlight.segments ?? [];
+        const rebuiltSegments = buildHighlightSegmentsFromText(highlight.selected_text, preferredSegments);
+        const segments = rebuiltSegments.length > 0 ? rebuiltSegments : preferredSegments;
         next[highlight.id] = segments;
         if (!highlightSegmentsEqual(prev[highlight.id] ?? [], segments)) {
           changed = true;

