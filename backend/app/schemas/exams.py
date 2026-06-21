@@ -144,6 +144,13 @@ class PaperPreview(BaseModel):
     overflow_count: int = Field(default=0, ge=0)
 
 
+class ExamGenerationProgress(BaseModel):
+    completed_items: int = Field(default=0, ge=0)
+    generated_items: int = Field(default=0, ge=0)
+    failed_items: int = Field(default=0, ge=0)
+    total_items: int = Field(default=0, ge=0)
+
+
 class ExamHistoryItem(BaseModel):
     id: int
     course_id: str
@@ -154,8 +161,10 @@ class ExamHistoryItem(BaseModel):
     score_obtained: float | None = None
     total_score: float | None = None
     created_at: datetime
+    updated_at: datetime
     submitted_at: datetime | None = None
     graded_at: datetime | None = None
+    generation_progress: ExamGenerationProgress | None = None
     paper_preview: PaperPreview = Field(default_factory=PaperPreview)
 
 

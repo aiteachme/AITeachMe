@@ -1,6 +1,7 @@
 export {
   CreateExamModal,
   applyExamModeToCreateConfig,
+  getDefaultCreateExamConfigForMode,
   loadCreateExamConfig,
   toExamGenerateRequest,
 } from "./CreateExamModal";

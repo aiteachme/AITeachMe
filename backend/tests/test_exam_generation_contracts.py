@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -23,6 +24,11 @@ from app.utils.time import utcnow
 from app.workflows.examine.exam_grade.lib.grader import ExamItemGradeDecision
 from app.workflows.examine.question_build import prompts as question_prompts
 from app.workflows.examine.question_build.lib import generator
+from app.workflows.examine.question_build.lib.model_policy import (
+    QuestionBuildModelStep,
+    question_build_completion_kwargs,
+)
+from app.workflows.examine.question_build.nodes import filter_knowledge_units as filter_units_node
 from app.workflows.support.exam_pool_policy import (
     exam_candidate_unit_limit,
     exam_ready_units_per_chapter_floor,
@@ -435,6 +441,19 @@ def test_generated_question_requirement_result_reports_failures() -> None:
     assert generated == {2: {"item_order": 2, "stem": "second"}}
 
 
+def test_default_auto_prewarm_config_matches_training_center_default() -> None:
+    config = exams_api.default_auto_prewarm_exam_config()
+
+    assert config == {
+        "exam_mode": "web_practice",
+        "question_count": 24,
+        "user_prompt": None,
+        "sample_file_ids": [],
+        "paper_layout_mode": None,
+    }
+    assert exams_api.DEFAULT_AUTO_PREWARM_QUESTION_COUNT == 24
+
+
 def test_prepared_exam_status_and_visibility_boundaries() -> None:
     now = utcnow()
     ready = ExamPaper(status="ready", visibility="hidden", expires_at=now + timedelta(minutes=5))
@@ -449,6 +468,305 @@ def test_prepared_exam_status_and_visibility_boundaries() -> None:
     assert exams_api._prewarm_status_from_candidate(stale) == "stale"
     assert exams_api._prewarm_status_from_candidate(failed) == "failed"
     assert exams_api._prewarm_status_from_candidate(None) == "missing"
+
+
+@pytest.mark.anyio
+async def test_filter_knowledge_units_uses_fallback_when_llm_selection_is_cancelled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def cancelled_selection(**kwargs):
+        raise asyncio.CancelledError()
+
+    monkeypatch.setattr(filter_units_node, "select_exam_knowledge_units", cancelled_selection)
+    units = [
+        KnowledgeUnit(
+            id=1,
+            course_id=COURSE_ID,
+            knowledge_unit_type="concept",
+            canonical_name="Matrices",
+            normalized_name="matrices",
+            summary="Matrix operations and rank.",
+            status="active",
+        ),
+        KnowledgeUnit(
+            id=2,
+            course_id=COURSE_ID,
+            knowledge_unit_type="concept",
+            canonical_name="Linear maps",
+            normalized_name="linear_maps",
+            summary="Linear maps and bases.",
+            status="active",
+        ),
+    ]
+
+    node = filter_units_node.build_filter_knowledge_units_node(context=SimpleNamespace())
+    result = await node(
+        {
+            "course_id": COURSE_ID,
+            "course_name": "Linear Algebra",
+            "exam_mode": "web_practice",
+            "question_count": 2,
+            "units": units,
+            "priority_unit_ids": [2],
+        }
+    )
+
+    assert result["error"] == ""
+    assert result["filter_strategy"] == "deterministic_cancel_fallback"
+    assert result["candidate_unit_ids"] == [2, 1]
+    assert [unit.id for unit in result["units"]] == [2, 1]
+
+
+@pytest.mark.anyio
+async def test_exam_prewarm_status_does_not_start_background_generation(
+    session: Session,
+) -> None:
+    _seed_exam_course(session)
+    background_tasks = BackgroundTasks()
+
+    response = await exams_api.exam_prewarm_status(
+        request=SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(background_task_registry=None))),
+        background_tasks=background_tasks,
+        course_id=COURSE_ID,
+        exam_mode="web_practice",
+        num_questions=2,
+        user_prompt=None,
+        sample_file_ids=None,
+        paper_layout_mode=None,
+        user=CurrentUserContext(user_id=USER_ID, email=None, is_local=True),
+        session=session,
+    )
+
+    assert response.data is not None
+    assert response.data.status == "missing"
+    assert response.data.background_requested is False
+    assert len(background_tasks.tasks) == 0
+    assert session.exec(select(ExamPaper)).all() == []
+
+
+@pytest.mark.anyio
+async def test_exam_prewarm_status_retries_cancelled_hidden_failure(
+    session: Session,
+) -> None:
+    units = _seed_exam_course(session)
+    unit_ids = [int(unit.id or 0) for unit in units]
+    config_snapshot = exams_api._build_exam_config_snapshot(
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        exam_mode="web_practice",
+        question_count=24,
+        user_prompt=None,
+        sample_file_ids=[],
+        knowledge_unit_ids=unit_ids,
+        mastery_fingerprint=exams_api._exam_mastery_fingerprint(session, course_id=COURSE_ID, user_id=USER_ID),
+    )
+    failed = exams_api._create_exam_generation_paper(
+        session,
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        exam_mode="web_practice",
+        question_count=24,
+        user_prompt=None,
+        sample_file_ids=[],
+        unit_ids=unit_ids,
+        config_snapshot=config_snapshot,
+        config_hash=exams_api._exam_config_hash(config_snapshot),
+        visibility="hidden",
+        generation_origin="prewarm",
+    )
+    failed.status = "failed"
+    failed.selection_context_json = json.dumps(
+        {
+            "generation_status": "failed",
+            "error_message": "Question candidate filtering was cancelled.",
+        },
+        ensure_ascii=False,
+    )
+    session.add(failed)
+    session.commit()
+    background_tasks = BackgroundTasks()
+
+    class FakeRegistry:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, object]] = []
+
+        def spawn(self, coro, **kwargs):
+            self.calls.append(kwargs)
+            coro.close()
+
+    registry = FakeRegistry()
+
+    response = await exams_api.exam_prewarm_status(
+        request=SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(background_task_registry=registry))),
+        background_tasks=background_tasks,
+        course_id=COURSE_ID,
+        exam_mode="web_practice",
+        num_questions=24,
+        user_prompt=None,
+        sample_file_ids=None,
+        paper_layout_mode=None,
+        user=CurrentUserContext(user_id=USER_ID, email=None, is_local=True),
+        session=session,
+    )
+
+    assert response.data is not None
+    assert response.data.status == "preparing"
+    assert response.data.background_requested is True
+    assert len(registry.calls) == 1
+    assert registry.calls[0]["kind"] == "exam.prewarm"
+    assert len(background_tasks.tasks) == 0
+
+
+@pytest.mark.anyio
+async def test_exam_prewarm_status_finds_default_candidate_with_changed_unit_snapshot(
+    session: Session,
+) -> None:
+    units = _seed_exam_course(session)
+    partial_unit_ids = [int(units[0].id or 0)]
+    partial_snapshot = exams_api._build_exam_config_snapshot(
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        exam_mode="web_practice",
+        question_count=24,
+        user_prompt=None,
+        sample_file_ids=[],
+        knowledge_unit_ids=partial_unit_ids,
+        mastery_fingerprint=exams_api._exam_mastery_fingerprint(session, course_id=COURSE_ID, user_id=USER_ID),
+    )
+    exams_api._create_exam_generation_paper(
+        session,
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        exam_mode="web_practice",
+        question_count=24,
+        user_prompt=None,
+        sample_file_ids=[],
+        unit_ids=partial_unit_ids,
+        config_snapshot=partial_snapshot,
+        config_hash=exams_api._exam_config_hash(partial_snapshot),
+        visibility="hidden",
+        generation_origin="prewarm",
+    )
+    background_tasks = BackgroundTasks()
+
+    response = await exams_api.exam_prewarm_status(
+        request=SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(background_task_registry=None))),
+        background_tasks=background_tasks,
+        course_id=COURSE_ID,
+        exam_mode="web_practice",
+        num_questions=24,
+        user_prompt=None,
+        sample_file_ids=None,
+        paper_layout_mode=None,
+        user=CurrentUserContext(user_id=USER_ID, email=None, is_local=True),
+        session=session,
+    )
+
+    assert response.data is not None
+    assert response.data.status == "preparing"
+    assert response.data.background_requested is False
+    assert len(background_tasks.tasks) == 0
+
+
+@pytest.mark.anyio
+async def test_exam_history_does_not_start_default_prewarm(
+    session: Session,
+) -> None:
+    _seed_exam_course(session)
+    background_tasks = BackgroundTasks()
+
+    response = await exams_api.exam_history(
+        request=SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(background_task_registry=None))),
+        background_tasks=background_tasks,
+        course_id=COURSE_ID,
+        page=1,
+        size=20,
+        user=CurrentUserContext(user_id=USER_ID, email=None, is_local=True),
+        session=session,
+    )
+
+    assert response.data is not None
+    assert response.data.items == []
+    assert len(background_tasks.tasks) == 0
+    assert session.exec(select(ExamPaper)).all() == []
+
+
+@pytest.mark.anyio
+async def test_exam_history_marks_stale_generating_papers_failed(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seed_exam_course(session)
+    stale_at = utcnow() - timedelta(minutes=21)
+    fresh_at = utcnow() - timedelta(minutes=5)
+    stale_paper = ExamPaper(
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        exam_mode="web_practice",
+        status="generating",
+        visibility="visible",
+        total_items=24,
+        total_score=24.0,
+        selection_context_json=json.dumps({"generation_status": "generating"}),
+        paper_preview_json=PaperPreview(rows=[]).model_dump_json(),
+        created_at=stale_at,
+        updated_at=stale_at,
+    )
+    fresh_paper = ExamPaper(
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        exam_mode="paper_exam",
+        status="generating",
+        visibility="visible",
+        total_items=24,
+        total_score=24.0,
+        selection_context_json=json.dumps({"generation_status": "generating"}),
+        paper_preview_json=PaperPreview(rows=[]).model_dump_json(),
+        created_at=fresh_at,
+        updated_at=fresh_at,
+    )
+    session.add(stale_paper)
+    session.add(fresh_paper)
+    session.commit()
+    session.refresh(stale_paper)
+    session.refresh(fresh_paper)
+    events: list[tuple[str, int, str, dict[str, object]]] = []
+    monkeypatch.setattr(
+        exams_api,
+        "_publish_exam_event",
+        lambda course_id, paper_id, event, data: events.append((course_id, paper_id, event, data)),
+    )
+
+    response = await exams_api.exam_history(
+        request=SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(background_task_registry=None))),
+        background_tasks=BackgroundTasks(),
+        course_id=COURSE_ID,
+        page=1,
+        size=20,
+        user=CurrentUserContext(user_id=USER_ID, email=None, is_local=True),
+        session=session,
+    )
+
+    session.refresh(stale_paper)
+    session.refresh(fresh_paper)
+    stale_context = json.loads(stale_paper.selection_context_json)
+    fresh_context = json.loads(fresh_paper.selection_context_json)
+    statuses_by_id = {int(item.id or 0): item.status for item in response.data.items}
+
+    assert stale_paper.status == "failed"
+    assert stale_context["generation_status"] == "failed"
+    assert stale_context["error_message"] == exams_api.EXAM_GENERATION_STALE_MESSAGE
+    assert statuses_by_id[int(stale_paper.id or 0)] == "failed"
+    assert fresh_paper.status == "generating"
+    assert fresh_context["generation_status"] == "generating"
+    assert statuses_by_id[int(fresh_paper.id or 0)] == "generating"
+    assert len(events) == 1
+    assert events[0][0] == COURSE_ID
+    assert events[0][1] == int(stale_paper.id or 0)
+    assert events[0][2] == "done"
+    assert events[0][3]["status"] == "failed"
+    assert events[0][3]["stage"] == "failed"
+    assert events[0][3]["error_message"] == exams_api.EXAM_GENERATION_STALE_MESSAGE
 
 
 @pytest.mark.anyio
@@ -934,11 +1252,79 @@ async def test_generate_exam_endpoint_claims_prepared_paper(
     assert prepared.visibility == "visible"
     assert prepared.generation_origin == "prewarm"
     assert len(visible_papers) == 1
-    assert len(background_tasks.tasks) == 1
+    assert len(background_tasks.tasks) == 0
     assert captured[0][0] == "exam_generation_requested"
     assert captured[0][1]["properties"]["served_from_prepared"] is True
     assert captured[1][0] == "exam_generated"
     assert captured[1][1]["properties"]["served_from_prepared"] is True
+
+
+@pytest.mark.anyio
+async def test_generate_exam_endpoint_claims_default_prewarm_with_changed_unit_snapshot(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    units = _seed_exam_course(session)
+    partial_unit_ids = [int(units[0].id or 0)]
+    background_tasks = BackgroundTasks()
+    captured: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(
+        exams_api,
+        "capture_product_event_later",
+        lambda event, **kwargs: captured.append((event, kwargs)) or None,
+    )
+    partial_snapshot = exams_api._build_exam_config_snapshot(
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        exam_mode="web_practice",
+        question_count=24,
+        user_prompt=None,
+        sample_file_ids=[],
+        knowledge_unit_ids=partial_unit_ids,
+        mastery_fingerprint=exams_api._exam_mastery_fingerprint(session, course_id=COURSE_ID, user_id=USER_ID),
+    )
+    prepared = exams_api._create_exam_generation_paper(
+        session,
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        exam_mode="web_practice",
+        question_count=24,
+        user_prompt=None,
+        sample_file_ids=[],
+        unit_ids=partial_unit_ids,
+        config_snapshot=partial_snapshot,
+        config_hash=exams_api._exam_config_hash(partial_snapshot),
+        visibility="hidden",
+        generation_origin="prewarm",
+    )
+
+    response = await exams_api.generate_exam(
+        request=SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(background_task_registry=None))),
+        background_tasks=background_tasks,
+        course_id=COURSE_ID,
+        body=ExamGenerateRequest(
+            exam_mode="web_practice",
+            user_prompt=None,
+            sample_file_ids=[],
+            num_questions=24,
+        ),
+        user=CurrentUserContext(user_id=USER_ID, email=None, is_local=True),
+        session=session,
+    )
+    session.refresh(prepared)
+    visible_papers = session.exec(select(ExamPaper).where(ExamPaper.visibility == "visible")).all()
+
+    assert response.data is not None
+    assert response.data.exam_paper_id == prepared.id
+    assert response.data.status == "generating"
+    assert response.data.num_questions == 24
+    assert response.data.served_from_prepared is True
+    assert prepared.visibility == "visible"
+    assert prepared.generation_origin == "prewarm"
+    assert len(visible_papers) == 1
+    assert len(background_tasks.tasks) == 0
+    assert [event for event, _ in captured] == ["exam_generation_requested"]
+    assert captured[0][1]["properties"]["served_from_prepared"] is True
 
 
 @pytest.mark.anyio
@@ -1242,3 +1628,76 @@ def test_exam_generator_validation_helpers_detect_alignment_errors() -> None:
 
     with pytest.raises(ValueError, match="incomplete batch"):
         generator._validate_batch_alignment(generated=[], requested_specs=[spec])
+
+
+def test_question_build_generate_one_policy_caps_retries_and_timeout() -> None:
+    kwargs = question_build_completion_kwargs(QuestionBuildModelStep.GENERATE_ONE, attempt=1)
+
+    assert kwargs["timeout"] == 120
+    assert kwargs["max_retries"] == 1
+
+
+@pytest.mark.anyio
+async def test_generate_exam_questions_enforces_per_item_total_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(generator, "_QUESTION_GENERATION_TOTAL_TIMEOUT_S", 0.01)
+
+    async def fake_generate_one_exam_question(**kwargs):
+        spec = kwargs["spec"]
+        if spec.item_order == 1:
+            await asyncio.sleep(1)
+        return generator.ExamQuestionDraft(
+            item_order=spec.item_order,
+            question_type=spec.question_type,
+            difficulty=spec.difficulty,
+            stem="Choose the invertible matrix from the list below.",
+            options=["Full rank", "Zero", "Duplicate rows", "Singular"],
+            correct_indices=[0],
+            explanation="The full rank matrix has a non-zero determinant.",
+            knowledge_unit_refs=[
+                generator.ExamQuestionUnitRef(knowledge_unit_id=1, coverage_weight=1),
+            ],
+        )
+
+    monkeypatch.setattr(generator, "_generate_one_exam_question", fake_generate_one_exam_question)
+    failures: list[generator.ExamQuestionGenerationFailure] = []
+
+    async def record_failure(failure: generator.ExamQuestionGenerationFailure) -> None:
+        failures.append(failure)
+
+    questions = await generator.generate_exam_questions_for_units(
+        units=[
+            KnowledgeUnit(
+                id=1,
+                course_id=COURSE_ID,
+                knowledge_unit_type="concept",
+                canonical_name="Matrices",
+                normalized_name="matrices",
+                summary="Matrix operations and rank.",
+                status="active",
+            ),
+        ],
+        specs=[
+            generator.ExamQuestionGenerationSpec(
+                item_order=1,
+                knowledge_unit_id=1,
+                knowledge_unit_ids=[1],
+                question_type="single_choice",
+                difficulty="easy",
+            ),
+            generator.ExamQuestionGenerationSpec(
+                item_order=2,
+                knowledge_unit_id=1,
+                knowledge_unit_ids=[1],
+                question_type="single_choice",
+                difficulty="easy",
+            ),
+        ],
+        on_question_failed=record_failure,
+        allow_partial=True,
+    )
+
+    assert [question.item_order for question in questions] == [2]
+    assert [failure.item_order for failure in failures] == [1]
+    assert "timed out after 0.01s" in failures[0].error_message

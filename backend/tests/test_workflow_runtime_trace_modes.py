@@ -96,6 +96,7 @@ async def test_auto_graph_sync_embeds_in_docgen_trace(monkeypatch) -> None:
         return "completed"
 
     monkeypatch.setattr(kg_builds, "_run_graph_docs_sync_build", fake_run_graph_docs_sync_build)
+    monkeypatch.setattr(kg_builds, "_current_doc_version_no", lambda *args, **kwargs: 2)
 
     status = await kg_builds.run_graph_docs_sync_auto_build(
         course_id="course_test",
@@ -109,6 +110,104 @@ async def test_auto_graph_sync_embeds_in_docgen_trace(monkeypatch) -> None:
 
     assert status == "completed"
     assert captured["embedded_in_parent_trace"] is True
+
+
+@pytest.mark.anyio
+async def test_auto_graph_sync_prewarms_exam_only_for_first_revision(monkeypatch) -> None:
+    spawned: list[dict[str, object]] = []
+
+    class FakeBackgroundRegistry:
+        def spawn(self, coro, **kwargs):
+            coro.close()
+            spawned.append(kwargs)
+            return object()
+
+    async def fake_run_graph_docs_sync_build(**kwargs):
+        assert kwargs["early_units_callback"] is None
+        return "completed"
+
+    monkeypatch.setattr(kg_builds, "_run_graph_docs_sync_build", fake_run_graph_docs_sync_build)
+    monkeypatch.setattr(kg_builds, "_current_doc_version_no", lambda *args, **kwargs: 1)
+
+    status = await kg_builds.run_graph_docs_sync_auto_build(
+        course_id="course_test",
+        requested_at=datetime.now(timezone.utc),
+        build_group_id="group_1",
+        build_session_id="session_1",
+        file_ids=[],
+        prompt=None,
+        docgen_state={},
+        background_task_registry=FakeBackgroundRegistry(),
+    )
+
+    assert status == "completed"
+    assert len(spawned) == 1
+    assert spawned[0]["kind"] == "exam.prewarm"
+    assert str(spawned[0]["dedupe_key"]).endswith(":default:1")
+
+
+@pytest.mark.anyio
+async def test_auto_graph_sync_skips_exam_prewarm_after_initial_revision(monkeypatch) -> None:
+    spawned: list[dict[str, object]] = []
+
+    class FakeBackgroundRegistry:
+        def spawn(self, coro, **kwargs):
+            coro.close()
+            spawned.append(kwargs)
+            return object()
+
+    async def fake_run_graph_docs_sync_build(**kwargs):
+        assert kwargs["early_units_callback"] is None
+        return "completed"
+
+    monkeypatch.setattr(kg_builds, "_run_graph_docs_sync_build", fake_run_graph_docs_sync_build)
+    monkeypatch.setattr(kg_builds, "_current_doc_version_no", lambda *args, **kwargs: 2)
+
+    status = await kg_builds.run_graph_docs_sync_auto_build(
+        course_id="course_test",
+        requested_at=datetime.now(timezone.utc),
+        build_group_id="group_1",
+        build_session_id="session_1",
+        file_ids=[],
+        prompt=None,
+        docgen_state={},
+        background_task_registry=FakeBackgroundRegistry(),
+    )
+
+    assert status == "completed"
+    assert spawned == []
+
+
+@pytest.mark.anyio
+async def test_auto_graph_sync_skips_exam_prewarm_when_not_completed(monkeypatch) -> None:
+    spawned: list[dict[str, object]] = []
+
+    class FakeBackgroundRegistry:
+        def spawn(self, coro, **kwargs):
+            coro.close()
+            spawned.append(kwargs)
+            return object()
+
+    async def fake_run_graph_docs_sync_build(**kwargs):
+        assert kwargs["early_units_callback"] is None
+        return "partial_failed"
+
+    monkeypatch.setattr(kg_builds, "_run_graph_docs_sync_build", fake_run_graph_docs_sync_build)
+    monkeypatch.setattr(kg_builds, "_current_doc_version_no", lambda *args, **kwargs: 1)
+
+    status = await kg_builds.run_graph_docs_sync_auto_build(
+        course_id="course_test",
+        requested_at=datetime.now(timezone.utc),
+        build_group_id="group_1",
+        build_session_id="session_1",
+        file_ids=[],
+        prompt=None,
+        docgen_state={},
+        background_task_registry=FakeBackgroundRegistry(),
+    )
+
+    assert status == "partial_failed"
+    assert spawned == []
 
 
 @pytest.mark.anyio

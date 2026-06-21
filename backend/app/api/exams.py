@@ -27,6 +27,7 @@ from app.schemas.common import ApiResponse, PageParams, PaginatedData, build_pag
 from app.schemas.exams import (
     ExamGenerateRequest,
     ExamGenerateResponse,
+    ExamGenerationProgress,
     ExamGradeResponse,
     ExamHistoryItem,
     ExamPaperDeleteResponse,
@@ -73,7 +74,10 @@ RECENT_EXAM_STEM_AVOID_LIMIT = 18
 _SYNC_EDGE_MARKER_PREFIX = "markdown_anchor_sync:"
 EXAM_PREWARM_CONFIG_VERSION = 1
 EXAM_PREWARM_TTL_DAYS = 2
-DEFAULT_AUTO_PREWARM_QUESTION_COUNT = 8
+DEFAULT_AUTO_PREWARM_EXAM_MODE = "web_practice"
+DEFAULT_AUTO_PREWARM_QUESTION_COUNT = 24
+EXAM_GENERATION_STALE_AFTER = timedelta(minutes=20)
+EXAM_GENERATION_STALE_MESSAGE = "生成超时，请重新生成。"
 PAPER_LAYOUT_CONFIG_VERSION = 1
 PAPER_LAYOUT_MODES = {
     "auto",
@@ -86,6 +90,16 @@ PAPER_LAYOUT_MODES = {
 
 def _exam_stream_channel(course_id: str, paper_id: int) -> str:
     return f"exam:{course_id}:{paper_id}"
+
+
+def default_auto_prewarm_exam_config() -> dict[str, object]:
+    return {
+        "exam_mode": DEFAULT_AUTO_PREWARM_EXAM_MODE,
+        "question_count": DEFAULT_AUTO_PREWARM_QUESTION_COUNT,
+        "user_prompt": None,
+        "sample_file_ids": [],
+        "paper_layout_mode": None,
+    }
 
 
 def _publish_exam_event(course_id: str, paper_id: int, event: str, data: dict[str, object]) -> None:
@@ -320,6 +334,140 @@ def _build_exam_config_snapshot(
 
 def _exam_config_hash(config_snapshot: dict[str, object]) -> str:
     return _stable_json_hash(config_snapshot)
+
+
+def _is_default_auto_prewarm_request(
+    *,
+    exam_mode: str,
+    question_count: int,
+    user_prompt: str | None,
+    sample_file_ids: list[str] | None,
+    paper_layout_mode: str | None,
+) -> bool:
+    default_config = default_auto_prewarm_exam_config()
+    default_mode = exam_mode_value(str(default_config.get("exam_mode") or "web_practice"))
+    default_question_count = int(default_config.get("question_count") or DEFAULT_AUTO_PREWARM_QUESTION_COUNT)
+    default_layout = _normalize_paper_layout_mode(
+        default_config.get("paper_layout_mode") if isinstance(default_config.get("paper_layout_mode"), str) else None,
+        exam_mode=default_mode,
+        question_count=default_question_count,
+    )
+    return (
+        exam_mode == default_mode
+        and int(question_count) == default_question_count
+        and not _normalize_exam_user_prompt(user_prompt)
+        and not _normalized_sample_file_ids(sample_file_ids)
+        and paper_layout_mode == default_layout
+    )
+
+
+def _prepared_snapshot_matches_default_auto_prewarm(
+    paper: ExamPaper,
+    *,
+    exam_mode: str,
+    question_count: int,
+    paper_layout_mode: str | None,
+) -> bool:
+    snapshot = _json_dict(paper.config_snapshot_json)
+    raw_mode = str(snapshot.get("exam_mode") or "")
+    raw_count = snapshot.get("num_questions")
+    try:
+        snapshot_question_count = int(raw_count or 0)
+    except (TypeError, ValueError):
+        snapshot_question_count = 0
+    raw_sample_file_ids = snapshot.get("sample_file_ids")
+    sample_file_ids = raw_sample_file_ids if isinstance(raw_sample_file_ids, list) else []
+    raw_layout = snapshot.get("paper_layout_mode")
+    snapshot_layout = _normalize_paper_layout_mode(
+        raw_layout if isinstance(raw_layout, str) else None,
+        exam_mode=exam_mode,
+        question_count=question_count,
+    )
+    return (
+        raw_mode == exam_mode
+        and snapshot_question_count == int(question_count)
+        and not _normalize_exam_user_prompt(str(snapshot.get("user_prompt") or ""))
+        and not _normalized_sample_file_ids([str(item) for item in sample_file_ids])
+        and snapshot_layout == paper_layout_mode
+    )
+
+
+def _find_default_auto_prewarm_candidate(
+    session: Session,
+    *,
+    course_id: str,
+    user_id: str,
+    exam_mode: str,
+    question_count: int,
+    user_prompt: str | None,
+    sample_file_ids: list[str] | None,
+    paper_layout_mode: str | None,
+) -> ExamPaper | None:
+    if not _is_default_auto_prewarm_request(
+        exam_mode=exam_mode,
+        question_count=question_count,
+        user_prompt=user_prompt,
+        sample_file_ids=sample_file_ids,
+        paper_layout_mode=paper_layout_mode,
+    ):
+        return None
+
+    candidates = [
+        paper
+        for paper in exams_repo.list_hidden_prepared_exam_candidates_by_shape(
+            session,
+            course_id=course_id,
+            user_id=user_id,
+            exam_mode=exam_mode,
+            question_count=question_count,
+        )
+        if _prepared_snapshot_matches_default_auto_prewarm(
+            paper,
+            exam_mode=exam_mode,
+            question_count=question_count,
+            paper_layout_mode=paper_layout_mode,
+        )
+    ]
+    if not candidates:
+        return None
+
+    for status in ("ready", "generating"):
+        match = next((paper for paper in candidates if paper.status == status and _is_active_prepared_exam_candidate(paper)), None)
+        if match is not None:
+            return match
+
+    failed = next((paper for paper in candidates if paper.status == "failed"), None)
+    if failed is not None:
+        return failed
+
+    stale = next((paper for paper in candidates if not _is_active_prepared_exam_candidate(paper)), None)
+    return stale or candidates[0]
+
+
+def _claim_default_auto_prewarm_candidate(
+    session: Session,
+    *,
+    course_id: str,
+    user_id: str,
+    exam_mode: str,
+    question_count: int,
+    user_prompt: str | None,
+    sample_file_ids: list[str] | None,
+    paper_layout_mode: str | None,
+) -> ExamPaper | None:
+    candidate = _find_default_auto_prewarm_candidate(
+        session,
+        course_id=course_id,
+        user_id=user_id,
+        exam_mode=exam_mode,
+        question_count=question_count,
+        user_prompt=user_prompt,
+        sample_file_ids=sample_file_ids,
+        paper_layout_mode=paper_layout_mode,
+    )
+    if candidate is None or not _is_active_prepared_exam_candidate(candidate):
+        return None
+    return exams_repo.claim_prepared_exam_paper_by_id(session, paper_id=int(candidate.id or 0))
 
 
 def _is_hidden_exam_paper(paper: ExamPaper | None) -> bool:
@@ -860,6 +1008,41 @@ def _build_final_paper_preview(
     )
 
 
+def _exam_generation_progress_for_response(
+    paper: ExamPaper,
+    *,
+    context: dict[str, object] | None = None,
+    preview: PaperPreview | None = None,
+) -> ExamGenerationProgress:
+    context = context if context is not None else _json_dict(getattr(paper, "selection_context_json", None))
+    total = max(0, int(getattr(paper, "total_items", 0) or 0))
+    if total <= 0 and preview is not None:
+        total = max(0, len(preview.rows or []) + int(preview.overflow_count or 0))
+
+    generated_questions = context.get("generated_questions")
+    failed_questions = context.get("failed_questions")
+    generated_count = len(generated_questions) if isinstance(generated_questions, list) else 0
+    failed_count = len(failed_questions) if isinstance(failed_questions, list) else 0
+
+    if not generated_count and isinstance(context.get("generated_question_count"), int):
+        generated_count = max(0, int(context["generated_question_count"]))
+    if not failed_count and isinstance(context.get("failed_question_count"), int):
+        failed_count = max(0, int(context["failed_question_count"]))
+
+    status = str(getattr(paper, "status", "") or "")
+    if status in {"ready", "submitted", "grading", "graded"}:
+        generated_count = max(generated_count, total)
+        failed_count = 0
+
+    completed_count = min(total, generated_count + failed_count) if total else generated_count + failed_count
+    return ExamGenerationProgress(
+        completed_items=completed_count,
+        generated_items=max(0, min(total, generated_count) if total else generated_count),
+        failed_items=max(0, min(total, failed_count) if total else failed_count),
+        total_items=total,
+    )
+
+
 def _paper_generation_event_payload(
     paper: ExamPaper,
     *,
@@ -877,6 +1060,11 @@ def _paper_generation_event_payload(
         "selection_context": context,
         "error_message": error_message if error_message is not None else context.get("error_message"),
         "updated_at": paper.updated_at,
+        "generation_progress": _exam_generation_progress_for_response(
+            paper,
+            context=context,
+            preview=effective_preview,
+        ).model_dump(mode="json"),
     }
     generated_questions = context.get("generated_questions")
     if isinstance(generated_questions, list):
@@ -1398,6 +1586,44 @@ def _set_exam_generation_status(
     session.commit()
     session.refresh(paper)
     return paper
+
+
+def _fail_stale_visible_exam_generations(
+    session: Session,
+    *,
+    course_id: str,
+    user_id: str,
+) -> int:
+    stale_before = utcnow() - EXAM_GENERATION_STALE_AFTER
+    stale_papers = exams_repo.list_stale_visible_generating_exam_papers(
+        session,
+        course_id=course_id,
+        user_id=user_id,
+        stale_before=stale_before,
+    )
+    failed_count = 0
+    for paper in stale_papers:
+        paper_id = int(paper.id or 0)
+        if paper_id <= 0:
+            continue
+        failed_paper = _set_exam_generation_status(
+            session,
+            paper,
+            status="failed",
+            error_message=EXAM_GENERATION_STALE_MESSAGE,
+        )
+        _publish_exam_event(
+            course_id,
+            paper_id,
+            "done",
+            _paper_generation_event_payload(
+                failed_paper,
+                stage="failed",
+                error_message=EXAM_GENERATION_STALE_MESSAGE,
+            ),
+        )
+        failed_count += 1
+    return failed_count
 
 
 def _require_generated_questions_by_order(
@@ -3080,23 +3306,21 @@ async def generate_exam(
         user_id=user.user_id,
         config_hash=config_hash,
     )
-    served_from_prepared = paper is not None
-    if paper is not None:
-        paper_id = int(paper.id or 0)
-        background_tasks.add_task(
-            _spawn_exam_prewarm_after_response,
-            request,
+    if paper is None:
+        paper = _claim_default_auto_prewarm_candidate(
+            session,
             course_id=normalized,
             user_id=user.user_id,
             exam_mode=mode,
-            unit_ids=unit_ids,
             question_count=question_count,
             user_prompt=body.user_prompt,
-            sample_file_ids=body.sample_file_ids or [],
-            config_snapshot=config_snapshot,
-            config_hash=config_hash,
+            sample_file_ids=body.sample_file_ids,
             paper_layout_mode=paper_layout_mode,
         )
+    served_from_prepared = paper is not None
+    if paper is not None:
+        paper_id = int(paper.id or 0)
+
         _capture_exam_event(
             "exam_generation_requested",
             course_id=normalized,
@@ -3166,7 +3390,7 @@ async def generate_exam(
         config_snapshot=config_snapshot,
         config_hash=config_hash,
         paper_layout_mode=paper_layout_mode,
-        schedule_replacement=not served_from_prepared,
+        schedule_replacement=False,
     )
     _capture_exam_event(
         "exam_generation_requested",
@@ -3213,6 +3437,20 @@ def _prewarm_status_from_candidate(paper: ExamPaper | None) -> str:
     if paper.status == "failed":
         return "failed"
     return "missing"
+
+
+def _is_retryable_hidden_prewarm_failure(paper: ExamPaper | None) -> bool:
+    if paper is None:
+        return False
+    if paper.status != "failed":
+        return False
+    if str(getattr(paper, "visibility", "visible") or "visible") != "hidden":
+        return False
+    if str(getattr(paper, "generation_origin", "") or "") != "prewarm":
+        return False
+    context = _json_dict(getattr(paper, "selection_context_json", None))
+    error_message = str(context.get("error_message") or "").lower()
+    return "cancelled" in error_message or "canceled" in error_message or "取消" in error_message
 
 
 @router.get(
@@ -3272,10 +3510,8 @@ async def exam_prewarm_status(
         user_id=user.user_id,
         config_hash=config_hash,
     )
-    status = _prewarm_status_from_candidate(candidate)
-    background_requested = False
-    if status in {"missing", "failed", "stale"}:
-        candidate, reserved = _reserve_exam_prewarm_paper(
+    if candidate is None:
+        candidate = _find_default_auto_prewarm_candidate(
             session,
             course_id=normalized,
             user_id=user.user_id,
@@ -3283,20 +3519,16 @@ async def exam_prewarm_status(
             question_count=question_count,
             user_prompt=user_prompt,
             sample_file_ids=sample_file_ids or [],
-            unit_ids=unit_ids,
-            config_snapshot=config_snapshot,
-            config_hash=config_hash,
             paper_layout_mode=resolved_paper_layout_mode,
         )
-        status = _prewarm_status_from_candidate(candidate)
-        background_requested = reserved
-    if background_requested and candidate is not None and candidate.id is not None:
-        background_tasks.add_task(
-            _spawn_exam_generation_after_response,
-            request,
+    status = _prewarm_status_from_candidate(candidate)
+    background_requested = False
+    registry = getattr(request.app.state, "background_task_registry", None)
+    if status == "failed" and registry is not None and _is_retryable_hidden_prewarm_failure(candidate):
+        _schedule_exam_prewarm_task(
+            registry,
             course_id=normalized,
             user_id=user.user_id,
-            paper_id=int(candidate.id),
             exam_mode=mode,
             unit_ids=unit_ids,
             question_count=question_count,
@@ -3305,12 +3537,13 @@ async def exam_prewarm_status(
             config_snapshot=config_snapshot,
             config_hash=config_hash,
             paper_layout_mode=resolved_paper_layout_mode,
-            schedule_replacement=False,
         )
+        status = "preparing"
+        background_requested = True
 
     return ok_response(
         ExamPrewarmStatusResponse(
-            status="preparing" if background_requested and status != "ready" else status,
+            status=status,
             exam_mode=mode,
             num_questions=question_count,
             prepared_at=candidate.prepared_at if candidate is not None else None,
@@ -3341,39 +3574,12 @@ async def exam_history(
 ) -> ApiResponse[PaginatedData[ExamHistoryItem]]:
     normalized = normalize_course_id(course_id)
     _ensure_course(session, normalized, user.user_id)
-    default_units = _list_exam_eligible_units(session, course_id=normalized)
-    default_unit_ids = [int(unit.id or 0) for unit in default_units if unit.id is not None]
-    if default_unit_ids:
-        default_config_snapshot = _build_exam_config_snapshot(
-            course_id=normalized,
-            user_id=user.user_id,
-            exam_mode="web_practice",
-            question_count=DEFAULT_AUTO_PREWARM_QUESTION_COUNT,
-            user_prompt=None,
-            sample_file_ids=[],
-            knowledge_unit_ids=default_unit_ids,
-            mastery_fingerprint=_exam_mastery_fingerprint(session, course_id=normalized, user_id=user.user_id),
-        )
-        default_config_hash = _exam_config_hash(default_config_snapshot)
-        if not exams_repo.has_active_prepared_exam(
-            session,
-            course_id=normalized,
-            user_id=user.user_id,
-            config_hash=default_config_hash,
-        ):
-            background_tasks.add_task(
-                _spawn_exam_prewarm_after_response,
-                request,
-                course_id=normalized,
-                user_id=user.user_id,
-                exam_mode="web_practice",
-                unit_ids=default_unit_ids,
-                question_count=DEFAULT_AUTO_PREWARM_QUESTION_COUNT,
-                user_prompt=None,
-                sample_file_ids=[],
-                config_snapshot=default_config_snapshot,
-                config_hash=default_config_hash,
-            )
+    _fail_stale_visible_exam_generations(
+        session,
+        course_id=normalized,
+        user_id=user.user_id,
+    )
+
     rows, total = exams_repo.list_exam_papers(
         session,
         course_id=normalized,
@@ -3399,8 +3605,10 @@ async def exam_history(
                     score_obtained=paper.score_obtained,
                     total_score=paper.total_score,
                     created_at=paper.created_at,
+                    updated_at=paper.updated_at,
                     submitted_at=paper.submitted_at,
                     graded_at=paper.graded_at,
+                    generation_progress=_exam_generation_progress_for_response(paper),
                     paper_preview=_paper_preview_for_response(
                         paper,
                         items_by_paper_id.get(int(paper.id or 0), []),

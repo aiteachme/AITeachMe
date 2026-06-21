@@ -7,11 +7,20 @@ import type {
 
 type QueryEnvelope = Record<string, unknown>;
 
+type ExamGenerationProgressPayload = {
+  completed_items?: number | null;
+  generated_items?: number | null;
+  failed_items?: number | null;
+  total_items?: number | null;
+};
+
 export interface ExamGenerationSnapshotPayload {
   exam_paper_id?: number;
   status?: string;
   num_questions?: number;
   paper_preview?: PaperPreview;
+  updated_at?: string;
+  generation_progress?: ExamGenerationProgressPayload | null;
   selection_context?: Record<string, unknown>;
   generated_question?: Record<string, unknown>;
   generated_questions?: Record<string, unknown>[];
@@ -205,6 +214,10 @@ export function patchExamHistoryQueryData(
       ...item,
       status: nextStatus as string,
       total_items: payload.num_questions ?? item.total_items,
+      updated_at: payload.updated_at ?? (item as ExamHistoryItem & { updated_at?: string | null }).updated_at,
+      generation_progress:
+        payload.generation_progress ??
+        (item as ExamHistoryItem & { generation_progress?: ExamGenerationProgressPayload | null }).generation_progress,
       paper_preview: payload.paper_preview ?? item.paper_preview,
     };
   });

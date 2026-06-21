@@ -4,10 +4,22 @@ import { AlertTriangle, Loader2, MoreVertical, Sparkles, Trash2 } from "lucide-r
 import type { ExamHistoryItem, PaperPreview, PaperPreviewRow } from "../../api/generated/model";
 import { Button } from "../ui/Button";
 import type { ExamResultDisplayMode } from "../../lib/examResultDisplayPreference";
-import { buildExamTitle, parseBackendDateTime } from "./examDisplay";
+import { buildExamTitle, formatDateTime, parseBackendDateTime } from "./examDisplay";
 
 type PreviewShape = PaperPreviewRow["shape"];
 type PreviewResultStatus = "ungraded" | "correct" | "incorrect";
+
+interface ExamGenerationProgressView {
+  completed_items?: number | null;
+  generated_items?: number | null;
+  failed_items?: number | null;
+  total_items?: number | null;
+}
+
+type ExamHistoryItemWithGeneration = ExamHistoryItem & {
+  updated_at?: string | null;
+  generation_progress?: ExamGenerationProgressView | null;
+};
 
 const PREVIEW_ROW_LIMIT = 4;
 const GRADING_PROGRESS_REFRESH_MS = 1000;
@@ -50,6 +62,32 @@ function getExamScorePercent(item: ExamHistoryItem): number | null {
     return null;
   }
   return Math.max(0, Math.min(100, Math.round((score / total) * 100)));
+}
+
+function toSafeCount(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : 0;
+}
+
+function getExamGenerationProgress(item: ExamHistoryItemWithGeneration, preview: PaperPreview) {
+  const raw = item.generation_progress;
+  const previewRows = preview.rows ?? [];
+  const totalFromPreview = previewRows.length + Math.max(0, Number(preview.overflow_count || 0));
+  const total = Math.max(
+    toSafeCount(raw?.total_items),
+    toSafeCount(item.total_items),
+    totalFromPreview,
+  );
+  const fallbackGenerated = previewRows.filter((row) => row.generation_status === "generated").length;
+  const fallbackFailed = previewRows.filter((row) => row.generation_status === "failed").length;
+  const generated = Math.min(total || Number.MAX_SAFE_INTEGER, toSafeCount(raw?.generated_items) || fallbackGenerated);
+  const failed = Math.min(total || Number.MAX_SAFE_INTEGER, toSafeCount(raw?.failed_items) || fallbackFailed);
+  const completed = Math.min(
+    total || Number.MAX_SAFE_INTEGER,
+    Math.max(toSafeCount(raw?.completed_items), generated + failed),
+  );
+  const percent = total > 0 ? Math.max(6, Math.min(100, Math.round((completed / total) * 100))) : 12;
+  return { completed, failed, generated, percent, total };
 }
 
 function parseTimestampMs(value?: string | null): number | null {
@@ -621,7 +659,7 @@ export function ExamPaperCard({
   onOpen,
   onDelete,
 }: {
-  item: ExamHistoryItem;
+  item: ExamHistoryItemWithGeneration;
   resultDisplayMode: ExamResultDisplayMode;
   isDeleting: boolean;
   onOpen: () => void;
@@ -635,6 +673,7 @@ export function ExamPaperCard({
   const showDetailedResult = isGraded && resultDisplayMode === "score";
   const showPassMark = isGraded && resultDisplayMode === "completed";
   const scorePercent = getExamScorePercent(item);
+  const generationProgress = getExamGenerationProgress(item, preview);
 
   const handleCardKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "Enter" && event.key !== " ") return;
@@ -668,6 +707,11 @@ export function ExamPaperCard({
           <h3 className="mx-auto line-clamp-1 max-w-[220px] text-base font-semibold leading-snug text-slate-950 dark:text-slate-100">
             {buildExamTitle(item)}
           </h3>
+          {isGraded && item.submitted_at ? (
+            <p className="mt-1 truncate text-[10px] font-semibold leading-4 text-slate-400 dark:text-slate-500">
+              提交 {formatDateTime(item.submitted_at)}
+            </p>
+          ) : null}
           <div className="mx-auto mt-2 h-px w-16 bg-slate-200 dark:bg-slate-700" />
         </div>
 
@@ -686,10 +730,21 @@ export function ExamPaperCard({
                内容生成失败
             </span>
           ) : isGenerating ? (
-            <span className="inline-flex items-center justify-center gap-1.5" aria-label="题目生成中">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              生成中
-            </span>
+            <div
+              className="mx-auto w-full max-w-[11rem] space-y-1"
+              aria-label={`题目生成中 ${generationProgress.completed}/${generationProgress.total || item.total_items || 0}`}
+            >
+              <span className="inline-flex items-center justify-center gap-1.5">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                生成中{generationProgress.total ? ` ${generationProgress.completed}/${generationProgress.total}` : ""}
+              </span>
+              <div className="h-1 overflow-hidden rounded-full bg-slate-200/80 dark:bg-slate-800">
+                <div
+                  className="h-full rounded-full bg-slate-500 transition-all duration-500 dark:bg-slate-300"
+                  style={{ width: `${generationProgress.percent}%` }}
+                />
+              </div>
+            </div>
           ) : isGrading ? (
             <span className="inline-flex items-center justify-center gap-1.5 text-indigo-600 dark:text-indigo-400 font-bold" aria-label="智能阅卷中">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />

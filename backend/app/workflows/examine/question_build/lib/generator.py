@@ -49,6 +49,9 @@ _UNIT_REF_WEIGHT_RE = re.compile(
     r"\b(?:coverage_weight|weight)\s*[:=]\s*([0-9]+(?:\.[0-9]+)?)\b",
     re.IGNORECASE,
 )
+_QUESTION_GENERATION_TOTAL_TIMEOUT_S = 120.0
+
+
 def _escape_text_underscore_placeholders(value: str) -> str:
     """Keep blank placeholders valid inside KaTeX/LaTeX text blocks."""
 
@@ -1244,11 +1247,14 @@ async def generate_exam_questions_for_units(
         spec: ExamQuestionGenerationSpec,
     ) -> tuple[ExamQuestionGenerationSpec, ExamQuestionDraft | Exception]:
         try:
-            question = await _generate_one_exam_question(
-                unit_by_id=unit_by_id,
-                spec=spec,
-                course_profile=course_profile,
-                system_constraints=system_constraints,
+            question = await asyncio.wait_for(
+                _generate_one_exam_question(
+                    unit_by_id=unit_by_id,
+                    spec=spec,
+                    course_profile=course_profile,
+                    system_constraints=system_constraints,
+                ),
+                timeout=_QUESTION_GENERATION_TOTAL_TIMEOUT_S,
             )
             return spec, question
         except asyncio.CancelledError as exc:
@@ -1259,6 +1265,13 @@ async def generate_exam_questions_for_units(
             )
             cancelled_error.__cause__ = exc
             return spec, cancelled_error
+        except TimeoutError as exc:
+            timeout_error = RuntimeError(
+                "LLM question generation timed out after "
+                f"{_QUESTION_GENERATION_TOTAL_TIMEOUT_S:g}s for item_order={spec.item_order}."
+            )
+            timeout_error.__cause__ = exc
+            return spec, timeout_error
         except Exception as exc:
             return spec, exc
 

@@ -106,6 +106,10 @@ export function applyExamModeToCreateConfig(
   });
 }
 
+export function getDefaultCreateExamConfigForMode(examMode: CreateExamConfig["examMode"]): CreateExamConfig {
+  return applyExamModeToCreateConfig(DEFAULT_CREATE_EXAM_CONFIG, examMode);
+}
+
 export function toExamGenerateRequest(config: CreateExamConfig) {
   const normalized = normalizeCreateExamConfig(config);
 

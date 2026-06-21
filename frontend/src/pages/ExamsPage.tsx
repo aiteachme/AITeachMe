@@ -57,6 +57,7 @@ import {
   applyExamModeToCreateConfig,
   buildExamTitle,
   formatDifficultyLabel,
+  getDefaultCreateExamConfigForMode,
   loadCreateExamConfig,
   toExamGenerateRequest,
 } from "../components/exams";
@@ -199,7 +200,7 @@ const EXAM_ALERT_CLASS = "rounded-lg border border-amber-200 bg-amber-50 px-5 py
 const TRAINING_SECTION_CLASS = "rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950/75";
 
 type TrainingModeCardVariant = "practice" | "paper" | "mastery" | "disabled";
-type TrainingModeStatusTone = "ready" | "pending" | "idle";
+type TrainingModeStatusTone = "ready" | "pending" | "idle" | "failed";
 
 interface MasteryDrillConfig {
   numQuestions: number;
@@ -261,6 +262,7 @@ const TRAINING_MODE_STATUS_BADGE_CLASS: Record<TrainingModeStatusTone, string> =
   ready: "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300",
   pending: "bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300",
   idle: "bg-slate-100 text-slate-500 dark:bg-slate-900 dark:text-slate-400",
+  failed: "bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300",
 };
 
 function TrainingModeCard({
@@ -882,11 +884,14 @@ function getGenerateModeStatusBadge(
   status: ExamPrewarmStatusValue | null | undefined,
   isGenerating: boolean,
 ): { label: string; tone: TrainingModeStatusTone } {
-  if (isGenerating || status === "preparing" || status === "stale") {
+  if (isGenerating || status === "preparing") {
     return { label: "生成中", tone: "pending" };
   }
   if (status === "ready") {
     return { label: "可直接开始", tone: "ready" };
+  }
+  if (status === "failed") {
+    return { label: "生成失败", tone: "failed" };
   }
   return { label: "开始后生成", tone: "idle" };
 }
@@ -915,6 +920,7 @@ export function ExamsPage() {
   const [createConfigInitialMode, setCreateConfigInitialMode] = useState<CreateExamConfig["examMode"] | null>(null);
   const [createConfigRevision, setCreateConfigRevision] = useState(0);
   const [masteryConfigRevision, setMasteryConfigRevision] = useState(0);
+  const [isMasteryFallbackGeneratePending, setIsMasteryFallbackGeneratePending] = useState(false);
   const [historyEmptyRetryCount, setHistoryEmptyRetryCount] = useState(0);
   const [stableHistoryItems, setStableHistoryItems] = useState<ExamHistoryItem[]>([]);
   const [expandedGroups, setExpandedGroups] = useState({
@@ -927,9 +933,9 @@ export function ExamsPage() {
     () => (courseId ? loadCreateExamConfig(courseId) : null),
     [createConfigRevision, courseId],
   );
-  const practiceCreateConfig = useMemo(
-    () => (courseId ? applyExamModeToCreateConfig(currentCreateConfig ?? loadCreateExamConfig(courseId), "web_practice") : null),
-    [courseId, currentCreateConfig],
+  const defaultPracticeCreateConfig = useMemo(
+    () => getDefaultCreateExamConfigForMode("web_practice"),
+    [],
   );
   const paperCreateConfig = useMemo(
     () => (courseId ? applyExamModeToCreateConfig(currentCreateConfig ?? loadCreateExamConfig(courseId), "paper_exam") : null),
@@ -943,19 +949,23 @@ export function ExamsPage() {
     queryKey: [
       "exam-prewarm-status",
       courseId,
-      practiceCreateConfig?.examMode,
-      practiceCreateConfig?.numQuestions,
-      practiceCreateConfig?.paperLayoutMode,
-      practiceCreateConfig?.userPrompt.trim(),
+      "default-web-practice",
+      defaultPracticeCreateConfig.examMode,
+      defaultPracticeCreateConfig.numQuestions,
+      defaultPracticeCreateConfig.paperLayoutMode,
+      defaultPracticeCreateConfig.userPrompt.trim(),
     ],
-    enabled: Boolean(courseId && practiceCreateConfig),
+    enabled: Boolean(courseId),
     queryFn: async ({ signal }) => {
-      if (!courseId || !practiceCreateConfig) return null;
-      const response = await getExamPrewarmStatus(courseId, practiceCreateConfig, signal);
+      if (!courseId) return null;
+      const response = await getExamPrewarmStatus(courseId, defaultPracticeCreateConfig, signal);
       return unwrapOrvalResponse<ExamPrewarmStatusResponse>(response);
     },
     staleTime: 30_000,
-    refetchInterval: (query) => (query.state.data?.status === "preparing" ? 8000 : false),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === "missing" || status === "preparing" ? 5000 : false;
+    },
   });
   const paperPrewarmStatusQuery = useQuery({
     queryKey: [
@@ -1135,6 +1145,18 @@ export function ExamsPage() {
         .filter((id): id is number => Number.isFinite(id)),
     [displayHistoryItems],
   );
+  const activeGeneratingPracticeExam = useMemo(
+    () =>
+      displayHistoryItems.find((item) => item.status === "generating" && item.exam_mode === "web_practice") ?? null,
+    [displayHistoryItems],
+  );
+  const activeGeneratingPaperExam = useMemo(
+    () =>
+      displayHistoryItems.find((item) => item.status === "generating" && item.exam_mode === "paper_exam") ?? null,
+    [displayHistoryItems],
+  );
+  const hasGeneratingPracticeExam = Boolean(activeGeneratingPracticeExam);
+  const hasGeneratingPaperExam = Boolean(activeGeneratingPaperExam);
   const generatingPaperIdsKey = generatingPaperIds.join(",");
 
   useEffect(() => {
@@ -1234,13 +1256,12 @@ export function ExamsPage() {
   const generateExam = useGenerateExamApiV1CoursesCourseIdExamsGeneratePost({
     mutation: {
       onSuccess: async (response, variables) => {
+        setIsMasteryFallbackGeneratePending(false);
         const created = unwrapOrvalResponse(response);
         if (!created?.exam_paper_id) return;
         const isMasteryDrill = variables.data.exam_mode === MASTERY_DRILL_EXAM_MODE;
         await queryClient.invalidateQueries({ queryKey: historyQueryKey });
-        if (isMasteryDrill) {
-          await queryClient.invalidateQueries({ queryKey: ["exam-question-templates", courseId ?? ""] });
-        }
+        await queryClient.invalidateQueries({ queryKey: ["exam-question-templates", courseId ?? ""] });
         await queryClient.invalidateQueries({ queryKey: ["exam-prewarm-status", courseId ?? ""] });
         navigate(buildCourseSubPath(courseId ?? "", "exams", created.exam_paper_id));
         const openedReadyPrepared = created.served_from_prepared && created.status === "ready";
@@ -1270,6 +1291,7 @@ export function ExamsPage() {
         });
       },
       onError: (error) => {
+        setIsMasteryFallbackGeneratePending(false);
         toast({
           title: "创建失败",
           description: getApiErrorMessage(error, "请稍后重试"),
@@ -1286,7 +1308,32 @@ export function ExamsPage() {
 
   const handleStartExamWithMode = (examMode: CreateExamConfig["examMode"]) => {
     if (!courseId || generateExam.isPending) return;
-    const config = applyExamModeToCreateConfig(currentCreateConfig ?? loadCreateExamConfig(courseId), examMode);
+    if (examMode === "web_practice" && (hasGeneratingPracticeExam || isDefaultPracticePrewarmPreparing)) {
+      toast({
+        title: "测验正在生成中",
+        description: "请等待当前测验生成完成，避免重复生成。",
+        variant: "info",
+      });
+      if (activeGeneratingPracticeExam?.id) {
+        navigate(buildCourseSubPath(courseId, "exams", activeGeneratingPracticeExam.id));
+      }
+      return;
+    }
+    if (examMode === "paper_exam" && hasGeneratingPaperExam) {
+      toast({
+        title: "考卷正在生成中",
+        description: "请等待当前考卷生成完成，避免重复生成。",
+        variant: "info",
+      });
+      if (activeGeneratingPaperExam?.id) {
+        navigate(buildCourseSubPath(courseId, "exams", activeGeneratingPaperExam.id));
+      }
+      return;
+    }
+    const config =
+      examMode === "web_practice"
+        ? defaultPracticeCreateConfig
+        : applyExamModeToCreateConfig(currentCreateConfig ?? loadCreateExamConfig(courseId), examMode);
     generateExam.mutate({
       courseId,
       data: toExamGenerateRequest(config),
@@ -1299,30 +1346,48 @@ export function ExamsPage() {
       navigate(buildCourseSubPath(courseId, "exams", "mastery-drill"));
       return;
     }
+    if (hasGeneratingPracticeExam || isDefaultPracticePrewarmPreparing) {
+      toast({
+        title: "测验正在生成中",
+        description: "题目生成后会沉淀到题库，再开始闯关。",
+        variant: "info",
+      });
+      if (activeGeneratingPracticeExam?.id) {
+        navigate(buildCourseSubPath(courseId, "exams", activeGeneratingPracticeExam.id));
+      }
+      return;
+    }
+    setIsMasteryFallbackGeneratePending(true);
     generateExam.mutate({
       courseId,
-      data: {
-        exam_mode: MASTERY_DRILL_EXAM_MODE,
-        num_questions: masteryDrillConfig.numQuestions,
-        user_prompt: "题库不足时自动准备闯关题目；题目应适合逐题作答、即时判定，并覆盖当前课程的核心知识点。",
-      },
+      data: toExamGenerateRequest(defaultPracticeCreateConfig),
     });
   };
 
   const generatingMode = generateExam.variables?.data.exam_mode;
+  const isMasteryFallbackGenerating = isMasteryFallbackGeneratePending && generateExam.isPending;
   const practiceLabel = PAPER_EXAM_MODES.find((item) => item.value === "web_practice")?.label ?? "测验";
   const paperLabel = PAPER_EXAM_MODES.find((item) => item.value === "paper_exam")?.label ?? "考卷";
-  const practiceQuestionCount = practiceCreateConfig?.numQuestions ?? 10;
+  const practiceQuestionCount = defaultPracticeCreateConfig.numQuestions;
   const paperQuestionCount = paperCreateConfig?.numQuestions ?? 24;
+  const isDefaultPracticePrewarmPreparing = practicePrewarmStatusQuery.data?.status === "preparing";
+  const isPracticeExamGenerating =
+    hasGeneratingPracticeExam ||
+    isDefaultPracticePrewarmPreparing ||
+    (generateExam.isPending && generatingMode === "web_practice");
+  const isPaperExamGenerating =
+    hasGeneratingPaperExam || (generateExam.isPending && generatingMode === "paper_exam");
   const practiceStatusBadge = getGenerateModeStatusBadge(
     practicePrewarmStatusQuery.data?.status,
-    generateExam.isPending && generatingMode === "web_practice",
+    isPracticeExamGenerating,
   );
   const paperStatusBadge = getGenerateModeStatusBadge(
     paperPrewarmStatusQuery.data?.status,
-    generateExam.isPending && generatingMode === "paper_exam",
+    isPaperExamGenerating,
   );
-  const masteryStatusBadge = getMasteryDrillStatusBadge(isMasteryDrillChecking, isMasteryDrillReady);
+  const masteryStatusBadge = isMasteryFallbackGenerating
+    ? { label: "\u751f\u6210\u4e2d", tone: "pending" as const }
+    : getMasteryDrillStatusBadge(isMasteryDrillChecking, isMasteryDrillReady);
   const courseTitle = courseName ?? "当前课程";
 
   if (!courseId) {
@@ -1393,9 +1458,9 @@ export function ExamsPage() {
                       size="sm"
                       className="rounded-lg bg-black px-5 dark:bg-white dark:text-slate-950"
                       onClick={() => handleStartExamWithMode("web_practice")}
-                      disabled={generateExam.isPending}
+                      disabled={generateExam.isPending || hasGeneratingPracticeExam || isDefaultPracticePrewarmPreparing}
                     >
-                      {generateExam.isPending && generatingMode === "web_practice" ? (
+                      {isPracticeExamGenerating ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       ) : (
                         <Plus className="h-3.5 w-3.5" />
@@ -1424,9 +1489,9 @@ export function ExamsPage() {
                       size="sm"
                       className="rounded-lg bg-black px-5 dark:bg-white dark:text-slate-950"
                       onClick={() => handleStartExamWithMode("paper_exam")}
-                      disabled={generateExam.isPending}
+                      disabled={generateExam.isPending || hasGeneratingPaperExam}
                     >
-                      {generateExam.isPending && generatingMode === "paper_exam" ? (
+                      {isPaperExamGenerating ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       ) : (
                         <Plus className="h-3.5 w-3.5" />
@@ -1474,14 +1539,14 @@ export function ExamsPage() {
                       onClick={handleStartMasteryDrill}
                       disabled={!canStartMasteryDrill || generateExam.isPending}
                     >
-                      {isMasteryDrillChecking || (generateExam.isPending && generatingMode === MASTERY_DRILL_EXAM_MODE) ? (
+                      {isMasteryDrillChecking || isMasteryFallbackGenerating || (generateExam.isPending && generatingMode === MASTERY_DRILL_EXAM_MODE) ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       ) : canStartMasteryDrill ? (
                         <Plus className="h-3.5 w-3.5" />
                       ) : (
                         <Lock className="h-3.5 w-3.5" />
                       )}
-                      {generateExam.isPending && generatingMode === MASTERY_DRILL_EXAM_MODE ? "准备中" : masteryDrillButtonLabel}
+                      {isMasteryFallbackGenerating || (generateExam.isPending && generatingMode === MASTERY_DRILL_EXAM_MODE) ? "\u5907\u9898\u4e2d" : masteryDrillButtonLabel}
                     </Button>
                     <Button
                       size="sm"

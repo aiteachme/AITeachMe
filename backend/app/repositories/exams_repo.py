@@ -410,6 +410,29 @@ def list_exam_papers(
     return rows, total
 
 
+def list_stale_visible_generating_exam_papers(
+    session: Session,
+    *,
+    course_id: str,
+    user_id: str,
+    stale_before: datetime,
+    limit: int = 20,
+) -> list[ExamPaper]:
+    rows = session.exec(
+        select(ExamPaper)
+        .where(
+            ExamPaper.course_id == course_id,
+            ExamPaper.user_id == user_id,
+            ExamPaper.visibility != "hidden",
+            ExamPaper.status == "generating",
+            ExamPaper.updated_at <= stale_before,
+        )
+        .order_by(ExamPaper.updated_at.asc(), ExamPaper.id.asc())
+        .limit(max(1, limit))
+    ).all()
+    return list(rows)
+
+
 def claim_prepared_exam_paper(
     session: Session,
     *,
@@ -436,6 +459,57 @@ def claim_prepared_exam_paper(
     paper = session.exec(stmt).first()
     if paper is None:
         return None
+    paper.visibility = "visible"
+    paper.generation_origin = "prewarm"
+    paper.claimed_at = now
+    paper.expires_at = None
+    paper.updated_at = now
+    session.add(paper)
+    session.commit()
+    session.refresh(paper)
+    return paper
+
+
+def list_hidden_prepared_exam_candidates_by_shape(
+    session: Session,
+    *,
+    course_id: str,
+    user_id: str,
+    exam_mode: str,
+    question_count: int,
+    limit: int = 20,
+) -> list[ExamPaper]:
+    rows = session.exec(
+        select(ExamPaper)
+        .where(
+            ExamPaper.course_id == course_id,
+            ExamPaper.user_id == user_id,
+            ExamPaper.visibility == "hidden",
+            ExamPaper.generation_origin == "prewarm",
+            ExamPaper.exam_mode == exam_mode,
+            ExamPaper.total_items == int(question_count),
+        )
+        .order_by(ExamPaper.updated_at.desc(), ExamPaper.id.desc())
+        .limit(max(1, limit))
+    ).all()
+    return list(rows)
+
+
+def claim_prepared_exam_paper_by_id(
+    session: Session,
+    *,
+    paper_id: int,
+) -> ExamPaper | None:
+    now = utcnow()
+    paper = session.get(ExamPaper, int(paper_id))
+    if paper is None:
+        return None
+    if paper.visibility != "hidden" or paper.status not in {"ready", "generating"}:
+        return None
+    expires_at = ensure_utc_datetime(paper.expires_at)
+    if expires_at is not None and expires_at <= now:
+        return None
+
     paper.visibility = "visible"
     paper.generation_origin = "prewarm"
     paper.claimed_at = now
