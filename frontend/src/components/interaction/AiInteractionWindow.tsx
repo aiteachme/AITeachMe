@@ -403,6 +403,12 @@ export function AiInteractionWindow({ scope, className, suppressFloatingTrigger 
     const element = target instanceof Element ? target : null;
     return Boolean(element?.closest("[data-app-sidebar='true']"));
   }, []);
+
+  const isInsideAiInteractionPortal = useCallback((target: EventTarget | null) => {
+    const element = target instanceof Element ? target : null;
+    return Boolean(element?.closest("[data-ai-interaction-portal='true']"));
+  }, []);
+
   const shouldKeepSelectionContextOpen = sidebarRequest?.showSelectionContext === true;
 
   useEffect(() => {
@@ -420,7 +426,8 @@ export function AiInteractionWindow({ scope, className, suppressFloatingTrigger 
       if (
         (event.pointerType === "mouse" && event.button !== 0) ||
         isInsidePanel(event.target) ||
-        isInsideAppSidebar(event.target)
+        isInsideAppSidebar(event.target) ||
+        isInsideAiInteractionPortal(event.target)
       ) {
         outsidePointerRef.current = null;
         return;
@@ -433,7 +440,11 @@ export function AiInteractionWindow({ scope, className, suppressFloatingTrigger 
     };
 
     const handleClick = (event: MouseEvent) => {
-      if (isInsidePanel(event.target) || isInsideAppSidebar(event.target)) {
+      if (
+        isInsidePanel(event.target) ||
+        isInsideAppSidebar(event.target) ||
+        isInsideAiInteractionPortal(event.target)
+      ) {
         outsidePointerRef.current = null;
         return;
       }
@@ -467,7 +478,14 @@ export function AiInteractionWindow({ scope, className, suppressFloatingTrigger 
       document.removeEventListener("click", handleClick, true);
       document.removeEventListener("pointercancel", clearPointer, true);
     };
-  }, [closeAiInteraction, displayMode, shouldKeepSelectionContextOpen, isInsideAppSidebar, isInsidePanel]);
+  }, [
+    closeAiInteraction,
+    displayMode,
+    shouldKeepSelectionContextOpen,
+    isInsideAiInteractionPortal,
+    isInsideAppSidebar,
+    isInsidePanel,
+  ]);
 
   return (
     <>

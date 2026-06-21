@@ -25,6 +25,7 @@ import {
   ListCollapse,
   ListTree,
   SlidersHorizontal,
+  Trash2,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { getApiErrorMessage, LONG_RUNNING_API_TIMEOUT_MS, postSseJson } from "../api/client";
@@ -935,46 +936,19 @@ function isScrollSpyTargetAtBottom(target: ScrollSpyScrollTarget): boolean {
     target.scrollTop + target.clientHeight >= target.scrollHeight - 15;
 }
 
-function isScrollSpyTargetScrollable(target: ScrollSpyScrollTarget): boolean {
-  if (isWindowScrollTarget(target)) {
-    const scroller = document.scrollingElement;
-    return Boolean(scroller && scroller.scrollHeight > scroller.clientHeight + 1);
-  }
-  return target.scrollHeight > target.clientHeight + 1;
+function getKnowledgeMaxScrollTop(container: HTMLElement): number {
+  return Math.max(0, container.scrollHeight - container.clientHeight);
 }
 
-function getScrollSpyTargetTop(target: ScrollSpyScrollTarget): number {
-  if (isWindowScrollTarget(target)) {
-    return document.scrollingElement?.scrollTop ?? window.scrollY;
-  }
-  return target.scrollTop;
-}
-
-function getPrimaryKnowledgeScrollTarget(container: HTMLElement): ScrollSpyScrollTarget {
-  const targets = collectScrollSpyScrollTargets(container).filter(isScrollSpyTargetScrollable);
-  return targets.find((target) => getScrollSpyTargetTop(target) > 0) ?? targets[0] ?? container;
-}
-
-function getKnowledgeScrollTop(container: HTMLElement): number {
-  return getScrollSpyTargetTop(getPrimaryKnowledgeScrollTarget(container));
+function getKnowledgeScrollSnapshot(container: HTMLElement): { scrollTop: number; maxScrollTop: number } {
+  return {
+    scrollTop: container.scrollTop,
+    maxScrollTop: getKnowledgeMaxScrollTop(container),
+  };
 }
 
 function setKnowledgeScrollTop(container: HTMLElement, top: number) {
-  const targets = collectScrollSpyScrollTargets(container).filter(isScrollSpyTargetScrollable);
-  const nextTop = Math.max(0, top);
-  for (const target of targets) {
-    if (isWindowScrollTarget(target)) {
-      const scroller = document.scrollingElement;
-      if (!scroller) {
-        continue;
-      }
-      const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
-      window.scrollTo({ top: Math.min(maxScrollTop, nextTop), behavior: "auto" });
-      continue;
-    }
-    const maxScrollTop = Math.max(0, target.scrollHeight - target.clientHeight);
-    target.scrollTop = Math.min(maxScrollTop, nextTop);
-  }
+  container.scrollTop = Math.min(getKnowledgeMaxScrollTop(container), Math.max(0, top));
 }
 
 function getScrollSpyActivationY(container: HTMLElement, targets: ScrollSpyScrollTarget[]): number {
@@ -2360,6 +2334,7 @@ export function KnowledgeDocsPage() {
   const [threadHistoryError, setThreadHistoryError] = useState<string | null>(null);
   const [threadHistoryRefreshKey, setThreadHistoryRefreshKey] = useState(0);
   const [selectionHighlights, setSelectionHighlights] = useState<SelectionHighlight[]>([]);
+  const [activeStandaloneHighlightId, setActiveStandaloneHighlightId] = useState<string | null>(null);
   const [, setThreadDrafts] = useState<Record<string, string>>({});
   const [threadStreaming, setThreadStreaming] = useState<Record<string, boolean>>({});
   const [activeCommentThreadId, setActiveCommentThreadId] = useState<string | null>(null);
@@ -2392,6 +2367,7 @@ export function KnowledgeDocsPage() {
   const [knowledgeCards, setKnowledgeCards] = useState<KnowledgeCard[]>([]);
   const [cardsGenerated, setCardsGenerated] = useState(false);
   const [activeDrawer, setActiveDrawer] = useState<"toc" | "comment" | null>(null);
+  const [isReadingPositionRestoring, setIsReadingPositionRestoring] = useState(false);
   const [isTocScrollbarVisible, setIsTocScrollbarVisible] = useState(false);
   const [tocScrollThumbStyle, setTocScrollThumbStyle] = useState<TocScrollThumbStyle>({ top: 0, height: 0 });
 
@@ -2418,7 +2394,7 @@ export function KnowledgeDocsPage() {
     };
   }, [isGraphDrawerOpen]);
 
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   const contentAreaRef = useRef<HTMLDivElement>(null);
   const floatingRef = useRef<HTMLDivElement>(null);
   const commentPanelRef = useRef<HTMLDivElement>(null);
@@ -2473,6 +2449,8 @@ export function KnowledgeDocsPage() {
   const tocAutoScrollReleaseTimerRef = useRef<number | null>(null);
   const readingPositionSaveTimerRef = useRef<number | null>(null);
   const readingPositionRestoredRef = useRef<string>("");
+  const readingPositionRestorePendingRef = useRef(false);
+  const readingPositionDirtyRef = useRef(false);
   const activeHeadingRef = useRef(activeHeading);
   const lastAutoCommentHighlightHeadingRef = useRef(activeHeading);
   const pendingSelectionJumpRef = useRef<SelectionJumpEventDetail | null>(null);
@@ -2481,9 +2459,26 @@ export function KnowledgeDocsPage() {
   const collapsedDocHeadingCommitTimerRef = useRef<number | null>(null);
   const scrollingToHeadingTargetRef = useRef<string | null>(null);
   const scrollspyIgnoreTimerRef = useRef<number | null>(null);
-  const scrollRestorationTimerRef = useRef<number | null>(null);
   const docCollapseLayoutRefreshNeededRef = useRef(false);
   const pendingHeadingCollapseScrollRef = useRef<{ id: string; top: number } | null>(null);
+
+  const restoreReadingPositionFromStorage = useCallback((container: HTMLDivElement) => {
+    if (!courseId || pendingSelectionJumpRef.current) {
+      return;
+    }
+    const saved = readKnowledgeDocsReadingPosition(courseId);
+    if (!saved || saved.scrollTop <= 0) {
+      return;
+    }
+    setKnowledgeScrollTop(container, saved.scrollTop);
+  }, [courseId]);
+
+  const setScrollContainerRef = useCallback((node: HTMLDivElement | null) => {
+    scrollRef.current = node;
+    if (node) {
+      restoreReadingPositionFromStorage(node);
+    }
+  }, [restoreReadingPositionFromStorage]);
 
   const isCompactToc = viewportWidth < TOC_DRAWER_BREAKPOINT;
   const isCompactComment = viewportWidth < COMMENT_DRAWER_BREAKPOINT;
@@ -2956,9 +2951,6 @@ export function KnowledgeDocsPage() {
       if (scrollspyIgnoreTimerRef.current !== null) {
         window.clearTimeout(scrollspyIgnoreTimerRef.current);
       }
-      if (scrollRestorationTimerRef.current !== null) {
-        window.clearTimeout(scrollRestorationTimerRef.current);
-      }
       for (const controller of streamControllersRef.current.values()) {
         controller.abort();
       }
@@ -3082,30 +3074,86 @@ export function KnowledgeDocsPage() {
   }, [comments]);
 
   useEffect(() => {
+    if (
+      activeStandaloneHighlightId &&
+      !selectionHighlights.some((item) => item.threadId === activeStandaloneHighlightId)
+    ) {
+      setActiveStandaloneHighlightId(null);
+    }
+  }, [activeStandaloneHighlightId, selectionHighlights]);
+
+  useEffect(() => {
     activeHeadingRef.current = activeHeading;
   }, [activeHeading]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     readingPositionRestoredRef.current = "";
+    readingPositionRestorePendingRef.current = false;
+    readingPositionDirtyRef.current = false;
+    const saved = readKnowledgeDocsReadingPosition(courseId);
+    setIsReadingPositionRestoring(Boolean(
+      courseId &&
+      renderedMarkdown.trim() &&
+      !pendingSelectionJumpRef.current &&
+      saved &&
+      (saved.scrollTop > 0 || Boolean(saved.headingId)),
+    ));
   }, [courseId, renderedMarkdown]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!courseId || !renderedMarkdown.trim()) {
+      setIsReadingPositionRestoring(false);
       return;
     }
     const restoreKey = `${courseId}:${renderedMarkdown.length}`;
     if (readingPositionRestoredRef.current === restoreKey || pendingSelectionJumpRef.current) {
+      setIsReadingPositionRestoring(false);
       return;
     }
     readingPositionRestoredRef.current = restoreKey;
     const saved = readKnowledgeDocsReadingPosition(courseId);
     if (!saved) {
+      setIsReadingPositionRestoring(false);
       return;
     }
 
-    const restorePosition = () => {
+    const hasSavedPosition = saved.scrollTop > 0 || Boolean(saved.headingId);
+    readingPositionRestorePendingRef.current = hasSavedPosition;
+    if (!hasSavedPosition) {
+      setIsReadingPositionRestoring(false);
+      return;
+    }
+
+    const restoreStartedAt = performance.now();
+    const shouldWaitForFullHeight = () => (
+      saved.scrollTop > 0 &&
+      saved.contentLength === renderedMarkdown.length &&
+      performance.now() - restoreStartedAt < 1500
+    );
+
+    const finishRestore = (): true => {
+      readingPositionRestorePendingRef.current = false;
+      setIsReadingPositionRestoring(false);
+      return true;
+    };
+
+    const restorePosition = (): boolean => {
       const container = scrollRef.current;
-      if (!container) return false;
+      if (!container || pendingSelectionJumpRef.current) {
+        return finishRestore();
+      }
+
+      if (saved.scrollTop > 0) {
+        setKnowledgeScrollTop(container, saved.scrollTop);
+        const maxScrollTop = getKnowledgeMaxScrollTop(container);
+        if (maxScrollTop <= 0 && container.scrollTop <= 0) {
+          return false;
+        }
+        if (saved.scrollTop > maxScrollTop + 2 && shouldWaitForFullHeight()) {
+          return false;
+        }
+        return finishRestore();
+      }
 
       const targetHeading = saved.headingId
         ? contentAreaRef.current?.querySelector<HTMLElement>(`[data-heading-id="${CSS.escape(saved.headingId)}"]`) ?? null
@@ -3119,38 +3167,48 @@ export function KnowledgeDocsPage() {
 
       if (targetHeading) {
         scrollElementToKnowledgeHeading(container, targetHeading, "auto");
-        return true;
+        return finishRestore();
       }
 
-      // If the container's scrollHeight is still loading and cannot support the scroll top yet,
-      // and we are not at the very top, we should wait and retry
-      const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
-      if (saved.scrollTop > 0 && maxScrollTop < saved.scrollTop && container.scrollHeight < 500) {
-        return false;
-      }
-
-      setKnowledgeScrollTop(container, saved.scrollTop);
-      return true;
+      return finishRestore();
     };
 
-    let attempts = 0;
-    const maxAttempts = 15;
-    const tryRestore = () => {
-      if (restorePosition()) {
-        return;
+    if (restorePosition()) {
+      return;
+    }
+
+    let rafId: number | null = null;
+    let observer: ResizeObserver | null = null;
+    const scheduleRestore = () => {
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
       }
-      attempts++;
-      if (attempts < maxAttempts) {
-        scrollRestorationTimerRef.current = window.setTimeout(tryRestore, 50);
-      }
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        if (restorePosition()) {
+          observer?.disconnect();
+        }
+      });
     };
-    tryRestore();
+
+    if (typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(scheduleRestore);
+      if (scrollRef.current) {
+        observer.observe(scrollRef.current);
+      }
+      if (contentAreaRef.current) {
+        observer.observe(contentAreaRef.current);
+      }
+    }
+    scheduleRestore();
 
     return () => {
-      if (scrollRestorationTimerRef.current !== null) {
-        window.clearTimeout(scrollRestorationTimerRef.current);
-        scrollRestorationTimerRef.current = null;
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
       }
+      observer?.disconnect();
+      readingPositionRestorePendingRef.current = false;
+      setIsReadingPositionRestoring(false);
     };
   }, [courseId, renderedMarkdown]);
 
@@ -3159,18 +3217,26 @@ export function KnowledgeDocsPage() {
     if (!courseId || !renderedMarkdown.trim() || !container) {
       return;
     }
-    const scrollTargets = collectScrollSpyScrollTargets(container);
 
-    const saveNow = () => {
+    const saveNow = (options: { allowZeroWithoutScrollable?: boolean } = {}) => {
+      const { scrollTop, maxScrollTop } = getKnowledgeScrollSnapshot(container);
+      if (readingPositionRestorePendingRef.current) {
+        return;
+      }
+      if (!options.allowZeroWithoutScrollable && scrollTop <= 0 && maxScrollTop <= 0) {
+        return;
+      }
       persistKnowledgeDocsReadingPosition(courseId, {
-        scrollTop: getKnowledgeScrollTop(container),
+        scrollTop,
         headingId: activeHeadingRef.current,
         contentLength: renderedMarkdown.length,
         updatedAt: Date.now(),
       });
+      readingPositionDirtyRef.current = false;
     };
 
     const scheduleSave = () => {
+      readingPositionDirtyRef.current = true;
       if (readingPositionSaveTimerRef.current !== null) {
         window.clearTimeout(readingPositionSaveTimerRef.current);
       }
@@ -3179,22 +3245,26 @@ export function KnowledgeDocsPage() {
         saveNow();
       }, 240);
     };
+    const saveOnBeforeUnload = () => saveNow();
 
+    const scrollTargets = collectScrollSpyScrollTargets(container);
     scrollTargets.forEach((target) => {
       target.addEventListener("scroll", scheduleSave, { passive: true });
     });
-    window.addEventListener("beforeunload", saveNow);
+    window.addEventListener("beforeunload", saveOnBeforeUnload);
 
     return () => {
       scrollTargets.forEach((target) => {
         target.removeEventListener("scroll", scheduleSave);
       });
-      window.removeEventListener("beforeunload", saveNow);
+      window.removeEventListener("beforeunload", saveOnBeforeUnload);
       if (readingPositionSaveTimerRef.current !== null) {
         window.clearTimeout(readingPositionSaveTimerRef.current);
         readingPositionSaveTimerRef.current = null;
       }
-      saveNow();
+      if (readingPositionDirtyRef.current) {
+        saveNow();
+      }
     };
   }, [courseId, renderedMarkdown]);
 
@@ -3695,6 +3765,20 @@ export function KnowledgeDocsPage() {
       return [next, ...kept].slice(0, 200);
     });
   }, [captureSelectionSegments]);
+
+  const removeStandaloneHighlight = useCallback((threadId: string) => {
+    if (!isStandaloneHighlightThreadId(threadId)) {
+      return;
+    }
+    setSelectionHighlights((prev) => prev.filter((item) => item.threadId !== threadId));
+    setActiveStandaloneHighlightId((prev) => (prev === threadId ? null : prev));
+    setActiveCommentThreadId((prev) => (prev === threadId ? null : prev));
+    setPinnedThreadId((prev) => (prev === threadId ? null : prev));
+    if (selectedRangeThreadIdRef.current === threadId) {
+      selectedRangeRef.current = null;
+      selectedRangeThreadIdRef.current = null;
+    }
+  }, []);
 
   const openTocDrawer = useCallback(() => {
     setActiveDrawer((prev) => (prev === "toc" ? null : "toc"));
@@ -5238,6 +5322,15 @@ export function KnowledgeDocsPage() {
     }
     return next;
   }, [selectionHighlights]);
+  const activeStandaloneHighlight = useMemo(() => (
+    activeStandaloneHighlightId
+      ? selectionHighlights.find((item) => (
+          item.threadId === activeStandaloneHighlightId &&
+          isStandaloneHighlightThreadId(item.threadId)
+        )) ?? null
+      : null
+  ), [activeStandaloneHighlightId, selectionHighlights]);
+  const activeStandaloneHighlightSegment = activeStandaloneHighlight?.segments[0] ?? null;
   const tocAnchorDescendantIds = useMemo(() => {
     const next = new Map<string, string[]>();
     const visit = (node: TocTreeNode): string[] => {
@@ -6585,7 +6678,7 @@ export function KnowledgeDocsPage() {
         )}
 
         <div
-          ref={scrollRef}
+          ref={setScrollContainerRef}
           className="relative h-full overflow-y-auto doc-scroll-container content-scroll"
           onMouseUp={handleTextSelect}
         >
@@ -6606,7 +6699,12 @@ export function KnowledgeDocsPage() {
                 className={cn("feishu-doc-content min-w-0 w-full", docColumnMaxWidthClass)}
               >
                 <div className="relative flex min-w-0 items-start">
-                  <article className="min-w-0 flex-1 px-2 py-2 md:px-4">
+                  <article
+                    className={cn(
+                      "min-w-0 flex-1 px-2 py-2 md:px-4",
+                      isReadingPositionRestoring && "invisible",
+                    )}
+                  >
                   <CourseVectorNotice status={docMarkdownQuery.data?.vector_status} className="mb-6" />
                   {docMarkdownQuery.isError ? (
                     <DocLoadErrorState
@@ -6685,7 +6783,7 @@ export function KnowledgeDocsPage() {
               )}
             </div>
 
-          {selectionHighlights.map((highlight) => (
+          {!isReadingPositionRestoring && selectionHighlights.map((highlight) => (
             <div key={highlight.id}>
               {highlight.segments.map((segment, index) => {
                 const isAiMatchedHighlight = aiMatchedHighlightedThreadId === highlight.threadId;
@@ -6694,7 +6792,19 @@ export function KnowledgeDocsPage() {
                   <button
                     key={`${highlight.id}-${index}`}
                     type="button"
-                    onClick={() => openSelectionHighlightThread(highlight.threadId)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      if (isStandaloneHighlight) {
+                        setActiveStandaloneHighlightId((prev) => (
+                          prev === highlight.threadId ? null : highlight.threadId
+                        ));
+                        setActiveCommentThreadId(highlight.threadId);
+                        setPinnedThreadId(highlight.threadId);
+                        setIsAutoCommentHighlightSuppressed(false);
+                        return;
+                      }
+                      openSelectionHighlightThread(highlight.threadId);
+                    }}
                     data-highlight-thread-id={highlight.threadId}
                     className={cn(
                       "group absolute z-30 rounded-[2px] transition-shadow duration-150 focus-visible:outline-none",
@@ -6730,7 +6840,32 @@ export function KnowledgeDocsPage() {
             </div>
           ))}
 
-          {floatingComment?.segments.map((segment, index) => (
+          {!isReadingPositionRestoring && activeStandaloneHighlight && activeStandaloneHighlightSegment ? (
+            <div
+              className="absolute z-40 inline-flex items-center gap-1.5 rounded-lg border border-amber-200/90 bg-white/95 px-2 py-1.5 text-[12px] font-medium text-amber-800 shadow-[0_10px_26px_-18px_rgba(146,64,14,0.75),0_4px_12px_-10px_rgba(15,23,42,0.28)] backdrop-blur-md dark:border-amber-500/30 dark:bg-slate-950/95 dark:text-amber-200"
+              style={{
+                top: Math.max(8, activeStandaloneHighlightSegment.top - 42),
+                left: Math.max(8, activeStandaloneHighlightSegment.left),
+              }}
+            >
+              <span className="max-w-[180px] truncate">高亮片段</span>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  removeStandaloneHighlight(activeStandaloneHighlight.threadId);
+                }}
+                className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-red-600 transition-colors hover:bg-red-50 hover:text-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/25 dark:text-red-300 dark:hover:bg-red-500/10 dark:hover:text-red-200"
+                title="删除高亮"
+                aria-label="删除高亮"
+              >
+                <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                删除
+              </button>
+            </div>
+          ) : null}
+
+          {!isReadingPositionRestoring && floatingComment?.segments.map((segment, index) => (
             <div
               key={`floating-selection-${index}`}
               className="pointer-events-none absolute z-30 rounded-[2px] bg-amber-50/40"

@@ -257,6 +257,7 @@ export function ChatModelSelect({
       id={listboxId}
       role="listbox"
       aria-labelledby={triggerId}
+      data-ai-interaction-portal="true"
       className="z-[140] max-h-64 overflow-y-auto rounded-2xl border border-zinc-200/90 bg-white/95 p-1.5 shadow-[0_18px_48px_-22px_rgba(24,24,27,0.35),0_8px_18px_-12px_rgba(24,24,27,0.24)] backdrop-blur-xl dark:border-slate-700/80 dark:bg-slate-900/95 dark:shadow-black/40"
       style={menuStyle}
     >

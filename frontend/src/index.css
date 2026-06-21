@@ -632,7 +632,6 @@
   /* ----------- Feishu-style document scroll container ----------- */
   .doc-scroll-container {
     overflow-anchor: none;
-    scroll-behavior: smooth;
   }
 
   .doc-scroll-container * {
