@@ -14,6 +14,47 @@ from app.utils.time import utcnow
 from app.utils.course import GLOBAL_COURSE
 
 PLANNER_CHAT_SOURCE = "build_planner"
+LIBRARY_SELECTION_SOURCE = "library_selection"
+LIBRARY_SELECTION_SOURCE_PREFIX = f"{LIBRARY_SELECTION_SOURCE}:"
+
+
+def _library_file_id_from_source(source: str | None) -> str | None:
+    normalized = (source or "").strip()
+    if not normalized.startswith(LIBRARY_SELECTION_SOURCE_PREFIX):
+        return None
+    file_id = normalized[len(LIBRARY_SELECTION_SOURCE_PREFIX):].strip()
+    return file_id or None
+
+
+def _is_library_selection_source(source: str | None) -> bool:
+    normalized = (source or "").strip()
+    return normalized == LIBRARY_SELECTION_SOURCE or normalized.startswith(LIBRARY_SELECTION_SOURCE_PREFIX)
+
+
+def _library_selection_source_condition() -> sa.ColumnElement[bool]:
+    return sa.or_(
+        ChatMessage.source == LIBRARY_SELECTION_SOURCE,
+        ChatMessage.source.like(f"{LIBRARY_SELECTION_SOURCE_PREFIX}%"),
+    )
+
+
+def _selection_head_condition(source: str | None) -> sa.ColumnElement[bool]:
+    has_selected_text = sa.and_(
+        ChatMessage.selected_text.is_not(None),
+        ChatMessage.selected_text != "",
+    )
+    has_anchor = sa.and_(
+        ChatMessage.anchor_id.is_not(None),
+        ChatMessage.anchor_id != "",
+    )
+    if _is_library_selection_source(source):
+        return has_selected_text
+    if source is not None:
+        return has_anchor
+    return sa.or_(
+        has_anchor,
+        sa.and_(_library_selection_source_condition(), has_selected_text),
+    )
 
 
 def create_chat_session(
@@ -35,6 +76,7 @@ def create_chat_session(
         user_id=user_id,
         title=title,
         source=source,
+        library_file_id=_library_file_id_from_source(source),
         meta_json=meta_json,
         created_at=now,
         updated_at=now,
@@ -105,17 +147,25 @@ def list_sessions_by_course(
     *,
     limit: int,
     offset: int,
+    source: str | None = None,
     user_id: str = "local",
 ) -> tuple[list[ChatSession], int]:
     visible_builder_session = _visible_singleton_build_planner_session_condition()
+    conditions = [
+        ChatSession.course_id == course_id,
+        ChatSession.user_id == user_id,
+        visible_builder_session,
+    ]
+    if source is not None:
+        conditions.append(ChatSession.source == source)
     total = session.exec(
         select(func.count())
         .select_from(ChatSession)
-        .where(ChatSession.course_id == course_id, ChatSession.user_id == user_id, visible_builder_session)
+        .where(*conditions)
     ).one()
     stmt = (
         select(ChatSession)
-        .where(ChatSession.course_id == course_id, ChatSession.user_id == user_id, visible_builder_session)
+        .where(*conditions)
         .order_by(ChatSession.last_message_at.desc(), ChatSession.created_at.desc())
         .offset(offset)
         .limit(limit)
@@ -128,6 +178,7 @@ def list_sessions_by_user(
     *,
     limit: int,
     offset: int,
+    source: str | None = None,
     user_id: str = "local",
 ) -> tuple[list[ChatSession], int]:
     course_exists = (
@@ -140,14 +191,17 @@ def list_sessions_by_user(
     )
     visible_session = sa.or_(ChatSession.course_id == GLOBAL_COURSE, course_exists)
     visible_builder_session = _visible_singleton_build_planner_session_condition()
+    conditions = [ChatSession.user_id == user_id, visible_session, visible_builder_session]
+    if source is not None:
+        conditions.append(ChatSession.source == source)
     total = session.exec(
         select(func.count())
         .select_from(ChatSession)
-        .where(ChatSession.user_id == user_id, visible_session, visible_builder_session)
+        .where(*conditions)
     ).one()
     stmt = (
         select(ChatSession)
-        .where(ChatSession.user_id == user_id, visible_session, visible_builder_session)
+        .where(*conditions)
         .order_by(ChatSession.last_message_at.desc(), ChatSession.created_at.desc())
         .offset(offset)
         .limit(limit)
@@ -200,9 +254,8 @@ def list_session_selection_heads_by_session_ids(
         ChatMessage.user_id == user_id,
         ChatMessage.session_id.in_(session_ids),
         ChatMessage.role == "assistant",
-        ChatMessage.anchor_id.is_not(None),
-        ChatMessage.anchor_id != "",
     ]
+    conditions.append(_selection_head_condition(source))
     if source is not None:
         conditions.append(ChatMessage.source == source)
 
@@ -235,9 +288,8 @@ def list_session_selection_heads_by_session_ids_for_user(
         ChatMessage.user_id == user_id,
         ChatMessage.session_id.in_(session_ids),
         ChatMessage.role == "assistant",
-        ChatMessage.anchor_id.is_not(None),
-        ChatMessage.anchor_id != "",
     ]
+    conditions.append(_selection_head_condition(source))
     if source is not None:
         conditions.append(ChatMessage.source == source)
 
@@ -272,8 +324,7 @@ def list_thread_turn_heads_by_course(
     if source is not None:
         conditions.append(ChatMessage.source == source)
     if require_anchor:
-        conditions.append(ChatMessage.anchor_id.is_not(None))
-        conditions.append(ChatMessage.anchor_id != "")
+        conditions.append(_selection_head_condition(source))
 
     total = session.exec(
         select(func.count())

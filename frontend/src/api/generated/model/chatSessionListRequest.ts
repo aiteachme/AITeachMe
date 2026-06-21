@@ -22,4 +22,6 @@ export interface ChatSessionListRequest {
   size?: number;
   /** When true, list recent sessions across all courses owned by the user. */
   include_all_courses?: boolean;
+  /** Optional source tag filter. */
+  source?: string | null;
 }

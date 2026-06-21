@@ -159,6 +159,7 @@ def _list_chat_sessions_response(
                 user_id=user.user_id,
                 page=body.page,
                 size=body.size,
+                source=body.source,
             )
         )
 
@@ -174,6 +175,7 @@ def _list_chat_sessions_response(
             user_id=user.user_id,
             page=body.page,
             size=body.size,
+            source=body.source,
         )
     )
 

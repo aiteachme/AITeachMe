@@ -61,10 +61,8 @@ function rehypeExtractInlineMath() {
           if (part.type === "text") {
             newChildren.push({ type: "text", value: part.value });
           } else if (part.type === "displayMath") {
-            // 创建 rehype-katex 能识别的 math 节点
             newChildren.push({ type: "math", value: part.value, meta: true });
           } else if (part.type === "inlineMath") {
-            // 创建 rehype-katex 能识别的 inlineMath 节点
             newChildren.push({ type: "inlineMath", value: part.value });
           }
         }
@@ -78,7 +76,6 @@ function rehypeExtractInlineMath() {
     const parts: Array<{ type: string; value: string }> = [];
     let lastIdx = 0;
 
-    // 先提取 $$...$$
     DISPLAY_RE.lastIndex = 0;
     let m: RegExpExecArray | null;
     while ((m = DISPLAY_RE.exec(text)) !== null) {
@@ -87,7 +84,6 @@ function rehypeExtractInlineMath() {
       lastIdx = m.index + m[0].length;
     }
 
-    // 对剩余部分提取 $...$
     const remainder = text.slice(lastIdx);
     INLINE_RE.lastIndex = 0;
     lastIdx = 0;
@@ -120,16 +116,22 @@ export function LibraryMarkdownViewer({ content, assetBaseUrl }: LibraryMarkdown
     );
   }
 
+  const rehypePlugins = useMemo(() => {
+    const plugins = [
+      rehypeRaw,
+      rehypeExtractInlineMath,
+      rehypeKatex,
+      ...(assetBaseUrl ? [rehypeRewriteAssetUrls(assetBaseUrl)] : []),
+    ];
+
+    return plugins;
+  }, [assetBaseUrl]);
+
   return (
     <div className="prose prose-slate max-w-none dark:prose-invert">
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[
-          rehypeRaw,
-          rehypeExtractInlineMath,
-          rehypeKatex,
-          ...assetBaseUrl ? [rehypeRewriteAssetUrls(assetBaseUrl)] : [],
-        ]}
+        rehypePlugins={rehypePlugins}
         components={components}
       >
         {processedContent}
@@ -151,9 +153,10 @@ function rehypeRewriteAssetUrls(assetBaseUrl: string) {
   };
 }
 
-function visit(node: any, handler: (node: any) => void) {
+function visit(node: any, handler: (node: any) => void | boolean) {
   if (!node) return;
-  handler(node);
+  const shouldVisitChildren = handler(node);
+  if (shouldVisitChildren === false) return;
   if (Array.isArray(node.children)) {
     node.children.forEach((child: any) => visit(child, handler));
   }

@@ -24,15 +24,21 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  ApiResponseDict,
   ApiResponseFileDeleteData,
   ApiResponseFilesData,
   ApiResponseFilesUploadData,
+  ApiResponseHighlightData,
+  ApiResponseHighlightListData,
+  ApiResponseInteractiveGenerateData,
   BodyUploadFilesApiV1CoursesCourseIdFilesUploadPost,
   BodyUploadUserFilesApiV1FilesUploadPost,
   ErrorResponse,
   FileDeleteRequest,
   FileLinkRequest,
   HTTPValidationError,
+  HighlightCreateRequest,
+  InteractiveGenerateRequest,
   ListUserFilesApiApiV1FilesGetParams
 } from './model';
 
@@ -695,7 +701,439 @@ export function useServeUserFileAssetApiV1FilesAssetsFileIdAssetPathGet<TData = 
 
 
 
-export type uploadFilesApiV1CoursesCourseIdFilesUploadPostResponse200 = {
+export type listHighlightsApiV1FilesFileIdHighlightsGetResponse200 = {
+  data: ApiResponseHighlightListData
+  status: 200
+}
+
+export type listHighlightsApiV1FilesFileIdHighlightsGetResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type listHighlightsApiV1FilesFileIdHighlightsGetResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type listHighlightsApiV1FilesFileIdHighlightsGetResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type listHighlightsApiV1FilesFileIdHighlightsGetResponseSuccess = (listHighlightsApiV1FilesFileIdHighlightsGetResponse200) & {
+  headers: Headers;
+};
+export type listHighlightsApiV1FilesFileIdHighlightsGetResponseError = (listHighlightsApiV1FilesFileIdHighlightsGetResponse404 | listHighlightsApiV1FilesFileIdHighlightsGetResponse422 | listHighlightsApiV1FilesFileIdHighlightsGetResponse500) & {
+  headers: Headers;
+};
+
+export type listHighlightsApiV1FilesFileIdHighlightsGetResponse = (listHighlightsApiV1FilesFileIdHighlightsGetResponseSuccess | listHighlightsApiV1FilesFileIdHighlightsGetResponseError)
+
+export const getListHighlightsApiV1FilesFileIdHighlightsGetUrl = (fileId: string,) => {
+
+
+
+
+  return `/api/v1/files/${fileId}/highlights`
+}
+
+/**
+ * @summary List highlights for a library file
+ */
+export const listHighlightsApiV1FilesFileIdHighlightsGet = async (fileId: string, options?: RequestInit): Promise<listHighlightsApiV1FilesFileIdHighlightsGetResponse> => {
+
+  return orvalApiClient<listHighlightsApiV1FilesFileIdHighlightsGetResponse>(getListHighlightsApiV1FilesFileIdHighlightsGetUrl(fileId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListHighlightsApiV1FilesFileIdHighlightsGetQueryKey = (fileId: string,) => {
+    return [
+    `/api/v1/files/${fileId}/highlights`
+    ] as const;
+    }
+
+
+export const getListHighlightsApiV1FilesFileIdHighlightsGetQueryOptions = <TData = Awaited<ReturnType<typeof listHighlightsApiV1FilesFileIdHighlightsGet>>, TError = ErrorResponse | HTTPValidationError>(fileId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listHighlightsApiV1FilesFileIdHighlightsGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListHighlightsApiV1FilesFileIdHighlightsGetQueryKey(fileId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listHighlightsApiV1FilesFileIdHighlightsGet>>> = ({ signal }) => listHighlightsApiV1FilesFileIdHighlightsGet(fileId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: fileId !== null && fileId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listHighlightsApiV1FilesFileIdHighlightsGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListHighlightsApiV1FilesFileIdHighlightsGetQueryResult = NonNullable<Awaited<ReturnType<typeof listHighlightsApiV1FilesFileIdHighlightsGet>>>
+export type ListHighlightsApiV1FilesFileIdHighlightsGetQueryError = ErrorResponse | HTTPValidationError
+
+
+export function useListHighlightsApiV1FilesFileIdHighlightsGet<TData = Awaited<ReturnType<typeof listHighlightsApiV1FilesFileIdHighlightsGet>>, TError = ErrorResponse | HTTPValidationError>(
+ fileId: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listHighlightsApiV1FilesFileIdHighlightsGet>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listHighlightsApiV1FilesFileIdHighlightsGet>>,
+          TError,
+          Awaited<ReturnType<typeof listHighlightsApiV1FilesFileIdHighlightsGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListHighlightsApiV1FilesFileIdHighlightsGet<TData = Awaited<ReturnType<typeof listHighlightsApiV1FilesFileIdHighlightsGet>>, TError = ErrorResponse | HTTPValidationError>(
+ fileId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listHighlightsApiV1FilesFileIdHighlightsGet>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listHighlightsApiV1FilesFileIdHighlightsGet>>,
+          TError,
+          Awaited<ReturnType<typeof listHighlightsApiV1FilesFileIdHighlightsGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListHighlightsApiV1FilesFileIdHighlightsGet<TData = Awaited<ReturnType<typeof listHighlightsApiV1FilesFileIdHighlightsGet>>, TError = ErrorResponse | HTTPValidationError>(
+ fileId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listHighlightsApiV1FilesFileIdHighlightsGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary List highlights for a library file
+ */
+
+export function useListHighlightsApiV1FilesFileIdHighlightsGet<TData = Awaited<ReturnType<typeof listHighlightsApiV1FilesFileIdHighlightsGet>>, TError = ErrorResponse | HTTPValidationError>(
+ fileId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listHighlightsApiV1FilesFileIdHighlightsGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListHighlightsApiV1FilesFileIdHighlightsGetQueryOptions(fileId,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+export type createHighlightApiV1FilesFileIdHighlightsPostResponse200 = {
+  data: ApiResponseHighlightData
+  status: 200
+}
+
+export type createHighlightApiV1FilesFileIdHighlightsPostResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type createHighlightApiV1FilesFileIdHighlightsPostResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type createHighlightApiV1FilesFileIdHighlightsPostResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type createHighlightApiV1FilesFileIdHighlightsPostResponseSuccess = (createHighlightApiV1FilesFileIdHighlightsPostResponse200) & {
+  headers: Headers;
+};
+export type createHighlightApiV1FilesFileIdHighlightsPostResponseError = (createHighlightApiV1FilesFileIdHighlightsPostResponse404 | createHighlightApiV1FilesFileIdHighlightsPostResponse422 | createHighlightApiV1FilesFileIdHighlightsPostResponse500) & {
+  headers: Headers;
+};
+
+export type createHighlightApiV1FilesFileIdHighlightsPostResponse = (createHighlightApiV1FilesFileIdHighlightsPostResponseSuccess | createHighlightApiV1FilesFileIdHighlightsPostResponseError)
+
+export const getCreateHighlightApiV1FilesFileIdHighlightsPostUrl = (fileId: string,) => {
+
+
+
+
+  return `/api/v1/files/${fileId}/highlights`
+}
+
+/**
+ * @summary Create a highlight
+ */
+export const createHighlightApiV1FilesFileIdHighlightsPost = async (fileId: string,
+    highlightCreateRequest: HighlightCreateRequest, options?: RequestInit): Promise<createHighlightApiV1FilesFileIdHighlightsPostResponse> => {
+
+  return orvalApiClient<createHighlightApiV1FilesFileIdHighlightsPostResponse>(getCreateHighlightApiV1FilesFileIdHighlightsPostUrl(fileId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(highlightCreateRequest)
+  }
+);}
+
+
+
+
+export const getCreateHighlightApiV1FilesFileIdHighlightsPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createHighlightApiV1FilesFileIdHighlightsPost>>, TError,{fileId: string;data: HighlightCreateRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof createHighlightApiV1FilesFileIdHighlightsPost>>, TError,{fileId: string;data: HighlightCreateRequest}, TContext> => {
+
+const mutationKey = ['createHighlightApiV1FilesFileIdHighlightsPost'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createHighlightApiV1FilesFileIdHighlightsPost>>, {fileId: string;data: HighlightCreateRequest}> = (props) => {
+          const {fileId,data} = props ?? {};
+
+          return  createHighlightApiV1FilesFileIdHighlightsPost(fileId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateHighlightApiV1FilesFileIdHighlightsPostMutationResult = NonNullable<Awaited<ReturnType<typeof createHighlightApiV1FilesFileIdHighlightsPost>>>
+    export type CreateHighlightApiV1FilesFileIdHighlightsPostMutationBody = HighlightCreateRequest
+    export type CreateHighlightApiV1FilesFileIdHighlightsPostMutationError = ErrorResponse | HTTPValidationError
+
+    /**
+ * @summary Create a highlight
+ */
+export const useCreateHighlightApiV1FilesFileIdHighlightsPost = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createHighlightApiV1FilesFileIdHighlightsPost>>, TError,{fileId: string;data: HighlightCreateRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof createHighlightApiV1FilesFileIdHighlightsPost>>,
+        TError,
+        {fileId: string;data: HighlightCreateRequest},
+        TContext
+      > => {
+      return useMutation(getCreateHighlightApiV1FilesFileIdHighlightsPostMutationOptions(options), queryClient);
+    }
+    export type deleteHighlightApiV1FilesFileIdHighlightsHighlightIdDeleteResponse200 = {
+  data: ApiResponseDict
+  status: 200
+}
+
+export type deleteHighlightApiV1FilesFileIdHighlightsHighlightIdDeleteResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type deleteHighlightApiV1FilesFileIdHighlightsHighlightIdDeleteResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type deleteHighlightApiV1FilesFileIdHighlightsHighlightIdDeleteResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type deleteHighlightApiV1FilesFileIdHighlightsHighlightIdDeleteResponseSuccess = (deleteHighlightApiV1FilesFileIdHighlightsHighlightIdDeleteResponse200) & {
+  headers: Headers;
+};
+export type deleteHighlightApiV1FilesFileIdHighlightsHighlightIdDeleteResponseError = (deleteHighlightApiV1FilesFileIdHighlightsHighlightIdDeleteResponse404 | deleteHighlightApiV1FilesFileIdHighlightsHighlightIdDeleteResponse422 | deleteHighlightApiV1FilesFileIdHighlightsHighlightIdDeleteResponse500) & {
+  headers: Headers;
+};
+
+export type deleteHighlightApiV1FilesFileIdHighlightsHighlightIdDeleteResponse = (deleteHighlightApiV1FilesFileIdHighlightsHighlightIdDeleteResponseSuccess | deleteHighlightApiV1FilesFileIdHighlightsHighlightIdDeleteResponseError)
+
+export const getDeleteHighlightApiV1FilesFileIdHighlightsHighlightIdDeleteUrl = (fileId: string,
+    highlightId: number,) => {
+
+
+
+
+  return `/api/v1/files/${fileId}/highlights/${highlightId}`
+}
+
+/**
+ * @summary Delete a highlight
+ */
+export const deleteHighlightApiV1FilesFileIdHighlightsHighlightIdDelete = async (fileId: string,
+    highlightId: number, options?: RequestInit): Promise<deleteHighlightApiV1FilesFileIdHighlightsHighlightIdDeleteResponse> => {
+
+  return orvalApiClient<deleteHighlightApiV1FilesFileIdHighlightsHighlightIdDeleteResponse>(getDeleteHighlightApiV1FilesFileIdHighlightsHighlightIdDeleteUrl(fileId,highlightId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteHighlightApiV1FilesFileIdHighlightsHighlightIdDeleteMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteHighlightApiV1FilesFileIdHighlightsHighlightIdDelete>>, TError,{fileId: string;highlightId: number}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteHighlightApiV1FilesFileIdHighlightsHighlightIdDelete>>, TError,{fileId: string;highlightId: number}, TContext> => {
+
+const mutationKey = ['deleteHighlightApiV1FilesFileIdHighlightsHighlightIdDelete'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteHighlightApiV1FilesFileIdHighlightsHighlightIdDelete>>, {fileId: string;highlightId: number}> = (props) => {
+          const {fileId,highlightId} = props ?? {};
+
+          return  deleteHighlightApiV1FilesFileIdHighlightsHighlightIdDelete(fileId,highlightId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteHighlightApiV1FilesFileIdHighlightsHighlightIdDeleteMutationResult = NonNullable<Awaited<ReturnType<typeof deleteHighlightApiV1FilesFileIdHighlightsHighlightIdDelete>>>
+
+    export type DeleteHighlightApiV1FilesFileIdHighlightsHighlightIdDeleteMutationError = ErrorResponse | HTTPValidationError
+
+    /**
+ * @summary Delete a highlight
+ */
+export const useDeleteHighlightApiV1FilesFileIdHighlightsHighlightIdDelete = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteHighlightApiV1FilesFileIdHighlightsHighlightIdDelete>>, TError,{fileId: string;highlightId: number}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof deleteHighlightApiV1FilesFileIdHighlightsHighlightIdDelete>>,
+        TError,
+        {fileId: string;highlightId: number},
+        TContext
+      > => {
+      return useMutation(getDeleteHighlightApiV1FilesFileIdHighlightsHighlightIdDeleteMutationOptions(options), queryClient);
+    }
+    export type generateInteractiveApiV1FilesFileIdInteractivePostResponse200 = {
+  data: ApiResponseInteractiveGenerateData
+  status: 200
+}
+
+export type generateInteractiveApiV1FilesFileIdInteractivePostResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type generateInteractiveApiV1FilesFileIdInteractivePostResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type generateInteractiveApiV1FilesFileIdInteractivePostResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type generateInteractiveApiV1FilesFileIdInteractivePostResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type generateInteractiveApiV1FilesFileIdInteractivePostResponseSuccess = (generateInteractiveApiV1FilesFileIdInteractivePostResponse200) & {
+  headers: Headers;
+};
+export type generateInteractiveApiV1FilesFileIdInteractivePostResponseError = (generateInteractiveApiV1FilesFileIdInteractivePostResponse400 | generateInteractiveApiV1FilesFileIdInteractivePostResponse404 | generateInteractiveApiV1FilesFileIdInteractivePostResponse422 | generateInteractiveApiV1FilesFileIdInteractivePostResponse500) & {
+  headers: Headers;
+};
+
+export type generateInteractiveApiV1FilesFileIdInteractivePostResponse = (generateInteractiveApiV1FilesFileIdInteractivePostResponseSuccess | generateInteractiveApiV1FilesFileIdInteractivePostResponseError)
+
+export const getGenerateInteractiveApiV1FilesFileIdInteractivePostUrl = (fileId: string,) => {
+
+
+
+
+  return `/api/v1/files/${fileId}/interactive`
+}
+
+/**
+ * @summary Generate interactive content from selected text
+ */
+export const generateInteractiveApiV1FilesFileIdInteractivePost = async (fileId: string,
+    interactiveGenerateRequest: InteractiveGenerateRequest, options?: RequestInit): Promise<generateInteractiveApiV1FilesFileIdInteractivePostResponse> => {
+
+  return orvalApiClient<generateInteractiveApiV1FilesFileIdInteractivePostResponse>(getGenerateInteractiveApiV1FilesFileIdInteractivePostUrl(fileId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(interactiveGenerateRequest)
+  }
+);}
+
+
+
+
+export const getGenerateInteractiveApiV1FilesFileIdInteractivePostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateInteractiveApiV1FilesFileIdInteractivePost>>, TError,{fileId: string;data: InteractiveGenerateRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof generateInteractiveApiV1FilesFileIdInteractivePost>>, TError,{fileId: string;data: InteractiveGenerateRequest}, TContext> => {
+
+const mutationKey = ['generateInteractiveApiV1FilesFileIdInteractivePost'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof generateInteractiveApiV1FilesFileIdInteractivePost>>, {fileId: string;data: InteractiveGenerateRequest}> = (props) => {
+          const {fileId,data} = props ?? {};
+
+          return  generateInteractiveApiV1FilesFileIdInteractivePost(fileId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GenerateInteractiveApiV1FilesFileIdInteractivePostMutationResult = NonNullable<Awaited<ReturnType<typeof generateInteractiveApiV1FilesFileIdInteractivePost>>>
+    export type GenerateInteractiveApiV1FilesFileIdInteractivePostMutationBody = InteractiveGenerateRequest
+    export type GenerateInteractiveApiV1FilesFileIdInteractivePostMutationError = ErrorResponse | HTTPValidationError
+
+    /**
+ * @summary Generate interactive content from selected text
+ */
+export const useGenerateInteractiveApiV1FilesFileIdInteractivePost = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateInteractiveApiV1FilesFileIdInteractivePost>>, TError,{fileId: string;data: InteractiveGenerateRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof generateInteractiveApiV1FilesFileIdInteractivePost>>,
+        TError,
+        {fileId: string;data: InteractiveGenerateRequest},
+        TContext
+      > => {
+      return useMutation(getGenerateInteractiveApiV1FilesFileIdInteractivePostMutationOptions(options), queryClient);
+    }
+    export type uploadFilesApiV1CoursesCourseIdFilesUploadPostResponse200 = {
   data: ApiResponseFilesUploadData
   status: 200
 }

@@ -42,7 +42,25 @@ class ChatSession(SQLModel, table=True):
     user_id: str = Field(default="local", index=True)
     title: str = Field(default="New Chat")
     source: str | None = Field(default=None, index=True)
+    library_file_id: str | None = Field(default=None, index=True)
     meta_json: Any | None = Field(default=None, sa_column=Column(sa.JSON))
     created_at: datetime = Field(default_factory=utcnow, index=True)
     updated_at: datetime = Field(default_factory=utcnow, index=True)
     last_message_at: datetime = Field(default_factory=utcnow, index=True)
+
+
+class Highlight(SQLModel, table=True):
+    """Text highlight in library file viewer."""
+
+    __tablename__ = "highlight"
+
+    id: int | None = Field(default=None, primary_key=True)
+    user_id: str = Field(default="local", index=True)
+    file_id: str = Field(index=True)
+    selected_text: str = Field(sa_column=Column(sa.Text(), nullable=False))
+    anchor_id: str | None = Field(default=None, sa_column=Column(sa.Text(), nullable=True))
+    color: str = Field(default="amber")
+    description: str | None = Field(default=None, sa_column=Column(sa.Text(), nullable=True))
+    interactive_html: str | None = Field(default=None, sa_column=Column(sa.Text(), nullable=True))
+    segments_json: Any | None = Field(default=None, sa_column=Column(sa.JSON, nullable=True))
+    created_at: datetime = Field(default_factory=utcnow, index=True)

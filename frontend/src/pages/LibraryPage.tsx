@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
@@ -16,16 +16,21 @@ import {
   FileType,
   FolderOpen,
   HardDrive,
+  Highlighter,
   Loader2,
+  MessageSquare,
   MoreHorizontal,
   Search,
   RefreshCw,
   Trash2,
   Upload,
+  Wand2,
   X,
 } from "lucide-react";
 
 import { apiClient, getApiErrorMessage } from "../api/client";
+import { useAiInteraction } from "../components/interaction/AiInteractionProvider";
+import { AI_SCENE_LIBRARY_SELECTION, getLibrarySelectionSource } from "../components/interaction/types";
 import { resolveFileProcessingLabel } from "../components/knowledge-docs/utils";
 import { useToast } from "../components/ui/Toast";
 import {
@@ -127,6 +132,465 @@ async function downloadLibraryFile(fileId: string, filename: string): Promise<vo
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+/* ---------- Highlight types & API ---------- */
+
+interface LibraryHighlight {
+  id: number;
+  file_id: string;
+  selected_text: string;
+  anchor_id: string | null;
+  color: string;
+  description?: string | null;
+  interactive_html?: string | null;
+  segments?: HighlightSegment[] | null;
+  created_at: string;
+}
+
+interface HighlightSegment {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+}
+
+interface ViewportBand {
+  top: number;
+  bottom: number;
+}
+
+interface TextSearchPosition {
+  node: Text;
+  offset: number;
+  endOffset: number;
+}
+
+interface TextSearchIndex {
+  text: string;
+  positions: Array<TextSearchPosition | null>;
+}
+
+async function fetchHighlights(fileId: string): Promise<LibraryHighlight[]> {
+  const response = await apiClient<ApiResponse<{ items: LibraryHighlight[] }>>({
+    method: "GET",
+    url: `/api/v1/files/${encodeURIComponent(fileId)}/highlights`,
+  });
+  return response.data?.items ?? [];
+}
+
+async function createHighlight(
+  fileId: string,
+  payload: { selected_text: string; anchor_id?: string; color?: string; segments?: HighlightSegment[] },
+): Promise<LibraryHighlight> {
+  const response = await apiClient<ApiResponse<LibraryHighlight>>({
+    method: "POST",
+    url: `/api/v1/files/${encodeURIComponent(fileId)}/highlights`,
+    data: payload,
+  });
+  return response.data;
+}
+
+async function deleteHighlight(fileId: string, highlightId: number): Promise<void> {
+  await apiClient<ApiResponse<{ deleted: boolean }>>({
+    method: "DELETE",
+    url: `/api/v1/files/${encodeURIComponent(fileId)}/highlights/${highlightId}`,
+  });
+}
+
+async function generateInteractive(
+  fileId: string,
+  payload: { selected_text: string; description?: string; segments?: HighlightSegment[] },
+): Promise<{ html: string; highlight_id?: number | null; highlight?: LibraryHighlight | null }> {
+  const response = await apiClient<ApiResponse<{ html: string; highlight_id?: number | null; highlight?: LibraryHighlight | null }>>({
+    method: "POST",
+    url: `/api/v1/files/${encodeURIComponent(fileId)}/interactive`,
+    data: payload,
+  });
+  return response.data;
+}
+
+function highlightSegmentsEqual(a: HighlightSegment[], b: HighlightSegment[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (
+      Math.abs(a[i].top - b[i].top) > 0.5 ||
+      Math.abs(a[i].left - b[i].left) > 0.5 ||
+      Math.abs(a[i].width - b[i].width) > 0.5 ||
+      Math.abs(a[i].height - b[i].height) > 0.5
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function medianNumber(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
+}
+
+function filterHighlightRects(rects: DOMRect[], containerRect: DOMRect, viewportBand?: ViewportBand | null): DOMRect[] {
+  const candidates = rects.filter((rect) => rect.width > 1 && rect.height > 1);
+  if (candidates.length === 0) return [];
+
+  const medianHeight = medianNumber(candidates.map((rect) => rect.height)) || 18;
+  const maxReasonableHeight = Math.max(96, medianHeight * 4);
+  const maxReasonableWidth = Math.max(8, containerRect.width + 8);
+  const bandFiltered = viewportBand
+    ? candidates.filter((rect) => rect.bottom >= viewportBand.top && rect.top <= viewportBand.bottom)
+    : candidates;
+  const filtered = bandFiltered.filter((rect) => (
+    rect.height <= maxReasonableHeight &&
+    rect.width <= maxReasonableWidth
+  ));
+
+  if (filtered.length > 0) {
+    return filtered;
+  }
+
+  const relaxedMaxHeight = Math.max(160, medianHeight * 8);
+  return bandFiltered.filter((rect) => (
+    rect.height <= relaxedMaxHeight &&
+    rect.width <= maxReasonableWidth
+  ));
+}
+
+function highlightSegmentsSpanTooLarge(segments: HighlightSegment[], selectedText: string): boolean {
+  if (segments.length === 0) return false;
+  const compactLength = createCondensedSearchText(normalizeSelectionSearchText(selectedText)).text.length;
+  if (compactLength >= 400) return false;
+
+  const top = Math.min(...segments.map((segment) => segment.top));
+  const bottom = Math.max(...segments.map((segment) => segment.top + segment.height));
+  const spanHeight = bottom - top;
+  const medianHeight = medianNumber(segments.map((segment) => segment.height)) || 18;
+  const expectedLines = Math.max(4, Math.ceil(compactLength / 24) + 3);
+  const maxExpectedHeight = Math.max(180, medianHeight * expectedLines * 1.8);
+  return spanHeight > maxExpectedHeight;
+}
+
+function rangeIntersectsSelector(range: Range, root: ParentNode, selector: string): boolean {
+  const elements = Array.from(root.querySelectorAll(selector));
+  return elements.some((element) => {
+    try {
+      return range.intersectsNode(element);
+    } catch {
+      return false;
+    }
+  });
+}
+
+function normalizeSelectionSearchChar(char: string): string {
+  if (/[\u200B-\u200D\uFEFF]/u.test(char)) return "";
+  if (char === "\u00A0") return " ";
+  return char;
+}
+
+function normalizeSelectionSearchText(text: string): string {
+  return Array.from(text)
+    .map(normalizeSelectionSearchChar)
+    .join("")
+    .trim();
+}
+
+function stripMathDelimiters(text: string): string {
+  return text
+    .trim()
+    .replace(/^\$\$([\s\S]*?)\$\$$/u, "$1")
+    .replace(/^\$([\s\S]*?)\$$/u, "$1")
+    .replace(/^\\\(([\s\S]*?)\\\)$/u, "$1")
+    .replace(/^\\\[([\s\S]*?)\\\]$/u, "$1")
+    .trim();
+}
+
+function createCondensedSearchText(text: string): { text: string; sourceIndexByCondensed: number[] } {
+  const chars: string[] = [];
+  const sourceIndexByCondensed: number[] = [];
+  Array.from(text).forEach((char, index) => {
+    if (/\s/u.test(char)) return;
+    chars.push(char);
+    sourceIndexByCondensed.push(index);
+  });
+  return {
+    text: chars.join(""),
+    sourceIndexByCondensed,
+  };
+}
+
+function shouldIgnoreLibrarySelectionTextNode(textNode: Text): boolean {
+  const parent = textNode.parentElement;
+  if (!parent) return true;
+  if (parent.closest("script, style, noscript, .katex-mathml, [hidden], [data-library-highlight-layer='true']")) {
+    return true;
+  }
+  try {
+    const style = window.getComputedStyle(parent);
+    return style.display === "none" || style.visibility === "hidden";
+  } catch {
+    return false;
+  }
+}
+
+const INTERACTIVE_HTML_BLOCKED_TAGS = new Set([
+  "base",
+  "embed",
+  "iframe",
+  "img",
+  "link",
+  "meta",
+  "object",
+  "script",
+  "style",
+  "svg",
+  "template",
+]);
+
+function sanitizeInteractiveStyle(value: string): string {
+  return value
+    .split(";")
+    .map((declaration) => declaration.trim())
+    .filter((declaration) => {
+      const [rawProperty, ...rawValueParts] = declaration.split(":");
+      const property = rawProperty?.trim().toLowerCase();
+      const styleValue = rawValueParts.join(":").trim().toLowerCase();
+      if (!property || !styleValue) {
+        return false;
+      }
+      if (property === "behavior" || property === "-moz-binding") {
+        return false;
+      }
+      return !/(?:expression\s*\(|url\s*\(|javascript:|data:)/i.test(styleValue);
+    })
+    .join("; ");
+}
+
+function isSafeInteractiveUrl(value: string): boolean {
+  const cleaned = value.replace(/[\u0000-\u001F\u007F\s]+/g, "").trim();
+  if (!cleaned) {
+    return false;
+  }
+  return /^(?:https?:|mailto:|#|\/(?!\/))/i.test(cleaned);
+}
+
+function sanitizeInteractiveHtml(html: string): string {
+  if (typeof window === "undefined" || !html.trim()) {
+    return "";
+  }
+
+  const document = new DOMParser().parseFromString(`<div>${html}</div>`, "text/html");
+  const container = document.body.firstElementChild;
+  if (!container) {
+    return "";
+  }
+
+  Array.from(container.querySelectorAll("*")).forEach((element) => {
+    const tagName = element.tagName.toLowerCase();
+    if (INTERACTIVE_HTML_BLOCKED_TAGS.has(tagName)) {
+      element.remove();
+      return;
+    }
+
+    Array.from(element.attributes).forEach((attribute) => {
+      const name = attribute.name.toLowerCase();
+      const value = attribute.value;
+
+      if (name.startsWith("on") || name === "srcdoc" || name === "nonce" || name === "formaction") {
+        element.removeAttribute(attribute.name);
+        return;
+      }
+
+      if (name === "style") {
+        const safeStyle = sanitizeInteractiveStyle(value);
+        if (safeStyle) {
+          element.setAttribute("style", safeStyle);
+        } else {
+          element.removeAttribute(attribute.name);
+        }
+        return;
+      }
+
+      if (name === "href" || name === "src" || name.endsWith(":href")) {
+        if (!isSafeInteractiveUrl(value)) {
+          element.removeAttribute(attribute.name);
+        }
+      }
+    });
+
+    if (tagName === "a" && element.hasAttribute("href")) {
+      element.setAttribute("target", "_blank");
+      element.setAttribute("rel", "noreferrer noopener");
+    }
+  });
+
+  return container.innerHTML;
+}
+
+function appendLibrarySearchTextNode(index: TextSearchIndex, textNode: Text) {
+  if (shouldIgnoreLibrarySelectionTextNode(textNode)) return;
+  const value = textNode.nodeValue ?? "";
+  let offset = 0;
+  for (const char of Array.from(value)) {
+    const endOffset = offset + char.length;
+    const normalized = normalizeSelectionSearchChar(char);
+    for (const normalizedChar of Array.from(normalized)) {
+      index.text += normalizedChar;
+      index.positions.push({ node: textNode, offset, endOffset });
+    }
+    offset = endOffset;
+  }
+}
+
+function appendVirtualSearchSeparator(index: TextSearchIndex) {
+  if (!index.text || /\s$/u.test(index.text)) return;
+  index.text += " ";
+  index.positions.push(null);
+}
+
+function buildTextSearchIndex(roots: Node[]): TextSearchIndex {
+  const index: TextSearchIndex = { text: "", positions: [] };
+  for (const rootNode of roots) {
+    if (rootNode.nodeType === Node.TEXT_NODE) {
+      appendLibrarySearchTextNode(index, rootNode as Text);
+      appendVirtualSearchSeparator(index);
+      continue;
+    }
+    const walker = document.createTreeWalker(rootNode, NodeFilter.SHOW_TEXT);
+    let current = walker.nextNode();
+    while (current) {
+      appendLibrarySearchTextNode(index, current as Text);
+      current = walker.nextNode();
+    }
+    appendVirtualSearchSeparator(index);
+  }
+  return index;
+}
+
+function rangeFromSearchSpan(index: TextSearchIndex, start: number, end: number): Range | null {
+  if (end <= start) return null;
+  let startPosition: TextSearchPosition | null = null;
+  let endPosition: TextSearchPosition | null = null;
+
+  for (let cursor = start; cursor < end; cursor += 1) {
+    const position = index.positions[cursor];
+    if (position) {
+      startPosition = position;
+      break;
+    }
+  }
+  for (let cursor = end - 1; cursor >= start; cursor -= 1) {
+    const position = index.positions[cursor];
+    if (position) {
+      endPosition = position;
+      break;
+    }
+  }
+
+  if (!startPosition || !endPosition) return null;
+
+  const range = document.createRange();
+  range.setStart(startPosition.node, startPosition.offset);
+  range.setEnd(endPosition.node, endPosition.endOffset);
+  return range;
+}
+
+function findRangesForSelectedText(index: TextSearchIndex, selectedText: string): Range[] {
+  const target = normalizeSelectionSearchText(selectedText);
+  if (!index.text || !target) return [];
+
+  const exactRanges: Range[] = [];
+  let exactStart = index.text.indexOf(target);
+  while (exactStart >= 0) {
+    const range = rangeFromSearchSpan(index, exactStart, exactStart + target.length);
+    if (range) {
+      exactRanges.push(range);
+    }
+    exactStart = index.text.indexOf(target, exactStart + Math.max(target.length, 1));
+  }
+  if (exactRanges.length > 0) {
+    return exactRanges;
+  }
+
+  const condensedSource = createCondensedSearchText(index.text);
+  const condensedTarget = target.replace(/\s+/gu, "");
+  if (!condensedTarget) return [];
+
+  const ranges: Range[] = [];
+  let condensedStart = condensedSource.text.indexOf(condensedTarget);
+  while (condensedStart >= 0) {
+    const sourceStart = condensedSource.sourceIndexByCondensed[condensedStart];
+    const sourceEnd = condensedSource.sourceIndexByCondensed[condensedStart + condensedTarget.length - 1];
+    if (sourceStart !== undefined && sourceEnd !== undefined) {
+      const range = rangeFromSearchSpan(index, sourceStart, sourceEnd + 1);
+      if (range) {
+        ranges.push(range);
+      }
+    }
+    condensedStart = condensedSource.text.indexOf(
+      condensedTarget,
+      condensedStart + Math.max(condensedTarget.length, 1),
+    );
+  }
+  return ranges;
+}
+
+function buildSelectionMatchTokens(selectedText: string): string[] {
+  const tokens = normalizeSelectionSearchText(selectedText)
+    .match(/[\u4e00-\u9fff]+|[A-Za-z_][A-Za-z0-9_]*|[\u0370-\u03FFA-Za-z0-9_]+|[0-9]+(?:\.[0-9]+)?/gu) ?? [];
+  const unique = new Set<string>();
+  for (const token of tokens) {
+    const condensed = token.replace(/\s+/gu, "");
+    if (!condensed) continue;
+    const meaningful =
+      condensed.length >= 2 ||
+      /[\u4e00-\u9fff]/u.test(condensed) ||
+      /[\u0370-\u03FF]/u.test(condensed);
+    if (meaningful) {
+      unique.add(condensed);
+    }
+  }
+  return Array.from(unique);
+}
+
+function findApproximateRangeForSelectedText(index: TextSearchIndex, selectedText: string): Range | null {
+  const tokens = buildSelectionMatchTokens(selectedText);
+  if (tokens.length === 0) return null;
+
+  const condensedSource = createCondensedSearchText(index.text);
+  let matchedCount = 0;
+  let matchedWeight = 0;
+  let totalWeight = 0;
+  let sourceStart = Number.POSITIVE_INFINITY;
+  let sourceEnd = -1;
+
+  for (const token of tokens) {
+    const tokenWeight = Math.min(token.length, 12);
+    totalWeight += tokenWeight;
+    const condensedStart = condensedSource.text.indexOf(token);
+    if (condensedStart < 0) continue;
+
+    const tokenSourceStart = condensedSource.sourceIndexByCondensed[condensedStart];
+    const tokenSourceEnd = condensedSource.sourceIndexByCondensed[condensedStart + token.length - 1];
+    if (tokenSourceStart === undefined || tokenSourceEnd === undefined) continue;
+
+    matchedCount += 1;
+    matchedWeight += tokenWeight;
+    sourceStart = Math.min(sourceStart, tokenSourceStart);
+    sourceEnd = Math.max(sourceEnd, tokenSourceEnd + 1);
+  }
+
+  const hasStrongSingleToken = matchedCount === 1 && matchedWeight >= 8;
+  const hasEnoughTokenCoverage =
+    matchedCount >= 2 &&
+    matchedWeight >= Math.min(10, Math.max(4, totalWeight * 0.35));
+
+  if ((!hasStrongSingleToken && !hasEnoughTokenCoverage) || !Number.isFinite(sourceStart) || sourceEnd <= sourceStart) {
+    return null;
+  }
+
+  return rangeFromSearchSpan(index, sourceStart, sourceEnd);
 }
 
 function formatFileSize(bytes?: number | null): string {
@@ -743,7 +1207,12 @@ export function LibraryFilePage() {
   const { fileId = "" } = useParams<{ fileId: string }>();
   const navigate = useNavigate();
   const decodedFileId = decodeURIComponent(fileId);
+  const { openAiInteraction } = useAiInteraction();
+  const { toast } = useToast();
+  const contentRef = useRef<HTMLDivElement>(null);
+  const markdownBodyRef = useRef<HTMLDivElement>(null);
 
+  /* ---- file query ---- */
   const fileQuery = useQuery({
     queryKey: ["files-library-file", decodedFileId],
     queryFn: () => fetchLibraryFile(decodedFileId),
@@ -760,6 +1229,572 @@ export function LibraryFilePage() {
   const [viewMode, setViewMode] = useState<"rendered" | "source">("rendered");
   const assetBaseUrl = file?.asset_base_url ?? null;
   const fileExt = file ? normalizeFileExt(file.filetype).toUpperCase() || "FILE" : "FILE";
+
+  /* ========== Highlight state ========== */
+  const [highlights, setHighlights] = useState<LibraryHighlight[]>([]);
+  const [highlightSegmentsById, setHighlightSegmentsById] = useState<Record<number, HighlightSegment[]>>({});
+  const [activeHighlightMenu, setActiveHighlightMenu] = useState<{
+    visible: boolean;
+    top: number;
+    left: number;
+    highlight: LibraryHighlight | null;
+  }>({ visible: false, top: 0, left: 0, highlight: null });
+  const highlightMenuRef = useRef<HTMLDivElement>(null);
+  const selectedRangeRef = useRef<Range | null>(null);
+  const selectedTextRef = useRef("");
+  const selectionDragStartRef = useRef<{ x: number; y: number } | null>(null);
+  const selectedViewportBandRef = useRef<ViewportBand | null>(null);
+  const pendingInteractiveSegmentsRef = useRef<Record<string, HighlightSegment[]>>({});
+
+  const segmentFromViewportRect = useCallback((rect: DOMRect): HighlightSegment => {
+    const container = contentRef.current;
+    if (!container) {
+      return {
+        top: rect.top,
+        left: rect.left,
+        width: Math.max(4, rect.width),
+        height: Math.max(12, rect.height),
+      };
+    }
+    const containerRect = container.getBoundingClientRect();
+    return {
+      top: rect.top - containerRect.top,
+      left: rect.left - containerRect.left,
+      width: Math.max(4, rect.width),
+      height: Math.max(12, rect.height),
+    };
+  }, []);
+
+  const captureRangeSegments = useCallback((range: Range, viewportBand?: ViewportBand | null): HighlightSegment[] => {
+    const container = contentRef.current;
+    if (!container) return [];
+    const containerRect = container.getBoundingClientRect();
+
+    if (markdownBodyRef.current && rangeIntersectsSelector(range, markdownBodyRef.current, ".katex")) {
+      const nativeRects = filterHighlightRects(Array.from(range.getClientRects()), containerRect, viewportBand);
+      if (nativeRects.length > 0) {
+        return nativeRects.map(segmentFromViewportRect);
+      }
+    }
+
+    const rangeRoot = range.commonAncestorContainer.nodeType === Node.TEXT_NODE
+      ? range.commonAncestorContainer.parentNode
+      : range.commonAncestorContainer;
+    const textNodes: Text[] = [];
+
+    if (range.commonAncestorContainer.nodeType === Node.TEXT_NODE) {
+      textNodes.push(range.commonAncestorContainer as Text);
+    } else if (rangeRoot) {
+      const walker = document.createTreeWalker(rangeRoot, NodeFilter.SHOW_TEXT);
+      let current = walker.nextNode();
+      while (current) {
+        const textNode = current as Text;
+        if ((textNode.nodeValue ?? "").trim()) {
+          try {
+            if (range.intersectsNode(textNode) && !shouldIgnoreLibrarySelectionTextNode(textNode)) {
+              textNodes.push(textNode);
+            }
+          } catch {
+            // Ignore nodes that cannot be compared against this range.
+          }
+        }
+        current = walker.nextNode();
+      }
+    }
+
+    const textRects: DOMRect[] = [];
+    for (const textNode of textNodes) {
+      const value = textNode.nodeValue ?? "";
+      if (!value) continue;
+
+      let startOffset = textNode === range.startContainer ? range.startOffset : 0;
+      let endOffset = textNode === range.endContainer ? range.endOffset : value.length;
+      startOffset = Math.max(0, Math.min(value.length, startOffset));
+      endOffset = Math.max(0, Math.min(value.length, endOffset));
+      if (endOffset <= startOffset) continue;
+
+      const selectedSlice = value.slice(startOffset, endOffset);
+      const firstVisibleOffset = selectedSlice.search(/\S/u);
+      if (firstVisibleOffset < 0) continue;
+      const trailingWhitespaceLength = selectedSlice.match(/\s+$/u)?.[0].length ?? 0;
+      const visibleStartOffset = startOffset + firstVisibleOffset;
+      const visibleEndOffset = endOffset - trailingWhitespaceLength;
+      if (visibleEndOffset <= visibleStartOffset) continue;
+
+      const textRange = document.createRange();
+      textRange.setStart(textNode, visibleStartOffset);
+      textRange.setEnd(textNode, visibleEndOffset);
+      textRects.push(
+        ...filterHighlightRects(Array.from(textRange.getClientRects()), containerRect, viewportBand),
+      );
+    }
+
+    const rects = textRects.length > 0
+      ? textRects
+      : filterHighlightRects(Array.from(range.getClientRects()), containerRect, viewportBand);
+
+    if (rects.length === 0) {
+      const rect = range.getBoundingClientRect();
+      if (rect.width < 1 && rect.height < 1) {
+        return [];
+      }
+      return [segmentFromViewportRect(rect)];
+    }
+
+    return rects.map(segmentFromViewportRect);
+  }, [segmentFromViewportRect]);
+
+  const captureElementSegments = useCallback((element: Element): HighlightSegment[] => (
+    Array.from(element.getClientRects())
+      .filter((rect) => rect.width > 1 && rect.height > 1)
+      .map(segmentFromViewportRect)
+  ), [segmentFromViewportRect]);
+
+  const buildHighlightSegmentsFromText = useCallback((selectedText: string): HighlightSegment[] => {
+    const contentRoot = markdownBodyRef.current ?? contentRef.current;
+    const target = selectedText.trim();
+    if (!contentRoot || !target || viewMode !== "rendered") {
+      return [];
+    }
+
+    const index = buildTextSearchIndex([contentRoot]);
+    const matchedSegments = findRangesForSelectedText(index, target)
+      .map((range) => captureRangeSegments(range))
+      .filter((segments) => segments.length > 0 && !highlightSegmentsSpanTooLarge(segments, target));
+    if (matchedSegments.length > 0) {
+      return matchedSegments[0];
+    }
+
+    const approximateRange = findApproximateRangeForSelectedText(index, target);
+    if (approximateRange) {
+      const approximateSegments = captureRangeSegments(approximateRange);
+      if (approximateSegments.length > 0 && !highlightSegmentsSpanTooLarge(approximateSegments, target)) {
+        return approximateSegments;
+      }
+    }
+
+    const normalizedTargets = Array.from(new Set([
+      target,
+      stripMathDelimiters(target),
+    ].map((item) => createCondensedSearchText(normalizeSelectionSearchText(item)).text).filter(Boolean)));
+    if (normalizedTargets.length > 0) {
+      const mathCandidates = Array.from(contentRoot.querySelectorAll<HTMLElement>(".katex"));
+      for (const element of mathCandidates) {
+        const elementTexts = Array.from(new Set([
+          element.innerText || "",
+          element.textContent || "",
+          ...Array.from(element.querySelectorAll<HTMLElement>(".katex-mathml annotation")).map((item) => item.textContent || ""),
+        ].map((item) => createCondensedSearchText(normalizeSelectionSearchText(stripMathDelimiters(item))).text).filter(Boolean)));
+        const matched = normalizedTargets.some((normalizedTarget) => (
+          elementTexts.some((normalizedElementText) => (
+            normalizedElementText.includes(normalizedTarget) || normalizedTarget.includes(normalizedElementText)
+          ))
+        ));
+        if (matched) {
+          const elementSegments = captureElementSegments(element);
+          if (elementSegments.length > 0) {
+            return elementSegments;
+          }
+        }
+      }
+    }
+
+    return [];
+  }, [captureElementSegments, captureRangeSegments, viewMode]);
+
+  const refreshHighlightSegments = useCallback(() => {
+    if (viewMode !== "rendered") {
+      setHighlightSegmentsById({});
+      return;
+    }
+    setHighlightSegmentsById((prev) => {
+      let changed = false;
+      const next: Record<number, HighlightSegment[]> = {};
+      for (const highlight of highlights) {
+        const existingSegments = prev[highlight.id] ?? [];
+        const segments = existingSegments.length > 0
+          ? existingSegments
+          : buildHighlightSegmentsFromText(highlight.selected_text);
+        next[highlight.id] = segments;
+        if (!highlightSegmentsEqual(prev[highlight.id] ?? [], segments)) {
+          changed = true;
+        }
+      }
+      const prevKeys = Object.keys(prev);
+      if (prevKeys.length !== highlights.length) {
+        changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [buildHighlightSegmentsFromText, highlights, viewMode]);
+
+  // Load highlights when file is ready
+  useEffect(() => {
+    if (!decodedFileId) return;
+    let cancelled = false;
+    fetchHighlights(decodedFileId)
+      .then((list) => {
+        if (!cancelled) {
+          setHighlights(list);
+          setHighlightSegmentsById(() => {
+            const next: Record<number, HighlightSegment[]> = {};
+            for (const highlight of list) {
+              if (highlight.segments?.length) {
+                next[highlight.id] = highlight.segments;
+              }
+            }
+            return next;
+          });
+        }
+      })
+      .catch(() => {
+        /* ignore – highlights are optional */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [decodedFileId]);
+
+  useEffect(() => {
+    if (viewMode !== "rendered" || highlights.length === 0) {
+      setHighlightSegmentsById({});
+      return;
+    }
+
+    let raf = 0;
+    const scheduleRefresh = () => {
+      if (raf) {
+        window.cancelAnimationFrame(raf);
+      }
+      raf = window.requestAnimationFrame(() => {
+        raf = 0;
+        refreshHighlightSegments();
+      });
+    };
+
+    scheduleRefresh();
+    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(scheduleRefresh) : null;
+    if (observer && contentRef.current) {
+      observer.observe(contentRef.current);
+    }
+    window.addEventListener("resize", scheduleRefresh);
+
+    return () => {
+      if (raf) {
+        window.cancelAnimationFrame(raf);
+      }
+      observer?.disconnect();
+      window.removeEventListener("resize", scheduleRefresh);
+    };
+  }, [highlights.length, markdownContent, refreshHighlightSegments, viewMode]);
+
+  /* ========== Text selection & floating toolbar ========== */
+  const [selectionToolbar, setSelectionToolbar] = useState<{
+    visible: boolean;
+    top: number;
+    left: number;
+    selectedText: string;
+  }>({ visible: false, top: 0, left: 0, selectedText: "" });
+
+  const selectionToolbarRef = useRef<HTMLDivElement>(null);
+
+  const handleMarkdownPointerDown = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+    selectionDragStartRef.current = { x: event.clientX, y: event.clientY };
+    selectedViewportBandRef.current = null;
+  }, []);
+
+  // Detect text selection on mouseup (rendered mode only)
+  useEffect(() => {
+    if (viewMode !== "rendered") return;
+
+    const handleMouseUp = (event: MouseEvent) => {
+      // Small delay so selection is settled
+      requestAnimationFrame(() => {
+        const sel = window.getSelection();
+        const text = sel?.toString().trim();
+        if (!text || text.length === 0) {
+          setSelectionToolbar((prev) => (prev.visible ? { ...prev, visible: false } : prev));
+          selectedRangeRef.current = null;
+          selectedTextRef.current = "";
+          return;
+        }
+
+        // Only show toolbar if selection is inside the content area
+        const anchorNode = sel?.anchorNode;
+        const markdownBody = markdownBodyRef.current;
+        if (!anchorNode || !markdownBody?.contains(anchorNode)) {
+          return;
+        }
+
+        const range = sel?.getRangeAt(0);
+        if (!range) return;
+        selectedRangeRef.current = range.cloneRange();
+        selectedTextRef.current = text;
+        const dragStart = selectionDragStartRef.current;
+        const rangeRect = range.getBoundingClientRect();
+        const minY = dragStart ? Math.min(dragStart.y, event.clientY, rangeRect.top) : rangeRect.top;
+        const maxY = dragStart ? Math.max(dragStart.y, event.clientY, rangeRect.bottom) : rangeRect.bottom;
+        selectedViewportBandRef.current = {
+          top: Math.max(0, minY - 36),
+          bottom: Math.min(window.innerHeight, maxY + 36),
+        };
+
+        const rect = range.getBoundingClientRect();
+        const top = Math.max(8, rect.top - 52); // above selection
+        const left = rect.left + rect.width / 2; // centered
+
+        setSelectionToolbar({ visible: true, top, left, selectedText: text });
+      });
+    };
+
+    document.addEventListener("mouseup", handleMouseUp);
+    return () => document.removeEventListener("mouseup", handleMouseUp);
+  }, [viewMode]);
+
+  // Dismiss toolbar on click outside
+  useEffect(() => {
+    if (!selectionToolbar.visible) return;
+    const handleClick = (e: MouseEvent) => {
+      if (selectionToolbarRef.current && !selectionToolbarRef.current.contains(e.target as Node)) {
+        setSelectionToolbar((prev) => ({ ...prev, visible: false }));
+      }
+    };
+    // Delay to avoid catching the same click that opened the toolbar
+    const timer = setTimeout(() => {
+      document.addEventListener("mousedown", handleClick);
+    }, 0);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("mousedown", handleClick);
+    };
+  }, [selectionToolbar.visible]);
+
+  const hideSelectionToolbar = useCallback(() => {
+    setSelectionToolbar((prev) => ({ ...prev, visible: false }));
+  }, []);
+
+  const closeHighlightMenu = useCallback(() => {
+    setActiveHighlightMenu((prev) => ({ ...prev, visible: false }));
+  }, []);
+
+  useEffect(() => {
+    if (!activeHighlightMenu.visible) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      if (highlightMenuRef.current?.contains(event.target as Node)) {
+        return;
+      }
+      setActiveHighlightMenu((prev) => ({ ...prev, visible: false }));
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [activeHighlightMenu.visible]);
+
+  const handleHighlightClick = useCallback((highlight: LibraryHighlight, event: ReactMouseEvent<HTMLElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    hideSelectionToolbar();
+    setActiveHighlightMenu({
+      visible: true,
+      top: Math.max(8, rect.bottom + 8),
+      left: Math.max(8, Math.min(rect.left + rect.width / 2, window.innerWidth - 8)),
+      highlight,
+    });
+  }, [hideSelectionToolbar]);
+
+  /* ========== Highlight actions ========== */
+  const handleHighlight = useCallback(async () => {
+    const text = selectionToolbar.selectedText;
+    if (!text || !decodedFileId) return;
+    const capturedSegments =
+      selectedTextRef.current === text && selectedRangeRef.current
+        ? captureRangeSegments(selectedRangeRef.current, selectedViewportBandRef.current)
+        : [];
+    const liveSegments = highlightSegmentsSpanTooLarge(capturedSegments, text) ? [] : capturedSegments;
+    hideSelectionToolbar();
+    try {
+      const created = await createHighlight(decodedFileId, {
+        selected_text: text,
+        color: "amber",
+        segments: liveSegments,
+      });
+      setHighlights((prev) => [...prev, created]);
+      setHighlightSegmentsById((prev) => ({
+        ...prev,
+        [created.id]: created.segments?.length
+          ? created.segments
+          : liveSegments.length > 0
+            ? liveSegments
+            : buildHighlightSegmentsFromText(created.selected_text),
+      }));
+      toast({ title: "已高亮", description: "选中文本已高亮标记。" });
+    } catch {
+      toast({ title: "高亮失败", description: "请稍后重试。", variant: "error" });
+    }
+  }, [buildHighlightSegmentsFromText, captureRangeSegments, selectionToolbar.selectedText, decodedFileId, hideSelectionToolbar, toast]);
+
+  const handleDeleteHighlight = useCallback(
+    async (highlightId: number) => {
+      if (!decodedFileId) return;
+      try {
+        await deleteHighlight(decodedFileId, highlightId);
+        setHighlights((prev) => prev.filter((h) => h.id !== highlightId));
+        setHighlightSegmentsById((prev) => {
+          const next = { ...prev };
+          delete next[highlightId];
+          return next;
+        });
+        setActiveHighlightMenu((prev) => (
+          prev.highlight?.id === highlightId ? { visible: false, top: 0, left: 0, highlight: null } : prev
+        ));
+      } catch {
+        /* ignore */
+      }
+    },
+    [decodedFileId],
+  );
+
+  /* ========== Ask AI ========== */
+  const handleAskAi = useCallback(() => {
+    const text = selectionToolbar.selectedText.trim();
+    if (!text || !decodedFileId) return;
+    const source = getLibrarySelectionSource(decodedFileId);
+    hideSelectionToolbar();
+    window.getSelection()?.removeAllRanges();
+    openAiInteraction({
+      scope: { type: "library", fileId: decodedFileId },
+      scene: AI_SCENE_LIBRARY_SELECTION,
+      source,
+      selectedText: text,
+      newSession: true,
+    });
+  }, [selectionToolbar.selectedText, decodedFileId, hideSelectionToolbar, openAiInteraction]);
+
+  /* ========== Generate interaction modal ========== */
+  const [interactiveModal, setInteractiveModal] = useState<{
+    visible: boolean;
+    selectedText: string;
+    selectionSegments: HighlightSegment[];
+    description: string;
+    loading: boolean;
+    resultHtml: string | null;
+    error: string | null;
+    mode: "create" | "view";
+  }>({
+    visible: false,
+    selectedText: "",
+    selectionSegments: [],
+    description: "",
+    loading: false,
+    resultHtml: null,
+    error: null,
+    mode: "create",
+  });
+
+  const openInteractiveModal = useCallback(() => {
+    const text = selectionToolbar.selectedText;
+    if (!text) return;
+    if (selectedRangeRef.current && selectedTextRef.current !== text) {
+      selectedRangeRef.current = null;
+    }
+    const capturedSegments =
+      selectedTextRef.current === text && selectedRangeRef.current
+        ? captureRangeSegments(selectedRangeRef.current, selectedViewportBandRef.current)
+        : [];
+    const selectionSegments = highlightSegmentsSpanTooLarge(capturedSegments, text) ? [] : capturedSegments;
+    if (selectionSegments.length === 0) {
+      toast({ title: "选区定位失败", description: "请重新划选内容后再生成交互。", variant: "error" });
+      return;
+    }
+    hideSelectionToolbar();
+    setInteractiveModal({
+      visible: true,
+      selectedText: text,
+      selectionSegments,
+      description: "",
+      loading: false,
+      resultHtml: null,
+      error: null,
+      mode: "create",
+    });
+  }, [captureRangeSegments, selectionToolbar.selectedText, hideSelectionToolbar, toast]);
+
+  const resetInteractiveModal = useCallback(() => {
+    setInteractiveModal({
+      visible: false,
+      selectedText: "",
+      selectionSegments: [],
+      description: "",
+      loading: false,
+      resultHtml: null,
+      error: null,
+      mode: "create",
+    });
+  }, []);
+
+  const closeInteractiveModal = useCallback(() => {
+    resetInteractiveModal();
+  }, [resetInteractiveModal]);
+
+  const openStoredInteractive = useCallback((highlight: LibraryHighlight) => {
+    if (!highlight.interactive_html) return;
+    closeHighlightMenu();
+    setInteractiveModal({
+      visible: true,
+      selectedText: highlight.selected_text,
+      selectionSegments: [],
+      description: highlight.description ?? "",
+      loading: false,
+      resultHtml: highlight.interactive_html,
+      error: null,
+      mode: "view",
+    });
+  }, [closeHighlightMenu]);
+
+  const handleGenerateInteractive = useCallback(async () => {
+    if (!decodedFileId || !interactiveModal.selectedText) return;
+    const selectedText = interactiveModal.selectedText;
+    const description = interactiveModal.description;
+    const selectionSegments = interactiveModal.selectionSegments;
+    if (selectionSegments.length > 0) {
+      pendingInteractiveSegmentsRef.current[selectedText] = selectionSegments;
+    }
+    resetInteractiveModal();
+    toast({ title: "生成已开始", description: "生成完成后会提醒。", variant: "info" });
+    try {
+      const result = await generateInteractive(decodedFileId, {
+        selected_text: selectedText,
+        description: description || undefined,
+        segments: selectionSegments,
+      });
+      if (result.highlight) {
+        const nextHighlight = result.highlight;
+        setHighlights((prev) => [...prev.filter((item) => item.id !== nextHighlight.id), nextHighlight]);
+        const savedSegments = nextHighlight.segments?.length
+          ? nextHighlight.segments
+          : pendingInteractiveSegmentsRef.current[selectedText] ?? [];
+        delete pendingInteractiveSegmentsRef.current[selectedText];
+        setHighlightSegmentsById((prev) => ({
+          ...prev,
+          [nextHighlight.id]: savedSegments,
+        }));
+      }
+      toast({ title: "交互已生成", description: "已为选中内容生成交互内容。", variant: "success" });
+    } catch {
+      delete pendingInteractiveSegmentsRef.current[selectedText];
+      toast({ title: "生成交互失败", description: "请稍后重试。", variant: "error" });
+    }
+  }, [
+    decodedFileId,
+    interactiveModal.selectedText,
+    interactiveModal.selectionSegments,
+    interactiveModal.description,
+    resetInteractiveModal,
+    toast,
+  ]);
+
+  const sanitizedInteractiveHtml = useMemo(
+    () => sanitizeInteractiveHtml(interactiveModal.resultHtml ?? ""),
+    [interactiveModal.resultHtml],
+  );
 
   return (
     <div className="min-h-full pb-24 sm:pb-12">
@@ -830,7 +1865,46 @@ export function LibraryFilePage() {
             ) : null}
           </section>
 
-          <section className="rounded-xl border border-slate-200 bg-white px-5 py-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          {/* Highlights list (if any) */}
+          {highlights.length > 0 ? (
+            <section className="rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">高亮标记</h3>
+              <div className="mt-3 space-y-2">
+                {highlights.map((h) => (
+                  <div
+                    key={h.id}
+                    className={cn(
+                      "flex items-start justify-between gap-3 rounded-lg border px-3 py-2 text-sm",
+                      h.color === "sky"
+                        ? "border-sky-200 bg-sky-50 dark:border-sky-800/60 dark:bg-sky-950/30"
+                        : "border-amber-200 bg-amber-50 dark:border-amber-800/60 dark:bg-amber-950/30",
+                    )}
+                  >
+                    <span className="min-w-0 flex-1 truncate text-slate-700 dark:text-slate-300">{h.selected_text}</span>
+                    {h.interactive_html ? (
+                      <button
+                        type="button"
+                        onClick={() => openStoredInteractive(h)}
+                        className="shrink-0 rounded px-2 py-0.5 text-xs font-medium text-sky-700 transition hover:bg-white dark:text-sky-300 dark:hover:bg-slate-800"
+                      >
+                        交互
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteHighlight(h.id)}
+                      className="shrink-0 rounded p-1 text-slate-400 transition hover:bg-white hover:text-red-500 dark:hover:bg-slate-800"
+                      title="删除高亮"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          <section className="relative rounded-xl border border-slate-200 bg-white px-5 py-5 shadow-sm dark:border-slate-800 dark:bg-slate-900" ref={contentRef}>
             {markdownContent ? (
               <>
                 <div className="mb-4 flex items-center gap-2">
@@ -861,10 +1935,57 @@ export function LibraryFilePage() {
                 </div>
 
                 {viewMode === "rendered" ? (
-                  <LibraryMarkdownViewer
-                    content={markdownContent}
-                    assetBaseUrl={assetBaseUrl ?? undefined}
-                  />
+                  <>
+                    <div ref={markdownBodyRef} onMouseDown={handleMarkdownPointerDown}>
+                      <LibraryMarkdownViewer
+                        content={markdownContent}
+                        assetBaseUrl={assetBaseUrl ?? undefined}
+                      />
+                    </div>
+                    <div
+                      className="pointer-events-none absolute inset-0 z-20"
+                      data-library-highlight-layer="true"
+                    >
+                      {highlights.map((highlight) => (
+                        <div key={highlight.id}>
+                          {(highlightSegmentsById[highlight.id] ?? []).map((segment, index) => {
+                            const isInteractive = Boolean(highlight.interactive_html);
+                            return (
+                              <button
+                                key={`${highlight.id}-${index}`}
+                                type="button"
+                                onClick={(event) => handleHighlightClick(highlight, event)}
+                                className={cn(
+                                  "pointer-events-auto absolute rounded-[2px] transition-shadow duration-150 focus-visible:outline-none focus-visible:ring-2",
+                                  isInteractive
+                                    ? "bg-sky-100/55 focus-visible:ring-sky-300/50"
+                                    : "bg-amber-100/60 focus-visible:ring-amber-300/50",
+                                )}
+                                style={{
+                                  top: segment.top,
+                                  left: segment.left,
+                                  width: segment.width,
+                                  height: segment.height,
+                                  backgroundColor: isInteractive
+                                    ? "rgba(186, 230, 253, 0.5)"
+                                    : "rgba(254, 240, 138, 0.42)",
+                                }}
+                                title={`${isInteractive ? "交互片段" : "高亮片段"}：${highlight.selected_text}`}
+                                aria-label={isInteractive ? "打开交互高亮菜单" : "打开高亮菜单"}
+                              >
+                                <span
+                                  className={cn(
+                                    "pointer-events-none absolute inset-x-[1px] bottom-[-3px] h-[1.5px] rounded-full shadow-[0_2px_6px_-5px_rgba(15,23,42,0.7)]",
+                                    isInteractive ? "bg-sky-600/90" : "bg-amber-600/90",
+                                  )}
+                                />
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ))}
+                    </div>
+                  </>
                 ) : (
                   <pre className="whitespace-pre-wrap break-words rounded-lg border border-slate-200 bg-slate-50 p-4 font-mono text-sm leading-7 text-slate-800 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-200">
                     {markdownContent}
@@ -883,6 +2004,174 @@ export function LibraryFilePage() {
           </section>
         </div>
       ) : null}
+
+      {/* ---- Floating selection toolbar (Portal) ---- */}
+      {selectionToolbar.visible &&
+        createPortal(
+          <div
+            ref={selectionToolbarRef}
+            className="fixed z-[9999] flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-1.5 py-1.5 shadow-lg dark:border-slate-700 dark:bg-slate-900"
+            style={{
+              top: selectionToolbar.top,
+              left: Math.max(8, Math.min(selectionToolbar.left, window.innerWidth - 200)),
+              transform: "translateX(-50%)",
+            }}
+            onMouseDown={(e) => {
+              // Prevent the toolbar click from clearing the selection
+              e.preventDefault();
+            }}
+          >
+            <button
+              type="button"
+              onClick={handleHighlight}
+              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-amber-50 hover:text-amber-700 dark:text-slate-200 dark:hover:bg-amber-950/40 dark:hover:text-amber-300"
+              title="高亮"
+            >
+              <Highlighter className="h-3.5 w-3.5" />
+              高亮
+            </button>
+            <button
+              type="button"
+              onClick={handleAskAi}
+              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-indigo-50 hover:text-indigo-700 dark:text-slate-200 dark:hover:bg-indigo-950/40 dark:hover:text-indigo-300"
+              title="问问AI"
+            >
+              <MessageSquare className="h-3.5 w-3.5" />
+              问问AI
+            </button>
+            <button
+              type="button"
+              onClick={openInteractiveModal}
+              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-violet-50 hover:text-violet-700 dark:text-slate-200 dark:hover:bg-violet-950/40 dark:hover:text-violet-300"
+              title="生成交互"
+            >
+              <Wand2 className="h-3.5 w-3.5" />
+              生成交互
+            </button>
+          </div>,
+          document.body,
+        )}
+
+      {activeHighlightMenu.visible && activeHighlightMenu.highlight &&
+        createPortal(
+          <div
+            ref={highlightMenuRef}
+            className="fixed z-[9999] flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-1.5 py-1.5 shadow-lg dark:border-slate-700 dark:bg-slate-900"
+            style={{
+              top: activeHighlightMenu.top,
+              left: activeHighlightMenu.left,
+              transform: "translateX(-50%)",
+            }}
+          >
+            {activeHighlightMenu.highlight.interactive_html ? (
+              <button
+                type="button"
+                onClick={() => openStoredInteractive(activeHighlightMenu.highlight!)}
+                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-sky-50 hover:text-sky-700 dark:text-slate-200 dark:hover:bg-sky-950/40 dark:hover:text-sky-300"
+              >
+                <Wand2 className="h-3.5 w-3.5" />
+                查看交互
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => handleDeleteHighlight(activeHighlightMenu.highlight!.id)}
+              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-red-50 hover:text-red-600 dark:text-slate-200 dark:hover:bg-red-950/30 dark:hover:text-red-300"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              删除
+            </button>
+          </div>,
+          document.body,
+        )}
+
+      {/* ---- Generate interaction modal (Portal) ---- */}
+      {interactiveModal.visible &&
+        createPortal(
+          <div className="fixed inset-0 z-[10000] flex items-center justify-center">
+            {/* Backdrop */}
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={closeInteractiveModal} />
+            {/* Dialog */}
+            <div className="relative z-10 mx-4 flex max-h-[86vh] min-h-0 w-full max-w-2xl flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 dark:border-slate-800">
+                <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                  {interactiveModal.mode === "view" ? "交互内容" : "生成交互"}
+                </h2>
+                <button
+                  type="button"
+                  onClick={closeInteractiveModal}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-5">
+                {/* Selected text preview */}
+                <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2.5 text-sm leading-6 text-slate-700 dark:border-sky-800/60 dark:bg-sky-950/30 dark:text-slate-300">
+                  <span className="text-xs font-medium text-sky-600 dark:text-sky-400">选中文本：</span>
+                  <span className="ml-1">{interactiveModal.selectedText}</span>
+                </div>
+
+                {interactiveModal.mode === "create" ? (
+                  <label className="mt-4 block">
+                    <span className="text-xs font-medium text-slate-500 dark:text-slate-400">交互形式描述（可选）</span>
+                    <textarea
+                      value={interactiveModal.description}
+                      onChange={(e) => setInteractiveModal((prev) => ({ ...prev, description: e.target.value }))}
+                      placeholder="例如：做成一个选择题练习"
+                      rows={3}
+                      className="mt-1.5 w-full resize-none rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-slate-300 focus:bg-white focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-950/40 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-slate-600 dark:focus:bg-slate-900 dark:focus:ring-slate-700/60"
+                    />
+                  </label>
+                ) : null}
+
+                {/* Result HTML */}
+                {interactiveModal.resultHtml ? (
+                  <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950/40">
+                    <div className="mb-2 text-xs font-medium text-slate-500 dark:text-slate-400">生成结果</div>
+                    <div
+                      className="prose prose-sm dark:prose-invert max-w-none"
+                      dangerouslySetInnerHTML={{ __html: sanitizedInteractiveHtml }}
+                    />
+                  </div>
+                ) : null}
+
+                {/* Error */}
+                {interactiveModal.error ? (
+                  <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700 dark:border-red-800/60 dark:bg-red-950/30 dark:text-red-300">
+                    {interactiveModal.error}
+                  </div>
+                ) : null}
+              </div>
+
+              {/* Footer */}
+              <div className="flex items-center justify-end gap-3 border-t border-slate-100 px-6 py-4 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={closeInteractiveModal}
+                  className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                >
+                  关闭
+                </button>
+                {interactiveModal.mode === "create" ? (
+                  <button
+                    type="button"
+                    onClick={handleGenerateInteractive}
+                    disabled={interactiveModal.loading}
+                    className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+                  >
+                    {interactiveModal.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                    {interactiveModal.resultHtml ? "重新生成" : "生成"}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

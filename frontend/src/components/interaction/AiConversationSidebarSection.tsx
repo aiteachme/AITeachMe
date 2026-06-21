@@ -20,7 +20,10 @@ import type { AiConversationScope } from "./types";
 import {
   AI_SOURCE_DOCUMENT_SELECTION,
   AI_SOURCE_EXAM_QUESTION,
+  getLibrarySelectionSource,
   getAiConversationScopeKey,
+  isLibrarySelectionSource,
+  parseLibrarySelectionSource,
 } from "./types";
 
 interface AiConversationSidebarSectionProps {
@@ -40,7 +43,7 @@ interface AiConversationSidebarSectionProps {
   showCollapsedNewButton?: boolean;
 }
 
-type ConversationKind = "document" | "question" | "builder" | "general";
+type ConversationKind = "document" | "question" | "builder" | "library" | "general";
 
 const GLOBAL_COURSE_ID = "global";
 const RECENT_SECTION_EXPANDED_STORAGE_KEY = "aiteachme.aiConversations.recentExpanded";
@@ -89,6 +92,10 @@ const CONVERSATION_KIND_STYLES: Record<ConversationKind, {
     label: "构建",
     badgeClassName: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-200",
   },
+  library: {
+    label: "资料库",
+    badgeClassName: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200",
+  },
   general: {
     label: "通用",
     badgeClassName: "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-200",
@@ -103,6 +110,9 @@ function getConversationKindBySource(source?: string | null, hasSelection = fals
   const normalizedSource = source?.trim() ?? "";
   if (normalizedSource === AI_SOURCE_EXAM_QUESTION) {
     return "question";
+  }
+  if (isLibrarySelectionSource(normalizedSource)) {
+    return "library";
   }
   if (normalizedSource === AI_SOURCE_DOCUMENT_SELECTION || hasSelection) {
     return "document";
@@ -171,11 +181,18 @@ function collapseBuildPlannerSessions(items: ChatSessionItem[]): ChatSessionItem
 }
 
 function getSessionCourseLabel(session: ChatSessionItem): string {
+  if (isLibrarySelectionSource(session.source)) {
+    return "资料库";
+  }
   const courseId = getSessionCourseId(session);
   return session.course_name?.trim() || (courseId === GLOBAL_COURSE_ID ? "通用" : "未命名课程");
 }
 
 function getSessionScope(session: ChatSessionItem): AiConversationScope {
+  const libraryFileId = parseLibrarySelectionSource(session.source);
+  if (libraryFileId) {
+    return { type: "library", fileId: libraryFileId };
+  }
   const courseId = getSessionCourseId(session);
   return courseId === GLOBAL_COURSE_ID
     ? { type: "global" }
@@ -235,6 +252,13 @@ function getSessionListRequest(scope: AiConversationScope, size: number) {
     };
   }
 
+  if (scope.type === "library") {
+    return {
+      url: "/api/v1/chats/sessions/list",
+      data: { page: 1, size, include_all_courses: false, source: getLibrarySelectionSource(scope.fileId) },
+    };
+  }
+
   return {
     url: `/api/v1/courses/${scope.courseId}/chats/sessions/list`,
     data: { page: 1, size },
@@ -242,7 +266,9 @@ function getSessionListRequest(scope: AiConversationScope, size: number) {
 }
 
 function getNewConversationLabel(scope: AiConversationScope): string {
-  return scope.type === "global" ? "新建全局对话" : "新建课程对话";
+  if (scope.type === "global") return "新建全局对话";
+  if (scope.type === "library") return "新建资料库对话";
+  return "新建课程对话";
 }
 
 export function AiConversationSidebarSection({
