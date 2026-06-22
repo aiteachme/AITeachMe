@@ -278,7 +278,9 @@ async def test_docgen_writer_returns_scaffold_when_primary_completion_fails(monk
 
     assert "# Function Graphs" in result.content
     assert "本章目标" in result.content
-    assert "## 核心框架" in result.content
+    assert "functiongraph的关系" in result.content
+    assert "## 核心框架" not in result.content
+    assert "## 重点突破" not in result.content
     assert "function graph" in result.content
     assert result.metadata["scaffold_fallback_applied"] is True
     assert "RuntimeError" in result.metadata["writer_fallback_reason"]

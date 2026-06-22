@@ -5,12 +5,16 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   AlertCircle,
   ArrowUp,
+  Atom,
   BookOpen,
   CalendarCheck,
   Check,
   CheckCircle2,
   ChevronDown,
   ClipboardList,
+  Code2,
+  Calculator,
+  ChartScatter,
   FileCode,
   FileImage,
   FolderOpen,
@@ -20,10 +24,10 @@ import {
   Paperclip,
   RefreshCw,
   Search,
-  Upload,
   X,
   FileUp,
   Package,
+  Sigma,
   Target,
 } from "lucide-react";
 
@@ -226,27 +230,40 @@ function formatFileSize(bytes?: number | null): string {
 
 const DEMO_COURSE_ACCENTS = [
   {
-    shell: "border-slate-200 bg-white hover:border-indigo-200 hover:shadow-indigo-200/30 dark:border-slate-800 dark:bg-slate-950/92 dark:hover:border-indigo-500/30",
+    shell: "border-indigo-100 bg-gradient-to-br from-white via-white to-indigo-50/70 hover:border-indigo-300 hover:shadow-indigo-200/40 dark:border-indigo-500/20 dark:from-slate-950 dark:via-slate-950 dark:to-indigo-950/30 dark:hover:border-indigo-400/40",
     icon: "border-indigo-100 bg-indigo-50 text-indigo-600 dark:border-indigo-400/20 dark:bg-indigo-400/10 dark:text-indigo-300",
-    tag: "bg-indigo-50 text-indigo-700 dark:bg-indigo-400/10 dark:text-indigo-300",
+    strip: "from-indigo-500 via-sky-400 to-violet-400",
   },
   {
-    shell: "border-slate-200 bg-white hover:border-cyan-200 hover:shadow-cyan-200/30 dark:border-slate-800 dark:bg-slate-950/92 dark:hover:border-cyan-500/30",
+    shell: "border-cyan-100 bg-gradient-to-br from-white via-white to-cyan-50/70 hover:border-cyan-300 hover:shadow-cyan-200/40 dark:border-cyan-500/20 dark:from-slate-950 dark:via-slate-950 dark:to-cyan-950/25 dark:hover:border-cyan-400/40",
     icon: "border-cyan-100 bg-cyan-50 text-cyan-700 dark:border-cyan-400/20 dark:bg-cyan-400/10 dark:text-cyan-300",
-    tag: "bg-cyan-50 text-cyan-700 dark:bg-cyan-400/10 dark:text-cyan-300",
+    strip: "from-cyan-500 via-emerald-400 to-sky-400",
   },
   {
-    shell: "border-slate-200 bg-white hover:border-violet-200 hover:shadow-violet-200/30 dark:border-slate-800 dark:bg-slate-950/92 dark:hover:border-violet-500/30",
+    shell: "border-violet-100 bg-gradient-to-br from-white via-white to-violet-50/70 hover:border-violet-300 hover:shadow-violet-200/40 dark:border-violet-500/20 dark:from-slate-950 dark:via-slate-950 dark:to-violet-950/30 dark:hover:border-violet-400/40",
     icon: "border-violet-100 bg-violet-50 text-violet-600 dark:border-violet-400/20 dark:bg-violet-400/10 dark:text-violet-300",
-    tag: "bg-violet-50 text-violet-700 dark:bg-violet-400/10 dark:text-violet-300",
+    strip: "from-violet-500 via-fuchsia-400 to-indigo-400",
   },
 ] as const;
 
-function getDemoCourseLabel(courseName: string): string {
-  if (/速成|期末|考前/.test(courseName)) return "考前速成";
-  if (/Python|C语言|编程|程序/.test(courseName)) return "动手练习";
-  if (/系统|复习/.test(courseName)) return "系统复习";
-  return "完整课程";
+function getDemoCourseTheme(courseName: string, index: number) {
+  const accent = DEMO_COURSE_ACCENTS[index % DEMO_COURSE_ACCENTS.length];
+  if (/Python|C语言|编程|程序|代码/i.test(courseName)) {
+    return { ...accent, icon: Code2 };
+  }
+  if (/概率|统计|数理统计/.test(courseName)) {
+    return { ...DEMO_COURSE_ACCENTS[1], icon: ChartScatter };
+  }
+  if (/物理|力学|牛顿|受力/.test(courseName)) {
+    return { ...DEMO_COURSE_ACCENTS[1], icon: Atom };
+  }
+  if (/线性代数|矩阵|行列式|特征值/.test(courseName)) {
+    return { ...DEMO_COURSE_ACCENTS[2], icon: Sigma };
+  }
+  if (/高等数学|高数|微积分|极限|导数|积分/.test(courseName)) {
+    return { ...DEMO_COURSE_ACCENTS[0], icon: Calculator };
+  }
+  return { ...accent, icon: BookOpen };
 }
 
 function normalizeFileExt(filetype?: string | null): string {
@@ -1247,54 +1264,50 @@ export function HomePage() {
                   ) : null}
                   {courses.length > 0 && (
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-                        {courses.map((course, i) => {
-                          const accent = DEMO_COURSE_ACCENTS[i % DEMO_COURSE_ACCENTS.length];
-                          return (
+                      {courses.map((course, i) => {
+                        const theme = getDemoCourseTheme(course.course_name, i);
+                        const CourseIcon = theme.icon;
+                        const isImportingThisCourse =
+                          courseImportMutation.isPending
+                          && courseImportMutation.variables?.filename === course.filename;
+                        return (
                           <motion.div
                             key={course.filename}
                             initial={{ opacity: 0, y: 16 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: i * 0.05, duration: 0.35, ease: "easeOut" }}
                           >
-                            <div className={cn(
-                              "atm-deferred-card group relative flex h-full min-h-[118px] flex-col rounded-lg border p-4 shadow-[0_12px_28px_-24px_rgba(15,23,42,0.45)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_34px_-28px_rgba(79,70,229,0.45)] dark:shadow-black/20",
-                              accent.shell,
-                            )}>
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="mr-2 min-w-0 flex-1">
-                                  <span className={cn("inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold", accent.tag)}>
-                                    {getDemoCourseLabel(course.course_name)}
-                                  </span>
-                                  <h3 className="mt-2 line-clamp-1 text-[15px] font-bold tracking-normal text-slate-950 dark:text-slate-100">{course.course_name}</h3>
-                                </div>
-                                <div className={cn("rounded-md border p-1.5", accent.icon)}>
-                                  <Package className="h-3.5 w-3.5" />
-                                </div>
+                            <button
+                              type="button"
+                              onClick={() => courseImportMutation.mutate({ filename: course.filename })}
+                              disabled={courseImportMutation.isPending}
+                              className={cn(
+                                "atm-deferred-card group relative flex h-full min-h-[118px] w-full overflow-hidden rounded-lg border p-4 text-left shadow-[0_12px_28px_-24px_rgba(15,23,42,0.45)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_34px_-28px_rgba(79,70,229,0.45)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 disabled:cursor-wait disabled:hover:translate-y-0 dark:shadow-black/20",
+                                theme.shell,
+                              )}
+                              title={`导入 ${course.course_name} 到左侧课程列表`}
+                              aria-label={`导入 ${course.course_name}`}
+                            >
+                              <div className={cn("pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r", theme.strip)} />
+                              <div className="min-w-0 pr-12">
+                                <h3 className="line-clamp-2 text-[15px] font-bold leading-snug tracking-normal text-slate-950 dark:text-slate-100">{course.course_name}</h3>
                               </div>
 
-                              <div className="mt-auto flex items-center justify-end gap-3 pt-4">
-                                <button
-                                  onClick={() => courseImportMutation.mutate({ filename: course.filename })}
-                                  disabled={courseImportMutation.isPending}
-                                  className={cn(
-                                    "inline-flex h-7 shrink-0 items-center justify-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition-all",
-                                    !courseImportMutation.isPending
-                                      ? "border-slate-200 bg-white/70 text-slate-700 hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-200 dark:hover:border-indigo-400/40 dark:hover:bg-indigo-400/10 dark:hover:text-indigo-200"
-                                      : "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-600"
-                                  )}
-                                  title={`导入 ${course.course_name} 到左侧课程列表`}
-                                  aria-label={`导入 ${course.course_name}`}
-                                >
-                                  {courseImportMutation.isPending ? (
-                                    <><Loader2 className="h-3.5 w-3.5 animate-spin" /> 导入中</>
-                                  ) : (
-                                    <><Upload className="h-3.5 w-3.5" /> 导入</>
-                                  )}
-                                </button>
+                              <div className={cn("absolute right-4 top-5 rounded-md border p-1.5", theme.icon)}>
+                                {isImportingThisCourse ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <CourseIcon className="h-3.5 w-3.5" />
+                                )}
                               </div>
-                            </div>
+
+                              <div className="absolute bottom-4 right-4 text-xs font-medium text-slate-400 transition-colors group-hover:text-slate-500 dark:text-slate-500 dark:group-hover:text-slate-400">
+                                <span>{isImportingThisCourse ? "正在加入课程列表" : "点击加入课程"}</span>
+                              </div>
+                            </button>
                           </motion.div>
-                        )})}
+                        );
+                      })}
                     </div>
                   )}
                 </div>

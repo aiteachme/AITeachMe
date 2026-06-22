@@ -90,6 +90,34 @@ def _writer_stream_char_limit(execution_contract: Mapping[str, Any], *, digest_m
     return max(5000, min(14000, int(target_words * 4.5)))
 
 
+def _fallback_unique_items(values: list[str], *, limit: int = 6) -> list[str]:
+    result: list[str] = []
+    for value in values:
+        item = str(value or "").strip()
+        if not item or item in result:
+            continue
+        result.append(item)
+        if len(result) >= limit:
+            break
+    return result
+
+
+def _fallback_heading_seed(value: str, fallback: str) -> str:
+    text = str(value or "").strip()
+    text = re.sub(r"^[\s\-*#>·•\d.、]+", "", text)
+    text = re.sub(r"[`*_{}\[\]（）()【】《》]", "", text)
+    text = re.split(r"[，,；;。！？!?：:\n]|->|→", text, maxsplit=1)[0].strip()
+    text = re.sub(
+        r"(核心概念|基本方法|典型题型|易错边界|综合练习题型|学习目标|重点内容|相关例题)$",
+        "",
+        text,
+    ).strip()
+    if len(text) < 2:
+        text = str(fallback or "本章内容").strip()
+    text = re.sub(r"\s+", "", text)
+    return (text or "本章内容")[:14]
+
+
 class DocGenWriterRuntime(BaseTracedExecution):
     @property
     def trace_namespace(self) -> str:
@@ -310,25 +338,28 @@ class DocGenWriterRuntime(BaseTracedExecution):
         writing_instructions: str,
         dense_context: str,
     ) -> str:
-        focus_items = [item for item in required_elements if item.strip()]
+        focus_items = _fallback_unique_items([item for item in required_elements if item.strip()])
         if not focus_items and objective.strip():
             focus_items = [objective.strip()]
         if not focus_items:
             focus_items = ["理解本章核心概念、基本方法和典型题型。"]
         context_points = self._fallback_context_points(dense_context)
+        primary = _fallback_heading_seed(focus_items[0], title)
+        secondary_source = focus_items[1] if len(focus_items) > 1 else objective or title
+        secondary = _fallback_heading_seed(secondary_source, title)
 
         lines = [
             f"# {title}",
             "",
-            "## 学习目标",
+            f"## {primary}本章目标",
             "",
             *[f"- {item}" for item in focus_items[:6]],
             "",
-            "## 核心框架",
+            f"## {primary}的关系",
             "",
-            "本章可以按“概念辨析 -> 方法步骤 -> 例题应用 -> 易错检查”的顺序学习。先确认每个概念的定义域、适用条件和常见变形，再把计算或证明过程拆成可复用步骤。",
+            f"先把“{primary}”放回本章主题中，确认它和前后知识、适用条件、常见变形之间的关系，再把需要计算、判断或表达的步骤拆开处理。",
             "",
-            "## 重点突破",
+            f"## {secondary}怎么处理",
             "",
         ]
         if context_points:
@@ -336,23 +367,23 @@ class DocGenWriterRuntime(BaseTracedExecution):
         else:
             lines.extend(f"- {item}" for item in focus_items[:6])
         if writing_instructions.strip():
-            lines.extend(["", "## 学习提示", "", writing_instructions.strip()])
+            lines.extend(["", f"## {primary}学习提醒", "", writing_instructions.strip()])
         lines.extend(
             [
                 "",
-                "## 例题与检查点",
+                f"## {primary}怎么练",
                 "",
-                "### 例题",
+                "### 基础任务",
                 "",
                 f"围绕“{focus_items[0]}”设计一道基础题：先写出已知条件，再列出需要使用的定义、公式或定理，最后检查答案是否满足题目限制。",
                 "",
-                "### 检查点",
+                "### 自查要点",
                 "",
                 "1. 用自己的话复述本章最重要的定义或定理。",
                 "2. 写出一个典型题目的完整解题步骤。",
                 "3. 标出最容易出错的条件，并说明为什么不能省略。",
                 "",
-                "## 小结",
+                f"## {primary}小结",
                 "",
                 "学完本章后，应能把核心概念、常用方法和典型题型串成一条清晰的学习路径，并能独立完成基础题与变式题。",
             ]

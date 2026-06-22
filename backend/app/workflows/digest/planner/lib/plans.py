@@ -306,8 +306,9 @@ def render_planner_chapter_contract(value: Any) -> str:
             f"- 模式：{planner_mode_label(mode)}。",
             (
                 f"- 章节数量：由用户目标、资料复杂度和学习路径决定；"
-                f"默认参考 {contract.min_chapters}-{contract.max_chapters} 章，"
-                "按真实学习路径取舍。"
+                f"默认参考 {contract.min_chapters}-{contract.max_chapters} 章。"
+                f"除非用户明确要求更短或资料确实只支持更少模块，通常不要少于 {contract.min_chapters} 章；"
+                "章节数按真实学习路径灵活取舍。"
             ),
             (
                 f"- 目标成稿长度：{contract.target_length}。这是整份知识文档的预算，"
