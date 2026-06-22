@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { FileDeleteData } from './fileDeleteData.ts';
+import type { FileDeleteData } from './fileDeleteData';
 
 export interface ApiResponseFileDeleteData {
   /** 业务码，0 表示成功。 */

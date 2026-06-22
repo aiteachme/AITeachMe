@@ -32,7 +32,7 @@ import type {
   HTTPValidationError
 } from './model';
 
-import { orvalApiClient } from '../client.ts';
+import { orvalApiClient } from '../client';
 
 
 

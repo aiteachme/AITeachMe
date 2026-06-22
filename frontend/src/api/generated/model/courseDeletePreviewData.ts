@@ -4,8 +4,8 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { CourseDeleteImpactItem } from './courseDeleteImpactItem.ts';
-import type { CourseDeletePreviewDataDetailCounts } from './courseDeletePreviewDataDetailCounts.ts';
+import type { CourseDeleteImpactItem } from './courseDeleteImpactItem';
+import type { CourseDeletePreviewDataDetailCounts } from './courseDeletePreviewDataDetailCounts';
 
 export interface CourseDeletePreviewData {
   /** Course id. */

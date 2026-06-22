@@ -4,7 +4,8 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { PaperPreview } from './paperPreview.ts';
+import type { ExamGenerationProgress } from './examGenerationProgress';
+import type { PaperPreview } from './paperPreview';
 
 export interface ExamHistoryItem {
   id: number;
@@ -16,7 +17,9 @@ export interface ExamHistoryItem {
   score_obtained?: number | null;
   total_score?: number | null;
   created_at: string;
+  updated_at: string;
   submitted_at?: string | null;
   graded_at?: string | null;
+  generation_progress?: ExamGenerationProgress | null;
   paper_preview?: PaperPreview;
 }

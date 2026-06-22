@@ -4,9 +4,9 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { ExamPaperDetailResponseSelectionContext } from './examPaperDetailResponseSelectionContext.ts';
-import type { ExamPaperItemResponse } from './examPaperItemResponse.ts';
-import type { PaperPreview } from './paperPreview.ts';
+import type { ExamPaperDetailResponseSelectionContext } from './examPaperDetailResponseSelectionContext';
+import type { ExamPaperItemResponse } from './examPaperItemResponse';
+import type { PaperPreview } from './paperPreview';
 
 export interface ExamPaperDetailResponse {
   id: number;

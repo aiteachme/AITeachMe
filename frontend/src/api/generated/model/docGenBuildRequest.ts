@@ -4,7 +4,6 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { DocGenBuildRequestEmbeddingResolution } from './docGenBuildRequestEmbeddingResolution.ts';
 
 /**
  * Trigger knowledge-doc generation.
@@ -15,7 +14,7 @@ export interface DocGenBuildRequest {
   /** Optional user instruction for doc generation. Ignored when `confirmed_plan_id` is provided and the confirmed plan already freezes the build goal. */
   prompt?: string | null;
   /** Optional course-level embedding resolution chosen after a precheck conflict. */
-  embedding_resolution?: DocGenBuildRequestEmbeddingResolution;
+  embedding_resolution?: 'rebuild' | 'disable' | null;
   /** Build type. Public builds generate knowledge docs and may sync the graph according to settings. */
   build_type?: 'docs';
   /** Planner-generated and confirmed build plan ID. `docs` builds require this field; when provided, the build uses the frozen file selection, chapter plan, and User prompt. */

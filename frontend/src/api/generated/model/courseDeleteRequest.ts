@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { CourseDeleteRequestKnownDetailCounts } from './courseDeleteRequestKnownDetailCounts.ts';
+import type { CourseDeleteRequestKnownDetailCounts } from './courseDeleteRequestKnownDetailCounts';
 
 export interface CourseDeleteRequest {
   /** Course id. */

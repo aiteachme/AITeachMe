@@ -4,8 +4,8 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { BuildPlannerChapterResponse } from './buildPlannerChapterResponse.ts';
-import type { BuildPlannerDiagnosticQuestionResponse } from './buildPlannerDiagnosticQuestionResponse.ts';
+import type { BuildPlannerChapterResponse } from './buildPlannerChapterResponse';
+import type { BuildPlannerDiagnosticQuestionResponse } from './buildPlannerDiagnosticQuestionResponse';
 
 export interface BuildPlannerPlanResponse {
   course_id: string;

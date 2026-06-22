@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { HighlightData } from './highlightData.ts';
+import type { HighlightData } from './highlightData';
 
 export interface InteractiveGenerateData {
   html: string;

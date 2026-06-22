@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { ChatMessageItem } from './chatMessageItem.ts';
+import type { ChatMessageItem } from './chatMessageItem';
 
 export interface PaginatedDataChatMessageItem {
   /** 当前页数据。 */

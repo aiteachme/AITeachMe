@@ -4,8 +4,8 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { GraphEdgeResponse } from './graphEdgeResponse.ts';
-import type { KnowledgeUnitResponse } from './knowledgeUnitResponse.ts';
+import type { GraphEdgeResponse } from './graphEdgeResponse';
+import type { KnowledgeUnitResponse } from './knowledgeUnitResponse';
 
 /**
  * Full graph payload for force-graph visualization.

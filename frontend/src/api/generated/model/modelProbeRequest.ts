@@ -4,8 +4,8 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { ModelProbeRequestEndpointRole } from './modelProbeRequestEndpointRole.ts';
-import type { ModelProbeRequestModelSlot } from './modelProbeRequestModelSlot.ts';
+import type { ModelProbeRequestEndpointRole } from './modelProbeRequestEndpointRole';
+import type { ModelProbeRequestModelSlot } from './modelProbeRequestModelSlot';
 
 /**
  * 设置页模型连通性测试请求。

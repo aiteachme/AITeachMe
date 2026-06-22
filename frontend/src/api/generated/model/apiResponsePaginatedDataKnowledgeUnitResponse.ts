@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { PaginatedDataKnowledgeUnitResponse } from './paginatedDataKnowledgeUnitResponse.ts';
+import type { PaginatedDataKnowledgeUnitResponse } from './paginatedDataKnowledgeUnitResponse';
 
 export interface ApiResponsePaginatedDataKnowledgeUnitResponse {
   /** 业务码，0 表示成功。 */

@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { ChatSelectionContext } from './chatSelectionContext.ts';
+import type { ChatSelectionContext } from './chatSelectionContext';
 
 /**
  * Request body for sending one chat message.

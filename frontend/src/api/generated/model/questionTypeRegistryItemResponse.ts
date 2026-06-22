@@ -4,8 +4,8 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { QuestionTypeRegistryItemResponseOptionSchema } from './questionTypeRegistryItemResponseOptionSchema.ts';
-import type { QuestionTypeRegistryItemResponseRubric } from './questionTypeRegistryItemResponseRubric.ts';
+import type { QuestionTypeRegistryItemResponseOptionSchema } from './questionTypeRegistryItemResponseOptionSchema';
+import type { QuestionTypeRegistryItemResponseRubric } from './questionTypeRegistryItemResponseRubric';
 
 export interface QuestionTypeRegistryItemResponse {
   id: number;

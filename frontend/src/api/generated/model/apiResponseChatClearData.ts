@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { ChatClearData } from './chatClearData.ts';
+import type { ChatClearData } from './chatClearData';
 
 export interface ApiResponseChatClearData {
   /** 业务码，0 表示成功。 */

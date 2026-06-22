@@ -42,28 +42,13 @@ import type {
   ListUserFilesApiApiV1FilesGetParams
 } from './model';
 
-import { orvalApiClient } from '../client.ts';
+import { orvalApiClient } from '../client';
 
 
 
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 
-
-const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKey: K } => {
-  const result = { queryKey } as T & { queryKey: K };
-  for (const key of Object.keys(query)) {
-    // The explicit queryKey always wins, matching the previous
-    // `{ ...query, queryKey }` spread where it was set last.
-    if (key === 'queryKey') continue;
-    Object.defineProperty(result, key, {
-      enumerable: true,
-      configurable: true,
-      get: () => (query as Record<string, unknown>)[key],
-    });
-  }
-  return result;
-};
 
 export type uploadUserFilesApiV1FilesUploadPostResponse200 = {
   data: ApiResponseFilesUploadData
@@ -226,7 +211,7 @@ export const getListUserFilesApiApiV1FilesGetUrl = (params?: ListUserFilesApiApi
   Object.entries(params || {}).forEach(([key, value]) => {
 
     if (value !== undefined) {
-      normalizedParams.append(key, value === null ? 'null' : String(value))
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
     }
   });
 
@@ -319,7 +304,7 @@ export function useListUserFilesApiApiV1FilesGet<TData = Awaited<ReturnType<type
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
-  return withQueryKey(query, queryOptions.queryKey);
+  return { ...query, queryKey: queryOptions.queryKey };
 }
 
 
@@ -556,7 +541,7 @@ export function useDownloadUserFileApiV1FilesFileIdDownloadGet<TData = Awaited<R
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
-  return withQueryKey(query, queryOptions.queryKey);
+  return { ...query, queryKey: queryOptions.queryKey };
 }
 
 
@@ -693,7 +678,7 @@ export function useServeUserFileAssetApiV1FilesAssetsFileIdAssetPathGet<TData = 
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
-  return withQueryKey(query, queryOptions.queryKey);
+  return { ...query, queryKey: queryOptions.queryKey };
 }
 
 
@@ -822,7 +807,7 @@ export function useListHighlightsApiV1FilesFileIdHighlightsGet<TData = Awaited<R
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
-  return withQueryKey(query, queryOptions.queryKey);
+  return { ...query, queryKey: queryOptions.queryKey };
 }
 
 
@@ -1391,7 +1376,7 @@ export function useListFilesApiApiV1CoursesCourseIdFilesGet<TData = Awaited<Retu
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
-  return withQueryKey(query, queryOptions.queryKey);
+  return { ...query, queryKey: queryOptions.queryKey };
 }
 
 
@@ -1652,8 +1637,8 @@ export const getServeFileAssetApiV1CoursesCourseIdFilesAssetsAssetPathGetUrl = (
 
 /**
  * 代理访问文件资产。
- *
- * 通过后端鉴权后代理返回，避免把用户私有 storage key 暴露到公开加速域名。
+
+通过后端鉴权后代理返回，避免把用户私有 storage key 暴露到公开加速域名。
  * @summary Serve file asset (images, etc.)
  */
 export const serveFileAssetApiV1CoursesCourseIdFilesAssetsAssetPathGet = async (courseId: string,
@@ -1744,5 +1729,5 @@ export function useServeFileAssetApiV1CoursesCourseIdFilesAssetsAssetPathGet<TDa
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
-  return withQueryKey(query, queryOptions.queryKey);
+  return { ...query, queryKey: queryOptions.queryKey };
 }

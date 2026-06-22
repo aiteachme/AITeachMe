@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { ExamPrewarmStatusResponse } from './examPrewarmStatusResponse.ts';
+import type { ExamPrewarmStatusResponse } from './examPrewarmStatusResponse';
 
 export interface ApiResponseExamPrewarmStatusResponse {
   /** 业务码，0 表示成功。 */

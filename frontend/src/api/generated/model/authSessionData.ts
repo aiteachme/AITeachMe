@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { RuntimeUser } from './runtimeUser.ts';
+import type { RuntimeUser } from './runtimeUser';
 
 /**
  * 鉴权会话数据。

@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { FilesData } from './filesData.ts';
+import type { FilesData } from './filesData';
 
 export interface ApiResponseFilesData {
   /** 业务码，0 表示成功。 */

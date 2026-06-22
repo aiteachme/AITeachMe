@@ -4,11 +4,11 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { AliasItem } from './aliasItem.ts';
-import type { EvidenceSummary } from './evidenceSummary.ts';
-import type { IncidentEdgeItem } from './incidentEdgeItem.ts';
-import type { KnowledgeGraphSourceRefResponse } from './knowledgeGraphSourceRefResponse.ts';
-import type { NodeRevisionItem } from './nodeRevisionItem.ts';
+import type { AliasItem } from './aliasItem';
+import type { EvidenceSummary } from './evidenceSummary';
+import type { IncidentEdgeItem } from './incidentEdgeItem';
+import type { KnowledgeGraphSourceRefResponse } from './knowledgeGraphSourceRefResponse';
+import type { NodeRevisionItem } from './nodeRevisionItem';
 
 /**
  * KnowledgeUnit detail response.

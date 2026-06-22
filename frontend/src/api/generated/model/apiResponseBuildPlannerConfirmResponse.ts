@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { BuildPlannerConfirmResponse } from './buildPlannerConfirmResponse.ts';
+import type { BuildPlannerConfirmResponse } from './buildPlannerConfirmResponse';
 
 export interface ApiResponseBuildPlannerConfirmResponse {
   /** 业务码，0 表示成功。 */

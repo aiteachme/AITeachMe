@@ -17,6 +17,10 @@ export interface KnowledgeGraphBuildMetricsResponse {
   doc_sync_unit_changes?: number;
   /** Graph edges created or updated by docs-sync. */
   doc_sync_edge_changes?: number;
+  /** Section LLM failures that attempted local rule fallback. */
+  doc_sync_rule_fallback_attempt_count?: number;
+  /** Section LLM failures recovered by local rule fallback. */
+  doc_sync_rule_fallback_success_count?: number;
   /** Elapsed milliseconds for the latest graph-sync step. */
   elapsed_ms?: number;
   /** Knowledge graph revision number produced by the latest docs-sync. */

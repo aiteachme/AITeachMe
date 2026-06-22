@@ -4,9 +4,9 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { CourseVectorStatusResponse } from './courseVectorStatusResponse.ts';
-import type { FullGraphResponse } from './fullGraphResponse.ts';
-import type { KnowledgeOverviewStats } from './knowledgeOverviewStats.ts';
+import type { CourseVectorStatusResponse } from './courseVectorStatusResponse';
+import type { FullGraphResponse } from './fullGraphResponse';
+import type { KnowledgeOverviewStats } from './knowledgeOverviewStats';
 
 /**
  * Knowledge overview aggregated payload for summary tabs.

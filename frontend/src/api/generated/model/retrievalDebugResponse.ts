@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { RetrievalDebugItem } from './retrievalDebugItem.ts';
+import type { RetrievalDebugItem } from './retrievalDebugItem';
 
 /**
  * Debug payload for one course knowledge retrieval call.

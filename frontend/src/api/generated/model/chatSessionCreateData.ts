@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { ChatSessionItem } from './chatSessionItem.ts';
+import type { ChatSessionItem } from './chatSessionItem';
 
 /**
  * Result payload for creating one session.

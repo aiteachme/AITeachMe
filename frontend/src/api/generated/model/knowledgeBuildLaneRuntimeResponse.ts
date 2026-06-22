@@ -4,8 +4,8 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { KnowledgeBuildLaneRuntimeResponseLane } from './knowledgeBuildLaneRuntimeResponseLane.ts';
-import type { KnowledgeBuildLaneRuntimeResponseMetrics } from './knowledgeBuildLaneRuntimeResponseMetrics.ts';
+import type { KnowledgeBuildLaneRuntimeResponseLane } from './knowledgeBuildLaneRuntimeResponseLane';
+import type { KnowledgeBuildLaneRuntimeResponseMetrics } from './knowledgeBuildLaneRuntimeResponseMetrics';
 
 /**
  * One runtime lane snapshot used by polling clients.

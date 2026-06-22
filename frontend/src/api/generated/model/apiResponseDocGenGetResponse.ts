@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { DocGenGetResponse } from './docGenGetResponse.ts';
+import type { DocGenGetResponse } from './docGenGetResponse';
 
 export interface ApiResponseDocGenGetResponse {
   /** 业务码，0 表示成功。 */

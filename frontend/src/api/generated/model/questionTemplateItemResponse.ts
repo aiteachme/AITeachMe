@@ -4,8 +4,8 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { QuestionTemplateItemResponseKnowledgeUnitRefsItem } from './questionTemplateItemResponseKnowledgeUnitRefsItem.ts';
-import type { QuestionTemplateItemResponseSelectionHints } from './questionTemplateItemResponseSelectionHints.ts';
+import type { QuestionTemplateItemResponseKnowledgeUnitRefsItem } from './questionTemplateItemResponseKnowledgeUnitRefsItem';
+import type { QuestionTemplateItemResponseSelectionHints } from './questionTemplateItemResponseSelectionHints';
 
 export interface QuestionTemplateItemResponse {
   id: number;

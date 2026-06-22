@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { KnowledgeUnitRelationsRequestDirection } from './knowledgeUnitRelationsRequestDirection.ts';
+import type { KnowledgeUnitRelationsRequestDirection } from './knowledgeUnitRelationsRequestDirection';
 
 /**
  * KnowledgeUnit relation query.

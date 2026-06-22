@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { ChatThreadTurnItem } from './chatThreadTurnItem.ts';
+import type { ChatThreadTurnItem } from './chatThreadTurnItem';
 
 export interface PaginatedDataChatThreadTurnItem {
   /** 当前页数据。 */

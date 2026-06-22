@@ -4,9 +4,9 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { ChatContextItem } from './chatContextItem.ts';
-import type { ChatMessageItemClientActions } from './chatMessageItemClientActions.ts';
-import type { ChatRoleValue } from './chatRoleValue.ts';
+import type { ChatContextItem } from './chatContextItem';
+import type { ChatMessageItemClientActions } from './chatMessageItemClientActions';
+import type { ChatRoleValue } from './chatRoleValue';
 
 /**
  * One persisted chat message.

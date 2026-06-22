@@ -5365,7 +5365,7 @@
               "type": "integer",
               "maximum": 200,
               "minimum": 1,
-              "default": 8,
+              "default": 24,
               "title": "Num Questions"
             }
           },
@@ -12699,6 +12699,36 @@
         ],
         "title": "ExamGenerateResponse"
       },
+      "ExamGenerationProgress": {
+        "properties": {
+          "completed_items": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Completed Items",
+            "default": 0
+          },
+          "generated_items": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Generated Items",
+            "default": 0
+          },
+          "failed_items": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Failed Items",
+            "default": 0
+          },
+          "total_items": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total Items",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "ExamGenerationProgress"
+      },
       "ExamGradeResponse": {
         "properties": {
           "id": {
@@ -12824,6 +12854,11 @@
             "format": "date-time",
             "title": "Created At"
           },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
           "submitted_at": {
             "anyOf": [
               {
@@ -12848,6 +12883,16 @@
             ],
             "title": "Graded At"
           },
+          "generation_progress": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExamGenerationProgress"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "paper_preview": {
             "$ref": "#/components/schemas/PaperPreview"
           }
@@ -12860,7 +12905,8 @@
           "exam_mode",
           "status",
           "total_items",
-          "created_at"
+          "created_at",
+          "updated_at"
         ],
         "title": "ExamHistoryItem"
       },
@@ -14819,6 +14865,30 @@
             "title": "Build Group Id",
             "description": "Shared build-group identifier across related lanes."
           },
+          "docs_ready": {
+            "type": "boolean",
+            "title": "Docs Ready",
+            "description": "Whether the published knowledge document is available.",
+            "default": false
+          },
+          "graph_status": {
+            "type": "string",
+            "title": "Graph Status",
+            "description": "Stable graph lane status used by clients.",
+            "default": "idle"
+          },
+          "graph_unhealthy": {
+            "type": "boolean",
+            "title": "Graph Unhealthy",
+            "description": "Whether graph sync reached an unhealthy terminal state.",
+            "default": false
+          },
+          "training_unlocked": {
+            "type": "boolean",
+            "title": "Training Unlocked",
+            "description": "Whether training entry points may be unlocked.",
+            "default": false
+          },
           "aggregate": {
             "anyOf": [
               {
@@ -15299,6 +15369,18 @@
             "type": "integer",
             "title": "Doc Sync Edge Changes",
             "description": "Graph edges created or updated by docs-sync.",
+            "default": 0
+          },
+          "doc_sync_rule_fallback_attempt_count": {
+            "type": "integer",
+            "title": "Doc Sync Rule Fallback Attempt Count",
+            "description": "Section LLM failures that attempted local rule fallback.",
+            "default": 0
+          },
+          "doc_sync_rule_fallback_success_count": {
+            "type": "integer",
+            "title": "Doc Sync Rule Fallback Success Count",
+            "description": "Section LLM failures recovered by local rule fallback.",
             "default": 0
           },
           "elapsed_ms": {

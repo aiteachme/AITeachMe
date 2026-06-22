@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { ExamStudyGuideFocusUnit } from './examStudyGuideFocusUnit.ts';
+import type { ExamStudyGuideFocusUnit } from './examStudyGuideFocusUnit';
 
 export interface ExamStudyGuideResponse {
   exam_paper_id: number;

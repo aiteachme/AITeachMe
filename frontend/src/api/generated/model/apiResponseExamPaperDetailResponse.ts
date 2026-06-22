@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { ExamPaperDetailResponse } from './examPaperDetailResponse.ts';
+import type { ExamPaperDetailResponse } from './examPaperDetailResponse';
 
 export interface ApiResponseExamPaperDetailResponse {
   /** 业务码，0 表示成功。 */

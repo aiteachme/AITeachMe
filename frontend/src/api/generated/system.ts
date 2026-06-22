@@ -36,28 +36,13 @@ import type {
   UpdateUserSettingsRequest
 } from './model';
 
-import { orvalApiClient } from '../client.ts';
+import { orvalApiClient } from '../client';
 
 
 
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 
-
-const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKey: K } => {
-  const result = { queryKey } as T & { queryKey: K };
-  for (const key of Object.keys(query)) {
-    // The explicit queryKey always wins, matching the previous
-    // `{ ...query, queryKey }` spread where it was set last.
-    if (key === 'queryKey') continue;
-    Object.defineProperty(result, key, {
-      enumerable: true,
-      configurable: true,
-      get: () => (query as Record<string, unknown>)[key],
-    });
-  }
-  return result;
-};
 
 export type initSystemApiV1SystemInitPostResponse200 = {
   data: ApiResponseInitData
@@ -270,7 +255,7 @@ export function useGetCommunityWechatQrApiV1SystemCommunityWechatQrGet<TData = A
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
-  return withQueryKey(query, queryOptions.queryKey);
+  return { ...query, queryKey: queryOptions.queryKey };
 }
 
 

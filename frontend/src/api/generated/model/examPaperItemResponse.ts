@@ -4,8 +4,8 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { ExamNodeLinkResponse } from './examNodeLinkResponse.ts';
-import type { ExamPaperItemResponseSelectionContext } from './examPaperItemResponseSelectionContext.ts';
+import type { ExamNodeLinkResponse } from './examNodeLinkResponse';
+import type { ExamPaperItemResponseSelectionContext } from './examPaperItemResponseSelectionContext';
 
 export interface ExamPaperItemResponse {
   id: number;

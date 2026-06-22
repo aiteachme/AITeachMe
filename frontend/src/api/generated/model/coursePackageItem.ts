@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { CoursePackageItemStats } from './coursePackageItemStats.ts';
+import type { CoursePackageItemStats } from './coursePackageItemStats';
 
 /**
  * One remote demo-course package listed from the configured catalog.

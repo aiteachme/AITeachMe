@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { KnowledgeDocSelectionContext } from './knowledgeDocSelectionContext.ts';
+import type { KnowledgeDocSelectionContext } from './knowledgeDocSelectionContext';
 
 /**
  * Generate an interactive HTML block from a document text selection.

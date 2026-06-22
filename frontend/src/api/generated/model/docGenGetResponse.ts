@@ -4,10 +4,10 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { CourseVectorStatusResponse } from './courseVectorStatusResponse.ts';
-import type { KnowledgeBuildMetricsResponse } from './knowledgeBuildMetricsResponse.ts';
-import type { KnowledgeBuildPreviewResponse } from './knowledgeBuildPreviewResponse.ts';
-import type { KnowledgeBuildStatusResponse } from './knowledgeBuildStatusResponse.ts';
+import type { CourseVectorStatusResponse } from './courseVectorStatusResponse';
+import type { KnowledgeBuildMetricsResponse } from './knowledgeBuildMetricsResponse';
+import type { KnowledgeBuildPreviewResponse } from './knowledgeBuildPreviewResponse';
+import type { KnowledgeBuildStatusResponse } from './knowledgeBuildStatusResponse';
 
 /**
  * Knowledge docs get response.

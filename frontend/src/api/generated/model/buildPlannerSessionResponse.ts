@@ -4,8 +4,8 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { BuildPlannerPlanResponse } from './buildPlannerPlanResponse.ts';
-import type { BuildPlannerTurnResponse } from './buildPlannerTurnResponse.ts';
+import type { BuildPlannerPlanResponse } from './buildPlannerPlanResponse';
+import type { BuildPlannerTurnResponse } from './buildPlannerTurnResponse';
 
 export interface BuildPlannerSessionResponse {
   session_id: string;

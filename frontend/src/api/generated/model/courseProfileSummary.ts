@@ -4,8 +4,8 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { CourseProfileSummaryDifficultyAccuracy } from './courseProfileSummaryDifficultyAccuracy.ts';
-import type { CourseProfileSummaryQuestionTypeAccuracy } from './courseProfileSummaryQuestionTypeAccuracy.ts';
+import type { CourseProfileSummaryDifficultyAccuracy } from './courseProfileSummaryDifficultyAccuracy';
+import type { CourseProfileSummaryQuestionTypeAccuracy } from './courseProfileSummaryQuestionTypeAccuracy';
 
 export interface CourseProfileSummary {
   course_id: string;

@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { ExamSubmitAnswerItem } from './examSubmitAnswerItem.ts';
+import type { ExamSubmitAnswerItem } from './examSubmitAnswerItem';
 
 /**
  * Submit exam answers request.

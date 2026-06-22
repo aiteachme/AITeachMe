@@ -4,7 +4,6 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { BuildPlannerCreateRequestDigestMode } from './buildPlannerCreateRequestDigestMode.ts';
 
 /**
  * Create a new planner session and generate the first plan draft.
@@ -17,7 +16,7 @@ export interface BuildPlannerCreateRequest {
   /** Learner prompt or requested document target. */
   user_prompt: string;
   /** Optional requested digest mode. */
-  digest_mode?: BuildPlannerCreateRequestDigestMode;
+  digest_mode?: 'sprint' | 'systematic' | null;
   /** Optional planner session title. */
   title?: string | null;
   /** Optional per-request planner model. Omit or use settings for configured defaults. */

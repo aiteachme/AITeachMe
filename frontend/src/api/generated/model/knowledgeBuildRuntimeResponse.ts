@@ -4,10 +4,10 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { KnowledgeBuildLaneRuntimeResponse } from './knowledgeBuildLaneRuntimeResponse.ts';
-import type { KnowledgeBuildMetricsResponse } from './knowledgeBuildMetricsResponse.ts';
-import type { KnowledgeBuildPreviewResponse } from './knowledgeBuildPreviewResponse.ts';
-import type { KnowledgeGraphBuildMetricsResponse } from './knowledgeGraphBuildMetricsResponse.ts';
+import type { KnowledgeBuildLaneRuntimeResponse } from './knowledgeBuildLaneRuntimeResponse';
+import type { KnowledgeBuildMetricsResponse } from './knowledgeBuildMetricsResponse';
+import type { KnowledgeBuildPreviewResponse } from './knowledgeBuildPreviewResponse';
+import type { KnowledgeGraphBuildMetricsResponse } from './knowledgeGraphBuildMetricsResponse';
 
 /**
  * Unified runtime response for aggregate/docgen/graph lanes.
@@ -15,6 +15,14 @@ import type { KnowledgeGraphBuildMetricsResponse } from './knowledgeGraphBuildMe
 export interface KnowledgeBuildRuntimeResponse {
   /** Shared build-group identifier across related lanes. */
   build_group_id?: string | null;
+  /** Whether the published knowledge document is available. */
+  docs_ready?: boolean;
+  /** Stable graph lane status used by clients. */
+  graph_status?: string;
+  /** Whether graph sync reached an unhealthy terminal state. */
+  graph_unhealthy?: boolean;
+  /** Whether training entry points may be unlocked. */
+  training_unlocked?: boolean;
   /** Aggregate runtime across all required lanes. */
   aggregate?: KnowledgeBuildLaneRuntimeResponse | null;
   /** DocGen lane runtime. */

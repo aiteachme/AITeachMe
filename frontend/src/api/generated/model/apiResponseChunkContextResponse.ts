@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { ChunkContextResponse } from './chunkContextResponse.ts';
+import type { ChunkContextResponse } from './chunkContextResponse';
 
 export interface ApiResponseChunkContextResponse {
   /** 业务码，0 表示成功。 */

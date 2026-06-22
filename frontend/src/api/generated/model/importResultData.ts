@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { ImportResultDataImportedCounts } from './importResultDataImportedCounts.ts';
+import type { ImportResultDataImportedCounts } from './importResultDataImportedCounts';
 
 /**
  * Import result payload.

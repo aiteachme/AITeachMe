@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { SettingEntry } from './settingEntry.ts';
+import type { SettingEntry } from './settingEntry';
 
 /**
  * 设置分组。
