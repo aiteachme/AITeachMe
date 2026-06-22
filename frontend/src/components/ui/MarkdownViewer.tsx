@@ -1900,6 +1900,51 @@ function remarkCallouts() {
   };
 }
 
+function splitTextNodeBySoftBreaks(node: MarkdownAstNode): MarkdownAstNode[] {
+  const value = String(node.value ?? "");
+  if (!value.includes("\n")) {
+    return [node];
+  }
+
+  const parts = value.split("\n");
+  const nodes: MarkdownAstNode[] = [];
+  parts.forEach((part, index) => {
+    if (index > 0) {
+      nodes.push({ type: "break" });
+    }
+    if (part) {
+      nodes.push({ ...node, value: part });
+    }
+  });
+  return nodes;
+}
+
+function remarkDocumentSoftBreaks() {
+  return (tree: MarkdownAstNode) => {
+    const visit = (node: MarkdownAstNode) => {
+      const children = node.children;
+      if (!Array.isArray(children)) {
+        return;
+      }
+
+      if (node.type === "paragraph") {
+        node.children = children.flatMap((child) => (
+          child.type === "text" ? splitTextNodeBySoftBreaks(child) : [child]
+        ));
+        return;
+      }
+
+      for (const child of children) {
+        if (child.type !== "math" && child.type !== "inlineMath") {
+          visit(child);
+        }
+      }
+    };
+
+    visit(tree);
+  };
+}
+
 function isHeadingNode(node: MarkdownAstNode): node is MarkdownAstNode & { depth: number } {
   return node.type === "heading" && Number.isInteger(node.depth) && (node.depth ?? 0) >= 1 && (node.depth ?? 0) <= 6;
 }
@@ -2936,9 +2981,10 @@ export function MarkdownViewer({
       remarkBlankTokens,
       remarkSafeHighlights,
       remarkCallouts,
+      variant === "document" ? remarkDocumentSoftBreaks : noopMarkdownPlugin,
       headingStructurePlugin,
     ] as any[],
-    [hasMathContent, headingStructurePlugin],
+    [hasMathContent, headingStructurePlugin, variant],
   );
 
   const rehypePlugins = useMemo(

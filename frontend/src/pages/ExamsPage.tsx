@@ -1308,7 +1308,7 @@ export function ExamsPage() {
 
   const handleStartExamWithMode = (examMode: CreateExamConfig["examMode"]) => {
     if (!courseId || generateExam.isPending) return;
-    if (examMode === "web_practice" && (hasGeneratingPracticeExam || isDefaultPracticePrewarmPreparing)) {
+    if (examMode === "web_practice" && hasGeneratingPracticeExam) {
       toast({
         title: "测验正在生成中",
         description: "请等待当前测验生成完成，避免重复生成。",
@@ -1346,7 +1346,7 @@ export function ExamsPage() {
       navigate(buildCourseSubPath(courseId, "exams", "mastery-drill"));
       return;
     }
-    if (hasGeneratingPracticeExam || isDefaultPracticePrewarmPreparing) {
+    if (hasGeneratingPracticeExam) {
       toast({
         title: "测验正在生成中",
         description: "题目生成后会沉淀到题库，再开始闯关。",
@@ -1388,6 +1388,8 @@ export function ExamsPage() {
   const masteryStatusBadge = isMasteryFallbackGenerating
     ? { label: "\u751f\u6210\u4e2d", tone: "pending" as const }
     : getMasteryDrillStatusBadge(isMasteryDrillChecking, isMasteryDrillReady);
+  const practicePrimaryLabel = isPracticeExamGenerating ? "\u67e5\u770b" : "\u5f00\u59cb";
+  const paperPrimaryLabel = isPaperExamGenerating ? "\u67e5\u770b" : "\u5f00\u59cb";
   const courseTitle = courseName ?? "当前课程";
 
   if (!courseId) {
@@ -1458,14 +1460,14 @@ export function ExamsPage() {
                       size="sm"
                       className="rounded-lg bg-black px-5 dark:bg-white dark:text-slate-950"
                       onClick={() => handleStartExamWithMode("web_practice")}
-                      disabled={generateExam.isPending || hasGeneratingPracticeExam || isDefaultPracticePrewarmPreparing}
+                      disabled={generateExam.isPending}
                     >
                       {isPracticeExamGenerating ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       ) : (
                         <Plus className="h-3.5 w-3.5" />
                       )}
-                      开始
+                      {practicePrimaryLabel}
                     </Button>
                     <Button size="sm" variant="outline" className="rounded-lg" onClick={() => openCreateConfig("web_practice")}>
                       <SlidersHorizontal className="h-3.5 w-3.5" />
@@ -1489,14 +1491,14 @@ export function ExamsPage() {
                       size="sm"
                       className="rounded-lg bg-black px-5 dark:bg-white dark:text-slate-950"
                       onClick={() => handleStartExamWithMode("paper_exam")}
-                      disabled={generateExam.isPending || hasGeneratingPaperExam}
+                      disabled={generateExam.isPending}
                     >
                       {isPaperExamGenerating ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       ) : (
                         <Plus className="h-3.5 w-3.5" />
                       )}
-                      开始
+                      {paperPrimaryLabel}
                     </Button>
                     <Button size="sm" variant="outline" className="rounded-lg" onClick={() => openCreateConfig("paper_exam")}>
                       <SlidersHorizontal className="h-3.5 w-3.5" />

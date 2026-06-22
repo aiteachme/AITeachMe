@@ -68,7 +68,7 @@ _POLICIES: dict[ExamGradeModelStep, ExamGradeModelPolicy] = {
         max_tokens=1800,
         timeout_s=180,
         temperature=0.1,
-        note="客观题反馈短，但需要容纳错因标签和解释。",
+        note="客观题正确性由规则判定，但反馈包含错因归纳和解析表达，保留 reason。",
     ),
     ExamGradeModelStep.SUBJECTIVE_GRADE: ExamGradeModelPolicy(
         step=ExamGradeModelStep.SUBJECTIVE_GRADE,
@@ -86,7 +86,7 @@ _POLICIES: dict[ExamGradeModelStep, ExamGradeModelPolicy] = {
         max_tokens=4500,
         timeout_s=240,
         temperature=0.2,
-        note="整卷学习指南包含总结、优势、缺口、行动项和复习任务。",
+        note="整卷学习指南会汇总错因、薄弱点和复习行动，保留 reason。",
     ),
 }
 

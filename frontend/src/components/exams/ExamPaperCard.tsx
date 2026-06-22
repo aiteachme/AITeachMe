@@ -698,7 +698,11 @@ export function ExamPaperCard({
       >
         <div
           className={`absolute inset-0 flex flex-col overflow-hidden rounded-[18px] border bg-white px-4 py-4 text-slate-950 dark:bg-slate-900 dark:text-slate-100 ${
-            isFailed ? "border-rose-200 dark:border-rose-900/70" : "border-slate-200 dark:border-slate-800"
+            isFailed
+              ? "border-rose-200 dark:border-rose-900/70"
+              : isGenerating
+                ? "border-indigo-200 bg-indigo-50/30 dark:border-indigo-500/30 dark:bg-indigo-500/5"
+                : "border-slate-200 dark:border-slate-800"
           }`}
           style={{ clipPath: "polygon(0 0, calc(100% - 48px) 0, 100% 48px, 100% 100%, 0 100%)" }}
         >
@@ -719,6 +723,8 @@ export function ExamPaperCard({
           className={`relative z-10 mt-3 border-y px-1 py-1.5 text-center text-xs font-semibold ${
             isFailed
               ? "border-rose-100 text-rose-600 dark:border-rose-900/60 dark:text-rose-300"
+              : isGenerating
+                ? "border-indigo-100 text-indigo-700 dark:border-indigo-500/20 dark:text-indigo-300"
               : isGrading
                 ? "border-indigo-100 text-indigo-600 dark:border-indigo-900/50 dark:text-indigo-300"
                 : "border-slate-100 text-slate-600 dark:border-slate-800 dark:text-slate-300"
@@ -738,9 +744,12 @@ export function ExamPaperCard({
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 生成中{generationProgress.total ? ` ${generationProgress.completed}/${generationProgress.total}` : ""}
               </span>
-              <div className="h-1 overflow-hidden rounded-full bg-slate-200/80 dark:bg-slate-800">
+              <span className="block text-[10px] font-black text-indigo-500 dark:text-indigo-300">
+                点击查看
+              </span>
+              <div className="h-1 overflow-hidden rounded-full bg-indigo-100 dark:bg-indigo-950">
                 <div
-                  className="h-full rounded-full bg-slate-500 transition-all duration-500 dark:bg-slate-300"
+                  className="h-full rounded-full bg-indigo-500 transition-all duration-500 dark:bg-indigo-300"
                   style={{ width: `${generationProgress.percent}%` }}
                 />
               </div>

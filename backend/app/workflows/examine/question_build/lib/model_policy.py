@@ -112,7 +112,7 @@ _POLICIES: dict[QuestionBuildModelStep, QuestionBuildModelPolicy] = {
     QuestionBuildModelStep.FILTER_UNITS: QuestionBuildModelPolicy(
         step=QuestionBuildModelStep.FILTER_UNITS,
         call_type="structured",
-        model="reason",
+        model="primary",
         max_tokens=3600,
         timeout_s=120,
         temperature=0.1,
@@ -121,7 +121,7 @@ _POLICIES: dict[QuestionBuildModelStep, QuestionBuildModelPolicy] = {
     QuestionBuildModelStep.ALLOCATE_BLUEPRINTS: QuestionBuildModelPolicy(
         step=QuestionBuildModelStep.ALLOCATE_BLUEPRINTS,
         call_type="structured",
-        model="reason",
+        model="primary",
         timeout_s=120,
         min_tokens=4200,
         tokens_per_question=700,
@@ -132,7 +132,7 @@ _POLICIES: dict[QuestionBuildModelStep, QuestionBuildModelPolicy] = {
     QuestionBuildModelStep.PLAN_REQUIREMENTS: QuestionBuildModelPolicy(
         step=QuestionBuildModelStep.PLAN_REQUIREMENTS,
         call_type="structured",
-        model="reason",
+        model="primary",
         timeout_s=120,
         min_tokens=2600,
         tokens_per_question=420,
@@ -148,7 +148,7 @@ _POLICIES: dict[QuestionBuildModelStep, QuestionBuildModelPolicy] = {
         max_retries=1,
         attempt_max_tokens=(6000, 9000),
         temperature=0.65,
-        note="单题生成第二次重试给更大的结构化输出空间。",
+        note="单题生成决定题目质量和答案解析，保留 reason；第二次重试给更大的结构化输出空间。",
     ),
     QuestionBuildModelStep.PLAYGROUND_BATCH: QuestionBuildModelPolicy(
         step=QuestionBuildModelStep.PLAYGROUND_BATCH,
@@ -159,7 +159,7 @@ _POLICIES: dict[QuestionBuildModelStep, QuestionBuildModelPolicy] = {
         tokens_per_question=900,
         max_tokens_cap=14000,
         temperature=0.65,
-        note="兼容脚本批量出题，按题数扩容。",
+        note="兼容脚本批量出题，仍然直接产出题目、答案和解析，按题数扩容。",
     ),
 }
 
