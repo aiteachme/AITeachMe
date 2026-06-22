@@ -152,11 +152,23 @@ def test_aggregate_status_prefers_blocking_lane_and_preserves_metrics() -> None:
     assert docgen_failed.status == "failed"
     assert docgen_failed.error_message == "doc failed"
 
+    docgen_active_with_graph_expected = build_store.build_aggregate_knowledge_build_status(
+        build_store.KnowledgeBuildRuntimeEnvelope(
+            docgen_runtime=docgen_done.model_copy(update={"status": "running", "stage": "publishing", "progress_pct": 99}),
+        ),
+        graph_expected=True,
+    )
+    assert docgen_active_with_graph_expected is not None
+    assert docgen_active_with_graph_expected.status == "running"
+    assert docgen_active_with_graph_expected.progress_pct == 94
+
     graph_active = build_store.build_aggregate_knowledge_build_status(
         build_store.KnowledgeBuildRuntimeEnvelope(docgen_runtime=docgen_done, graph_runtime=graph_running)
     )
     assert graph_active is not None
     assert graph_active.status == "running"
+    assert graph_active.stage == "graph_docs_sync"
+    assert graph_active.progress_pct == 95
     assert graph_active.metrics == {"docgen_status": "completed", "graph_status": "running"}
 
     graph_requested_at = now + timedelta(minutes=3)
@@ -176,7 +188,7 @@ def test_aggregate_status_prefers_blocking_lane_and_preserves_metrics() -> None:
     assert separate_graph_active.status == "running"
     assert separate_graph_active.requested_at == graph_requested_at
     assert separate_graph_active.build_group_id == "graph-group-2"
-    assert separate_graph_active.progress_pct == 94
+    assert separate_graph_active.progress_pct == 95
 
     graph_pending = build_store.build_aggregate_knowledge_build_status(
         build_store.KnowledgeBuildRuntimeEnvelope(docgen_runtime=docgen_done),
@@ -185,7 +197,7 @@ def test_aggregate_status_prefers_blocking_lane_and_preserves_metrics() -> None:
     assert graph_pending is not None
     assert graph_pending.status == "running"
     assert graph_pending.stage == "graph_pending"
-    assert graph_pending.progress_pct == 99
+    assert graph_pending.progress_pct == 95
 
     partial = build_store.build_aggregate_knowledge_build_status(
         build_store.KnowledgeBuildRuntimeEnvelope(docgen_runtime=docgen_done, graph_runtime=graph_failed)

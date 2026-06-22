@@ -66,6 +66,16 @@ function hasRequestedLiveMarkdown(
   return updatedAtMs >= targetRequestedAtMs;
 }
 
+const GRAPH_SYNC_BUILD_STAGES = new Set([
+  "graph_pending",
+  "manual_graph_requested",
+  "queued_after_docgen",
+  "graph_docs_sync",
+  "graph_ready",
+]);
+
+const GRAPH_DOC_READY_STATUSES = new Set(["completed", "partial_failed", "failed", "cancelled", "skipped"]);
+
 export interface DocMarkdownState {
   courseId: string | undefined;
   requestedAt: string | null;
@@ -76,12 +86,16 @@ export interface DocMarkdownState {
   buildPreview: KnowledgeBuildPreview | null;
   buildMetrics: KnowledgeBuildMetrics | null;
   buildStatus: string | null;
+  graphStatus: string | null;
+  graphUnhealthy: boolean;
+  trainingUnlocked: boolean;
   liveUpdatedAt: string | null;
   draftUpdatedAt: string | null;
   hasLiveDocMarkdown: boolean;
   hasDraftDocMarkdown: boolean;
   isBuildActive: boolean;
   isBuildFailure: boolean;
+  isGraphSyncActive: boolean;
   isRequestedBuildReady: boolean;
   isWaitingForRequestedBuild: boolean;
   docViewMode: DocViewMode;
@@ -157,6 +171,16 @@ export function useDocMarkdown(): DocMarkdownState {
     refetchInterval: (query) => {
       const failureBackoff = buildRuntimeFailureBackoffMs(query.state.fetchFailureCount);
       if (failureBackoff !== null) return failureBackoff;
+      const statuses = [
+        query.state.data?.aggregate?.status,
+        query.state.data?.docgen?.status,
+        query.state.data?.graph?.status,
+        query.state.data?.graph_status,
+      ].map((status) => (status ?? "").trim());
+      if (statuses.some((status) => ACTIVE_DOC_BUILD_STATUSES.has(status) || status === "pending")) {
+        return 2500;
+      }
+
       const docgen = query.state.data?.docgen ?? query.state.data?.aggregate;
       const status = (docgen?.status ?? "").trim();
       const targetRequestedAtMs = requestedAtMs ?? parseIsoTimestamp(docgen?.requested_at ?? null);
@@ -186,10 +210,14 @@ export function useDocMarkdown(): DocMarkdownState {
     () => cleanKnowledgeMarkdownForDisplay(rawDraftMarkdown),
     [rawDraftMarkdown],
   );
-  const buildMeta = runtimeQuery.data?.docgen ?? docMarkdownQuery.data?.build ?? null;
+  const buildMeta = runtimeQuery.data?.aggregate ?? runtimeQuery.data?.docgen ?? docMarkdownQuery.data?.build ?? null;
   const buildPreview = runtimeQuery.data?.docgen_preview ?? docMarkdownQuery.data?.build_preview ?? null;
   const buildMetrics = runtimeQuery.data?.docgen_metrics ?? docMarkdownQuery.data?.build_metrics ?? null;
   const buildStatus = buildMeta?.status ?? null;
+  const buildStage = (buildMeta?.stage ?? "").trim();
+  const graphStatus = (runtimeQuery.data?.graph_status ?? runtimeQuery.data?.graph?.status ?? null)?.trim() || null;
+  const graphUnhealthy = Boolean(runtimeQuery.data?.graph_unhealthy);
+  const trainingUnlocked = Boolean(runtimeQuery.data?.training_unlocked);
   const liveUpdatedAt = docMarkdownQuery.data?.updated_at ?? null;
   const draftUpdatedAt = docMarkdownQuery.data?.draft_updated_at ?? null;
   const hasLiveDocMarkdown = Boolean(docMarkdownQuery.data?.exists && liveMarkdown.trim().length > 0);
@@ -203,11 +231,19 @@ export function useDocMarkdown(): DocMarkdownState {
     buildStatus && buildStatus !== "idle"
       ? requestedAtMs ?? buildRequestedAtMs
       : null;
-  const isRequestedBuildReady = hasRequestedLiveMarkdown(docMarkdownQuery.data, {
+  const fallbackRequestedBuildReady = hasRequestedLiveMarkdown(docMarkdownQuery.data, {
     status: buildStatus ?? "",
     targetRequestedAtMs,
   });
+  const isRuntimeDocumentReady =
+    runtimeQuery.data?.docs_ready === true &&
+    (graphStatus === null || GRAPH_DOC_READY_STATUSES.has(graphStatus));
+  const isRequestedBuildReady =
+    typeof runtimeQuery.data?.docs_ready === "boolean"
+      ? isRuntimeDocumentReady
+      : fallbackRequestedBuildReady;
   const isBuildActive = Boolean(!isRequestedBuildReady && buildStatus && ACTIVE_DOC_BUILD_STATUSES.has(buildStatus));
+  const isGraphSyncActive = Boolean(isBuildActive && GRAPH_SYNC_BUILD_STAGES.has(buildStage));
   const isBuildFailure = buildStatus === "failed" || buildStatus === "cancelled";
   const isBuildReadyStatus = Boolean(buildStatus && TERMINAL_DOC_BUILD_READY_STATUSES.has(buildStatus));
   const isWaitingForRequestedBuild =
@@ -348,6 +384,7 @@ export function useDocMarkdown(): DocMarkdownState {
   const showDocUpdatingBanner =
     !docMarkdownQuery.isError &&
     hasRenderedMarkdown &&
+    !isGraphSyncActive &&
     (effectiveDocViewMode === "draft" || isWaitingForRequestedBuild);
 
   return {
@@ -360,12 +397,16 @@ export function useDocMarkdown(): DocMarkdownState {
     buildPreview,
     buildMetrics,
     buildStatus,
+    graphStatus,
+    graphUnhealthy,
+    trainingUnlocked,
     liveUpdatedAt,
     draftUpdatedAt,
     hasLiveDocMarkdown,
     hasDraftDocMarkdown,
     isBuildActive,
     isBuildFailure,
+    isGraphSyncActive,
     isRequestedBuildReady,
     isWaitingForRequestedBuild,
     docViewMode,

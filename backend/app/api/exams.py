@@ -361,6 +361,15 @@ def _is_default_auto_prewarm_request(
     )
 
 
+def _default_exam_question_count_for_mode(exam_mode: str) -> int:
+    mode = exam_mode_value(exam_mode)
+    if mode == "paper_exam":
+        return 24
+    if mode == DEFAULT_AUTO_PREWARM_EXAM_MODE:
+        return DEFAULT_AUTO_PREWARM_QUESTION_COUNT
+    return 8
+
+
 def _prepared_snapshot_matches_default_auto_prewarm(
     paper: ExamPaper,
     *,
@@ -3262,7 +3271,7 @@ async def generate_exam(
     normalized = normalize_course_id(course_id)
     _ensure_course(session, normalized, user.user_id)
     mode = exam_mode_value(body.exam_mode)
-    default_question_count = 24 if mode == "paper_exam" else 8
+    default_question_count = _default_exam_question_count_for_mode(mode)
     question_count = max(1, int(body.num_questions or default_question_count))
     paper_layout_mode = _normalize_paper_layout_mode(
         body.paper_layout_mode,
@@ -3452,6 +3461,25 @@ def _is_retryable_hidden_prewarm_failure(paper: ExamPaper | None) -> bool:
     error_message = str(context.get("error_message") or "").lower()
     return "cancelled" in error_message or "canceled" in error_message or "取消" in error_message
 
+def _should_compensate_default_prewarm_status(
+    *,
+    status: str,
+    exam_mode: str,
+    question_count: int,
+    user_prompt: str | None,
+    sample_file_ids: list[str] | None,
+    paper_layout_mode: str | None,
+) -> bool:
+    if status not in {"missing", "stale"}:
+        return False
+    return _is_default_auto_prewarm_request(
+        exam_mode=exam_mode,
+        question_count=question_count,
+        user_prompt=user_prompt,
+        sample_file_ids=sample_file_ids,
+        paper_layout_mode=paper_layout_mode,
+    )
+
 
 @router.get(
     "/prewarm-status",
@@ -3524,7 +3552,21 @@ async def exam_prewarm_status(
     status = _prewarm_status_from_candidate(candidate)
     background_requested = False
     registry = getattr(request.app.state, "background_task_registry", None)
-    if status == "failed" and registry is not None and _is_retryable_hidden_prewarm_failure(candidate):
+    should_schedule_prewarm = (
+        registry is not None
+        and (
+            (status == "failed" and _is_retryable_hidden_prewarm_failure(candidate))
+            or _should_compensate_default_prewarm_status(
+                status=status,
+                exam_mode=mode,
+                question_count=question_count,
+                user_prompt=user_prompt,
+                sample_file_ids=sample_file_ids or [],
+                paper_layout_mode=resolved_paper_layout_mode,
+            )
+        )
+    )
+    if should_schedule_prewarm:
         _schedule_exam_prewarm_task(
             registry,
             course_id=normalized,

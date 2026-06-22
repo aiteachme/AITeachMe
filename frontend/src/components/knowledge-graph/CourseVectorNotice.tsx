@@ -1,4 +1,4 @@
-import { AlertTriangle, Info } from "lucide-react";
+import { AlertTriangle, Info, Loader2, RefreshCw } from "lucide-react";
 
 import type { CourseVectorStatusResponse } from "../../api/generated/model";
 import { cn } from "../../lib/utils";
@@ -6,6 +6,15 @@ import { cn } from "../../lib/utils";
 interface CourseVectorNoticeProps {
   status?: CourseVectorStatusResponse | null;
   className?: string;
+}
+
+interface CourseGraphNoticeProps {
+  status?: string | null;
+  unhealthy?: boolean;
+  className?: string;
+  onRebuild?: () => void;
+  rebuildPending?: boolean;
+  rebuildDisabled?: boolean;
 }
 
 function buildVectorNoticeCopy(status: CourseVectorStatusResponse) {
@@ -75,6 +84,65 @@ export function CourseVectorNotice({
           </p>
           <p className="mt-1 text-sm leading-6">{copy.description}</p>
         </div>
+      </div>
+    </div>
+  );
+}
+
+export function CourseGraphNotice({
+  status,
+  unhealthy,
+  className,
+  onRebuild,
+  rebuildPending = false,
+  rebuildDisabled = false,
+}: CourseGraphNoticeProps) {
+  const normalizedStatus = (status ?? "").trim();
+  const isPartial = normalizedStatus === "partial_failed";
+  if (!unhealthy && !isPartial) {
+    return null;
+  }
+
+  const copy = isPartial
+    ? {
+        title: "知识图谱部分内容未同步",
+        description: "知识文档和已抽取图谱可正常使用，少量章节片段抽取失败，语义检索和训练题目覆盖可能不完整。可稍后重新同步知识图谱。",
+      }
+    : {
+        title: "知识图谱同步失败",
+        description: "知识文档可正常查看，但语义检索和部分训练能力可能不可用。请重新构建知识图谱。",
+      };
+
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800",
+        className,
+      )}
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+          <div className="min-w-0">
+            <p className="text-sm font-semibold">{copy.title}</p>
+            <p className="mt-1 text-sm leading-6">{copy.description}</p>
+          </div>
+        </div>
+        {onRebuild ? (
+          <button
+            type="button"
+            onClick={onRebuild}
+            disabled={rebuildPending || rebuildDisabled}
+            className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-800 shadow-sm transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-amber-500/40 dark:bg-slate-950 dark:text-amber-200 dark:hover:bg-amber-500/10"
+          >
+            {rebuildPending ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5" />
+            )}
+            {rebuildPending ? "正在启动" : "重新构建图谱"}
+          </button>
+        ) : null}
       </div>
     </div>
   );

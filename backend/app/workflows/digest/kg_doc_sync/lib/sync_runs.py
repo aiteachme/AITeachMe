@@ -65,6 +65,8 @@ def sync_run_metrics(report: KnowledgeSyncReport) -> dict[str, int]:
         "empty_llm_result_count": report.empty_llm_result_count,
         "empty_repair_attempt_count": report.empty_repair_attempt_count,
         "empty_repair_success_count": report.empty_repair_success_count,
+        "rule_fallback_attempt_count": report.rule_fallback_attempt_count,
+        "rule_fallback_success_count": report.rule_fallback_success_count,
         "unit_change_count": report.unit_change_count,
         "edge_change_count": report.edge_change_count,
         "deprecated_unit_count": report.deprecated_unit_count,

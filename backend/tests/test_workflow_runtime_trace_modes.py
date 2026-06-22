@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import TypedDict
@@ -219,6 +220,7 @@ async def test_manual_graph_sync_keeps_own_root_trace(monkeypatch) -> None:
         return "completed"
 
     monkeypatch.setattr(kg_builds, "_run_graph_docs_sync_build", fake_run_graph_docs_sync_build)
+    monkeypatch.setattr(kg_builds, "_current_doc_version_no", lambda *args, **kwargs: 2)
 
     await kg_builds.run_graph_docs_sync_manual_build(
         course_id="course_test",
@@ -230,3 +232,79 @@ async def test_manual_graph_sync_keeps_own_root_trace(monkeypatch) -> None:
     )
 
     assert captured.get("embedded_in_parent_trace") is False
+
+
+@pytest.mark.anyio
+async def test_manual_graph_sync_prewarms_exam_after_completed_first_revision(monkeypatch) -> None:
+    prewarm_calls: list[dict[str, object]] = []
+
+    async def fake_run_graph_docs_sync_build(**kwargs):
+        return "completed"
+
+    async def fake_trigger_default_exam_prewarm_when_units_ready(**kwargs):
+        prewarm_calls.append(kwargs)
+
+    monkeypatch.setattr(kg_builds, "_run_graph_docs_sync_build", fake_run_graph_docs_sync_build)
+    monkeypatch.setattr(kg_builds, "_current_doc_version_no", lambda *args, **kwargs: 1)
+    monkeypatch.setattr(
+        kg_builds,
+        "_trigger_default_exam_prewarm_when_units_ready",
+        fake_trigger_default_exam_prewarm_when_units_ready,
+    )
+
+    await kg_builds.run_graph_docs_sync_manual_build(
+        course_id="course_test",
+        requested_at=datetime.now(timezone.utc),
+        build_group_id="group_1",
+        build_session_id="session_1",
+        file_ids=[],
+        prompt=None,
+    )
+    await asyncio.sleep(0)
+
+    assert prewarm_calls == [
+        {
+            "course_id": "course_test",
+            "min_build_revision_no": 1,
+            "wait_for_units_timeout_s": 30.0,
+            "llm_snapshot": None,
+        }
+    ]
+
+
+@pytest.mark.anyio
+async def test_manual_graph_sync_registers_exam_prewarm_with_background_registry(monkeypatch) -> None:
+    async def fake_run_graph_docs_sync_build(**kwargs):
+        return "completed"
+
+    class FakeRegistry:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, object]] = []
+
+        def spawn(self, coro, **kwargs):
+            self.calls.append(kwargs)
+            coro.close()
+
+    registry = FakeRegistry()
+
+    monkeypatch.setattr(kg_builds, "_run_graph_docs_sync_build", fake_run_graph_docs_sync_build)
+    monkeypatch.setattr(kg_builds, "_current_doc_version_no", lambda *args, **kwargs: 1)
+
+    await kg_builds.run_graph_docs_sync_manual_build(
+        course_id="course_test",
+        requested_at=datetime.now(timezone.utc),
+        build_group_id="group_1",
+        build_session_id="session_1",
+        file_ids=[],
+        prompt=None,
+        background_task_registry=registry,
+    )
+
+    assert registry.calls == [
+        {
+            "kind": "exam.prewarm",
+            "course_id": "course_test",
+            "name": "exam.prewarm.completed_build:course_test:1",
+            "dedupe_key": "exam.prewarm.completed_build:course_test:default:1",
+        }
+    ]

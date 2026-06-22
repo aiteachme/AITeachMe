@@ -34,6 +34,8 @@ class KnowledgeSyncReport:
     empty_llm_result_count: int = 0
     empty_repair_attempt_count: int = 0
     empty_repair_success_count: int = 0
+    rule_fallback_attempt_count: int = 0
+    rule_fallback_success_count: int = 0
     total_extracted_node_count: int = 0
     total_extracted_edge_count: int = 0
     elapsed_ms: int = 0

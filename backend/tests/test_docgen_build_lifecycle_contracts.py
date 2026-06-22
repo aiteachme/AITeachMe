@@ -323,6 +323,10 @@ def test_runtime_preview_metrics_and_build_runtime_result(monkeypatch: pytest.Mo
     assert metrics.llm_total_calls == 4
     assert metrics.call_count_by_lane == {"docgen": 3}
     assert result.build_group_id == "group-1"
+    assert result.docs_ready is True
+    assert result.graph_status == "running"
+    assert result.graph_unhealthy is False
+    assert result.training_unlocked is False
     assert result.aggregate is not None
     assert result.docgen is not None
     assert result.docgen.status == "running"
@@ -330,6 +334,127 @@ def test_runtime_preview_metrics_and_build_runtime_result(monkeypatch: pytest.Mo
     assert result.graph_metrics.doc_sync_section_count == 3
     assert result.docgen_preview is not None
     assert result.docgen_preview.draft_excerpt.startswith("# Draft")
+
+
+def test_build_runtime_training_unlocks_on_graph_terminal_states(monkeypatch: pytest.MonkeyPatch) -> None:
+    now = datetime.now(timezone.utc)
+    scope = build_course_storage_scope(user_id=USER_ID, course_id=COURSE_ID)
+    docgen_status = build_store.KnowledgeBuildRuntimeStatus(
+        requested_at=now,
+        build_kind="docgen",
+        build_group_id="group-terminal",
+        status="completed",
+        stage="completed",
+        progress_pct=100,
+    )
+    manifest = SimpleNamespace(
+        chapter_titles=["Published A"],
+        updated_at=now,
+        version_no=1,
+        source_file_ids=["file-ready"],
+        prompt="manifest prompt",
+    )
+    store = _TextStore({scope.knowledge_build_prefix() + "merged_knowledge_base.md": "# Draft\n\n正文"})
+
+    monkeypatch.setattr(build_lifecycle, "resolve_course_storage_scope", lambda *args, **kwargs: scope)
+    monkeypatch.setattr(build_lifecycle, "get_content_store", lambda: store)
+    monkeypatch.setattr(build_lifecycle, "run_store_sync", lambda func, *args, default=None, **kwargs: func(*args, **kwargs))
+    monkeypatch.setattr(build_lifecycle, "read_knowledge_manifest", lambda *args, **kwargs: manifest)
+    monkeypatch.setattr(
+        build_lifecycle,
+        "get_settings",
+        lambda: SimpleNamespace(knowledge_graph=SimpleNamespace(sync_after_docgen=True)),
+    )
+
+    monkeypatch.setattr(
+        build_lifecycle,
+        "read_knowledge_build_runtime",
+        lambda *args, **kwargs: build_store.KnowledgeBuildRuntimeEnvelope(
+            build_group_id="group-terminal",
+            docgen_runtime=docgen_status,
+            graph_runtime=None,
+        ),
+    )
+    pending = build_lifecycle.get_knowledge_build_runtime_result(course_id=COURSE_ID, course_scope=scope)
+    assert pending.docs_ready is True
+    assert pending.graph_status == "pending"
+    assert pending.graph_unhealthy is False
+    assert pending.training_unlocked is False
+
+    graph_completed = build_store.KnowledgeBuildRuntimeStatus(
+        requested_at=now,
+        build_kind="graph",
+        build_group_id="group-terminal",
+        status="completed",
+        stage="completed",
+        progress_pct=100,
+    )
+    monkeypatch.setattr(
+        build_lifecycle,
+        "read_knowledge_build_runtime",
+        lambda *args, **kwargs: build_store.KnowledgeBuildRuntimeEnvelope(
+            build_group_id="group-terminal",
+            docgen_runtime=docgen_status,
+            graph_runtime=graph_completed,
+        ),
+    )
+    completed = build_lifecycle.get_knowledge_build_runtime_result(course_id=COURSE_ID, course_scope=scope)
+    assert completed.docs_ready is True
+    assert completed.graph_status == "completed"
+    assert completed.graph_unhealthy is False
+    assert completed.training_unlocked is True
+
+    graph_partial = graph_completed.model_copy(
+        update={"status": "partial_failed", "stage": "partial_failed", "error_message": "kg_doc_sync_partial_failed"}
+    )
+    monkeypatch.setattr(
+        build_lifecycle,
+        "read_knowledge_build_runtime",
+        lambda *args, **kwargs: build_store.KnowledgeBuildRuntimeEnvelope(
+            build_group_id="group-terminal",
+            docgen_runtime=docgen_status,
+            graph_runtime=graph_partial,
+        ),
+    )
+    partial = build_lifecycle.get_knowledge_build_runtime_result(course_id=COURSE_ID, course_scope=scope)
+    assert partial.docs_ready is True
+    assert partial.graph_status == "partial_failed"
+    assert partial.graph_unhealthy is False
+    assert partial.training_unlocked is True
+
+    graph_failed = graph_completed.model_copy(update={"status": "failed", "stage": "failed", "error_message": "boom"})
+    monkeypatch.setattr(
+        build_lifecycle,
+        "read_knowledge_build_runtime",
+        lambda *args, **kwargs: build_store.KnowledgeBuildRuntimeEnvelope(
+            build_group_id="group-terminal",
+            docgen_runtime=docgen_status,
+            graph_runtime=graph_failed,
+        ),
+    )
+    failed = build_lifecycle.get_knowledge_build_runtime_result(course_id=COURSE_ID, course_scope=scope)
+    assert failed.docs_ready is True
+    assert failed.graph_status == "failed"
+    assert failed.graph_unhealthy is True
+    assert failed.training_unlocked is False
+
+    graph_cancelled = graph_completed.model_copy(
+        update={"status": "cancelled", "stage": "cancelled", "error_message": "build_cancelled"}
+    )
+    monkeypatch.setattr(
+        build_lifecycle,
+        "read_knowledge_build_runtime",
+        lambda *args, **kwargs: build_store.KnowledgeBuildRuntimeEnvelope(
+            build_group_id="group-terminal",
+            docgen_runtime=docgen_status,
+            graph_runtime=graph_cancelled,
+        ),
+    )
+    cancelled = build_lifecycle.get_knowledge_build_runtime_result(course_id=COURSE_ID, course_scope=scope)
+    assert cancelled.docs_ready is True
+    assert cancelled.graph_status == "cancelled"
+    assert cancelled.graph_unhealthy is True
+    assert cancelled.training_unlocked is False
 
 
 def test_get_docgen_result_assembles_published_draft_and_runtime(monkeypatch: pytest.MonkeyPatch, session: Session) -> None:

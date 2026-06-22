@@ -346,6 +346,8 @@ class KnowledgeGraphBuildMetricsResponse(BaseModel):
     doc_sync_section_count: int = Field(default=0, description="Knowledge-doc sections analyzed by kg_doc_sync.")
     doc_sync_unit_changes: int = Field(default=0, description="Knowledge units created or updated by docs-sync.")
     doc_sync_edge_changes: int = Field(default=0, description="Graph edges created or updated by docs-sync.")
+    doc_sync_rule_fallback_attempt_count: int = Field(default=0, description="Section LLM failures that attempted local rule fallback.")
+    doc_sync_rule_fallback_success_count: int = Field(default=0, description="Section LLM failures recovered by local rule fallback.")
     elapsed_ms: int = Field(default=0, description="Elapsed milliseconds for the latest graph-sync step.")
     revision_no: int = Field(default=0, description="Knowledge graph revision number produced by the latest docs-sync.")
     last_synced_doc_version_no: int = Field(default=0, description="Knowledge document version number last synced into the graph.")
@@ -411,6 +413,10 @@ class KnowledgeBuildRuntimeResponse(BaseModel):
     """Unified runtime response for aggregate/docgen/graph lanes."""
 
     build_group_id: str | None = Field(default=None, description="Shared build-group identifier across related lanes.")
+    docs_ready: bool = Field(default=False, description="Whether the published knowledge document is available.")
+    graph_status: str = Field(default="idle", description="Stable graph lane status used by clients.")
+    graph_unhealthy: bool = Field(default=False, description="Whether graph sync reached an unhealthy terminal state.")
+    training_unlocked: bool = Field(default=False, description="Whether training entry points may be unlocked.")
     aggregate: KnowledgeBuildLaneRuntimeResponse | None = Field(default=None, description="Aggregate runtime across all required lanes.")
     docgen: KnowledgeBuildLaneRuntimeResponse | None = Field(default=None, description="DocGen lane runtime.")
     graph: KnowledgeBuildLaneRuntimeResponse | None = Field(default=None, description="Graph lane runtime.")

@@ -93,6 +93,11 @@ const TIMELINE_STEPS = [
   { key: "publish_merge", title: "合并发布", description: "整本收口、标题同步并发布正式文档。" },
 ];
 
+const TIMELINE_STEPS_WITH_GRAPH = [
+  ...TIMELINE_STEPS,
+  { key: "sync_graph", title: "同步图谱", description: "同步知识点、语义索引和关系数据。" },
+];
+
 const STAGE_TO_STEP_INDEX: Record<string, number> = {
   build_accepted: 0,
   planner_confirmed: 0,
@@ -127,9 +132,14 @@ const STAGE_TO_STEP_INDEX: Record<string, number> = {
   titles_finalized: 5,
   doc_lane_staged: 5,
   docgen_finalized: 5,
-  graph_ready: 5,
   publishing: 5,
-  completed: 5,
+  graph_pending: 6,
+  manual_graph_requested: 6,
+  queued_after_docgen: 6,
+  graph_docs_sync: 6,
+  graph_ready: 6,
+  disabled: 6,
+  completed: 6,
 };
 
 export function useBuildTimelineSteps(stage: string | null | undefined): BuildProcessStep[] {
@@ -138,7 +148,7 @@ export function useBuildTimelineSteps(stage: string | null | undefined): BuildPr
     const activeStepIndex = STAGE_TO_STEP_INDEX[stageKey] ?? 0;
     const isCompleted = stageKey === "completed";
 
-    return TIMELINE_STEPS.map((step, index) => {
+    return TIMELINE_STEPS_WITH_GRAPH.map((step, index) => {
       let state: ProcessStepState;
       if (isCompleted || index < activeStepIndex) {
         state = "done";

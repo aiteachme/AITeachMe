@@ -37,6 +37,8 @@ export const DOC_BUILD_STAGE_PROGRESS: Record<string, number> = {
   titles_finalized: 88,
   doc_lane_staged: 90,
   docgen_finalized: 94,
+  graph_pending: 95,
+  graph_docs_sync: 96,
   graph_ready: 96,
   publishing: 94,
   completed: 100,
@@ -63,6 +65,8 @@ export const DOC_BUILD_STAGE_TEXT: Record<string, string> = {
   titles_finalized: "章节标题已收口，准备发布",
   doc_lane_staged: "文档草稿已生成，正在发布正式版",
   docgen_finalized: "知识文档已发布",
+  graph_pending: "知识文档已发布，正在启动知识图谱同步",
+  graph_docs_sync: "正在同步知识图谱",
   graph_ready: "知识图谱已就绪",
   publishing: "正在发布正式版知识文档",
   completed: "最新知识文档已发布",
@@ -388,6 +392,7 @@ export function resolveDocBuildStatusText(
   }
   const stage = build.stage?.trim();
   if (stage && DOC_BUILD_STAGE_TEXT[stage]) return DOC_BUILD_STAGE_TEXT[stage];
+  if (build.current_stage_description?.trim()) return build.current_stage_description.trim();
   if (hasDraftVersion && !hasLiveVersion) {
     return "本轮草稿已生成，正在发布正式文档";
   }

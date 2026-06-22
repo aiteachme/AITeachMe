@@ -34,6 +34,8 @@ _GRAPH_RUNTIME_METRIC_KEYS = {
     "processed_chunks",
     "doc_sync_section_count",
     "doc_sync_llm_section_count",
+    "doc_sync_rule_fallback_attempt_count",
+    "doc_sync_rule_fallback_success_count",
     "doc_sync_unit_changes",
     "doc_sync_edge_changes",
     "doc_sync_elapsed_ms",
@@ -70,6 +72,8 @@ _GRAPH_RUNTIME_INT_METRIC_KEYS = {
     "processed_chunks",
     "doc_sync_section_count",
     "doc_sync_llm_section_count",
+    "doc_sync_rule_fallback_attempt_count",
+    "doc_sync_rule_fallback_success_count",
     "doc_sync_unit_changes",
     "doc_sync_edge_changes",
     "doc_sync_elapsed_ms",
@@ -758,6 +762,19 @@ def _build_runtime_metrics(
     }
 
 
+def _aggregate_docgen_progress(status: KnowledgeBuildRuntimeStatus, *, graph_expected: bool) -> int:
+    progress = max(0, min(100, int(status.progress_pct or 0)))
+    return min(progress, 94) if graph_expected else progress
+
+
+def _aggregate_graph_progress(status: KnowledgeBuildRuntimeStatus) -> int:
+    graph_progress = max(0, min(100, int(status.progress_pct or 0)))
+    stage_floor = int(_STAGE_PROGRESS.get(status.stage) or 0)
+    if stage_floor > 0 and graph_progress <= stage_floor:
+        return 95
+    return max(95, min(99, 95 + int(graph_progress * 4 / 100)))
+
+
 def build_aggregate_knowledge_build_status(
     envelope: KnowledgeBuildRuntimeEnvelope | None,
     *,
@@ -795,8 +812,9 @@ def build_aggregate_knowledge_build_status(
         finished_at: datetime | None = None,
         error_message: str | None = None,
         progress_pct: int = 0,
+        progress_ceiling: int | None = None,
     ) -> KnowledgeBuildRuntimeStatus:
-        return _hydrate_runtime_status(
+        hydrated = _hydrate_runtime_status(
             KnowledgeBuildRuntimeStatus(
                 requested_at=requested_at,
                 build_kind="aggregate",
@@ -814,6 +832,9 @@ def build_aggregate_knowledge_build_status(
                 ),
             )
         )
+        if progress_ceiling is not None:
+            hydrated.progress_pct = min(hydrated.progress_pct, progress_ceiling)
+        return hydrated
 
     if docgen_runtime is None:
         return _new(
@@ -846,7 +867,8 @@ def build_aggregate_knowledge_build_status(
             stage=docgen_runtime.stage,
             description=docgen_runtime.current_stage_description or "知识文档构建进行中。",
             started_at=docgen_runtime.started_at,
-            progress_pct=docgen_runtime.progress_pct,
+            progress_pct=_aggregate_docgen_progress(docgen_runtime, graph_expected=graph_expected),
+            progress_ceiling=94 if graph_expected else None,
         )
 
     if graph_runtime is None:
@@ -857,7 +879,7 @@ def build_aggregate_knowledge_build_status(
                 stage="graph_pending",
                 description="知识文档已发布，正在启动知识图谱同步。",
                 started_at=docgen_runtime.started_at,
-                progress_pct=max(95, min(99, int(docgen_runtime.progress_pct or 0))),
+                progress_pct=95,
             )
         return _new(
             requested_at=docgen_runtime.requested_at,
@@ -870,6 +892,7 @@ def build_aggregate_knowledge_build_status(
         )
 
     if graph_runtime.status in _ACTIVE_BUILD_STATUSES:
+        graph_progress = _aggregate_graph_progress(graph_runtime)
         if graph_is_separate_build:
             return _new(
                 requested_at=graph_runtime.requested_at,
@@ -877,7 +900,7 @@ def build_aggregate_knowledge_build_status(
                 stage=graph_runtime.stage,
                 description=graph_runtime.current_stage_description or "知识图谱构建进行中。",
                 started_at=graph_runtime.started_at,
-                progress_pct=min(99, int(graph_runtime.progress_pct or 0)),
+                progress_pct=graph_progress,
             )
         return _new(
             requested_at=docgen_runtime.requested_at,
@@ -885,7 +908,7 @@ def build_aggregate_knowledge_build_status(
             stage=graph_runtime.stage,
             description=graph_runtime.current_stage_description or "知识图谱构建进行中。",
             started_at=docgen_runtime.started_at,
-            progress_pct=max(docgen_runtime.progress_pct, graph_runtime.progress_pct),
+            progress_pct=graph_progress,
         )
 
     if graph_runtime.status in {"failed", "cancelled", "partial_failed"}:

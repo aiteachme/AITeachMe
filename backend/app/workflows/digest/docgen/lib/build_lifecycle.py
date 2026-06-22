@@ -551,18 +551,30 @@ def get_knowledge_build_runtime_result(
     )
     manifest = read_knowledge_manifest(course_id, course_scope=course_scope)
     runtime = read_knowledge_build_runtime(course_id, course_scope=course_scope)
+    graph_expected = bool(get_settings().knowledge_graph.sync_after_docgen)
     aggregate_runtime = build_aggregate_knowledge_build_status(
         runtime,
-        graph_expected=bool(get_settings().knowledge_graph.sync_after_docgen),
+        graph_expected=graph_expected,
     )
     docgen_runtime = runtime.docgen_runtime if runtime is not None else None
     graph_runtime = runtime.graph_runtime if runtime is not None else None
+    docs_ready = manifest is not None
+    graph_status = (graph_runtime.status if graph_runtime is not None else "").strip()
+    if not graph_status:
+        graph_status = "pending" if graph_expected and docs_ready else ("skipped" if docs_ready else "idle")
+    graph_training_ready_statuses = {"completed", "partial_failed", "skipped"}
+    graph_unhealthy = graph_status in {"failed", "cancelled"}
+    training_unlocked = bool(docs_ready and graph_status in graph_training_ready_statuses)
     return KnowledgeBuildRuntimeResponse(
         build_group_id=(
             aggregate_runtime.build_group_id
             if aggregate_runtime is not None
             else (runtime.build_group_id if runtime is not None else None)
         ),
+        docs_ready=docs_ready,
+        graph_status=graph_status,
+        graph_unhealthy=graph_unhealthy,
+        training_unlocked=training_unlocked,
         aggregate=_build_lane_runtime_response("aggregate", aggregate_runtime),
         docgen=_build_lane_runtime_response("docgen", docgen_runtime),
         graph=_build_lane_runtime_response("graph", graph_runtime),

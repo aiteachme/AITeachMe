@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useParams, useLocation } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { LucideIcon } from "lucide-react";
 import {
   Compass,
@@ -19,7 +19,10 @@ import {
   buildRuntimeFailureBackoffMs,
   fetchKnowledgeBuildRuntime,
 } from "../../lib/knowledgeBuildRuntime";
-import { useExamHistoryApiV1CoursesCourseIdExamsHistoryGet } from "../../api/generated/exams";
+import {
+  getExamHistoryApiV1CoursesCourseIdExamsHistoryGetQueryKey,
+  useExamHistoryApiV1CoursesCourseIdExamsHistoryGet,
+} from "../../api/generated/exams";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { apiClient } from "../../api/client";
 import type { ApiResponse } from "../../api/types";
@@ -64,7 +67,9 @@ export function CoursePagePillTitle({
 }: CoursePagePillTitleProps) {
   const params = useParams<{ courseId: string }>();
   const { pathname } = useLocation();
+  const queryClient = useQueryClient();
   const [tooltip, setTooltip] = useState<CourseNavTooltipState | null>(null);
+  const previousTrainingUnlockedRef = useRef<boolean | null>(null);
   const courseId = params.courseId || (href ? href.split("/")[2] : undefined);
   const shouldHideInlineCourseNav = Boolean(courseId && ENABLE_PERSISTENT_COURSE_NAV && placement === "page");
 
@@ -107,8 +112,11 @@ export function CoursePagePillTitle({
         query.state.data?.aggregate?.status,
         query.state.data?.docgen?.status,
         query.state.data?.graph?.status,
+        query.state.data?.graph_status,
       ].map((status) => (status ?? "").trim());
-      return statuses.some((status) => ACTIVE_DOC_BUILD_STATUSES.has(status)) ? 2500 : false;
+      return statuses.some((status) => ACTIVE_DOC_BUILD_STATUSES.has(status) || status === "pending")
+        ? 2500
+        : false;
     },
   });
 
@@ -117,15 +125,22 @@ export function CoursePagePillTitle({
       runtimeQuery.data?.aggregate?.status,
       runtimeQuery.data?.docgen?.status,
       runtimeQuery.data?.graph?.status,
+      runtimeQuery.data?.graph_status,
     ].map((status) => (status ?? "").trim());
   }, [
     runtimeQuery.data?.aggregate?.status,
     runtimeQuery.data?.docgen?.status,
     runtimeQuery.data?.graph?.status,
+    runtimeQuery.data?.graph_status,
   ]);
 
   const buildStatus = useMemo(() => {
-    return (runtimeQuery.data?.docgen?.status ?? runtimeQuery.data?.aggregate?.status ?? docMarkdownQuery.data?.build?.status ?? "").trim();
+    return (
+      runtimeQuery.data?.docgen?.status
+      ?? runtimeQuery.data?.aggregate?.status
+      ?? docMarkdownQuery.data?.build?.status
+      ?? ""
+    ).trim();
   }, [
     docMarkdownQuery.data?.build?.status,
     runtimeQuery.data?.aggregate?.status,
@@ -133,12 +148,20 @@ export function CoursePagePillTitle({
   ]);
 
   const isBuilding = useMemo(() => {
-    return ACTIVE_DOC_BUILD_STATUSES.has(buildStatus) || runtimeStatuses.some((status) => ACTIVE_DOC_BUILD_STATUSES.has(status));
+    return ACTIVE_DOC_BUILD_STATUSES.has(buildStatus)
+      || runtimeStatuses.some((status) => ACTIVE_DOC_BUILD_STATUSES.has(status) || status === "pending");
   }, [buildStatus, runtimeStatuses]);
 
   const isBuilt = useMemo(() => {
-    return Boolean(docMarkdownQuery.data?.exists);
-  }, [docMarkdownQuery.data?.exists]);
+    return Boolean(runtimeQuery.data?.docs_ready || docMarkdownQuery.data?.exists);
+  }, [docMarkdownQuery.data?.exists, runtimeQuery.data?.docs_ready]);
+
+  const isTrainingUnlocked = useMemo(() => {
+    if (typeof runtimeQuery.data?.training_unlocked === "boolean") {
+      return runtimeQuery.data.training_unlocked;
+    }
+    return isBuilt && !isBuilding;
+  }, [isBuilding, isBuilt, runtimeQuery.data?.training_unlocked]);
 
   const hasDraftDoc = useMemo(() => {
     const data = docMarkdownQuery.data as (DocGenGetResponse & { draft_markdown?: string | null }) | undefined;
@@ -154,6 +177,21 @@ export function CoursePagePillTitle({
   }, [buildStatus, hasDraftDoc, hasRuntimeBuildStarted, isBuilt]);
 
   const hasResolvedBuildAvailability = docMarkdownQuery.isFetched && (runtimeQuery.isFetched || runtimeQuery.isError);
+
+  useEffect(() => {
+    if (!courseId) return;
+    const previous = previousTrainingUnlockedRef.current;
+    previousTrainingUnlockedRef.current = isTrainingUnlocked;
+    if (previous !== false || !isTrainingUnlocked) return;
+
+    void queryClient.invalidateQueries({ queryKey: ["docgen-content", courseId] });
+    void queryClient.invalidateQueries({ queryKey: buildKnowledgeBuildRuntimeQueryKey(courseId) });
+    void queryClient.invalidateQueries({ queryKey: ["exam-prewarm-status", courseId] });
+    void queryClient.invalidateQueries({ queryKey: ["exam-question-templates", courseId] });
+    void queryClient.invalidateQueries({
+      queryKey: getExamHistoryApiV1CoursesCourseIdExamsHistoryGetQueryKey(courseId, { page: 1, size: 24 }),
+    });
+  }, [courseId, isTrainingUnlocked, queryClient]);
 
   // 2. Query Exam History
   const historyQuery = useExamHistoryApiV1CoursesCourseIdExamsHistoryGet(
@@ -258,10 +296,10 @@ export function CoursePagePillTitle({
           let disabledReason = "";
           if (!isActive && item.id === "knowledge-docs" && hasResolvedBuildAvailability && !hasBuildStarted) {
             disabledReason = "请先开始构建知识库";
-          } else if (!isActive && item.id === "exams" && (!isBuilt || isBuilding)) {
+          } else if (!isActive && item.id === "exams" && !isTrainingUnlocked) {
             disabledReason = isBuilding ? "知识库构建中" : "请先构建知识库";
           } else if (!isActive && item.id === "profile") {
-            if (!isBuilt || isBuilding) {
+            if (!isTrainingUnlocked) {
               disabledReason = isBuilding ? "知识库构建中" : "请先构建知识库";
             } else if (!hasExams) {
               disabledReason = "需先完成测验";

@@ -34,6 +34,7 @@ from app.workflows.digest.common.markdown_knowledge_anchors import (
     MarkdownKnowledgeUnit,
     MarkdownSectionChunk,
     extract_markdown_chapter_chunks,
+    extract_markdown_knowledge_units,
     extract_markdown_section_chunks,
     validate_knowledge_unit_anchors,
 )
@@ -80,6 +81,7 @@ _DOCS_SYNC_CHAPTER_MAX_RETRIES = _DEFAULT_DOCS_SYNC_CHAPTER_MAX_RETRIES
 _DOCS_SYNC_CHAPTER_RETRY_DELAY_S = _DEFAULT_DOCS_SYNC_CHAPTER_RETRY_DELAY_S
 _DOCS_SYNC_SECTION_MAX_RETRIES = _DOCS_SYNC_CHAPTER_MAX_RETRIES
 _DOCS_SYNC_SECTION_RETRY_DELAY_S = _DOCS_SYNC_CHAPTER_RETRY_DELAY_S
+_RULE_FALLBACK_MAX_UNITS = 8
 _DEFAULT_EXTRACT_CANDIDATES = extract_candidates
 _ASYNC_BRIDGE_LOCK = threading.Lock()
 _ASYNC_BRIDGE_READY = threading.Event()
@@ -1458,6 +1460,8 @@ def persist_knowledge_graph_items(
         empty_llm_result_count=int(diagnostics_totals.get("empty_llm_result_count", 0) or 0),
         empty_repair_attempt_count=int(diagnostics_totals.get("empty_repair_attempt_count", 0) or 0),
         empty_repair_success_count=int(diagnostics_totals.get("empty_repair_success_count", 0) or 0),
+        rule_fallback_attempt_count=int(diagnostics_totals.get("rule_fallback_attempt_count", 0) or 0),
+        rule_fallback_success_count=int(diagnostics_totals.get("rule_fallback_success_count", 0) or 0),
         total_extracted_node_count=int(diagnostics_totals.get("total_extracted_node_count", 0) or 0),
         total_extracted_edge_count=int(diagnostics_totals.get("total_extracted_edge_count", 0) or 0),
         backbone_unit_count=int(diagnostics_totals.get("backbone_unit_count", 0) or 0),
@@ -1705,12 +1709,13 @@ def _apply_extracted_graph_items(
             ):
                 report.source_ref_count += 1
 
-    if report.failed_section_count > 0:
+    if report.failed_section_count > 0 or report.rule_fallback_success_count > 0:
         logger.warning(
             "knowledge_docs_sync_deprecation_skipped_after_partial_extraction",
             course_id=course_id,
             sync_run_id=sync_run.id,
             failed_section_count=report.failed_section_count,
+            rule_fallback_success_count=report.rule_fallback_success_count,
             synced_unit_count=len(report.synced_unit_keys),
             seen_edge_count=len(seen_edge_keys),
         )
@@ -1823,6 +1828,8 @@ def _empty_extraction_diagnostics() -> dict[str, int]:
         "empty_llm_result_count": 0,
         "empty_repair_attempt_count": 0,
         "empty_repair_success_count": 0,
+        "rule_fallback_attempt_count": 0,
+        "rule_fallback_success_count": 0,
         "total_extracted_node_count": 0,
         "total_extracted_edge_count": 0,
         "backbone_unit_count": 0,
@@ -2255,8 +2262,23 @@ async def _collect_section_payloads_async(
                 source_kind=task.source_kind,
                 error_type=type(exc).__name__,
             )
-            payload = _empty_failed_section_payload(task, exc)
-            record = _section_record_for_task(task, payload=payload, error=str(exc))
+            fallback_payload = _rule_fallback_section_payload(task, exc)
+            if fallback_payload is not None:
+                logger.info(
+                    "knowledge_docs_sync_section_rule_fallback_used",
+                    task_index=task.task_index,
+                    chunk_title=task.chunk.title,
+                    header_path=task.chunk.header_path,
+                    source_chapter_index=task.source_chapter_index,
+                    source_kind=task.source_kind,
+                    unit_count=len(fallback_payload.units),
+                    error_type=type(exc).__name__,
+                )
+                payload = fallback_payload
+                record = _section_record_for_task(task, payload=payload)
+            else:
+                payload = _empty_failed_section_payload(task, exc, rule_fallback_attempted=True)
+                record = _section_record_for_task(task, payload=payload, error=str(exc))
         if callable(on_record):
             on_record(record)
         return payload
@@ -2520,9 +2542,156 @@ def _extract_markdown_graph_items(
     )
 
 
+def _rule_fallback_source_kind(source_kind: str) -> str:
+    parsed = str(source_kind or "").strip() or "section"
+    return f"rule_fallback_{parsed}"
+
+
+def _fallback_anchor(anchor: str, *, name: str, task: _ExtractionTask, used: set[str]) -> str:
+    parsed = str(anchor or "").strip()
+    if parsed and parsed not in used:
+        used.add(parsed)
+        return parsed
+    seed = f"rule-fallback-ch{task.source_chapter_index}-s{task.task_index}-{name}"
+    return build_knowledge_unit_anchor(seed, used=used)
+
+
+def _rule_fallback_units_for_task(task: _ExtractionTask) -> list[MarkdownKnowledgeUnit]:
+    chunk = task.chunk
+    chapter_context = task.chapter_context
+    resolved_chapter_index = chapter_context.chapter_index or task.source_chapter_index or task.task_index
+    source_file_ids = list(chapter_context.source_file_ids)
+    source_kind = _rule_fallback_source_kind(task.source_kind)
+    body_markdown = str(chunk.body_markdown or "").strip()
+    raw_units = extract_markdown_knowledge_units(body_markdown) if body_markdown else []
+    if not raw_units and str(chunk.title or "").strip():
+        raw_units = [
+            MarkdownKnowledgeUnit(
+                anchor=chunk.anchor,
+                name=chunk.title,
+                knowledge_unit_type="concept",
+                summary=chunk.summary or chunk.title,
+                body_markdown=body_markdown,
+                knowledge_images=list(chunk.knowledge_images),
+                line_no=chunk.line_no,
+                heading_level=chunk.heading_level,
+            )
+        ]
+
+    units: list[MarkdownKnowledgeUnit] = []
+    used_anchors: set[str] = set()
+    for raw_unit in raw_units:
+        name = _clean_docgen_draft_name(raw_unit.name)
+        if not name or not normalize_name(name):
+            continue
+        summary = _source_quote(
+            raw_unit.summary or chunk.summary or raw_unit.body_markdown or body_markdown or name,
+            max_chars=300,
+        )
+        anchor = _fallback_anchor(raw_unit.anchor, name=name, task=task, used=used_anchors)
+        units.append(
+            MarkdownKnowledgeUnit(
+                anchor=anchor,
+                name=name,
+                knowledge_unit_type=normalize_generated_knowledge_unit_type(
+                    raw_unit.knowledge_unit_type or "concept",
+                    name=name,
+                    summary=summary,
+                ),
+                summary=summary or name,
+                body_markdown=raw_unit.body_markdown or body_markdown,
+                knowledge_images=list(raw_unit.knowledge_images or chunk.knowledge_images),
+                prerequisites=list(raw_unit.prerequisites),
+                related=list(raw_unit.related),
+                line_no=raw_unit.line_no or chunk.line_no,
+                heading_level=raw_unit.heading_level or chunk.heading_level,
+                source_kind=source_kind,
+                knowledge_document_id=chapter_context.knowledge_document_id,
+                chapter_index=resolved_chapter_index,
+                source_file_ids=source_file_ids,
+                quote_text=_source_quote(raw_unit.quote_text or summary or name),
+            )
+        )
+        if len(units) >= _RULE_FALLBACK_MAX_UNITS:
+            break
+    return units
+
+
+def _rule_fallback_section_payload(
+    task: _ExtractionTask,
+    exc: Exception,
+) -> SectionExtractionPayload | None:
+    del exc
+    units = _rule_fallback_units_for_task(task)
+    if not units:
+        return None
+
+    chapter_context = task.chapter_context
+    resolved_chapter_index = chapter_context.chapter_index or task.source_chapter_index or task.task_index
+    candidate_id_to_anchor: dict[str, str] = {}
+    anchors_by_name: dict[str, list[str]] = {}
+    anchors_by_normalized_name: dict[str, list[str]] = {}
+    node_contexts_by_anchor: dict[str, dict[str, object]] = {}
+    for index, unit in enumerate(units, start=1):
+        candidate_id = f"rule:{task.task_index}:{index}"
+        candidate_id_to_anchor[candidate_id] = unit.anchor
+        anchors_by_name.setdefault(unit.name, []).append(unit.anchor)
+        normalized_name = normalize_name(unit.name)
+        if normalized_name:
+            anchors_by_normalized_name.setdefault(normalized_name, []).append(unit.anchor)
+        node_contexts_by_anchor[unit.anchor] = {
+            "name": unit.name,
+            "knowledge_unit_type": unit.knowledge_unit_type,
+            "taxonomy_hint": unit.name,
+            "parent_entity_name": "",
+            "section_index": task.task_index,
+            "source_chapter_index": resolved_chapter_index,
+            "knowledge_document_id": chapter_context.knowledge_document_id,
+            "source_file_ids": list(chapter_context.source_file_ids),
+        }
+
+    primary = units[0]
+    return SectionExtractionPayload(
+        units=units,
+        pending_edges=[],
+        candidate_id_to_anchor=candidate_id_to_anchor,
+        anchors_by_name=anchors_by_name,
+        anchors_by_normalized_name=anchors_by_normalized_name,
+        node_contexts_by_anchor=node_contexts_by_anchor,
+        section_context=SectionExtractionContext(
+            section_index=task.task_index,
+            title=task.chunk.title,
+            header_path=task.chunk.header_path,
+            body_markdown=task.chunk.body_markdown or "",
+            primary_anchor=primary.anchor,
+            primary_name=primary.name,
+            primary_type=primary.knowledge_unit_type,
+            knowledge_document_id=chapter_context.knowledge_document_id,
+            source_file_ids=list(chapter_context.source_file_ids),
+        ),
+        diagnostics={
+            "section_count": 0,
+            "successful_section_count": 1,
+            "failed_section_count": 0,
+            "llm_section_count": 1,
+            "markdown_short_circuit_section_count": 0,
+            "llm_error_count": 1,
+            "empty_llm_result_count": 0,
+            "empty_repair_attempt_count": 0,
+            "empty_repair_success_count": 0,
+            "rule_fallback_attempt_count": 1,
+            "rule_fallback_success_count": 1,
+            "total_extracted_node_count": len(units),
+            "total_extracted_edge_count": 0,
+        },
+    )
+
+
 def _empty_failed_section_payload(
     task: _ExtractionTask,
     exc: Exception,
+    *,
+    rule_fallback_attempted: bool = False,
 ) -> SectionExtractionPayload:
     del exc
     chapter_context = task.chapter_context
@@ -2552,6 +2721,8 @@ def _empty_failed_section_payload(
             "empty_llm_result_count": 0,
             "empty_repair_attempt_count": 0,
             "empty_repair_success_count": 0,
+            "rule_fallback_attempt_count": 1 if rule_fallback_attempted else 0,
+            "rule_fallback_success_count": 0,
             "total_extracted_node_count": 0,
             "total_extracted_edge_count": 0,
             "failed_chapter_index": resolved_chapter_index,

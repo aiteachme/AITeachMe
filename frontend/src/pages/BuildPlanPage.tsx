@@ -2104,7 +2104,7 @@ export function BuildPlanPage() {
     () => (readyFileIds.length > 0 ? readyFileIds : plannerFileIds),
     [plannerFileIds, readyFileIds],
   );
-  const buildMeta = buildRuntimeQuery.data?.docgen ?? knowledgeDocState.data?.build ?? null;
+  const buildMeta = buildRuntimeQuery.data?.aggregate ?? buildRuntimeQuery.data?.docgen ?? knowledgeDocState.data?.build ?? null;
   const buildPreview = buildRuntimeQuery.data?.docgen_preview ?? knowledgeDocState.data?.build_preview ?? null;
   const buildStatus = buildMeta?.status ?? null;
   const liveMarkdown = knowledgeDocState.data?.markdown ?? "";

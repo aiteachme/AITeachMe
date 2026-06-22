@@ -28,6 +28,7 @@ from app.workflows.digest.common.markdown_knowledge_anchors import (
 )
 from app.workflows.digest.kg_doc_sync.lib.models import (
     ChapterSourceContext,
+    KnowledgeSyncExtractionPayload,
     PendingMarkdownExtractedEdge,
     SectionExtractionContext,
     SectionExtractionPayload,
@@ -136,6 +137,31 @@ def _unit(anchor: str, name: str, *, chapter_index: int = 1, source_kind: str = 
         source_kind=source_kind,
         chapter_index=chapter_index,
     )
+
+
+def test_symbol_only_unit_names_get_distinct_non_empty_identity(session: Session) -> None:
+    symbols = [">", "<", "==", "!="]
+    normalized_names = [sync.normalize_name(symbol) for symbol in symbols]
+
+    assert normalized_names == ["sym_3e", "sym_3c", "sym_3d_3d", "sym_21_3d"]
+
+    for index, symbol in enumerate(symbols, start=1):
+        unit, created = sync._upsert_unit(
+            session,
+            course_id=COURSE_ID,
+            item=_unit(f"symbol-{index}", symbol),
+            build_revision_no=1,
+        )
+        assert created is True
+        assert unit.normalized_name == sync.normalize_name(symbol)
+
+    stored_units = session.exec(
+        select(KnowledgeUnit).where(
+            KnowledgeUnit.course_id == COURSE_ID,
+            KnowledgeUnit.knowledge_unit_type == "concept",
+        )
+    ).all()
+    assert {unit.normalized_name for unit in stored_units} == set(normalized_names)
 
 
 def _payload(
@@ -1219,7 +1245,7 @@ def test_extract_node_uses_quality_ready_docgen_draft_without_section_llm(monkey
     assert result["node_metrics"]["extract"]["llm_section_count"] == 0
 
 
-def test_async_section_record_extraction_captures_success_and_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_async_section_record_extraction_recovers_failed_llm_with_rule_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sync, "_max_parallel_extractions", lambda: 2)
     monkeypatch.setattr(sync, "_graph_llm_concurrency_cap", lambda: 2)
     markdown = "# Chapter\n\n## Parent\nParent body\n\n## Child\nChild body"
@@ -1246,10 +1272,16 @@ def test_async_section_record_extraction_captures_success_and_failure(monkeypatc
     assert [record.title for record in records] == ["Parent", "Child"]
     assert records[0].payload is not None
     assert records[1].payload is not None
-    assert records[1].payload.diagnostics["failed_section_count"] == 1
-    assert records[1].error == "boom"
+    assert records[1].payload.diagnostics["successful_section_count"] == 1
+    assert records[1].payload.diagnostics["failed_section_count"] == 0
+    assert records[1].payload.diagnostics["llm_error_count"] == 1
+    assert records[1].payload.diagnostics["rule_fallback_attempt_count"] == 1
+    assert records[1].payload.diagnostics["rule_fallback_success_count"] == 1
+    assert records[1].error == ""
+    assert records[1].payload.units[0].source_kind == "rule_fallback_chapter"
     assert diagnostics["prefetch_section_count"] == 2
-    assert diagnostics["prefetch_failed_section_count"] == 1
+    assert diagnostics["prefetch_failed_section_count"] == 0
+    assert diagnostics["rule_fallback_success_count"] == 1
 
 
 def test_async_graph_extraction_combines_prefetch_without_llm(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1291,6 +1323,66 @@ def test_async_graph_extraction_combines_prefetch_without_llm(monkeypatch: pytes
     assert diagnostics["prefetch_reused_section_count"] == 2
     assert diagnostics["prefetch_catchup_section_count"] == 0
     assert diagnostics["total_extracted_node_count"] == 2
+
+
+def test_rule_fallback_sync_skips_deprecation_of_existing_units(session: Session) -> None:
+    stale_item = MarkdownKnowledgeUnit(
+        anchor="ku_old_detail",
+        name="Old Detail",
+        summary="Existing detailed node",
+        body_markdown="Old detailed body",
+        knowledge_unit_type="concept",
+        source_kind="llm_section",
+        chapter_index=1,
+    )
+    stale, _created = sync._upsert_unit(
+        session,
+        course_id=COURSE_ID,
+        item=stale_item,
+        build_revision_no=1,
+        lookup_cache=sync._build_unit_lookup_cache(session, course_id=COURSE_ID),
+    )
+    session.commit()
+
+    run_context = sync.initialize_knowledge_graph_sync_run(
+        session,
+        course_id=COURSE_ID,
+        markdown="# Current\n\nCurrent body",
+        build_revision_no=2,
+        structured_context={"doc_version_no": 2},
+    )
+    payload = KnowledgeSyncExtractionPayload(
+        units=[
+            MarkdownKnowledgeUnit(
+                anchor="ku_current",
+                name="Current",
+                summary="Recovered by rule fallback",
+                body_markdown="# Current\n\nCurrent body",
+                knowledge_unit_type="concept",
+                source_kind="rule_fallback_chapter",
+                chapter_index=1,
+            )
+        ],
+        extracted_edges=[],
+        diagnostics_totals={
+            "chapter_count": 1,
+            "section_count": 1,
+            "successful_section_count": 1,
+            "failed_section_count": 0,
+            "llm_section_count": 1,
+            "llm_error_count": 1,
+            "rule_fallback_attempt_count": 1,
+            "rule_fallback_success_count": 1,
+            "total_extracted_node_count": 1,
+            "total_extracted_edge_count": 0,
+        },
+    )
+
+    report = sync.persist_knowledge_graph_items(session, run_context=run_context, payload=payload)
+
+    assert report.rule_fallback_success_count == 1
+    assert report.deprecated_unit_ids == []
+    assert session.get(KnowledgeUnit, stale.id).status != "deprecated"
 
 
 def test_unit_edge_upsert_lookup_cache_and_deprecation(session: Session) -> None:

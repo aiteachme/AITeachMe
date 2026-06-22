@@ -54,6 +54,8 @@ def _payload_metrics(
         "empty_llm_result_count": int(diagnostics.get("empty_llm_result_count", 0) or 0),
         "empty_repair_attempt_count": int(diagnostics.get("empty_repair_attempt_count", 0) or 0),
         "empty_repair_success_count": int(diagnostics.get("empty_repair_success_count", 0) or 0),
+        "rule_fallback_attempt_count": int(diagnostics.get("rule_fallback_attempt_count", 0) or 0),
+        "rule_fallback_success_count": int(diagnostics.get("rule_fallback_success_count", 0) or 0),
         "prefetch_section_count": int(diagnostics.get("prefetch_section_count", 0) or 0),
         "prefetch_reused_section_count": int(diagnostics.get("prefetch_reused_section_count", 0) or 0),
         "prefetch_catchup_section_count": int(diagnostics.get("prefetch_catchup_section_count", 0) or 0),

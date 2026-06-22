@@ -28,6 +28,10 @@ export interface KnowledgeBuildLaneRuntime {
 
 export interface KnowledgeBuildRuntimeResponse {
   build_group_id?: string | null;
+  docs_ready?: boolean;
+  graph_status?: string | null;
+  graph_unhealthy?: boolean;
+  training_unlocked?: boolean;
   aggregate?: KnowledgeBuildLaneRuntime | null;
   docgen?: KnowledgeBuildLaneRuntime | null;
   graph?: KnowledgeBuildLaneRuntime | null;

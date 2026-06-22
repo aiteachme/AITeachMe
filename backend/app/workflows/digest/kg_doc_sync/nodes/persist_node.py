@@ -42,6 +42,8 @@ def _report_metrics(report: KnowledgeSyncReport, *, elapsed_ms: int) -> dict[str
         "empty_llm_result_count": report.empty_llm_result_count,
         "empty_repair_attempt_count": report.empty_repair_attempt_count,
         "empty_repair_success_count": report.empty_repair_success_count,
+        "rule_fallback_attempt_count": report.rule_fallback_attempt_count,
+        "rule_fallback_success_count": report.rule_fallback_success_count,
         "source_ref_count": report.source_ref_count,
         "backbone_unit_count": report.backbone_unit_count,
         "backbone_edge_count": report.backbone_edge_count,

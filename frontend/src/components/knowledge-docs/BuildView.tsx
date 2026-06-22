@@ -59,12 +59,21 @@ const MERGE_PREVIEW_STAGES = new Set([
   "titles_finalized",
   "doc_lane_staged",
   "docgen_finalized",
+  "graph_pending",
+  "graph_docs_sync",
   "publishing",
   "completed",
 ]);
 
 const TERMINAL_BUILD_STATUSES = new Set(["completed", "failed", "cancelled", "partial_failed", "skipped"]);
 const TERMINAL_BUILD_STAGES = new Set(["completed", "failed", "cancelled", "partial_failed", "skipped"]);
+const GRAPH_BUILD_STAGES = new Set([
+  "graph_pending",
+  "manual_graph_requested",
+  "queued_after_docgen",
+  "graph_docs_sync",
+  "graph_ready",
+]);
 const ACTIVE_CHAPTER_STATUSES = new Set(["generating", "drafting", "enhancing", "reviewing", "researching"]);
 const DONE_CHAPTER_STATUSES = new Set(["generated", "completed", "enhanced", "reviewed"]);
 const LIVE_MARKDOWN_RENDER_LIMIT = 24000;
@@ -274,6 +283,7 @@ export function BuildView({
 
   const normalizedBuildStatus = (buildStatus ?? "").trim();
   const normalizedBuildStage = (buildStage ?? "").trim();
+  const isGraphBuildStage = GRAPH_BUILD_STAGES.has(normalizedBuildStage);
   const isBuildActive = Boolean(
     normalizedBuildStatus
       ? normalizedBuildStatus !== "idle" && !TERMINAL_BUILD_STATUSES.has(normalizedBuildStatus)
@@ -309,9 +319,10 @@ export function BuildView({
   const chapters = mergedChapters;
   const events = mergedEvents;
   const chapterPreviews = mergedChapterPreviews;
-  const rawProgress = Math.max(0, Math.min(100, Math.round(
-    sseSnapshot?.docgen?.progress_pct ?? progress
-  )));
+  const streamProgress = sseSnapshot?.aggregate?.progress_pct ?? (
+    isGraphBuildStage ? sseSnapshot?.graph?.progress_pct : sseSnapshot?.docgen?.progress_pct
+  );
+  const rawProgress = Math.max(0, Math.min(100, Math.round(streamProgress ?? progress)));
   const isBuildCompleted =
     isDocumentReady && (buildStage === "completed" || (rawProgress >= 95 && isCompletionStatusText(statusText)));
   const roundedProgress = isBuildCompleted ? 100 : Math.min(rawProgress, 99);

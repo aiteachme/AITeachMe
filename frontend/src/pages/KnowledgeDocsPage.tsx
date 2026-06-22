@@ -2,6 +2,7 @@ import { memo, Suspense, lazy, startTransition, useState, useRef, useEffect, use
 import { createPortal } from "react-dom";
 
 import { useLocation } from "react-router-dom";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   BookOpen,
   FileText,
@@ -38,11 +39,13 @@ import {
   useDocBuildProgress,
   useDocMarkdown,
 } from "../components/knowledge-docs";
-import { CourseVectorNotice } from "../components/knowledge-graph/CourseVectorNotice";
+import { CourseGraphNotice, CourseVectorNotice } from "../components/knowledge-graph/CourseVectorNotice";
 import { MarkdownViewer } from "../components/ui/MarkdownViewer";
 import { useToast } from "../components/ui/Toast";
 import { CoursePagePillTitle } from "../components/course/CoursePagePillTitle";
 import { buildCoursePath } from "../lib/courseNavigation";
+import { OVERVIEW_INCLUDE_PRESETS, buildKnowledgeOverviewQueryKey } from "../lib/knowledgeOverview";
+import { buildKnowledgeBuildRuntimeQueryKey, triggerKnowledgeGraphBuild } from "../lib/knowledgeBuildRuntime";
 import type { KnowledgeGraphSourceRefNavigationTarget } from "../components/knowledge-graph/KnowledgeGraphNodeDetailPanel";
 
 const KnowledgeGraphSidePanel = lazy(() =>
@@ -699,6 +702,24 @@ function buildDefaultCollapsedTocIds(items: TocItem[]): Set<string> {
     }
   }
   return collapsed;
+}
+
+const TOC_SCAN_RETRY_DELAYS_MS = [0, 80, 220, 500, 1000] as const;
+
+function collectTocItemsFromRoot(root: HTMLElement): TocItem[] {
+  const headingNodes = root.querySelectorAll<HTMLElement>("[data-heading-id]");
+  return compactTocItems(Array.from(headingNodes)
+    .map((node): TocItem | null => {
+      const id = node.getAttribute("data-heading-id") ?? node.id;
+      if (!id) return null;
+      if (!isTocTrackedHeading(node)) return null;
+      const level = getHeadingLevel(node);
+      const text = node.textContent?.trim() || id;
+      const section = findHeadingSectionElement(node);
+      const hasInteractive = section ? sectionHasOwnInteractiveEmbed(section) : false;
+      return { id, text, level, hasInteractive };
+    })
+    .filter((item): item is TocItem => item !== null));
 }
 
 /** Build a hierarchical tree from a flat TocItem list (Feishu-style) */
@@ -2290,6 +2311,7 @@ export function KnowledgeDocsPage() {
   } = useAiInteraction();
   const location = useLocation();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const {
     courseId,
     docMarkdownQuery,
@@ -2297,12 +2319,15 @@ export function KnowledgeDocsPage() {
     buildPreview,
     buildMetrics,
     buildStatus,
+    graphStatus,
+    graphUnhealthy,
     liveUpdatedAt,
     draftUpdatedAt,
     hasLiveDocMarkdown,
     hasDraftDocMarkdown,
     isBuildActive,
     isBuildFailure,
+    isGraphSyncActive,
     isRequestedBuildReady,
     isWaitingForRequestedBuild,
     setDocViewMode,
@@ -2445,6 +2470,7 @@ export function KnowledgeDocsPage() {
   const headingFlashTimersRef = useRef(new Map<string, number>());
   const tocNavRef = useRef<HTMLElement>(null);
   const tocDefaultInitializedRef = useRef(false);
+  const lastTocSourceRef = useRef("");
   const streamControllersRef = useRef(new Map<string, AbortController>());
   const tocScrollbarTimerRef = useRef<number | null>(null);
   const tocAutoScrollingRef = useRef(false);
@@ -2752,6 +2778,42 @@ export function KnowledgeDocsPage() {
     setIsGraphDrawerOpen(false);
   }, []);
 
+  const graphRebuildFromNoticeMutation = useMutation({
+    mutationFn: () => {
+      if (!courseId) {
+        throw new Error("缺少课程 ID，无法重新构建知识图谱。");
+      }
+      return triggerKnowledgeGraphBuild(courseId);
+    },
+    onMutate: () => {
+      openGraphPanel();
+    },
+    onSuccess: () => {
+      if (!courseId) return;
+      const overviewInclude = OVERVIEW_INCLUDE_PRESETS.knowledgeGraph;
+      void queryClient.invalidateQueries({ queryKey: buildKnowledgeBuildRuntimeQueryKey(courseId) });
+      void queryClient.invalidateQueries({ queryKey: ["docgen-content", courseId] });
+      void queryClient.invalidateQueries({ queryKey: buildKnowledgeOverviewQueryKey(courseId, overviewInclude) });
+      void queryClient.invalidateQueries({ queryKey: ["knowledge-overview", courseId] });
+      void queryClient.invalidateQueries({ queryKey: ["graph-node-list", courseId] });
+      void queryClient.invalidateQueries({ queryKey: ["graph-initial", courseId] });
+      void queryClient.invalidateQueries({ queryKey: ["graph-subgraph", courseId] });
+      void queryClient.invalidateQueries({ queryKey: ["graph-node-detail", courseId] });
+      toast({
+        title: "已开始重新构建图谱",
+        description: "右侧图谱面板会显示同步进度。",
+        variant: "success",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "启动图谱重建失败",
+        description: getApiErrorMessage(error, "请稍后重试，或打开知识图谱面板手动构建。"),
+        variant: "error",
+      });
+    },
+  });
+
   useEffect(() => {
     document.body.dataset.knowledgeGraphDrawerOpen = isGraphDrawerOpen ? "true" : "false";
     window.dispatchEvent(new CustomEvent(KNOWLEDGE_GRAPH_DRAWER_EVENT, {
@@ -2840,44 +2902,120 @@ export function KnowledgeDocsPage() {
   }, [visibleActiveHeading, collapsedTocIds, alignActiveTocItem]);
 
   useEffect(() => {
-    tocDefaultInitializedRef.current = false;
-    let scanRafId = 0;
-    const paintRafId = window.requestAnimationFrame(() => {
-      scanRafId = window.requestAnimationFrame(() => {
-        const container = scrollRef.current;
-        if (!container) return;
-        const headingNodes = container.querySelectorAll<HTMLElement>("[data-heading-id]");
-        const nextToc = compactTocItems(Array.from(headingNodes)
-          .map((node): TocItem | null => {
-            const id = node.getAttribute("data-heading-id") ?? node.id;
-            if (!id) return null;
-            if (!isTocTrackedHeading(node)) return null;
-            const level = getHeadingLevel(node);
-            const text = node.textContent?.trim() || id;
-            const section = findHeadingSectionElement(node);
-            const hasInteractive = section ? sectionHasOwnInteractiveEmbed(section) : false;
-            return { id, text, level, hasInteractive };
-          })
-          .filter((item): item is TocItem => item !== null));
-        const shouldInitializeCollapsedToc = !tocDefaultInitializedRef.current && nextToc.length > 0;
-        if (shouldInitializeCollapsedToc) {
-          tocDefaultInitializedRef.current = true;
+    const tocSourceKey = `${effectiveDocViewMode}:${renderedMarkdown}`;
+    if (lastTocSourceRef.current !== tocSourceKey) {
+      lastTocSourceRef.current = tocSourceKey;
+      tocDefaultInitializedRef.current = false;
+    }
+    const hasMarkdownContent = renderedMarkdown.trim().length > 0;
+    const timeoutIds: number[] = [];
+    const rafIds: number[] = [];
+    let cancelled = false;
+    let scanFinalized = false;
+    let observer: MutationObserver | null = null;
+
+    const clearScheduledScans = () => {
+      while (timeoutIds.length > 0) {
+        const timeoutId = timeoutIds.pop();
+        if (timeoutId !== undefined) {
+          window.clearTimeout(timeoutId);
         }
-        startTransition(() => {
-          setToc((prev) => (tocEqual(prev, nextToc) ? prev : nextToc));
-          if (shouldInitializeCollapsedToc) {
-            setCollapsedTocIds(buildDefaultCollapsedTocIds(nextToc));
-          }
-        });
-      });
-    });
-    return () => {
-      window.cancelAnimationFrame(paintRafId);
-      if (scanRafId) {
-        window.cancelAnimationFrame(scanRafId);
+      }
+      while (rafIds.length > 0) {
+        const rafId = rafIds.pop();
+        if (rafId !== undefined) {
+          window.cancelAnimationFrame(rafId);
+        }
       }
     };
-  }, [renderedMarkdown]);
+
+    const applyToc = (nextToc: TocItem[]) => {
+      const shouldInitializeCollapsedToc = !tocDefaultInitializedRef.current && nextToc.length > 0;
+      if (shouldInitializeCollapsedToc) {
+        tocDefaultInitializedRef.current = true;
+      }
+      startTransition(() => {
+        setToc((prev) => (tocEqual(prev, nextToc) ? prev : nextToc));
+        if (shouldInitializeCollapsedToc) {
+          setCollapsedTocIds(buildDefaultCollapsedTocIds(nextToc));
+        }
+      });
+    };
+
+    const scanToc = (allowEmpty: boolean) => {
+      if (cancelled || scanFinalized) return;
+      const container = contentAreaRef.current ?? scrollRef.current;
+      if (!container) {
+        if (!hasMarkdownContent && allowEmpty) {
+          applyToc([]);
+          scanFinalized = true;
+          clearScheduledScans();
+        }
+        return;
+      }
+      const nextToc = collectTocItemsFromRoot(container);
+      if (nextToc.length === 0 && hasMarkdownContent) {
+        if (allowEmpty) {
+          applyToc([]);
+          clearScheduledScans();
+        }
+        return;
+      }
+      applyToc(nextToc);
+      if (allowEmpty) {
+        scanFinalized = true;
+        observer?.disconnect();
+        clearScheduledScans();
+      }
+    };
+
+    const scheduleScan = (delayMs: number, allowEmpty: boolean) => {
+      const timeoutId = window.setTimeout(() => {
+        const paintRafId = window.requestAnimationFrame(() => {
+          const scanRafId = window.requestAnimationFrame(() => {
+            scanToc(allowEmpty);
+          });
+          rafIds.push(scanRafId);
+        });
+        rafIds.push(paintRafId);
+      }, delayMs);
+      timeoutIds.push(timeoutId);
+    };
+
+    TOC_SCAN_RETRY_DELAYS_MS.forEach((delayMs, index) => {
+      scheduleScan(delayMs, index === TOC_SCAN_RETRY_DELAYS_MS.length - 1);
+    });
+
+    if (typeof MutationObserver !== "undefined" && contentAreaRef.current) {
+      observer = new MutationObserver(() => {
+        scanToc(false);
+      });
+      observer.observe(contentAreaRef.current, {
+        attributes: true,
+        attributeFilter: ["data-heading-id", "id"],
+        childList: true,
+        subtree: true,
+      });
+    }
+
+    if (!hasMarkdownContent) {
+      scanToc(true);
+    }
+
+    return () => {
+      cancelled = true;
+      observer?.disconnect();
+      clearScheduledScans();
+    };
+  }, [
+    effectiveDocViewMode,
+    hasRenderedMarkdown,
+    isBuildActive,
+    isGraphSyncActive,
+    isWaitingForRequestedBuild,
+    renderedMarkdown,
+    showDocGeneratingState,
+  ]);
 
   useEffect(() => {
     if (collapsedDocHeadingCommitTimerRef.current !== null) {
@@ -6409,7 +6547,7 @@ export function KnowledgeDocsPage() {
   const docColumnMaxWidthClass = pageWideMode ? "max-w-none" : showDesktopCommentPanel ? "max-w-[920px]" : "max-w-[980px]";
   const showFloatingActions = Boolean(courseId && !isBuildActive && !showDocLoadingState && !showDocGeneratingState && !isAssistantOpen && !isGraphDrawerOpen);
 
-  if (!hasRenderedMarkdown && (isBuildActive || isWaitingForRequestedBuild || showDocGeneratingState)) {
+  if ((!hasRenderedMarkdown || isGraphSyncActive) && (isBuildActive || isWaitingForRequestedBuild || showDocGeneratingState)) {
     return (
       <div className="relative flex h-full min-h-0 flex-1 w-full flex-col overflow-hidden bg-white dark:bg-slate-950">
         <CoursePagePillTitle
@@ -6708,6 +6846,14 @@ export function KnowledgeDocsPage() {
                     )}
                   >
                   <CourseVectorNotice status={docMarkdownQuery.data?.vector_status} className="mb-6" />
+                  <CourseGraphNotice
+                    status={graphStatus}
+                    unhealthy={graphUnhealthy}
+                    className="mb-6"
+                    onRebuild={courseId ? () => graphRebuildFromNoticeMutation.mutate() : undefined}
+                    rebuildPending={graphRebuildFromNoticeMutation.isPending}
+                    rebuildDisabled={!courseId}
+                  />
                   {docMarkdownQuery.isError ? (
                     <DocLoadErrorState
                       message={getApiErrorMessage(docMarkdownQuery.error, "获取知识文档失败，请稍后重试。")}
@@ -6717,7 +6863,7 @@ export function KnowledgeDocsPage() {
                     />
                   ) : showDocLoadingState ? (
                     <DocLoadingState />
-                  ) : isBuildActive || isWaitingForRequestedBuild || showDocGeneratingState ? (
+                  ) : !hasRenderedMarkdown && (isBuildActive || isWaitingForRequestedBuild || showDocGeneratingState) ? (
                     <BuildView
                       className="h-[70vh] min-h-[600px] overflow-hidden rounded-xl border border-zinc-100 dark:border-slate-800"
                       isFetching={docMarkdownQuery.isFetching}
