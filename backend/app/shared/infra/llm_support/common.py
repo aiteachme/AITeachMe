@@ -111,18 +111,12 @@ class LLMRuntimeSnapshot:
         endpoints = self.primary_endpoints or _legacy_primary_endpoints(self)
         if not endpoints:
             return None
-        first = endpoints[0]
-        same_route = all(
-            endpoint.base_url == first.base_url
-            and endpoint.provider == first.provider
-            and endpoint.api_version == first.api_version
-            for endpoint in endpoints
-        )
-        return secrets.choice(endpoints) if same_route else first
+        return secrets.choice(endpoints)
 
     def completion_endpoints(self) -> tuple[LLMEndpoint, ...]:
-        primary = self.primary_endpoints or _legacy_primary_endpoints(self)
-        return (*primary, *self.fallback_endpoints)
+        primary = self.choose_primary_endpoint()
+        primary_endpoints = (primary,) if primary is not None else ()
+        return (*primary_endpoints, *self.fallback_endpoints)
 
     def has_usable_completion_endpoint(self) -> bool:
         for endpoint in self.completion_endpoints():

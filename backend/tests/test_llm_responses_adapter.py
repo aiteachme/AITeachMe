@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.shared.infra.llm_support import common as llm_common
 from app.shared.infra.llm_support import responses_adapter
 from app.shared.infra.llm_support.common import build_completion_context, build_completion_contexts
 from app.shared.infra.llm_support.responses_adapter import (
@@ -990,9 +991,10 @@ async def test_stream_completion_records_provider_native_tool_events(monkeypatch
     ]
 
 
-def test_runtime_snapshot_pairs_primary_and_fallback_endpoints(monkeypatch):
+def test_runtime_snapshot_selects_one_primary_endpoint_and_keeps_fallbacks(monkeypatch):
+    monkeypatch.setattr(llm_common.secrets, "choice", lambda values: values[-1])
     monkeypatch.setenv("LLM_API_KEY", "primary-a,primary-b")
-    monkeypatch.setenv("LLM_BASE_URL", "https://primary.example.com/v1")
+    monkeypatch.setenv("LLM_BASE_URL", "https://primary-a.example.com/v1,https://primary-b.example.com/v1")
     monkeypatch.setenv("LLM_FALLBACK_API_KEY", "fallback-a,fallback-b")
     monkeypatch.setenv("LLM_FALLBACK_BASE_URL", "https://fallback-a.example.com/v1,https://fallback-b.example.com/v1")
     set_system_settings_override({
@@ -1003,18 +1005,15 @@ def test_runtime_snapshot_pairs_primary_and_fallback_endpoints(monkeypatch):
 
     assert [context.endpoint_role for context in contexts] == [
         "primary",
-        "primary",
         "fallback",
         "fallback",
     ]
     assert [context.base_url for context in contexts] == [
-        "https://primary.example.com/v1",
-        "https://primary.example.com/v1",
+        "https://primary-b.example.com/v1",
         "https://fallback-a.example.com/v1",
         "https://fallback-b.example.com/v1",
     ]
     assert [context.api_key for context in contexts] == [
-        "primary-a",
         "primary-b",
         "fallback-a",
         "fallback-b",
