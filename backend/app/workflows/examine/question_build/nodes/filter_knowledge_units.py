@@ -64,57 +64,37 @@ def build_filter_knowledge_units_node(*, context: WorkflowContext):
             detail="Filtering candidate knowledge units for exam blueprint planning...",
             step="filter_knowledge_units",
         )
-        try:
-            input_units = list(state.get("units") or [])
-            exam_mode = str(state.get("exam_mode") or "web_practice")
-            question_count = int(state.get("question_count") or 1)
-            mastery_by_unit_id = dict(state.get("mastery_by_unit_id") or {})
-            priority_unit_ids = [
-                unit_id
-                for unit_id in (_positive_int(item) for item in list(state.get("priority_unit_ids") or []))
-                if unit_id > 0
-            ]
-            user_prompt = str(state.get("user_prompt") or "")
-            limit = exam_candidate_unit_limit(question_count)
-            filter_strategy = "llm_graph"
-            filter_rationale = ""
+        input_units = list(state.get("units") or [])
+        question_count = _positive_int(state.get("question_count")) or 1
+        priority_unit_ids = [
+            unit_id
+            for unit_id in (_positive_int(item) for item in list(state.get("priority_unit_ids") or []))
+            if unit_id > 0
+        ]
+        limit = exam_candidate_unit_limit(question_count)
 
-            async def fallback_result(*, reason: str, detail: str) -> dict:
-                candidate_unit_ids = _fallback_candidate_unit_ids(
-                    units=input_units,
-                    priority_unit_ids=priority_unit_ids,
-                    limit=limit,
-                )
-                unit_by_id = {_unit_id(unit): unit for unit in input_units if _unit_id(unit) > 0}
-                filtered = [unit_by_id[unit_id] for unit_id in candidate_unit_ids if unit_id in unit_by_id]
-                if not filtered and input_units:
-                    filtered = input_units[: max(1, min(len(input_units), int(limit or 1)))]
-                    candidate_unit_ids = [_unit_id(unit) for unit in filtered if _unit_id(unit) > 0]
-                elapsed_ms = int((perf_counter() - started_at) * 1000)
-                await emit_progress(
-                    state,
-                    stage="filter_exam_units",
-                    detail=(
-                        f"Selected {len(candidate_unit_ids)} candidate knowledge units "
-                        f"with fallback because {detail}"
-                    ),
-                    step="filter_knowledge_units",
-                    elapsed_ms=elapsed_ms,
-                    extra={
-                        "candidate_unit_ids": candidate_unit_ids,
-                        "candidate_unit_limit": limit,
-                        "input_unit_count": len(input_units),
-                        "knowledge_graph_edge_count": len(list(state.get("knowledge_graph_edges") or [])),
-                        "candidate_unit_count": len(candidate_unit_ids),
-                        "scope_include_terms": [],
-                        "scope_exclude_terms": [],
-                        "scope_strict": False,
-                        "filter_strategy": reason,
-                        "filter_rationale": detail,
-                    },
-                )
-                return {
-                    "units": filtered,
+        async def fallback_result(*, reason: str, detail: str) -> dict:
+            candidate_unit_ids = _fallback_candidate_unit_ids(
+                units=input_units,
+                priority_unit_ids=priority_unit_ids,
+                limit=limit,
+            )
+            unit_by_id = {_unit_id(unit): unit for unit in input_units if _unit_id(unit) > 0}
+            filtered = [unit_by_id[unit_id] for unit_id in candidate_unit_ids if unit_id in unit_by_id]
+            if not filtered and input_units:
+                filtered = input_units[: max(1, min(len(input_units), int(limit or 1)))]
+                candidate_unit_ids = [_unit_id(unit) for unit in filtered if _unit_id(unit) > 0]
+            elapsed_ms = int((perf_counter() - started_at) * 1000)
+            await emit_progress(
+                state,
+                stage="filter_exam_units",
+                detail=(
+                    f"Selected {len(candidate_unit_ids)} candidate knowledge units "
+                    f"with fallback because {detail}"
+                ),
+                step="filter_knowledge_units",
+                elapsed_ms=elapsed_ms,
+                extra={
                     "candidate_unit_ids": candidate_unit_ids,
                     "candidate_unit_limit": limit,
                     "input_unit_count": len(input_units),
@@ -125,10 +105,30 @@ def build_filter_knowledge_units_node(*, context: WorkflowContext):
                     "scope_strict": False,
                     "filter_strategy": reason,
                     "filter_rationale": detail,
-                    "filter_ms": elapsed_ms,
-                    "error": "" if candidate_unit_ids else detail,
-                }
+                },
+            )
+            return {
+                "units": filtered,
+                "candidate_unit_ids": candidate_unit_ids,
+                "candidate_unit_limit": limit,
+                "input_unit_count": len(input_units),
+                "knowledge_graph_edge_count": len(list(state.get("knowledge_graph_edges") or [])),
+                "candidate_unit_count": len(candidate_unit_ids),
+                "scope_include_terms": [],
+                "scope_exclude_terms": [],
+                "scope_strict": False,
+                "filter_strategy": reason,
+                "filter_rationale": detail,
+                "filter_ms": elapsed_ms,
+                "error": "" if candidate_unit_ids else detail,
+            }
 
+        try:
+            exam_mode = str(state.get("exam_mode") or "web_practice")
+            mastery_by_unit_id = dict(state.get("mastery_by_unit_id") or {})
+            user_prompt = str(state.get("user_prompt") or "")
+            filter_strategy = "llm_graph"
+            filter_rationale = ""
             selection = await select_exam_knowledge_units(
                 course_id=str(state.get("course_id") or ""),
                 course_name=str(state.get("course_name") or ""),

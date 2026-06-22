@@ -518,6 +518,53 @@ async def test_filter_knowledge_units_uses_fallback_when_llm_selection_is_cancel
 
 
 @pytest.mark.anyio
+async def test_filter_knowledge_units_falls_back_when_question_count_is_invalid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def failed_selection(**kwargs):
+        raise ValueError("selection unavailable")
+
+    monkeypatch.setattr(filter_units_node, "select_exam_knowledge_units", failed_selection)
+    units = [
+        KnowledgeUnit(
+            id=1,
+            course_id=COURSE_ID,
+            knowledge_unit_type="concept",
+            canonical_name="Matrices",
+            normalized_name="matrices",
+            summary="Matrix operations and rank.",
+            status="active",
+        ),
+        KnowledgeUnit(
+            id=2,
+            course_id=COURSE_ID,
+            knowledge_unit_type="concept",
+            canonical_name="Linear maps",
+            normalized_name="linear_maps",
+            summary="Linear maps and bases.",
+            status="active",
+        ),
+    ]
+
+    node = filter_units_node.build_filter_knowledge_units_node(context=SimpleNamespace())
+    result = await node(
+        {
+            "course_id": COURSE_ID,
+            "course_name": "Linear Algebra",
+            "exam_mode": "web_practice",
+            "question_count": "not-a-number",
+            "units": units,
+            "priority_unit_ids": [2],
+        }
+    )
+
+    assert result["error"] == ""
+    assert result["filter_strategy"] == "deterministic_error_fallback"
+    assert result["candidate_unit_limit"] == exam_candidate_unit_limit(1)
+    assert result["candidate_unit_ids"] == [2, 1]
+
+
+@pytest.mark.anyio
 async def test_exam_prewarm_status_does_not_start_background_generation(
     session: Session,
 ) -> None:
@@ -1675,6 +1722,34 @@ def test_exam_question_draft_preserves_fenced_code_indentation() -> None:
     assert draft.correct_answer == "A"
     assert "\n    if value > 0:" in answer_draft.correct_answer
     assert "\n        return True" in answer_draft.correct_answer
+
+
+def test_exam_question_draft_normalizes_duplicate_explanation_markers() -> None:
+    draft = generator.ExamQuestionDraft.model_validate(
+        {
+            "item_order": 1,
+            "question_type": "fill_blank",
+            "difficulty": "easy",
+            "stem": "若函数没有显式 return，调用结果是 {{blank}}。",
+            "correct_answer": "None",
+            "explanation": (
+                "1. 1. Python 函数没有显式 return 时\n"
+                "2. 1. 默认会返回 None\n\n"
+                "```text\n"
+                "1. 1. 代码块内容保持原样\n"
+                "```"
+            ),
+            "knowledge_unit_id": 1,
+        }
+    )
+
+    assert draft.explanation == (
+        "1. Python 函数没有显式 return 时\n"
+        "1. 默认会返回 None\n\n"
+        "```text\n"
+        "1. 1. 代码块内容保持原样\n"
+        "```"
+    )
 
 
 def test_exam_question_draft_rejects_invalid_shapes() -> None:

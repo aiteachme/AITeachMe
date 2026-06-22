@@ -44,6 +44,9 @@ _BLANK_TOKEN = "{{blank}}"
 _TEXT_UNDERSCORE_PLACEHOLDER_RE = re.compile(r"\\text\{(_+)\}")
 _CHOICE_LABEL_RE = re.compile(r"^\s*([A-Da-d])(?:[\.\)\]:：、\s]+)(.+)$")
 _INLINE_WHITESPACE_RE = re.compile(r"[ \t\f\v]+")
+_DUPLICATE_ORDERED_LIST_MARKER_RE = re.compile(
+    r"^(\s{0,3}(?:>\s*)*)\d+[\.)\u3001\uff09]\s+(?=\d+[\.)\u3001\uff09]\s+)"
+)
 _UNIT_REF_ID_RE = re.compile(r"\bknowledge_unit_id\s*[:=]\s*(\d+)\b", re.IGNORECASE)
 _UNIT_REF_WEIGHT_RE = re.compile(
     r"\b(?:coverage_weight|weight)\s*[:=]\s*([0-9]+(?:\.[0-9]+)?)\b",
@@ -85,6 +88,21 @@ def _clean_multiline_text(value: object) -> str:
     while cleaned_lines and cleaned_lines[-1] == "":
         cleaned_lines.pop()
     return "\n".join(cleaned_lines).strip()
+
+
+def _normalize_explanation_markdown(value: str) -> str:
+    lines: list[str] = []
+    in_code_fence = False
+    for line in value.split("\n"):
+        if line.lstrip().startswith("```"):
+            lines.append(line)
+            in_code_fence = not in_code_fence
+            continue
+        if in_code_fence:
+            lines.append(line)
+            continue
+        lines.append(_DUPLICATE_ORDERED_LIST_MARKER_RE.sub(r"\1", line))
+    return "\n".join(lines).strip()
 
 
 def _coerce_unit_ref_item(value: object) -> dict[str, object] | None:
@@ -436,6 +454,11 @@ class ExamQuestionDraft(BaseModel):
         if not cleaned:
             raise ValueError("text field cannot be empty")
         return _escape_text_underscore_placeholders(cleaned)
+
+    @field_validator("explanation")
+    @classmethod
+    def _normalize_explanation_text(cls, value: str) -> str:
+        return _normalize_explanation_markdown(value)
 
     @field_validator("correct_answer", mode="before")
     @classmethod

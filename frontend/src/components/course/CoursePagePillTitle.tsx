@@ -261,7 +261,7 @@ export function CoursePagePillTitle({
     },
     {
       id: "profile",
-      label: "学习画像",
+      label: "课程画像",
       icon: BarChart3,
       href: buildCoursePath(courseId, "profile"),
       description: "查看掌握分布、测验记录和后续复习方向。",
