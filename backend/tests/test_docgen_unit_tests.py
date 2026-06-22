@@ -35,7 +35,7 @@ def test_unit_test_renderer_replaces_existing_unit_test_section_once() -> None:
             ],
         ),
         title="统计量",
-        min_items=2,
+        min_items=1,
         fallback_targets=["中位数"],
     )
 
@@ -46,12 +46,11 @@ def test_unit_test_renderer_replaces_existing_unit_test_section_once() -> None:
     assert '<div class="atm-unit-tests"' not in markdown
     assert "> [!QUESTION]" in markdown
     assert "> [!ANSWER]" in markdown
-    assert "**2 题覆盖**" in markdown
-    assert "概念判断 / 短答题" in markdown
+    assert "**1 题覆盖**" in markdown
+    assert "短答题" in markdown
     assert "**答案**" in markdown
     assert "**解析步骤**" in markdown
     assert "总和除以个数。" in markdown
-    assert "A. 中位数的定义和适用条件要同时满足" in markdown
     assert "###" not in unit_test
     assert "> **答案与依据**" not in unit_test
     assert "**判定依据**" not in unit_test
@@ -87,7 +86,17 @@ def test_unit_test_renderer_strips_body_writer_test_and_recap_sections() -> None
     markdown = append_unit_test_markdown(
         body,
         render_unit_test_markdown(
-            ChapterUnitTestSet(chapter_index=1),
+            ChapterUnitTestSet(
+                chapter_index=1,
+                items=[
+                    ChapterUnitTestItem(
+                        target="全等判定条件",
+                        stem="说明 SSS 判定条件。",
+                        answer="三边分别相等。",
+                        basis="SSS 要求三组对应边分别相等。",
+                    )
+                ],
+            ),
             title="三角形全等",
             min_items=1,
             fallback_targets=["全等判定条件"],
@@ -112,6 +121,7 @@ def test_unit_test_renderer_normalizes_type_and_difficulty_metadata() -> None:
                     difficulty="hard",
                     target="函数单调性",
                     stem="下列哪一项最能判断函数单调性？A. 定义域 B. 函数值变化方向 C. 图像颜色",
+                    options=["定义域", "函数值变化方向", "图像颜色", "函数名称"],
                     answer="B",
                     basis="单调性看自变量变化时函数值的变化方向。",
                 )
@@ -260,7 +270,7 @@ def test_unit_test_renderer_keeps_four_options_for_every_question_type() -> None
     assert unit_test.count("- D.") == 2
 
 
-def test_unit_test_renderer_enforces_type_diversity_and_max_items() -> None:
+def test_unit_test_renderer_keeps_generated_items_without_filling_type_diversity() -> None:
     unit_test = render_unit_test_markdown(
         ChapterUnitTestSet(
             chapter_index=1,
@@ -285,8 +295,7 @@ def test_unit_test_renderer_enforces_type_diversity_and_max_items() -> None:
     assert unit_test.count("**Q") == 4
     assert "**4 题覆盖**" in unit_test
     question_types = set(re.findall(r"Q\d+｜([^｜]+)｜", unit_test))
-    assert len(question_types) == 4
-    assert "短答题" in question_types
+    assert question_types == {"短答题"}
 
 
 def test_published_unit_test_normalizer_keeps_one_standard_section() -> None:

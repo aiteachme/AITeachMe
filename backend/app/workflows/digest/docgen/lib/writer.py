@@ -90,32 +90,8 @@ def _writer_stream_char_limit(execution_contract: Mapping[str, Any], *, digest_m
     return max(5000, min(14000, int(target_words * 4.5)))
 
 
-def _fallback_unique_items(values: list[str], *, limit: int = 6) -> list[str]:
-    result: list[str] = []
-    for value in values:
-        item = str(value or "").strip()
-        if not item or item in result:
-            continue
-        result.append(item)
-        if len(result) >= limit:
-            break
-    return result
-
-
-def _fallback_heading_seed(value: str, fallback: str) -> str:
-    text = str(value or "").strip()
-    text = re.sub(r"^[\s\-*#>·•\d.、]+", "", text)
-    text = re.sub(r"[`*_{}\[\]（）()【】《》]", "", text)
-    text = re.split(r"[，,；;。！？!?：:\n]|->|→", text, maxsplit=1)[0].strip()
-    text = re.sub(
-        r"(核心概念|基本方法|典型题型|易错边界|综合练习题型|学习目标|重点内容|相关例题)$",
-        "",
-        text,
-    ).strip()
-    if len(text) < 2:
-        text = str(fallback or "本章内容").strip()
-    text = re.sub(r"\s+", "", text)
-    return (text or "本章内容")[:14]
+class DocGenWriterNoContentError(RuntimeError):
+    """Raised when the writer model produced no publishable chapter content."""
 
 
 class DocGenWriterRuntime(BaseTracedExecution):
@@ -174,8 +150,7 @@ class DocGenWriterRuntime(BaseTracedExecution):
         writer_model_kwargs["max_tokens"] = min(configured_max_tokens, target_max_tokens)
         stream_char_limit = _writer_stream_char_limit(execution_contract, digest_mode=digest_mode)
         markdown = ""
-        scaffold_fallback_applied = False
-        writer_fallback_reason = ""
+        writer_no_content_reason = ""
         stream_timed_out = False
         if on_stream_update is not None and self.context.llm_caller is None:
             streamed_chars = 0
@@ -223,17 +198,18 @@ class DocGenWriterRuntime(BaseTracedExecution):
                 )
             except asyncio.TimeoutError as exc:
                 stream_timed_out = True
-                writer_fallback_reason = f"TimeoutError: writer stream exceeded {WRITER_TASK_TIMEOUT_S:.0f}s"
+                writer_no_content_reason = f"TimeoutError: writer stream exceeded {WRITER_TASK_TIMEOUT_S:.0f}s"
                 self.logger.warning(
-                    "docgen_writer_stream_timeout_using_scaffold",
+                    "docgen_writer_stream_timeout_no_content",
                     chapter_index=chapter_index,
                     streamed_chars=streamed_chars,
                     timeout_s=WRITER_TASK_TIMEOUT_S,
                     error=str(exc),
                 )
             except Exception as exc:
+                writer_no_content_reason = f"{type(exc).__name__}: {str(exc)[:180]}"
                 self.logger.warning(
-                    "docgen_writer_stream_failed_falling_back",
+                    "docgen_writer_stream_failed_retry_completion",
                     chapter_index=chapter_index,
                     streamed_chars=streamed_chars,
                     error=str(exc),
@@ -250,21 +226,23 @@ class DocGenWriterRuntime(BaseTracedExecution):
                         timeout=WRITER_TASK_TIMEOUT_S,
                     )
                 except Exception as exc:
-                    writer_fallback_reason = f"{type(exc).__name__}: {str(exc)[:180]}"
+                    writer_no_content_reason = f"{type(exc).__name__}: {str(exc)[:180]}"
                     self.logger.warning(
-                        "docgen_writer_completion_failed_using_scaffold",
+                        "docgen_writer_completion_failed",
                         chapter_index=chapter_index,
                         error=str(exc),
                     )
             if not markdown.strip():
-                markdown = self._build_scaffold_fallback(
-                    title=title,
-                    objective=objective,
-                    required_elements=required_elements,
-                    writing_instructions=writing_instructions,
-                    dense_context=dense_context,
+                writer_no_content_reason = writer_no_content_reason or "empty_writer_output"
+                self.logger.error(
+                    "docgen_writer_no_content",
+                    chapter_index=chapter_index,
+                    reason=writer_no_content_reason,
                 )
-                scaffold_fallback_applied = True
+                raise DocGenWriterNoContentError(
+                    f"DocGen writer produced no publishable content for chapter {chapter_index or '?'}: "
+                    f"{writer_no_content_reason}"
+                )
 
         markdown = strip_asset_requests(str(markdown).strip())
         heading_quality = analyze_chapter_heading_quality(
@@ -272,7 +250,7 @@ class DocGenWriterRuntime(BaseTracedExecution):
             digest_mode=digest_mode,
         )
         heading_repair_applied = False
-        if not scaffold_fallback_applied and bool(heading_quality.get("needs_agent_repair")):
+        if bool(heading_quality.get("needs_agent_repair")):
             repaired_markdown = await self._repair_heading_structure(
                 title=title,
                 objective=objective,
@@ -323,85 +301,10 @@ class DocGenWriterRuntime(BaseTracedExecution):
                 "repair_actions": list(quality_summary.get("repair_actions", []) or []),
                 "quality_summary": quality_summary,
                 "heading_repair_applied": heading_repair_applied,
-                "scaffold_fallback_applied": scaffold_fallback_applied,
-                "writer_fallback_reason": writer_fallback_reason,
+                "writer_no_content_reason": writer_no_content_reason,
                 "heading_missing_module_count": len(list(heading_quality.get("missing_modules") or [])),
             },
         )
-
-    def _build_scaffold_fallback(
-        self,
-        *,
-        title: str,
-        objective: str,
-        required_elements: list[str],
-        writing_instructions: str,
-        dense_context: str,
-    ) -> str:
-        focus_items = _fallback_unique_items([item for item in required_elements if item.strip()])
-        if not focus_items and objective.strip():
-            focus_items = [objective.strip()]
-        if not focus_items:
-            focus_items = ["理解本章核心概念、基本方法和典型题型。"]
-        context_points = self._fallback_context_points(dense_context)
-        primary = _fallback_heading_seed(focus_items[0], title)
-        secondary_source = focus_items[1] if len(focus_items) > 1 else objective or title
-        secondary = _fallback_heading_seed(secondary_source, title)
-
-        lines = [
-            f"# {title}",
-            "",
-            f"## {primary}本章目标",
-            "",
-            *[f"- {item}" for item in focus_items[:6]],
-            "",
-            f"## {primary}的关系",
-            "",
-            f"先把“{primary}”放回本章主题中，确认它和前后知识、适用条件、常见变形之间的关系，再把需要计算、判断或表达的步骤拆开处理。",
-            "",
-            f"## {secondary}怎么处理",
-            "",
-        ]
-        if context_points:
-            lines.extend(f"- {item}" for item in context_points[:6])
-        else:
-            lines.extend(f"- {item}" for item in focus_items[:6])
-        if writing_instructions.strip():
-            lines.extend(["", f"## {primary}学习提醒", "", writing_instructions.strip()])
-        lines.extend(
-            [
-                "",
-                f"## {primary}怎么练",
-                "",
-                "### 基础任务",
-                "",
-                f"围绕“{focus_items[0]}”设计一道基础题：先写出已知条件，再列出需要使用的定义、公式或定理，最后检查答案是否满足题目限制。",
-                "",
-                "### 自查要点",
-                "",
-                "1. 用自己的话复述本章最重要的定义或定理。",
-                "2. 写出一个典型题目的完整解题步骤。",
-                "3. 标出最容易出错的条件，并说明为什么不能省略。",
-                "",
-                f"## {primary}小结",
-                "",
-                "学完本章后，应能把核心概念、常用方法和典型题型串成一条清晰的学习路径，并能独立完成基础题与变式题。",
-            ]
-        )
-        return "\n".join(lines).strip() + "\n"
-
-    def _fallback_context_points(self, dense_context: str, *, limit: int = 6) -> list[str]:
-        points: list[str] = []
-        for raw_line in str(dense_context or "").replace("\r", "\n").split("\n"):
-            line = raw_line.strip(" \t-#>*`")
-            if len(line) < 8:
-                continue
-            if line in points:
-                continue
-            points.append(line[:160])
-            if len(points) >= limit:
-                break
-        return points
 
     async def _safe_stream_update(
         self,
@@ -638,4 +541,4 @@ class DocGenWriterRuntime(BaseTracedExecution):
         return re.sub(r"\s+", "", str(value or "").strip()).casefold()
 
 
-__all__ = ["DocGenWriterRuntime"]
+__all__ = ["DocGenWriterNoContentError", "DocGenWriterRuntime"]

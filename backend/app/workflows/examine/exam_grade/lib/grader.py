@@ -108,6 +108,14 @@ def _build_default_feedback(*, item: ExamPaperItem, is_correct: bool, subjective
     )
 
 
+def _build_feedback_unavailable_text(*, item: ExamPaperItem, is_correct: bool) -> str:
+    verdict = "正确" if is_correct else "错误"
+    explanation = str(item.explanation_snapshot or "").strip()
+    if explanation:
+        return f"本题已按标准答案判定为{verdict}。参考解析：{explanation}"
+    return f"本题已按标准答案判定为{verdict}，但 AI 解析暂时没有生成，请稍后重试。"
+
+
 def _grade_objective_correctness(item: ExamPaperItem) -> bool:
     question_type = (item.question_type or "").strip().lower()
     expected = _normalize_text(item.answer_snapshot)
@@ -164,8 +172,8 @@ async def _generate_objective_feedback(course_name: str, item: ExamPaperItem, *,
         return result.feedback_text, result.error_cause_label
     except Exception:
         return (
-            _build_default_feedback(item=item, is_correct=is_correct, subjective=False),
-            None if is_correct else "knowledge_gap",
+            _build_feedback_unavailable_text(item=item, is_correct=is_correct),
+            None if is_correct else "feedback_unavailable",
         )
 
 
@@ -225,17 +233,8 @@ async def _grade_subjective_item(course_name: str, item: ExamPaperItem) -> ExamI
             error_cause_label=None if result.is_correct else (result.error_cause_label or "knowledge_gap"),
             grading_mode="subjective_llm",
         )
-    except Exception:
-        expected = _normalize_text(item.answer_snapshot)
-        fallback_correct = bool(expected and (user_answer == expected))
-        return ExamItemGradeDecision(
-            is_correct=fallback_correct,
-            score_obtained=float(item.score or 1.0) if fallback_correct else 0.0,
-            score_max=float(item.score or 1.0),
-            feedback_text=_build_default_feedback(item=item, is_correct=fallback_correct, subjective=True),
-            error_cause_label=None if fallback_correct else "unknown",
-            grading_mode="subjective_fallback",
-        )
+    except Exception as exc:
+        raise RuntimeError(f"subjective grading model failed for item_order={item.item_order}: {exc}") from exc
 
 
 def _parse_options(raw: str | None) -> list[str] | None:

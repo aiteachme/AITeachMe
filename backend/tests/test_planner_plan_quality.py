@@ -182,7 +182,7 @@ def test_docgen_diagnose_brief_maps_different_answers_to_different_actions() -> 
     assert "诊断选项执行策略" in brief
 
 
-def test_normalize_planner_draft_builds_fallback_diagnose() -> None:
+def test_normalize_planner_draft_does_not_build_fallback_diagnose() -> None:
     payload = _planner_payload()
     payload.pop("diagnose")
 
@@ -193,9 +193,8 @@ def test_normalize_planner_draft_builds_fallback_diagnose() -> None:
         requested_digest_mode="sprint",
     )
 
-    assert len(draft.diagnose) == 4
-    assert draft.diagnose[0].question == "当前基础怎样？"
-    assert all(len(item.options) == 4 for item in draft.diagnose)
+    assert draft.diagnose == []
+    assert draft.diagnose_status == ""
 
 
 def test_normalize_planner_draft_does_not_use_full_prompt_as_course_name() -> None:
@@ -589,8 +588,8 @@ def test_normalize_planner_diagnosis_draft_returns_docgen_ready_questions() -> N
                     "purpose": "影响图示重点。",
                     "options": [
                         "图示辅助",
-                        "图示辅助",
-                        "这是一个非常非常非常长的选项标签",
+                        "图示重点",
+                        "多用图示",
                         "少用图示",
                     ],
                     "answer": "图示辅助",
@@ -607,7 +606,7 @@ def test_normalize_planner_diagnosis_draft_returns_docgen_ready_questions() -> N
     diagnose = normalized["diagnose"]
     assert normalized["planner_stage"] == "diagnosis"
     assert normalized["diagnose_status"] == "pending"
-    assert len(diagnose) == 4
+    assert len(diagnose) == 1
     assert diagnose[0]["question"] == "解析要多细？"
     assert diagnose[0]["answer"] == "错因提醒"
     assert diagnose[0]["answer"] in diagnose[0]["options"]
@@ -615,6 +614,27 @@ def test_normalize_planner_diagnosis_draft_returns_docgen_ready_questions() -> N
     assert all(len(item["options"]) == 4 for item in diagnose)
     assert all(len(set(item["options"])) == 4 for item in diagnose)
     assert all(len(option) <= 16 for item in diagnose for option in item["options"])
+    assert "当前基础怎样？" not in {item["question"] for item in diagnose}
+
+
+def test_normalize_planner_diagnosis_draft_skips_empty_model_questions() -> None:
+    normalized = normalize_planner_diagnosis_draft(
+        {
+            "diagnose": [
+                {
+                    "question": "练习怎么配？",
+                    "purpose": "影响练习密度。",
+                    "options": ["少练", "多练"],
+                },
+            ],
+        },
+        course_id="初中函数",
+        user_prompt="14 天复习函数、几何和统计",
+        requested_digest_mode="sprint",
+    )
+
+    assert normalized["diagnose"] == []
+    assert normalized["diagnose_status"] == "skipped"
 
 
 def test_partial_chapters_supports_streaming_preview() -> None:

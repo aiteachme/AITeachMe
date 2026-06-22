@@ -131,16 +131,6 @@ def _strings(value: Any) -> list[str]:
     return cleaned
 
 
-_DIAGNOSIS_OPTION_FALLBACKS = [
-    "先补基础",
-    "例题带路",
-    "多练变式",
-    "章末小测",
-    "错因提醒",
-    "重点速查",
-]
-
-
 def _diagnosis_contract_text(value: Any, *, field: str = "text") -> str:
     text = _student_facing_text(value)
     if not text:
@@ -169,7 +159,7 @@ def _ensure_four_diagnosis_options(value: Any) -> list[str]:
     options = _strings(value)
     result: list[str] = []
     seen: set[str] = set()
-    for item in [*options, *_DIAGNOSIS_OPTION_FALLBACKS]:
+    for item in options:
         text = _diagnosis_contract_text(item)
         if not text:
             continue
@@ -391,75 +381,15 @@ def _merge_diagnostic(raw: Mapping[str, Any]) -> PlannerDiagnosticQuestion | Non
         or raw.get("example_answers")
         or raw.get("answers")
     )
+    normalized_options = _ensure_four_diagnosis_options(options)
+    if len(normalized_options) != 4:
+        return None
     return PlannerDiagnosticQuestion(
         question=question,
         purpose=purpose,
-        options=_ensure_four_diagnosis_options(options),
+        options=normalized_options,
         answer=_diagnosis_contract_text(raw.get("answer") or raw.get("user_answer") or raw.get("selected_answer")),
     )
-
-
-def _fallback_diagnostic_pool(
-    *,
-    chapters: list[PlannerChapterPlan],
-    user_prompt: str,
-    digest_mode: str,
-) -> list[PlannerDiagnosticQuestion]:
-    mode_label = planner_mode_label(digest_mode)
-    generic_items = [
-        (
-            "当前基础怎样？",
-            "文档落点：决定讲解起点、概念铺垫长度和例题难度。",
-            [
-                "零基础入门",
-                "基础需补课",
-                "中等求稳固",
-                "基础扎实",
-            ],
-        ),
-        (
-            "讲解重心放哪？",
-            "文档落点：决定正文讲解顺序、例题类型和每章小结。",
-            [
-                "概念先讲清",
-                "例题带理解",
-                "步骤拆细些",
-                "易错多提醒",
-            ],
-        ),
-        (
-            "练习密度多大？",
-            "文档落点：决定正文短练习、章末单元测试和解析密度。",
-            [
-                "少量精练",
-                "每节小练",
-                "章末小测",
-                "多练变式",
-            ],
-        ),
-        (
-            "解析要多细？",
-            "文档落点：决定文档内例题、随堂练习和章末小测的答案要点、步骤依据和错因提示。",
-            [
-                "只给要点",
-                "写清依据",
-                "补错因提醒",
-                "补变式题",
-            ],
-        ),
-    ]
-    result: list[PlannerDiagnosticQuestion] = []
-    for question, purpose, options in generic_items:
-        result.append(
-            PlannerDiagnosticQuestion(
-                question=question,
-                purpose=purpose,
-                options=_ensure_four_diagnosis_options(options),
-            )
-        )
-        if len(result) >= 4:
-            break
-    return result[:4]
 
 
 def _normalize_diagnose(
@@ -469,6 +399,8 @@ def _normalize_diagnose(
     user_prompt: str,
     digest_mode: str,
 ) -> list[PlannerDiagnosticQuestion]:
+    del chapters, user_prompt, digest_mode
+
     result: list[PlannerDiagnosticQuestion] = []
     seen: set[str] = set()
     for raw in raw_items:
@@ -484,27 +416,7 @@ def _normalize_diagnose(
         )
         if len(result) >= 4:
             break
-    if result:
-        if len(result) >= 4:
-            return result[:4]
-        fallback = _fallback_diagnostic_pool(
-            chapters=chapters,
-            user_prompt=user_prompt,
-            digest_mode=digest_mode,
-        )
-        for item in fallback:
-            key = _text(item.question).casefold()
-            if key in seen:
-                continue
-            result.append(item)
-            if len(result) >= 4:
-                break
-        return result[:4]
-    return _fallback_diagnostic_pool(
-        chapters=chapters,
-        user_prompt=user_prompt,
-        digest_mode=digest_mode,
-    )
+    return result[:4]
 
 
 def normalize_planner_diagnosis_draft(
@@ -538,6 +450,8 @@ def normalize_planner_diagnosis_draft(
     status = _text(current.get("diagnose_status") or previous.get("diagnose_status")) or "pending"
     if status not in {"pending", "answered", "skipped"}:
         status = "pending"
+    if not diagnose and status == "pending":
+        status = "skipped"
     return {
         "planner_stage": "diagnosis",
         "course_name": display_course,

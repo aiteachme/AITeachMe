@@ -1,28 +1,25 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  Activity,
   ArrowRight,
   BarChart3,
   BookOpen,
   CalendarClock,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  FileText,
   Gauge,
+  Loader2,
   MessageCircle,
   Sparkles,
   Target,
   Trophy,
-  Loader2,
-  ChevronDown,
-  ChevronUp,
-  FileText,
 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import {
-  getExamHistoryApiV1CoursesCourseIdExamsHistoryGetQueryKey,
   useExamHistoryApiV1CoursesCourseIdExamsHistoryGet,
-  useGenerateExamApiV1CoursesCourseIdExamsGeneratePost,
 } from "../api/generated/exams";
 import {
   getMasteryOverviewApiV1CoursesCourseIdProfileMasteryGetQueryKey,
@@ -34,31 +31,15 @@ import {
   useStudyPlanApiV1CoursesCourseIdProfileStudyPlanGet,
 } from "../api/generated/profile";
 import type {
+  ExamHistoryItem,
   MasteryOverviewResponse,
+  MasteryStateResponse,
   ReviewTaskResponse,
   StudyPlanStepResponse,
-  ExamHistoryItem,
-  ExamGenerateResponse,
-  MasteryStateResponse,
 } from "../api/generated/model";
 import { getApiErrorMessage } from "../api/client";
-import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
 import { Button } from "../components/ui/Button";
 import { useToast } from "../components/ui/Toast";
-import { cn } from "../lib/utils";
-import { useCourseDisplayName } from "../hooks/useCourseDisplayName";
-import { buildCoursePath, buildCourseSubPath } from "../lib/courseNavigation";
-import { CoursePagePillTitle } from "../components/course/CoursePagePillTitle";
-import {
-  COURSE_PAGE_HEADER_ACTION_BUTTON_CLASS,
-  COURSE_PAGE_CONTENT_CLASS,
-  COURSE_PAGE_SHELL_CLASS,
-  CoursePageHeader,
-} from "../components/course/CoursePageHeader";
-import {
-  buildExamTitle,
-} from "../components/exams";
-import { formatModeLabel } from "../components/exams/examDisplay";
 import {
   AccuracyRows,
   MasteryDistribution,
@@ -73,16 +54,29 @@ import {
   masteryTone,
 } from "../components/profile";
 import {
+  COURSE_PAGE_CONTENT_CLASS,
+  COURSE_PAGE_HEADER_ACTION_BUTTON_CLASS,
+  COURSE_PAGE_SHELL_CLASS,
+  CoursePageHeader,
+} from "../components/course/CoursePageHeader";
+import { buildExamTitle } from "../components/exams";
+import { formatModeLabel } from "../components/exams/examDisplay";
+import { useCourseDisplayName } from "../hooks/useCourseDisplayName";
+import {
+  buildCoursePath,
+  buildCourseSubPath,
+} from "../lib/courseNavigation";
+import {
   buildLearningActivityEvents,
   formatLearningActivityKind,
   formatLearningActivityTime,
   getLatestLearningActivity,
 } from "../lib/learningActivity";
+import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
+import { cn } from "../lib/utils";
 
 const pageShellClass = COURSE_PAGE_SHELL_CLASS;
 const PROFILE_PROMPT_STORAGE_PREFIX = "aiteachme.profile.userPrompt.v1";
-
-
 
 function getKnowledgeUnitName(state: Pick<MasteryStateResponse, "knowledge_unit_id" | "knowledge_unit_name">) {
   return state.knowledge_unit_name?.trim() || `知识点 #${state.knowledge_unit_id}`;
@@ -92,11 +86,6 @@ function sortByNewestTimestamp<T>(items: T[], getTimestamp: (item: T) => string 
   return [...items].sort((left, right) =>
     new Date(getTimestamp(right) ?? 0).getTime() - new Date(getTimestamp(left) ?? 0).getTime(),
   );
-}
-
-function getPlanTimeLabel(index: number): string {
-  const labels = ["09:00-09:20", "09:25-10:05", "10:10-10:25", "20:30-20:45"];
-  return labels[index] ?? "弹性安排";
 }
 
 function getProfilePromptStorageKey(courseId: string) {
@@ -121,8 +110,324 @@ function saveProfilePrompt(courseId: string | undefined, value: string) {
   try {
     window.localStorage.setItem(getProfilePromptStorageKey(courseId), value);
   } catch {
-    // The editable prompt is a local convenience; ignore storage failures.
+    // Local prompt notes are optional; storage failures should not block the page.
   }
+}
+
+function getPlanTimeLabel(index: number): string {
+  return ["先看", "再练", "复盘", "补充"][index] ?? "安排";
+}
+
+function getPaperScoreText(item: ExamHistoryItem): string {
+  if (item.status === "graded" && item.score_obtained != null && item.total_score != null) {
+    return `${item.score_obtained}/${item.total_score} 分`;
+  }
+  return `${item.total_items} 题`;
+}
+
+function SectionHeading({
+  icon,
+  title,
+  detail,
+  action,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  detail?: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 border-b border-slate-200 pb-3 dark:border-slate-800">
+      <div className="min-w-0">
+        <h2 className="flex items-center gap-2 text-sm font-bold text-slate-950 dark:text-slate-100">
+          <span className="text-slate-400 dark:text-slate-500">{icon}</span>
+          {title}
+        </h2>
+        {detail ? <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">{detail}</p> : null}
+      </div>
+      {action}
+    </div>
+  );
+}
+
+function EmptyBlock({ icon, title, detail }: { icon: React.ReactNode; title: string; detail: string }) {
+  return (
+    <div className="flex min-h-[160px] flex-col items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50/50 px-5 py-8 text-center dark:border-slate-800 dark:bg-slate-900/30">
+      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white text-slate-400 shadow-sm dark:bg-slate-950 dark:text-slate-500">
+        {icon}
+      </div>
+      <p className="mt-3 text-sm font-semibold text-slate-800 dark:text-slate-200">{title}</p>
+      <p className="mt-1 max-w-sm text-xs leading-5 text-slate-500 dark:text-slate-400">{detail}</p>
+    </div>
+  );
+}
+
+function SummaryMetric({
+  label,
+  value,
+  hint,
+  icon,
+  tone = "slate",
+}: {
+  label: string;
+  value: string;
+  hint: string;
+  icon: React.ReactNode;
+  tone?: "indigo" | "emerald" | "rose" | "slate";
+}) {
+  const toneClass = {
+    indigo: "bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300",
+    emerald: "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300",
+    rose: "bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300",
+    slate: "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300",
+  }[tone];
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950/70">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">{label}</p>
+          <p className="mt-1 text-2xl font-black tabular-nums text-slate-950 dark:text-slate-50">{value}</p>
+        </div>
+        <span className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-lg", toneClass)}>
+          {icon}
+        </span>
+      </div>
+      <p className="mt-3 truncate text-xs text-slate-500 dark:text-slate-400">{hint}</p>
+    </div>
+  );
+}
+
+function WeakSpotSummary({
+  states,
+}: {
+  states: MasteryStateResponse[];
+}) {
+  const previewStates = states.slice(0, 3);
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950/70">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">优先补哪里</p>
+          <p className="mt-1 text-sm font-bold text-slate-950 dark:text-slate-50">
+            {previewStates.length ? "先看这几个知识点" : "还没有明确要补的点"}
+          </p>
+        </div>
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300">
+          <Target className="h-5 w-5" />
+        </span>
+      </div>
+
+      {previewStates.length ? (
+        <div className="mt-3 space-y-2">
+          {previewStates.map((state) => {
+            const score = clamp01(state.mastery_score);
+            return (
+              <div key={state.id} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-900/50">
+                <span className="min-w-0 truncate text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  {getKnowledgeUnitName(state)}
+                </span>
+                <span className="shrink-0 text-xs font-black tabular-nums text-rose-600 dark:text-rose-300">
+                  {formatPercent(score)}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="mt-3 text-xs leading-5 text-slate-500 dark:text-slate-400">
+          完成一次练习后，系统会把需要优先补的知识点排出来。
+        </p>
+      )}
+
+      <p className="mt-3 text-xs leading-5 text-slate-500 dark:text-slate-400">
+        {previewStates.length
+          ? "下方「知识点掌握」会按优先级展开。"
+          : "暂无可诊断的薄弱范围。"}
+      </p>
+    </div>
+  );
+}
+
+function ProfileUnavailable({
+  message,
+  onOpenKnowledgeDocs,
+  onOpenExams,
+}: {
+  message: string;
+  onOpenKnowledgeDocs: () => void;
+  onOpenExams: () => void;
+}) {
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-950/75">
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
+          <p className="flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400">
+            <BarChart3 className="h-4 w-4" />
+            课程画像
+          </p>
+          <h2 className="mt-3 text-2xl font-black tracking-normal text-slate-950 dark:text-slate-50">
+            画像数据暂时不可用
+          </h2>
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-400">
+            {message} 系统不会基于缺失数据生成学习建议。
+          </p>
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onOpenKnowledgeDocs}
+            className="h-10 rounded-lg bg-white px-4 text-sm font-semibold shadow-sm dark:bg-slate-950"
+          >
+            <BookOpen className="h-4 w-4" />
+            回看知识库
+          </Button>
+          <Button
+            type="button"
+            onClick={onOpenExams}
+            className="h-10 rounded-lg bg-slate-950 px-4 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+          >
+            <FileText className="h-4 w-4" />
+            去练习中心
+          </Button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function NextStepPanel({
+  title,
+  detail,
+  courseProfile,
+  focusStates,
+  dueReviewCount,
+  onOpenExams,
+}: {
+  title: string;
+  detail: string;
+  courseProfile: MasteryOverviewResponse["course_profile"];
+  focusStates: MasteryStateResponse[];
+  dueReviewCount: number;
+  onOpenExams: () => void;
+}) {
+  const questionTypes = courseProfile?.recommended_question_types?.slice(0, 3) ?? [];
+  const suggestedCount = courseProfile?.recommended_question_count ?? 8;
+  const previewStates = focusStates.slice(0, 3);
+
+  return (
+    <section className="flex h-full flex-col rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950/75 sm:p-6">
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <p className="flex items-center gap-2 text-xs font-bold text-indigo-600 dark:text-indigo-300">
+            <Sparkles className="h-4 w-4" />
+            下一步建议
+          </p>
+          <h2 className="mt-3 text-2xl font-black leading-tight tracking-normal text-slate-950 dark:text-slate-50">
+            {title}
+          </h2>
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-400">{detail}</p>
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Button
+            type="button"
+            onClick={onOpenExams}
+            className="h-10 rounded-lg bg-slate-950 px-4 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+          >
+            <FileText className="h-4 w-4" />
+            去练习中心
+          </Button>
+        </div>
+      </div>
+
+      <div className="mt-5 flex flex-wrap gap-2">
+        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+          {formatToken(courseProfile?.recommended_exam_mode, "网页练习")}
+        </span>
+        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+          约 {suggestedCount} 题
+        </span>
+        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+          {formatToken(courseProfile?.difficulty_focus, "中等")}难度
+        </span>
+        {questionTypes.map((type) => (
+          <span key={type} className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300">
+            {formatToken(type)}
+          </span>
+        ))}
+      </div>
+
+      {previewStates.length ? (
+        <div className="mt-5 border-t border-slate-100 pt-4 dark:border-slate-800">
+          <p className="text-xs font-semibold text-slate-400 dark:text-slate-500">优先补的知识点</p>
+          <div className="mt-2 grid gap-2 md:grid-cols-3">
+            {previewStates.map((state) => (
+              <div key={state.id} className="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-900/50">
+                <p className="truncate text-xs font-bold text-slate-800 dark:text-slate-200">
+                  {getKnowledgeUnitName(state)}
+                </p>
+                <p className="mt-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                  掌握 {formatPercent(state.mastery_score)}
+                </p>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
+            完整排序在下方「知识点掌握」中查看。
+          </p>
+        </div>
+      ) : null}
+
+      <div className="mt-auto grid grid-cols-2 gap-3 border-t border-slate-100 pt-4 dark:border-slate-800">
+        <div>
+          <p className="text-xs font-semibold text-slate-400 dark:text-slate-500">复习提醒</p>
+          <p className="mt-1 text-lg font-black tabular-nums text-slate-950 dark:text-slate-50">{dueReviewCount}</p>
+        </div>
+        <div>
+          <p className="text-xs font-semibold text-slate-400 dark:text-slate-500">建议题量</p>
+          <p className="mt-1 text-lg font-black tabular-nums text-slate-950 dark:text-slate-50">{suggestedCount}</p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function LearningPlan({
+  planItems,
+}: {
+  planItems: Array<{ key: string; label: string; title: string; detail: string }>;
+}) {
+  if (!planItems.length) {
+    return null;
+  }
+
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950/70">
+      <SectionHeading
+        icon={<CalendarClock className="h-4 w-4" />}
+        title="今日行动"
+        detail="按定位、练习、复盘排好顺序。"
+      />
+      <ol className="mt-4 space-y-3">
+        {planItems.slice(0, 4).map((item, index) => (
+          <li key={item.key} className="grid gap-3 rounded-lg border border-slate-100 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-900/40 sm:grid-cols-[5rem_minmax(0,1fr)]">
+            <div className="flex items-center gap-2 sm:flex-col sm:items-start sm:gap-1">
+              <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-white text-[11px] font-black tabular-nums text-slate-500 shadow-sm dark:bg-slate-950 dark:text-slate-400">
+                {String(index + 1).padStart(2, "0")}
+              </span>
+              <span className="text-xs font-bold text-slate-500 dark:text-slate-400">{item.label}</span>
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-slate-950 dark:text-slate-100">{item.title}</p>
+              <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">{item.detail}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
 }
 
 function RecentPaperRow({
@@ -132,66 +437,58 @@ function RecentPaperRow({
   item: ExamHistoryItem;
   onOpen: () => void;
 }) {
-  const scoreText =
-    item.status === "graded" && item.score_obtained != null && item.total_score != null
-      ? `${item.score_obtained}/${item.total_score} 分`
-      : `${item.total_items} 题`;
-
-  const dotColor =
-    item.status === "graded"
-      ? "bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.4)]"
-      : item.status === "generating"
-        ? "bg-indigo-500 animate-pulse shadow-[0_0_6px_rgba(99,102,241,0.4)]"
-        : item.status === "failed"
-          ? "bg-rose-500 shadow-[0_0_6px_rgba(239,68,68,0.4)]"
-          : "bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.4)]";
+  const isGenerating = item.status === "generating";
+  const dotColor = item.status === "graded"
+    ? "bg-emerald-500"
+    : isGenerating
+      ? "bg-indigo-500"
+      : item.status === "failed"
+        ? "bg-rose-500"
+        : "bg-amber-500";
 
   return (
-    <div className="group flex items-center justify-between py-3.5 border-b border-slate-100/60 dark:border-slate-800/20 last:border-0 transition-colors duration-200">
-      <div className="min-w-0 flex-1 flex items-center gap-3">
-        <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", dotColor)} />
-        <div className="min-w-0">
-          <p className="truncate text-[14px] font-medium text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors duration-200">{buildExamTitle(item)}</p>
-          <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-555 font-light">
-            {formatModeLabel(item.exam_mode)} · {scoreText}
-          </p>
+    <button
+      type="button"
+      onClick={onOpen}
+      className="group flex w-full items-center justify-between gap-4 rounded-lg px-3 py-3 text-left transition hover:bg-slate-50 dark:hover:bg-slate-900"
+    >
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <span className={cn("h-2 w-2 shrink-0 rounded-full", dotColor, isGenerating && "animate-pulse")} />
+          <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{buildExamTitle(item)}</p>
         </div>
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          {formatModeLabel(item.exam_mode)} · {formatDateTime(item.created_at)} · {getPaperScoreText(item)}
+        </p>
       </div>
-      <Button
-        type="button"
-        size="sm"
-        variant="ghost"
-        onClick={onOpen}
-        className="h-8 shrink-0 px-3 text-xs font-semibold text-slate-500 group-hover:text-indigo-600 dark:text-slate-400 dark:group-hover:text-indigo-400 hover:bg-transparent"
-      >
-        进入
-        <ArrowRight className="h-3.5 w-3.5 ml-1 transition-transform group-hover:translate-x-0.5" />
-      </Button>
-    </div>
+      <ArrowRight className="h-4 w-4 shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-indigo-500" />
+    </button>
   );
 }
 
 function FocusStateRow({ state }: { state: MasteryStateResponse }) {
   const score = clamp01(state.mastery_score);
   const tone = masteryTone(score);
+  const accuracy = state.total_attempts > 0 ? state.correct_attempts / state.total_attempts : null;
 
   return (
-    <div className="py-3.5 border-b border-slate-100/60 dark:border-slate-805/20 last:border-0">
-      <div className="flex items-center justify-between gap-4">
+    <div className="rounded-lg border border-slate-100 bg-white p-3 dark:border-slate-800 dark:bg-slate-950/40">
+      <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-[14px] font-medium text-slate-800 dark:text-slate-200">
-            {getKnowledgeUnitName(state)}
-          </p>
-          <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500 font-light">
-            {formatToken(state.knowledge_unit_type, "知识点")} · 尝试 {state.total_attempts} 次
+          <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{getKnowledgeUnitName(state)}</p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            {formatToken(state.knowledge_unit_type, "知识点")} · 正确 {state.correct_attempts}/{state.total_attempts} · 稳定度 {formatPercent(state.stability_score)}
           </p>
         </div>
-        <span className={cn("shrink-0 text-xs font-semibold", tone.text)}>
-          {formatPercent(score)}
-        </span>
+        <div className="shrink-0 text-right">
+          <span className={cn("text-sm font-black tabular-nums", tone.text)}>{formatPercent(score)}</span>
+          <p className="mt-1 text-[11px] font-semibold text-slate-400 dark:text-slate-500">
+            {accuracy == null ? "暂无作答" : `正确率 ${formatPercent(accuracy)}`}
+          </p>
+        </div>
       </div>
-      <div className="mt-2.5 h-1 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800/40">
-        <div className={cn("h-full rounded-full transition-all duration-700 ease-out", tone.bar)} style={{ width: `${Math.max(5, score * 100)}%` }} />
+      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+        <div className={cn("h-full rounded-full", tone.bar)} style={{ width: `${Math.max(4, score * 100)}%` }} />
       </div>
     </div>
   );
@@ -202,54 +499,77 @@ function ReviewTaskRow({
   onOpenSourceExam,
   onComplete,
   isCompleting,
+  completed = false,
 }: {
   task: ReviewTaskResponse;
   onOpenSourceExam: (paperId: number) => void;
-  onComplete: () => void;
+  onComplete?: () => void;
   isCompleting: boolean;
+  completed?: boolean;
 }) {
-  const dueSoon = isReviewDueSoon(task);
+  const dueSoon = !completed && isReviewDueSoon(task);
 
   return (
-    <div className="group flex items-center justify-between py-3.5 border-b border-slate-100/60 dark:border-slate-800/20 last:border-0 transition-colors duration-200">
-      <div className="min-w-0 flex-1 pr-3">
-        <div className="flex items-center gap-2">
-          <p className="truncate text-[14px] font-medium text-slate-800 dark:text-slate-200">
-            {task.knowledge_unit_name?.trim() || `知识点 #${task.knowledge_unit_id}`}
+    <div className={cn(
+      "rounded-lg border p-3",
+      completed
+        ? "border-emerald-100 bg-emerald-50/60 dark:border-emerald-500/20 dark:bg-emerald-500/10"
+        : "border-slate-100 bg-white dark:border-slate-800 dark:bg-slate-950/40",
+    )}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
+              {task.knowledge_unit_name?.trim() || `知识点 #${task.knowledge_unit_id}`}
+            </p>
+            {dueSoon ? (
+              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
+                优先
+              </span>
+            ) : null}
+            {completed ? (
+              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
+                已完成
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            {formatToken(task.knowledge_unit_type, "知识点")} · {formatDateTime(task.scheduled_at)}
           </p>
-          {dueSoon && (
-            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[9px] font-semibold text-amber-705 ring-1 ring-amber-500/10 dark:bg-amber-500/10 dark:text-amber-300">
-              优先
-            </span>
-          )}
         </div>
-        <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500 font-light">
-          {formatToken(task.knowledge_unit_type, "知识点")} · {formatDateTime(task.scheduled_at)}
-        </p>
-      </div>
-      <div className="flex items-center gap-1 shrink-0">
-        {task.source_exam_paper_id && (
+        {completed ? (
+          <span className="inline-flex h-8 shrink-0 items-center gap-1 rounded-lg border border-emerald-200 bg-white px-3 text-xs font-semibold text-emerald-700 shadow-sm dark:border-emerald-500/20 dark:bg-slate-950 dark:text-emerald-300">
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            已完成
+          </span>
+        ) : (
           <Button
             type="button"
             size="sm"
-            variant="ghost"
-            onClick={() => onOpenSourceExam(task.source_exam_paper_id as number)}
-            className="h-8 px-2.5 text-[11px] font-medium text-slate-450 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 hover:bg-transparent"
+            variant="outline"
+            onClick={onComplete}
+            disabled={isCompleting}
+            className="h-8 shrink-0 rounded-lg px-3 text-xs"
           >
-            来源
+            标记完成
           </Button>
         )}
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          onClick={onComplete}
-          disabled={isCompleting}
-          className="h-7.5 rounded-full px-3 text-[11px] font-medium border-slate-200 text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-300 dark:hover:bg-slate-900/60"
-        >
-          完成
-        </Button>
       </div>
+      {completed ? (
+        <p className="mt-3 text-xs leading-5 text-emerald-700 dark:text-emerald-300">
+          已记录到本轮复习，后续画像会按新的练习结果重新排序。
+        </p>
+      ) : null}
+      {task.source_exam_paper_id ? (
+        <button
+          type="button"
+          onClick={() => onOpenSourceExam(task.source_exam_paper_id as number)}
+          className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-slate-500 transition hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-300"
+        >
+          查看来源试卷
+          <ArrowRight className="h-3 w-3" />
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -351,38 +671,13 @@ export function ProfilePage() {
         ]);
         toast({
           title: "已完成复习任务",
-          description: "课程画像与待复习列表已实时刷新。",
+          description: "已保留在本轮完成记录中，课程画像会同步刷新。",
           variant: "success",
         });
       },
       onError: (error) => {
         toast({
           title: "完成复习失败",
-          description: getApiErrorMessage(error, "请稍后重试"),
-          variant: "error",
-        });
-      },
-    },
-  });
-
-  const generateExam = useGenerateExamApiV1CoursesCourseIdExamsGeneratePost({
-    mutation: {
-      onSuccess: async (response) => {
-        const created = unwrapOrvalResponse<ExamGenerateResponse>(response);
-        if (!courseId || !created?.exam_paper_id) return;
-        await queryClient.invalidateQueries({
-          queryKey: getExamHistoryApiV1CoursesCourseIdExamsHistoryGetQueryKey(courseId, { page: 1, size: 8 }),
-        });
-        navigate(buildCourseSubPath(courseId, "exams", created.exam_paper_id));
-        toast({
-          title: "考试已创建",
-          description: `已准备 ${created.num_questions} 题，正在进入作答页。`,
-          variant: "success",
-        });
-      },
-      onError: (error) => {
-        toast({
-          title: "创建考试失败",
           description: getApiErrorMessage(error, "请稍后重试"),
           variant: "error",
         });
@@ -407,7 +702,7 @@ export function ProfilePage() {
     .filter((note) => /^(近期对话|对话偏好|资料使用|学习意图)：/.test(note))
     .slice(0, 3), [profileNotes]);
   const visibleProfileNotes = useMemo(() => profileNotes
-    .filter((note) => !/：0\s*(个|项)/.test(note) && !conversationNotes.includes(note))
+    .filter((note) => !/：\s*(一|二)项$/.test(note) && !conversationNotes.includes(note))
     .slice(0, 4), [profileNotes, conversationNotes]);
 
   const latestPapers = useMemo(
@@ -424,8 +719,10 @@ export function ProfilePage() {
   );
 
   const dueReviewCount = courseProfile?.due_review_count ?? reviewTasks.filter(isReviewDueSoon).length;
-  const weakCount = courseProfile?.weak_knowledge_unit_count ?? mastery?.weak_knowledge_unit_count ?? 0;
-  const focusUnitIds = new Set(courseProfile?.focus_knowledge_unit_ids ?? []);
+  const focusUnitIds = useMemo(
+    () => new Set(courseProfile?.focus_knowledge_unit_ids ?? []),
+    [courseProfile?.focus_knowledge_unit_ids],
+  );
 
   const focusStates = useMemo(
     () =>
@@ -444,7 +741,6 @@ export function ProfilePage() {
     [reviewTasks],
   );
 
-  const focusNames = focusStates.map(getKnowledgeUnitName).slice(0, 3).join("、");
   const latestLearningTitle = latestLearningActivity
     ? latestLearningActivity.label
     : topReviewTasks[0]
@@ -454,36 +750,30 @@ export function ProfilePage() {
     ? `${formatLearningActivityKind(latestLearningActivity.kind)} · ${formatLearningActivityTime(latestLearningActivity.occurredAt)}`
     : topReviewTasks[0]
       ? `复习建议 · ${formatDateTime(topReviewTasks[0].scheduled_at)}`
-      : "完成一次练习后会自动沉淀到画像。";
+      : "完成一次练习后，系统会自动更新画像。";
   const smartRecommendationTitle = topReviewTasks[0]
-    ? `先复习：${topReviewTasks[0].knowledge_unit_name?.trim() || `知识点 #${topReviewTasks[0].knowledge_unit_id}`}`
+    ? `先回顾：${topReviewTasks[0].knowledge_unit_name?.trim() || `知识点 #${topReviewTasks[0].knowledge_unit_id}`}`
     : focusStates[0]
       ? `优先突破：${getKnowledgeUnitName(focusStates[0])}`
-      : "先做一次短诊断";
+      : "先做一次短测验";
   const smartRecommendationDetail = topReviewTasks[0]
-    ? "该知识点已进入复习窗口，优先处理能降低遗忘风险。"
+    ? "这个知识点最近需要回顾，先看掌握记录和来源试卷，再决定是否进入练习中心。"
     : focusStates[0]
-      ? `当前掌握度 ${formatPercent(focusStates[0].mastery_score)}，建议配合知识库回看后再练。`
-      : "系统需要更多测验或对话信号来生成稳定推荐。";
+      ? `当前掌握度 ${formatPercent(focusStates[0].mastery_score)}，建议先回看相关讲义，再做一轮短练习。`
+      : "系统还需要更多测验或练习数据，才能判断优先补哪里。";
 
-  const startProfileExam = () => {
-    if (!courseId || generateExam.isPending) return;
-    const profileMode = courseProfile?.recommended_exam_mode === "paper_exam" ? "paper_exam" : "web_practice";
-    generateExam.mutate({
-      courseId,
-      data: {
-        exam_mode: profileMode,
-        num_questions: Math.min(80, Math.max(1, courseProfile?.recommended_question_count ?? 8)),
-        user_prompt: focusNames ? `重点覆盖：${focusNames}` : undefined,
-      },
-    });
+  const openPracticeCenter = () => {
+    if (!courseId) {
+      return;
+    }
+    navigate(buildCoursePath(courseId, "exams"));
   };
 
   const planItems = useMemo(() => {
-    const PLAN_LABEL_BY_KEY: Record<string, string> = {
+    const labelByKey: Record<string, string> = {
       locate: "定位",
       review: "复习",
-      practice: "训练",
+      practice: "练习",
       reflect: "复盘",
     };
     const dueTasks = reviewTasks.filter(isReviewDueSoon);
@@ -491,7 +781,7 @@ export function ProfilePage() {
       .sort((left, right) => left.mastery_score - right.mastery_score || right.review_priority - left.review_priority)
       .slice(0, 3);
     const focusNamesPlan = weakStates
-      .map((state) => state.knowledge_unit_name?.trim() || `知识点 #${state.knowledge_unit_id}`)
+      .map(getKnowledgeUnitName)
       .slice(0, 2)
       .join("、");
     const qTypes = courseProfile?.recommended_question_types?.slice(0, 2).map((item) => formatToken(item)).join("、");
@@ -500,72 +790,36 @@ export function ProfilePage() {
       {
         key: "locate",
         label: "定位",
-        timeLabel: getPlanTimeLabel(0),
-        title: dueTasks.length ? "先处理高优先级复习" : "锁定薄弱知识点",
+        title: dueTasks.length ? "先处理到期复习" : "确认今天的薄弱范围",
         detail: dueTasks.length
-          ? `优先完成 ${Math.min(dueTasks.length, 3)} 个高优先级复习任务，避免遗忘继续扩大。`
+          ? `优先完成 ${Math.min(dueTasks.length, 3)} 个复习任务，避免遗忘继续扩大。`
           : focusNamesPlan
-            ? `先看 ${focusNamesPlan}，确认这几个点是否真的理解。`
+            ? `先看 ${focusNamesPlan}，确认这些点是否真的理解。`
             : "先做一次短练习，让系统拿到可诊断的数据。",
       },
       {
         key: "practice",
-        label: "训练",
-        timeLabel: getPlanTimeLabel(1),
-        title: "做一轮专项练习",
+        label: "练习",
+        title: "做一轮画像练习",
         detail: `${formatToken(courseProfile?.recommended_exam_mode, "网页练习")} · 约 ${courseProfile?.recommended_question_count ?? 10} 题 · ${formatToken(courseProfile?.difficulty_focus, "中等")}难度${qTypes ? ` · ${qTypes}` : ""}。`,
       },
       {
         key: "reflect",
         label: "复盘",
-        timeLabel: getPlanTimeLabel(2),
-        title: "带着错题回到知识库",
-        detail: "练完后把错题、卡点或划选内容拿去伴读追问，画像会继续沉淀你的讲解偏好。",
+        title: "把错题带回知识库",
+        detail: "练完后先看错因，再回到讲义对应位置，补掉定义、条件或步骤上的缺口。",
       },
     ];
 
     return studyPlan?.length
       ? studyPlan.map((item, index) => ({
         key: item.key,
-        label: PLAN_LABEL_BY_KEY[item.key] ?? "计划",
-        timeLabel: getPlanTimeLabel(index),
+        label: labelByKey[item.key] ?? getPlanTimeLabel(index),
         title: item.title,
         detail: item.detail,
       }))
       : fallbackPlanItems;
   }, [studyPlan, reviewTasks, states, courseProfile]);
-
-  const statItems = [
-    {
-      label: "掌握度",
-      value: formatPercent(courseProfile?.avg_mastery),
-      detail: `${states.length} 个知识点`,
-      icon: <Gauge className="h-5 w-5" strokeWidth={1.25} />,
-      iconClass: "bg-indigo-50/50 text-indigo-500 ring-1 ring-indigo-100/30 dark:bg-indigo-950/20 dark:text-indigo-400",
-    },
-    {
-      label: "正确率",
-      value: formatPercent(attemptAccuracy),
-      detail: `${totalAttempts} 次作答`,
-      icon: <Trophy className="h-5 w-5" strokeWidth={1.25} />,
-      iconClass: "bg-violet-50/50 text-violet-500 ring-1 ring-violet-100/30 dark:bg-violet-950/20 dark:text-violet-400",
-    },
-    {
-      label: "待复习",
-      value: String(dueReviewCount),
-      detail: `到期 ${dueReviewCount} 个`,
-      icon: <CalendarClock className="h-5 w-5" strokeWidth={1.25} />,
-      iconClass: "bg-rose-50/50 text-rose-500 ring-1 ring-rose-100/30 dark:bg-rose-950/20 dark:text-rose-400",
-      valueClass: dueReviewCount > 0 ? "text-rose-600 dark:text-rose-400" : undefined,
-    },
-    {
-      label: "稳定度",
-      value: formatPercent(avgStability),
-      detail: "基于艾宾浩斯遗忘模型",
-      icon: <Activity className="h-5 w-5" strokeWidth={1.25} />,
-      iconClass: "bg-emerald-50/50 text-emerald-500 ring-1 ring-emerald-100/30 dark:bg-emerald-950/20 dark:text-emerald-400",
-    },
-  ];
 
   if (!courseId) {
     return (
@@ -578,17 +832,14 @@ export function ProfilePage() {
   }
 
   const isLoading = historyQuery.isLoading || masteryQuery.isLoading || reviewsQuery.isLoading;
+  const hasCriticalProfileError = Boolean(masteryQuery.error);
 
   return (
     <div className={pageShellClass}>
       <div className={`${COURSE_PAGE_CONTENT_CLASS} gap-5`}>
-
-        {/* Breadcrumb pill title */}
-        <CoursePagePillTitle icon={BarChart3} label="课程画像" href={buildCoursePath(courseId, "nav")} />
-
         <CoursePageHeader
           title={courseName ?? "当前课程"}
-          description="查看学习诊断、复习重点与下一步训练建议。"
+          description="用测验、复习和知识点掌握记录，判断现在最该补哪里。"
           actions={
             <>
               <Button
@@ -607,15 +858,15 @@ export function ProfilePage() {
                 className={COURSE_PAGE_HEADER_ACTION_BUTTON_CLASS}
               >
                 <FileText className="h-4 w-4 shrink-0" />
-                去练习
+                练习中心
               </Button>
             </>
           }
         />
 
-        {(masteryQuery.error || reviewsQuery.error) && (
-          <div className="rounded-xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
-            {getApiErrorMessage(masteryQuery.error ?? reviewsQuery.error, "课程画像数据加载失败，请重试。")}
+        {reviewsQuery.error && !hasCriticalProfileError && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+            {getApiErrorMessage(reviewsQuery.error, "复习任务加载失败，请重试。")}
           </div>
         )}
 
@@ -623,337 +874,205 @@ export function ProfilePage() {
           <div className="flex h-64 items-center justify-center">
             <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
           </div>
+        ) : hasCriticalProfileError ? (
+          <ProfileUnavailable
+            message={getApiErrorMessage(masteryQuery.error, "课程画像数据加载失败，请重试。")}
+            onOpenKnowledgeDocs={() => navigate(buildCoursePath(courseId, "knowledge-docs"))}
+            onOpenExams={() => navigate(buildCoursePath(courseId, "exams"))}
+          />
         ) : (
           <>
-            {/* 4-Column Core Metrics Grid */}
-            <section className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-              {statItems.map((item) => (
-                <div
-                  key={item.label}
-                  className="rounded-2xl border border-slate-200/50 bg-white dark:border-slate-800/60 dark:bg-[#0a0d16]/70 shadow-sm p-6 flex items-center gap-4 transition-all duration-350 hover:shadow-md hover:border-slate-350/60 dark:hover:border-slate-700/60"
-                >
-                  <span className={cn("flex h-12 w-12 shrink-0 items-center justify-center rounded-xl", item.iconClass)}>
-                    {item.icon}
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">{item.label}</p>
-                    <p className={cn("mt-0.5 text-xl font-bold text-slate-900 dark:text-slate-100", item.valueClass)}>{item.value}</p>
-                    <p className="truncate text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 font-light">{item.detail}</p>
-                  </div>
-                </div>
-              ))}
-            </section>
+            <div className="grid items-stretch gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(360px,0.55fr)]">
+              <NextStepPanel
+                title={smartRecommendationTitle}
+                detail={smartRecommendationDetail}
+                courseProfile={courseProfile}
+                focusStates={focusStates}
+                dueReviewCount={dueReviewCount}
+                onOpenExams={openPracticeCenter}
+              />
 
-            <section className="grid gap-4 lg:grid-cols-3">
-              <div className="rounded-2xl border border-slate-200/60 bg-white p-4 shadow-sm dark:border-slate-800/60 dark:bg-[#0a0d16]/70">
-                <div className="mb-3 flex items-center justify-between">
-                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">进度总览</p>
-                  <Gauge className="h-4 w-4 text-slate-400" />
+              <section className="grid grid-cols-2 gap-3">
+                <SummaryMetric
+                  label="平均掌握"
+                  value={formatPercent(courseProfile?.avg_mastery)}
+                  hint="按已诊断记录统计"
+                  icon={<Gauge className="h-5 w-5" />}
+                  tone="indigo"
+                />
+                <SummaryMetric
+                  label="做题正确"
+                  value={formatPercent(attemptAccuracy)}
+                  hint={`${totalAttempts} 次作答`}
+                  icon={<Trophy className="h-5 w-5" />}
+                  tone="emerald"
+                />
+                <div className="col-span-2">
+                  <WeakSpotSummary states={focusStates} />
                 </div>
-                <div className="space-y-2.5 text-xs leading-5 text-slate-500 dark:text-slate-400">
-                  <p>已跟踪 {states.length} 个知识点，累计 {totalAttempts} 次作答。</p>
-                  <p>薄弱知识点 {weakCount} 个，待复习 {dueReviewCount} 个。</p>
-                  <p>当前稳定度 {formatPercent(avgStability)}，掌握度 {formatPercent(courseProfile?.avg_mastery)}。</p>
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-slate-200/60 bg-white p-4 shadow-sm dark:border-slate-800/60 dark:bg-[#0a0d16]/70">
-                <div className="mb-3 flex items-center justify-between">
-                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">最近学习</p>
-                  <FileText className="h-4 w-4 text-slate-400" />
-                </div>
-                <p className="line-clamp-2 text-sm font-medium leading-6 text-slate-800 dark:text-slate-200">{latestLearningTitle}</p>
-                <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">{latestLearningDetail}</p>
-              </div>
-
-              <div className="rounded-2xl border border-slate-200/60 bg-white p-4 shadow-sm dark:border-slate-800/60 dark:bg-[#0a0d16]/70">
-                <div className="mb-3 flex items-center justify-between">
-                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">智能推荐</p>
-                  <Sparkles className="h-4 w-4 text-indigo-500" />
-                </div>
-                <p className="line-clamp-2 text-sm font-medium leading-6 text-slate-800 dark:text-slate-200">{smartRecommendationTitle}</p>
-                <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">{smartRecommendationDetail}</p>
-              </div>
-            </section>
-
-            {/* Today's Learning Plan (今日学习计划) */}
-            {planItems.length > 0 && (
-              <section className="space-y-4">
-                <div className="border-b border-slate-100 dark:border-slate-800/50 pb-3 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                    <CalendarClock className="h-4 w-4 text-slate-400" />
-                    今日学习计划
-                  </h3>
-                  <span className="text-[11px] text-slate-400 dark:text-slate-500 font-light">按定位、练习、复盘排出下一步</span>
-                </div>
-
-                <div className="relative pl-6 border-l border-slate-100 dark:border-slate-800/60 ml-2.5 space-y-6 pt-1">
-                  {planItems.map((item, index) => (
-                    <div key={item.key} className="relative group">
-                      {/* Timeline dot marker */}
-                      <span className="absolute -left-[31px] top-1 flex h-5 w-5 items-center justify-center rounded-full bg-white dark:bg-[#0b0f19] border border-slate-200 dark:border-slate-800 text-[10px] font-bold text-slate-400 group-hover:border-indigo-400 group-hover:text-indigo-500 transition-all duration-300">
-                        {String(index + 1).padStart(2, "0")}
-                      </span>
-                      <div className="flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-4">
-                        <div className="flex shrink-0 items-center gap-2 pt-0.5 sm:w-32 sm:flex-col sm:items-start sm:gap-1">
-                          <span className="text-xs font-semibold text-slate-400 dark:text-slate-500 tracking-wider uppercase">{item.label}</span>
-                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:bg-slate-800/70 dark:text-slate-400">
-                            {item.timeLabel}
-                          </span>
-                        </div>
-                        <div className="min-w-0">
-                          <h4 className="text-[14px] font-medium text-slate-900 dark:text-slate-100">{item.title}</h4>
-                          <p className="mt-1 text-[13px] leading-relaxed text-slate-500 dark:text-slate-405 font-light">{item.detail}</p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                <div className="col-span-2">
+                  <SummaryMetric
+                    label="复习提醒"
+                    value={String(dueReviewCount)}
+                    hint="需要回顾的知识点"
+                    icon={<CalendarClock className="h-5 w-5" />}
+                    tone={dueReviewCount > 0 ? "rose" : "slate"}
+                  />
                 </div>
               </section>
-            )}
+            </div>
 
-            {/* Recent Exams & AI Insights Grid */}
-            <div className="grid gap-8 lg:grid-cols-12 items-stretch">
-
-              {/* Recent Exams List */}
-              <div className="lg:col-span-7 flex flex-col">
-                <div className="pb-3 border-b border-slate-100 dark:border-slate-800/50 mb-3">
-                  <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                    <FileText className="h-4 w-4 text-slate-400" />
-                    近期测验
-                  </h3>
+            <div id="profile-mastery-section" className="grid scroll-mt-24 gap-4 xl:grid-cols-2">
+              <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950/70">
+                <SectionHeading
+                  icon={<Target className="h-4 w-4" />}
+                  title="知识点掌握"
+                  detail="按掌握度、复习优先级和课程重点排序。"
+                  action={
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => navigate(buildCoursePath(courseId, "knowledge-docs"))}
+                      className="h-8 rounded-lg px-3 text-xs"
+                    >
+                      <BookOpen className="h-3.5 w-3.5" />
+                      看知识库
+                    </Button>
+                  }
+                />
+                <div className="mt-4 space-y-3">
+                  {focusStates.length ? (
+                    focusStates.map((state) => <FocusStateRow key={state.id} state={state} />)
+                  ) : (
+                    <EmptyBlock
+                      icon={<Target className="h-5 w-5" />}
+                      title="还没有掌握度判断"
+                      detail="完成一次练习后，系统会根据作答更新每个知识点的掌握度。"
+                    />
+                  )}
                 </div>
-                <div className="flex-1 flex flex-col justify-center min-h-[240px]">
-                  {latestPapers.length ? (
-                    <div className="flex flex-col justify-between h-full flex-1">
-                      {latestPapers.map((item) => (
-                        <RecentPaperRow
-                          key={item.id}
-                          item={item}
-                          onOpen={() => navigate(buildCourseSubPath(courseId, "exams", item.id))}
+              </section>
+
+              <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950/70">
+                <SectionHeading
+                  icon={<CalendarClock className="h-4 w-4" />}
+                  title="复习安排"
+                  detail="需要回顾和刚完成的任务会保留在这里。"
+                />
+                <div className="mt-4 space-y-3">
+                  {topReviewTasks.length ? (
+                    <>
+                      {topReviewTasks.map((task) => (
+                        <ReviewTaskRow
+                          key={task.id}
+                          task={task}
+                          onOpenSourceExam={(paperId) => navigate(buildCourseSubPath(courseId, "exams", paperId))}
+                          onComplete={() => completeReview.mutate({ courseId, taskId: task.id })}
+                          isCompleting={completeReview.isPending}
                         />
                       ))}
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center py-8 text-center h-full flex-1 border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl">
-                      <div className="relative mb-3">
-                        <div className="absolute inset-0 rounded-full bg-slate-500/5 blur-xl"></div>
-                        <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-slate-50 text-slate-400 ring-1 ring-slate-100 dark:bg-slate-800/30 dark:text-slate-500 dark:ring-slate-800/50">
-                          <FileText className="h-5 w-5" strokeWidth={1.5} />
-                        </div>
-                      </div>
-                      <p className="text-[13.5px] font-medium text-slate-700 dark:text-slate-300">暂无测验记录</p>
-                      <p className="mt-1 text-xs text-slate-450 max-w-xs font-light leading-relaxed">完成闯关或练习后，测验数据将同步于此。</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* AI Insights Card */}
-              <div className="lg:col-span-5 flex flex-col">
-                <div className="pb-3 border-b border-slate-100 dark:border-slate-800/50 mb-3 invisible lg:visible h-9">
-                  {/* Space alignment */}
-                </div>
-                <div className="flex-1 rounded-2xl border border-slate-200/55 bg-gradient-to-br from-indigo-500/[0.015] to-indigo-500/[0.06] dark:border-slate-800/60 dark:from-indigo-500/[0.01] dark:to-indigo-500/[0.03] p-6 flex flex-col justify-between shadow-sm min-h-[240px]">
-                  <div>
-                    <div className="flex items-center justify-between gap-3 mb-4">
-                      <div className="flex items-center gap-2">
-                        <Sparkles className="h-4.5 w-4.5 text-indigo-500 dark:text-indigo-400" />
-                        <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">AI 学习洞察</h3>
-                      </div>
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={startProfileExam}
-                        disabled={generateExam.isPending}
-                        className="h-7.5 rounded-full px-3 text-[11px] font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-none transition-all flex items-center gap-1 shrink-0"
-                      >
-                        {generateExam.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Target className="h-3 w-3" />}
-                        按画像开练
-                      </Button>
-                    </div>
-
-                    <p className="text-[13px] leading-relaxed text-slate-500 dark:text-slate-400 font-light mb-5">
-                      根据您的多维画像，AI 建议当前进行一轮 {formatToken(courseProfile?.recommended_exam_mode, "网页练习")}，约 {courseProfile?.recommended_question_count ?? 8} 题，覆盖推荐难度和薄弱点。
-                    </p>
-
-                    <div className="flex flex-wrap gap-1.5 mb-5">
-                      {(courseProfile?.recommended_question_types ?? []).slice(0, 3).map((type) => (
-                        <span key={type} className="rounded-full bg-slate-100/70 dark:bg-slate-900/55 px-2.5 py-0.5 text-[10.5px] font-medium text-slate-500 dark:text-slate-400 border border-slate-200/30 dark:border-slate-700/55">
-                          {formatToken(type)}
-                        </span>
-                      ))}
-                      {focusNames ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50/60 dark:bg-indigo-950/20 px-2.5 py-0.5 text-[10.5px] font-medium text-indigo-650 dark:text-indigo-400 border border-indigo-100/30 dark:border-indigo-900/20">
-                          <Sparkles className="h-2.5 w-2.5 text-indigo-500" />
-                          {focusNames}
-                        </span>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-3 border-t border-slate-100 dark:border-slate-800/40 pt-4">
-                    <div className="flex flex-col">
-                      <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">平均掌握度</span>
-                      <span className="text-sm font-bold text-slate-800 dark:text-slate-200 mt-0.5">{formatPercent(courseProfile?.avg_mastery)}</span>
-                    </div>
-                    <div className="flex flex-col border-l border-slate-100 dark:border-slate-800/80 pl-3">
-                      <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">薄弱知识点</span>
-                      <span className="text-sm font-bold text-slate-800 dark:text-slate-200 mt-0.5">{weakCount} 个</span>
-                    </div>
-                    <div className="flex flex-col border-l border-slate-100 dark:border-slate-800/80 pl-3">
-                      <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">待复习</span>
-                      <span className="text-sm font-bold text-slate-800 dark:text-slate-200 mt-0.5">{dueReviewCount} 个</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-            </div>
-
-            {/* Priority Units & Review Tasks Grid */}
-            <div className="grid gap-8 lg:grid-cols-12 items-stretch">
-
-              {/* Priority Units */}
-              <div className="lg:col-span-7 flex flex-col">
-                <div className="pb-3 border-b border-slate-100 dark:border-slate-800/50 mb-3">
-                  <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                    <Target className="h-4 w-4 text-slate-400" />
-                    优先知识点
-                  </h3>
-                </div>
-                <div className="flex-1 flex flex-col justify-center min-h-[240px]">
-                  {focusStates.length ? (
-                    <div className="flex flex-col justify-between h-full flex-1">
-                      {focusStates.map((state) => (
-                        <FocusStateRow key={state.id} state={state} />
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center py-8 text-center h-full flex-1 border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl">
-                      <div className="relative mb-3">
-                        <div className="absolute inset-0 rounded-full bg-slate-500/5 blur-xl"></div>
-                        <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-slate-50 text-slate-400 ring-1 ring-slate-100 dark:bg-slate-800/30 dark:text-slate-500 dark:ring-slate-800/50">
-                          <Target className="h-5 w-5" strokeWidth={1.5} />
-                        </div>
-                      </div>
-                      <p className="text-[13.5px] font-medium text-slate-700 dark:text-slate-300">暂无画像数据</p>
-                      <p className="mt-1 text-xs text-slate-450 max-w-xs font-light leading-relaxed">系统推荐的优先突破点会在诊断数据生成后同步在此。</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Review Tasks */}
-              <div className="lg:col-span-5 flex flex-col">
-                <div className="pb-3 border-b border-slate-100 dark:border-slate-800/50 mb-3">
-                  <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                    <CalendarClock className="h-4 w-4 text-slate-400" />
-                    复习任务
-                  </h3>
-                </div>
-                <div className="flex-1 flex flex-col justify-center min-h-[240px]">
-                  {topReviewTasks.length ? (
-                    <div className="flex flex-col justify-between h-full flex-1">
-                      <>
-                        {topReviewTasks.map((task) => (
+                      {visibleCompletedReviews.length > 0 ? (
+                        visibleCompletedReviews.map((task) => (
                           <ReviewTaskRow
-                            key={task.id}
+                            key={`completed-${task.id}`}
                             task={task}
                             onOpenSourceExam={(paperId) => navigate(buildCourseSubPath(courseId, "exams", paperId))}
-                            onComplete={() => completeReview.mutate({ courseId, taskId: task.id })}
-                            isCompleting={completeReview.isPending}
+                            isCompleting={false}
+                            completed
                           />
-                        ))}
-                        {visibleCompletedReviews.length > 0 && (
-                          <div className="py-2.5 border-t border-slate-100/60 dark:border-slate-800/20 mt-1">
-                            <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 mb-2">刚刚完成复习</p>
-                            <div className="space-y-1.5">
-                              {visibleCompletedReviews.map((task) => (
-                                <div
-                                  key={task.id}
-                                  className="flex items-center gap-2 rounded-lg bg-emerald-50/60 dark:bg-emerald-950/20 px-3 py-1.5 text-xs text-emerald-700 dark:text-emerald-305 border border-emerald-100/40 dark:border-emerald-900/30"
-                                >
-                                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                                  <span className="truncate">
-                                    {task.knowledge_unit_name?.trim() || `知识点 #${task.knowledge_unit_id}`}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </>
-                    </div>
+                        ))
+                      ) : null}
+                    </>
                   ) : visibleCompletedReviews.length ? (
-                    <div className="py-4 text-center">
-                      <p className="text-sm font-medium text-slate-905 dark:text-slate-100">本轮复习已完成。</p>
-                      <div className="mt-3 space-y-2 max-w-sm mx-auto">
-                        {visibleCompletedReviews.map((task) => (
-                          <div
-                            key={task.id}
-                            className="flex items-center gap-2 rounded-lg bg-emerald-50/60 px-3 py-2 text-xs text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"
-                          >
-                            <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                            <span className="truncate">
-                              {task.knowledge_unit_name?.trim() || `知识点 #${task.knowledge_unit_id}`}
-                            </span>
-                            <span className="ml-auto shrink-0 font-medium">已完成</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                    visibleCompletedReviews.map((task) => (
+                      <ReviewTaskRow
+                        key={`completed-${task.id}`}
+                        task={task}
+                        onOpenSourceExam={(paperId) => navigate(buildCourseSubPath(courseId, "exams", paperId))}
+                        isCompleting={false}
+                        completed
+                      />
+                    ))
                   ) : (
-                    <div className="flex flex-col items-center justify-center py-8 text-center h-full flex-1 border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl">
-                      <div className="relative mb-3">
-                        <div className="absolute inset-0 rounded-full bg-emerald-500/5 blur-xl"></div>
-                        <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-505 ring-1 ring-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-400 dark:ring-emerald-500/20">
-                          <CheckCircle2 className="h-5 w-5" strokeWidth={1.5} />
-                        </div>
-                      </div>
-                      <p className="text-[13.5px] font-medium text-slate-700 dark:text-slate-200">太棒了，暂无待办</p>
-                      <p className="mt-1 text-xs text-slate-450 max-w-xs font-light leading-relaxed">当前没有需要复习的到期任务，继续保持！</p>
-                    </div>
+                    <EmptyBlock
+                      icon={<CheckCircle2 className="h-5 w-5" />}
+                      title="暂无待办"
+                      detail="当前没有到期复习任务，继续保持练习节奏。"
+                    />
                   )}
                 </div>
-              </div>
-
+              </section>
             </div>
 
-            {/* Collapse Details Panel */}
-            <div className="border-t border-slate-100 dark:border-slate-800/80 pt-4">
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(360px,1.05fr)]">
+              <LearningPlan planItems={planItems} />
+
+              <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950/70">
+                <SectionHeading
+                  icon={<FileText className="h-4 w-4" />}
+                  title="最近测验"
+                  detail={latestLearningTitle ? `${latestLearningTitle} · ${latestLearningDetail}` : undefined}
+                  action={(
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => navigate(buildCoursePath(courseId, "exams"))}
+                      className="h-8 px-2 text-xs"
+                    >
+                      全部
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                />
+                <div className="mt-3 space-y-1">
+                  {latestPapers.length ? (
+                    latestPapers.map((item) => (
+                      <RecentPaperRow
+                        key={item.id}
+                        item={item}
+                        onOpen={() => navigate(buildCourseSubPath(courseId, "exams", item.id))}
+                      />
+                    ))
+                  ) : (
+                    <EmptyBlock
+                      icon={<FileText className="h-5 w-5" />}
+                      title="暂无测验记录"
+                      detail="完成一次测验后，这里会显示分数和进入入口。"
+                    />
+                  )}
+                </div>
+              </section>
+            </div>
+
+            <section className="rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950/70">
               <button
                 type="button"
                 onClick={() => setIsProfileExpanded(!isProfileExpanded)}
-                className="flex w-full items-center justify-between py-2 text-sm font-semibold text-slate-900 dark:text-slate-100 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors focus:outline-none"
+                className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left text-sm font-bold text-slate-950 transition hover:bg-slate-50 dark:text-slate-100 dark:hover:bg-slate-900/60"
               >
                 <span className="flex items-center gap-2">
-                  <Activity className="h-4 w-4 text-slate-400" />
-                  更多画像细节 (掌握分布、题型正确率与对话记忆)
+                  <BarChart3 className="h-4 w-4 text-slate-400" />
+                  更多画像细节
                 </span>
-                <span className="flex items-center gap-1 text-xs font-medium text-slate-400">
-                  {isProfileExpanded ? (
-                    <>
-                      点击收起 <ChevronUp className="h-4 w-4" />
-                    </>
-                  ) : (
-                    <>
-                      展开详情 <ChevronDown className="h-4 w-4" />
-                    </>
-                  )}
+                <span className="flex items-center gap-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  {isProfileExpanded ? "收起" : "展开"}
+                  {isProfileExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                 </span>
               </button>
 
-              {isProfileExpanded && (
-                <div className="grid gap-6 mt-4 border-t border-slate-100 dark:border-slate-800/80 pt-5 lg:grid-cols-3 animate-[fadeIn_0.3s_ease-out]">
-                  {/* Mastery Distribution */}
-                  <div className="rounded-xl border border-slate-150/80 dark:border-slate-850 p-4 bg-white dark:bg-[#0a0d16]">
-                    <p className="text-[13px] font-semibold text-slate-900 dark:text-slate-100 mb-3">掌握分布</p>
+              {isProfileExpanded ? (
+                <div className="grid gap-4 border-t border-slate-200 p-5 dark:border-slate-800 lg:grid-cols-3">
+                  <div className="rounded-lg border border-slate-100 p-4 dark:border-slate-800">
+                    <p className="text-sm font-bold text-slate-950 dark:text-slate-100">掌握分布</p>
                     <MasteryDistribution states={states} />
+                    <p className="mt-4 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                      稳定度 {formatPercent(avgStability)}，作为遗忘风险参考，不作为首要判断。
+                    </p>
                   </div>
 
-                  {/* Accuracy Rows */}
-                  <div className="space-y-4 rounded-xl border border-slate-150/80 dark:border-slate-850 p-4 bg-white dark:bg-[#0a0d16]">
+                  <div className="space-y-4 rounded-lg border border-slate-100 p-4 dark:border-slate-800">
                     <AccuracyRows
                       title="题型正确率"
                       values={courseProfile?.question_type_accuracy}
@@ -966,11 +1085,10 @@ export function ProfilePage() {
                     />
                   </div>
 
-                  {/* Preference Row & Notes */}
-                  <div className="space-y-3 rounded-xl border border-slate-150/80 dark:border-slate-850 p-4 bg-white dark:bg-[#0a0d16]">
-                    <p className="text-[13px] font-semibold text-slate-900 dark:text-slate-100 mb-2">讲解风格与记忆</p>
+                  <div className="space-y-3 rounded-lg border border-slate-100 p-4 dark:border-slate-800">
+                    <p className="text-sm font-bold text-slate-950 dark:text-slate-100">偏好与备注</p>
                     <label className="block">
-                      <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500">我的画像提示词</span>
+                      <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">我的学习偏好</span>
                       <textarea
                         value={profilePrompt}
                         onChange={(event) =>
@@ -981,7 +1099,7 @@ export function ProfilePage() {
                         }
                         rows={3}
                         maxLength={600}
-                        placeholder="例如：我更喜欢先看例题再总结规律，少用公式堆叠，多指出易错点。"
+                        placeholder="例如：先看例题再总结规律，多提醒易错点。"
                         className="mt-2 w-full resize-none rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-indigo-300 focus:bg-white focus:ring-2 focus:ring-indigo-100 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-200 dark:placeholder:text-slate-600 dark:focus:border-indigo-500/40 dark:focus:bg-slate-950 dark:focus:ring-indigo-500/10"
                       />
                     </label>
@@ -1000,17 +1118,15 @@ export function ProfilePage() {
                       value={conversationNotes.length ? conversationNotes.join("；") : "暂无足够对话信号"}
                       icon={<MessageCircle className="h-4 w-4" />}
                     />
-                    <div className="space-y-2 pt-2">
-                      {visibleProfileNotes.map((note) => (
-                        <p key={note} className="rounded-lg bg-slate-50 dark:bg-slate-900/60 px-3 py-2 text-xs leading-relaxed text-slate-500 dark:text-slate-355 font-light border border-slate-150/30 dark:border-slate-800/40">
-                          {note}
-                        </p>
-                      ))}
-                    </div>
+                    {visibleProfileNotes.map((note) => (
+                      <p key={note} className="rounded-lg bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-500 dark:bg-slate-900/60 dark:text-slate-400">
+                        {note}
+                      </p>
+                    ))}
                   </div>
                 </div>
-              )}
-            </div>
+              ) : null}
+            </section>
           </>
         )}
       </div>

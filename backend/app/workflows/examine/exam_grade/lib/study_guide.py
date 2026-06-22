@@ -35,44 +35,8 @@ class ExamStudyGuidePayload(BaseModel):
         return [" ".join(str(item or "").split()).strip() for item in value if str(item or "").strip()]
 
 
-def _fallback_study_guide(
-    *,
-    exam_paper_id: int,
-    course_name: str,
-    generated_at: datetime,
-    weak_points: list[dict[str, str]],
-    pending_reviews: list[dict[str, str]],
-) -> ExamStudyGuideResponse:
-    focus_units = [
-        ExamStudyGuideFocusUnit(
-            knowledge_unit_id=item.get("knowledge_unit_id"),
-            knowledge_unit_name=str(item.get("knowledge_unit_name") or "未命名知识点"),
-            mastery_score=item.get("mastery_score"),
-            reason=str(item.get("reason") or "掌握度偏低，需要优先回补。"),
-        )
-        for item in weak_points[:3]
-    ]
-    return ExamStudyGuideResponse(
-        exam_paper_id=exam_paper_id,
-        course_name=course_name,
-        generated_at=generated_at,
-        overall_summary="本次考卷已经暴露出当前知识掌握中的薄弱环节，建议先从错题相关知识点切入，再配合待复习任务完成查漏补缺。",
-        strengths=["已经完成整份考卷并形成了可用于复盘的作答记录。"] if not weak_points else ["已经明确暴露出本轮最需要优先处理的薄弱区。"],
-        priority_gaps=[
-            str(item.get("knowledge_unit_name") or "薄弱知识点")
-            for item in weak_points[:4]
-        ] or ["优先回看本次错题涉及的核心知识点。"],
-        action_steps=[
-            "先逐题复盘本次错题与未作答题，确认失分原因。",
-            "按照薄弱知识点顺序回看对应知识讲解与例题。",
-            "针对每个薄弱点补做 2-3 道同类题，验证是否真正补上。",
-        ],
-        review_tasks=[
-            str(item.get("knowledge_unit_name") or "待复习知识点")
-            for item in pending_reviews[:4]
-        ] or ["完成本次错题相关知识点的复习任务。"],
-        focus_units=focus_units,
-    )
+class ExamStudyGuideGenerationError(RuntimeError):
+    """Raised when the study-guide model does not produce a usable guide."""
 
 
 @traceable_with_context(
@@ -123,28 +87,25 @@ async def generate_exam_study_guide(
             response_model=ExamStudyGuidePayload,
         )
         assert isinstance(result, ExamStudyGuidePayload)
-        return ExamStudyGuideResponse(
-            exam_paper_id=exam_paper_id,
-            course_name=course_name,
-            generated_at=generated_at,
-            overall_summary=result.overall_summary,
-            strengths=result.strengths,
-            priority_gaps=result.priority_gaps,
-            action_steps=result.action_steps,
-            review_tasks=result.review_tasks,
-            focus_units=result.focus_units,
-        )
-    except Exception:
-        return _fallback_study_guide(
-            exam_paper_id=exam_paper_id,
-            course_name=course_name,
-            generated_at=generated_at,
-            weak_points=weak_points,
-            pending_reviews=pending_reviews,
-        )
+    except Exception as exc:
+        raise ExamStudyGuideGenerationError(
+            f"study-guide model failed for exam_paper_id={exam_paper_id}: {exc}"
+        ) from exc
+    return ExamStudyGuideResponse(
+        exam_paper_id=exam_paper_id,
+        course_name=course_name,
+        generated_at=generated_at,
+        overall_summary=result.overall_summary,
+        strengths=result.strengths,
+        priority_gaps=result.priority_gaps,
+        action_steps=result.action_steps,
+        review_tasks=result.review_tasks,
+        focus_units=result.focus_units,
+    )
 
 
 __all__ = [
+    "ExamStudyGuideGenerationError",
     "ExamStudyGuidePayload",
     "generate_exam_study_guide",
 ]

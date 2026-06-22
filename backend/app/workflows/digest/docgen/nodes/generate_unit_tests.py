@@ -16,6 +16,7 @@ from app.shared.infra.workflow.context import WorkflowContext
 from app.utils.time import utcnow
 from app.workflows.digest.docgen.lib.models import ChapterDraft, ChapterGenerationTask
 from app.workflows.digest.docgen.lib.unit_tests import (
+    ChapterUnitTestGenerationError,
     append_unit_test_markdown,
     generate_chapter_unit_tests,
     render_unit_test_markdown,
@@ -95,18 +96,68 @@ def build_generate_unit_tests_node(*, context: WorkflowContext):
                 requested_at=state["requested_at"],
                 chapter_progress={"chapter_index": draft.chapter_index, "title": draft.title, "status": "testing"},
             )
-            result = await generate_chapter_unit_tests(
-                draft=draft,
-                task=task,
-                digest_mode=digest_mode,
-                min_items=min_items,
-                max_items=max_items,
-                trace_metadata={
-                    **dict(context.metadata or {}),
-                    "chapter_index": draft.chapter_index,
-                    "docgen_stage": "generate_unit_tests",
-                },
-            )
+            try:
+                result = await generate_chapter_unit_tests(
+                    draft=draft,
+                    task=task,
+                    digest_mode=digest_mode,
+                    min_items=min_items,
+                    max_items=max_items,
+                    trace_metadata={
+                        **dict(context.metadata or {}),
+                        "chapter_index": draft.chapter_index,
+                        "docgen_stage": "generate_unit_tests",
+                    },
+                )
+            except ChapterUnitTestGenerationError as exc:
+                failure_summary = "章末单元测试没有生成可发布题目，已停止发布；不会使用模板题目兜底。"
+                upsert_knowledge_build_chapter_progress(
+                    state["course_id"],
+                    requested_at=state["requested_at"],
+                    chapter_progress={
+                        "chapter_index": draft.chapter_index,
+                        "title": draft.title,
+                        "status": "unit_test_failed",
+                        "error": "unit_test_no_content",
+                    },
+                )
+                upsert_knowledge_build_chapter_preview(
+                    state["course_id"],
+                    requested_at=state["requested_at"],
+                    chapter_preview={
+                        "chapter_index": draft.chapter_index,
+                        "title": draft.title,
+                        "status": "unit_test_failed",
+                        "excerpt": draft.markdown.strip(),
+                        "latest_headings": extract_markdown_preview_headings(draft.markdown),
+                        "word_count": count_words(draft.markdown),
+                        "source_count": len(draft.source_details),
+                    },
+                )
+                append_knowledge_build_recent_event(
+                    state["course_id"],
+                    requested_at=state["requested_at"],
+                    event={
+                        "stage": "chapter_unit_test_failed",
+                        "chapter_index": draft.chapter_index,
+                        "title": draft.title,
+                        "summary": failure_summary,
+                        "detail": str(exc)[:240],
+                        "created_at": utcnow(),
+                    },
+                )
+                await publish_docgen_progress(
+                    context,
+                    state=state,
+                    stage="chapter_unit_test_failed",
+                    payload={
+                        "chapter_index": draft.chapter_index,
+                        "title": draft.title,
+                        "error": "unit_test_no_content",
+                        "message": str(exc)[:240],
+                    },
+                )
+                raise
             targets = []
             if task is not None:
                 targets = [

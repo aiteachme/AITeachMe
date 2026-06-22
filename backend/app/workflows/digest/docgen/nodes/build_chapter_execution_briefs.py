@@ -9,10 +9,7 @@ from app.shared.infra.llm_support import run_llm_tasks
 from app.shared.infra.workflow.context import WorkflowContext
 from app.shared.infra.knowledge.build_store import append_knowledge_build_recent_event
 from app.utils.time import utcnow
-from app.workflows.digest.docgen.lib.chapter_execution_brief import (
-    build_chapter_execution_brief,
-    build_fallback_chapter_execution_brief,
-)
+from app.workflows.digest.docgen.lib.chapter_execution_brief import build_chapter_execution_brief
 from app.workflows.digest.docgen.lib.models import (
     ChapterExecutionBrief,
     ChapterGenerationTaskSeed,
@@ -198,7 +195,6 @@ def build_chapter_execution_briefs_node(*, context: WorkflowContext):
             }
             source_slice_payloads = [item.model_dump(mode="json") for item in task_seed.source_slices[:8]]
             locked_title = task_seed.enhanced_title or task_seed.confirmed_title
-            brief_error = ""
             try:
                 brief = await build_chapter_execution_brief(
                     course_name=docgen_context.course_name,
@@ -223,28 +219,36 @@ def build_chapter_execution_briefs_node(*, context: WorkflowContext):
                 )
             except Exception as exc:
                 brief_error = str(exc)
-                brief = build_fallback_chapter_execution_brief(
-                    course_name=docgen_context.course_name,
-                    chapter=chapter_payload,
-                    locked_title=locked_title,
-                    glossary_terms=glossary_terms,
-                    claim_targets=claim_targets,
-                    confusion_targets=confusion_targets,
-                    source_slices=source_slice_payloads,
-                    evidence_items=evidence_items,
+                append_knowledge_build_recent_event(
+                    state["course_id"],
+                    requested_at=state["requested_at"],
+                    event={
+                        "stage": "chapter_execution_brief_failed",
+                        "chapter_index": task_seed.chapter_index,
+                        "summary": f"第 {task_seed.chapter_index} 章执行 brief 未生成可用结构，已停止生成。",
+                        "detail": brief_error,
+                        "created_at": utcnow(),
+                    },
                 )
+                await publish_docgen_progress(
+                    context,
+                    state=state,
+                    stage="chapter_execution_brief_failed",
+                    payload={
+                        "chapter_index": task_seed.chapter_index,
+                        "error": "chapter_execution_brief_failed",
+                        "message": brief_error[:240],
+                    },
+                )
+                raise
             append_knowledge_build_recent_event(
                 state["course_id"],
                 requested_at=state["requested_at"],
                 event={
-                    "stage": "chapter_execution_brief_fallback" if brief.fallback_used else "chapter_execution_brief_ready",
+                    "stage": "chapter_execution_brief_ready",
                     "chapter_index": task_seed.chapter_index,
-                    "summary": (
-                        f"第 {task_seed.chapter_index} 章执行 brief 使用本地计划兜底生成，流程继续。"
-                        if brief.fallback_used
-                        else f"第 {task_seed.chapter_index} 章执行 brief 已生成。"
-                    ),
-                    "detail": brief_error,
+                    "summary": f"第 {task_seed.chapter_index} 章执行 brief 已生成。",
+                    "detail": "",
                     "created_at": utcnow(),
                 },
             )

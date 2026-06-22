@@ -198,7 +198,6 @@ def _traced_execution_outputs(result: TracedExecutionResult) -> dict[str, Any]:
         "fallback_used",
         "purify_used",
         "repair_applied",
-        "scaffold_fallback_applied",
         "cache_hit",
     ):
         value = result.metadata.get(field_name)

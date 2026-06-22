@@ -20,7 +20,7 @@ from app.shared.infra.workflow.live_stream import publish_workflow_stream_event
 from app.utils.time import utcnow
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.docgen.lib.chapter_context import DocGenChapterContextRuntime
-from app.workflows.digest.docgen.lib.writer import DocGenWriterRuntime
+from app.workflows.digest.docgen.lib.writer import DocGenWriterNoContentError, DocGenWriterRuntime
 from app.workflows.digest.docgen.lib.chapter_revision import critique_chapter, maybe_rewrite_chapter
 from app.workflows.digest.docgen.lib.source_slices import build_priority_source_context
 from app.workflows.digest.docgen.lib.models import (
@@ -571,7 +571,7 @@ def _research_preview_markdown(
         f"- 已纳入文档：{document_count}",
     ]
     if fallback_used:
-        lines.append("- 检索出现异常，系统会使用章节 brief 兜底生成。")
+        lines.append("- 检索出现异常，本章只会继续使用已确认的章节合同；若写作模型没有产出，将中止发布。")
     _append_preview_list(lines, "执行过的查询", research_trace.executed_queries, limit=5)
     _append_preview_list(lines, "仍需补强的点", research_trace.gap_notes, limit=4)
     return _trim_preview_markdown("\n".join(lines), max_chars=1400)
@@ -970,9 +970,63 @@ def build_generate_chapters_node(*, context: WorkflowContext):
                 digest_mode=state.get("digest_mode") or "systematic",
                 on_stream_update=_publish_writer_stream_preview,
             )
-            if bool(writer_result.metadata.get("scaffold_fallback_applied", False)):
-                fallback_used = True
             writer_markdown = ensure_chapter_heading(title, writer_result.content)
+        except DocGenWriterNoContentError as exc:
+            await preview_persist_buffer.close()
+            failure_summary = "章节写作没有生成可发布正文，已停止发布；不会使用模板兜底内容。"
+            failure_preview = f"# {title}\n\n{failure_summary}"
+            _publish_preview_delta(failure_preview, status="failed")
+            upsert_knowledge_build_chapter_progress(
+                state["course_id"],
+                requested_at=state["requested_at"],
+                chapter_progress={
+                    "chapter_index": task.chapter_index,
+                    "title": title,
+                    "status": "failed",
+                    "source_count": len(source_details),
+                    "local_hits": local_hit_count,
+                    "web_hits": web_hit_count,
+                    "query_count": len(research_trace.executed_queries),
+                    "error": "writer_no_content",
+                },
+            )
+            upsert_knowledge_build_chapter_preview(
+                state["course_id"],
+                requested_at=state["requested_at"],
+                chapter_preview={
+                    "chapter_index": task.chapter_index,
+                    "title": title,
+                    "status": "failed",
+                    "excerpt": failure_preview,
+                    "latest_headings": [],
+                    "word_count": 0,
+                    "source_count": len(source_details),
+                },
+            )
+            append_knowledge_build_recent_event(
+                state["course_id"],
+                requested_at=state["requested_at"],
+                event={
+                    "stage": "chapter_failed",
+                    "chapter_index": task.chapter_index,
+                    "title": title,
+                    "summary": failure_summary,
+                    "created_at": utcnow(),
+                    **_source_preview_metadata(source_details),
+                },
+            )
+            await publish_docgen_progress(
+                context,
+                state=state,
+                stage="chapter_failed",
+                payload={
+                    "chapter_index": task.chapter_index,
+                    "title": title,
+                    "error": "writer_no_content",
+                    "message": str(exc)[:240],
+                },
+            )
+            raise
         except asyncio.CancelledError:
             await preview_persist_buffer.close()
             raise

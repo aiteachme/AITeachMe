@@ -241,7 +241,7 @@ def test_docgen_writer_caps_unreasonable_target_word_budget(monkeypatch) -> None
 
 
 @pytest.mark.anyio
-async def test_docgen_writer_returns_scaffold_when_primary_completion_fails(monkeypatch) -> None:
+async def test_docgen_writer_raises_when_primary_completion_fails(monkeypatch) -> None:
     scheduler_calls: list[dict[str, object]] = []
 
     async def fake_run_llm_tasks(items, worker, *, max_concurrent=None, on_result=None):
@@ -262,34 +262,27 @@ async def test_docgen_writer_returns_scaffold_when_primary_completion_fails(monk
             llm_caller=failing_llm,
         )
     )
-    result = await runtime.execute(
-        chapter_plan={
-            "chapter_index": 1,
-            "total_chapters": 1,
-            "title": "Function Graphs",
-            "objective": "Understand function graph basics.",
-            "required_elements": ["function graph", "worked example"],
-            "writing_instructions": "Compare graph shape with algebraic expression.",
-            "execution_contract": {"min_word_count": 1},
-        },
-        dense_context="Function graphs connect input and output values.\nWorked examples should compare intervals.",
-        digest_mode="systematic",
-    )
+    with pytest.raises(writer.DocGenWriterNoContentError, match="RuntimeError"):
+        await runtime.execute(
+            chapter_plan={
+                "chapter_index": 1,
+                "total_chapters": 1,
+                "title": "Function Graphs",
+                "objective": "Understand function graph basics.",
+                "required_elements": ["function graph", "worked example"],
+                "writing_instructions": "Compare graph shape with algebraic expression.",
+                "execution_contract": {"min_word_count": 1},
+            },
+            dense_context="Function graphs connect input and output values.\nWorked examples should compare intervals.",
+            digest_mode="systematic",
+        )
 
-    assert "# Function Graphs" in result.content
-    assert "本章目标" in result.content
-    assert "functiongraph的关系" in result.content
-    assert "## 核心框架" not in result.content
-    assert "## 重点突破" not in result.content
-    assert "function graph" in result.content
-    assert result.metadata["scaffold_fallback_applied"] is True
-    assert "RuntimeError" in result.metadata["writer_fallback_reason"]
     assert scheduler_calls
     assert all(call == {"items": [None], "max_concurrent": 1} for call in scheduler_calls)
 
 
 @pytest.mark.anyio
-async def test_docgen_writer_returns_scaffold_when_completion_times_out(monkeypatch) -> None:
+async def test_docgen_writer_raises_when_completion_times_out(monkeypatch) -> None:
     scheduler_calls: list[dict[str, object]] = []
 
     async def slow_run_llm_tasks(items, worker, *, max_concurrent=None, on_result=None):
@@ -312,22 +305,20 @@ async def test_docgen_writer_returns_scaffold_when_completion_times_out(monkeypa
             llm_caller=fake_llm,
         )
     )
-    result = await runtime.execute(
-        chapter_plan={
-            "chapter_index": 1,
-            "total_chapters": 1,
-            "title": "Function Graphs",
-            "objective": "Understand function graph basics.",
-            "required_elements": ["function graph"],
-            "execution_contract": {"min_word_count": 1},
-        },
-        dense_context="Function graphs connect input and output values.",
-        digest_mode="systematic",
-    )
+    with pytest.raises(writer.DocGenWriterNoContentError, match="TimeoutError"):
+        await runtime.execute(
+            chapter_plan={
+                "chapter_index": 1,
+                "total_chapters": 1,
+                "title": "Function Graphs",
+                "objective": "Understand function graph basics.",
+                "required_elements": ["function graph"],
+                "execution_contract": {"min_word_count": 1},
+            },
+            dense_context="Function graphs connect input and output values.",
+            digest_mode="systematic",
+        )
 
-    assert "# Function Graphs" in result.content
-    assert result.metadata["scaffold_fallback_applied"] is True
-    assert "TimeoutError" in result.metadata["writer_fallback_reason"]
     assert scheduler_calls == [{"items": [None], "max_concurrent": 1}]
 
 
@@ -548,10 +539,11 @@ async def test_generate_unit_tests_node_batches_chapter_drafts_through_scheduler
                 ChapterUnitTestItem(
                     type="短答题",
                     target=draft.title,
-                    stem=f"说明{draft.title}的核心判断。",
+                    stem=f"说明{draft.title}的核心判断 {index}。",
                     answer="按正文要点作答。",
                     basis="能说清概念与步骤即可。",
                 )
+                for index in range(1, 6)
             ],
         )
 

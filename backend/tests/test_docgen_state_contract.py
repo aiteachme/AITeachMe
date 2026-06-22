@@ -1008,7 +1008,7 @@ async def test_chapter_brief_node_receives_dispatch_sources_evidence_and_profile
 
 
 @pytest.mark.anyio
-async def test_chapter_brief_node_falls_back_and_prefetches_when_llm_fails(monkeypatch) -> None:
+async def test_chapter_brief_node_stops_without_fallback_when_llm_fails(monkeypatch) -> None:
     captured_events: list[dict[str, object]] = []
     captured_prefetch: dict[str, object] = {}
 
@@ -1033,65 +1033,60 @@ async def test_chapter_brief_node_falls_back_and_prefetches_when_llm_fails(monke
     node = build_chapter_execution_briefs.build_chapter_execution_briefs_node(
         context=WorkflowContext(workflow_name="digest.docgen", course_id="course_state_contract")
     )
-    result = await node(
-        {
-            "course_id": "course_state_contract",
-            "requested_at": datetime(2026, 4, 29, tzinfo=timezone.utc),
-            "build_session_id": "build-brief-fallback",
-            "docgen_context": DocGenContext(
-                course_id="course_state_contract",
-                course_name="线性代数",
-                digest_mode="systematic",
-                plan="按概念组织",
-            ).model_dump(mode="json"),
-            "user_profile": {},
-            "chapter_task_seeds": [
-                ChapterGenerationTaskSeed(
-                    chapter_index=1,
-                    confirmed_title="矩阵基础",
-                    enhanced_title="矩阵乘法入门",
-                    chapter_goal="讲清矩阵乘法",
-                    required_elements=["矩阵乘法", "行列配对"],
-                    source_slices=[
-                        ChapterSourceSlice(
-                            chapter_index=1,
-                            file_id="f1",
-                            filename="notes.md",
-                            section_ref="s1",
-                            section_title="矩阵乘法",
-                            summary="矩阵乘法依赖行列配对",
-                        )
+    with pytest.raises(RuntimeError, match="brief model timeout"):
+        await node(
+            {
+                "course_id": "course_state_contract",
+                "requested_at": datetime(2026, 4, 29, tzinfo=timezone.utc),
+                "build_session_id": "build-brief-fallback",
+                "docgen_context": DocGenContext(
+                    course_id="course_state_contract",
+                    course_name="线性代数",
+                    digest_mode="systematic",
+                    plan="按概念组织",
+                ).model_dump(mode="json"),
+                "user_profile": {},
+                "chapter_task_seeds": [
+                    ChapterGenerationTaskSeed(
+                        chapter_index=1,
+                        confirmed_title="矩阵基础",
+                        enhanced_title="矩阵乘法入门",
+                        chapter_goal="讲清矩阵乘法",
+                        required_elements=["矩阵乘法", "行列配对"],
+                        source_slices=[
+                            ChapterSourceSlice(
+                                chapter_index=1,
+                                file_id="f1",
+                                filename="notes.md",
+                                section_ref="s1",
+                                section_title="矩阵乘法",
+                                summary="矩阵乘法依赖行列配对",
+                            )
+                        ],
+                    ).model_dump(mode="json")
+                ],
+                "document_backbone": DocumentBackbone(
+                    canonical_glossary=[
+                        CanonicalGlossaryItem(term="矩阵乘法", definition="按行列配对求和", target_chapters=[1])
                     ],
-                ).model_dump(mode="json")
-            ],
-            "document_backbone": DocumentBackbone(
-                canonical_glossary=[
-                    CanonicalGlossaryItem(term="矩阵乘法", definition="按行列配对求和", target_chapters=[1])
+                    canonical_claim_pool=[
+                        CanonicalClaim(claim_id="c1", claim_text="矩阵乘法需要行列配对", target_chapter=1)
+                    ],
+                ).model_dump(mode="json"),
+                "intent_core": {"learning_goal_text": "掌握矩阵乘法"},
+                "high_confidence_evidence_units": [
+                    HighConfidenceEvidenceUnit(
+                        evidence_id="e1",
+                        text="矩阵乘法依赖行列配对",
+                        chapter_affinity={1: 0.9},
+                        confidence=0.9,
+                    ).model_dump(mode="json")
                 ],
-                canonical_claim_pool=[
-                    CanonicalClaim(claim_id="c1", claim_text="矩阵乘法需要行列配对", target_chapter=1)
-                ],
-            ).model_dump(mode="json"),
-            "intent_core": {"learning_goal_text": "掌握矩阵乘法"},
-            "high_confidence_evidence_units": [
-                HighConfidenceEvidenceUnit(
-                    evidence_id="e1",
-                    text="矩阵乘法依赖行列配对",
-                    chapter_affinity={1: 0.9},
-                    confidence=0.9,
-                ).model_dump(mode="json")
-            ],
-        }
-    )
+            }
+        )
 
-    brief = result["chapter_execution_briefs"][0]
-    assert brief["fallback_used"] is True
-    assert brief["retrieval_queries"]
-    assert "resource" not in brief["content_role_targets"]
-    assert result["kg_prefetch_status"] == "started_from_chapter_briefs"
-    assert captured_prefetch["build_session_id"] == "build-brief-fallback"
-    assert "矩阵乘法" in captured_prefetch["chapters"][0]["markdown"]
-    assert any(event["stage"] == "chapter_execution_brief_fallback" for event in captured_events)
+    assert captured_prefetch == {}
+    assert any(event["stage"] == "chapter_execution_brief_failed" for event in captured_events)
 
 
 def test_writer_context_consumes_dispatch_guideline_and_evidence() -> None:
