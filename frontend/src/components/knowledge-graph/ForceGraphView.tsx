@@ -95,15 +95,6 @@ function readableSvgStrokeWidth(basePx: number, zoomScale: number): number {
   return Math.min(7, Math.max(0.9, basePx / Math.pow(scale, 0.86)));
 }
 
-function graphNodeLabelLimitForZoom(node: GraphNode, selectedNodeId: number | null, zoomScale: number): number {
-  const base = graphNodeLabelLimit(node, selectedNodeId);
-  const scale = Number.isFinite(zoomScale) ? zoomScale : 1;
-  if (scale >= 2.2) return Math.max(base, 34);
-  if (scale >= 1.55) return Math.max(base, 28);
-  if (scale >= 1.28) return Math.max(base, 24);
-  return base;
-}
-
 function escapeGraphHtml(value: string): string {
   return String(value || "")
     .replace(/&/g, "&amp;")
@@ -291,15 +282,8 @@ function applyGraphInteractiveStyles(
       if (!shouldShowSmartNodeLabel(d, selectedNodeId, selectedNeighbors, showAllNodeLabels, graphZoomScale, visibleNodeCount)) return 0;
       if (selectedNodeId !== null) return d.id === selectedNodeId || selectedNeighbors.has(d.id) ? 1 : 0.3;
       return 0.96;
-    })
-    .text((d) => (
-      shouldUseGraphHtmlLabel(d)
-        ? ""
-        : truncateGraphLabel(d.canonical_name, graphNodeLabelLimitForZoom(d, selectedNodeId, graphZoomScale))
-    ));
+    });
   nodeG.select<SVGForeignObjectElement>("foreignObject.node-formula-label")
-    .attr("width", (d) => graphFormulaLabelWidth(d))
-    .attr("height", (d) => (d.id === selectedNodeId ? 34 : 30))
     .attr("opacity", (d) => {
       if (!shouldShowSmartNodeLabel(d, selectedNodeId, selectedNeighbors, showAllNodeLabels, graphZoomScale, visibleNodeCount)) return 0;
       if (selectedNodeId !== null) return d.id === selectedNodeId || selectedNeighbors.has(d.id) ? 1 : 0.3;
@@ -308,6 +292,12 @@ function applyGraphInteractiveStyles(
     .style("font-size", (d) => readableSvgTextSize(isAssessmentCoreNode(d) || d.id === selectedNodeId ? 12.5 : 11.5, graphZoomScale))
     .style("color", (d) => (d.id === selectedNodeId ? "#0f172a" : nodeStyle(d.knowledge_unit_type).dark));
 }
+
+type GraphLinkLayout = {
+  path: string;
+  midX: number;
+  midY: number;
+};
 
 type LoadedGraphData = {
   nodes: KnowledgeUnitResponse[];
@@ -1000,6 +990,7 @@ export function ForceGraphView({
   }, []);
 
   const rawData = graphData;
+  const selectedVisibilityNodeId = showDetailNodes ? null : selectedNodeId;
 
   // Parse graph data
   const {
@@ -1181,11 +1172,11 @@ export function ForceGraphView({
             .sort((left, right) => graphNodePriority(right) - graphNodePriority(left) || left.layout_rank - right.layout_rank)
             .map((node) => node.id),
         );
-    if (selectedNodeId !== null) {
-      visibleNodeIds.add(selectedNodeId);
+    if (selectedVisibilityNodeId !== null) {
+      visibleNodeIds.add(selectedVisibilityNodeId);
       for (const link of allLinks) {
-        if (link.source_node_id === selectedNodeId) visibleNodeIds.add(link.target_node_id);
-        if (link.target_node_id === selectedNodeId) visibleNodeIds.add(link.source_node_id);
+        if (link.source_node_id === selectedVisibilityNodeId) visibleNodeIds.add(link.target_node_id);
+        if (link.target_node_id === selectedVisibilityNodeId) visibleNodeIds.add(link.source_node_id);
       }
     }
     const visibleNodes = nodes
@@ -1210,7 +1201,7 @@ export function ForceGraphView({
       }))
       .sort((left, right) => (EDGE_TYPE_PRIORITY[right.type] ?? 0) - (EDGE_TYPE_PRIORITY[left.type] ?? 0) || left.label.localeCompare(right.label));
     return { nodes: visibleNodes, links, presentRelationTypes: relationTypes };
-  }, [hiddenRelationTypes, rawData, selectedNodeId, showDetailNodes]);
+  }, [hiddenRelationTypes, rawData, selectedVisibilityNodeId, showDetailNodes]);
 
   const nodeSearchResults = useMemo(() => {
     const query = nodeSearchQuery.trim().toLocaleLowerCase();
@@ -1306,6 +1297,30 @@ export function ForceGraphView({
       if (!source || !target) return [];
       return [{ ...link, source, target }];
     });
+    const connectedNodeIdsByNodeId = new Map<number, Set<number>>();
+    const connectedLinkIdsByNodeId = new Map<number, Set<number>>();
+    const ensureConnectedNodeSet = (nodeId: number) => {
+      let nodeSet = connectedNodeIdsByNodeId.get(nodeId);
+      if (!nodeSet) {
+        nodeSet = new Set([nodeId]);
+        connectedNodeIdsByNodeId.set(nodeId, nodeSet);
+      }
+      return nodeSet;
+    };
+    const ensureConnectedLinkSet = (nodeId: number) => {
+      let linkSet = connectedLinkIdsByNodeId.get(nodeId);
+      if (!linkSet) {
+        linkSet = new Set<number>();
+        connectedLinkIdsByNodeId.set(nodeId, linkSet);
+      }
+      return linkSet;
+    };
+    for (const link of simLinks) {
+      ensureConnectedNodeSet(link.source_node_id).add(link.target_node_id);
+      ensureConnectedNodeSet(link.target_node_id).add(link.source_node_id);
+      ensureConnectedLinkSet(link.source_node_id).add(link.id);
+      ensureConnectedLinkSet(link.target_node_id).add(link.id);
+    }
     const nodeZoneBounds = new Map<number, { left: number; top: number; right: number; bottom: number }>();
     const nodeLabelTextDx = (node: GraphNode) => nodeDotRadius(node) + 9;
     const nodeLabelAnchor = (_node?: GraphNode) => "start";
@@ -1626,11 +1641,9 @@ export function ForceGraphView({
     // Hover effects
     nodeG
       .on("mouseenter", function (_event, d) {
-        const connectedIds = new Set<number>([d.id]);
-        for (const link of simLinks) {
-          if (link.source_node_id === d.id) connectedIds.add(link.target_node_id);
-          if (link.target_node_id === d.id) connectedIds.add(link.source_node_id);
-        }
+        const connectedIds = connectedNodeIdsByNodeId.get(d.id) ?? new Set<number>([d.id]);
+        const connectedLinkIds = connectedLinkIdsByNodeId.get(d.id) ?? new Set<number>();
+        const isConnectedLink = (link: GraphLink) => connectedLinkIds.has(link.id);
         nodeG.select<SVGCircleElement>("circle.node-circle")
           .attr("opacity", (node) => (connectedIds.has(node.id) ? 1 : 0.28));
         nodeG.select<SVGTextElement>("text.node-label")
@@ -1638,30 +1651,30 @@ export function ForceGraphView({
         nodeG.select<SVGForeignObjectElement>("foreignObject.node-formula-label")
           .attr("opacity", (node) => (connectedIds.has(node.id) ? 1 : 0));
         linkLine
-          .classed("is-neighbor-link", (link) => link.source_node_id === d.id || link.target_node_id === d.id)
+          .classed("is-neighbor-link", isConnectedLink)
           .attr("display", (link) => (
-            showAllEdgesRef.current || link.is_backbone || link.source_node_id === d.id || link.target_node_id === d.id ? null : "none"
+            showAllEdgesRef.current || link.is_backbone || isConnectedLink(link) ? null : "none"
           ))
           .attr("stroke-opacity", (link) => (
-            link.source_node_id === d.id || link.target_node_id === d.id ? 0.78 : 0.05
+            isConnectedLink(link) ? 0.78 : 0.05
           ))
           .attr("stroke-width", (link) => (
-            link.source_node_id === d.id || link.target_node_id === d.id ? 2.1 : 0.9
+            isConnectedLink(link) ? 2.1 : 0.9
           ));
         linkGroup.selectAll<SVGPathElement, GraphLink>("path.hit-area")
           .attr("display", (link) => (
-            showAllEdgesRef.current || link.is_backbone || link.source_node_id === d.id || link.target_node_id === d.id ? null : "none"
+            showAllEdgesRef.current || link.is_backbone || isConnectedLink(link) ? null : "none"
           ));
         linkLabel
           .attr("display", (link) => (
-            showAllEdgesRef.current || link.is_backbone || link.source_node_id === d.id || link.target_node_id === d.id ? null : "none"
+            showAllEdgesRef.current || link.is_backbone || isConnectedLink(link) ? null : "none"
           ))
           .attr("opacity", (link) => (
             shouldShowSmartEdgeLabel(link, d.id, showEdgeLabelsRef.current, graphZoomScaleRef.current, simLinks.length) ? 1 : 0
           ));
         linkLabelBg
           .attr("display", (link) => (
-            showAllEdgesRef.current || link.is_backbone || link.source_node_id === d.id || link.target_node_id === d.id ? null : "none"
+            showAllEdgesRef.current || link.is_backbone || isConnectedLink(link) ? null : "none"
           ))
           .attr("opacity", (link) => (
             shouldShowSmartEdgeLabel(link, d.id, showEdgeLabelsRef.current, graphZoomScaleRef.current, simLinks.length) ? 0.92 : 0
@@ -1755,19 +1768,33 @@ export function ForceGraphView({
       };
     };
 
-    const linkPath = (d: any) => {
-      const route = buildCurvedLinkRoute(d);
-      return `M${route.sx},${route.sy} C${route.c1x},${route.c1y} ${route.c2x},${route.c2y} ${route.tx},${route.ty}`;
+    let linkLayoutCache = new WeakMap<GraphLink, GraphLinkLayout>();
+    const refreshLinkLayoutCache = () => {
+      linkLayoutCache = new WeakMap<GraphLink, GraphLinkLayout>();
+      for (const link of simLinks) {
+        const route = buildCurvedLinkRoute(link);
+        const t = 0.5;
+        const mt = 1 - t;
+        linkLayoutCache.set(link, {
+          path: `M${route.sx},${route.sy} C${route.c1x},${route.c1y} ${route.c2x},${route.c2y} ${route.tx},${route.ty}`,
+          midX: mt * mt * mt * route.sx + 3 * mt * mt * t * route.c1x + 3 * mt * t * t * route.c2x + t * t * t * route.tx,
+          midY: mt * mt * mt * route.sy + 3 * mt * mt * t * route.c1y + 3 * mt * t * t * route.c2y + t * t * t * route.ty,
+        });
+      }
     };
-
-    const linkMidpoint = (d: any) => {
-      const route = buildCurvedLinkRoute(d);
+    const getLinkLayout = (link: GraphLink): GraphLinkLayout => {
+      const cached = linkLayoutCache.get(link);
+      if (cached) return cached;
+      const route = buildCurvedLinkRoute(link);
       const t = 0.5;
       const mt = 1 - t;
-      return {
-        x: mt * mt * mt * route.sx + 3 * mt * mt * t * route.c1x + 3 * mt * t * t * route.c2x + t * t * t * route.tx,
-        y: mt * mt * mt * route.sy + 3 * mt * mt * t * route.c1y + 3 * mt * t * t * route.c2y + t * t * t * route.ty,
+      const layout = {
+        path: `M${route.sx},${route.sy} C${route.c1x},${route.c1y} ${route.c2x},${route.c2y} ${route.tx},${route.ty}`,
+        midX: mt * mt * mt * route.sx + 3 * mt * mt * t * route.c1x + 3 * mt * t * t * route.c2x + t * t * t * route.tx,
+        midY: mt * mt * mt * route.sy + 3 * mt * mt * t * route.c1y + 3 * mt * t * t * route.c2y + t * t * t * route.ty,
       };
+      linkLayoutCache.set(link, layout);
+      return layout;
     };
     let positionSnapshotTick = 0;
     const saveNodePositions = () => {
@@ -1799,16 +1826,17 @@ export function ForceGraphView({
           );
         }
       }
-      linkLine.attr("d", (d: any) => linkPath(d));
-      hitLine.attr("d", (d: any) => linkPath(d));
+      refreshLinkLayoutCache();
+      linkLine.attr("d", (d) => getLinkLayout(d).path);
+      hitLine.attr("d", (d) => getLinkLayout(d).path);
 
       linkLabel
-        .attr("x", (d: any) => linkMidpoint(d).x)
-        .attr("y", (d: any) => linkMidpoint(d).y - 6)
+        .attr("x", (d) => getLinkLayout(d).midX)
+        .attr("y", (d) => getLinkLayout(d).midY - 6)
         .attr("transform", ""); // Explicitly avoid rotation for legibility
       linkLabelBg
-        .attr("x", (d: any) => linkMidpoint(d).x - d.label_width / 2)
-        .attr("y", (d: any) => linkMidpoint(d).y - 15);
+        .attr("x", (d) => getLinkLayout(d).midX - d.label_width / 2)
+        .attr("y", (d) => getLinkLayout(d).midY - 15);
 
       nodeG.attr("transform", (d: any) => {
         const point = displayPoint(d);
@@ -1907,7 +1935,7 @@ export function ForceGraphView({
       saveNodePositions();
       if (fitGraphToViewRef.current === fitCurrentGraphToView) fitGraphToViewRef.current = null;
     };
-  }, [nodes, links, dimensions, showAllEdges, showAllNodeLabels, showEdgeLabels]);
+  }, [nodes, links, dimensions, showAllNodeLabels, showEdgeLabels]);
 
   useEffect(() => {
     const svg = svgRef.current;

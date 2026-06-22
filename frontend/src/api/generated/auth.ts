@@ -24,7 +24,7 @@ import type {
   SendEmailCodeRequest
 } from './model';
 
-import { orvalApiClient } from '../client';
+import { orvalApiClient } from '../client.ts';
 
 
 

@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { InteractiveGenerateRequestSegments } from './interactiveGenerateRequestSegments';
+import type { InteractiveGenerateRequestSegments } from './interactiveGenerateRequestSegments.ts';
 
 export interface InteractiveGenerateRequest {
   selected_text: string;

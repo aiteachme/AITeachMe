@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { QuestionTemplateMarkResponse } from './questionTemplateMarkResponse';
+import type { QuestionTemplateMarkResponse } from './questionTemplateMarkResponse.ts';
 
 export interface ApiResponseQuestionTemplateMarkResponse {
   /** 业务码，0 表示成功。 */

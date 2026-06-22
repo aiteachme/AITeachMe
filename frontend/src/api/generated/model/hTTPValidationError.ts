@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { ValidationError } from './validationError';
+import type { ValidationError } from './validationError.ts';
 
 export interface HTTPValidationError {
   detail?: ValidationError[];

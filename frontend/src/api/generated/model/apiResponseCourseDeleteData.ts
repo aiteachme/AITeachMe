@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { CourseDeleteData } from './courseDeleteData';
+import type { CourseDeleteData } from './courseDeleteData.ts';
 
 export interface ApiResponseCourseDeleteData {
   /** 业务码，0 表示成功。 */

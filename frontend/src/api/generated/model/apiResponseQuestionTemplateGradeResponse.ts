@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { QuestionTemplateGradeResponse } from './questionTemplateGradeResponse';
+import type { QuestionTemplateGradeResponse } from './questionTemplateGradeResponse.ts';
 
 export interface ApiResponseQuestionTemplateGradeResponse {
   /** 业务码，0 表示成功。 */

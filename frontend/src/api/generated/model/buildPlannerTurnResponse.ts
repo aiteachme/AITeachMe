@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { BuildPlannerTurnResponsePlanJson } from './buildPlannerTurnResponsePlanJson';
+import type { BuildPlannerTurnResponsePlanJson } from './buildPlannerTurnResponsePlanJson.ts';
 
 export interface BuildPlannerTurnResponse {
   id?: number | null;

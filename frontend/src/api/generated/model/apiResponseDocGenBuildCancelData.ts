@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { DocGenBuildCancelData } from './docGenBuildCancelData';
+import type { DocGenBuildCancelData } from './docGenBuildCancelData.ts';
 
 export interface ApiResponseDocGenBuildCancelData {
   /** 业务码，0 表示成功。 */

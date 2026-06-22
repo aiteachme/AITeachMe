@@ -375,11 +375,11 @@ def test_build_runtime_training_unlocks_on_graph_terminal_states(monkeypatch: py
             graph_runtime=None,
         ),
     )
-    pending = build_lifecycle.get_knowledge_build_runtime_result(course_id=COURSE_ID, course_scope=scope)
-    assert pending.docs_ready is True
-    assert pending.graph_status == "pending"
-    assert pending.graph_unhealthy is False
-    assert pending.training_unlocked is False
+    skipped = build_lifecycle.get_knowledge_build_runtime_result(course_id=COURSE_ID, course_scope=scope)
+    assert skipped.docs_ready is True
+    assert skipped.graph_status == "skipped"
+    assert skipped.graph_unhealthy is False
+    assert skipped.training_unlocked is True
 
     graph_completed = build_store.KnowledgeBuildRuntimeStatus(
         requested_at=now,

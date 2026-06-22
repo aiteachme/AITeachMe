@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { CourseItem } from './courseItem';
+import type { CourseItem } from './courseItem.ts';
 
 export interface PaginatedDataCourseItem {
   /** 当前页数据。 */

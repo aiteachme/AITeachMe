@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { ValidationErrorCtx } from './validationErrorCtx';
+import type { ValidationErrorCtx } from './validationErrorCtx.ts';
 
 export interface ValidationError {
   loc: (string | number)[];

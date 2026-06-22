@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { BuildPlannerAdjustClickResponse } from './buildPlannerAdjustClickResponse';
+import type { BuildPlannerAdjustClickResponse } from './buildPlannerAdjustClickResponse.ts';
 
 export interface ApiResponseBuildPlannerAdjustClickResponse {
   /** 业务码，0 表示成功。 */

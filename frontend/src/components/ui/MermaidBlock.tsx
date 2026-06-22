@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Download, Loader2, Maximize2, Minus, Plus, Sparkles, TriangleAlert, X } from "lucide-react";
 
 import { cn } from "../../lib/utils";
@@ -448,17 +448,44 @@ async function downloadSvgAsPng(svgMarkup: string, filename: string) {
 
 export function MermaidBlock({ chart, variant = "default" }: MermaidBlockProps) {
   const rawId = useId();
+  const figureRef = useRef<HTMLElement | null>(null);
   const diagramId = useMemo(
     () => `atm-mermaid-${rawId.replace(/[:]/g, "-")}-${hashChart(chart)}`,
     [chart, rawId],
   );
   const [svgMarkup, setSvgMarkup] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [shouldRender, setShouldRender] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerZoom, setViewerZoom] = useState(1);
   const [downloadBusy, setDownloadBusy] = useState(false);
 
   useEffect(() => {
+    if (shouldRender || typeof IntersectionObserver === "undefined") {
+      setShouldRender(true);
+      return;
+    }
+    const figure = figureRef.current;
+    if (!figure) {
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setShouldRender(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "720px 0px" },
+    );
+    observer.observe(figure);
+    return () => observer.disconnect();
+  }, [shouldRender]);
+
+  useEffect(() => {
+    if (!shouldRender) {
+      return;
+    }
     let disposed = false;
 
     async function renderDiagram() {
@@ -484,7 +511,7 @@ export function MermaidBlock({ chart, variant = "default" }: MermaidBlockProps) 
     return () => {
       disposed = true;
     };
-  }, [chart, diagramId]);
+  }, [chart, diagramId, shouldRender]);
 
   const diagramLabel = resolveDiagramLabel(chart);
   const isDocument = variant === "document";
@@ -510,6 +537,7 @@ export function MermaidBlock({ chart, variant = "default" }: MermaidBlockProps) 
 
   return (
     <figure
+      ref={figureRef}
       className={cn(
         "my-6 overflow-hidden border",
         isDocument
@@ -572,7 +600,7 @@ export function MermaidBlock({ chart, variant = "default" }: MermaidBlockProps) 
           ) : (
             <>
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              <span>渲染中</span>
+              <span>{shouldRender ? "渲染中" : "即将渲染"}</span>
             </>
           )}
         </div>

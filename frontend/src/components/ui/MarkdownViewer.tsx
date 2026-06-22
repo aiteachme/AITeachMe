@@ -18,6 +18,9 @@ import {
   OctagonAlert,
   RefreshCw,
   TriangleAlert,
+  X,
+  ZoomIn,
+  ZoomOut,
   type LucideIcon,
 } from "lucide-react";
 
@@ -50,6 +53,7 @@ const CALLOUT_FIELD_SPLIT_RE = new RegExp(
   "g",
 );
 const MERMAID_LANGUAGE_ALIASES = new Set(["mermaid", "maymaid", "mermaind", "mermaide"]);
+const DOCUMENT_HIGHLIGHT_CHAR_LIMIT = 60_000;
 const BLANK_TOKEN = "{{blank}}";
 const BLANK_NODE_CLASS =
   "mx-1 inline-block h-[0.9em] min-w-16 border-b-2 border-current align-baseline";
@@ -150,6 +154,11 @@ type MarkdownBlockquoteComponentProps = ComponentPropsWithoutRef<"blockquote"> &
 
 type MarkdownSectionComponentProps = ComponentPropsWithoutRef<"section"> & {
   node?: unknown;
+};
+
+type ImagePreviewState = {
+  src: string;
+  title: string;
 };
 
 const CALLOUT_META: Record<CalloutKind, { label: string; Icon: LucideIcon }> = {
@@ -2203,13 +2212,16 @@ function MarkdownImage({
   src,
   alt,
   styles,
+  onOpenPreview,
 }: {
   src: string | undefined;
   alt: string | undefined;
   styles: ViewerStyles;
+  onOpenPreview: (preview: ImagePreviewState) => void;
 }) {
   const [blobSrc, setBlobSrc] = useState("");
   const isCover = isDocgenCoverAsset(src);
+  const displaySrc = blobSrc || src || "";
 
   useEffect(() => {
     if (!shouldFetchAuthorizedAsset(src)) {
@@ -2261,17 +2273,37 @@ function MarkdownImage({
 
   return (
     <figure className={styles.imageShell}>
-      <div className={cn(styles.imageFrame, isCover && "rounded-xl")}>
+      <button
+        type="button"
+        disabled={!displaySrc}
+        onClick={() => {
+          if (!displaySrc) return;
+          onOpenPreview({ src: displaySrc, title: alt || "图片" });
+        }}
+        className={cn(
+          styles.imageFrame,
+          "group relative block w-full text-left outline-none transition focus-visible:ring-2 focus-visible:ring-indigo-500/40",
+          displaySrc && "cursor-zoom-in",
+          isCover && "rounded-xl",
+        )}
+      >
         <img
-          src={blobSrc || src}
+          src={displaySrc}
           alt={alt ?? ""}
           className={cn(
             styles.image,
             isCover && "aspect-[16/7] max-h-none object-cover",
           )}
           loading="lazy"
+          decoding="async"
         />
-      </div>
+        {displaySrc ? (
+          <span className="pointer-events-none absolute right-3 top-3 inline-flex h-8 items-center gap-1.5 rounded-full border border-white/70 bg-slate-950/70 px-2.5 text-xs font-medium text-white opacity-0 shadow-sm backdrop-blur transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+            <Maximize2 className="h-3.5 w-3.5" />
+            查看
+          </span>
+        ) : null}
+      </button>
       {alt ? <figcaption className={styles.imageCaption}>{alt}</figcaption> : null}
     </figure>
   );
@@ -2585,6 +2617,7 @@ function InteractiveHtmlEmbed({
               title={preview.title || "静态图示"}
               srcDoc={patchedHtml}
               sandbox=""
+              loading="lazy"
               className="h-[min(620px,72vh)] min-h-[360px] w-full border border-slate-200 bg-white dark:border-slate-800"
             />
           ) : (
@@ -2721,6 +2754,7 @@ function InteractiveHtmlEmbed({
             title={preview.title || "交互演示"}
             srcDoc={patchedHtml}
             sandbox="allow-scripts"
+            loading="lazy"
             className="h-[min(620px,76vh)] min-h-[420px] w-full rounded-lg border border-slate-200 bg-white dark:border-slate-800"
           />
         ) : (
@@ -2808,6 +2842,9 @@ export function MarkdownViewer({
   const hasMathContent = useMemo(() => hasLikelyMathContent(processedContent), [processedContent]);
   const hasHighlightableCode = useMemo(() => hasLikelyHighlightableCode(processedContent), [processedContent]);
   const hasRawHtmlContent = useMemo(() => hasLikelyRawHtmlContent(processedContent), [processedContent]);
+  const shouldHighlightCode = hasHighlightableCode && (
+    variant !== "document" || processedContent.length <= DOCUMENT_HIGHLIGHT_CHAR_LIMIT
+  );
   const styles = VIEWER_STYLES[variant];
   const nextHeadingId = useMemo(() => createHeadingIdFactory(), [processedContent]);
   const collapsibleHeadingLevels = useMemo(
@@ -2837,10 +2874,27 @@ export function MarkdownViewer({
   const [internalCollapsedHeadingIds, setInternalCollapsedHeadingIds] = useState<Set<string>>(new Set());
   const collapsedHeadingIds = controlledCollapsedHeadingIds ?? internalCollapsedHeadingIds;
   const collapsedHeadingIdsRef = useRef(collapsedHeadingIds);
+  const [imagePreview, setImagePreview] = useState<ImagePreviewState | null>(null);
+  const [imagePreviewZoom, setImagePreviewZoom] = useState(1);
 
   useEffect(() => {
     collapsedHeadingIdsRef.current = collapsedHeadingIds;
   }, [collapsedHeadingIds]);
+
+  useEffect(() => {
+    setImagePreviewZoom(1);
+  }, [imagePreview?.src]);
+
+  useEffect(() => {
+    if (!imagePreview) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setImagePreview(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [imagePreview]);
 
   useEffect(() => {
     if (!controlledCollapsedHeadingIds) {
@@ -2891,9 +2945,9 @@ export function MarkdownViewer({
     () => [
       variant === "document" && hasRawHtmlContent ? rehypeRaw : noopMarkdownPlugin,
       hasMathContent ? [rehypeKatex, { throwOnError: false, strict: false, errorColor: "#1F2329", output: "html" }] : noopMarkdownPlugin,
-      hasHighlightableCode ? rehypeHighlight : noopMarkdownPlugin,
+      shouldHighlightCode ? rehypeHighlight : noopMarkdownPlugin,
     ] as any[],
-    [hasHighlightableCode, hasMathContent, hasRawHtmlContent, variant],
+    [hasMathContent, hasRawHtmlContent, shouldHighlightCode, variant],
   );
 
   const components = useMemo(() => {
@@ -2978,7 +3032,10 @@ export function MarkdownViewer({
             data-heading-section-id={sectionId}
             data-collapsible-section={isCollapsibleSection ? "true" : undefined}
             data-collapsed={isCollapsibleSection && isCollapsed ? "true" : undefined}
-            className={cn(isCollapsibleSection && "markdown-collapsible-section", className)}
+            className={cn(
+              isCollapsibleSection && "markdown-collapsible-section",
+              className,
+            )}
           >
             {isCollapsibleSection ? (
               <>
@@ -3124,6 +3181,7 @@ export function MarkdownViewer({
             src={resolvedSrc}
             alt={alt}
             styles={styles}
+            onOpenPreview={setImagePreview}
           />
         );
       },
@@ -3141,13 +3199,96 @@ export function MarkdownViewer({
   ]);
 
   return (
-    <ReactMarkdown
-      remarkPlugins={remarkPlugins}
-      rehypePlugins={rehypePlugins}
-      components={components}
-    >
-      {processedContent}
-    </ReactMarkdown>
+    <>
+      <ReactMarkdown
+        remarkPlugins={remarkPlugins}
+        rehypePlugins={rehypePlugins}
+        components={components}
+      >
+        {processedContent}
+      </ReactMarkdown>
+      {imagePreview ? (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/78 p-3 backdrop-blur-sm sm:p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-label={imagePreview.title}
+          onClick={() => setImagePreview(null)}
+        >
+          <div
+            className="flex h-full w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-white/10 bg-slate-950 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-white/10 px-3 text-white sm:px-4">
+              <div className="min-w-0 truncate text-sm font-medium">{imagePreview.title}</div>
+              <div className="flex shrink-0 items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setImagePreviewZoom((value) => Math.max(0.5, value - 0.2))}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-300 transition hover:bg-white/10 hover:text-white"
+                  aria-label="缩小图片"
+                  title="缩小"
+                >
+                  <ZoomOut className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setImagePreviewZoom(1)}
+                  className="hidden h-8 min-w-11 items-center justify-center rounded-lg px-2 text-xs font-medium text-slate-300 transition hover:bg-white/10 hover:text-white sm:inline-flex"
+                  aria-label="重置图片缩放"
+                  title="重置缩放"
+                >
+                  {Math.round(imagePreviewZoom * 100)}%
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setImagePreviewZoom((value) => Math.min(3, value + 0.2))}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-300 transition hover:bg-white/10 hover:text-white"
+                  aria-label="放大图片"
+                  title="放大"
+                >
+                  <ZoomIn className="h-4 w-4" />
+                </button>
+                <a
+                  href={imagePreview.src}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-300 transition hover:bg-white/10 hover:text-white"
+                  aria-label="在新窗口打开图片"
+                  title="新窗口打开"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setImagePreview(null)}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-300 transition hover:bg-white/10 hover:text-white"
+                  aria-label="关闭图片预览"
+                  title="关闭"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+            <div className="min-h-0 flex-1 overflow-auto bg-[radial-gradient(circle_at_center,rgba(30,41,59,0.55),rgba(2,6,23,0.96))] p-3">
+              <div className="flex min-h-full items-center justify-center">
+                <img
+                  src={imagePreview.src}
+                  alt={imagePreview.title}
+                  className="max-h-full max-w-full select-none rounded-md bg-white object-contain shadow-2xl"
+                  style={{
+                    width: imagePreviewZoom === 1 ? undefined : `${Math.round(imagePreviewZoom * 100)}%`,
+                    maxWidth: imagePreviewZoom === 1 ? "100%" : "none",
+                    maxHeight: imagePreviewZoom === 1 ? "100%" : "none",
+                  }}
+                  decoding="async"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }
 

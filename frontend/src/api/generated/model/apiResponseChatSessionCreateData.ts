@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { ChatSessionCreateData } from './chatSessionCreateData';
+import type { ChatSessionCreateData } from './chatSessionCreateData.ts';
 
 export interface ApiResponseChatSessionCreateData {
   /** 业务码，0 表示成功。 */

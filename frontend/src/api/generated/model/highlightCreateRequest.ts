@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { HighlightCreateRequestSegments } from './highlightCreateRequestSegments';
+import type { HighlightCreateRequestSegments } from './highlightCreateRequestSegments.ts';
 
 export interface HighlightCreateRequest {
   selected_text: string;

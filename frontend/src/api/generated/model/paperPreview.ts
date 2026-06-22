@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { PaperPreviewRow } from './paperPreviewRow';
+import type { PaperPreviewRow } from './paperPreviewRow.ts';
 
 export interface PaperPreview {
   keywords?: string[];

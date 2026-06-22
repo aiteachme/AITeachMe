@@ -17,6 +17,7 @@ import structlog
 from app.shared.infra.embedding.defaults import DEFAULT_EMBEDDING_BATCH_SIZE
 from app.shared.infra.exceptions import LLMCallError, MissingLLMApiKeyError
 from app.shared.infra.llm_support.common import (
+    apply_provider_extra_headers,
     build_completion_contexts,
     build_litellm_provider_kwargs,
     get_llm_concurrency_limiter,
@@ -88,6 +89,7 @@ async def _call_embedding(
         }
         if api_key is not None:
             request_kwargs["api_key"] = api_key
+        apply_provider_extra_headers(request_kwargs)
         async with get_llm_concurrency_limiter():
             response = await litellm.aembedding(
                 **request_kwargs,
@@ -109,6 +111,7 @@ async def _call_embedding(
             }
             if api_key is not None:
                 fallback_kwargs["api_key"] = api_key
+            apply_provider_extra_headers(fallback_kwargs)
             async with get_llm_concurrency_limiter():
                 response = await litellm.aembedding(**fallback_kwargs)
             return [item["embedding"] for item in response.data]

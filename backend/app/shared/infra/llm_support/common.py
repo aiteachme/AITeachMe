@@ -13,6 +13,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, replace
 from typing import Any, Iterator, Literal, NoReturn
+from urllib.parse import urlparse
 
 import structlog
 
@@ -55,6 +56,7 @@ _PRIMARY_API_KEY_ENV_NAME = "LLM_API_KEY"
 _PRIMARY_PROVIDER_ENV_NAME = "LLM_PROVIDER"
 _FALLBACK_BASE_URL_ENV_NAME = "LLM_FALLBACK_BASE_URL"
 _FALLBACK_API_KEY_ENV_NAME = "LLM_FALLBACK_API_KEY"
+_AIHUBMIX_APP_CODE_ENV_NAMES = ("AIHUBMIX_APP_CODE", "LLM_AIHUBMIX_APP_CODE")
 _OPENAI_DEFAULT_SAMPLING_MODEL_PATTERN = re.compile(r"^(?:gpt-5(?:$|[.-])|o\d(?:$|[.-]))")
 _OPENAI_DEFAULT_SAMPLING_PARAMS = frozenset({"temperature"})
 _RESPONSES_ROUTE_MARKERS = frozenset({"responses"})
@@ -604,6 +606,44 @@ def _drop_unsupported_sampling_params(
     )
 
 
+def _is_aihubmix_base_url(base_url: str | None) -> bool:
+    parsed = urlparse(str(base_url or "").strip())
+    host = (parsed.hostname or "").lower()
+    return host == "aihubmix.com" or host.endswith(".aihubmix.com")
+
+
+def _aihubmix_app_code() -> str | None:
+    for env_name in _AIHUBMIX_APP_CODE_ENV_NAMES:
+        value = (get_env(env_name) or "").strip()
+        if value:
+            return value
+    return None
+
+
+def build_provider_extra_headers(api_base: str | None) -> dict[str, str]:
+    """Return optional provider-specific request headers for LiteLLM calls."""
+
+    if not _is_aihubmix_base_url(api_base):
+        return {}
+    app_code = _aihubmix_app_code()
+    if not app_code:
+        return {}
+    return {"APP-Code": app_code}
+
+
+def apply_provider_extra_headers(call_kwargs: dict[str, Any]) -> None:
+    """Merge provider-specific headers without overwriting explicit caller headers."""
+
+    headers = build_provider_extra_headers(str(call_kwargs.get("api_base") or ""))
+    if not headers:
+        return
+    existing = call_kwargs.get("extra_headers")
+    if isinstance(existing, Mapping):
+        call_kwargs["extra_headers"] = {**headers, **dict(existing)}
+        return
+    call_kwargs["extra_headers"] = headers
+
+
 def resolve_settings_model(settings: Settings, model: str | None = None) -> tuple[str, str]:
     """Resolve a provider model name from ``settings.models``."""
 
@@ -1066,6 +1106,7 @@ def build_completion_kwargs(
         )
     )
     completion_kwargs.update(remaining_kwargs)
+    apply_provider_extra_headers(completion_kwargs)
     _drop_unsupported_sampling_params(
         context=context,
         call_kwargs=completion_kwargs,

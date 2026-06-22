@@ -4,7 +4,8 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { BuildPlannerDiagnosticAnswerRequest } from './buildPlannerDiagnosticAnswerRequest';
+import type { BuildPlannerDiagnosticAnswerRequest } from './buildPlannerDiagnosticAnswerRequest.ts';
+import type { BuildPlannerMessageRequestDiagnoseStatus } from './buildPlannerMessageRequestDiagnoseStatus.ts';
 
 /**
  * Append one planner revision message.
@@ -15,6 +16,6 @@ export interface BuildPlannerMessageRequest {
   /** Optional per-request planner model. Omit or use settings for configured defaults. */
   model?: string | null;
   diagnose_answers?: BuildPlannerDiagnosticAnswerRequest[];
-  diagnose_status?: 'answered' | 'skipped' | null;
+  diagnose_status?: BuildPlannerMessageRequestDiagnoseStatus;
   diagnose_note?: string;
 }

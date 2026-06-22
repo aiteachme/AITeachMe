@@ -4,13 +4,13 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { BuildPreviewChapterPreviewResponse } from './buildPreviewChapterPreviewResponse';
-import type { BuildPreviewChapterProgressResponse } from './buildPreviewChapterProgressResponse';
-import type { BuildPreviewMergePreviewResponse } from './buildPreviewMergePreviewResponse';
-import type { BuildPreviewNodeResponse } from './buildPreviewNodeResponse';
-import type { BuildPreviewRecentEventResponse } from './buildPreviewRecentEventResponse';
-import type { BuildSampleCardResponse } from './buildSampleCardResponse';
-import type { KnowledgeBuildPreviewResponseDiscoveredNodeTypes } from './knowledgeBuildPreviewResponseDiscoveredNodeTypes';
+import type { BuildPreviewChapterPreviewResponse } from './buildPreviewChapterPreviewResponse.ts';
+import type { BuildPreviewChapterProgressResponse } from './buildPreviewChapterProgressResponse.ts';
+import type { BuildPreviewMergePreviewResponse } from './buildPreviewMergePreviewResponse.ts';
+import type { BuildPreviewNodeResponse } from './buildPreviewNodeResponse.ts';
+import type { BuildPreviewRecentEventResponse } from './buildPreviewRecentEventResponse.ts';
+import type { BuildSampleCardResponse } from './buildSampleCardResponse.ts';
+import type { KnowledgeBuildPreviewResponseDiscoveredNodeTypes } from './knowledgeBuildPreviewResponseDiscoveredNodeTypes.ts';
 
 /**
  * Human-facing preview payload for ongoing digest builds.

@@ -22,6 +22,7 @@ from app.shared.infra.settings.support import (
 )
 
 from .common import (
+    apply_provider_extra_headers,
     build_completion_context,
     context_request_timeout_s,
     effective_max_retries,
@@ -331,6 +332,7 @@ def _build_litellm_image_kwargs(
         if value is None or key in {"api_base", "api_key", "timeout", "api_version", "max_retries"}:
             continue
         call_kwargs[str(key)] = value
+    apply_provider_extra_headers(call_kwargs)
     return call_kwargs
 
 

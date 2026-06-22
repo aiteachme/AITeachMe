@@ -561,7 +561,7 @@ def get_knowledge_build_runtime_result(
     docs_ready = manifest is not None
     graph_status = (graph_runtime.status if graph_runtime is not None else "").strip()
     if not graph_status:
-        graph_status = "pending" if graph_expected and docs_ready else ("skipped" if docs_ready else "idle")
+        graph_status = "skipped" if docs_ready else "idle"
     graph_training_ready_statuses = {"completed", "partial_failed", "skipped"}
     graph_unhealthy = graph_status in {"failed", "cancelled"}
     training_unlocked = bool(docs_ready and graph_status in graph_training_ready_statuses)

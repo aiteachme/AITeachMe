@@ -6,6 +6,7 @@ from app.shared.infra.exceptions import LLMTimeoutError
 from app.shared.infra.llm_support import stream as stream_module
 from app.shared.infra.llm_support import text as text_module
 from app.shared.infra.llm_support.common import (
+    apply_provider_extra_headers,
     build_completion_context,
     build_completion_kwargs,
     context_request_timeout_s,
@@ -85,6 +86,47 @@ def test_openai_reasoning_models_drop_unsupported_temperature(monkeypatch):
     assert kwargs["max_tokens"] == 7000
     assert kwargs["custom_llm_provider"] == "openai"
     assert "temperature" not in kwargs
+
+
+def test_aihubmix_app_code_header_is_injected_for_aihubmix_gateway(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "test-key")
+    monkeypatch.setenv("LLM_BASE_URL", "https://aihubmix.com/v1")
+    monkeypatch.setenv("AIHUBMIX_APP_CODE", "CCOH5955")
+    monkeypatch.setenv("LLM_AIHUBMIX_APP_CODE", "")
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+    context = build_completion_context(task_type=TaskType.CHAT, model="gpt-5.4-mini")
+
+    kwargs = build_completion_kwargs(
+        context=context,
+        messages=[{"role": "user", "content": "hello"}],
+        extra_kwargs={},
+    )
+
+    assert kwargs["extra_headers"] == {"APP-Code": "CCOH5955"}
+
+
+def test_aihubmix_app_code_header_is_not_sent_to_other_gateways(monkeypatch):
+    monkeypatch.setenv("AIHUBMIX_APP_CODE", "CCOH5955")
+    call_kwargs = {
+        "api_base": "https://gateway.example.com/v1",
+        "extra_headers": {"X-Trace": "keep"},
+    }
+
+    apply_provider_extra_headers(call_kwargs)
+
+    assert call_kwargs["extra_headers"] == {"X-Trace": "keep"}
+
+
+def test_aihubmix_app_code_does_not_override_explicit_header(monkeypatch):
+    monkeypatch.setenv("AIHUBMIX_APP_CODE", "CCOH5955")
+    call_kwargs = {
+        "api_base": "https://aihubmix.com/v1",
+        "extra_headers": {"APP-Code": "EXPLICIT"},
+    }
+
+    apply_provider_extra_headers(call_kwargs)
+
+    assert call_kwargs["extra_headers"] == {"APP-Code": "EXPLICIT"}
 
 
 def test_explicit_max_retries_overrides_profile_without_provider_passthrough(monkeypatch):

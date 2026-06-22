@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { QuestionTemplateAnswerHistoryItem } from './questionTemplateAnswerHistoryItem';
+import type { QuestionTemplateAnswerHistoryItem } from './questionTemplateAnswerHistoryItem.ts';
 
 export interface ApiResponseListQuestionTemplateAnswerHistoryItem {
   /** 业务码，0 表示成功。 */

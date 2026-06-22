@@ -1272,22 +1272,18 @@ export function HomePage() {
                                 </div>
                               </div>
 
-                              <div className="mt-auto flex items-center justify-between gap-3 pt-4">
-                                <span className="min-w-0 truncate text-[11px] font-medium text-slate-400 dark:text-slate-500">
-                                  {course.stats.knowledge_unit_count > 0
-                                    ? `${course.stats.knowledge_unit_count} 个知识点`
-                                    : "演示课程"}
-                                </span>
+                              <div className="mt-auto flex items-center justify-end gap-3 pt-4">
                                 <button
                                   onClick={() => courseImportMutation.mutate({ filename: course.filename })}
                                   disabled={courseImportMutation.isPending}
                                   className={cn(
-                                    "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-3 text-xs font-semibold transition-all",
+                                    "inline-flex h-7 shrink-0 items-center justify-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition-all",
                                     !courseImportMutation.isPending
-                                      ? "bg-slate-950 text-white shadow-sm hover:bg-slate-800 hover:shadow-md dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
-                                      : "cursor-not-allowed bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600"
+                                      ? "border-slate-200 bg-white/70 text-slate-700 hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-200 dark:hover:border-indigo-400/40 dark:hover:bg-indigo-400/10 dark:hover:text-indigo-200"
+                                      : "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-600"
                                   )}
                                   title={`导入 ${course.course_name} 到左侧课程列表`}
+                                  aria-label={`导入 ${course.course_name}`}
                                 >
                                   {courseImportMutation.isPending ? (
                                     <><Loader2 className="h-3.5 w-3.5 animate-spin" /> 导入中</>

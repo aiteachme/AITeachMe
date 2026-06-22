@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { SettingSection } from './settingSection';
+import type { SettingSection } from './settingSection.ts';
 
 /**
  * 后端设置总览。

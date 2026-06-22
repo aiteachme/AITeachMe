@@ -1987,6 +1987,24 @@ function DocLoadingState() {
   );
 }
 
+function DocReadingPositionRestoreState() {
+  return (
+    <section className="mx-auto flex min-h-[360px] w-full max-w-3xl flex-col items-center justify-center rounded-xl border border-slate-200/80 bg-white px-6 py-12 text-center shadow-sm dark:border-slate-800 dark:bg-slate-950">
+      <div className="relative flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300">
+        <BookOpen className="h-5 w-5" />
+        <Loader2 className="absolute -right-1 -top-1 h-4 w-4 animate-spin text-indigo-500 dark:text-indigo-300" />
+      </div>
+      <h2 className="mt-4 text-base font-semibold text-slate-900 dark:text-slate-100">正在恢复阅读位置</h2>
+      <p className="mt-2 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">文档加载完成后会直接回到上次阅读处。</p>
+      <div className="mt-6 w-full max-w-md space-y-2" aria-hidden="true">
+        <div className="h-2.5 w-full animate-pulse rounded-full bg-slate-100 dark:bg-slate-800" />
+        <div className="h-2.5 w-4/5 animate-pulse rounded-full bg-slate-100 dark:bg-slate-800" />
+        <div className="h-2.5 w-2/3 animate-pulse rounded-full bg-slate-100 dark:bg-slate-800" />
+      </div>
+    </section>
+  );
+}
+
 function DocLoadErrorState({
   message,
   onRetry,
@@ -2352,6 +2370,10 @@ export function KnowledgeDocsPage() {
     isRequestedBuildReady,
     isWaitingForRequestedBuild,
   });
+  const hasSavedReadingPosition = useMemo(() => {
+    const saved = readKnowledgeDocsReadingPosition(courseId);
+    return Boolean(courseId && saved && (saved.scrollTop > 0 || Boolean(saved.headingId)));
+  }, [courseId]);
 
   const [toc, setToc] = useState<TocItem[]>([]);
   const [activeHeading, setActiveHeading] = useState("");
@@ -2490,23 +2512,9 @@ export function KnowledgeDocsPage() {
   const docCollapseLayoutRefreshNeededRef = useRef(false);
   const pendingHeadingCollapseScrollRef = useRef<{ id: string; top: number } | null>(null);
 
-  const restoreReadingPositionFromStorage = useCallback((container: HTMLDivElement) => {
-    if (!courseId || pendingSelectionJumpRef.current) {
-      return;
-    }
-    const saved = readKnowledgeDocsReadingPosition(courseId);
-    if (!saved || saved.scrollTop <= 0) {
-      return;
-    }
-    setKnowledgeScrollTop(container, saved.scrollTop);
-  }, [courseId]);
-
   const setScrollContainerRef = useCallback((node: HTMLDivElement | null) => {
     scrollRef.current = node;
-    if (node) {
-      restoreReadingPositionFromStorage(node);
-    }
-  }, [restoreReadingPositionFromStorage]);
+  }, []);
 
   const isCompactToc = viewportWidth < TOC_DRAWER_BREAKPOINT;
   const isCompactComment = viewportWidth < COMMENT_DRAWER_BREAKPOINT;
@@ -2902,12 +2910,24 @@ export function KnowledgeDocsPage() {
   }, [visibleActiveHeading, collapsedTocIds, alignActiveTocItem]);
 
   useEffect(() => {
-    const tocSourceKey = `${effectiveDocViewMode}:${renderedMarkdown}`;
-    if (lastTocSourceRef.current !== tocSourceKey) {
+    if (isReadingPositionRestoring && renderedMarkdown.trim().length > 0) {
+      return;
+    }
+    const tocSourceKey = [
+      effectiveDocViewMode,
+      renderedMarkdown.length,
+      renderedMarkdown.slice(0, 80),
+      renderedMarkdown.slice(-80),
+    ].join(":");
+    const tocSourceChanged = lastTocSourceRef.current !== tocSourceKey;
+    if (tocSourceChanged) {
       lastTocSourceRef.current = tocSourceKey;
       tocDefaultInitializedRef.current = false;
     }
     const hasMarkdownContent = renderedMarkdown.trim().length > 0;
+    if (!tocSourceChanged && hasMarkdownContent) {
+      return;
+    }
     const timeoutIds: number[] = [];
     const rafIds: number[] = [];
     let cancelled = false;
@@ -3012,6 +3032,7 @@ export function KnowledgeDocsPage() {
     hasRenderedMarkdown,
     isBuildActive,
     isGraphSyncActive,
+    isReadingPositionRestoring,
     isWaitingForRequestedBuild,
     renderedMarkdown,
     showDocGeneratingState,
@@ -3231,14 +3252,14 @@ export function KnowledgeDocsPage() {
     readingPositionRestorePendingRef.current = false;
     readingPositionDirtyRef.current = false;
     const saved = readKnowledgeDocsReadingPosition(courseId);
+    const hasRestorablePosition = Boolean(saved && (saved.scrollTop > 0 || Boolean(saved.headingId)));
     setIsReadingPositionRestoring(Boolean(
       courseId &&
-      renderedMarkdown.trim() &&
       !pendingSelectionJumpRef.current &&
-      saved &&
-      (saved.scrollTop > 0 || Boolean(saved.headingId)),
+      hasRestorablePosition &&
+      (renderedMarkdown.trim() || showDocLoadingState),
     ));
-  }, [courseId, renderedMarkdown]);
+  }, [courseId, renderedMarkdown, showDocLoadingState]);
 
   useLayoutEffect(() => {
     if (!courseId || !renderedMarkdown.trim()) {
@@ -3366,6 +3387,17 @@ export function KnowledgeDocsPage() {
       if (!options.allowZeroWithoutScrollable && scrollTop <= 0 && maxScrollTop <= 0) {
         return;
       }
+      if (scrollTop <= 0) {
+        const previous = readKnowledgeDocsReadingPosition(courseId);
+        const isPrematureTopSnapshot = Boolean(
+          previous &&
+          previous.scrollTop > 0 &&
+          maxScrollTop < Math.min(previous.scrollTop, 240),
+        );
+        if (isPrematureTopSnapshot) {
+          return;
+        }
+      }
       persistKnowledgeDocsReadingPosition(courseId, {
         scrollTop,
         headingId: activeHeadingRef.current,
@@ -3410,6 +3442,7 @@ export function KnowledgeDocsPage() {
 
   // Track active heading from the actual scroll targets so the TOC follows both inner and shell scrolling.
   useEffect(() => {
+    if (isReadingPositionRestoring) return;
     const container = scrollRef.current;
     if (!container) return;
     const scrollTargets = collectScrollSpyScrollTargets(container);
@@ -3512,7 +3545,7 @@ export function KnowledgeDocsPage() {
       window.removeEventListener("resize", schedulePositionRefresh);
       resizeObserver?.disconnect();
     };
-  }, [renderedMarkdown, tocSignature]);
+  }, [isReadingPositionRestoring, renderedMarkdown, tocSignature]);
 
   // Keep the active TOC item aligned when layout changes or window resizes
   useEffect(() => {
@@ -6586,7 +6619,7 @@ export function KnowledgeDocsPage() {
           href={courseId ? buildCoursePath(courseId, "nav") : undefined}
         />
         <div className="relative flex-1 min-h-0 w-full flex items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
-          <DocLoadingState />
+          {hasSavedReadingPosition ? <DocReadingPositionRestoreState /> : <DocLoadingState />}
         </div>
       </div>
     );

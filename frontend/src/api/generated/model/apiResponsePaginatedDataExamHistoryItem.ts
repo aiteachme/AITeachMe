@@ -4,7 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { PaginatedDataExamHistoryItem } from './paginatedDataExamHistoryItem';
+import type { PaginatedDataExamHistoryItem } from './paginatedDataExamHistoryItem.ts';
 
 export interface ApiResponsePaginatedDataExamHistoryItem {
   /** 业务码，0 表示成功。 */
