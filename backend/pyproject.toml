@@ -1,6 +1,6 @@
 [project]
 name = "aiteachme-backend"
-version = "0.1.0"
+version = "0.1.1"
 requires-python = ">=3.11"
 license = { text = "AGPL-3.0-only" }
 dependencies = [
