@@ -981,6 +981,18 @@
     display: none !important;
   }
 
+  @supports (content-visibility: auto) {
+    .knowledge-doc-markdown .markdown-collapsible-section > [data-heading-section-body="true"] > :where(p, ul, ol, blockquote, pre, table, figure, div),
+    .knowledge-doc-markdown :where(.atm-unit-tests, .atm-unit-test-card, .atm-unit-test-answer) {
+      content-visibility: auto;
+      contain-intrinsic-size: auto 112px;
+    }
+
+    .knowledge-doc-markdown :where(pre, table, .atm-unit-tests) {
+      contain-intrinsic-size: auto 260px;
+    }
+  }
+
   .markdown-collapsible-section [data-collapsible-heading="true"] > button {
     touch-action: manipulation;
   }

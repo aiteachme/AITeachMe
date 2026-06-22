@@ -224,6 +224,31 @@ function formatFileSize(bytes?: number | null): string {
   return `${value >= 10 || unitIndex === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`;
 }
 
+const DEMO_COURSE_ACCENTS = [
+  {
+    shell: "border-slate-200 bg-white hover:border-indigo-200 hover:shadow-indigo-200/30 dark:border-slate-800 dark:bg-slate-950/92 dark:hover:border-indigo-500/30",
+    icon: "border-indigo-100 bg-indigo-50 text-indigo-600 dark:border-indigo-400/20 dark:bg-indigo-400/10 dark:text-indigo-300",
+    tag: "bg-indigo-50 text-indigo-700 dark:bg-indigo-400/10 dark:text-indigo-300",
+  },
+  {
+    shell: "border-slate-200 bg-white hover:border-cyan-200 hover:shadow-cyan-200/30 dark:border-slate-800 dark:bg-slate-950/92 dark:hover:border-cyan-500/30",
+    icon: "border-cyan-100 bg-cyan-50 text-cyan-700 dark:border-cyan-400/20 dark:bg-cyan-400/10 dark:text-cyan-300",
+    tag: "bg-cyan-50 text-cyan-700 dark:bg-cyan-400/10 dark:text-cyan-300",
+  },
+  {
+    shell: "border-slate-200 bg-white hover:border-violet-200 hover:shadow-violet-200/30 dark:border-slate-800 dark:bg-slate-950/92 dark:hover:border-violet-500/30",
+    icon: "border-violet-100 bg-violet-50 text-violet-600 dark:border-violet-400/20 dark:bg-violet-400/10 dark:text-violet-300",
+    tag: "bg-violet-50 text-violet-700 dark:bg-violet-400/10 dark:text-violet-300",
+  },
+] as const;
+
+function getDemoCourseLabel(courseName: string): string {
+  if (/速成|期末|考前/.test(courseName)) return "考前速成";
+  if (/Python|C语言|编程|程序/.test(courseName)) return "动手练习";
+  if (/系统|复习/.test(courseName)) return "系统复习";
+  return "完整课程";
+}
+
 function normalizeFileExt(filetype?: string | null): string {
   return String(filetype ?? "").trim().toLowerCase().replace(/^\./, "");
 }
@@ -617,7 +642,11 @@ export function HomePage() {
   });
 
   // ── Courses query ──
-  const { data: courses = [] } = useQuery({
+  const {
+    data: courses = [],
+    isLoading: demoCoursesLoading,
+    isFetching: demoCoursesFetching,
+  } = useQuery({
     queryKey: ["available-demo-courses"],
     queryFn: fetchDemoCourses,
     retry: false,
@@ -895,6 +924,7 @@ export function HomePage() {
 
   const isWorking = isCreatingDraftCourse || isStartingBuild || isUploadingFiles;
   const shouldShowDemoCourseSection = courses.length > 0;
+  const shouldReserveDemoCourseSection = shouldShowDemoCourseSection || demoCoursesLoading || demoCoursesFetching;
   const activePromptStarters = hasEntryFiles ? HOME_FILE_PROMPT_STARTERS : HOME_PROMPT_STARTERS;
   const generateButtonLabel = isWorking
     ? "正在处理学习规划"
@@ -912,7 +942,7 @@ export function HomePage() {
     />
     <div
       className={cn(
-        "relative flex w-full flex-col items-center overflow-x-clip bg-transparent p-4 pt-24 selection:bg-zinc-200 md:p-8 md:pt-32",
+        "relative flex w-full flex-col items-center overflow-x-clip bg-transparent p-4 pt-16 selection:bg-zinc-200 md:p-8 md:pt-20",
         isElectron ? "min-h-full" : "min-h-[100dvh]",
       )}
     >
@@ -921,9 +951,9 @@ export function HomePage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, ease: "easeOut" }}
         className={cn(
-          "relative z-20 flex w-full max-w-[800px] flex-col items-center",
-          shouldShowDemoCourseSection
-            ? "min-h-[54dvh] justify-end pb-8 pt-8 md:min-h-[58dvh] md:pb-10"
+          "relative z-20 flex w-full max-w-[920px] flex-col items-center",
+          shouldReserveDemoCourseSection
+            ? "min-h-[43dvh] justify-end pb-5 pt-3 md:min-h-[45dvh] md:pb-6"
             : "min-h-[calc(100dvh-9rem)] translate-y-[8vh] justify-center md:translate-y-[11vh]",
         )}
       >
@@ -932,9 +962,9 @@ export function HomePage() {
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.1, type: "spring", stiffness: 200, damping: 20 }}
-          className="flex flex-col items-center justify-center mb-2"
+          className="mb-1 flex flex-col items-center justify-center"
         >
-          <HeroAnimation />
+          <HeroAnimation width={116} height={106} />
           <motion.div
             initial={{ opacity: 0, y: 10, filter: "blur(6px)" }}
             animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
@@ -942,8 +972,12 @@ export function HomePage() {
             className="flex flex-col items-center mt-3"
           >
             <h1
-              className="text-2xl md:text-3xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-slate-800 via-indigo-700 to-violet-600 animate-text-gradient dark:from-slate-100 dark:via-indigo-400 dark:to-violet-400"
-              style={{ backgroundSize: "200% auto" }}
+              className="bg-gradient-to-r from-slate-900 via-indigo-700 to-violet-600 bg-clip-text text-[2.1rem] font-extrabold leading-none tracking-normal text-transparent animate-text-gradient dark:from-slate-100 dark:via-indigo-400 dark:to-violet-400 md:text-[2.6rem]"
+              style={{
+                backgroundSize: "200% auto",
+                fontFamily:
+                  '"Bahnschrift", "Aptos Display", "Segoe UI Variable Display", Inter, system-ui, sans-serif',
+              }}
             >
               AITeachMe
             </h1>
@@ -955,7 +989,7 @@ export function HomePage() {
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.45, duration: 0.5 }}
-          className="mb-8 px-4 text-center text-base leading-relaxed text-zinc-500 dark:text-slate-400"
+          className="mb-5 px-4 text-center text-base leading-relaxed text-zinc-500 dark:text-slate-400"
         >
           让天下没有难学的课程
         </motion.p>
@@ -977,7 +1011,7 @@ export function HomePage() {
             <textarea
               ref={textareaRef}
               placeholder={"输入学习目标或课程主题\n可以说明考试范围、当前基础、重点章节；有课件、讲义、教材也可以直接上传。"}
-              className="w-full min-h-[148px] max-h-[320px] resize-none border-0 bg-transparent px-5 pb-3 pt-5 text-[15px] leading-7 text-zinc-900 focus:outline-none placeholder:text-zinc-400 dark:text-slate-100 dark:placeholder:text-slate-500 sm:min-h-[156px] sm:px-6 sm:pt-6"
+              className="w-full min-h-[154px] max-h-[320px] resize-none border-0 bg-transparent px-5 pb-2 pt-5 text-[15px] leading-7 text-zinc-900 focus:outline-none placeholder:text-zinc-400 dark:text-slate-100 dark:placeholder:text-slate-500 sm:min-h-[166px] sm:px-7 sm:pt-7 sm:text-[16px]"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -1104,14 +1138,15 @@ export function HomePage() {
             </div>
           </div>
 
-          <div className="mt-3 w-full px-2">
-            <div className="mb-1 flex items-center gap-3 text-[11px] font-medium text-zinc-400 dark:text-slate-500">
+          <div className="mt-3 w-full px-1">
+            <div className="mb-2 flex items-center gap-3 text-[11px] font-medium text-zinc-400 dark:text-slate-500">
               <span className="h-px flex-1 bg-gradient-to-r from-transparent via-zinc-200 to-zinc-200/60 dark:via-slate-800 dark:to-slate-800/60" />
-              <span>{hasEntryFiles ? "基于资料的完整提示模板" : "完整提示模板"}</span>
+              <span>{hasEntryFiles ? "基于资料套用" : "可直接套用"}</span>
               <span className="h-px flex-1 bg-gradient-to-l from-transparent via-zinc-200 to-zinc-200/60 dark:via-slate-800 dark:to-slate-800/60" />
             </div>
-            <div className="divide-y divide-zinc-200/60 dark:divide-slate-800/70">
+            <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {activePromptStarters.map((starter, index) => {
+                const StarterIcon = starter.icon;
                 return (
                   <button
                     key={starter.id}
@@ -1120,17 +1155,23 @@ export function HomePage() {
                     disabled={isWorking}
                     aria-label={`套用${starter.label}提示模板`}
                     title={starter.prompt}
-                    className="group relative flex w-full items-baseline gap-2 py-2 pl-1 pr-3 text-left transition-colors hover:bg-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/15 disabled:cursor-not-allowed disabled:opacity-55"
+                    className="group flex min-w-[184px] flex-1 items-start gap-2 rounded-lg border border-slate-200/70 bg-white/72 px-3 py-2 text-left shadow-[0_8px_22px_-18px_rgba(15,23,42,0.38)] transition hover:-translate-y-0.5 hover:border-indigo-200 hover:bg-white hover:shadow-[0_14px_30px_-22px_rgba(79,70,229,0.42)] focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/15 disabled:cursor-not-allowed disabled:opacity-55 dark:border-slate-800 dark:bg-slate-950/52 dark:hover:border-indigo-500/30 dark:hover:bg-slate-950"
                   >
-                    <span className="absolute left-0 top-2 h-[calc(100%-16px)] w-px bg-indigo-400 opacity-0 transition-opacity group-hover:opacity-100 dark:bg-indigo-300" />
-                    <span className="w-5 shrink-0 pl-2 font-mono text-[10px] font-semibold text-zinc-300 tabular-nums transition-colors group-hover:text-indigo-400 dark:text-slate-600 dark:group-hover:text-indigo-300">
-                      {String(index + 1).padStart(2, "0")}
+                    <span className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-slate-100 text-slate-500 transition-colors group-hover:bg-indigo-50 group-hover:text-indigo-600 dark:bg-slate-800 dark:text-slate-400 dark:group-hover:bg-indigo-500/10 dark:group-hover:text-indigo-300">
+                      <StarterIcon className="h-3.5 w-3.5" />
                     </span>
-                    <span className="shrink-0 text-sm font-semibold text-zinc-800 transition-colors group-hover:text-indigo-700 dark:text-slate-100 dark:group-hover:text-indigo-200">
-                      {starter.label}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-[13px] leading-6 text-zinc-500 transition-colors group-hover:text-zinc-800 dark:text-slate-400 dark:group-hover:text-slate-200">
-                      {starter.prompt}
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-1.5">
+                        <span className="truncate text-sm font-semibold text-zinc-800 transition-colors group-hover:text-indigo-700 dark:text-slate-100 dark:group-hover:text-indigo-200">
+                          {starter.label}
+                        </span>
+                        <span className="font-mono text-[10px] font-semibold text-zinc-300 tabular-nums dark:text-slate-600">
+                          {String(index + 1).padStart(2, "0")}
+                        </span>
+                      </span>
+                      <span className="mt-0.5 line-clamp-1 text-[12px] leading-5 text-zinc-500 transition-colors group-hover:text-zinc-700 dark:text-slate-400 dark:group-hover:text-slate-200">
+                        {starter.prompt}
+                      </span>
                     </span>
                   </button>
                 );
@@ -1162,7 +1203,7 @@ export function HomePage() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.5 }}
-          className="relative z-10 mt-4 w-full max-w-5xl flex flex-col items-center"
+          className="relative z-10 mt-3 w-full max-w-6xl flex flex-col items-center"
         >
           {/* Section Toggle */}
           <button
@@ -1170,13 +1211,13 @@ export function HomePage() {
             onClick={() => setRecentOpen(!recentOpen)}
             aria-expanded={recentOpen}
             aria-controls="home-demo-courses"
-            className="group flex w-full cursor-pointer items-center gap-4 py-3"
+            className="group flex w-full cursor-pointer items-center gap-4 py-2.5"
           >
             <div className="flex-1 h-[1px] bg-zinc-200 group-hover:bg-zinc-300 transition-colors dark:bg-slate-800 dark:group-hover:bg-slate-700" />
-            <span className="flex shrink-0 select-none items-center gap-2 text-[13px] font-semibold tracking-tight text-zinc-400 transition-colors group-hover:text-zinc-800 dark:text-slate-500 dark:group-hover:text-slate-300">
-              <Package className="h-4 w-4" />
-              演示课程
-              <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[12px] text-zinc-500 shadow-[inset_0_1px_2px_rgba(0,0,0,0.02)] dark:bg-slate-800 dark:text-slate-400">{courses.length}</span>
+            <span className="flex shrink-0 select-none items-center gap-2 rounded-full border border-indigo-100 bg-white px-3 py-1.5 text-[13px] font-semibold text-slate-700 shadow-sm transition-colors group-hover:border-indigo-200 group-hover:text-indigo-700 dark:border-indigo-500/20 dark:bg-slate-950 dark:text-slate-300 dark:group-hover:text-indigo-300">
+              <Package className="h-4 w-4 text-indigo-500" />
+              精选演示课程
+              <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[12px] text-indigo-600 dark:bg-indigo-400/10 dark:text-indigo-300">{courses.length}</span>
               <motion.div
                 animate={{ rotate: recentOpen ? 180 : 0 }}
                 transition={{ duration: 0.3, ease: "easeInOut" }}
@@ -1198,74 +1239,66 @@ export function HomePage() {
                 id="home-demo-courses"
                 className="w-full overflow-hidden"
               >
-                <div className="pt-6 pb-12">
+                <div className="pb-10 pt-3">
                   {demoCourseError ? (
                     <div className="mb-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-center text-sm font-medium text-red-600">
                       {demoCourseError}
                     </div>
                   ) : null}
                   {courses.length > 0 && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                        {courses.map((course, i) => (
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                        {courses.map((course, i) => {
+                          const accent = DEMO_COURSE_ACCENTS[i % DEMO_COURSE_ACCENTS.length];
+                          return (
                           <motion.div
                             key={course.filename}
                             initial={{ opacity: 0, y: 16 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: i * 0.05, duration: 0.35, ease: "easeOut" }}
                           >
-                            <div className="atm-deferred-card flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-slate-300 hover:shadow-md dark:border-slate-800 dark:bg-slate-900/80 dark:hover:border-slate-700">
-                              <div className="flex items-start justify-between mb-3">
-                                <div className="flex-1 mr-3">
-                                  <h3 className="line-clamp-1 text-lg font-bold text-slate-900 dark:text-slate-100">{course.course_name}</h3>
-                                  <p className="mt-1 text-xs font-medium text-indigo-600 dark:text-indigo-300">演示课程</p>
+                            <div className={cn(
+                              "atm-deferred-card group relative flex h-full min-h-[118px] flex-col rounded-lg border p-4 shadow-[0_12px_28px_-24px_rgba(15,23,42,0.45)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_34px_-28px_rgba(79,70,229,0.45)] dark:shadow-black/20",
+                              accent.shell,
+                            )}>
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="mr-2 min-w-0 flex-1">
+                                  <span className={cn("inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold", accent.tag)}>
+                                    {getDemoCourseLabel(course.course_name)}
+                                  </span>
+                                  <h3 className="mt-2 line-clamp-1 text-[15px] font-bold tracking-normal text-slate-950 dark:text-slate-100">{course.course_name}</h3>
                                 </div>
-                                <div className="rounded-lg border border-indigo-100 bg-gradient-to-br from-indigo-50 to-violet-50 p-2 dark:border-indigo-500/20 dark:from-indigo-500/10 dark:to-violet-500/10">
-                                  <Package className="w-5 h-5 text-indigo-500" />
+                                <div className={cn("rounded-md border p-1.5", accent.icon)}>
+                                  <Package className="h-3.5 w-3.5" />
                                 </div>
                               </div>
 
-                              {/* Stats chips */}
-                              <div className="flex flex-wrap gap-1.5 mb-4">
-                                {course.stats.knowledge_unit_count > 0 && (
-                                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                                    {course.stats.knowledge_unit_count} 知识点
-                                  </span>
-                                )}
-                                {course.stats.raw_file_count > 0 && (
-                                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                                    {course.stats.raw_file_count} 文件
-                                  </span>
-                                )}
-                                {course.file_size_bytes > 0 && (
-                                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                                    {formatFileSize(course.file_size_bytes)}
-                                  </span>
-                                )}
-                              </div>
-
-                              {/* Footer */}
-                              <div className="mt-auto border-t border-slate-100 pt-3 dark:border-slate-800">
+                              <div className="mt-auto flex items-center justify-between gap-3 pt-4">
+                                <span className="min-w-0 truncate text-[11px] font-medium text-slate-400 dark:text-slate-500">
+                                  {course.stats.knowledge_unit_count > 0
+                                    ? `${course.stats.knowledge_unit_count} 个知识点`
+                                    : "演示课程"}
+                                </span>
                                 <button
                                   onClick={() => courseImportMutation.mutate({ filename: course.filename })}
                                   disabled={courseImportMutation.isPending}
                                   className={cn(
-                                    "flex min-h-9 w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold transition-all",
+                                    "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-3 text-xs font-semibold transition-all",
                                     !courseImportMutation.isPending
-                                      ? "bg-slate-900 text-white shadow-sm hover:bg-slate-800 hover:shadow-md dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+                                      ? "bg-slate-950 text-white shadow-sm hover:bg-slate-800 hover:shadow-md dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
                                       : "cursor-not-allowed bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600"
                                   )}
                                   title={`导入 ${course.course_name} 到左侧课程列表`}
                                 >
                                   {courseImportMutation.isPending ? (
-                                    <><Loader2 className="h-4 w-4 animate-spin" /> 导入中</>
+                                    <><Loader2 className="h-3.5 w-3.5 animate-spin" /> 导入中</>
                                   ) : (
-                                    <><Upload className="h-4 w-4" /> 导入</>
+                                    <><Upload className="h-3.5 w-3.5" /> 导入</>
                                   )}
                                 </button>
                               </div>
                             </div>
                           </motion.div>
-                        ))}
+                        )})}
                     </div>
                   )}
                 </div>

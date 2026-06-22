@@ -1787,15 +1787,17 @@ const DocMarkdown = memo(function DocMarkdown({
   onHeadingCollapseChange: (id: string, collapsed: boolean, source?: HTMLElement | null) => boolean | void;
 }) {
   return (
-    <MarkdownViewer
-      content={content}
-      variant="document"
-      headingAnchors
-      headingNumbering
-      collapsibleHeadings
-      onHeadingCollapseChange={onHeadingCollapseChange}
-      assetCourse={courseId}
-    />
+    <div className="knowledge-doc-markdown">
+      <MarkdownViewer
+        content={content}
+        variant="document"
+        headingAnchors
+        headingNumbering
+        collapsibleHeadings
+        onHeadingCollapseChange={onHeadingCollapseChange}
+        assetCourse={courseId}
+      />
+    </div>
   );
 });
 
