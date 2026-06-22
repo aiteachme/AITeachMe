@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-06-15T03:57:12.549736",
-  "total_commits_analyzed": 1864,
+  "generated_at": "2026-06-22T03:57:18.192685",
+  "total_commits_analyzed": 1940,
   "stats": [
     {
       "date": "2026-03-11",
@@ -14913,6 +14913,614 @@
       "code_lines": 205484,
       "other_lines": 38866,
       "message": "fix: 修正模型路由与设置页测试"
+    },
+    {
+      "date": "2026-06-10",
+      "commit": "9984689",
+      "total_lines": 230244,
+      "code_lines": 193383,
+      "other_lines": 36861,
+      "message": "refactor(ingest): 合并 fast_parse 和 parsing，统一代码组织"
+    },
+    {
+      "date": "2026-06-13",
+      "commit": "b205f15",
+      "total_lines": 242222,
+      "code_lines": 203683,
+      "other_lines": 38539,
+      "message": "fix: 改进文档静态图示生成"
+    },
+    {
+      "date": "2026-06-13",
+      "commit": "89de483",
+      "total_lines": 242245,
+      "code_lines": 203704,
+      "other_lines": 38541,
+      "message": "fix: 避免 AI 交互选区状态循环更新"
+    },
+    {
+      "date": "2026-06-13",
+      "commit": "f55d894",
+      "total_lines": 242262,
+      "code_lines": 203718,
+      "other_lines": 38544,
+      "message": "fix: 优化规划章节提示与文档标题清洗"
+    },
+    {
+      "date": "2026-06-13",
+      "commit": "e94a4a3",
+      "total_lines": 244354,
+      "code_lines": 205645,
+      "other_lines": 38709,
+      "message": "feat: 完善PostHog运营统计埋点与测验UI设计"
+    },
+    {
+      "date": "2026-06-13",
+      "commit": "33d1666",
+      "total_lines": 244386,
+      "code_lines": 205519,
+      "other_lines": 38867,
+      "message": "feat: 添加知识文档批注模式入口"
+    },
+    {
+      "date": "2026-06-13",
+      "commit": "ed4ec37",
+      "total_lines": 244750,
+      "code_lines": 205825,
+      "other_lines": 38925,
+      "message": "fix: 合并 main 并修正模型路由"
+    },
+    {
+      "date": "2026-06-13",
+      "commit": "11e23bb",
+      "total_lines": 244754,
+      "code_lines": 205828,
+      "other_lines": 38926,
+      "message": "fix: 修正整卷测试封面文案"
+    },
+    {
+      "date": "2026-06-13",
+      "commit": "90a2b05",
+      "total_lines": 244742,
+      "code_lines": 205817,
+      "other_lines": 38925,
+      "message": "fix: 避免模型选择误持久化"
+    },
+    {
+      "date": "2026-06-13",
+      "commit": "ec63b1d",
+      "total_lines": 244743,
+      "code_lines": 205818,
+      "other_lines": 38925,
+      "message": "fix: 优化课程命名自然度"
+    },
+    {
+      "date": "2026-06-14",
+      "commit": "03933f4",
+      "total_lines": 244737,
+      "code_lines": 205814,
+      "other_lines": 38923,
+      "message": "fix: 收敛课程规划提示词噪声"
+    },
+    {
+      "date": "2026-06-14",
+      "commit": "43c1cc6",
+      "total_lines": 244923,
+      "code_lines": 205956,
+      "other_lines": 38967,
+      "message": "fix: 优化知识构建提示词与链路追踪"
+    },
+    {
+      "date": "2026-06-14",
+      "commit": "a29d948",
+      "total_lines": 245219,
+      "code_lines": 206216,
+      "other_lines": 39003,
+      "message": "fix: 对齐显式章节规划与课程命名"
+    },
+    {
+      "date": "2026-06-14",
+      "commit": "384f28a",
+      "total_lines": 245219,
+      "code_lines": 206216,
+      "other_lines": 39003,
+      "message": "fix: 精简课程命名提示词"
+    },
+    {
+      "date": "2026-06-14",
+      "commit": "9550e8e",
+      "total_lines": 245255,
+      "code_lines": 206246,
+      "other_lines": 39009,
+      "message": "fix: 避免主动取消检索污染链路"
+    },
+    {
+      "date": "2026-06-14",
+      "commit": "3b144e2",
+      "total_lines": 245349,
+      "code_lines": 206331,
+      "other_lines": 39018,
+      "message": "fix: 收敛规划命名并继承划选模型"
+    },
+    {
+      "date": "2026-06-14",
+      "commit": "4aeac64",
+      "total_lines": 245490,
+      "code_lines": 206447,
+      "other_lines": 39043,
+      "message": "fix: 收敛规划标题并隔离图谱预抽取链路"
+    },
+    {
+      "date": "2026-06-14",
+      "commit": "6b4aeba",
+      "total_lines": 245461,
+      "code_lines": 206420,
+      "other_lines": 39041,
+      "message": "fix: 收敛规划命名提示并清理聊天链路噪声"
+    },
+    {
+      "date": "2026-06-14",
+      "commit": "45d356c",
+      "total_lines": 244469,
+      "code_lines": 205594,
+      "other_lines": 38875,
+      "message": "fix: 修正工作流架构图导出链路"
+    },
+    {
+      "date": "2026-06-15",
+      "commit": "1ed6a44",
+      "total_lines": 244308,
+      "code_lines": 205474,
+      "other_lines": 38834,
+      "message": "Merge remote-tracking branch 'origin/dev_cy'"
+    },
+    {
+      "date": "2026-06-15",
+      "commit": "c52f697",
+      "total_lines": 244309,
+      "code_lines": 205475,
+      "other_lines": 38834,
+      "message": "fix: 对齐 ingest parsing 合并后的引用"
+    },
+    {
+      "date": "2026-06-15",
+      "commit": "4c6469a",
+      "total_lines": 245308,
+      "code_lines": 206392,
+      "other_lines": 38916,
+      "message": "Merge remote-tracking branch 'origin/dev_mzp'"
+    },
+    {
+      "date": "2026-06-15",
+      "commit": "2417e54",
+      "total_lines": 244350,
+      "code_lines": 205484,
+      "other_lines": 38866,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-06-15",
+      "commit": "5913d90",
+      "total_lines": 247084,
+      "code_lines": 207911,
+      "other_lines": 39173,
+      "message": "feat: 优化规划诊断与训练阅读体验"
+    },
+    {
+      "date": "2026-06-15",
+      "commit": "b9469ec",
+      "total_lines": 245308,
+      "code_lines": 206392,
+      "other_lines": 38916,
+      "message": "chore: 合并远程主分支代码统计"
+    },
+    {
+      "date": "2026-06-15",
+      "commit": "c8df40b",
+      "total_lines": 248006,
+      "code_lines": 208784,
+      "other_lines": 39222,
+      "message": "feat: 合并规划诊断与训练阅读优化"
+    },
+    {
+      "date": "2026-06-15",
+      "commit": "c82edf3",
+      "total_lines": 247999,
+      "code_lines": 208779,
+      "other_lines": 39220,
+      "message": "fix: 修复生产环境课程导航页白屏"
+    },
+    {
+      "date": "2026-06-15",
+      "commit": "07ea626",
+      "total_lines": 248152,
+      "code_lines": 208907,
+      "other_lines": 39245,
+      "message": "fix: 恢复缺失的知识文档静态图示资产"
+    },
+    {
+      "date": "2026-06-15",
+      "commit": "f440997",
+      "total_lines": 247842,
+      "code_lines": 208610,
+      "other_lines": 39232,
+      "message": "docs: 更新 Digest 和 Profile 链路文档"
+    },
+    {
+      "date": "2026-06-15",
+      "commit": "2337bae",
+      "total_lines": 248304,
+      "code_lines": 208926,
+      "other_lines": 39378,
+      "message": "docs: 更新 Examine 链路文档"
+    },
+    {
+      "date": "2026-06-15",
+      "commit": "c48fbdf",
+      "total_lines": 249003,
+      "code_lines": 209356,
+      "other_lines": 39647,
+      "message": "docs: 更新 Workflows 全量链路文档"
+    },
+    {
+      "date": "2026-06-16",
+      "commit": "84e409e",
+      "total_lines": 249110,
+      "code_lines": 209444,
+      "other_lines": 39666,
+      "message": "feat: 优化单元检测展示并补充 KG 图谱说明"
+    },
+    {
+      "date": "2026-06-16",
+      "commit": "5ca5493",
+      "total_lines": 249170,
+      "code_lines": 209498,
+      "other_lines": 39672,
+      "message": "fix: 优化知识文档加载卡顿"
+    },
+    {
+      "date": "2026-06-16",
+      "commit": "14b499f",
+      "total_lines": 249170,
+      "code_lines": 209498,
+      "other_lines": 39672,
+      "message": "fix: 避免前端部署被后端发布阻塞"
+    },
+    {
+      "date": "2026-06-17",
+      "commit": "77f83b7",
+      "total_lines": 249253,
+      "code_lines": 209568,
+      "other_lines": 39685,
+      "message": "fix: 支持前端运行时读取 PostHog 配置"
+    },
+    {
+      "date": "2026-06-17",
+      "commit": "eb1c069",
+      "total_lines": 249267,
+      "code_lines": 209580,
+      "other_lines": 39687,
+      "message": "fix: 兼容 PostHog 运行时兜底配置"
+    },
+    {
+      "date": "2026-06-17",
+      "commit": "705a9cf",
+      "total_lines": 249344,
+      "code_lines": 209635,
+      "other_lines": 39709,
+      "message": "fix: 统一资料上传大小限制入口"
+    },
+    {
+      "date": "2026-06-18",
+      "commit": "38ffd57",
+      "total_lines": 250919,
+      "code_lines": 210984,
+      "other_lines": 39935,
+      "message": "fix: 收紧文档图示生成质量闸门"
+    },
+    {
+      "date": "2026-06-18",
+      "commit": "10e5969",
+      "total_lines": 250980,
+      "code_lines": 211036,
+      "other_lines": 39944,
+      "message": "fix: 拦截低质量分区伪图"
+    },
+    {
+      "date": "2026-06-18",
+      "commit": "bd69b81",
+      "total_lines": 251155,
+      "code_lines": 211183,
+      "other_lines": 39972,
+      "message": "fix: 收紧图示生成与课程包导入"
+    },
+    {
+      "date": "2026-06-18",
+      "commit": "3672876",
+      "total_lines": 251350,
+      "code_lines": 211370,
+      "other_lines": 39980,
+      "message": "fix: 让图示触发交给模型判断"
+    },
+    {
+      "date": "2026-06-18",
+      "commit": "c2c5dd3",
+      "total_lines": 258243,
+      "code_lines": 217633,
+      "other_lines": 40610,
+      "message": "feat: 强化文档生成与知识图谱联动"
+    },
+    {
+      "date": "2026-06-18",
+      "commit": "8044ff8",
+      "total_lines": 258795,
+      "code_lines": 218174,
+      "other_lines": 40621,
+      "message": "fix: 优化课程构建与知识文档交互体验"
+    },
+    {
+      "date": "2026-06-18",
+      "commit": "94b5de7",
+      "total_lines": 258947,
+      "code_lines": 218307,
+      "other_lines": 40640,
+      "message": "fix: 优化教学图示生成与目录对话标识"
+    },
+    {
+      "date": "2026-06-18",
+      "commit": "d5e513f",
+      "total_lines": 259194,
+      "code_lines": 218537,
+      "other_lines": 40657,
+      "message": "fix: 优化课程生成与知识图谱质量"
+    },
+    {
+      "date": "2026-06-18",
+      "commit": "20991f4",
+      "total_lines": 259593,
+      "code_lines": 218879,
+      "other_lines": 40714,
+      "message": "fix: 优化课程构建与知识渲染体验"
+    },
+    {
+      "date": "2026-06-18",
+      "commit": "da5e84f",
+      "total_lines": 259636,
+      "code_lines": 218918,
+      "other_lines": 40718,
+      "message": "style: 优化知识文档题目块样式"
+    },
+    {
+      "date": "2026-06-18",
+      "commit": "6254f18",
+      "total_lines": 249385,
+      "code_lines": 209682,
+      "other_lines": 39703,
+      "message": "fix: 提升课程构建与向量链路稳定性"
+    },
+    {
+      "date": "2026-06-18",
+      "commit": "989dd9e",
+      "total_lines": 259754,
+      "code_lines": 219020,
+      "other_lines": 40734,
+      "message": "merge: 合并 dev_ywl 到 main"
+    },
+    {
+      "date": "2026-06-18",
+      "commit": "5a65e06",
+      "total_lines": 259844,
+      "code_lines": 219092,
+      "other_lines": 40752,
+      "message": "fix: 修正上传 smoke 对运行时配置的判断"
+    },
+    {
+      "date": "2026-06-19",
+      "commit": "ac21aa2",
+      "total_lines": 259844,
+      "code_lines": 219092,
+      "other_lines": 40752,
+      "message": "fix: 调整前端部署上传 smoke 链路"
+    },
+    {
+      "date": "2026-06-19",
+      "commit": "5039024",
+      "total_lines": 259844,
+      "code_lines": 219092,
+      "other_lines": 40752,
+      "message": "fix: 修正前端部署 smoke 状态码解析"
+    },
+    {
+      "date": "2026-06-19",
+      "commit": "53298d9",
+      "total_lines": 262795,
+      "code_lines": 221823,
+      "other_lines": 40972,
+      "message": "feat: 完善训练中心整体设计"
+    },
+    {
+      "date": "2026-06-19",
+      "commit": "e550236",
+      "total_lines": 260003,
+      "code_lines": 219196,
+      "other_lines": 40807,
+      "message": "fix: 修复前后端依赖安全告警"
+    },
+    {
+      "date": "2026-06-19",
+      "commit": "6c33de0",
+      "total_lines": 260003,
+      "code_lines": 219196,
+      "other_lines": 40807,
+      "message": "fix: 收敛桌面与前端镜像安全告警"
+    },
+    {
+      "date": "2026-06-19",
+      "commit": "26754bd",
+      "total_lines": 260003,
+      "code_lines": 219196,
+      "other_lines": 40807,
+      "message": "fix: 升级前端构建环境至 Node 24"
+    },
+    {
+      "date": "2026-06-19",
+      "commit": "8c7412f",
+      "total_lines": 260003,
+      "code_lines": 219196,
+      "other_lines": 40807,
+      "message": "fix: 升级后端镜像至 Python 3.12"
+    },
+    {
+      "date": "2026-06-20",
+      "commit": "314ca98",
+      "total_lines": 261517,
+      "code_lines": 220553,
+      "other_lines": 40964,
+      "message": "fix: 优化知识链路质量与课程入口记忆"
+    },
+    {
+      "date": "2026-06-20",
+      "commit": "12d075e",
+      "total_lines": 261832,
+      "code_lines": 220809,
+      "other_lines": 41023,
+      "message": "fix: 修复构建链路并发退避与导航状态"
+    },
+    {
+      "date": "2026-06-20",
+      "commit": "ac3125b",
+      "total_lines": 261854,
+      "code_lines": 220828,
+      "other_lines": 41026,
+      "message": "fix: 收窄前置诊断解析落点"
+    },
+    {
+      "date": "2026-06-20",
+      "commit": "a061fdf",
+      "total_lines": 262010,
+      "code_lines": 220957,
+      "other_lines": 41053,
+      "message": "fix: 落实诊断选项生成策略"
+    },
+    {
+      "date": "2026-06-20",
+      "commit": "a949790",
+      "total_lines": 264977,
+      "code_lines": 223701,
+      "other_lines": 41276,
+      "message": "feat: 完善训练中心整体设计"
+    },
+    {
+      "date": "2026-06-20",
+      "commit": "5c1218d",
+      "total_lines": 264977,
+      "code_lines": 223701,
+      "other_lines": 41276,
+      "message": "style: 放宽首页课程输入提示"
+    },
+    {
+      "date": "2026-06-20",
+      "commit": "13da2bf",
+      "total_lines": 264977,
+      "code_lines": 223701,
+      "other_lines": 41276,
+      "message": "style: 优化首页输入提示与模板文案"
+    },
+    {
+      "date": "2026-06-20",
+      "commit": "4d39c32",
+      "total_lines": 264974,
+      "code_lines": 223698,
+      "other_lines": 41276,
+      "message": "style: 精简首页模板列表展示"
+    },
+    {
+      "date": "2026-06-20",
+      "commit": "2c74bac",
+      "total_lines": 264952,
+      "code_lines": 223677,
+      "other_lines": 41275,
+      "message": "style: 精简删除课程确认弹窗"
+    },
+    {
+      "date": "2026-06-21",
+      "commit": "27b9ac6",
+      "total_lines": 265149,
+      "code_lines": 223861,
+      "other_lines": 41288,
+      "message": "fix: 修复文档生成与考试题链路异常"
+    },
+    {
+      "date": "2026-06-21",
+      "commit": "d2eb7ca",
+      "total_lines": 265436,
+      "code_lines": 224099,
+      "other_lines": 41337,
+      "message": "fix: 修复文档代码块渲染并精简首页示例"
+    },
+    {
+      "date": "2026-06-21",
+      "commit": "a88bb8e",
+      "total_lines": 262203,
+      "code_lines": 220991,
+      "other_lines": 41212,
+      "message": "fix: 修复资料库划词高亮与问问 AI 交互"
+    },
+    {
+      "date": "2026-06-21",
+      "commit": "51bef42",
+      "total_lines": 265826,
+      "code_lines": 224421,
+      "other_lines": 41405,
+      "message": "fix: 修复诊断反馈和文档发布清洗"
+    },
+    {
+      "date": "2026-06-21",
+      "commit": "544276e",
+      "total_lines": 265756,
+      "code_lines": 224353,
+      "other_lines": 41403,
+      "message": "fix: 移除删除预览影响项"
+    },
+    {
+      "date": "2026-06-21",
+      "commit": "638948a",
+      "total_lines": 268390,
+      "code_lines": 226491,
+      "other_lines": 41899,
+      "message": "fix: 合并资料库划词高亮与问问 AI 交互"
+    },
+    {
+      "date": "2026-06-21",
+      "commit": "d510551",
+      "total_lines": 268499,
+      "code_lines": 226593,
+      "other_lines": 41906,
+      "message": "fix: 收紧交互 HTML 安全并修复资料库高亮定位"
+    },
+    {
+      "date": "2026-06-21",
+      "commit": "67d2853",
+      "total_lines": 268758,
+      "code_lines": 226811,
+      "other_lines": 41947,
+      "message": "fix: 限制核心链路 LLM 整体等待时间"
+    },
+    {
+      "date": "2026-06-21",
+      "commit": "2fdb618",
+      "total_lines": 268758,
+      "code_lines": 226811,
+      "other_lines": 41947,
+      "message": "style: 优化首页提示示例和模型入口布局"
+    },
+    {
+      "date": "2026-06-21",
+      "commit": "f8c90ec",
+      "total_lines": 268912,
+      "code_lines": 226957,
+      "other_lines": 41955,
+      "message": "fix: 修复知识文档与模型切换交互"
     }
   ]
 }
