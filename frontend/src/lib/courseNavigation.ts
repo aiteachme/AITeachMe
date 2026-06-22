@@ -26,7 +26,7 @@ export const COURSE_NAV_ITEMS: CourseNavItem[] = [
     id: "nav",
     label: "导航",
     icon: Compass,
-    description: "汇总课程入口、近期试卷和学习画像",
+    description: "汇总课程入口、近期试卷和课程画像",
   },
   {
     id: "build",
@@ -48,7 +48,7 @@ export const COURSE_NAV_ITEMS: CourseNavItem[] = [
   },
   {
     id: "profile",
-    label: "学习画像",
+    label: "课程画像",
     icon: BarChart3,
     description: "查看掌握度与复习任务",
   },

@@ -84,6 +84,7 @@ const INTERACTIVE_LOADING_STEPS = [
   "正在校验 HTML 结构与资源边界",
   "正在加载沙箱预览",
 ];
+const DUPLICATE_ORDERED_LIST_MARKER_RE = /^(\s{0,3}(?:>\s*)*)\d+[\.)\u3001\uff09]\s+(?=\d+[\.)\u3001\uff09]\s+)/;
 
 function noopMarkdownPlugin() {
   return undefined;
@@ -1634,13 +1635,32 @@ export function preprocessMarkdownForRender(content: string): string {
         repairMathDelimitersForRender(
           preprocessLaTeX(
             normalizeHighlightSyntaxForRender(
-              preprocessCalloutSyntax(content.replace(INTERACTIVE_MARKER_RE, "")),
+              preprocessCalloutSyntax(
+                normalizeDuplicateOrderedListMarkersForRender(content.replace(INTERACTIVE_MARKER_RE, "")),
+              ),
             ),
           ),
         ),
       ),
     ),
   );
+}
+
+function normalizeDuplicateOrderedListMarkersForRender(content: string): string {
+  const lines = String(content ?? "").replace(/\r\n?/g, "\n").split("\n");
+  let inFence = false;
+  return lines
+    .map((line) => {
+      if (/^\s*```/.test(line)) {
+        inFence = !inFence;
+        return line;
+      }
+      if (inFence) {
+        return line;
+      }
+      return line.replace(DUPLICATE_ORDERED_LIST_MARKER_RE, "$1");
+    })
+    .join("\n");
 }
 
 function preprocessMarkdownContent(content: string): string {

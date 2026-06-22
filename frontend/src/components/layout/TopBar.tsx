@@ -1,12 +1,27 @@
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useLocation } from "react-router-dom";
-import { Github, LogIn, LogOut, User } from "lucide-react";
+import { Link } from "react-router-dom";
+import { BarChart3, Github, Loader2, LogIn, LogOut, User } from "lucide-react";
 import { apiClient, getApiErrorMessage } from "../../api/client";
-import { buildCoursePath, getCourseIdFromPathname } from "../../lib/courseNavigation";
+import { listCoursesApiApiV1CoursesListPost } from "../../api/generated/courses";
+import { examHistoryApiV1CoursesCourseIdExamsHistoryGet } from "../../api/generated/exams";
+import { listChatApiApiV1CoursesCourseIdChatsListPost } from "../../api/generated/chats";
+import type { ChatMessageItem, CourseItem, ExamHistoryItem } from "../../api/generated/model";
 import { resetAnalyticsIdentity, syncAnalyticsUserIdentity, trackAnalyticsEvent } from "../../lib/analytics";
 import { AUTH_SESSION_QUERY_KEY, AUTH_SESSION_STALE_TIME_MS, fetchAuthSession } from "../../lib/authSession";
+import {
+  buildLearningActivityEvents,
+  buildLearningCalendarWeeks,
+  countLearningActivitySince,
+  formatLearningActivityKind,
+  formatLearningActivityTime,
+  getLatestLearningActivity,
+  getLearningActivityTileClass,
+  type LearningActivityEvent,
+  type LearningCalendarWeek,
+} from "../../lib/learningActivity";
 import { cn } from "../../lib/utils";
+import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { Modal } from "../ui/Modal";
 
 type RuntimeUser = {
@@ -33,8 +48,22 @@ type ApiResponse<T> = {
   data: T;
 };
 
+type LearningPanelData = {
+  courses: CourseItem[];
+  exams: ExamHistoryItem[];
+  chatMessages: ChatMessageItem[];
+};
+
 interface TopBarProps {
   className?: string;
+}
+
+interface LearningActivityPanelProps {
+  weeks: LearningCalendarWeek[];
+  weeklyCount: number;
+  latestActivity: LearningActivityEvent | null;
+  isLoading: boolean;
+  isError: boolean;
 }
 
 function getDisplayName(user: RuntimeUser | null): string {
@@ -71,8 +100,68 @@ function getAvatarText(user: RuntimeUser | null): string {
   return displayName.slice(0, 1).toUpperCase() || "U";
 }
 
+function LearningActivityPanel({
+  weeks,
+  weeklyCount,
+  latestActivity,
+  isLoading,
+  isError,
+}: LearningActivityPanelProps) {
+  const latestText = latestActivity
+    ? `${formatLearningActivityKind(latestActivity.kind)} · ${formatLearningActivityTime(latestActivity.occurredAt)}`
+    : "完成问答或测验后显示";
+
+  return (
+    <div className="border-b border-slate-100 px-4 py-3 dark:border-slate-800/80">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-800 dark:text-slate-100">
+            <BarChart3 className="h-3.5 w-3.5 text-violet-500" />
+            学习记录
+          </p>
+          <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">按真实问答和测验统计</p>
+        </div>
+        {isLoading ? (
+          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-violet-400" />
+        ) : (
+          <span className="shrink-0 rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-medium text-violet-600 dark:bg-violet-500/10 dark:text-violet-200">
+            近 8 周
+          </span>
+        )}
+      </div>
+
+      <div className="mt-3 overflow-x-auto pb-1" aria-label="近 8 周真实学习记录">
+        <div className="flex min-w-max gap-1">
+          {weeks.map((week) => (
+            <div key={week.key} className="flex flex-col gap-1">
+              {week.days.map((day) => (
+                <span
+                  key={day.key}
+                  className={cn(
+                    "h-3 w-3 rounded-[3px] transition",
+                    day.isPlaceholder ? "pointer-events-none opacity-0" : getLearningActivityTileClass(day.intensity),
+                    day.isToday && "ring-1 ring-violet-300 dark:ring-violet-500/50",
+                  )}
+                  title={`${day.key}（${day.label}）· ${day.count} 条真实学习记录`}
+                  aria-label={`${day.key} ${day.count} 条真实学习记录`}
+                />
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-slate-500 dark:text-slate-400">
+        <span className="shrink-0">本周 {weeklyCount} 条</span>
+        <span className={cn("min-w-0 truncate", isError && "text-amber-600 dark:text-amber-300")}>
+          {isError ? "暂时无法读取记录" : latestText}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export function TopBar({ className }: TopBarProps) {
-  const location = useLocation();
   const queryClient = useQueryClient();
   const [authUser, setAuthUser] = useState<RuntimeUser | null>(null);
   const [authEnabled, setAuthEnabled] = useState<boolean | null>(null);
@@ -105,8 +194,59 @@ export function TopBar({ className }: TopBarProps) {
   const displayName = getDisplayName(authUser);
   const identitySubtitle = getIdentitySubtitle(authUser);
   const avatarText = getAvatarText(authUser);
-  const currentCourseId = useMemo(() => getCourseIdFromPathname(location.pathname), [location.pathname]);
-  const profilePath = currentCourseId ? buildCoursePath(currentCourseId, "profile") : null;
+  const profilePath = "/profile";
+  const shouldLoadLearningPanel = isDropdownOpen || isMobileMenuOpen;
+
+  const learningPanelQuery = useQuery({
+    queryKey: ["topbar-learning-panel", "global"],
+    enabled: shouldLoadLearningPanel,
+    staleTime: 60_000,
+    retry: 1,
+    queryFn: async ({ signal }): Promise<LearningPanelData> => {
+      const coursesResponse = await listCoursesApiApiV1CoursesListPost({ page: 1, size: 20 }, { signal });
+      const courses = unwrapOrvalResponse<{ items?: CourseItem[] }>(coursesResponse)?.items ?? [];
+      const courseIds = courses.map((item) => item.course_id).filter(Boolean).slice(0, 8);
+      const courseResults = await Promise.allSettled(
+        courseIds.map(async (courseId) => {
+          const [examResponse, chatResponse] = await Promise.all([
+            examHistoryApiV1CoursesCourseIdExamsHistoryGet(courseId, { page: 1, size: 30 }, { signal }),
+            listChatApiApiV1CoursesCourseIdChatsListPost(courseId, { page: 1, size: 80 }, { signal }),
+          ]);
+          return {
+            exams: unwrapOrvalResponse<{ items?: ExamHistoryItem[] }>(examResponse)?.items ?? [],
+            chatMessages: unwrapOrvalResponse<{ items?: ChatMessageItem[] }>(chatResponse)?.items ?? [],
+          };
+        }),
+      );
+      return {
+        courses,
+        exams: courseResults.flatMap((result) => (result.status === "fulfilled" ? result.value.exams : [])),
+        chatMessages: courseResults.flatMap((result) => (
+          result.status === "fulfilled" ? result.value.chatMessages : []
+        )),
+      };
+    },
+  });
+
+  const learningActivityEvents = useMemo(
+    () => buildLearningActivityEvents({
+      chatMessages: learningPanelQuery.data?.chatMessages,
+      exams: learningPanelQuery.data?.exams,
+    }),
+    [learningPanelQuery.data?.chatMessages, learningPanelQuery.data?.exams],
+  );
+  const learningActivityWeeks = useMemo(
+    () => buildLearningCalendarWeeks(learningActivityEvents, { weeks: 8 }),
+    [learningActivityEvents],
+  );
+  const weeklyActivityCount = useMemo(
+    () => countLearningActivitySince(learningActivityEvents, 7),
+    [learningActivityEvents],
+  );
+  const latestLearningActivity = useMemo(
+    () => getLatestLearningActivity(learningActivityEvents),
+    [learningActivityEvents],
+  );
 
   const closeMenus = () => {
     setIsDropdownOpen(false);
@@ -394,6 +534,16 @@ export function TopBar({ className }: TopBarProps) {
                   </div>
                 </div>
 
+                {profilePath ? (
+                  <LearningActivityPanel
+                    weeks={learningActivityWeeks}
+                    weeklyCount={weeklyActivityCount}
+                    latestActivity={latestLearningActivity}
+                    isLoading={learningPanelQuery.isLoading}
+                    isError={learningPanelQuery.isError}
+                  />
+                ) : null}
+
                 <div className="py-1">
                   {profilePath ? (
                     <Link
@@ -402,7 +552,7 @@ export function TopBar({ className }: TopBarProps) {
                       onClick={closeMenus}
                     >
                       <User className="h-4 w-4 text-slate-400 dark:text-slate-500" />
-                      <span>学习画像</span>
+                      <span>我的学习画像</span>
                     </Link>
                   ) : null}
 
@@ -488,6 +638,16 @@ export function TopBar({ className }: TopBarProps) {
               </div>
             </div>
 
+            {profilePath ? (
+              <LearningActivityPanel
+                weeks={learningActivityWeeks}
+                weeklyCount={weeklyActivityCount}
+                latestActivity={latestLearningActivity}
+                isLoading={learningPanelQuery.isLoading}
+                isError={learningPanelQuery.isError}
+              />
+            ) : null}
+
             <div className="py-1">
               {profilePath ? (
                 <Link
@@ -496,7 +656,7 @@ export function TopBar({ className }: TopBarProps) {
                   onClick={closeMenus}
                 >
                   <User className="h-4 w-4 text-slate-400 dark:text-slate-500" />
-                  <span>学习画像</span>
+                  <span>我的学习画像</span>
                 </Link>
               ) : null}
 

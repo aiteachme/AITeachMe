@@ -36,7 +36,7 @@ const COURSE_TOP_NAV_META: Record<string, { icon: LucideIcon; label: string }> =
   build: { icon: Sparkles, label: "方案规划" },
   "knowledge-docs": { icon: BookOpen, label: "知识库" },
   exams: { icon: ClipboardCheck, label: "训练中心" },
-  profile: { icon: BarChart3, label: "学习画像" },
+  profile: { icon: BarChart3, label: "课程画像" },
 };
 
 export function Layout() {

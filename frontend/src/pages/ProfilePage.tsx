@@ -72,6 +72,12 @@ import {
   isReviewDueSoon,
   masteryTone,
 } from "../components/profile";
+import {
+  buildLearningActivityEvents,
+  formatLearningActivityKind,
+  formatLearningActivityTime,
+  getLatestLearningActivity,
+} from "../lib/learningActivity";
 
 const pageShellClass = COURSE_PAGE_SHELL_CLASS;
 const PROFILE_PROMPT_STORAGE_PREFIX = "aiteachme.profile.userPrompt.v1";
@@ -86,52 +92,6 @@ function sortByNewestTimestamp<T>(items: T[], getTimestamp: (item: T) => string 
   return [...items].sort((left, right) =>
     new Date(getTimestamp(right) ?? 0).getTime() - new Date(getTimestamp(left) ?? 0).getTime(),
   );
-}
-
-function toDateKey(value: Date): string {
-  const year = value.getFullYear();
-  const month = String(value.getMonth() + 1).padStart(2, "0");
-  const day = String(value.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function buildLearningCalendarDays(historyItems: ExamHistoryItem[], reviewTasks: ReviewTaskResponse[]) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const days = Array.from({ length: 7 }, (_, index) => {
-    const date = new Date(today);
-    date.setDate(today.getDate() - (6 - index));
-    return {
-      key: toDateKey(date),
-      label: date.toLocaleDateString("zh-CN", { weekday: "short" }),
-      day: String(date.getDate()),
-      count: 0,
-    };
-  });
-  const counts = new Map(days.map((day) => [day.key, 0]));
-
-  for (const item of historyItems) {
-    const date = new Date(item.created_at ?? "");
-    if (Number.isNaN(date.getTime())) continue;
-    const key = toDateKey(date);
-    if (counts.has(key)) counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-  for (const task of reviewTasks) {
-    const date = new Date(task.scheduled_at ?? "");
-    if (Number.isNaN(date.getTime())) continue;
-    const key = toDateKey(date);
-    if (counts.has(key)) counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-
-  return days.map((day) => {
-    const count = counts.get(day.key) ?? 0;
-    return {
-      ...day,
-      count,
-      intensity: Math.min(3, count),
-      isToday: day.key === toDateKey(today),
-    };
-  });
 }
 
 function getPlanTimeLabel(index: number): string {
@@ -391,7 +351,7 @@ export function ProfilePage() {
         ]);
         toast({
           title: "已完成复习任务",
-          description: "学习画像与待复习列表已实时刷新。",
+          description: "课程画像与待复习列表已实时刷新。",
           variant: "success",
         });
       },
@@ -454,9 +414,13 @@ export function ProfilePage() {
     () => sortByNewestTimestamp(historyItems, (item) => item.created_at).slice(0, 5),
     [historyItems],
   );
-  const learningCalendarDays = useMemo(
-    () => buildLearningCalendarDays(historyItems, reviewTasks),
-    [historyItems, reviewTasks],
+  const learningActivityEvents = useMemo(
+    () => buildLearningActivityEvents({ exams: historyItems, masteryStates: states }),
+    [historyItems, states],
+  );
+  const latestLearningActivity = useMemo(
+    () => getLatestLearningActivity(learningActivityEvents),
+    [learningActivityEvents],
   );
 
   const dueReviewCount = courseProfile?.due_review_count ?? reviewTasks.filter(isReviewDueSoon).length;
@@ -481,15 +445,15 @@ export function ProfilePage() {
   );
 
   const focusNames = focusStates.map(getKnowledgeUnitName).slice(0, 3).join("、");
-  const latestLearningTitle = latestPapers[0]
-    ? buildExamTitle(latestPapers[0])
+  const latestLearningTitle = latestLearningActivity
+    ? latestLearningActivity.label
     : topReviewTasks[0]
       ? topReviewTasks[0].knowledge_unit_name?.trim() || `知识点 #${topReviewTasks[0].knowledge_unit_id}`
       : "暂无最近学习";
-  const latestLearningDetail = latestPapers[0]
-    ? `${formatModeLabel(latestPapers[0].exam_mode)} · ${formatDateTime(latestPapers[0].created_at)}`
+  const latestLearningDetail = latestLearningActivity
+    ? `${formatLearningActivityKind(latestLearningActivity.kind)} · ${formatLearningActivityTime(latestLearningActivity.occurredAt)}`
     : topReviewTasks[0]
-      ? `待复习 · ${formatDateTime(topReviewTasks[0].scheduled_at)}`
+      ? `复习建议 · ${formatDateTime(topReviewTasks[0].scheduled_at)}`
       : "完成一次练习后会自动沉淀到画像。";
   const smartRecommendationTitle = topReviewTasks[0]
     ? `先复习：${topReviewTasks[0].knowledge_unit_name?.trim() || `知识点 #${topReviewTasks[0].knowledge_unit_id}`}`
@@ -607,7 +571,7 @@ export function ProfilePage() {
     return (
       <div className={cn(pageShellClass, "pt-8")}>
         <div className="mx-auto max-w-5xl rounded-lg border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
-          缺少课程标识，暂时无法加载学习画像。
+          缺少课程标识，暂时无法加载课程画像。
         </div>
       </div>
     );
@@ -620,7 +584,7 @@ export function ProfilePage() {
       <div className={`${COURSE_PAGE_CONTENT_CLASS} gap-5`}>
 
         {/* Breadcrumb pill title */}
-        <CoursePagePillTitle icon={BarChart3} label="学习画像" href={buildCoursePath(courseId, "nav")} />
+        <CoursePagePillTitle icon={BarChart3} label="课程画像" href={buildCoursePath(courseId, "nav")} />
 
         <CoursePageHeader
           title={courseName ?? "当前课程"}
@@ -651,7 +615,7 @@ export function ProfilePage() {
 
         {(masteryQuery.error || reviewsQuery.error) && (
           <div className="rounded-xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
-            {getApiErrorMessage(masteryQuery.error ?? reviewsQuery.error, "学习画像数据加载失败，请重试。")}
+            {getApiErrorMessage(masteryQuery.error ?? reviewsQuery.error, "课程画像数据加载失败，请重试。")}
           </div>
         )}
 
@@ -680,34 +644,7 @@ export function ProfilePage() {
               ))}
             </section>
 
-            <section className="grid gap-4 lg:grid-cols-4">
-              <div className="rounded-2xl border border-slate-200/60 bg-white p-4 shadow-sm dark:border-slate-800/60 dark:bg-[#0a0d16]/70">
-                <div className="mb-3 flex items-center justify-between">
-                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">学习日历</p>
-                  <CalendarClock className="h-4 w-4 text-slate-400" />
-                </div>
-                <div className="grid grid-cols-7 gap-1.5">
-                  {learningCalendarDays.map((day) => (
-                    <div key={day.key} className="flex flex-col items-center gap-1">
-                      <span className="text-[10px] text-slate-400 dark:text-slate-500">{day.label}</span>
-                      <span
-                        className={cn(
-                          "flex h-8 w-8 items-center justify-center rounded-lg text-xs font-semibold transition",
-                          day.intensity === 0 && "bg-slate-50 text-slate-400 dark:bg-slate-900 dark:text-slate-600",
-                          day.intensity === 1 && "bg-indigo-50 text-indigo-500 dark:bg-indigo-500/10 dark:text-indigo-300",
-                          day.intensity === 2 && "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-200",
-                          day.intensity >= 3 && "bg-indigo-600 text-white dark:bg-indigo-500",
-                          day.isToday && "ring-2 ring-indigo-200 dark:ring-indigo-500/30",
-                        )}
-                        title={`${day.key} · ${day.count} 条学习记录`}
-                      >
-                        {day.day}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
+            <section className="grid gap-4 lg:grid-cols-3">
               <div className="rounded-2xl border border-slate-200/60 bg-white p-4 shadow-sm dark:border-slate-800/60 dark:bg-[#0a0d16]/70">
                 <div className="mb-3 flex items-center justify-between">
                   <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">进度总览</p>

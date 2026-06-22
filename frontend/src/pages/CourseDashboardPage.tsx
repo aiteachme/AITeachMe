@@ -367,7 +367,7 @@ function MiniStatsWidget({
           <Lock className="h-6.5 w-6.5" strokeWidth={1.5} />
         </div>
         <p className="text-[13px] text-slate-400 dark:text-slate-555 max-w-[200px] leading-relaxed font-light">
-          需先完成测验，以生成当前学科的学习画像。
+          需先完成测验，以生成当前学科的课程画像。
         </p>
       </div>
     );
@@ -847,7 +847,7 @@ export function CourseDashboardPage() {
                     <div
                       onClick={(e) => { e.stopPropagation(); navigate(buildCoursePath(courseId, "profile")); }}
                       className="relative w-8 h-8 rounded-full bg-slate-50 dark:bg-[#0b0f19] flex items-center justify-center pointer-events-auto cursor-pointer transition-all duration-300"
-                      title="进入 学习画像"
+                      title="进入课程画像"
                     >
                       <div className="absolute inset-[-4px] rounded-full border-[1.5px] border-teal-400/40 animate-ping opacity-50 duration-1000" />
                       <div className="absolute inset-0 rounded-full border-[2px] border-teal-500/30 group-hover/arrow-2:border-teal-500/80 transition-colors duration-300" />
@@ -860,7 +860,7 @@ export function CourseDashboardPage() {
                     <div
                       onClick={(e) => { e.stopPropagation(); navigate(buildCoursePath(courseId, "profile")); }}
                       className="relative w-7 h-7 rounded-full bg-slate-50 dark:bg-[#0b0f19] flex items-center justify-center pointer-events-auto cursor-pointer transition-all duration-300"
-                      title="进入 学习画像"
+                      title="进入课程画像"
                     >
                       <div className="absolute inset-[-4px] rounded-full border-[1.5px] border-teal-400/40 animate-ping opacity-50 duration-1000" />
                       <div className="absolute inset-0 rounded-full border-[2px] border-teal-500/30 group-hover/arrow-2-v:border-teal-500/80 transition-colors duration-300" />
@@ -916,10 +916,10 @@ export function CourseDashboardPage() {
             }
           />
 
-          {/* Card 3: 学习画像 */}
+          {/* Card 3: 课程画像 */}
           <NavTile
             icon={BarChart3}
-            title="学习画像"
+            title="课程画像"
             description="基于测验 data、复习进度实时生成的深度诊断报告与今日学习计划。"
             theme="teal"
             disabled={!isBuilt || isDocGenerating}
@@ -992,7 +992,7 @@ export function CourseDashboardPage() {
                   画像自适应反馈闭环已激活
                 </h4>
                 <p className="text-[12px] text-slate-500 dark:text-slate-450 font-light mt-0.5 leading-relaxed">
-                  系统已根据学习画像中的诊断结果，自动调整知识库中的讲义重点，并为下一次考试智能倾斜出题。
+                  系统已根据课程画像中的诊断结果，自动调整知识库中的讲义重点，并为下一次考试智能倾斜出题。
                 </p>
               </div>
             </div>

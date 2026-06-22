@@ -59,6 +59,9 @@ const QuestionTypesPage = lazy(() =>
   import("./pages/ExamsPage").then((module) => ({ default: module.QuestionTypesPage })),
 );
 const ProfilePage = lazy(() => import("./pages/ProfilePage").then((module) => ({ default: module.ProfilePage })));
+const UserProfilePage = lazy(() =>
+  import("./pages/UserProfilePage").then((module) => ({ default: module.UserProfilePage })),
+);
 const KnowledgeDocsPage = lazy(() =>
   import("./pages/KnowledgeDocsPage").then((module) => ({ default: module.KnowledgeDocsPage })),
 );
@@ -224,6 +227,7 @@ function App() {
                     <Route path="assistant" element={withRouteFallback(<GlobalAssistantPage />)} />
                     <Route path="library" element={withRouteFallback(<LibraryPage />)} />
                     <Route path="library/:fileId" element={withRouteFallback(<LibraryFilePage />)} />
+                    <Route path="profile" element={withRouteFallback(<UserProfilePage />)} />
                     <Route path="courses/:courseId" element={<CourseEntryRedirect />} />
                     {(Object.entries(COURSE_PAGE_ELEMENTS) as Array<[CourseRouteId, ReactElement]>).map(
                       ([routeId, element]) => (

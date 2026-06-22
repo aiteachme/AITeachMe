@@ -1,5 +1,7 @@
 import { MarkdownViewer } from "../ui/MarkdownViewer";
 
+const DUPLICATE_ORDERED_LIST_MARKER_RE = /^(\s{0,3}(?:>\s*)*)\d+[\.)\u3001\uff09]\s+(?=\d+[\.)\u3001\uff09]\s+)/;
+
 export const EXAM_QUESTION_TEXT_CLASS =
   "break-words font-serif text-base font-semibold leading-8 text-slate-950 dark:text-slate-100 sm:text-lg [&_p]:mb-0 [&_p]:text-base [&_p]:leading-8 sm:[&_p]:text-lg sm:[&_p]:leading-8 [&_.katex-display]:my-4 [&_.katex]:text-inherit";
 
@@ -18,6 +20,24 @@ export const EXAM_TEXTAREA_TEXT_CLASS =
 export const EXAM_CANVAS_TEXT_CLASS =
   "text-[14px] leading-6 [&_p]:mb-0 [&_p]:text-[14px] [&_p]:leading-6 [&_.katex-display]:my-1 [&_.katex]:font-normal";
 
+export function normalizeExamMarkdownContent(content: string): string {
+  let inCodeFence = false;
+  return content
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((line) => {
+      if (line.trimStart().startsWith("```")) {
+        inCodeFence = !inCodeFence;
+        return line;
+      }
+      if (inCodeFence) return line;
+      return line.replace(DUPLICATE_ORDERED_LIST_MARKER_RE, "$1");
+    })
+    .join("\n")
+    .trim();
+}
+
 export function ExamMarkdown({
   content,
   className,
@@ -27,7 +47,7 @@ export function ExamMarkdown({
 }) {
   return (
     <div className={className} style={{ overflowWrap: "anywhere" }}>
-      <MarkdownViewer content={content} variant="default" />
+      <MarkdownViewer content={normalizeExamMarkdownContent(content)} variant="default" />
     </div>
   );
 }
