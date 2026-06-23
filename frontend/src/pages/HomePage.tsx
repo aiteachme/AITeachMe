@@ -24,6 +24,7 @@ import {
   Paperclip,
   RefreshCw,
   Search,
+  Sparkles,
   X,
   FileUp,
   Package,
@@ -1156,39 +1157,30 @@ export function HomePage() {
           </div>
 
           <div className="mt-3 w-full px-1">
-            <div className="mb-2 flex items-center gap-3 text-[11px] font-medium text-zinc-400 dark:text-slate-500">
-              <span className="h-px flex-1 bg-gradient-to-r from-transparent via-zinc-200 to-zinc-200/60 dark:via-slate-800 dark:to-slate-800/60" />
-              <span>{hasEntryFiles ? "基于资料套用" : "可直接套用"}</span>
-              <span className="h-px flex-1 bg-gradient-to-l from-transparent via-zinc-200 to-zinc-200/60 dark:via-slate-800 dark:to-slate-800/60" />
+            <div className="mb-2 flex items-center justify-center gap-2 text-[11px] font-medium text-zinc-400 dark:text-slate-500">
+              <Sparkles className="h-3.5 w-3.5 text-indigo-400" />
+              <span>{hasEntryFiles ? "资料提示词示例" : "提示词示例"}</span>
             </div>
-            <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="flex gap-2 overflow-x-auto pb-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {activePromptStarters.map((starter, index) => {
-                const StarterIcon = starter.icon;
                 return (
                   <button
                     key={starter.id}
                     type="button"
                     onClick={() => handlePromptStarterClick(starter.prompt)}
                     disabled={isWorking}
-                    aria-label={`套用${starter.label}提示模板`}
+                    aria-label={`套用${starter.label}提示词示例`}
                     title={starter.prompt}
-                    className="group flex min-w-[184px] flex-1 items-start gap-2 rounded-lg border border-slate-200/70 bg-white/72 px-3 py-2 text-left shadow-[0_8px_22px_-18px_rgba(15,23,42,0.38)] transition hover:-translate-y-0.5 hover:border-indigo-200 hover:bg-white hover:shadow-[0_14px_30px_-22px_rgba(79,70,229,0.42)] focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/15 disabled:cursor-not-allowed disabled:opacity-55 dark:border-slate-800 dark:bg-slate-950/52 dark:hover:border-indigo-500/30 dark:hover:bg-slate-950"
+                    className="group relative flex min-w-[224px] flex-1 items-stretch gap-2 rounded-2xl border border-slate-200/70 bg-white/60 px-3.5 py-2.5 text-left shadow-[0_14px_32px_-30px_rgba(15,23,42,0.55)] backdrop-blur transition hover:-translate-y-0.5 hover:border-indigo-200 hover:bg-white hover:shadow-[0_18px_38px_-30px_rgba(79,70,229,0.42)] focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/15 disabled:cursor-not-allowed disabled:opacity-55 dark:border-slate-800 dark:bg-slate-950/45 dark:hover:border-indigo-500/30 dark:hover:bg-slate-950"
                   >
-                    <span className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-slate-100 text-slate-500 transition-colors group-hover:bg-indigo-50 group-hover:text-indigo-600 dark:bg-slate-800 dark:text-slate-400 dark:group-hover:bg-indigo-500/10 dark:group-hover:text-indigo-300">
-                      <StarterIcon className="h-3.5 w-3.5" />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-1.5">
-                        <span className="truncate text-sm font-semibold text-zinc-800 transition-colors group-hover:text-indigo-700 dark:text-slate-100 dark:group-hover:text-indigo-200">
-                          {starter.label}
-                        </span>
-                        <span className="font-mono text-[10px] font-semibold text-zinc-300 tabular-nums dark:text-slate-600">
-                          {String(index + 1).padStart(2, "0")}
-                        </span>
-                      </span>
-                      <span className="mt-0.5 line-clamp-1 text-[12px] leading-5 text-zinc-500 transition-colors group-hover:text-zinc-700 dark:text-slate-400 dark:group-hover:text-slate-200">
+                    <span className="mt-1 h-auto w-px shrink-0 rounded-full bg-gradient-to-b from-indigo-400/70 via-sky-300/70 to-transparent transition-opacity group-hover:opacity-100 dark:from-indigo-300/60 dark:via-cyan-300/40" />
+                    <span className="min-w-0 flex-1 py-0.5">
+                      <span className="line-clamp-2 text-[12.5px] font-medium leading-5 text-slate-600 transition-colors group-hover:text-slate-900 dark:text-slate-300 dark:group-hover:text-slate-100">
                         {starter.prompt}
                       </span>
+                    </span>
+                    <span className="mt-0.5 font-mono text-[10px] font-semibold text-slate-300 tabular-nums transition-colors group-hover:text-indigo-400 dark:text-slate-600 dark:group-hover:text-indigo-300">
+                      {String(index + 1).padStart(2, "0")}
                     </span>
                   </button>
                 );
@@ -1233,7 +1225,7 @@ export function HomePage() {
             <div className="flex-1 h-[1px] bg-zinc-200 group-hover:bg-zinc-300 transition-colors dark:bg-slate-800 dark:group-hover:bg-slate-700" />
             <span className="flex shrink-0 select-none items-center gap-2 rounded-full border border-indigo-100 bg-white px-3 py-1.5 text-[13px] font-semibold text-slate-700 shadow-sm transition-colors group-hover:border-indigo-200 group-hover:text-indigo-700 dark:border-indigo-500/20 dark:bg-slate-950 dark:text-slate-300 dark:group-hover:text-indigo-300">
               <Package className="h-4 w-4 text-indigo-500" />
-              精选演示课程
+              精选演示课程包
               <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[12px] text-indigo-600 dark:bg-indigo-400/10 dark:text-indigo-300">{courses.length}</span>
               <motion.div
                 animate={{ rotate: recentOpen ? 180 : 0 }}
