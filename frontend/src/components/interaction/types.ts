@@ -1,4 +1,4 @@
-import type { ChatSelectionContext } from "../../api/generated/model";
+import type { ChatPageContext, ChatSelectionContext } from "../../api/generated/model";
 
 export type AiInteractionDisplayMode = "sidebar" | "fullscreen";
 export type AiConversationScene =
@@ -69,6 +69,7 @@ export interface OpenAiInteractionOptions {
   anchorId?: string | null;
   selectedText?: string | null;
   selectionContext?: ChatSelectionContext | null;
+  pageContext?: ChatPageContext | null;
   attachedFileIds?: string[];
   clientThreadId?: string | null;
   newSession?: boolean;
@@ -86,6 +87,7 @@ export interface AiInteractionOpenRequest {
   anchorId?: string | null;
   selectedText?: string | null;
   selectionContext?: OpenAiInteractionOptions["selectionContext"];
+  pageContext?: OpenAiInteractionOptions["pageContext"];
   attachedFileIds?: string[];
   clientThreadId?: string | null;
   newSession?: boolean;

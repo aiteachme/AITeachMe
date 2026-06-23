@@ -44,6 +44,9 @@ _TOOL_DISPLAY_NAMES = {
     "recall_info": "回忆用户信息",
     "remember_info": "记住用户信息",
     "search_kb": "检索课程知识库",
+    "read_course_document": "查看知识文档",
+    "read_course_profile": "查看课程画像",
+    "read_course_exams": "查看测验记录",
     "create_course_from_home_intake": "创建学科",
 }
 
@@ -122,6 +125,11 @@ def _answering_status_detail(tool_names: list[str]) -> str:
         return "正在组织回答..."
     if "web_search" in tool_names:
         return "正在判断是否需要联网检索..."
+    if any(
+        name in tool_names
+        for name in ("read_course_document", "read_course_profile", "read_course_exams")
+    ):
+        return "正在判断是否需要查看课程上下文..."
     if "search_kb" in tool_names:
         return "正在检索课程资料..."
     return "正在准备可用工具..."

@@ -48,6 +48,7 @@ def build_prompt_node(*, context: WorkflowContext):
             source=state.get("source"),
             selected_context=state.get("selected_context"),
             selection_context=state.get("selection_context"),
+            page_context=state.get("page_context"),
             source_chunk_id=state.get("source_chunk_id"),
             agent_tool_catalog=agent_tool_catalog,
         )

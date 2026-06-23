@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TypedDict
 
 from app.shared.infra.strategies import StrategyMode
-from app.schemas.chats import ChatContextItem, ChatSelectionContext
+from app.schemas.chats import ChatContextItem, ChatPageContext, ChatSelectionContext
 from app.schemas.llm import ChatMessage
 from app.workflows.interact.chat.lib.execution import InteractExecutionMode
 from app.workflows.interact.chat.lib.types import (
@@ -31,6 +31,7 @@ class InteractWorkflowState(TypedDict, total=False):
     selected_text: str | None
     selected_context: str | None
     selection_context: ChatSelectionContext | None
+    page_context: ChatPageContext | None
     source_chunk_id: int | None
     attached_file_ids: list[str]
     recent_messages: list[RecentMessage]

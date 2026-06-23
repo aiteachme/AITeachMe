@@ -21,10 +21,11 @@ from app.shared.infra.agent_loop import (
 )
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.settings import set_system_settings_override
+from app.shared.infra.strategies import StrategyMode
 from app.shared.infra.tools.definition import ToolDefinition
 from app.shared.infra.tools.registry import ToolRegistry
 from app.workflows.common.model_policy import ProviderNativeToolPolicy
-from app.workflows.interact.chat.lib.execution import InteractExecutionMode
+from app.workflows.interact.chat.lib.execution import InteractExecutionMode, select_execution_mode
 from app.workflows.interact.chat.lib import model_policy as interact_model_policy
 from app.workflows.interact.chat.lib.tooling import (
     build_interact_provider_native_tools,
@@ -45,7 +46,16 @@ def test_agent_tool_registry_loads_scoped_tools(monkeypatch) -> None:
     register_agent_tools()
 
     names = {definition.name for definition in registry.list_all()}
-    assert {"search_kb", "web_search", "recall_info", "remember_info", "ask_user_options"}.issubset(names)
+    assert {
+        "search_kb",
+        "read_course_document",
+        "read_course_profile",
+        "read_course_exams",
+        "web_search",
+        "recall_info",
+        "remember_info",
+        "ask_user_options",
+    }.issubset(names)
 
 
 def test_hidden_args_are_not_exposed_to_model_schema(monkeypatch) -> None:
@@ -62,14 +72,36 @@ def test_hidden_args_are_not_exposed_to_model_schema(monkeypatch) -> None:
     assert "course_id" not in parameters["properties"]
     assert "course_id" not in parameters["required"]
 
+    for tool_name in ("read_course_document", "read_course_profile", "read_course_exams"):
+        definition = registry.get(tool_name)
+        assert definition is not None
+        parameters = definition.to_openai_format()["function"]["parameters"]
+        for hidden_arg in definition.hidden_args:
+            assert hidden_arg not in parameters["properties"]
+            assert hidden_arg not in parameters["required"]
+
 
 def test_agent_tool_policy_scopes_tools_by_context() -> None:
     assert resolve_agent_tool_names(
         AgentToolPolicyRequest(course_id="course_123")
-    ) == ["search_kb", "ask_user_options"]
+    ) == [
+        "search_kb",
+        "read_course_document",
+        "read_course_profile",
+        "read_course_exams",
+        "ask_user_options",
+    ]
     assert resolve_agent_tool_names(
         AgentToolPolicyRequest(scene="web_research", course_id="course_123")
-    ) == ["web_search", "recall_info", "search_kb", "ask_user_options"]
+    ) == [
+        "web_search",
+        "recall_info",
+        "search_kb",
+        "read_course_document",
+        "read_course_profile",
+        "read_course_exams",
+        "ask_user_options",
+    ]
     assert resolve_agent_tool_names(
         AgentToolPolicyRequest(source="home_intake", course_id="global")
     ) == ["web_search", "recall_info", "ask_user_options"]
@@ -110,6 +142,26 @@ def test_interact_tool_plan_forces_ask_user_options_when_requested() -> None:
 
     assert home_plan.tool_names == ["ask_user_options"]
     assert home_plan.forced_tool_name == "ask_user_options"
+
+
+def test_page_context_uses_agent_mode_without_overriding_selection() -> None:
+    assert select_execution_mode(
+        question="介绍这个文档",
+        selected_context=None,
+        strategy_mode=StrategyMode.EXPLAIN,
+        retrieval_results=[],
+        scene="course_chat",
+        page_context=object(),
+    ) == InteractExecutionMode.PLAN_EXECUTE
+
+    assert select_execution_mode(
+        question="解释这段",
+        selected_context="用户选中的文字",
+        strategy_mode=StrategyMode.EXPLAIN,
+        retrieval_results=[],
+        scene="document_selection",
+        page_context=object(),
+    ) == InteractExecutionMode.SINGLE_PASS
 
 
 def test_interact_native_tools_request_web_search_for_global_assistant() -> None:

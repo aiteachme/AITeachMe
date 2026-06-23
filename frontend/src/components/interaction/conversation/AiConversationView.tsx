@@ -80,6 +80,7 @@ interface PendingAutoSendRequest {
   model: string | null;
   scene: AiConversationScene | null;
   source: string | null;
+  pageContext: AiInteractionOpenRequest["pageContext"];
   attachedFileIds: string[];
 }
 
@@ -876,6 +877,7 @@ export const AiConversationView = memo(function AiConversationView({
       anchorId: context?.anchorId ?? request?.anchorId ?? null,
       selectedText: context?.selectedText ?? request?.selectedText ?? null,
       selectionContext: context?.selectionContext ?? request?.selectionContext ?? null,
+      pageContext: request?.pageContext ?? null,
       attachedFileIds: draftAttachedFileIds,
       clientThreadId: context?.clientThreadId ?? request?.clientThreadId ?? null,
       newSession: !nextSessionId,
@@ -893,6 +895,7 @@ export const AiConversationView = memo(function AiConversationView({
     request?.clientThreadId,
     request?.selectedText,
     request?.selectionContext,
+    request?.pageContext,
     request?.sessionId,
     request?.showSelectionContext,
     request?.scene,
@@ -921,6 +924,7 @@ export const AiConversationView = memo(function AiConversationView({
       anchorId: context?.anchorId ?? request?.anchorId ?? null,
       selectedText: context?.selectedText ?? request?.selectedText ?? null,
       selectionContext: context?.selectionContext ?? request?.selectionContext ?? null,
+      pageContext: request?.pageContext ?? null,
       attachedFileIds: draftAttachedFileIds,
       clientThreadId: context?.clientThreadId ?? request?.clientThreadId ?? null,
       newSession: !nextSessionId,
@@ -940,6 +944,7 @@ export const AiConversationView = memo(function AiConversationView({
     request?.clientThreadId,
     request?.selectedText,
     request?.selectionContext,
+    request?.pageContext,
     request?.sessionId,
     request?.showSelectionContext,
     request?.scene,
@@ -1258,6 +1263,7 @@ export const AiConversationView = memo(function AiConversationView({
         model: request.model?.trim() || null,
         scene: normalizeScene(request.scene) ?? sceneFromSource(request.source, false),
         source: request.source?.trim() || null,
+        pageContext: request.pageContext ?? null,
         attachedFileIds: Array.from(new Set((request.attachedFileIds ?? []).map((item) => item.trim()).filter(Boolean))),
       });
     } else {
@@ -1490,6 +1496,7 @@ export const AiConversationView = memo(function AiConversationView({
         requestedSource: autoRequest.source,
       }),
       source: autoRequest.source ?? (scope?.type === "library" ? getLibrarySelectionSource(scope.fileId) : undefined),
+      page_context: autoRequest.pageContext ?? undefined,
       attached_file_ids: autoRequest.attachedFileIds,
     });
     if (!result.accepted) {
@@ -1565,6 +1572,7 @@ export const AiConversationView = memo(function AiConversationView({
         selected_text: selectionContext?.selectedText,
         selected_context: selectionContext?.selectedText,
         selection_context: selectionContext?.selectionContext,
+        page_context: request?.pageContext ?? undefined,
         attached_file_ids: hasAttachedFiles ? attachedFileIds : undefined,
       },
       {

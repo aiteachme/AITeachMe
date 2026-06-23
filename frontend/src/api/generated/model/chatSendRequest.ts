@@ -4,6 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
+import type { ChatPageContext } from './chatPageContext.ts';
 import type { ChatSelectionContext } from './chatSelectionContext.ts';
 
 /**
@@ -28,6 +29,8 @@ export interface ChatSendRequest {
   selected_context?: string | null;
   /** Structured doc-selection context for the prompt. */
   selection_context?: ChatSelectionContext | null;
+  /** 打开 AI 时所在页面的结构化上下文。 */
+  page_context?: ChatPageContext | null;
   /** Optional source chunk ID for the highlighted context. */
   source_chunk_id?: number | null;
   /** Optional user-library file IDs attached to this chat turn. */

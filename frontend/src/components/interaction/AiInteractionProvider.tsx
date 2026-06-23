@@ -154,6 +154,7 @@ export function AiInteractionProvider({ activeScope, children }: AiInteractionPr
       anchorId: options?.anchorId,
       selectedText: options?.selectedText,
       selectionContext: options?.selectionContext,
+      pageContext: options?.pageContext,
       attachedFileIds: options?.attachedFileIds,
       clientThreadId: options?.clientThreadId,
       newSession: options?.newSession,

@@ -102,6 +102,8 @@ export * from './chatContextItem.ts';
 export * from './chatListRequest.ts';
 export * from './chatMessageItem.ts';
 export * from './chatMessageItemClientActions.ts';
+export * from './chatPageContext.ts';
+export * from './chatPageContextMetadata.ts';
 export * from './chatRoleValue.ts';
 export * from './chatSelectionContext.ts';
 export * from './chatSendRequest.ts';

@@ -89,6 +89,7 @@ async def _send_chat_response(
             selected_text=body.selected_text,
             selected_context=body.selected_context,
             selection_context=body.selection_context,
+            page_context=body.page_context,
             source_chunk_id=body.source_chunk_id,
             attached_file_ids=body.attached_file_ids,
         ),

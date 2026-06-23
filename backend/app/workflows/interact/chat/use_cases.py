@@ -31,6 +31,7 @@ from app.schemas.chats import (
     ChatClearData,
     ChatContextItem,
     ChatMessageItem,
+    ChatPageContext,
     ChatSelectionContext,
     ChatSessionDeleteData,
     ChatSessionItem,
@@ -285,6 +286,7 @@ async def chat_stream(
     selected_text: str | None = None,
     selected_context: str | None = None,
     selection_context: ChatSelectionContext | None = None,
+    page_context: ChatPageContext | None = None,
     source_chunk_id: int | None = None,
     attached_file_ids: list[str] | None = None,
 ) -> AsyncGenerator[str, None]:
@@ -302,6 +304,7 @@ async def chat_stream(
         selected_text=selected_text,
         selected_context=selected_context,
         selection_context=selection_context,
+        page_context=page_context,
         source_chunk_id=source_chunk_id,
         attached_file_ids=attached_file_ids,
     ):

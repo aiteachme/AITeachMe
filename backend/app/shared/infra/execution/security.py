@@ -89,6 +89,9 @@ _DEFAULT_RULES: list[SecurityRule] = [
                  requires_confirmation=True),
     SecurityRule("web_search", SecurityLevel.LOW),
     SecurityRule("search_kb", SecurityLevel.LOW),
+    SecurityRule("read_course_document", SecurityLevel.LOW),
+    SecurityRule("read_course_profile", SecurityLevel.LOW),
+    SecurityRule("read_course_exams", SecurityLevel.LOW),
     SecurityRule("remember_info", SecurityLevel.MEDIUM),
     SecurityRule("recall_info", SecurityLevel.LOW),
 ]

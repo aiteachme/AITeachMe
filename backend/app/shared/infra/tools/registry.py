@@ -73,10 +73,11 @@ def _tool_trace_metadata(
     tool_name: str,
     arguments: Mapping[str, Any],
     tool_definition: ToolDefinition,
+    langsmith_extra: Mapping[str, Any] | None = None,
     **_: Any,
 ) -> dict[str, Any]:
     del arguments
-    return {
+    metadata = {
         "tool_name": tool_name,
         "tool_source": tool_definition.source,
         "tool_tags": list(tool_definition.tags),
@@ -89,6 +90,11 @@ def _tool_trace_metadata(
         "tool_timeout_s": tool_definition.timeout_s,
         "tool_hidden_args": list(tool_definition.hidden_args),
     }
+    if isinstance(langsmith_extra, Mapping):
+        extra_metadata = langsmith_extra.get("metadata")
+        if isinstance(extra_metadata, Mapping):
+            metadata.update({str(key): value for key, value in extra_metadata.items()})
+    return metadata
 
 
 def _tool_trace_tags(

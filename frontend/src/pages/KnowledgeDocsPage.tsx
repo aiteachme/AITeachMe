@@ -1686,6 +1686,29 @@ function buildSelectionContextPayload(
   };
 }
 
+function buildKnowledgeDocPageContext(
+  contentRoot: HTMLElement | null,
+  anchorId: string,
+  title: string,
+  markdown: string
+) {
+  const heading = anchorId && contentRoot ? findHeadingById(contentRoot, anchorId) : null;
+  const headingPath = anchorId && contentRoot
+    ? findHeadingPath(contentRoot, anchorId).map((item) => item.textContent?.trim() ?? "").filter(Boolean)
+    : [];
+  const sectionText = heading
+    ? collectNodeText(collectSectionNodes(heading))
+    : normalizeSelectionContextText(markdown);
+  return {
+    kind: "knowledge_doc",
+    title: title || "知识文档",
+    entity_id: "merged",
+    anchor_id: anchorId || undefined,
+    heading_path: headingPath,
+    excerpt: clipContextText(sectionText, 900),
+  };
+}
+
 function moveRecordKey<T>(
   record: Record<string, T>,
   fromKey: string,
@@ -2847,6 +2870,16 @@ export function KnowledgeDocsPage() {
   const activeTocItem = useMemo(
     () => toc.find((item) => item.id === visibleActiveHeading) ?? null,
     [toc, visibleActiveHeading]
+  );
+  const buildCurrentDocPageContext = useCallback(
+    (anchorId: string = activeTocItem?.id ?? visibleActiveHeading) =>
+      buildKnowledgeDocPageContext(
+        contentAreaRef.current,
+        anchorId,
+        toc.find((item) => item.id === anchorId)?.text ?? activeTocItem?.text ?? "知识文档",
+        renderedMarkdown
+      ),
+    [activeTocItem?.id, activeTocItem?.text, renderedMarkdown, toc, visibleActiveHeading]
   );
 
   const alignActiveTocItem = useCallback((behavior: ScrollBehavior = "smooth") => {
@@ -4573,6 +4606,7 @@ export function KnowledgeDocsPage() {
       anchorId: toolbar.anchorId,
       selectedText: toolbar.selectedText,
       selectionContext,
+      pageContext: buildCurrentDocPageContext(toolbar.anchorId),
       clientThreadId: threadId,
       newSession: true,
       showSelectionContext: true,
@@ -4581,7 +4615,16 @@ export function KnowledgeDocsPage() {
     setFloatingComment(null);
     setFloatingInput("");
     clearSelectionHighlight({ keepStoredRange: true });
-  }, [addSelectionHighlight, captureSelectionSegments, clearSelectionHighlight, createLocalThreadId, floatingToolbar, openAiInteraction, courseId]);
+  }, [
+    addSelectionHighlight,
+    buildCurrentDocPageContext,
+    captureSelectionSegments,
+    clearSelectionHighlight,
+    createLocalThreadId,
+    floatingToolbar,
+    openAiInteraction,
+    courseId,
+  ]);
 
   const openInteractiveComposer = useCallback(() => {
     if (!floatingToolbar || !courseId) return;
@@ -5979,11 +6022,16 @@ export function KnowledgeDocsPage() {
           anchorId,
           selectedText,
           selectionContext: buildSelectionContextPayload(contentAreaRef.current, anchorId, selectedText),
+          pageContext: buildCurrentDocPageContext(anchorId),
           showSelectionContext: false,
         });
         return;
       }
-      openAiInteraction({ scope: { type: "course", courseId }, sessionId: targetSessionId });
+      openAiInteraction({
+        scope: { type: "course", courseId },
+        sessionId: targetSessionId,
+        pageContext: buildCurrentDocPageContext(anchorId),
+      });
       return;
     }
     if (targetThreadId && anchorId && selectedText) {
@@ -5996,14 +6044,15 @@ export function KnowledgeDocsPage() {
         anchorId,
         selectedText,
         selectionContext: buildSelectionContextPayload(contentAreaRef.current, anchorId, selectedText),
+        pageContext: buildCurrentDocPageContext(anchorId),
         clientThreadId: targetThreadId,
         newSession: true,
         showSelectionContext: true,
       });
       return;
     }
-    openAiInteraction({ scope: { type: "course", courseId } });
-  }, [activeThreadId, commentThreadById, commentThreadIds, openAiInteraction, selectionHighlights, courseId, threadSessionIds]);
+    openAiInteraction({ scope: { type: "course", courseId }, pageContext: buildCurrentDocPageContext() });
+  }, [activeThreadId, buildCurrentDocPageContext, commentThreadById, commentThreadIds, openAiInteraction, selectionHighlights, courseId, threadSessionIds]);
 
   const openSelectionHighlightThread = useCallback((threadId: string) => {
     if (isStandaloneHighlightThreadId(threadId)) {

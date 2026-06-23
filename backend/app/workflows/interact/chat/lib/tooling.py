@@ -27,7 +27,12 @@ from app.workflows.interact.chat.lib.model_policy import (
 )
 from app.workflows.interact.chat.lib.types import RetrievedContext
 
-DEFAULT_INTERACT_TOOLS = ("search_kb",)
+DEFAULT_INTERACT_TOOLS = (
+    "search_kb",
+    "read_course_document",
+    "read_course_profile",
+    "read_course_exams",
+)
 ASK_USER_OPTIONS_TOOL = "ask_user_options"
 _FORCE_ASK_USER_MARKERS = (
     "ask_user_options",
@@ -70,9 +75,7 @@ def resolve_interact_tool_plan(
 ) -> InteractToolPlan:
     """Resolve the bounded tool plan for one turn.
 
-    Today only ``search_kb`` is exposed, but the return shape is intentionally
-    list-based so future tools can be added by policy instead of hardcoding
-    them in the stream node.
+    工具可见性只由统一 policy 决定，这里只按执行模式做开关。
     """
 
     policy_request = AgentToolPolicyRequest(

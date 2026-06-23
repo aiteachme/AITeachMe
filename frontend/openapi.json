@@ -10831,6 +10831,83 @@
         "title": "ChatMessageItem",
         "description": "One persisted chat message."
       },
+      "ChatPageContext": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "description": "当前页面类型，例如 knowledge_doc、profile、exam 或 course。"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title",
+            "description": "当前页面或对象标题。"
+          },
+          "entity_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Id",
+            "description": "当前文档、试卷或画像对象 ID。"
+          },
+          "anchor_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anchor Id",
+            "description": "当前标题或题目的定位 ID。"
+          },
+          "heading_path": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Heading Path",
+            "description": "当前页面标题路径。"
+          },
+          "excerpt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excerpt",
+            "description": "页面焦点附近的短摘录。"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata",
+            "description": "前端采集的少量标量数据。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "ChatPageContext",
+        "description": "打开 AI 时所在页面的轻量上下文。"
+      },
       "ChatRoleValue": {
         "type": "string",
         "enum": [
@@ -11053,6 +11130,17 @@
             ],
             "description": "Structured doc-selection context for the prompt."
           },
+          "page_context": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChatPageContext"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "打开 AI 时所在页面的结构化上下文。"
+          },
           "source_chunk_id": {
             "anyOf": [
               {
@@ -11082,6 +11170,17 @@
         "description": "Request body for sending one chat message.",
         "example": {
           "anchor_id": "chapter-1",
+          "page_context": {
+            "anchor_id": "chapter-1",
+            "entity_id": "12",
+            "excerpt": "当前正在阅读条件概率这一节。",
+            "heading_path": [
+              "概率基础",
+              "条件概率"
+            ],
+            "kind": "knowledge_doc",
+            "title": "条件概率"
+          },
           "question": "什么是条件概率？",
           "scene": "document_selection",
           "selected_text": "条件概率表示在 B 已经发生的前提下 A 发生的概率。",

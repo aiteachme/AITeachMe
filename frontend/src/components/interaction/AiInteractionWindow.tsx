@@ -256,6 +256,7 @@ export function AiInteractionWindow({ scope, className, suppressFloatingTrigger 
       anchorId: sidebarRequest?.anchorId,
       selectedText: sidebarRequest?.selectedText,
       selectionContext: sidebarRequest?.selectionContext,
+      pageContext: sidebarRequest?.pageContext,
       clientThreadId: sidebarRequest?.clientThreadId,
       showSelectionContext: sidebarRequest?.showSelectionContext,
     });
@@ -272,6 +273,7 @@ export function AiInteractionWindow({ scope, className, suppressFloatingTrigger 
     sidebarRequest?.clientThreadId,
     sidebarRequest?.selectedText,
     sidebarRequest?.selectionContext,
+    sidebarRequest?.pageContext,
     sidebarRequest?.sessionId,
     sidebarRequest?.showSelectionContext,
     sidebarRequest?.scene,
@@ -311,6 +313,7 @@ export function AiInteractionWindow({ scope, className, suppressFloatingTrigger 
       anchorId: options?.anchorId !== undefined ? options.anchorId : fullscreenRequest?.anchorId,
       selectedText: options?.selectedText !== undefined ? options.selectedText : fullscreenRequest?.selectedText,
       selectionContext: options?.selectionContext !== undefined ? options.selectionContext : fullscreenRequest?.selectionContext,
+      pageContext: options?.pageContext !== undefined ? options.pageContext : fullscreenRequest?.pageContext,
       clientThreadId: options?.clientThreadId !== undefined ? options.clientThreadId : fullscreenRequest?.clientThreadId,
       showSelectionContext: options?.showSelectionContext !== undefined
         ? options.showSelectionContext
@@ -324,6 +327,7 @@ export function AiInteractionWindow({ scope, className, suppressFloatingTrigger 
     fullscreenRequest?.clientThreadId,
     fullscreenRequest?.selectedText,
     fullscreenRequest?.selectionContext,
+    fullscreenRequest?.pageContext,
     fullscreenRequest?.sessionId,
     fullscreenRequest?.showSelectionContext,
     fullscreenRequest?.scene,

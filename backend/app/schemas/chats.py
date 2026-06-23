@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -42,6 +43,18 @@ class ChatSelectionContext(BaseModel):
     local_context_truncated: bool = Field(default=False, description="Whether the local before/after window was truncated.")
 
 
+class ChatPageContext(BaseModel):
+    """打开 AI 时所在页面的轻量上下文。"""
+
+    kind: str = Field(description="当前页面类型，例如 knowledge_doc、profile、exam 或 course。")
+    title: str | None = Field(default=None, description="当前页面或对象标题。")
+    entity_id: str | None = Field(default=None, description="当前文档、试卷或画像对象 ID。")
+    anchor_id: str | None = Field(default=None, description="当前标题或题目的定位 ID。")
+    heading_path: list[str] = Field(default_factory=list, description="当前页面标题路径。")
+    excerpt: str | None = Field(default=None, description="页面焦点附近的短摘录。")
+    metadata: dict[str, Any] = Field(default_factory=dict, description="前端采集的少量标量数据。")
+
+
 class ChatSendRequest(BaseModel):
     """Request body for sending one chat message."""
 
@@ -65,6 +78,14 @@ class ChatSendRequest(BaseModel):
                     "section_truncated": False,
                     "local_context_truncated": False,
                 },
+                "page_context": {
+                    "kind": "knowledge_doc",
+                    "title": "条件概率",
+                    "entity_id": "12",
+                    "anchor_id": "chapter-1",
+                    "heading_path": ["概率基础", "条件概率"],
+                    "excerpt": "当前正在阅读条件概率这一节。",
+                },
                 "source_chunk_id": 12,
             }
         }
@@ -85,6 +106,7 @@ class ChatSendRequest(BaseModel):
     selected_text: str | None = Field(default=None, description="Exact highlighted text or question preview for display and persistence.")
     selected_context: str | None = Field(default=None, description="Legacy highlighted context string.")
     selection_context: ChatSelectionContext | None = Field(default=None, description="Structured doc-selection context for the prompt.")
+    page_context: ChatPageContext | None = Field(default=None, description="打开 AI 时所在页面的结构化上下文。")
     source_chunk_id: int | None = Field(default=None, description="Optional source chunk ID for the highlighted context.")
     attached_file_ids: list[str] = Field(default_factory=list, description="Optional user-library file IDs attached to this chat turn.")
 

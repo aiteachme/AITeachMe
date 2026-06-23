@@ -53,6 +53,7 @@ def select_execution_mode(
     retrieval_results: list[RetrievedContext],
     scene: str | None = None,
     allow_course_tools: bool = True,
+    page_context: object | None = None,
 ) -> InteractExecutionMode:
     """Choose a bounded execution mode without another model call."""
 
@@ -62,6 +63,8 @@ def select_execution_mode(
         return InteractExecutionMode.PLAN_EXECUTE
     if not allow_course_tools:
         return InteractExecutionMode.PLAN_EXECUTE if has_external_research_intent(question) else InteractExecutionMode.SINGLE_PASS
+    if page_context is not None:
+        return InteractExecutionMode.PLAN_EXECUTE
 
     normalized_question = str(question or "").lower()
     retrieval_count = len(retrieval_results or [])

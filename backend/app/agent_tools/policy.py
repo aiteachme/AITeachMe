@@ -6,7 +6,12 @@ from dataclasses import dataclass, field
 
 from app.utils.course import is_global_course
 
-COURSE_LEARNING_TOOLS = ("search_kb",)
+COURSE_LEARNING_TOOLS = (
+    "search_kb",
+    "read_course_document",
+    "read_course_profile",
+    "read_course_exams",
+)
 GLOBAL_QUERY_TOOLS = ("web_search", "recall_info")
 USER_INTERACTION_TOOLS = ("ask_user_options",)
 GLOBAL_WRITE_TOOLS = ("remember_info", "create_course_from_home_intake")

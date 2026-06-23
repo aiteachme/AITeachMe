@@ -33,6 +33,7 @@ def build_select_execution_mode_node(*, context: WorkflowContext):
                 source=state.get("source"),
                 has_primary_context=has_primary_context,
             ),
+            page_context=state.get("page_context"),
         )
         workflow_logger.info(
             "interact_execution_mode_selected",

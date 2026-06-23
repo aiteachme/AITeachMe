@@ -14,7 +14,7 @@ from fastapi import Request
 from langgraph.graph import END, StateGraph
 from sqlmodel import Session
 
-from app.schemas.chats import ChatSelectionContext
+from app.schemas.chats import ChatPageContext, ChatSelectionContext
 from app.shared.infra.llm_support.model_choices import (
     normalize_runtime_model_override,
     use_runtime_model_override,
@@ -105,7 +105,7 @@ NODE_TRACE_DETAILS = {
         "reads": [],
         "writes": [],
         "emits": [],
-        "input_keys": ["question", "selected_context", "strategy_mode", "retrieval_results"],
+        "input_keys": ["question", "selected_context", "page_context", "strategy_mode", "retrieval_results"],
         "output_keys": ["execution_mode"],
     },
     NODE_BUILD_PROMPT: {
@@ -118,6 +118,7 @@ NODE_TRACE_DETAILS = {
             "course_context",
             "question",
             "selection_context",
+            "page_context",
             "retrieval_results",
             "recent_messages",
             "weak_points",
@@ -496,6 +497,7 @@ def create_interact_initial_state(
     selected_text: str | None = None,
     selected_context: str | None = None,
     selection_context: ChatSelectionContext | None = None,
+    page_context: ChatPageContext | None = None,
     source_chunk_id: int | None = None,
     attached_file_ids: list[str] | None = None,
 ) -> InteractWorkflowState:
@@ -513,6 +515,7 @@ def create_interact_initial_state(
         "selected_text": selected_text,
         "selected_context": selected_context,
         "selection_context": selection_context,
+        "page_context": page_context,
         "source_chunk_id": source_chunk_id,
         "attached_file_ids": list(attached_file_ids or []),
         "client_actions": [],
@@ -537,6 +540,7 @@ async def run_interact_workflow(
     selected_text: str | None = None,
     selected_context: str | None = None,
     selection_context: ChatSelectionContext | None = None,
+    page_context: ChatPageContext | None = None,
     source_chunk_id: int | None = None,
     attached_file_ids: list[str] | None = None,
     event_bus: InProcessEventBus | None = None,
@@ -575,6 +579,7 @@ async def run_interact_workflow(
                 selected_text=selected_text,
                 selected_context=selected_context,
                 selection_context=selection_context,
+                page_context=page_context,
                 source_chunk_id=source_chunk_id,
                 attached_file_ids=attached_file_ids,
             ),
@@ -624,6 +629,7 @@ async def stream_chat_workflow(
     selected_text: str | None = None,
     selected_context: str | None = None,
     selection_context: ChatSelectionContext | None = None,
+    page_context: ChatPageContext | None = None,
     source_chunk_id: int | None = None,
     attached_file_ids: list[str] | None = None,
     event_bus: InProcessEventBus | None = None,
@@ -645,6 +651,7 @@ async def stream_chat_workflow(
             selected_text=selected_text,
             selected_context=selected_context,
             selection_context=selection_context,
+            page_context=page_context,
             session=session,
             source_chunk_id=source_chunk_id,
             attached_file_ids=attached_file_ids,
@@ -670,6 +677,7 @@ async def _execute_interact_workflow(
     selected_text: str | None,
     selected_context: str | None,
     selection_context: ChatSelectionContext | None,
+    page_context: ChatPageContext | None,
     session: Session | None,
     source_chunk_id: int | None,
     attached_file_ids: list[str] | None,
@@ -692,6 +700,7 @@ async def _execute_interact_workflow(
             selected_text=selected_text,
             selected_context=selected_context,
             selection_context=selection_context,
+            page_context=page_context,
             source_chunk_id=source_chunk_id,
             attached_file_ids=attached_file_ids,
             event_bus=event_bus,
