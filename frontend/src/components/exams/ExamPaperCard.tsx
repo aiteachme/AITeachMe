@@ -4,7 +4,7 @@ import { AlertTriangle, Loader2, MoreVertical, Sparkles, Trash2 } from "lucide-r
 import type { ExamHistoryItem, PaperPreview, PaperPreviewRow } from "../../api/generated/model";
 import { Button } from "../ui/Button";
 import type { ExamResultDisplayMode } from "../../lib/examResultDisplayPreference";
-import { buildExamTitle, formatDateTime, parseBackendDateTime } from "./examDisplay";
+import { buildExamTitle, formatMonthDayTime, formatModeLabel, parseBackendDateTime } from "./examDisplay";
 
 type PreviewShape = PaperPreviewRow["shape"];
 type PreviewResultStatus = "ungraded" | "correct" | "incorrect";
@@ -709,13 +709,13 @@ export function ExamPaperCard({
 
         <div className="relative z-10 px-3 pt-1 text-center">
           <h3 className="mx-auto line-clamp-1 max-w-[220px] text-base font-semibold leading-snug text-slate-950 dark:text-slate-100">
-            {buildExamTitle(item)}
+            {formatModeLabel(item.exam_mode)}
           </h3>
-          {isGraded && item.submitted_at ? (
-            <p className="mt-1 truncate text-[10px] font-semibold leading-4 text-slate-400 dark:text-slate-500">
-              提交 {formatDateTime(item.submitted_at)}
-            </p>
-          ) : null}
+          <p className="mt-1 truncate text-[10px] font-semibold leading-4 text-slate-400 dark:text-slate-500">
+            {isGraded && item.submitted_at
+              ? `提交于 ${formatMonthDayTime(item.submitted_at)}`
+              : `创建于 ${formatMonthDayTime(item.created_at)}`}
+          </p>
           <div className="mx-auto mt-2 h-px w-16 bg-slate-200 dark:bg-slate-700" />
         </div>
 

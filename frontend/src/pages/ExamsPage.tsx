@@ -1137,6 +1137,20 @@ export function ExamsPage() {
     historyQuery.refetch,
   ]);
 
+  useEffect(() => {
+    if (!courseId) return;
+    const status = practicePrewarmStatusQuery.data?.status;
+    const backgroundRequested = practicePrewarmStatusQuery.data?.background_requested;
+    if (status !== "preparing" && !backgroundRequested) return;
+    void queryClient.invalidateQueries({ queryKey: historyQueryKey });
+  }, [
+    courseId,
+    historyQueryKey,
+    practicePrewarmStatusQuery.data?.background_requested,
+    practicePrewarmStatusQuery.data?.status,
+    queryClient,
+  ]);
+
   const generatingPaperIds = useMemo(
     () =>
       displayHistoryItems

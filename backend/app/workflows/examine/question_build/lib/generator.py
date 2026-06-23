@@ -428,6 +428,14 @@ class ExamQuestionDraft(BaseModel):
             "Omit this field for non-choice questions."
         ),
     )
+    option_judgements: list[bool] | None = Field(
+        default=None,
+        description=(
+            "Choice-question self-audit only: for single_choice and multiple_choice, return exactly "
+            "four booleans aligned with options, where true means that option is correct. "
+            "The true indexes must exactly match correct_indices. Omit this field for non-choice questions."
+        ),
+    )
     explanation: str = Field(min_length=8, max_length=2000)
     knowledge_unit_refs: list[ExamQuestionUnitRef] = Field(default_factory=list)
 
@@ -496,6 +504,40 @@ class ExamQuestionDraft(BaseModel):
             if index not in indices:
                 indices.append(index)
         return indices or None
+
+    @field_validator("option_judgements", mode="before")
+    @classmethod
+    def _normalize_option_judgements(cls, value: object) -> list[bool] | None:
+        if value is None or value == "":
+            return None
+        if isinstance(value, dict):
+            ordered_items = sorted(
+                value.items(),
+                key=lambda item: "abcd".find(str(item[0]).strip().casefold()[:1])
+                if str(item[0]).strip().casefold()[:1] in "abcd"
+                else 99,
+            )
+            raw_items = [item[1] for item in ordered_items]
+        elif isinstance(value, list):
+            raw_items = value
+        else:
+            raise ValueError("option_judgements must be a list of booleans")
+
+        judgements: list[bool] = []
+        for item in raw_items:
+            if isinstance(item, bool):
+                judgements.append(item)
+                continue
+            if isinstance(item, int) and item in {0, 1}:
+                judgements.append(bool(item))
+                continue
+            if isinstance(item, str):
+                normalized = item.strip().casefold()
+                if normalized in {"true", "false"}:
+                    judgements.append(normalized == "true")
+                    continue
+            raise ValueError("option_judgements items must be booleans")
+        return judgements or None
 
     @field_validator("options", mode="before")
     @classmethod
@@ -575,6 +617,7 @@ class ExamQuestionDraft(BaseModel):
                 raise ValueError("single_choice correct_indices must contain exactly one index")
             if any(index < 0 or index >= len(options) for index in indices):
                 raise ValueError("single_choice correct_indices must be in range 0..3")
+            self._validate_choice_option_judgements(indices, expected_count=len(options))
             self.correct_indices = indices
             self.correct_answer = _choice_label(indices[0])
             return self
@@ -590,13 +633,17 @@ class ExamQuestionDraft(BaseModel):
                 raise ValueError("multiple_choice correct_indices must contain at least one index")
             if any(index < 0 or index >= len(options) for index in indices):
                 raise ValueError("multiple_choice correct_indices must be in range 0..3")
-            self.correct_indices = sorted(indices)
+            sorted_indices = sorted(indices)
+            self._validate_choice_option_judgements(sorted_indices, expected_count=len(options))
+            self.correct_indices = sorted_indices
             self.correct_answer = ",".join(_choice_label(index) for index in self.correct_indices)
             return self
 
         if self.question_type == "true_false":
             if self.correct_indices:
                 raise ValueError("non-choice questions must not provide correct_indices")
+            if self.option_judgements is not None:
+                raise ValueError("non-choice questions must not provide option_judgements")
             options = self.options or []
             if options and {item.casefold() for item in options} != {"true", "false"}:
                 raise ValueError("true_false options must be omitted or exactly ['True', 'False']")
@@ -606,6 +653,9 @@ class ExamQuestionDraft(BaseModel):
 
         if self.correct_indices:
             raise ValueError("non-choice questions must not provide correct_indices")
+
+        if self.option_judgements is not None:
+            raise ValueError("non-choice questions must not provide option_judgements")
 
         if self.options:
             raise ValueError("non-choice questions must not provide options")
@@ -617,6 +667,16 @@ class ExamQuestionDraft(BaseModel):
             raise ValueError("fill_blank correct_answer must stay concise")
 
         return self
+
+    def _validate_choice_option_judgements(self, indices: list[int], *, expected_count: int) -> None:
+        judgements = self.option_judgements
+        if judgements is None:
+            raise ValueError("choice questions must provide option_judgements")
+        if len(judgements) != expected_count:
+            raise ValueError("choice option_judgements must align with options")
+        judged_indices = [index for index, is_correct in enumerate(judgements) if is_correct]
+        if judged_indices != sorted(indices):
+            raise ValueError("choice option_judgements must match correct_indices")
 
 
 class ExamQuestionBatch(BaseModel):

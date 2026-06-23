@@ -58,6 +58,27 @@ export function formatDateTime(value?: string | null) {
   }).format(date);
 }
 
+export function formatMonthDayTime(value?: string | null) {
+  if (!value) return "暂无记录";
+  const date = parseBackendDateTime(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const parts = new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const getPart = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? "";
+  const month = getPart("month");
+  const day = getPart("day");
+  const hour = getPart("hour");
+  const minute = getPart("minute");
+  if (!month || !day || !hour || !minute) return formatDateTime(value);
+  return `${month}月${day}日 ${hour}:${minute}`;
+}
+
 export function formatModeLabel(mode?: string | null) {
   return EXAM_MODES.find((item) => item.value === mode)?.label ?? "智能试卷";
 }
@@ -127,7 +148,7 @@ export function splitMultiChoiceAnswer(value?: string | null) {
 }
 
 export function buildExamTitle(item: Pick<ExamHistoryItem, "exam_mode" | "created_at">) {
-  return `${formatModeLabel(item.exam_mode)} · ${formatDateTime(item.created_at)}`;
+  return `${formatModeLabel(item.exam_mode)} · ${formatMonthDayTime(item.created_at)}`;
 }
 
 function getOptionalString(value: unknown) {

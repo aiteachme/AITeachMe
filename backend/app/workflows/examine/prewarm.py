@@ -1,7 +1,7 @@
 """Examine 默认考卷后台生成触发器。
 
 这个模块刻意不实现考题生成，只组装 exams API 现有的默认配置，
-然后委托给已经存在的隐藏考卷后台生成链路。
+然后委托给已经存在的考卷后台预热线路。
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ logger = structlog.get_logger(__name__)
 
 @dataclass(slots=True)
 class ExamPrewarmTriggerResult:
-    """请求既有隐藏考卷后台生成链路后的结果。"""
+    """请求既有考卷后台预热线路后的结果。"""
 
     status: str
     course_id: str
@@ -39,7 +39,7 @@ async def trigger_default_exam_prewarm_for_course(
     wait_for_units_timeout_s: float = 0.0,
     poll_interval_s: float = 5.0,
 ) -> ExamPrewarmTriggerResult:
-    """为课程触发现有的默认隐藏考卷后台生成链路。"""
+    """为课程触发现有的默认考卷后台预热线路。"""
 
     from app.api.exams import (  # imported lazily to avoid changing exam generation logic
         _build_exam_config_snapshot,
@@ -117,6 +117,7 @@ async def trigger_default_exam_prewarm_for_course(
                     course_id=course_id,
                     user_id=owner_user_id,
                     config_hash=config_hash,
+                    question_count=question_count,
                 ):
                     return ExamPrewarmTriggerResult(
                         status="exists",

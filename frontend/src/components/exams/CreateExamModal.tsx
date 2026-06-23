@@ -16,9 +16,12 @@ export interface CreateExamConfig {
   paperLayoutMode: (typeof PAPER_LAYOUT_MODES)[number]["value"];
 }
 
+const DEFAULT_PAPER_EXAM_QUESTION_COUNT = 24;
+const DEFAULT_WEB_PRACTICE_QUESTION_COUNT = 10;
+
 export const DEFAULT_CREATE_EXAM_CONFIG: CreateExamConfig = {
   examMode: "paper_exam",
-  numQuestions: 24,
+  numQuestions: DEFAULT_PAPER_EXAM_QUESTION_COUNT,
   userPrompt: "",
   paperLayoutMode: "auto",
 };
@@ -48,7 +51,8 @@ function normalizeCreateExamConfig(
     ? (value?.examMode as CreateExamConfig["examMode"])
     : DEFAULT_CREATE_EXAM_CONFIG.examMode;
   const numQuestions = Number(value?.numQuestions);
-  const defaultQuestionCount = examMode === "paper_exam" ? 24 : DEFAULT_CREATE_EXAM_CONFIG.numQuestions;
+  const defaultQuestionCount =
+    examMode === "paper_exam" ? DEFAULT_PAPER_EXAM_QUESTION_COUNT : DEFAULT_WEB_PRACTICE_QUESTION_COUNT;
 
   return {
     examMode,
@@ -96,12 +100,18 @@ export function applyExamModeToCreateConfig(
   config: CreateExamConfig,
   examMode: CreateExamConfig["examMode"],
 ): CreateExamConfig {
+  const switchedFromPaperDefault =
+    examMode !== "paper_exam" &&
+    config.examMode === "paper_exam" &&
+    config.numQuestions === DEFAULT_PAPER_EXAM_QUESTION_COUNT;
   return normalizeCreateExamConfig({
     ...config,
     examMode,
     numQuestions:
       examMode === "paper_exam" && config.examMode !== "paper_exam" && config.numQuestions <= 12
-        ? 24
+        ? DEFAULT_PAPER_EXAM_QUESTION_COUNT
+        : switchedFromPaperDefault
+          ? DEFAULT_WEB_PRACTICE_QUESTION_COUNT
         : config.numQuestions,
   });
 }

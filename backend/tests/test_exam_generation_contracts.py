@@ -446,12 +446,12 @@ def test_default_auto_prewarm_config_matches_training_center_default() -> None:
 
     assert config == {
         "exam_mode": "web_practice",
-        "question_count": 24,
+        "question_count": 10,
         "user_prompt": None,
         "sample_file_ids": [],
         "paper_layout_mode": None,
     }
-    assert exams_api.DEFAULT_AUTO_PREWARM_QUESTION_COUNT == 24
+    assert exams_api.DEFAULT_AUTO_PREWARM_QUESTION_COUNT == 10
 
 
 def test_prepared_exam_status_and_visibility_boundaries() -> None:
@@ -464,6 +464,8 @@ def test_prepared_exam_status_and_visibility_boundaries() -> None:
     assert exams_api._is_active_prepared_exam_candidate(ready) is True
     assert exams_api._is_active_prepared_exam_candidate(stale) is False
     assert exams_api._is_active_prepared_exam_candidate(visible) is False
+    visible.generation_origin = "prewarm"
+    assert exams_api._is_active_prewarm_exam_candidate(visible) is True
     assert exams_api._prewarm_status_from_candidate(ready) == "ready"
     assert exams_api._prewarm_status_from_candidate(stale) == "stale"
     assert exams_api._prewarm_status_from_candidate(failed) == "failed"
@@ -631,6 +633,69 @@ async def test_exam_prewarm_status_starts_missing_default_background_generation(
 
 
 @pytest.mark.anyio
+async def test_exam_prewarm_status_finds_visible_preparing_candidate(
+    session: Session,
+) -> None:
+    units = _seed_exam_course(session)
+    unit_ids = [int(unit.id or 0) for unit in units]
+    config_snapshot = exams_api._build_exam_config_snapshot(
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        exam_mode="web_practice",
+        question_count=exams_api.DEFAULT_AUTO_PREWARM_QUESTION_COUNT,
+        user_prompt=None,
+        sample_file_ids=[],
+        knowledge_unit_ids=unit_ids,
+        mastery_fingerprint=exams_api._exam_mastery_fingerprint(session, course_id=COURSE_ID, user_id=USER_ID),
+    )
+    visible_prewarm = exams_api._create_exam_generation_paper(
+        session,
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        exam_mode="web_practice",
+        question_count=exams_api.DEFAULT_AUTO_PREWARM_QUESTION_COUNT,
+        user_prompt=None,
+        sample_file_ids=[],
+        unit_ids=unit_ids,
+        config_snapshot=config_snapshot,
+        config_hash=exams_api._exam_config_hash(config_snapshot),
+        visibility="visible",
+        generation_origin="prewarm",
+    )
+    background_tasks = BackgroundTasks()
+
+    class FakeRegistry:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, object]] = []
+
+        def spawn(self, coro, **kwargs):
+            self.calls.append(kwargs)
+            coro.close()
+
+    registry = FakeRegistry()
+
+    response = await exams_api.exam_prewarm_status(
+        request=SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(background_task_registry=registry))),
+        background_tasks=background_tasks,
+        course_id=COURSE_ID,
+        exam_mode="web_practice",
+        num_questions=exams_api.DEFAULT_AUTO_PREWARM_QUESTION_COUNT,
+        user_prompt=None,
+        sample_file_ids=None,
+        paper_layout_mode=None,
+        user=CurrentUserContext(user_id=USER_ID, email=None, is_local=True),
+        session=session,
+    )
+
+    assert response.data is not None
+    assert response.data.status == "preparing"
+    assert response.data.background_requested is False
+    assert len(registry.calls) == 0
+    assert len(background_tasks.tasks) == 0
+    assert visible_prewarm.visibility == "visible"
+
+
+@pytest.mark.anyio
 async def test_exam_prewarm_status_retries_cancelled_hidden_failure(
     session: Session,
 ) -> None:
@@ -713,7 +778,7 @@ async def test_exam_prewarm_status_finds_default_candidate_with_changed_unit_sna
         course_id=COURSE_ID,
         user_id=USER_ID,
         exam_mode="web_practice",
-        question_count=24,
+        question_count=exams_api.DEFAULT_AUTO_PREWARM_QUESTION_COUNT,
         user_prompt=None,
         sample_file_ids=[],
         knowledge_unit_ids=partial_unit_ids,
@@ -724,7 +789,7 @@ async def test_exam_prewarm_status_finds_default_candidate_with_changed_unit_sna
         course_id=COURSE_ID,
         user_id=USER_ID,
         exam_mode="web_practice",
-        question_count=24,
+        question_count=exams_api.DEFAULT_AUTO_PREWARM_QUESTION_COUNT,
         user_prompt=None,
         sample_file_ids=[],
         unit_ids=partial_unit_ids,
@@ -740,7 +805,7 @@ async def test_exam_prewarm_status_finds_default_candidate_with_changed_unit_sna
         background_tasks=background_tasks,
         course_id=COURSE_ID,
         exam_mode="web_practice",
-        num_questions=24,
+        num_questions=exams_api.DEFAULT_AUTO_PREWARM_QUESTION_COUNT,
         user_prompt=None,
         sample_file_ids=None,
         paper_layout_mode=None,
@@ -764,7 +829,7 @@ async def test_exam_prewarm_status_rebuilds_stale_default_candidate(
         course_id=COURSE_ID,
         user_id=USER_ID,
         exam_mode="web_practice",
-        question_count=24,
+        question_count=exams_api.DEFAULT_AUTO_PREWARM_QUESTION_COUNT,
         user_prompt=None,
         sample_file_ids=[],
         knowledge_unit_ids=unit_ids,
@@ -775,7 +840,7 @@ async def test_exam_prewarm_status_rebuilds_stale_default_candidate(
         course_id=COURSE_ID,
         user_id=USER_ID,
         exam_mode="web_practice",
-        question_count=24,
+        question_count=exams_api.DEFAULT_AUTO_PREWARM_QUESTION_COUNT,
         user_prompt=None,
         sample_file_ids=[],
         unit_ids=unit_ids,
@@ -805,7 +870,7 @@ async def test_exam_prewarm_status_rebuilds_stale_default_candidate(
         background_tasks=background_tasks,
         course_id=COURSE_ID,
         exam_mode="web_practice",
-        num_questions=24,
+        num_questions=exams_api.DEFAULT_AUTO_PREWARM_QUESTION_COUNT,
         user_prompt=None,
         sample_file_ids=None,
         paper_layout_mode=None,
@@ -1093,8 +1158,8 @@ async def test_exam_generation_background_persists_progress_items_and_terminal_p
     preview = PaperPreview.model_validate_json(paper.paper_preview_json)
     context = json.loads(paper.selection_context_json)
 
-    assert paper.status == "ready"
-    assert paper.total_items == 2
+    assert paper.status == "failed"
+    assert paper.total_items == 3
     assert [item.item_order for item in items] == [1, 2]
     assert [template.stem for template in templates] == [
         "Which matrix is invertible?",
@@ -1102,19 +1167,14 @@ async def test_exam_generation_background_persists_progress_items_and_terminal_p
     ]
     assert links_by_item_id[int(items[0].id or 0)] == [{"knowledge_unit_id": unit_ids[0], "coverage_weight": 1.0}]
     assert context["failed_questions"][0]["item_order"] == 3
+    assert context["generated_question_count"] == 2
+    assert context["error_message"] == exams_api.EXAM_GENERATION_INCOMPLETE_MESSAGE
     assert "generated_questions" not in context
     assert context["paper_layout"]["mode"] == "practice_scroll"
-    assert context["paper_layout"]["pages"][0]["question_orders"] == [1, 2]
+    assert context["paper_layout"]["pages"][0]["question_orders"] == [1, 2, 3]
     assert [row.generation_status for row in preview.rows] == ["generated", "generated", "failed"]
-    assert any(event == "done" and data["status"] == "ready" for _course, _paper, event, data in events)
-    assert captured[0][0] == "exam_generated"
-    assert captured[0][1]["course_id"] == COURSE_ID
-    assert captured[0][1]["properties"]["exam_mode"] == "web_practice"
-    assert captured[0][1]["properties"]["exam_status"] == "ready"
-    assert captured[0][1]["properties"]["requested_question_count"] == 3
-    assert captured[0][1]["properties"]["sample_file_count"] == 2
-    assert captured[0][1]["properties"]["served_from_prepared"] is False
-    assert "matrix practice" not in str(captured[0][1]["properties"])
+    assert any(event == "done" and data["status"] == "failed" for _course, _paper, event, data in events)
+    assert captured == []
 
 
 @pytest.mark.anyio
@@ -1447,6 +1507,66 @@ async def test_generate_exam_endpoint_claims_prepared_paper(
 
 
 @pytest.mark.anyio
+async def test_generate_exam_endpoint_reuses_visible_prewarm_paper(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    units = _seed_exam_course(session)
+    unit_ids = [int(unit.id or 0) for unit in units]
+    background_tasks = BackgroundTasks()
+    captured: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(
+        exams_api,
+        "capture_product_event_later",
+        lambda event, **kwargs: captured.append((event, kwargs)) or None,
+    )
+    config_snapshot = exams_api._build_exam_config_snapshot(
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        exam_mode="web_practice",
+        question_count=exams_api.DEFAULT_AUTO_PREWARM_QUESTION_COUNT,
+        user_prompt=None,
+        sample_file_ids=[],
+        knowledge_unit_ids=unit_ids,
+        mastery_fingerprint=exams_api._exam_mastery_fingerprint(session, course_id=COURSE_ID, user_id=USER_ID),
+    )
+    visible_prewarm = exams_api._create_exam_generation_paper(
+        session,
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        exam_mode="web_practice",
+        question_count=exams_api.DEFAULT_AUTO_PREWARM_QUESTION_COUNT,
+        user_prompt=None,
+        sample_file_ids=[],
+        unit_ids=unit_ids,
+        config_snapshot=config_snapshot,
+        config_hash=exams_api._exam_config_hash(config_snapshot),
+        visibility="visible",
+        generation_origin="prewarm",
+    )
+
+    response = await exams_api.generate_exam(
+        request=SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(background_task_registry=None))),
+        background_tasks=background_tasks,
+        course_id=COURSE_ID,
+        body=ExamGenerateRequest(exam_mode="web_practice"),
+        user=CurrentUserContext(user_id=USER_ID, email=None, is_local=True),
+        session=session,
+    )
+    papers = session.exec(select(ExamPaper)).all()
+
+    assert response.data is not None
+    assert response.data.exam_paper_id == visible_prewarm.id
+    assert response.data.status == "generating"
+    assert response.data.num_questions == exams_api.DEFAULT_AUTO_PREWARM_QUESTION_COUNT
+    assert response.data.served_from_prepared is True
+    assert len(papers) == 1
+    assert len(background_tasks.tasks) == 0
+    assert captured[0][0] == "exam_generation_requested"
+    assert captured[0][1]["properties"]["served_from_prepared"] is True
+
+
+@pytest.mark.anyio
 async def test_generate_exam_endpoint_claims_default_prewarm_with_changed_unit_snapshot(
     session: Session,
     monkeypatch: pytest.MonkeyPatch,
@@ -1464,7 +1584,7 @@ async def test_generate_exam_endpoint_claims_default_prewarm_with_changed_unit_s
         course_id=COURSE_ID,
         user_id=USER_ID,
         exam_mode="web_practice",
-        question_count=24,
+        question_count=exams_api.DEFAULT_AUTO_PREWARM_QUESTION_COUNT,
         user_prompt=None,
         sample_file_ids=[],
         knowledge_unit_ids=partial_unit_ids,
@@ -1475,7 +1595,7 @@ async def test_generate_exam_endpoint_claims_default_prewarm_with_changed_unit_s
         course_id=COURSE_ID,
         user_id=USER_ID,
         exam_mode="web_practice",
-        question_count=24,
+        question_count=exams_api.DEFAULT_AUTO_PREWARM_QUESTION_COUNT,
         user_prompt=None,
         sample_file_ids=[],
         unit_ids=partial_unit_ids,
@@ -1493,7 +1613,7 @@ async def test_generate_exam_endpoint_claims_default_prewarm_with_changed_unit_s
             exam_mode="web_practice",
             user_prompt=None,
             sample_file_ids=[],
-            num_questions=24,
+            num_questions=exams_api.DEFAULT_AUTO_PREWARM_QUESTION_COUNT,
         ),
         user=CurrentUserContext(user_id=USER_ID, email=None, is_local=True),
         session=session,
@@ -1504,7 +1624,7 @@ async def test_generate_exam_endpoint_claims_default_prewarm_with_changed_unit_s
     assert response.data is not None
     assert response.data.exam_paper_id == prepared.id
     assert response.data.status == "generating"
-    assert response.data.num_questions == 24
+    assert response.data.num_questions == exams_api.DEFAULT_AUTO_PREWARM_QUESTION_COUNT
     assert response.data.served_from_prepared is True
     assert prepared.visibility == "visible"
     assert prepared.generation_origin == "prewarm"
@@ -1657,6 +1777,7 @@ def test_exam_question_draft_normalizes_choice_and_unit_refs() -> None:
             "stem": "Choose the invertible matrix from the list below.",
             "options": {"B": "B. Singular matrix", "A": "A. Full rank matrix", "D": "D. Zero matrix", "C": "C. Duplicate rows"},
             "correct_answer": "Full rank matrix",
+            "option_judgements": {"A": True, "B": False, "C": False, "D": False},
             "explanation": "The full rank matrix has a non-zero determinant.",
             "knowledge_unit_refs": "knowledge_unit_id:1 coverage_weight:0.7; knowledge_unit_id:2 weight:0.3",
         }
@@ -1665,6 +1786,7 @@ def test_exam_question_draft_normalizes_choice_and_unit_refs() -> None:
     assert draft.options == ["Full rank matrix", "Singular matrix", "Duplicate rows", "Zero matrix"]
     assert draft.correct_answer == "A"
     assert draft.correct_indices == [0]
+    assert draft.option_judgements == [True, False, False, False]
     assert [ref.knowledge_unit_id for ref in draft.knowledge_unit_refs] == [1, 2]
 
 
@@ -1691,6 +1813,7 @@ def test_exam_question_draft_preserves_fenced_code_indentation() -> None:
                 "返回 None",
             ],
             "correct_indices": [0],
+            "option_judgements": [True, False, False, False],
             "explanation": "函数体和循环体缩进有效，循环会逐项累加。",
             "knowledge_unit_id": 1,
         }
@@ -1767,6 +1890,21 @@ def test_exam_question_draft_rejects_invalid_shapes() -> None:
             }
         )
 
+    with pytest.raises(ValidationError, match="choice option_judgements must match correct_indices"):
+        generator.ExamQuestionDraft.model_validate(
+            {
+                "item_order": 3,
+                "question_type": "multiple_choice",
+                "difficulty": "medium",
+                "stem": "Choose all statements that are true for this generated item.",
+                "options": ["Statement one", "Statement two", "Statement three", "Statement four"],
+                "correct_indices": [1, 3],
+                "option_judgements": [True, False, False, True],
+                "explanation": "The selected statements must align with the option judgement array.",
+                "knowledge_unit_id": 1,
+            }
+        )
+
     with pytest.raises(ValidationError, match="non-choice questions must not provide options"):
         generator.ExamQuestionDraft.model_validate(
             {
@@ -1831,6 +1969,7 @@ def test_exam_generator_validation_helpers_detect_alignment_errors() -> None:
         stem="Choose the invertible matrix from the list below.",
         options=["Full rank", "Zero", "Duplicate", "Singular"],
         correct_indices=[0],
+        option_judgements=[True, False, False, False],
         explanation="The full rank matrix has a non-zero determinant.",
         knowledge_unit_refs=[generator.ExamQuestionUnitRef(knowledge_unit_id=1, coverage_weight=1)],
     )
@@ -1869,6 +2008,7 @@ async def test_generate_exam_questions_enforces_per_item_total_timeout(
             stem="Choose the invertible matrix from the list below.",
             options=["Full rank", "Zero", "Duplicate rows", "Singular"],
             correct_indices=[0],
+            option_judgements=[True, False, False, False],
             explanation="The full rank matrix has a non-zero determinant.",
             knowledge_unit_refs=[
                 generator.ExamQuestionUnitRef(knowledge_unit_id=1, coverage_weight=1),
