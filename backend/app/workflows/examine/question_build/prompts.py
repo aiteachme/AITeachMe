@@ -25,9 +25,12 @@ _QUESTION_TYPE_FORMAT_RULES = (
     "- 如果 stem、options、correct_answer 或 explanation 包含代码，必须使用 Markdown fenced code block；Python 代码必须保留可运行缩进，不要把函数体、循环体、条件分支或 return 顶格。\n"
     "- 选择题只能使用一种标准格式：options 必须是字符串 JSON 数组，不能是对象或映射。\n"
     "- 选择题选项必须恰好是 4 个按顺序排列的纯选项文本；不要在选项前加 A/B/C/D 标签。\n"
+    "- 选择题每个选项都必须是完整、可独立阅读的答案表达；不要输出只包含局部片段的选项。\n"
+    "- 选择题必须同时输出 option_judgements：与 options 等长的布尔数组，true 表示该选项正确；option_judgements 中 true 的索引必须与 correct_indices 完全一致。\n"
     "- single_choice：提供恰好 4 个互不相同的选项，并用 correct_indices 给出恰好一个从 0 开始的索引，例如 `[0]`。\n"
     "- multiple_choice：提供恰好 4 个互不相同的选项，并用 correct_indices 给出正确的从 0 开始的索引，例如 `[0]` 或 `[0, 2]`。\n"
     "- 对 single_choice 和 multiple_choice，不要提供 correct_answer；后端会根据 correct_indices 派生 A/B/C/D 标签。\n"
+    "- 正确答案、correct_indices、option_judgements 和 explanation 必须内部一致；解析不得把被判为正确的选项说成错误，也不得把未选中的选项说成正确。\n"
     "- true_false：不要提供 options；correct_answer 必须是 True 或 False。\n"
     "- fill_blank：不要提供 options；在 stem 中用 `{{blank}}` 标记空格；correct_answer 必须简短且唯一。\n"
     "- short_answer：不要提供 options；correct_answer 应简洁但完整。\n"
@@ -286,8 +289,11 @@ def build_exam_question_messages(
 
 选择题输出契约：
 - 对 single_choice 和 multiple_choice，`options` 只能是纯选项文本，例如 `["选项一", "选项二", "选项三", "选项四"]`。
+- 每个选项必须是完整、可独立阅读的答案表达；不要输出只包含局部片段的选项。
 - 对 single_choice 和 multiple_choice，只使用 `correct_indices`，索引从 0 开始，例如 `[0]` 或 `[0, 2]`。
+- 同时输出 `option_judgements`，它必须是与 `options` 等长的布尔数组；其中为 true 的位置必须与 `correct_indices` 完全一致。
 - 不要在 options 里放 A/B/C/D 标签，也不要为选择题返回 `correct_answer`。
+- 在生成最终 JSON 前，逐项核对 options、correct_indices、option_judgements 和 explanation；解析必须支持同一组正确选项，不能出现自相矛盾的逐项判断。
 
 输入：{json.dumps(payload, ensure_ascii=False, indent=2)}
 """.strip()

@@ -151,7 +151,7 @@ def test_active_prepared_exam_ignores_expired_stock() -> None:
         assert claimed.visibility == "visible"
 
 
-def test_reserved_in_progress_prewarm_can_be_claimed_as_new_exam() -> None:
+def test_reserved_in_progress_prewarm_is_visible_and_reused() -> None:
     engine = _engine()
     with Session(engine) as session:
         config_snapshot = {"version": 1, "course": "math", "num_questions": 8}
@@ -169,7 +169,8 @@ def test_reserved_in_progress_prewarm_can_be_claimed_as_new_exam() -> None:
         )
 
         assert created
-        assert reserved.visibility == "hidden"
+        assert reserved.visibility == "visible"
+        assert reserved.generation_origin == "prewarm"
         assert reserved.status == "generating"
 
         repeated, repeated_created = _reserve_exam_prewarm_paper(
@@ -187,17 +188,26 @@ def test_reserved_in_progress_prewarm_can_be_claimed_as_new_exam() -> None:
         assert not repeated_created
         assert repeated.id == reserved.id
 
-        claimed = exams_repo.claim_prepared_exam_paper(
+        reused = exams_repo.get_visible_active_exam_candidate(
             session,
             course_id="course_math00000000",
             user_id="user-a",
             config_hash="hash-a",
+            question_count=8,
+        )
+        mismatched = exams_repo.get_visible_active_exam_candidate(
+            session,
+            course_id="course_math00000000",
+            user_id="user-a",
+            config_hash="hash-a",
+            question_count=10,
         )
 
-        assert claimed is not None
-        assert claimed.id == reserved.id
-        assert claimed.status == "generating"
-        assert claimed.visibility == "visible"
+        assert reused is not None
+        assert reused.id == reserved.id
+        assert reused.status == "generating"
+        assert reused.visibility == "visible"
+        assert mismatched is None
 
 
 def test_prepared_exam_candidate_prefers_active_ready_stock() -> None:
@@ -238,10 +248,19 @@ def test_prepared_exam_candidate_prefers_active_ready_stock() -> None:
             course_id="course_math00000000",
             user_id="user-a",
             config_hash="hash-a",
+            question_count=8,
+        )
+        mismatched = exams_repo.get_prepared_exam_candidate(
+            session,
+            course_id="course_math00000000",
+            user_id="user-a",
+            config_hash="hash-a",
+            question_count=10,
         )
 
         assert candidate is not None
         assert candidate.id == ready.id
+        assert mismatched is None
 
 
 def test_study_guide_cache_upserts_by_exam_paper() -> None:

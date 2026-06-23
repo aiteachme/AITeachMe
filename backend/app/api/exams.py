@@ -75,9 +75,10 @@ _SYNC_EDGE_MARKER_PREFIX = "markdown_anchor_sync:"
 EXAM_PREWARM_CONFIG_VERSION = 1
 EXAM_PREWARM_TTL_DAYS = 2
 DEFAULT_AUTO_PREWARM_EXAM_MODE = "web_practice"
-DEFAULT_AUTO_PREWARM_QUESTION_COUNT = 24
+DEFAULT_AUTO_PREWARM_QUESTION_COUNT = 10
 EXAM_GENERATION_STALE_AFTER = timedelta(minutes=20)
 EXAM_GENERATION_STALE_MESSAGE = "生成超时，请重新生成。"
+EXAM_GENERATION_INCOMPLETE_MESSAGE = "题目生成未完成，请重新生成。"
 PAPER_LAYOUT_CONFIG_VERSION = 1
 PAPER_LAYOUT_MODES = {
     "auto",
@@ -423,7 +424,7 @@ def _find_default_auto_prewarm_candidate(
 
     candidates = [
         paper
-        for paper in exams_repo.list_hidden_prepared_exam_candidates_by_shape(
+        for paper in exams_repo.list_prewarm_exam_candidates_by_shape(
             session,
             course_id=course_id,
             user_id=user_id,
@@ -441,7 +442,7 @@ def _find_default_auto_prewarm_candidate(
         return None
 
     for status in ("ready", "generating"):
-        match = next((paper for paper in candidates if paper.status == status and _is_active_prepared_exam_candidate(paper)), None)
+        match = next((paper for paper in candidates if paper.status == status and _is_active_prewarm_exam_candidate(paper)), None)
         if match is not None:
             return match
 
@@ -449,7 +450,7 @@ def _find_default_auto_prewarm_candidate(
     if failed is not None:
         return failed
 
-    stale = next((paper for paper in candidates if not _is_active_prepared_exam_candidate(paper)), None)
+    stale = next((paper for paper in candidates if not _is_active_prewarm_exam_candidate(paper)), None)
     return stale or candidates[0]
 
 
@@ -474,8 +475,10 @@ def _claim_default_auto_prewarm_candidate(
         sample_file_ids=sample_file_ids,
         paper_layout_mode=paper_layout_mode,
     )
-    if candidate is None or not _is_active_prepared_exam_candidate(candidate):
+    if candidate is None or not _is_active_prewarm_exam_candidate(candidate):
         return None
+    if not _is_hidden_exam_paper(candidate):
+        return candidate
     return exams_repo.claim_prepared_exam_paper_by_id(session, paper_id=int(candidate.id or 0))
 
 
@@ -485,6 +488,15 @@ def _is_hidden_exam_paper(paper: ExamPaper | None) -> bool:
 
 def _is_active_prepared_exam_candidate(paper: ExamPaper | None) -> bool:
     if paper is None or str(getattr(paper, "visibility", "visible") or "visible") != "hidden":
+        return False
+    if paper.status not in {"ready", "generating"}:
+        return False
+    expires_at = ensure_utc_datetime(paper.expires_at)
+    return expires_at is None or expires_at > utcnow()
+
+
+def _is_active_prewarm_exam_candidate(paper: ExamPaper | None) -> bool:
+    if paper is None or str(getattr(paper, "generation_origin", "") or "") != "prewarm":
         return False
     if paper.status not in {"ready", "generating"}:
         return False
@@ -1873,14 +1885,26 @@ def _reserve_exam_prewarm_paper(
     config_hash: str,
     paper_layout_mode: str | None = None,
 ) -> tuple[ExamPaper, bool]:
+    visible_candidate = exams_repo.get_visible_active_exam_candidate(
+        session,
+        course_id=course_id,
+        user_id=user_id,
+        config_hash=config_hash,
+        question_count=question_count,
+    )
+    if visible_candidate is not None:
+        return visible_candidate, False
+
     candidate = exams_repo.get_prepared_exam_candidate(
         session,
         course_id=course_id,
         user_id=user_id,
         config_hash=config_hash,
+        question_count=question_count,
     )
     if _is_active_prepared_exam_candidate(candidate):
-        return candidate, False
+        claimed = exams_repo.claim_prepared_exam_paper_by_id(session, paper_id=int(candidate.id or 0))
+        return claimed or candidate, False
 
     paper = _create_exam_generation_paper(
         session,
@@ -1894,7 +1918,7 @@ def _reserve_exam_prewarm_paper(
         config_snapshot=config_snapshot,
         config_hash=config_hash,
         paper_layout_mode=paper_layout_mode,
-        visibility="hidden",
+        visibility="visible",
         generation_origin="prewarm",
     )
     return paper, True
@@ -2012,6 +2036,10 @@ async def _run_exam_generation_background(
     schedule_replacement: bool = False,
     background_task_registry=None,
 ) -> None:
+    snapshot_question_count = 0
+    if isinstance(config_snapshot, dict):
+        snapshot_question_count = _positive_int(config_snapshot.get("num_questions"))
+    question_count = max(1, snapshot_question_count or int(question_count or 1))
     resolved_paper_layout_mode = _normalize_paper_layout_mode(
         paper_layout_mode
         or (str((config_snapshot or {}).get("paper_layout_mode") or "") if isinstance(config_snapshot, dict) else None),
@@ -2483,8 +2511,37 @@ async def _run_exam_generation_background(
                 )
                 links_by_item_id[int(item.id or 0)] = refs
             session.commit()
-            paper.total_items = len(items)
-            paper.total_score = float(sum(float(item.score or 0.0) for item in items))
+            persisted_order_set = {int(item.item_order) for item in items}
+            missing_persisted_orders = [
+                order for order in range(1, question_count + 1) if order not in persisted_order_set
+            ]
+            for order in missing_persisted_orders:
+                if order in terminal_failed_by_order:
+                    continue
+                failed_payload = _build_inferred_failed_question(
+                    order=order,
+                    blueprint_by_order=blueprint_by_order,
+                )
+                terminal_failed_by_order[order] = failed_payload
+                paper_context = _merge_failed_question_into_context(
+                    paper_context,
+                    failed_payload,
+                    question_count=question_count,
+                )
+                final_preview = _merge_failed_question_into_preview(
+                    final_preview,
+                    failed_payload,
+                    question_count=question_count,
+                )
+
+            has_terminal_failures = bool(terminal_failed_by_order)
+            is_complete = not has_terminal_failures and not missing_persisted_orders and len(items) == question_count
+            paper.total_items = question_count
+            paper.total_score = (
+                float(sum(float(item.score or 0.0) for item in items))
+                if is_complete
+                else float(question_count)
+            )
             paper.paper_preview_json = _build_final_paper_preview(
                 items,
                 existing_preview=final_preview,
@@ -2494,7 +2551,7 @@ async def _run_exam_generation_background(
             paper_context["paper_layout_mode"] = resolved_paper_layout_mode
             paper_context["paper_layout"] = _build_paper_layout(
                 exam_mode=exam_mode,
-                question_count=len(items) or question_count,
+                question_count=question_count,
                 paper_layout_mode=resolved_paper_layout_mode,
                 rows=[
                     {
@@ -2507,23 +2564,30 @@ async def _run_exam_generation_background(
                 ],
             )
             paper_context.pop("generated_questions", None)
-            paper_context.pop("generated_question_count", None)
+            if is_complete:
+                paper_context.pop("generated_question_count", None)
+            else:
+                paper_context["generated_question_count"] = len(items)
             paper.selection_context_json = json.dumps(paper_context, ensure_ascii=False)
-            _set_exam_generation_status(session, paper, status="ready")
+            final_status = "ready" if is_complete else "failed"
+            final_error_message = None if is_complete else EXAM_GENERATION_INCOMPLETE_MESSAGE
+            _set_exam_generation_status(session, paper, status=final_status, error_message=final_error_message)
             done_payload = _paper_generation_event_payload(
                 paper,
-                stage="ready",
+                stage=final_status,
                 preview=_paper_preview_from_json(paper.paper_preview_json),
+                error_message=final_error_message,
             )
-            _capture_exam_generated_event(
-                session,
-                course_id=course_id,
-                user_id=user_id,
-                paper=paper,
-                requested_question_count=question_count,
-                sample_file_count=len(sample_file_ids or []),
-                paper_layout_mode=resolved_paper_layout_mode,
-            )
+            if is_complete:
+                _capture_exam_generated_event(
+                    session,
+                    course_id=course_id,
+                    user_id=user_id,
+                    paper=paper,
+                    requested_question_count=question_count,
+                    sample_file_count=len(sample_file_ids or []),
+                    paper_layout_mode=resolved_paper_layout_mode,
+                )
 
         for order in inferred_missing_orders:
             failed_payload = terminal_failed_by_order.get(order)
@@ -2540,7 +2604,7 @@ async def _run_exam_generation_background(
             "done",
             done_payload,
         )
-        if schedule_replacement and config_snapshot and config_hash:
+        if done_payload.get("status") == "ready" and schedule_replacement and config_snapshot and config_hash:
             _schedule_exam_prewarm_task(
                 background_task_registry,
                 course_id=course_id,
@@ -3309,12 +3373,21 @@ async def generate_exam(
         paper_layout_mode=paper_layout_mode,
     )
     config_hash = _exam_config_hash(config_snapshot)
-    paper = exams_repo.claim_prepared_exam_paper(
+    paper = exams_repo.get_visible_active_exam_candidate(
         session,
         course_id=normalized,
         user_id=user.user_id,
         config_hash=config_hash,
+        question_count=question_count,
     )
+    if paper is None:
+        paper = exams_repo.claim_prepared_exam_paper(
+            session,
+            course_id=normalized,
+            user_id=user.user_id,
+            config_hash=config_hash,
+            question_count=question_count,
+        )
     if paper is None:
         paper = _claim_default_auto_prewarm_candidate(
             session,
@@ -3532,12 +3605,21 @@ async def exam_prewarm_status(
         paper_layout_mode=resolved_paper_layout_mode,
     )
     config_hash = _exam_config_hash(config_snapshot)
-    candidate = exams_repo.get_prepared_exam_candidate(
+    candidate = exams_repo.get_visible_active_exam_candidate(
         session,
         course_id=normalized,
         user_id=user.user_id,
         config_hash=config_hash,
+        question_count=question_count,
     )
+    if candidate is None:
+        candidate = exams_repo.get_prepared_exam_candidate(
+            session,
+            course_id=normalized,
+            user_id=user.user_id,
+            config_hash=config_hash,
+            question_count=question_count,
+        )
     if candidate is None:
         candidate = _find_default_auto_prewarm_candidate(
             session,

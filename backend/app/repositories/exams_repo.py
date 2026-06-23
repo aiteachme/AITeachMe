@@ -433,26 +433,57 @@ def list_stale_visible_generating_exam_papers(
     return list(rows)
 
 
+def get_visible_active_exam_candidate(
+    session: Session,
+    *,
+    course_id: str,
+    user_id: str,
+    config_hash: str,
+    question_count: int | None = None,
+) -> ExamPaper | None:
+    now = utcnow()
+    conditions = [
+        ExamPaper.course_id == course_id,
+        ExamPaper.user_id == user_id,
+        ExamPaper.visibility != "hidden",
+        ExamPaper.config_hash == config_hash,
+        ExamPaper.status.in_(("ready", "generating")),
+        sa.or_(ExamPaper.expires_at.is_(None), ExamPaper.expires_at > now),
+    ]
+    if question_count is not None:
+        conditions.append(ExamPaper.total_items == int(question_count))
+    return session.exec(
+        select(ExamPaper)
+        .where(*conditions)
+        .order_by(ExamPaper.status.desc(), ExamPaper.updated_at.desc(), ExamPaper.id.desc())
+        .limit(1)
+    ).first()
+
+
 def claim_prepared_exam_paper(
     session: Session,
     *,
     course_id: str,
     user_id: str,
     config_hash: str,
+    question_count: int | None = None,
 ) -> ExamPaper | None:
     """Atomically-ish claim the oldest hidden active paper matching the config."""
 
     now = utcnow()
+    conditions = [
+        ExamPaper.course_id == course_id,
+        ExamPaper.user_id == user_id,
+        ExamPaper.visibility == "hidden",
+        ExamPaper.status.in_(("ready", "generating")),
+        ExamPaper.config_hash == config_hash,
+        sa.or_(ExamPaper.expires_at.is_(None), ExamPaper.expires_at > now),
+    ]
+    if question_count is not None:
+        conditions.append(ExamPaper.total_items == int(question_count))
     stmt = (
         select(ExamPaper)
-        .where(
-            ExamPaper.course_id == course_id,
-            ExamPaper.user_id == user_id,
-            ExamPaper.visibility == "hidden",
-            ExamPaper.status.in_(("ready", "generating")),
-            ExamPaper.config_hash == config_hash,
-            sa.or_(ExamPaper.expires_at.is_(None), ExamPaper.expires_at > now),
-        )
+        .where(*conditions)
         .order_by(ExamPaper.created_at.asc(), ExamPaper.id.asc())
         .limit(1)
     )
@@ -495,6 +526,30 @@ def list_hidden_prepared_exam_candidates_by_shape(
     return list(rows)
 
 
+def list_prewarm_exam_candidates_by_shape(
+    session: Session,
+    *,
+    course_id: str,
+    user_id: str,
+    exam_mode: str,
+    question_count: int,
+    limit: int = 20,
+) -> list[ExamPaper]:
+    rows = session.exec(
+        select(ExamPaper)
+        .where(
+            ExamPaper.course_id == course_id,
+            ExamPaper.user_id == user_id,
+            ExamPaper.generation_origin == "prewarm",
+            ExamPaper.exam_mode == exam_mode,
+            ExamPaper.total_items == int(question_count),
+        )
+        .order_by(ExamPaper.updated_at.desc(), ExamPaper.id.desc())
+        .limit(max(1, limit))
+    ).all()
+    return list(rows)
+
+
 def claim_prepared_exam_paper_by_id(
     session: Session,
     *,
@@ -527,19 +582,22 @@ def has_active_prepared_exam(
     course_id: str,
     user_id: str,
     config_hash: str,
+    question_count: int | None = None,
 ) -> bool:
     now = utcnow()
     active_statuses = ("generating", "ready")
+    conditions = [
+        ExamPaper.course_id == course_id,
+        ExamPaper.user_id == user_id,
+        ExamPaper.config_hash == config_hash,
+        ExamPaper.status.in_(active_statuses),
+        sa.or_(ExamPaper.expires_at.is_(None), ExamPaper.expires_at > now),
+    ]
+    if question_count is not None:
+        conditions.append(ExamPaper.total_items == int(question_count))
     existing = session.exec(
         select(ExamPaper.id)
-        .where(
-            ExamPaper.course_id == course_id,
-            ExamPaper.user_id == user_id,
-            ExamPaper.visibility == "hidden",
-            ExamPaper.config_hash == config_hash,
-            ExamPaper.status.in_(active_statuses),
-            sa.or_(ExamPaper.expires_at.is_(None), ExamPaper.expires_at > now),
-        )
+        .where(*conditions)
         .limit(1)
     ).first()
     return existing is not None
@@ -551,17 +609,21 @@ def get_prepared_exam_candidate(
     course_id: str,
     user_id: str,
     config_hash: str,
+    question_count: int | None = None,
 ) -> ExamPaper | None:
     now = utcnow()
+    conditions = [
+        ExamPaper.course_id == course_id,
+        ExamPaper.user_id == user_id,
+        ExamPaper.visibility == "hidden",
+        ExamPaper.config_hash == config_hash,
+    ]
+    if question_count is not None:
+        conditions.append(ExamPaper.total_items == int(question_count))
     candidates = list(
         session.exec(
             select(ExamPaper)
-            .where(
-                ExamPaper.course_id == course_id,
-                ExamPaper.user_id == user_id,
-                ExamPaper.visibility == "hidden",
-                ExamPaper.config_hash == config_hash,
-            )
+            .where(*conditions)
             .order_by(ExamPaper.updated_at.desc(), ExamPaper.id.desc())
             .limit(20)
         ).all()
