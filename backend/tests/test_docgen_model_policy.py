@@ -18,6 +18,7 @@ def test_docgen_model_policy_sets_step_timeouts() -> None:
     assert kwargs["max_tokens"] == 12000
     assert kwargs["model"] == "reason"
     assert kwargs["max_retries"] == 5
+    assert kwargs["overall_timeout_s"] == 180
     assert kwargs[PROVIDER_NATIVE_TOOLS_KWARG] == []
     assert "task_type" not in kwargs
 
@@ -29,11 +30,21 @@ def test_docgen_writer_model_slot_still_follows_digest_mode() -> None:
     assert kwargs["timeout"] == 120
 
 
+def test_docgen_intent_core_uses_extended_overall_timeout() -> None:
+    kwargs = docgen_completion_kwargs(DocGenModelStep.INTENT_CORE, digest_mode="systematic")
+    metadata = get_docgen_model_policy(DocGenModelStep.INTENT_CORE).metadata()
+
+    assert kwargs["timeout"] == 90
+    assert kwargs["overall_timeout_s"] == 180
+    assert metadata["docgen_overall_timeout_s"] == 180
+
+
 def test_docgen_model_policy_metadata_includes_timeout() -> None:
     metadata = get_docgen_model_policy(DocGenModelStep.TITLE_LOCK).metadata()
 
     assert metadata["docgen_model_step"] == "lock_titles_for_chapters.lock_title_for_chapter"
     assert metadata["docgen_timeout_s"] == 60
+    assert metadata["docgen_overall_timeout_s"] == 180
     assert metadata["docgen_max_retries"] == 3
     assert metadata["docgen_provider_native_web_search_policy"] == "off"
     assert metadata["docgen_provider_native_file_search_policy"] == "off"

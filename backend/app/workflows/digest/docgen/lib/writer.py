@@ -51,7 +51,7 @@ STREAM_CALLBACK_MIN_INTERVAL_S = get_env_bounded_float(
 )
 WRITER_TASK_TIMEOUT_S = get_env_bounded_float(
     "DOCGEN_WRITER_TASK_TIMEOUT_S",
-    120.0,
+    180.0,
     min_value=30.0,
     max_value=360.0,
 )

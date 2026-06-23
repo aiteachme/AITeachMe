@@ -23,7 +23,7 @@ class ChapterExecutionBriefError(RuntimeError):
 def _chapter_brief_timeout_seconds() -> float:
     return get_env_bounded_float(
         "DOCGEN_CHAPTER_EXECUTION_BRIEF_TIMEOUT_S",
-        45.0,
+        180.0,
         min_value=5.0,
         max_value=180.0,
     )

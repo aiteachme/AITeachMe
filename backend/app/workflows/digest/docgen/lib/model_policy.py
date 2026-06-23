@@ -13,7 +13,7 @@ from app.workflows.common.model_policy import ProviderNativeToolPolicy, compact_
 from app.workflows.digest.docgen.lib.mode_profiles import get_docgen_mode_profile
 
 DocGenModelSlot = Literal["light", "primary", "reason", "image_generation"]
-_DOCGEN_OVERALL_TIMEOUT_S = 120
+_DOCGEN_OVERALL_TIMEOUT_S = 180
 
 
 class DocGenModelStep(str, Enum):
