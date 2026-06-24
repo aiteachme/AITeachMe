@@ -87,6 +87,7 @@ PAPER_LAYOUT_MODES = {
     "gaokao_six_page",
     "gaokao_eight_page",
 }
+_PROFILE_UPDATE_CONTEXT_KEY = "profile_update"
 
 
 def _exam_stream_channel(course_id: str, paper_id: int) -> str:
@@ -226,6 +227,53 @@ def _json_dict(raw: str | None) -> dict[str, object]:
     except json.JSONDecodeError:
         return {}
     return payload if isinstance(payload, dict) else {}
+
+
+def _profile_update_error_code(error: str | None) -> str:
+    cleaned = str(error or "").strip()
+    if not cleaned:
+        return ""
+    if ":" not in cleaned:
+        return "profile_update_failed"
+    head = cleaned.split(":", 1)[0].strip()
+    normalized = re.sub(r"[^A-Za-z0-9_.-]+", "_", head).strip("._-")
+    return (normalized or "profile_update_failed")[:80]
+
+
+def _record_exam_profile_update_status(
+    session: Session,
+    paper: ExamPaper,
+    *,
+    status: str,
+    states_updated: int = 0,
+    review_task_count: int = 0,
+    last_error: str | None = None,
+    increment_attempt: bool = False,
+) -> None:
+    context = _json_dict(paper.selection_context_json)
+    current = context.get(_PROFILE_UPDATE_CONTEXT_KEY)
+    current_payload = current if isinstance(current, dict) else {}
+    try:
+        attempt_count = int(current_payload.get("attempt_count", 0) or 0)
+    except (TypeError, ValueError):
+        attempt_count = 0
+    if increment_attempt:
+        attempt_count += 1
+
+    now = utcnow()
+    context[_PROFILE_UPDATE_CONTEXT_KEY] = {
+        "status": status,
+        "attempt_count": attempt_count,
+        "updated_at": now.isoformat(),
+        "states_updated": max(0, int(states_updated or 0)),
+        "review_task_count": max(0, int(review_task_count or 0)),
+        "last_error_code": _profile_update_error_code(last_error),
+    }
+    paper.selection_context_json = json.dumps(context, ensure_ascii=False)
+    paper.updated_at = now
+    session.add(paper)
+    session.commit()
+    session.refresh(paper)
 
 
 def _hash_stem(stem: str) -> str:
@@ -3280,18 +3328,29 @@ async def _grade_exam(session: Session, paper: ExamPaper) -> ExamGradeResponse:
     session.commit()
     session.refresh(paper)
 
-    profile_result = await run_profile_update_workflow(
-        exam_paper_id=paper.id or 0,
-        user_id=paper.user_id,
-        course_id=paper.course_id,
+    _record_exam_profile_update_status(
+        session,
+        paper,
+        status="running",
+        increment_attempt=True,
     )
     profile_state = {}
     profile_update_error: str | None = None
-    if profile_result.failed:
-        profile_update_error = str(profile_result.error or "unknown profile workflow failure")
-    else:
-        profile_state = dict(profile_result.require_value() or {})
-        profile_update_error = str(profile_state.get("error") or "").strip() or None
+    try:
+        profile_result = await run_profile_update_workflow(
+            exam_paper_id=paper.id or 0,
+            user_id=paper.user_id,
+            course_id=paper.course_id,
+        )
+        if profile_result.failed:
+            profile_update_error = str(profile_result.error or "unknown profile workflow failure")
+        else:
+            profile_state = dict(profile_result.require_value() or {})
+            profile_update_error = str(profile_state.get("error") or "").strip() or None
+    except Exception as exc:
+        profile_update_error = f"{type(exc).__name__}: {exc}"
+    mastery = dict(profile_state.get("mastery_result") or {})
+    review_task_ids = list(profile_state.get("review_task_ids") or [])
     if profile_update_error:
         logger.warning(
             "exam_profile_update_degraded",
@@ -3302,8 +3361,22 @@ async def _grade_exam(session: Session, paper: ExamPaper) -> ExamGradeResponse:
             mastery_updated=bool(profile_state.get("mastery_result")),
             review_scheduled=bool(profile_state.get("review_scheduled")),
         )
-    mastery = dict(profile_state.get("mastery_result") or {})
-    review_task_ids = list(profile_state.get("review_task_ids") or [])
+        _record_exam_profile_update_status(
+            session,
+            paper,
+            status="failed",
+            states_updated=int(mastery.get("states_updated") or 0),
+            review_task_count=len(review_task_ids),
+            last_error=profile_update_error,
+        )
+    else:
+        _record_exam_profile_update_status(
+            session,
+            paper,
+            status="completed",
+            states_updated=int(mastery.get("states_updated") or 0),
+            review_task_count=len(review_task_ids),
+        )
     return ExamGradeResponse(
         id=paper.id or 0,
         status="completed",

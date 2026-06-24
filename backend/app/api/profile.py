@@ -21,6 +21,8 @@ from app.schemas.profile import (
 )
 from app.shared.infra.exceptions import AITeachMeError
 from app.workflows.profile import run_profile_snapshot_workflow, run_profile_study_plan_workflow
+from app.workflows.profile.common.lib.course_profile import refresh_course_profile_summary
+from app.workflows.profile.common.lib.user_profile import refresh_user_profile_summary
 
 router = APIRouter(prefix="/api/v1/courses/{course_id}/profile", tags=["profile"])
 
@@ -227,6 +229,7 @@ async def complete_review(
         task_id=task_id,
         user_id=user.user_id,
         course_id=normalized,
+        auto_commit=False,
     )
     if task is None:
         raise AITeachMeError(
@@ -234,6 +237,8 @@ async def complete_review(
             error_code="REVIEW_TASK_NOT_FOUND",
             status_code=404,
         )
+    refresh_course_profile_summary(session, course_id=normalized, auto_commit=False)
+    refresh_user_profile_summary(session, user_id=user.user_id, auto_commit=False)
     knowledge_unit = None
     if task.knowledge_unit_id is not None:
         knowledge_unit = session.get(KnowledgeUnit, int(task.knowledge_unit_id))

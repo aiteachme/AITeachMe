@@ -19,6 +19,7 @@ _DIFFICULTY_WEIGHT = {
     "medium": 1.0,
     "hard": 1.2,
 }
+_CONSUMED_EXAM_PAPER_IDS_KEY = "consumed_exam_paper_ids"
 
 
 @dataclass(frozen=True)
@@ -153,10 +154,43 @@ def _to_counter(raw: object) -> Counter[str]:
     return counter
 
 
+def _consumed_exam_paper_ids(payload: dict[str, object]) -> set[int]:
+    raw = payload.get(_CONSUMED_EXAM_PAPER_IDS_KEY)
+    if not isinstance(raw, list):
+        return set()
+
+    consumed: set[int] = set()
+    for value in raw:
+        try:
+            paper_id = int(value)
+        except (TypeError, ValueError):
+            continue
+        if paper_id > 0:
+            consumed.add(paper_id)
+    return consumed
+
+
+def _state_has_consumed_exam(
+    state: UserKnowledgeState | None,
+    exam_paper_id: int | None,
+) -> bool:
+    if state is None or not exam_paper_id or exam_paper_id <= 0:
+        return False
+
+    payload = _parse_json_object(state.stats_json)
+    if int(exam_paper_id) in _consumed_exam_paper_ids(payload):
+        return True
+
+    # Backfill idempotency for states written before stats_json tracked
+    # explicit consumed paper ids.
+    return state.source_exam_paper_id == int(exam_paper_id)
+
+
 def _merge_attempt_stats(
     *,
     existing: UserKnowledgeState | None,
     attempts: list[_WeightedAttempt],
+    source_exam_paper_id: int | None = None,
 ) -> str:
     payload = _parse_json_object(existing.stats_json if existing is not None else None)
     question_type_counts = _to_counter(payload.get("question_type_counts"))
@@ -168,6 +202,9 @@ def _merge_attempt_stats(
     total_time_spent_seconds = int(payload.get("total_time_spent_seconds", 0) or 0)
     confidence_self_report_count = int(payload.get("confidence_self_report_count", 0) or 0)
     confidence_self_report_sum = int(payload.get("confidence_self_report_sum", 0) or 0)
+    consumed_exam_paper_ids = _consumed_exam_paper_ids(payload)
+    if source_exam_paper_id is not None and source_exam_paper_id > 0:
+        consumed_exam_paper_ids.add(int(source_exam_paper_id))
 
     latest_attempt = max(attempts, key=lambda item: _to_utc(item.answered_at)) if attempts else None
     for item in attempts:
@@ -217,6 +254,7 @@ def _merge_attempt_stats(
                 if latest_attempt is not None and not latest_attempt.is_correct
                 else None
             ),
+            _CONSUMED_EXAM_PAPER_IDS_KEY: sorted(consumed_exam_paper_ids),
         }
     )
     return json.dumps(payload, ensure_ascii=False)
@@ -267,6 +305,8 @@ def _upsert_state_from_attempts(
         course_id=course_id,
         knowledge_unit_id=knowledge_unit_id,
     )
+    if _state_has_consumed_exam(existing, source_exam_paper_id):
+        return None
 
     current_exam_score = _compute_weighted_mastery_score(attempts=attempts, now=now)
     current_exam_weight = sum(max(0.0, item.coverage_weight) for item in attempts)
@@ -310,7 +350,11 @@ def _upsert_state_from_attempts(
         source_exam_paper_id=source_exam_paper_id,
         state_version=((existing.state_version + 1) if existing is not None else 1),
         last_recomputed_at=now,
-        stats_json=_merge_attempt_stats(existing=existing, attempts=attempts),
+        stats_json=_merge_attempt_stats(
+            existing=existing,
+            attempts=attempts,
+            source_exam_paper_id=source_exam_paper_id,
+        ),
         updated_at=now,
     )
     return profile_repo.upsert_knowledge_state(
@@ -341,17 +385,6 @@ def update_mastery_from_exam(
         if item.is_correct is None:
             continue
         answered_at = item.answered_at or item.updated_at or item.created_at
-        base = _WeightedAttempt(
-            is_correct=item.is_correct,
-            difficulty=item.difficulty,
-            answered_at=answered_at,
-            coverage_weight=1.0,
-            question_type=item.question_type,
-            time_spent_seconds=item.time_spent_seconds,
-            hint_used=item.hint_used,
-            confidence_self_report=item.confidence_self_report,
-            error_cause_label=item.error_cause_label,
-        )
         knowledge_unit_links = _normalize_knowledge_unit_links(links_by_item_id.get(int(item.id or 0), []))
         for node_id, normalized_weight in knowledge_unit_links:
             node_attempts.setdefault(node_id, []).append(
@@ -370,8 +403,19 @@ def update_mastery_from_exam(
 
     now = utcnow()
     updated_state_ids: list[int] = []
+    consumed_state_count = 0
 
     for target_id, target_attempts in node_attempts.items():
+        existing = profile_repo.get_knowledge_state(
+            session,
+            user_id=exam_paper.user_id,
+            course_id=exam_paper.course_id,
+            knowledge_unit_id=target_id,
+        )
+        if _state_has_consumed_exam(existing, exam_paper_id):
+            consumed_state_count += 1
+            continue
+
         persisted = _upsert_state_from_attempts(
             session,
             user_id=exam_paper.user_id,
@@ -389,5 +433,5 @@ def update_mastery_from_exam(
         exam_paper_id=exam_paper_id,
         states_updated=len(set(updated_state_ids)),
         updated_state_ids=sorted(set(updated_state_ids)),
-        already_consumed=False,
+        already_consumed=bool(node_attempts) and consumed_state_count == len(node_attempts),
     )

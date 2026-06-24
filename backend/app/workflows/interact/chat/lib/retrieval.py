@@ -415,7 +415,7 @@ def _mastery_by_unit_id(session: Session, *, course_id: str, user_id: str) -> di
             session,
             user_id=user_id,
             course_id=course_id,
-            target_kind="node",
+            target_kind="knowledge_unit",
         )
         if state.knowledge_unit_id is not None
     }
