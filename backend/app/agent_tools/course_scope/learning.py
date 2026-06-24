@@ -65,9 +65,11 @@ async def read_course_profile_tool(
     user_id: str | None = None,
 ) -> str:
     resolved_course_id = (course_id or "").strip()
-    resolved_user_id = (user_id or "").strip() or "local"
+    resolved_user_id = (user_id or "").strip()
     if not resolved_course_id:
         return "需要进入课程后才能读取课程画像。"
+    if not resolved_user_id:
+        return "需要确认当前用户身份后才能读取课程画像，请登录后重试。"
     with managed_session() as session:
         return read_course_profile_context(
             session,
@@ -100,9 +102,11 @@ async def read_course_exams_tool(
     user_id: str | None = None,
 ) -> str:
     resolved_course_id = (course_id or "").strip()
-    resolved_user_id = (user_id or "").strip() or "local"
+    resolved_user_id = (user_id or "").strip()
     if not resolved_course_id:
         return "需要进入课程后才能读取测验记录。"
+    if not resolved_user_id:
+        return "需要确认当前用户身份后才能读取测验记录，请登录后重试。"
     with managed_session() as session:
         return read_course_exam_context(
             session,

@@ -14,6 +14,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useResizablePanel } from "../../hooks/useResizablePanel";
 import { buildCoursePath, getCourseIdFromPathname } from "../../lib/courseNavigation";
 import { cn } from "../../lib/utils";
+import type { ChatPageContext } from "../../api/generated/model";
 import { useAiInteraction } from "./AiInteractionProvider";
 import type { AiConversationScope, AiInteractionOpenRequest, OpenAiInteractionOptions } from "./types";
 
@@ -21,6 +22,7 @@ interface AiInteractionWindowProps {
   scope?: AiConversationScope | null;
   className?: string;
   suppressFloatingTrigger?: boolean;
+  defaultPageContext?: ChatPageContext | null;
 }
 
 interface AiConversationViewLoaderProps {
@@ -122,7 +124,12 @@ function AiConversationViewFallback() {
   );
 }
 
-export function AiInteractionWindow({ scope, className, suppressFloatingTrigger = false }: AiInteractionWindowProps) {
+export function AiInteractionWindow({
+  scope,
+  className,
+  suppressFloatingTrigger = false,
+  defaultPageContext = null,
+}: AiInteractionWindowProps) {
   const location = useLocation();
   const { pathname } = location;
   const navigate = useNavigate();
@@ -395,8 +402,11 @@ export function AiInteractionWindow({ scope, className, suppressFloatingTrigger 
   }, []);
 
   const handleOpenSidebar = useCallback(() => {
-    openAiInteraction({ mode: "sidebar" });
-  }, [openAiInteraction]);
+    openAiInteraction({
+      mode: "sidebar",
+      pageContext: defaultPageContext,
+    });
+  }, [defaultPageContext, openAiInteraction]);
 
   const isInsidePanel = useCallback((target: EventTarget | null) => {
     const node = target instanceof Node ? target : null;

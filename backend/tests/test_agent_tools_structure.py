@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.agent_tools.context import AgentToolContext
+from app.agent_tools.course_scope import learning as course_learning_tools
 from app.agent_tools.global_scope.ask_user import ask_user_options_tool
 from app.agent_tools.policy import AgentToolPolicyRequest, resolve_agent_tool_names
 from app.agent_tools.registry import register_agent_tools
@@ -162,6 +163,24 @@ def test_page_context_uses_agent_mode_without_overriding_selection() -> None:
         scene="document_selection",
         page_context=object(),
     ) == InteractExecutionMode.SINGLE_PASS
+
+
+def test_course_learning_tools_require_hidden_user_id(monkeypatch) -> None:
+    monkeypatch.setattr(
+        course_learning_tools,
+        "managed_session",
+        lambda: pytest.fail("course learning tools must not read storage without hidden user_id"),
+    )
+
+    profile_result = asyncio.run(
+        course_learning_tools.read_course_profile_tool(course_id="course_123")
+    )
+    exams_result = asyncio.run(
+        course_learning_tools.read_course_exams_tool(course_id="course_123", user_id=" ")
+    )
+
+    assert profile_result == "需要确认当前用户身份后才能读取课程画像，请登录后重试。"
+    assert exams_result == "需要确认当前用户身份后才能读取测验记录，请登录后重试。"
 
 
 def test_interact_native_tools_request_web_search_for_global_assistant() -> None:

@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Outlet, useLocation } from "react-router-dom";
+import type { ChatPageContext } from "../../api/generated/model";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { AiInteractionProvider, AiInteractionWindow, type AiConversationScope } from "../interaction";
@@ -90,6 +91,22 @@ export function Layout() {
     }
     return { type: "global" };
   }, [isAssistantPage, courseId]);
+  const defaultAiPageContext = useMemo<ChatPageContext | null>(() => {
+    if (!courseId || routeSegment !== "profile") {
+      return null;
+    }
+    return {
+      kind: "profile",
+      title: "课程画像",
+      entity_id: courseId,
+      anchor_id: "course-profile",
+      heading_path: ["课程画像"],
+      excerpt: "当前正在查看课程画像页，页面包含知识点掌握、复习安排、最近测验、学习偏好与对话记忆。",
+      metadata: {
+        route_segment: routeSegment,
+      },
+    };
+  }, [courseId, routeSegment]);
 
   useEffect(() => {
     rememberCourseRoute(`${location.pathname}${location.search}${location.hash}`);
@@ -174,6 +191,7 @@ export function Layout() {
             </main>
           </div>
           <AiInteractionWindow
+            defaultPageContext={defaultAiPageContext}
             suppressFloatingTrigger={
               (isMobileSidebarOpen && !isExamFocusPage) ||
               isHomePage ||
