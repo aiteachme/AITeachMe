@@ -210,6 +210,56 @@ def test_reserved_in_progress_prewarm_is_visible_and_reused() -> None:
         assert mismatched is None
 
 
+def test_visible_active_exam_candidate_ignores_stale_generating_stock() -> None:
+    engine = _engine()
+    now = utcnow()
+    with Session(engine) as session:
+        stale = ExamPaper(
+            course_id="course_math00000000",
+            user_id="user-a",
+            exam_mode="web_practice",
+            status="generating",
+            visibility="visible",
+            generation_origin="prewarm",
+            config_hash="hash-a",
+            total_items=8,
+            updated_at=now - timedelta(minutes=30),
+        )
+        fresh = ExamPaper(
+            course_id="course_math00000000",
+            user_id="user-a",
+            exam_mode="web_practice",
+            status="generating",
+            visibility="visible",
+            generation_origin="prewarm",
+            config_hash="hash-b",
+            total_items=8,
+            updated_at=now - timedelta(minutes=1),
+        )
+        session.add(stale)
+        session.add(fresh)
+        session.commit()
+
+        assert exams_repo.get_visible_active_exam_candidate(
+            session,
+            course_id="course_math00000000",
+            user_id="user-a",
+            config_hash="hash-a",
+            question_count=8,
+            stale_before=now - timedelta(minutes=20),
+        ) is None
+        reusable = exams_repo.get_visible_active_exam_candidate(
+            session,
+            course_id="course_math00000000",
+            user_id="user-a",
+            config_hash="hash-b",
+            question_count=8,
+            stale_before=now - timedelta(minutes=20),
+        )
+        assert reusable is not None
+        assert reusable.id == fresh.id
+
+
 def test_prepared_exam_candidate_prefers_active_ready_stock() -> None:
     engine = _engine()
     now = utcnow()

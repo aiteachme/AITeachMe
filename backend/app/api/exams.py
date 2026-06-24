@@ -552,6 +552,24 @@ def _is_active_prewarm_exam_candidate(paper: ExamPaper | None) -> bool:
     return expires_at is None or expires_at > utcnow()
 
 
+def _visible_active_exam_candidate(
+    session: Session,
+    *,
+    course_id: str,
+    user_id: str,
+    config_hash: str,
+    question_count: int,
+) -> ExamPaper | None:
+    return exams_repo.get_visible_active_exam_candidate(
+        session,
+        course_id=course_id,
+        user_id=user_id,
+        config_hash=config_hash,
+        question_count=question_count,
+        stale_before=utcnow() - EXAM_GENERATION_STALE_AFTER,
+    )
+
+
 def _preview_density(difficulty: str | None) -> int:
     normalized = str(difficulty or "").lower()
     if normalized == "easy":
@@ -1933,7 +1951,7 @@ def _reserve_exam_prewarm_paper(
     config_hash: str,
     paper_layout_mode: str | None = None,
 ) -> tuple[ExamPaper, bool]:
-    visible_candidate = exams_repo.get_visible_active_exam_candidate(
+    visible_candidate = _visible_active_exam_candidate(
         session,
         course_id=course_id,
         user_id=user_id,
@@ -3446,7 +3464,7 @@ async def generate_exam(
         paper_layout_mode=paper_layout_mode,
     )
     config_hash = _exam_config_hash(config_snapshot)
-    paper = exams_repo.get_visible_active_exam_candidate(
+    paper = _visible_active_exam_candidate(
         session,
         course_id=normalized,
         user_id=user.user_id,
@@ -3594,18 +3612,14 @@ def _prewarm_status_from_candidate(paper: ExamPaper | None) -> str:
     return "missing"
 
 
-def _is_retryable_hidden_prewarm_failure(paper: ExamPaper | None) -> bool:
+def _is_retryable_prewarm_failure(paper: ExamPaper | None) -> bool:
     if paper is None:
         return False
     if paper.status != "failed":
         return False
-    if str(getattr(paper, "visibility", "visible") or "visible") != "hidden":
-        return False
     if str(getattr(paper, "generation_origin", "") or "") != "prewarm":
         return False
-    context = _json_dict(getattr(paper, "selection_context_json", None))
-    error_message = str(context.get("error_message") or "").lower()
-    return "cancelled" in error_message or "canceled" in error_message or "取消" in error_message
+    return True
 
 def _should_compensate_default_prewarm_status(
     *,
@@ -3678,7 +3692,7 @@ async def exam_prewarm_status(
         paper_layout_mode=resolved_paper_layout_mode,
     )
     config_hash = _exam_config_hash(config_snapshot)
-    candidate = exams_repo.get_visible_active_exam_candidate(
+    candidate = _visible_active_exam_candidate(
         session,
         course_id=normalized,
         user_id=user.user_id,
@@ -3710,7 +3724,17 @@ async def exam_prewarm_status(
     should_schedule_prewarm = (
         registry is not None
         and (
-            (status == "failed" and _is_retryable_hidden_prewarm_failure(candidate))
+            (
+                status == "failed"
+                and _is_retryable_prewarm_failure(candidate)
+                and _is_default_auto_prewarm_request(
+                    exam_mode=mode,
+                    question_count=question_count,
+                    user_prompt=user_prompt,
+                    sample_file_ids=sample_file_ids or [],
+                    paper_layout_mode=resolved_paper_layout_mode,
+                )
+            )
             or _should_compensate_default_prewarm_status(
                 status=status,
                 exam_mode=mode,

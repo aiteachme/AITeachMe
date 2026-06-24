@@ -440,6 +440,7 @@ def get_visible_active_exam_candidate(
     user_id: str,
     config_hash: str,
     question_count: int | None = None,
+    stale_before: datetime | None = None,
 ) -> ExamPaper | None:
     now = utcnow()
     conditions = [
@@ -452,6 +453,13 @@ def get_visible_active_exam_candidate(
     ]
     if question_count is not None:
         conditions.append(ExamPaper.total_items == int(question_count))
+    if stale_before is not None:
+        conditions.append(
+            sa.or_(
+                ExamPaper.status != "generating",
+                ExamPaper.updated_at > stale_before,
+            )
+        )
     return session.exec(
         select(ExamPaper)
         .where(*conditions)

@@ -8,7 +8,7 @@ from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
 import app.models  # noqa: F401 - ensure all SQLModel tables are registered
-from app.models import Course, KnowledgeEdge, KnowledgeUnit
+from app.models import Course, KnowledgeEdge, KnowledgeGraphSourceRef, KnowledgeUnit
 from app.shared.infra.exceptions import KnowledgeUnitNotFoundError
 import app.workflows.digest.kg_doc_sync.lib.incremental_sync as sync
 import app.workflows.digest.kg_doc_sync.nodes.extract_node as extract_node_module
@@ -1409,6 +1409,19 @@ def test_rule_fallback_sync_skips_deprecation_of_existing_units(session: Session
     assert report.rule_fallback_success_count == 1
     assert report.deprecated_unit_ids == []
     assert session.get(KnowledgeUnit, stale.id).status != "deprecated"
+    current = session.exec(select(KnowledgeUnit).where(KnowledgeUnit.normalized_name == "current")).first()
+    assert current is not None
+    assert current.type_source == "rule"
+    assert current.type_confidence == pytest.approx(0.35)
+    source_ref = session.exec(
+        select(KnowledgeGraphSourceRef).where(
+            KnowledgeGraphSourceRef.entity_type == "unit",
+            KnowledgeGraphSourceRef.entity_id == current.id,
+        )
+    ).first()
+    assert source_ref is not None
+    assert source_ref.source_kind == "rule_fallback_chapter"
+    assert source_ref.confidence == pytest.approx(0.35)
 
 
 def test_unit_edge_upsert_lookup_cache_and_deprecation(session: Session) -> None:
@@ -1549,6 +1562,8 @@ def test_unit_edge_upsert_lookup_cache_and_deprecation(session: Session) -> None
     assert session.get(KnowledgeEdge, edge.id).status == "deprecated"
     assert len(sync._load_aliases(sync._add_anchor_alias(parent.aliases_json, "ku_matrix"))) == 1
     assert sync._source_confidence_for_kind("llm_section") > sync._source_confidence_for_kind("structural_heading")
+    assert sync._source_confidence_for_kind("rule_fallback_chapter") < sync._source_confidence_for_kind("docgen_backbone")
+    assert sync._unit_type_source_for_kind("rule_fallback_chapter") == ("rule", 0.35)
     assert sync._source_confidence_for_kind("unknown") == 0.75
 
 

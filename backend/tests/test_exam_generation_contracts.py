@@ -473,7 +473,7 @@ def test_prepared_exam_status_and_visibility_boundaries() -> None:
 
 
 @pytest.mark.anyio
-async def test_filter_knowledge_units_uses_fallback_when_llm_selection_is_cancelled(
+async def test_filter_knowledge_units_returns_error_when_llm_selection_is_cancelled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def cancelled_selection(**kwargs):
@@ -513,14 +513,14 @@ async def test_filter_knowledge_units_uses_fallback_when_llm_selection_is_cancel
         }
     )
 
-    assert result["error"] == ""
-    assert result["filter_strategy"] == "deterministic_cancel_fallback"
-    assert result["candidate_unit_ids"] == [2, 1]
-    assert [unit.id for unit in result["units"]] == [2, 1]
+    assert result["error"] == "Knowledge-unit filtering failed: Question candidate filtering was cancelled."
+    assert result["filter_strategy"] == "llm_graph_cancelled"
+    assert result["candidate_unit_ids"] == []
+    assert result["units"] == []
 
 
 @pytest.mark.anyio
-async def test_filter_knowledge_units_falls_back_when_question_count_is_invalid(
+async def test_filter_knowledge_units_returns_error_when_selection_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def failed_selection(**kwargs):
@@ -560,10 +560,11 @@ async def test_filter_knowledge_units_falls_back_when_question_count_is_invalid(
         }
     )
 
-    assert result["error"] == ""
-    assert result["filter_strategy"] == "deterministic_error_fallback"
+    assert result["error"] == "Knowledge-unit filtering failed: selection unavailable"
+    assert result["filter_strategy"] == "llm_graph_failed"
     assert result["candidate_unit_limit"] == exam_candidate_unit_limit(1)
-    assert result["candidate_unit_ids"] == [2, 1]
+    assert result["candidate_unit_ids"] == []
+    assert result["units"] == []
 
 
 @pytest.mark.anyio
@@ -695,9 +696,11 @@ async def test_exam_prewarm_status_finds_visible_preparing_candidate(
     assert visible_prewarm.visibility == "visible"
 
 
+@pytest.mark.parametrize("visibility", ["hidden", "visible"])
 @pytest.mark.anyio
-async def test_exam_prewarm_status_retries_cancelled_hidden_failure(
+async def test_exam_prewarm_status_retries_failed_default_prewarm(
     session: Session,
+    visibility: str,
 ) -> None:
     units = _seed_exam_course(session)
     unit_ids = [int(unit.id or 0) for unit in units]
@@ -705,7 +708,7 @@ async def test_exam_prewarm_status_retries_cancelled_hidden_failure(
         course_id=COURSE_ID,
         user_id=USER_ID,
         exam_mode="web_practice",
-        question_count=24,
+        question_count=exams_api.DEFAULT_AUTO_PREWARM_QUESTION_COUNT,
         user_prompt=None,
         sample_file_ids=[],
         knowledge_unit_ids=unit_ids,
@@ -716,13 +719,13 @@ async def test_exam_prewarm_status_retries_cancelled_hidden_failure(
         course_id=COURSE_ID,
         user_id=USER_ID,
         exam_mode="web_practice",
-        question_count=24,
+        question_count=exams_api.DEFAULT_AUTO_PREWARM_QUESTION_COUNT,
         user_prompt=None,
         sample_file_ids=[],
         unit_ids=unit_ids,
         config_snapshot=config_snapshot,
         config_hash=exams_api._exam_config_hash(config_snapshot),
-        visibility="hidden",
+        visibility=visibility,
         generation_origin="prewarm",
     )
     failed.status = "failed"
@@ -752,7 +755,7 @@ async def test_exam_prewarm_status_retries_cancelled_hidden_failure(
         background_tasks=background_tasks,
         course_id=COURSE_ID,
         exam_mode="web_practice",
-        num_questions=24,
+        num_questions=exams_api.DEFAULT_AUTO_PREWARM_QUESTION_COUNT,
         user_prompt=None,
         sample_file_ids=None,
         paper_layout_mode=None,

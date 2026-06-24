@@ -191,6 +191,8 @@ def _source_confidence_for_kind(source_kind: str) -> float:
     kind = str(source_kind or "").strip().casefold()
     if kind.startswith("llm_") or kind in {"llm_relation", "kg_prefetch_llm"}:
         return 0.86
+    if kind.startswith("rule_fallback_"):
+        return 0.35
     if kind in {"docgen_preliminary_kg", "docgen_reviewed_chapter"}:
         return 0.62
     if kind in {"docgen_reviewed_heading", "docgen_review_refinement"}:
@@ -210,6 +212,8 @@ def _unit_type_source_for_kind(source_kind: str) -> tuple[str, float]:
     kind = str(source_kind or "").strip().casefold()
     if kind.startswith("llm_") or kind == "kg_prefetch_llm":
         return "llm", _source_confidence_for_kind(kind)
+    if kind.startswith("rule_fallback_"):
+        return "rule", _source_confidence_for_kind(kind)
     if kind in {
         "docgen_preliminary_kg",
         "docgen_reviewed_chapter",

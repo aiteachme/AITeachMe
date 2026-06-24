@@ -9,8 +9,8 @@ from time import perf_counter
 from app.shared.infra.workflow import emit_progress
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.examine.question_build.lib.generator import select_exam_knowledge_units
-from app.workflows.support.exam_pool_policy import exam_candidate_unit_limit
 from app.workflows.examine.question_build.state import QuestionBuildState
+from app.workflows.support.exam_pool_policy import exam_candidate_unit_limit
 
 
 
@@ -21,10 +21,6 @@ class ScopeIntent:
     strict: bool = False
 
 
-def _unit_id(unit: object) -> int:
-    return _positive_int(getattr(unit, "id", 0))
-
-
 def _positive_int(value: object) -> int:
     try:
         normalized = int(value or 0)
@@ -33,24 +29,9 @@ def _positive_int(value: object) -> int:
     return normalized if normalized > 0 else 0
 
 
-def _fallback_candidate_unit_ids(
-    *,
-    units: list[object],
-    priority_unit_ids: list[int],
-    limit: int,
-) -> list[int]:
-    available_ids = [_unit_id(unit) for unit in units]
-    available_ids = [unit_id for unit_id in available_ids if unit_id > 0]
-    available_set = set(available_ids)
-    selected: list[int] = []
-    for unit_id in [*priority_unit_ids, *available_ids]:
-        normalized = int(unit_id or 0)
-        if normalized <= 0 or normalized not in available_set or normalized in selected:
-            continue
-        selected.append(normalized)
-        if len(selected) >= max(1, int(limit or 1)):
-            break
-    return selected
+def _failure_detail(detail: object) -> str:
+    text = str(detail or "").strip()
+    return text[:500] or "Unknown knowledge-unit filtering failure."
 
 
 def build_filter_knowledge_units_node(*, context: WorkflowContext):
@@ -73,54 +54,42 @@ def build_filter_knowledge_units_node(*, context: WorkflowContext):
         ]
         limit = exam_candidate_unit_limit(question_count)
 
-        async def fallback_result(*, reason: str, detail: str) -> dict:
-            candidate_unit_ids = _fallback_candidate_unit_ids(
-                units=input_units,
-                priority_unit_ids=priority_unit_ids,
-                limit=limit,
-            )
-            unit_by_id = {_unit_id(unit): unit for unit in input_units if _unit_id(unit) > 0}
-            filtered = [unit_by_id[unit_id] for unit_id in candidate_unit_ids if unit_id in unit_by_id]
-            if not filtered and input_units:
-                filtered = input_units[: max(1, min(len(input_units), int(limit or 1)))]
-                candidate_unit_ids = [_unit_id(unit) for unit in filtered if _unit_id(unit) > 0]
+        async def failure_result(*, reason: str, detail: object) -> dict:
+            normalized_detail = _failure_detail(detail)
             elapsed_ms = int((perf_counter() - started_at) * 1000)
             await emit_progress(
                 state,
                 stage="filter_exam_units",
-                detail=(
-                    f"Selected {len(candidate_unit_ids)} candidate knowledge units "
-                    f"with fallback because {detail}"
-                ),
+                detail="Knowledge-unit filtering failed; exam question generation will stop.",
                 step="filter_knowledge_units",
                 elapsed_ms=elapsed_ms,
                 extra={
-                    "candidate_unit_ids": candidate_unit_ids,
+                    "candidate_unit_ids": [],
                     "candidate_unit_limit": limit,
                     "input_unit_count": len(input_units),
                     "knowledge_graph_edge_count": len(list(state.get("knowledge_graph_edges") or [])),
-                    "candidate_unit_count": len(candidate_unit_ids),
+                    "candidate_unit_count": 0,
                     "scope_include_terms": [],
                     "scope_exclude_terms": [],
                     "scope_strict": False,
                     "filter_strategy": reason,
-                    "filter_rationale": detail,
+                    "filter_rationale": normalized_detail,
                 },
             )
             return {
-                "units": filtered,
-                "candidate_unit_ids": candidate_unit_ids,
+                "units": [],
+                "candidate_unit_ids": [],
                 "candidate_unit_limit": limit,
                 "input_unit_count": len(input_units),
                 "knowledge_graph_edge_count": len(list(state.get("knowledge_graph_edges") or [])),
-                "candidate_unit_count": len(candidate_unit_ids),
+                "candidate_unit_count": 0,
                 "scope_include_terms": [],
                 "scope_exclude_terms": [],
                 "scope_strict": False,
                 "filter_strategy": reason,
-                "filter_rationale": detail,
+                "filter_rationale": normalized_detail,
                 "filter_ms": elapsed_ms,
-                "error": "" if candidate_unit_ids else detail,
+                "error": f"Knowledge-unit filtering failed: {normalized_detail}",
             }
 
         try:
@@ -205,14 +174,14 @@ def build_filter_knowledge_units_node(*, context: WorkflowContext):
                 step="filter_knowledge_units",
                 elapsed_ms=elapsed_ms,
             )
-            return await fallback_result(
-                reason="deterministic_cancel_fallback",
+            return await failure_result(
+                reason="llm_graph_cancelled",
                 detail="Question candidate filtering was cancelled.",
             )
         except Exception as exc:
-            return await fallback_result(
-                reason="deterministic_error_fallback",
-                detail=str(exc),
+            return await failure_result(
+                reason="llm_graph_failed",
+                detail=exc,
             )
 
     return filter_knowledge_units_node
