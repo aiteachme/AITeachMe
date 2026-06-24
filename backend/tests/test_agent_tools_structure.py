@@ -164,6 +164,16 @@ def test_page_context_uses_agent_mode_without_overriding_selection() -> None:
         page_context=object(),
     ) == InteractExecutionMode.SINGLE_PASS
 
+    assert select_execution_mode(
+        question="我现在最该补哪里",
+        selected_context=None,
+        strategy_mode=StrategyMode.EXPLAIN,
+        retrieval_results=[],
+        scene=None,
+        allow_course_tools=False,
+        page_context=object(),
+    ) == InteractExecutionMode.PLAN_EXECUTE
+
 
 def test_course_learning_tools_require_hidden_user_id(monkeypatch) -> None:
     monkeypatch.setattr(

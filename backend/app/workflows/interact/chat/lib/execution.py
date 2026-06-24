@@ -61,10 +61,10 @@ def select_execution_mode(
         return InteractExecutionMode.SINGLE_PASS
     if parse_chat_scene(scene) == ChatScene.WEB_RESEARCH:
         return InteractExecutionMode.PLAN_EXECUTE
-    if not allow_course_tools:
-        return InteractExecutionMode.PLAN_EXECUTE if has_external_research_intent(question) else InteractExecutionMode.SINGLE_PASS
     if page_context is not None:
         return InteractExecutionMode.PLAN_EXECUTE
+    if not allow_course_tools:
+        return InteractExecutionMode.PLAN_EXECUTE if has_external_research_intent(question) else InteractExecutionMode.SINGLE_PASS
 
     normalized_question = str(question or "").lower()
     retrieval_count = len(retrieval_results or [])
