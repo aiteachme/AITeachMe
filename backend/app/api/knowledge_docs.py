@@ -842,7 +842,8 @@ async def knowledge_build_runtime(
         user = get_current_user_context(request, response, session)
         course_record = get_course_record(session, normalized, owner_user_id=user.user_id)
         course_scope = _storage_scope_for_course_record(course_record)
-    return ok_response(get_knowledge_build_runtime_result(course_id=normalized, course_scope=course_scope))
+        result = get_knowledge_build_runtime_result(session, course_id=normalized, course_scope=course_scope)
+    return ok_response(result)
 
 
 @router.get(

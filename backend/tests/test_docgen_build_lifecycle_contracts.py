@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -12,6 +13,7 @@ import app.models  # noqa: F401 - ensure all SQLModel tables are registered
 import app.shared.infra.knowledge.build_store as build_store
 from app.models import Course, CourseFileLink, IngestStatus, RawFile, TaskStatus
 from app.models.build_planner import ConfirmedBuildPlan
+from app.models.knowledge_graph_sync import KnowledgeGraphSyncRun
 from app.schemas.knowledge import CourseVectorStatusResponse, KnowledgeBuildStatusResponse
 from app.shared.infra.exceptions import (
     ConfirmedBuildPlanRequiredError,
@@ -455,6 +457,85 @@ def test_build_runtime_training_unlocks_on_graph_terminal_states(monkeypatch: py
     assert cancelled.graph_status == "cancelled"
     assert cancelled.graph_unhealthy is True
     assert cancelled.training_unlocked is False
+
+
+def test_build_runtime_backfills_graph_status_from_latest_sync_run(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+) -> None:
+    now = datetime.now(timezone.utc)
+    scope = build_course_storage_scope(user_id=USER_ID, course_id=COURSE_ID)
+    docgen_status = build_store.KnowledgeBuildRuntimeStatus(
+        requested_at=now,
+        build_kind="docgen",
+        build_group_id="group-sync",
+        status="completed",
+        stage="completed",
+        progress_pct=100,
+    )
+    manifest = SimpleNamespace(
+        chapter_titles=["Published A"],
+        updated_at=now,
+        version_no=3,
+        source_file_ids=["file-ready"],
+        prompt="manifest prompt",
+    )
+    session.add(
+        KnowledgeGraphSyncRun(
+            course_id=COURSE_ID,
+            build_session_id="build-sync",
+            doc_version_no=3,
+            graph_revision_no=2,
+            status="completed",
+            metrics_json=json.dumps(
+                {
+                    "section_count": 5,
+                    "unit_change_count": 8,
+                    "edge_change_count": 13,
+                    "source_ref_count": 21,
+                    "elapsed_ms": 3400,
+                },
+                ensure_ascii=False,
+            ),
+            started_at=now,
+            finished_at=now,
+            created_at=now,
+            updated_at=now,
+        )
+    )
+    session.commit()
+    store = _TextStore({scope.knowledge_build_prefix() + "merged_knowledge_base.md": "# Draft\n\n正文"})
+    monkeypatch.setattr(build_lifecycle, "resolve_course_storage_scope", lambda *args, **kwargs: scope)
+    monkeypatch.setattr(build_lifecycle, "get_content_store", lambda: store)
+    monkeypatch.setattr(build_lifecycle, "run_store_sync", lambda func, *args, default=None, **kwargs: func(*args, **kwargs))
+    monkeypatch.setattr(build_lifecycle, "read_knowledge_manifest", lambda *args, **kwargs: manifest)
+    monkeypatch.setattr(
+        build_lifecycle,
+        "read_knowledge_build_runtime",
+        lambda *args, **kwargs: build_store.KnowledgeBuildRuntimeEnvelope(
+            build_group_id="group-sync",
+            docgen_runtime=docgen_status,
+            graph_runtime=None,
+        ),
+    )
+    monkeypatch.setattr(
+        build_lifecycle,
+        "get_settings",
+        lambda: SimpleNamespace(knowledge_graph=SimpleNamespace(sync_after_docgen=True)),
+    )
+
+    result = build_lifecycle.get_knowledge_build_runtime_result(session, course_id=COURSE_ID, course_scope=scope)
+
+    assert result.graph_status == "completed"
+    assert result.training_unlocked is True
+    assert result.graph is not None
+    assert result.graph.status == "completed"
+    assert result.graph_metrics.doc_sync_section_count == 5
+    assert result.graph_metrics.doc_sync_unit_changes == 8
+    assert result.graph_metrics.doc_sync_edge_changes == 13
+    assert result.graph_metrics.source_ref_count == 21
+    assert result.graph_metrics.revision_no == 2
+    assert result.graph_metrics.last_synced_doc_version_no == 3
 
 
 def test_get_docgen_result_assembles_published_draft_and_runtime(monkeypatch: pytest.MonkeyPatch, session: Session) -> None:

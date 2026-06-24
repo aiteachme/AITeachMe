@@ -965,6 +965,32 @@ def test_graph_queries_hide_legacy_resource_units_and_edges(session: Session) ->
         get_knowledge_unit_relations(session, course_id=COURSE_ID, knowledge_unit_id=legacy_resource.id)
 
 
+def test_knowledge_unit_detail_repairs_collapsed_markdown_table(session: Session) -> None:
+    collapsed_table = (
+        "# 变量与表达式 | 考点 | 重要程度 | 常见题型 | 学习建议 "
+        "|---|---|---|---| 变量声明 | 高 | 单选题 | 先区分类型和值 "
+        "| 表达式求值 | 中 | 填空题 | 关注运算优先级 |"
+    )
+    unit = KnowledgeUnit(
+        course_id=COURSE_ID,
+        knowledge_unit_type="concept",
+        canonical_name="变量与表达式",
+        normalized_name="变量与表达式",
+        summary=collapsed_table,
+        body_markdown=collapsed_table,
+        status="active",
+    )
+    session.add(unit)
+    session.commit()
+
+    detail = get_knowledge_unit_detail(session, course_id=COURSE_ID, knowledge_unit_id=unit.id)
+
+    assert detail.current_revision is not None
+    assert "\n| 考点 | 重要程度 | 常见题型 | 学习建议 |" in detail.current_revision.summary
+    assert "| --- | --- | --- | --- |" in detail.current_revision.body
+    assert "| 变量声明 | 高 | 单选题 | 先区分类型和值 |" in detail.current_revision.body
+
+
 def test_focus_subgraph_without_center_prefers_high_degree_backbone_late_nodes(session: Session) -> None:
     low_value_units = [
         KnowledgeUnit(

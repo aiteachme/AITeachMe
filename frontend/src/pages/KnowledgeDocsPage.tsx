@@ -2958,7 +2958,8 @@ export function KnowledgeDocsPage() {
       tocDefaultInitializedRef.current = false;
     }
     const hasMarkdownContent = renderedMarkdown.trim().length > 0;
-    if (!tocSourceChanged && hasMarkdownContent) {
+    const shouldRescanRenderedContent = hasMarkdownContent && hasRenderedMarkdown && toc.length === 0;
+    if (!tocSourceChanged && hasMarkdownContent && !shouldRescanRenderedContent) {
       return;
     }
     const timeoutIds: number[] = [];
@@ -3069,6 +3070,7 @@ export function KnowledgeDocsPage() {
     isWaitingForRequestedBuild,
     renderedMarkdown,
     showDocGeneratingState,
+    toc.length,
   ]);
 
   useEffect(() => {

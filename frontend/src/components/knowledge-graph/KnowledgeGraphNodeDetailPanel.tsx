@@ -130,12 +130,12 @@ export function KnowledgeGraphNodeDetailPanel({
       {data.current_revision ? (
         <div className="space-y-2">
           {data.current_revision.summary ? (
-            <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-900 dark:text-slate-300">
+            <div className="overflow-x-auto break-words rounded-lg bg-slate-50 p-3 text-sm text-slate-600 dark:bg-slate-900 dark:text-slate-300">
               <MarkdownViewer content={data.current_revision.summary} />
             </div>
           ) : null}
           {data.current_revision.body ? (
-            <div className="max-h-48 overflow-y-auto rounded-lg border border-slate-100 p-3 text-sm dark:border-slate-800 dark:text-slate-300">
+            <div className="max-h-48 overflow-x-auto overflow-y-auto break-words rounded-lg border border-slate-100 p-3 text-sm dark:border-slate-800 dark:text-slate-300">
               <MarkdownViewer content={data.current_revision.body} />
             </div>
           ) : null}

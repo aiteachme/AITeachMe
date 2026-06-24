@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections import defaultdict, deque
 
 from sqlmodel import Session, func, select
@@ -48,6 +49,86 @@ _SUPPRESSED_GRAPH_DB_NODE_TYPES = _SUPPRESSED_GRAPH_NODE_TYPES | {
     for legacy_type, normalized_type in LEGACY_KNOWLEDGE_UNIT_TYPE_MAP.items()
     if normalized_type in _SUPPRESSED_GRAPH_NODE_TYPES
 }
+_TABLE_SEPARATOR_TOKEN_RE = re.compile(r"^:?-{3,}:?$")
+_NODE_DETAIL_SUMMARY_MAX_CHARS = 800
+_NODE_DETAIL_BODY_MAX_CHARS = 2400
+
+
+def _is_table_separator_token(value: str) -> bool:
+    return bool(_TABLE_SEPARATOR_TOKEN_RE.fullmatch(value.strip()))
+
+
+def _repair_collapsed_markdown_table(value: str) -> str:
+    text = str(value or "").strip()
+    if not text or "|---" not in text or text.count("\n") >= 3:
+        return text
+
+    tokens = [part.strip() for part in text.split("|")]
+    separator_start = -1
+    separator_end = -1
+    for index, token in enumerate(tokens):
+        if not _is_table_separator_token(token):
+            continue
+        end = index
+        while end < len(tokens) and _is_table_separator_token(tokens[end]):
+            end += 1
+        column_count = end - index
+        if column_count >= 2 and index >= column_count:
+            separator_start = index
+            separator_end = end
+            break
+    if separator_start < 0 or separator_end <= separator_start:
+        return text
+
+    column_count = separator_end - separator_start
+    left_tokens = [token for token in tokens[:separator_start] if token]
+    if len(left_tokens) < column_count:
+        return text
+    header = left_tokens[-column_count:]
+    prefix = left_tokens[:-column_count]
+
+    body_tokens = [token for token in tokens[separator_end:] if token]
+    lines: list[str] = []
+    lines.extend(prefix)
+    if lines:
+        lines.append("")
+    lines.append("| " + " | ".join(header) + " |")
+    lines.append("| " + " | ".join("---" for _ in header) + " |")
+    for start in range(0, len(body_tokens), column_count):
+        row = body_tokens[start:start + column_count]
+        if len(row) == column_count:
+            lines.append("| " + " | ".join(row) + " |")
+        elif row:
+            lines.append("...")
+    return "\n".join(lines).strip()
+
+
+def _clip_node_detail_markdown(value: str, *, max_chars: int) -> str:
+    text = _repair_collapsed_markdown_table(value)
+    if len(text) <= max_chars:
+        return text
+    clipped = text[:max_chars].rstrip()
+    if "\n|" in text:
+        lines = clipped.splitlines()
+        while lines:
+            last_line = lines[-1].strip()
+            if not last_line:
+                lines.pop()
+                continue
+            if last_line.startswith("|") and last_line.endswith("|"):
+                break
+            lines.pop()
+        if lines:
+            clipped = "\n".join(lines).rstrip()
+    return clipped + "\n\n..."
+
+
+def _node_detail_summary(value: str) -> str:
+    return _clip_node_detail_markdown(value, max_chars=_NODE_DETAIL_SUMMARY_MAX_CHARS)
+
+
+def _node_detail_body(value: str) -> str:
+    return _clip_node_detail_markdown(value, max_chars=_NODE_DETAIL_BODY_MAX_CHARS)
 
 
 def _display_knowledge_unit_type(knowledge_unit: KnowledgeUnit | None) -> str:
@@ -332,8 +413,8 @@ def get_knowledge_unit_detail(
 
     current_rev = NodeRevisionItem(
         title=revision.title,
-        summary=revision.summary,
-        body=revision.body,
+        summary=_node_detail_summary(revision.summary),
+        body=_node_detail_body(revision.body),
     )
 
     aliases_raw = knowledge_unit_repo.list_aliases_by_knowledge_unit(session, knowledge_unit_id)

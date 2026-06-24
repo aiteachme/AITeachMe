@@ -8,6 +8,7 @@ execution, runtime polling, and result assembly.
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 import sys
 import uuid
@@ -17,11 +18,12 @@ from time import perf_counter
 from typing import Any
 
 import structlog
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.models.build_planner import ConfirmedBuildPlan
 from app.models.raw_file import RawFile
 from app.models.course import Course
+from app.models.knowledge_graph_sync import KnowledgeGraphSyncRun
 from app.repositories.files_repo import list_all_raw_files_by_course, list_raw_files_by_ids
 from app.repositories.knowledge.docgen_repo import get_current_published_docs
 from app.repositories.knowledge.knowledge_repo import clear_chunk_vector_metadata
@@ -465,6 +467,109 @@ def _build_graph_metrics(*, build_status) -> KnowledgeGraphBuildMetricsResponse:
     return KnowledgeGraphBuildMetricsResponse.model_validate(dict(build_status.metrics or {}))
 
 
+def _int_metric(metrics: dict[str, Any], *keys: str) -> int:
+    for key in keys:
+        if key not in metrics:
+            continue
+        try:
+            return int(metrics.get(key) or 0)
+        except (TypeError, ValueError):
+            return 0
+    return 0
+
+
+def _latest_graph_sync_run_snapshot(session: Session | None, *, course_id: str) -> dict[str, Any] | None:
+    if session is None:
+        return None
+    sync_run = session.exec(
+        select(KnowledgeGraphSyncRun)
+        .where(KnowledgeGraphSyncRun.course_id == course_id)
+        .order_by(KnowledgeGraphSyncRun.updated_at.desc(), KnowledgeGraphSyncRun.id.desc())
+    ).first()
+    if sync_run is None:
+        return None
+    try:
+        metrics = json.loads(sync_run.metrics_json or "{}")
+    except json.JSONDecodeError:
+        metrics = {}
+    if not isinstance(metrics, dict):
+        metrics = {}
+    return {
+        "build_session_id": sync_run.build_session_id,
+        "status": str(sync_run.status or "").strip() or "idle",
+        "doc_version_no": int(sync_run.doc_version_no or 0),
+        "graph_revision_no": int(sync_run.graph_revision_no or 0),
+        "metrics": metrics,
+        "error_message": sync_run.error_message,
+        "started_at": sync_run.started_at,
+        "finished_at": sync_run.finished_at,
+    }
+
+
+def _build_graph_metrics_from_sync_run(snapshot: dict[str, Any] | None) -> KnowledgeGraphBuildMetricsResponse:
+    if snapshot is None:
+        return KnowledgeGraphBuildMetricsResponse()
+    metrics = snapshot.get("metrics")
+    if not isinstance(metrics, dict):
+        metrics = {}
+    return KnowledgeGraphBuildMetricsResponse(
+        doc_sync_section_count=_int_metric(metrics, "doc_sync_section_count", "section_count"),
+        doc_sync_unit_changes=_int_metric(metrics, "doc_sync_unit_changes", "unit_change_count"),
+        doc_sync_edge_changes=_int_metric(metrics, "doc_sync_edge_changes", "edge_change_count"),
+        doc_sync_rule_fallback_attempt_count=_int_metric(
+            metrics,
+            "doc_sync_rule_fallback_attempt_count",
+            "rule_fallback_attempt_count",
+        ),
+        doc_sync_rule_fallback_success_count=_int_metric(
+            metrics,
+            "doc_sync_rule_fallback_success_count",
+            "rule_fallback_success_count",
+        ),
+        elapsed_ms=_int_metric(metrics, "elapsed_ms"),
+        revision_no=int(snapshot.get("graph_revision_no") or 0),
+        last_synced_doc_version_no=int(snapshot.get("doc_version_no") or 0),
+        knowledge_doc_chapter_count=_int_metric(metrics, "knowledge_doc_chapter_count", "chapter_count"),
+        source_ref_count=_int_metric(metrics, "source_ref_count"),
+        backbone_unit_count=_int_metric(metrics, "backbone_unit_count"),
+        backbone_edge_count=_int_metric(metrics, "backbone_edge_count"),
+        stable_anchor_count=_int_metric(metrics, "stable_anchor_count"),
+        deprecated_unit_count=_int_metric(metrics, "deprecated_unit_count"),
+        deprecated_edge_count=_int_metric(metrics, "deprecated_edge_count"),
+        prefetch_section_count=_int_metric(metrics, "prefetch_section_count"),
+        prefetch_reused_section_count=_int_metric(metrics, "prefetch_reused_section_count"),
+        prefetch_catchup_section_count=_int_metric(metrics, "prefetch_catchup_section_count"),
+        prefetch_stale_section_count=_int_metric(metrics, "prefetch_stale_section_count"),
+        prefetch_failed_section_count=_int_metric(metrics, "prefetch_failed_section_count"),
+    )
+
+
+def _build_graph_lane_runtime_from_sync_run(
+    snapshot: dict[str, Any] | None,
+) -> KnowledgeBuildLaneRuntimeResponse | None:
+    if snapshot is None:
+        return None
+    status = str(snapshot.get("status") or "").strip() or "idle"
+    stage = status if status in {"completed", "failed", "cancelled", "partial_failed"} else "graph_docs_sync"
+    metrics = _build_graph_metrics_from_sync_run(snapshot)
+    return KnowledgeBuildLaneRuntimeResponse(
+        lane="graph",
+        build_group_id=str(snapshot.get("build_session_id") or "").strip() or None,
+        status=status,
+        stage=stage,
+        started_at=snapshot.get("started_at"),
+        finished_at=snapshot.get("finished_at"),
+        requested_at=snapshot.get("started_at"),
+        error_message=sanitize_knowledge_build_error_message(
+            snapshot.get("error_message"),
+            build_kind="graph",
+        ),
+        progress_pct=100 if status in {"completed", "partial_failed"} else 0,
+        current_stage_description="知识图谱同步已完成" if status == "completed" else None,
+        metrics=metrics.model_dump(),
+    )
+
+
 def _resolve_runtime_build_status(
     *,
     course_id: str,
@@ -560,8 +665,17 @@ def get_knowledge_build_runtime_result(
     graph_runtime = runtime.graph_runtime if runtime is not None else None
     docs_ready = manifest is not None
     graph_status = (graph_runtime.status if graph_runtime is not None else "").strip()
+    graph_sync_snapshot = None
+    graph_lane = _build_lane_runtime_response("graph", graph_runtime)
+    graph_metrics = _build_graph_metrics(build_status=graph_runtime)
     if not graph_status:
-        graph_status = "skipped" if docs_ready else "idle"
+        graph_sync_snapshot = _latest_graph_sync_run_snapshot(session, course_id=course_id)
+        if graph_sync_snapshot is not None:
+            graph_status = str(graph_sync_snapshot.get("status") or "").strip() or "idle"
+            graph_lane = _build_graph_lane_runtime_from_sync_run(graph_sync_snapshot)
+            graph_metrics = _build_graph_metrics_from_sync_run(graph_sync_snapshot)
+        else:
+            graph_status = "skipped" if docs_ready else "idle"
     graph_training_ready_statuses = {"completed", "partial_failed", "skipped"}
     graph_unhealthy = graph_status in {"failed", "cancelled"}
     training_unlocked = bool(docs_ready and graph_status in graph_training_ready_statuses)
@@ -569,7 +683,15 @@ def get_knowledge_build_runtime_result(
         build_group_id=(
             aggregate_runtime.build_group_id
             if aggregate_runtime is not None
-            else (runtime.build_group_id if runtime is not None else None)
+            else (
+                runtime.build_group_id
+                if runtime is not None
+                else (
+                    str(graph_sync_snapshot.get("build_session_id") or "").strip() or None
+                    if graph_sync_snapshot is not None
+                    else None
+                )
+            )
         ),
         docs_ready=docs_ready,
         graph_status=graph_status,
@@ -577,14 +699,14 @@ def get_knowledge_build_runtime_result(
         training_unlocked=training_unlocked,
         aggregate=_build_lane_runtime_response("aggregate", aggregate_runtime),
         docgen=_build_lane_runtime_response("docgen", docgen_runtime),
-        graph=_build_lane_runtime_response("graph", graph_runtime),
+        graph=graph_lane,
         docgen_preview=_build_runtime_preview(
             build_status=docgen_runtime,
             draft_markdown=draft_markdown,
             manifest=manifest,
         ),
         docgen_metrics=_build_runtime_metrics(build_status=docgen_runtime),
-        graph_metrics=_build_graph_metrics(build_status=graph_runtime),
+        graph_metrics=graph_metrics,
     )
 
 
