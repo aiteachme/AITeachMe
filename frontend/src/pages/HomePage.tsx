@@ -1033,7 +1033,7 @@ export function HomePage() {
     />
     <div
       className={cn(
-        "relative flex w-full flex-col items-center overflow-x-clip bg-transparent p-4 pt-16 selection:bg-zinc-200 md:p-8 md:pt-20",
+        "atm-home-surface relative flex w-full flex-col items-center overflow-x-clip p-4 pt-16 selection:bg-zinc-200 md:p-8 md:pt-20",
         isElectron ? "min-h-full" : "min-h-[100dvh]",
       )}
     >
@@ -1126,9 +1126,6 @@ export function HomePage() {
                     </button>
                   );
                 })}
-              </div>
-              <div className="text-xs leading-5 text-slate-400 dark:text-slate-500">
-                {isCourseEntryMode ? "默认进入学习方案确认" : "先对话，必要时转课程"}
               </div>
             </div>
             <textarea
