@@ -1,0 +1,13 @@
+{
+  "title": "AITeachMe",
+  "pages": [
+    "index",
+    "---开始使用---",
+    "quickstart",
+    "user-guide",
+    "---开发者---",
+    "developer",
+    "---产品---",
+    "product"
+  ]
+}

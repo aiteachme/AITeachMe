@@ -1,0 +1,54 @@
+---
+title: 开发者总览
+description: 从稳定边界理解 AITeachMe 的前后端、业务工作流和基础设施层。
+---
+
+AITeachMe 是前后端分离、可本地运行、可云端部署的 AI 学习系统。开发者文档只描述长期稳定的边界、入口和检查方式。
+
+## 一句话架构
+
+```text
+frontend React
+  -> FastAPI api
+  -> workflows
+  -> repositories / shared.infra / models / schemas
+  -> SQLite/PostgreSQL + local/S3 storage
+```
+
+## 代码边界
+
+| 区域 | 职责 |
+| --- | --- |
+| `frontend/` | React 应用、课程页面、对话、文档阅读和桌面壳 |
+| `backend/app/api/` | HTTP 路由、鉴权依赖、请求响应转换、SSE 包装 |
+| `backend/app/workflows/` | 唯一业务层，承接五大引擎和 support 用例 |
+| `backend/app/shared/infra/` | LLM、检索、工具、存储、workflow runtime、观测等通用能力 |
+| `backend/app/repositories/` | 数据库读写封装 |
+| `backend/app/models/` | 持久化模型 |
+| `backend/app/schemas/` | API 和 workflow 边界数据结构 |
+
+## 当前最重要的事实源
+
+- 根 `README.md`：面向公开介绍。
+- `docs/content/docs/`：文档站展示内容。
+- `docs/architecture`、`docs/workflows`、`docs/development`：现有跨模块事实文档。
+- `backend/app/workflows/README.md`：workflow 层结构规则。
+- `backend/app/shared/infra/README.md`：infra 层能力边界。
+- 各模块内 `README.md`：代码附近的局部权威。
+
+## 开发原则
+
+1. `Course` 是业务隔离边界。
+2. `workflows/` 是唯一业务层。
+3. `shared.infra` 只接通用能力，不理解教学语义。
+4. `api` 优先调用 workflows，不直接拼装复杂业务。
+5. `frontend/src/api/generated/` 由 Orval 生成，不手动修改。
+6. 长链路 AI 任务必须有状态、进度、trace 和失败摘要。
+7. 架构变化先更新模块 README，再同步展示文档。
+
+## 推荐下一步
+
+- 本地运行项目：[本地开发](/docs/developer/local-development)
+- 理解后端层级：[架构总览](/docs/developer/architecture)
+- 修改五大引擎：[Workflows 和 Infra](/docs/developer/workflows-infra)
+- 改 API 或前端调用：[API 契约](/docs/developer/api-contracts)

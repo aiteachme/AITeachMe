@@ -1,0 +1,65 @@
+---
+title: API 契约和生成客户端
+description: 后端 OpenAPI、前端 Orval 生成物和 API 修改流程。
+---
+
+前后端通过 FastAPI OpenAPI 契约对接。前端生成物不能手改。
+
+## 稳定规则
+
+- 后端 schema 或路由变化后，先导出 OpenAPI。
+- 前端用 Orval 重新生成客户端。
+- `frontend/src/api/generated/` 是生成物，不手动修改。
+- 手写 API wrapper 只放在 `frontend/src/lib`、`frontend/src/hooks` 或页面组件中。
+
+## 生成物位置
+
+```text
+frontend/openapi.json
+frontend/src/api/generated/
+```
+
+## 推荐流程
+
+```text
+修改 backend schema/router
+  -> 启动后端
+  -> 导出 frontend/openapi.json
+  -> 运行 Orval
+  -> 前端只消费生成客户端或稳定 wrapper
+  -> npm run build
+```
+
+具体导出脚本以当前后端脚本为准：
+
+```text
+backend/scripts/export_api_docs.py
+```
+
+## Knowledge API 心智模型
+
+课程知识相关接口围绕：
+
+```text
+/api/v1/courses/{course}/knowledge
+```
+
+常见能力：
+
+- 构建方案：创建、读取、流式生成、确认 planner 会话。
+- 知识构建：启动知识文档、取消构建、读取 runtime、SSE 进度。
+- 知识文档：读取已发布文档、草稿和构建状态。
+- 知识图谱：查询 KnowledgeUnit、关系、路径、子图和上下文。
+
+文档站不罗列所有字段，字段真相以 OpenAPI 和后端 schema 为准。
+
+## SSE 和长链路
+
+长链路 API 需要同时考虑：
+
+- 用户可见进度。
+- 后端取消和失败摘要。
+- LangSmith trace。
+- 前端重连或刷新后的状态恢复。
+
+不要只为一个页面临时加调试接口。正式排障优先使用 runtime 状态、日志和 LangSmith。

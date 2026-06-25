@@ -1,0 +1,77 @@
+---
+title: Workflows 和 Infra
+description: 区分业务工作流和共享基础设施，避免职责回流。
+---
+
+AITeachMe 后端最重要的边界是：`workflows` 决定业务怎么跑，`shared.infra` 提供通用能力怎么接。
+
+## Workflows 负责什么
+
+`backend/app/workflows/` 是当前唯一业务层。它承接：
+
+- 五大引擎：ingest、digest、interact、examine、profile。
+- support 用例：auth、courses、export_import、system。
+- LangGraph 编排、状态、节点、prompt、进度事件。
+
+稳定 lane 通常长这样：
+
+```text
+lane_name/
+  __init__.py
+  graph.py
+  state.py
+  nodes/
+  lib/
+  prompts/
+  README.md
+```
+
+`__init__.py` 只做稳定导出，不承载业务流程。`graph.py` 承接 LangGraph 主结构和单次运行入口。复杂逻辑应从节点下沉到 `lib/`。
+
+## Infra 负责什么
+
+`backend/app/shared/infra/` 是共享基础设施层，负责接通：
+
+- LLM 和 embedding。
+- 检索、reader、RAG。
+- 工具注册和执行。
+- 存储、数据库运行支撑。
+- workflow runtime、progress、observability。
+- MCP、执行安全、运行路径。
+
+一句话：
+
+```text
+infra 负责能力怎么接，workflows 负责业务怎么跑、怎么教。
+```
+
+## 不该放进 Infra 的内容
+
+- workflow graph、state、node、router。
+- 业务场景专属 prompt。
+- 教学策略、章节顺序、课程构建流程。
+- 某条链路自己的兜底策略。
+- 第二套 tool registry、trace 或 progress 框架。
+
+## Progress 和 LangSmith
+
+建议心智模型：
+
+```text
+LangSmith trace = 给研发排障
+progress event  = 给前端展示
+runtime_stats   = 少量兼容摘要
+```
+
+前端进度事件只保留用户看得懂的阶段文案，不暴露 helper 名、私有 trace 概念或过细的 LLM 细节。
+
+## 修改前自检
+
+1. 这是五大引擎 lane，还是 support 用例？
+2. 是否已有 lane 可以承接？
+3. 运行入口是否应该在 `graph.py`？
+4. `__init__.py` 是否只是导出？
+5. 复杂逻辑是否已经从 node 下沉到 `lib/`？
+6. prompt 是否只在 `prompts/`，并且有 trace？
+7. lane README 是否同步更新？
+8. 新 Python 文件是否有清晰文件头说明？

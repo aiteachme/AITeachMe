@@ -1,0 +1,38 @@
+---
+title: AITeachMe 文档
+description: 用最短路径理解 AITeachMe 的学习闭环、用户入口和开发者边界。
+---
+
+AITeachMe 的目标很简单：把资料变成一个围绕课程运转的学习空间。
+
+你可以上传教材、讲义、PPT、题目或笔记，让系统先解析资料，再生成学习方案、知识文档、伴读问答、诊断练习和学习画像。文档站按照“先会用，再看懂架构”的顺序组织。
+
+## 推荐阅读路径
+
+| 你想做什么 | 先读 |
+| --- | --- |
+| 第一次体验产品 | [跑通第一门课](/docs/quickstart/first-course) |
+| 不知道首页输入框怎么用 | [构建课程还是先聊天](/docs/quickstart/course-vs-chat) |
+| 理解资料上传后发生什么 | [上传资料](/docs/user-guide/upload-materials) |
+| 想做开发或改代码 | [开发者总览](/docs/developer) |
+| 想理解后端业务边界 | [架构总览](/docs/developer/architecture) |
+
+## 三个稳定概念
+
+### Course 是边界
+
+AITeachMe 的核心不是一次问答，而是一门课程。资料、知识文档、知识图谱、对话、测验和画像都围绕同一个 Course 聚合。
+
+### 构建先于深入学习
+
+系统会先把学习目标和资料边界变成一个可确认的方案。确认后再生成知识文档和后续能力，避免一上来就把用户带进不可控的长链路。
+
+### 解释优先于炫技
+
+用户教程用“你要完成什么”组织；开发者文档只写稳定边界、入口和检查方式。更细的节点、prompt、临时调试记录仍然放在模块 README 或代码附近。
+
+## 当前文档分层
+
+- `docs/content/docs/`：文档站展示内容，面向用户和开发者。
+- `docs/architecture`、`docs/workflows`、`docs/development` 等：现有内部事实文档，后续会逐步整理为 reference。
+- 模块内 `README.md`：代码附近的局部权威，尤其是 `backend/app/workflows/README.md` 和 `backend/app/shared/infra/README.md`。

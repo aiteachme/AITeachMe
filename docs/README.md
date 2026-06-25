@@ -1,115 +1,53 @@
-# AITeachMe 文档导航
+# AITeachMe 文档维护说明
 
-AITeachMe 文档采用四层结构：
+`docs/` 现在同时承担两类职责：
 
-1. 根 `README.md`：公开项目首页，负责产品定位、核心能力、快速启动、展示位、路线图和贡献入口。
-2. `docs/README.md`：全仓文档导航和阅读顺序。
-3. `docs/*`：跨模块当前事实源，不放历史流水账。
-4. 模块内 README：代码附近的局部权威文档。
+1. `docs/content/docs/`：Fumadocs 文档站的展示内容，面向用户教程、开发者入口和简短产品说明。
+2. `docs/architecture`、`docs/workflows`、`docs/development` 等：仓库已有的内部事实文档，先继续作为实现事实源保留，后续逐步整理进更清晰的 reference 区域。
 
-如果文档和当前代码冲突，以当前代码和模块 README 为准，并尽快修正文档。根 README 可以更偏对外介绍；`docs/` 里的事实页必须更克制，重点保证准确、可维护、可追溯。
+文档站不是另一个产品首页，也不单独承载营销落地页。根路径 `/` 仅重定向到 `/docs`，真正的阅读入口从 `/docs` 开始。
 
-## 推荐阅读
+## 展示内容结构
 
-### 第一次了解项目
+文档站内容放在 `docs/content/docs/`：
 
-1. [仓库根 README](../README.md)
-2. [产品愿景](./product/vision.md)
-3. [系统架构](./architecture/system-architecture.md)
-4. [仓库结构与运行时文件](./architecture/repo-structure-and-runtime-files.md)
-5. [本地开发](./development/local-development.md)
+- `index.mdx`：文档站总入口，说明推荐阅读路径和稳定概念。
+- `quickstart/`：第一次使用、首页输入框和构建课程路径。
+- `user-guide/`：资料上传、课程构建、自由对话、测验与画像。
+- `developer/`：本地开发、架构、workflows/infra、API 契约。
+- `product/`：简短产品介绍，保持克制，不替代根 README。
 
-### 后端开发
+写展示文档时优先回答“用户或开发者下一步该做什么”，避免把临时 prompt、调试记录、历史方案写进对外页面。
 
-1. [系统架构](./architecture/system-architecture.md)
-2. [领域模型与状态](./architecture/domain-model-and-state.md)
-3. [AI 技术栈与 Infra 接入](./architecture/ai-stack-and-infra.md)
-4. [Workflows 结构规则](../backend/app/workflows/README.md)
-5. [Infra 分层说明](../backend/app/shared/infra/README.md)
-6. 按任务进入对应 engine 文档和模块 README。
+## 内部事实文档
 
-### 前端开发
+现有目录暂时保留原位：
 
-1. [API 契约与开发流程](./development/api-contracts-and-dev-workflow.md)
-2. [仓库结构与运行时文件](./architecture/repo-structure-and-runtime-files.md)
-3. [本地开发](./development/local-development.md)
-4. [前端 README](../frontend/README.md)
+- `architecture/`
+- `workflows/`
+- `development/`
+- `deployment/`
+- `operations/`
+- `product/`
+- `standards/`
+- `brand/`
 
-### 部署、桌面端与运维
+如果展示文档和内部事实文档冲突，以当前代码、模块 README 和内部事实文档为准，并同步修正文档站内容。
 
-1. [云端部署架构](./deployment/cloud-architecture.md)
-2. [云端部署配置](./deployment/cloud-deployment.md)
-3. [云端数据库迁移](./deployment/cloud-db-migrations.md)
-4. [Sealos 前端 Nginx 部署](./deployment/sealos-frontend.md)
-5. [桌面端打包](../packaging/README.md)
-6. [导入导出](./operations/export-import.md)
+## 本地预览
 
-### 贡献前检查
+```powershell
+cd docs
+npm install
+npm run dev
+```
 
-1. [CONTRIBUTING.md](../CONTRIBUTING.md)
-2. [本地开发](./development/local-development.md)
-3. [API 契约与开发流程](./development/api-contracts-and-dev-workflow.md)
-4. [Workflows 结构规则](../backend/app/workflows/README.md)
-5. [手动验证](./development/manual-testing.md)
-
-## 文档分区
-
-### Product
-
-- [产品愿景](./product/vision.md)
-- [可计算教材愿景](./product/computable-textbook.md)
-- [英文模式与国际化策略](./product/language-mode-and-internationalization.md)
-
-### Architecture
-
-- [系统架构](./architecture/system-architecture.md)
-- [领域模型与状态](./architecture/domain-model-and-state.md)
-- [AI 技术栈与 Infra 接入](./architecture/ai-stack-and-infra.md)
-- [仓库结构与运行时文件](./architecture/repo-structure-and-runtime-files.md)
-- [数据库与存储架构](./architecture/database-and-storage.md)
-- [数据库结构清单](./architecture/database-schema-inventory.md)
-- [设置与配置归属](./architecture/settings-config-ownership.md)
-
-### Workflows
-
-- [Ingest 透视引擎](./workflows/ingest-engine.md)
-- [Digest 织网引擎](./workflows/digest-engine.md)
-- [Interact 伴读引擎](./workflows/interact-engine.md)
-- [Examine 诊断引擎](./workflows/examine-engine.md)
-- [Profile 显影引擎](./workflows/profile-engine.md)
-- [DocGen 封面 Sidecar](./workflows/docgen-cover-sidecar.md)
-- [Workflows 调试指南](./workflows/debugging.md)
-- [进度事件规范](./workflows/progress-events.md)
-
-### Development
-
-- [本地开发](./development/local-development.md)
-- [API 契约与开发流程](./development/api-contracts-and-dev-workflow.md)
-- [手动验证](./development/manual-testing.md)
-
-### Deployment
-
-- [云端部署架构](./deployment/cloud-architecture.md)
-- [云端部署配置](./deployment/cloud-deployment.md)
-- [云端数据库迁移](./deployment/cloud-db-migrations.md)
-- [Sealos 前端 Nginx 部署](./deployment/sealos-frontend.md)
-
-### Operations
-
-- [导入导出](./operations/export-import.md)
-- [运维入口](./operations/README.md)
-- [桌面端打包入口](../packaging/README.md)
-
-### Standards
-
-- [项目目录架构规范](./standards/standard-01-project-directory-architecture.md)
-- [Git 分支管理规范](./standards/standard-02-git-branch-management.md)
+开发服务器默认由 Next.js 分配端口。访问根路径时会自动进入 `/docs`。
 
 ## 维护规则
 
-- 新增当前事实文档必须同步更新本文件。
-- 历史方案、交接稿、过程稿不要放进 active docs。
-- 单个主题只保留一个当前事实源。
-- 根 README 可以服务对外介绍；事实、边界和落点必须回到 `docs/` 或模块 README。
-- 模块内部结构优先写在模块 README，不复制到跨模块文档。
+- 新增展示页必须同步更新对应 `meta.json`。
+- 用户教程要写成可执行路径，不要写抽象口号。
+- 开发者文档只放稳定入口、边界和检查方式。
+- 模块内部细节优先写在模块 README，例如 `backend/app/workflows/README.md` 和 `backend/app/shared/infra/README.md`。
 - 文档不得包含真实密钥、私有部署地址、本机绝对路径或其他敏感内容。
