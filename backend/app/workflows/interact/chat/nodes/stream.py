@@ -8,6 +8,7 @@ Idempotency: non-idempotent external LLM stream; on rerun it generates a fresh a
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -61,6 +62,38 @@ async def _emit_token(emitter: SSEEventEmitter | None, token: str) -> None:
     if emitter is None:
         return
     await emitter.emit_token(token)
+
+
+def _split_progressive_tokens(text: str) -> list[str]:
+    if len(text) <= 36:
+        return [text]
+
+    chunks: list[str] = []
+    buffer: list[str] = []
+    for char in text:
+        buffer.append(char)
+        if char in "。！？!?；;\n" or len(buffer) >= 24:
+            chunks.append("".join(buffer))
+            buffer = []
+    if buffer:
+        chunks.append("".join(buffer))
+    return [chunk for chunk in chunks if chunk]
+
+
+async def _collect_and_emit_text(
+    emitter: SSEEventEmitter | None,
+    collected_tokens: list[str],
+    text: str,
+) -> None:
+    if emitter is None:
+        collected_tokens.append(text)
+        return
+    chunks = _split_progressive_tokens(text)
+    for chunk in chunks:
+        collected_tokens.append(chunk)
+        await _emit_token(emitter, chunk)
+        if len(chunks) > 1:
+            await asyncio.sleep(0)
 
 
 async def _emit_status(
@@ -270,8 +303,12 @@ def build_stream_answer_node(
                         stream_interrupted=True,
                     )
                 if result.assistant_response:
-                    collected_tokens.append(result.assistant_response)
-                    await _emit_token(emitter, result.assistant_response)
+                    await _emit_status(emitter, "home_intake", "正在生成回复...")
+                    await _collect_and_emit_text(
+                        emitter,
+                        collected_tokens,
+                        result.assistant_response,
+                    )
                 return _build_stream_state(
                     state,
                     collected_tokens,

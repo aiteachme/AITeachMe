@@ -16,7 +16,7 @@ import type {
 } from "../../api/generated/model";
 import { cn } from "../../lib/utils";
 import { useAiInteraction } from "./AiInteractionProvider";
-import type { AiConversationScope } from "./types";
+import type { AiConversationScope, AiInteractionDisplayMode } from "./types";
 import {
   AI_SOURCE_DOCUMENT_SELECTION,
   AI_SOURCE_EXAM_QUESTION,
@@ -271,6 +271,10 @@ function getNewConversationLabel(scope: AiConversationScope): string {
   return "新建课程对话";
 }
 
+function getConversationOpenMode(scope: AiConversationScope, isAssistantPage: boolean): AiInteractionDisplayMode {
+  return isAssistantPage || scope.type === "global" ? "fullscreen" : "sidebar";
+}
+
 export function AiConversationSidebarSection({
   collapsed,
   onExpandSidebar,
@@ -400,10 +404,14 @@ export function AiConversationSidebarSection({
       return;
     }
     updateExpanded(true);
-    onExpandSidebar();
+    const sessionScope = getSessionScope(session);
+    const mode = getConversationOpenMode(sessionScope, isAssistantPage);
+    if (mode === "sidebar") {
+      onExpandSidebar();
+    }
     openAiInteraction({
-      mode: isAssistantPage ? "fullscreen" : "sidebar",
-      scope: getSessionScope(session),
+      mode,
+      scope: sessionScope,
       sessionId,
       source: session.source,
       anchorId: session.anchor_id,

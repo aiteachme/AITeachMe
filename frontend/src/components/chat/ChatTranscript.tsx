@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import { AlertCircle, Check, ChevronRight, Copy, Loader2, SquareTerminal } from "lucide-react";
+import { AlertCircle, Check, ChevronRight, Copy, Loader2, Paperclip, SquareTerminal } from "lucide-react";
 import type { ChatContextItem } from "../../api/generated/model";
 import { type ChatClientAction, type ChatMessageToolRun, type ChatSessionMessage } from "../../hooks/useChatSession";
 import { cn } from "../../lib/utils";
@@ -146,6 +146,14 @@ export const ChatTranscript = memo(function ChatTranscript({
               <p className="whitespace-pre-wrap rounded-[22px] bg-zinc-950 px-4 py-2.5 text-[14px] font-medium leading-6 text-white shadow-[0_16px_36px_-26px_rgba(24,24,27,0.95)] dark:bg-slate-100 dark:text-slate-950 dark:shadow-[0_18px_30px_-24px_rgba(255,255,255,0.22)] sm:px-5">
                 {message.content}
               </p>
+              {getAttachedFileCount(message) > 0 ? (
+                <div className="mt-1.5 flex justify-end pr-1">
+                  <span className="inline-flex h-6 items-center gap-1.5 rounded-full border border-zinc-200 bg-white/85 px-2.5 text-[11px] font-medium text-zinc-500 shadow-sm dark:border-slate-800 dark:bg-slate-900/85 dark:text-slate-400">
+                    <Paperclip className="h-3 w-3" strokeWidth={2} />
+                    已附加 {getAttachedFileCount(message)} 份资料
+                  </span>
+                </div>
+              ) : null}
 
               <MessageCopyControls
                 align="end"
@@ -174,6 +182,10 @@ export const ChatTranscript = memo(function ChatTranscript({
     </div>
   );
 });
+
+function getAttachedFileCount(message: ChatSessionMessage): number {
+  return message.attachedFileCount ?? message.attachedFileIds?.length ?? 0;
+}
 
 function MessageCopyControls({
   align,
