@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion, type Variants } from "framer-motion";
 import {
+  BookOpenText,
   ChevronRight,
   Download,
   Edit3,
@@ -32,6 +33,7 @@ import { COURSES_IMPORTED_EVENT } from "../../lib/courseEvents";
 import { cn } from "../../lib/utils";
 import { publicAssetPath } from "../../lib/publicAsset";
 import { buildPreferredCourseEntryPath, getCourseIdFromPathname } from "../../lib/courseNavigation";
+import { isElectronRuntime } from "../../lib/electronRuntime";
 
 import { CourseExportModal } from "../course/CourseExportModal";
 import { CourseImportModal } from "../course/CourseImportModal";
@@ -52,6 +54,7 @@ const COURSE_ACTION_MENU_GAP = 6;
 const COURSE_ACTION_MENU_MARGIN = 8;
 const COLLAPSED_SIDEBAR_WIDTH = 56;
 const EXPANDED_SIDEBAR_WIDTH = 240;
+const DEFAULT_DEV_DOCS_URL = "http://127.0.0.1:5182/docs";
 
 type CourseActionMenuPosition = {
   left: number;
@@ -208,6 +211,14 @@ function writeCourseSectionExpanded(value: boolean) {
   } catch {
     // Keep the in-memory state when storage is unavailable in restricted webviews.
   }
+}
+
+function resolveDocsUrl(): string {
+  const configuredUrl = import.meta.env.VITE_DOCS_URL?.trim();
+  if (configuredUrl) {
+    return configuredUrl;
+  }
+  return import.meta.env.DEV ? DEFAULT_DEV_DOCS_URL : "/docs";
 }
 
 export function Sidebar({
@@ -496,6 +507,15 @@ export function Sidebar({
   const closeMobileNavigation = useCallback(() => {
     setIsMobileOpen(false);
   }, []);
+  const openDocs = useCallback(() => {
+    const docsUrl = resolveDocsUrl();
+    closeMobileNavigation();
+    if (isElectronRuntime() && window.electronWindow?.openExternal) {
+      void window.electronWindow.openExternal(docsUrl);
+      return;
+    }
+    window.open(docsUrl, "_blank", "noopener,noreferrer");
+  }, [closeMobileNavigation]);
   const openCreateCoursePage = useCallback(() => {
     setCourseActionError(undefined);
     setOpenMenuId(null);
@@ -1025,6 +1045,19 @@ export function Sidebar({
             renderCollapsedChrome ? "w-[56px] self-start p-2" : isMobileOpen ? "px-4 py-2.5" : "px-3 py-2",
           )}
         >
+          <button
+            type="button"
+            onClick={openDocs}
+            className={cn(
+              "flex items-center text-slate-500 transition-colors hover:bg-[#eef3f8] hover:text-slate-900 focus:outline-none focus-visible:outline-none dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
+              renderCollapsedChrome ? "mx-auto h-8 w-8 justify-center rounded-md" : isMobileOpen ? "h-10 w-full rounded-md px-2 gap-2.5" : "h-8 w-full rounded-md px-2 gap-2",
+            )}
+            title="文档"
+            aria-label="打开文档"
+          >
+            <BookOpenText className={cn("shrink-0", isMobileOpen ? "h-5 w-5" : "h-4 w-4")} />
+            {!renderCollapsedChrome ? <span className={cn("whitespace-nowrap", isMobileOpen ? "text-sm" : "text-xs")}>文档</span> : null}
+          </button>
           <button
             type="button"
             onClick={() => setIsCommunityModalOpen(true)}

@@ -3,6 +3,7 @@
 interface ImportMetaEnv {
   readonly VITE_API_URL?: string;
   readonly VITE_APP_VERSION?: string;
+  readonly VITE_DOCS_URL?: string;
   readonly VITE_POSTHOG_DEBUG?: string;
   readonly VITE_POSTHOG_ENABLED?: string;
   readonly VITE_POSTHOG_HOST?: string;

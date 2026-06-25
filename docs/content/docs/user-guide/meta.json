@@ -1,4 +1,5 @@
 {
   "title": "用户教程",
-  "pages": ["upload-materials", "build-course", "chat", "exams-profile"]
+  "pages": ["upload-materials", "build-course", "chat", "exams-profile"],
+  "pagesIndex": "index"
 }
