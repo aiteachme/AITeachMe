@@ -165,6 +165,7 @@ def _uses_course_grounding(scene: ChatPromptScene) -> bool:
         ChatPromptScene.DOCUMENT_SELECTION,
         ChatPromptScene.EXAM_QUESTION,
         ChatPromptScene.BUILD_ASSISTANT,
+        ChatPromptScene.LIBRARY_LEARNING,
     }
 
 

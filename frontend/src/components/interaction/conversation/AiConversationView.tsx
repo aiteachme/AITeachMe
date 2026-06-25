@@ -271,9 +271,9 @@ function resolveConversationScene(input: {
   if (requestedScene) {
     return requestedScene;
   }
-  const sourceScene = sceneFromSource(input.requestedSource, false) ?? sceneFromSource(input.selectedSessionSource, false);
-  if (sourceScene) {
-    return sourceScene;
+  const requestedSourceScene = sceneFromSource(input.requestedSource, false);
+  if (requestedSourceScene) {
+    return requestedSourceScene;
   }
   if (input.scope?.type === "library") {
     return AI_SCENE_LIBRARY_SELECTION;
@@ -281,15 +281,21 @@ function resolveConversationScene(input: {
   if (
     input.scope?.type === "global" &&
     (
-      input.hasAttachedFiles ||
       input.selectedSessionSource?.trim() === "home_intake" ||
       looksLikeHomeIntakeTurn(input.question)
     )
   ) {
     return AI_SCENE_HOME_INTAKE;
   }
+  if (input.scope?.type === "global" && input.hasAttachedFiles) {
+    return AI_SCENE_LIBRARY_SELECTION;
+  }
   if (looksLikeWebResearchTurn(input.question)) {
     return AI_SCENE_WEB_RESEARCH;
+  }
+  const selectedSessionScene = sceneFromSource(input.selectedSessionSource, false);
+  if (selectedSessionScene) {
+    return selectedSessionScene;
   }
   return input.scope?.type === "course" ? AI_SCENE_COURSE_CHAT : AI_SCENE_GLOBAL_ASSISTANT;
 }

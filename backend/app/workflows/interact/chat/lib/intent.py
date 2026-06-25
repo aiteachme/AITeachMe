@@ -171,12 +171,13 @@ def should_use_course_grounding(
         ChatScene.DOCUMENT_SELECTION,
         ChatScene.EXAM_QUESTION,
         ChatScene.BUILD_ASSISTANT,
+        ChatScene.LIBRARY_SELECTION,
     }:
         return True
 
     if (source or "").strip() == "home_intake":
         return False
-    if (source or "").strip() == "course_chat":
+    if (source or "").strip() in {"course_chat", "library_selection"}:
         return True
     if (source or "").strip() in {"global_assistant", "web_research"}:
         return False

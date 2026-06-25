@@ -427,44 +427,6 @@ export function AiConversationDraftFileAttachments({
   );
   const hasFiles = selectedFiles.length > 0 || optimisticUploadingFiles.length > 0;
 
-  const statusText = useMemo(() => {
-    if (isUploading) {
-      return "资料正在上传，上传完成后会继续后台解析。";
-    }
-    if (!hasFiles) {
-      return "";
-    }
-    const readyCount =
-      selectedFilesQuery.data?.ready_count ?? selectedFiles.filter((file) => file.markdown_ready).length;
-    const processingCount =
-      selectedFilesQuery.data?.processing_count ??
-      selectedFiles.filter((file) => !file.markdown_ready && file.status !== "failed" && !file.error_message?.trim()).length;
-    const failedCount =
-      selectedFilesQuery.data?.failed_count ??
-      selectedFiles.filter((file) => Boolean(file.error_message?.trim()) || file.status === "failed").length;
-
-    if (processingCount > 0) {
-      return `${processingCount} 份资料正在解析中；完成后会自动转为可用状态。`;
-    }
-    if (readyCount > 0 && failedCount === 0) {
-      return `${readyCount} 份资料已就绪，可以一起提问。`;
-    }
-    if (readyCount > 0 && failedCount > 0) {
-      return `${readyCount} 份资料已就绪，${failedCount} 份资料处理失败。`;
-    }
-    if (failedCount > 0) {
-      return `${failedCount} 份资料处理失败；你可以先移除。`;
-    }
-    return "资料已加入，会继续在后台解析；从这里移除不会删除资料库文件。";
-  }, [
-    hasFiles,
-    isUploading,
-    selectedFiles,
-    selectedFilesQuery.data?.failed_count,
-    selectedFilesQuery.data?.processing_count,
-    selectedFilesQuery.data?.ready_count,
-  ]);
-
   const syncFilesCache = useCallback((nextFileIds: string[], nextFiles: FileRecord[]) => {
     queryClient.setQueryData<FilesData>(DRAFT_FILES_QUERY_KEY(nextFileIds), (previous) => {
       const previousItems = previous?.items ?? [];
@@ -636,7 +598,6 @@ export function AiConversationDraftFileAttachments({
           ))}
         </div>
       ) : null}
-      {statusText ? <p className="px-1 text-xs leading-5 text-zinc-500 dark:text-slate-400">{statusText}</p> : null}
       {error ? <p className="px-1 text-xs leading-5 text-red-500">{error}</p> : null}
     </div>
   ) : null;

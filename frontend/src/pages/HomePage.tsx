@@ -19,6 +19,7 @@ import {
   FileImage,
   FolderOpen,
   Loader2,
+  MessageCircle,
   FileText,
   FileType,
   Paperclip,
@@ -50,6 +51,7 @@ import { HeroAnimation } from "../components/ui/HeroAnimation";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 import { CourseExportModal } from "../components/course/CourseExportModal";
 import { useToast } from "../components/ui/Toast";
+import { AI_SCENE_GLOBAL_ASSISTANT, AI_SCENE_LIBRARY_SELECTION, useAiInteraction } from "../components/interaction";
 import {
   ChatModelSelect,
   toChatRequestModel,
@@ -212,9 +214,32 @@ const HOME_FILE_PROMPT_STARTERS = [
   },
 ] as const;
 
-const HOME_PROMPT_TEMPLATE_TEXTS = new Set<string>(
-  [...HOME_PROMPT_STARTERS, ...HOME_FILE_PROMPT_STARTERS].map((starter) => starter.prompt),
-);
+const HOME_CHAT_PROMPT_STARTERS = [
+  {
+    id: "chat-study-diagnosis",
+    label: "诊断建课",
+    prompt: "我想做一门计算机基础冲刺课，但复习效率很低；先帮我判断该补哪些基础，再确认课程结构。",
+    icon: Target,
+  },
+  {
+    id: "chat-material-course",
+    label: "资料转课",
+    prompt: "我上传了课程资料，先帮我判断适合建成什么课、哪些章节优先学，再转成课程规划。",
+    icon: BookOpen,
+  },
+  {
+    id: "chat-exam-strategy",
+    label: "考试冲刺",
+    prompt: "距离高数期末还有三天，范围到定积分应用；帮我先梳理冲刺课目标、章节顺序和练习安排。",
+    icon: ClipboardList,
+  },
+  {
+    id: "chat-concept-course",
+    label: "补课方案",
+    prompt: "我想把线性代数里的矩阵、行列式和特征值补成一门小课；先问我几个问题确认基础。",
+    icon: MessageCircle,
+  },
+] as const;
 
 function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean)));
@@ -607,6 +632,7 @@ export function HomePage() {
   const location = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { openAiInteraction } = useAiInteraction();
   const isElectron = isElectronRuntime();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -618,6 +644,7 @@ export function HomePage() {
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
   const [uploadingFileNames, setUploadingFileNames] = useState<string[]>([]);
   const [entryFileIds, setEntryFileIds] = useState<string[]>([]);
+  const [entryMode, setEntryMode] = useState<"course" | "chat">("course");
   const [chatModel, setChatModel] = useGlobalChatModelChoice();
   const [recentOpen, setRecentOpen] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -640,6 +667,7 @@ export function HomePage() {
     setIsUploadingFiles(false);
     setUploadingFileNames([]);
     setEntryFileIds([]);
+    setEntryMode("course");
     setLibraryPickerOpen(false);
     setError(null);
     navigate("/", { replace: true, state: null });
@@ -861,6 +889,23 @@ export function HomePage() {
   const handleGenerate = async () => {
     if (!canGenerate) return;
     setError(null);
+    const selectedModel = toChatRequestModel(chatModel);
+    if (entryMode === "chat") {
+      const conversationScene = entryFileIds.length > 0 ? AI_SCENE_LIBRARY_SELECTION : AI_SCENE_GLOBAL_ASSISTANT;
+      openAiInteraction({
+        mode: "fullscreen",
+        scope: { type: "global" },
+        draft: prompt.trim(),
+        autoSend: prompt.trim().length > 0,
+        model: selectedModel,
+        scene: conversationScene,
+        source: entryFileIds.length > 0 ? "library_selection" : "global_assistant",
+        attachedFileIds: entryFileIds,
+        newSession: true,
+      });
+      return;
+    }
+
     setIsStartingBuild(true);
     try {
       const courseId = await ensureDraftCourseId();
@@ -870,7 +915,6 @@ export function HomePage() {
         void queryClient.invalidateQueries({ queryKey: ["files", courseId] });
       }
       const userGoal = prompt.trim() || "请基于我选择的资料，直接生成一份课程构建规划。";
-      const selectedModel = toChatRequestModel(chatModel);
       navigate(buildCoursePath(courseId, "build"), {
         state: { initialPrompt: userGoal, autoStart: true, entrySource: "home_arrow", model: selectedModel },
       });
@@ -889,26 +933,45 @@ export function HomePage() {
   };
 
   const handlePromptStarterClick = useCallback((starterPrompt: string) => {
-    const currentPrompt = prompt.trim();
-    const nextPrompt = currentPrompt
-      ? HOME_PROMPT_TEMPLATE_TEXTS.has(currentPrompt)
-        ? starterPrompt
-        : currentPrompt.includes(starterPrompt)
-          ? currentPrompt
-          : `${prompt.trimEnd()}\n\n${starterPrompt}`
-      : starterPrompt;
-
-    setPrompt(nextPrompt);
     setError(null);
-    window.requestAnimationFrame(() => {
-      const textarea = textareaRef.current;
-      if (!textarea) {
-        return;
-      }
-      textarea.focus();
-      textarea.setSelectionRange(nextPrompt.length, nextPrompt.length);
-    });
-  }, [prompt]);
+    const textarea = textareaRef.current;
+    if (!textarea || typeof document === "undefined" || typeof document.execCommand !== "function") {
+      setPrompt(starterPrompt);
+      window.requestAnimationFrame(() => {
+        const currentTextarea = textareaRef.current;
+        if (!currentTextarea) {
+          return;
+        }
+        currentTextarea.focus();
+        currentTextarea.setSelectionRange(starterPrompt.length, starterPrompt.length);
+      });
+      return;
+    }
+
+    textarea.focus();
+    textarea.setSelectionRange(0, textarea.value.length);
+    // Native insertion keeps template replacement in the browser undo stack.
+    let appliedWithUndo = false;
+    try {
+      appliedWithUndo = document.execCommand("insertText", false, starterPrompt);
+    } catch {
+      appliedWithUndo = false;
+    }
+    if (!appliedWithUndo) {
+      setPrompt(starterPrompt);
+      window.requestAnimationFrame(() => {
+        const currentTextarea = textareaRef.current;
+        if (!currentTextarea) {
+          return;
+        }
+        currentTextarea.focus();
+        currentTextarea.setSelectionRange(starterPrompt.length, starterPrompt.length);
+      });
+      return;
+    }
+    setPrompt(starterPrompt);
+    textarea.setSelectionRange(starterPrompt.length, starterPrompt.length);
+  }, []);
 
   const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const files = extractPasteFiles(e);
@@ -943,12 +1006,22 @@ export function HomePage() {
   const isWorking = isCreatingDraftCourse || isStartingBuild || isUploadingFiles;
   const shouldShowDemoCourseSection = courses.length > 0;
   const shouldReserveDemoCourseSection = shouldShowDemoCourseSection || demoCoursesLoading || demoCoursesFetching;
-  const activePromptStarters = hasEntryFiles ? HOME_FILE_PROMPT_STARTERS : HOME_PROMPT_STARTERS;
+  const isCourseEntryMode = entryMode === "course";
+  const activePromptStarters = isCourseEntryMode
+    ? hasEntryFiles ? HOME_FILE_PROMPT_STARTERS : HOME_PROMPT_STARTERS
+    : HOME_CHAT_PROMPT_STARTERS;
+  const textareaPlaceholder = isCourseEntryMode
+    ? hasEntryFiles
+      ? "写下这门课要怎样构建\n例如：按考试范围重排这些资料，先补基础概念，再生成章节讲义、练习和复习重点。"
+      : "写下你想构建的课程\n例如：高数期末冲刺课，范围到定积分应用；我基础一般，想按考点生成课程、讲义和练习。"
+    : hasEntryFiles
+      ? "先和 AI 聊清楚课程方向\n例如：基于这些资料，帮我判断适合建成什么课、先学哪些章节、要配哪些练习。"
+      : "先和 AITeachMe 聊清楚课程方向\n例如：我想做一门高数期末冲刺课，范围到定积分应用；先帮我确认目标、章节和练习安排。";
   const generateButtonLabel = isWorking
-    ? "正在处理学习规划"
+    ? isCourseEntryMode ? "正在进入课程规划" : "正在处理对话"
     : canGenerate
-      ? "开始规划学习课程"
-      : "输入学习目标或选择资料后开始规划";
+      ? isCourseEntryMode ? "开始构建课程" : "发送到对话"
+      : isCourseEntryMode ? "填写课程目标或选择资料后开始构建" : "输入问题或选择资料后开始对话";
 
   return (
     <>
@@ -1026,10 +1099,43 @@ export function HomePage() {
               : "border-slate-200 shadow-[0_18px_42px_rgba(15,23,42,0.07)] hover:border-slate-300 dark:border-slate-800 dark:hover:border-slate-700",
             "focus-within:border-indigo-300 focus-within:shadow-[0_20px_54px_rgba(99,102,241,0.16)] focus-within:ring-4 focus-within:ring-indigo-500/10 dark:focus-within:border-indigo-500/50 dark:focus-within:shadow-[0_20px_54px_rgba(99,102,241,0.22)]"
           )}>
+            <div className="flex flex-col gap-2 border-b border-slate-100 px-4 py-3 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+              <div className="inline-flex w-fit rounded-xl bg-slate-100 p-1 dark:bg-slate-900">
+                {[
+                  { key: "course" as const, label: "构建课程", icon: BookOpen },
+                  { key: "chat" as const, label: "先聊再建课", icon: MessageCircle },
+                ].map((item) => {
+                  const ModeIcon = item.icon;
+                  const active = entryMode === item.key;
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => setEntryMode(item.key)}
+                      disabled={isWorking}
+                      aria-pressed={active}
+                      className={cn(
+                        "inline-flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60",
+                        active
+                          ? "bg-white text-slate-900 shadow-sm dark:bg-slate-800 dark:text-slate-100"
+                          : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200",
+                      )}
+                    >
+                      <ModeIcon className="h-3.5 w-3.5" />
+                      {item.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="text-xs leading-5 text-slate-400 dark:text-slate-500">
+                {isCourseEntryMode ? "默认进入学习方案确认" : "先对话，必要时转课程"}
+              </div>
+            </div>
             <textarea
               ref={textareaRef}
-              placeholder={"输入学习目标或课程主题\n可以说明考试范围、当前基础、重点章节；有课件、讲义、教材也可以直接上传。"}
-              className="w-full min-h-[154px] max-h-[320px] resize-none border-0 bg-transparent px-5 pb-2 pt-5 text-[15px] leading-7 text-zinc-900 focus:outline-none placeholder:text-zinc-400 dark:text-slate-100 dark:placeholder:text-slate-500 sm:min-h-[166px] sm:px-7 sm:pt-7 sm:text-[16px]"
+              aria-label={isCourseEntryMode ? "课程构建需求" : "自由对话输入"}
+              placeholder={textareaPlaceholder}
+              className="w-full min-h-[132px] max-h-[320px] resize-none border-0 bg-transparent px-5 pb-2 pt-5 text-[15px] leading-7 text-zinc-900 focus:outline-none placeholder:text-zinc-400 dark:text-slate-100 dark:placeholder:text-slate-500 sm:min-h-[148px] sm:px-7 sm:pt-6 sm:text-[16px]"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -1108,7 +1214,7 @@ export function HomePage() {
                     ) : (
                       <Paperclip className="h-3.5 w-3.5" />
                     )}
-                    <span>{isUploadingFiles ? "上传中" : "上传"}</span>
+                    <span>{isUploadingFiles ? "上传中" : "上传资料"}</span>
                   </button>
                   <button
                     type="button"
@@ -1119,12 +1225,12 @@ export function HomePage() {
                     title="从我的资料库选择已有文件"
                   >
                     <FolderOpen className="h-3.5 w-3.5" />
-                    <span>资料库</span>
+                    <span>选资料</span>
                   </button>
                   {isWorking && (
                     <span className="ml-2 flex items-center text-xs font-medium text-zinc-500">
                       <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
-                      {isStartingBuild || isCreatingDraftCourse ? "正在创建课程..." : "正在上传并解析资料..."}
+                      {isStartingBuild || isCreatingDraftCourse ? "正在进入课程规划..." : "正在上传并解析资料..."}
                     </span>
                   )}
                 </div>
@@ -1159,10 +1265,11 @@ export function HomePage() {
           <div className="mt-3 w-full px-1">
             <div className="mb-2 flex items-center justify-center gap-2 text-[11px] font-medium text-zinc-400 dark:text-slate-500">
               <Sparkles className="h-3.5 w-3.5 text-indigo-400" />
-              <span>{hasEntryFiles ? "资料提示词示例" : "提示词示例"}</span>
+              <span>{isCourseEntryMode ? hasEntryFiles ? "资料课程示例" : "课程需求示例" : "对话建课示例"}</span>
             </div>
             <div className="flex gap-2 overflow-x-auto pb-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {activePromptStarters.map((starter, index) => {
+                const StarterIcon = starter.icon;
                 return (
                   <button
                     key={starter.id}
@@ -1175,6 +1282,10 @@ export function HomePage() {
                   >
                     <span className="mt-1 h-auto w-px shrink-0 rounded-full bg-gradient-to-b from-indigo-400/70 via-sky-300/70 to-transparent transition-opacity group-hover:opacity-100 dark:from-indigo-300/60 dark:via-cyan-300/40" />
                     <span className="min-w-0 flex-1 py-0.5">
+                      <span className="mb-1 flex items-center gap-1.5 text-[11px] font-bold text-slate-500 transition-colors group-hover:text-indigo-600 dark:text-slate-400 dark:group-hover:text-indigo-300">
+                        <StarterIcon className="h-3.5 w-3.5" />
+                        {starter.label}
+                      </span>
                       <span className="line-clamp-2 text-[12.5px] font-medium leading-5 text-slate-600 transition-colors group-hover:text-slate-900 dark:text-slate-300 dark:group-hover:text-slate-100">
                         {starter.prompt}
                       </span>

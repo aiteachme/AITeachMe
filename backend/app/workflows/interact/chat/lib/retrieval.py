@@ -4,15 +4,18 @@ from __future__ import annotations
 
 import math
 import re
+from pathlib import Path
 
 import structlog
 from sqlmodel import Session, or_, select
 
-from app.models import RetrievalChunk
+from app.models import RawFile, RetrievalChunk
+from app.repositories.files_repo import list_raw_files_by_ids_for_user
 from app.models.knowledge_relation import KnowledgeEdge
 from app.models.knowledge_unit import KnowledgeUnit
 from app.repositories import knowledge_relation_repo, knowledge_repo, knowledge_unit_repo, profile_repo
 from app.shared.infra.observability.trace import traceable_with_context as traceable
+from app.utils.course import is_global_course
 from app.workflows.interact.chat.lib.types import RetrievedContext
 
 logger = structlog.get_logger(__name__)
@@ -23,6 +26,8 @@ _ASCII_TERM_RE = re.compile(r"[A-Za-z0-9_]{2,}", re.UNICODE)
 _KG_UNIT_CANDIDATE_LIMIT = 1200
 _KG_UNIT_SUPPLEMENT_LIMIT = 500
 _KG_UNIT_SEARCH_TERM_LIMIT = 8
+_ATTACHED_FILE_MAX_CHARS = 3600
+_ATTACHED_FILE_TOTAL_MAX_CHARS = 12000
 
 
 def _trace_retrieval_inputs(inputs: dict[str, object]) -> dict[str, object]:
@@ -34,6 +39,7 @@ def _trace_retrieval_inputs(inputs: dict[str, object]) -> dict[str, object]:
         "top_k": inputs.get("top_k"),
         "similarity_threshold": inputs.get("similarity_threshold"),
         "user_id": inputs.get("user_id"),
+        "attached_file_count": len(inputs.get("attached_file_ids") or []),
     }
 
 
@@ -77,6 +83,7 @@ async def retrieve_context(
     top_k: int,
     similarity_threshold: float,
     user_id: str = "local",
+    attached_file_ids: list[str] | None = None,
 ) -> list[RetrievedContext]:
     """Retrieve prompt-ready context with KnowledgeUnit as the primary unit.
 
@@ -90,7 +97,21 @@ async def retrieve_context(
     normalized_query = query.strip()
     if not normalized_query or top_k <= 0:
         return []
-    if not course_id.strip():
+    attached_contexts = _retrieve_attached_file_context(
+        session,
+        user_id=user_id,
+        attached_file_ids=attached_file_ids or [],
+    )
+    if is_global_course(course_id):
+        if attached_contexts:
+            logger.info(
+                "interact_attached_file_retrieval_done",
+                course_id=course_id,
+                query_len=len(normalized_query),
+                attached_file_count=len(attached_file_ids or []),
+                result_count=len(attached_contexts),
+            )
+            return attached_contexts[:top_k]
         logger.info(
             "interact_retrieval_skipped",
             course_id=course_id,
@@ -124,14 +145,14 @@ async def retrieve_context(
                 vector_result_count=len(vector_results),
                 result_count=len(merged_results),
             )
-            return merged_results
+            return _merge_context_results(attached_contexts, merged_results, top_k=top_k)
         logger.info(
             "interact_kg_retrieval_done",
             course_id=course_id,
             query_len=len(normalized_query),
             result_count=len(graph_results),
         )
-        return graph_results
+        return _merge_context_results(attached_contexts, graph_results, top_k=top_k)
 
     vector_results = await _retrieve_vector_context(
         session=session,
@@ -147,7 +168,91 @@ async def retrieve_context(
         result_count=len(vector_results),
         source="vector_fallback",
     )
-    return vector_results
+    return _merge_context_results(attached_contexts, vector_results, top_k=top_k)
+
+
+def _retrieve_attached_file_context(
+    session: Session,
+    *,
+    user_id: str,
+    attached_file_ids: list[str],
+) -> list[RetrievedContext]:
+    file_ids = _normalize_attached_file_ids(attached_file_ids)
+    if not file_ids:
+        return []
+
+    raw_files = list_raw_files_by_ids_for_user(session, user_id=user_id, file_ids=file_ids)
+    file_by_id = {raw_file.id: raw_file for raw_file in raw_files}
+    results: list[RetrievedContext] = []
+    remaining_chars = _ATTACHED_FILE_TOTAL_MAX_CHARS
+
+    for file_id in file_ids:
+        if remaining_chars <= 0:
+            break
+        raw_file = file_by_id.get(file_id)
+        if raw_file is None:
+            continue
+        markdown = _raw_file_markdown(raw_file)
+        if not markdown:
+            continue
+        excerpt = _clip_attached_file_markdown(markdown, max_chars=min(_ATTACHED_FILE_MAX_CHARS, remaining_chars))
+        if not excerpt:
+            continue
+        results.append(
+            RetrievedContext(
+                chunk_id=0,
+                file_id=file_id,
+                title=raw_file.filename,
+                header_path=raw_file.filename,
+                content=excerpt,
+                score=1.0,
+                low_relevance=False,
+                retrieval_source="attached_file",
+            )
+        )
+        remaining_chars -= len(excerpt)
+
+    return results
+
+
+def _normalize_attached_file_ids(file_ids: list[str]) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for file_id in file_ids:
+        value = str(file_id or "").strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        normalized.append(value)
+    return normalized
+
+
+def _raw_file_markdown(raw_file: RawFile) -> str:
+    markdown = str(raw_file.parsed_markdown or "").strip()
+    if markdown:
+        return markdown
+    markdown_path = str(raw_file.markdown_path or "").strip()
+    if not markdown_path:
+        return ""
+    try:
+        path = Path(markdown_path)
+        if path.is_file():
+            return path.read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        logger.warning(
+            "interact_attached_file_markdown_read_failed",
+            file_id=raw_file.id,
+            markdown_path=markdown_path,
+            error=str(exc),
+        )
+    return ""
+
+
+def _clip_attached_file_markdown(markdown: str, *, max_chars: int) -> str:
+    normalized = "\n".join(line.rstrip() for line in markdown.strip().splitlines())
+    if len(normalized) <= max_chars:
+        return normalized
+    return f"{normalized[:max_chars].rstrip()}\n\n（资料内容较长，本轮仅截取前 {max_chars} 字作为上下文。）"
 
 
 def _merge_context_results(

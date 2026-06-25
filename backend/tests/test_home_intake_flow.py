@@ -33,6 +33,20 @@ def test_explicit_chat_scene_controls_prompt_scene() -> None:
         has_primary_context=True,
     ) == ChatPromptScene.DOCUMENT_SELECTION
 
+    assert should_use_course_grounding(
+        question="这份资料讲的 CPU 是什么？",
+        scene="library_selection",
+        source="library_selection",
+        has_primary_context=False,
+    )
+    assert resolve_prompt_scene(
+        question="这份资料讲的 CPU 是什么？",
+        scene="library_selection",
+        source="library_selection",
+        course_id="global",
+        has_primary_context=False,
+    ) == ChatPromptScene.LIBRARY_LEARNING
+
 
 def test_course_keyword_alone_does_not_trigger_home_intake() -> None:
     assert not home_intake.should_use_home_intake_flow(
@@ -135,6 +149,37 @@ async def test_home_intake_short_followup_saves_pending_action(monkeypatch: pyte
     assert "确认创建" in result.assistant_response
     assert "已创建" not in result.assistant_response
     assert saved_actions[0]["name"] == "一年级上册"
+
+
+@pytest.mark.anyio
+async def test_home_intake_fallback_ready_intent_keeps_required_reply_field(monkeypatch: pytest.MonkeyPatch) -> None:
+    saved_actions: list[dict | None] = []
+
+    async def fail_classifier(*args, **kwargs):  # noqa: ANN002, ANN003
+        raise RuntimeError("classifier unavailable")
+
+    monkeypatch.setattr(home_intake, "_load_pending_action", lambda **_: None)
+    monkeypatch.setattr(
+        home_intake,
+        "_save_pending_action",
+        lambda **kwargs: saved_actions.append(kwargs["pending_action"]),
+    )
+    monkeypatch.setattr(home_intake, "acompletion", fail_classifier)
+
+    result = await home_intake.run_home_intake_turn(
+        {
+            "question": "帮我构建计算机组成原理期末冲刺课程",
+            "session_id": "session_1",
+            "user_id": "user_1",
+            "attached_file_ids": ["file_1"],
+            "recent_messages": [],
+        },
+    )
+
+    assert "确认创建" in result.assistant_response
+    assert saved_actions[0] is not None
+    assert saved_actions[0]["tool"] == "create_course_from_home_intake"
+    assert saved_actions[0]["attached_file_ids"] == ["file_1"]
 
 
 @pytest.mark.anyio
