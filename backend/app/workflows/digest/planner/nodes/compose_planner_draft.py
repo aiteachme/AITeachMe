@@ -23,6 +23,10 @@ from app.workflows.digest.planner.lib.plans import (
     normalize_planner_diagnosis_draft,
     normalize_planner_draft,
 )
+from app.workflows.digest.planner.lib.requested_structure import (
+    extract_explicit_chapter_titles,
+    extract_requested_chapter_count,
+)
 from app.workflows.digest.planner.prompts.build_plan_composer import (
     CHAPTERS_END,
     CHAPTERS_START,
@@ -38,6 +42,13 @@ from app.workflows.digest.planner.prompts.build_plan_composer import (
 from app.workflows.digest.planner.state import BuildPlannerState
 
 logger = structlog.get_logger(__name__)
+
+_FALLBACK_CHAPTER_FOCI = [
+    "核心概念",
+    "方法应用",
+    "典型例题",
+    "易错巩固",
+]
 
 
 def _course_for_prompt(state: BuildPlannerState) -> str:
@@ -417,6 +428,164 @@ def _fallback_diagnosis_questions() -> list[dict[str, Any]]:
     ]
 
 
+def _iter_text_values(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, dict):
+        return [_clean_text(item) for item in value.values()]
+    if isinstance(value, (list, tuple, set)):
+        result: list[str] = []
+        for item in value:
+            if isinstance(item, (list, tuple)) and item:
+                result.append(_clean_text(item[0]))
+            else:
+                result.append(_clean_text(item))
+        return result
+    return [_clean_text(value)]
+
+
+def _material_topic_candidates(state: BuildPlannerState, latest_plan: dict[str, Any]) -> list[str]:
+    material_context = state["material_context"]
+    candidates: list[str] = []
+    fast_hints = getattr(material_context, "fast_hints", None) or getattr(material_context, "material_hints", None)
+    if fast_hints is not None:
+        candidates.extend(_iter_text_values(getattr(fast_hints, "chapter_candidates", [])))
+        candidates.extend(_iter_text_values(getattr(fast_hints, "high_freq_terms", [])))
+
+    profile = getattr(material_context, "course_profile", None) or getattr(material_context, "learning_domain_profile", None)
+    if profile is not None:
+        candidates.extend(_iter_text_values(getattr(profile, "key_topics", [])))
+        candidates.extend(_iter_text_values(getattr(profile, "sub_discipline", "")))
+        candidates.extend(_iter_text_values(getattr(profile, "discipline", "")))
+
+    candidates.extend(_iter_text_values(latest_plan.get("course_name")))
+    candidates.extend(_iter_text_values(latest_plan.get("planning_note")))
+    candidates.extend(_iter_text_values(state.get("user_prompt") or latest_plan.get("user_prompt")))
+
+    result: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        cleaned = clean_generated_chapter_title(candidate)
+        if not cleaned or len(cleaned) > 18:
+            continue
+        key = cleaned.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(cleaned)
+        if len(result) >= 8:
+            break
+    return result
+
+
+def _fallback_chapter_titles(
+    state: BuildPlannerState,
+    *,
+    latest_plan: dict[str, Any],
+    request_text: str,
+) -> list[str]:
+    explicit_titles = extract_explicit_chapter_titles(request_text)
+    if explicit_titles:
+        return explicit_titles
+
+    requested_count = extract_requested_chapter_count(request_text)
+    if requested_count is None:
+        constraints = dict(latest_plan.get("build_constraints") or {})
+        try:
+            requested_count = int(constraints.get("target_chapter_count") or 0) or None
+        except (TypeError, ValueError):
+            requested_count = None
+    target_count = max(1, min(8, requested_count or 2))
+
+    candidates = _material_topic_candidates(state, latest_plan)
+    titles = list(candidates[:target_count])
+    course_name = clean_generated_chapter_title(
+        str(latest_plan.get("course_name") or _course_for_prompt(state) or "当前主题")
+    )
+    for focus in _FALLBACK_CHAPTER_FOCI:
+        if len(titles) >= target_count:
+            break
+        prefix = course_name if course_name and course_name not in {"当前主题", focus} else ""
+        title = clean_generated_chapter_title(f"{prefix}{focus}" if prefix else focus)
+        if title and title not in titles:
+            titles.append(title)
+    while len(titles) < target_count:
+        titles.append(f"学习任务 {len(titles) + 1}")
+    return titles[:target_count]
+
+
+def _fallback_chapter_payload(title: str, index: int) -> dict[str, Any]:
+    key_points = _string_list(
+        [
+            f"{title}核心概念",
+            f"{title}方法步骤",
+            f"{title}典型例题",
+            f"{title}易错边界",
+        ]
+    )
+    return {
+        "chapter_index": index,
+        "title": title,
+        "objective": "；".join(key_points[:2]),
+        "required_elements": key_points,
+        "writing_instructions": "先讲清概念和方法，再安排例题、易错点和巩固练习。",
+    }
+
+
+def _build_rule_fallback_planner_draft(state: BuildPlannerState, *, error: Exception) -> dict[str, Any]:
+    latest_plan = _latest_plan_with_current_diagnosis(state, dict(state.get("latest_plan") or {}))
+    material_context = state["material_context"]
+    request_text = compose_effective_planner_request_text(
+        state.get("user_prompt") or latest_plan.get("user_prompt") or "",
+        state.get("feedback_message") or "",
+    )
+    digest_mode = (
+        state.get("digest_mode")
+        or latest_plan.get("digest_mode")
+        or material_context.course_mode_decision.mode.value
+    )
+    titles = _fallback_chapter_titles(state, latest_plan=latest_plan, request_text=request_text)
+    chapters = [_fallback_chapter_payload(title, index) for index, title in enumerate(titles, start=1)]
+    path = " → ".join(f"《{title}》" for title in titles)
+    fallback_payload = {
+        "planning_note": compose_planning_note(
+            state.get("planning_note") or latest_plan.get("planning_note"),
+            state.get("material_note"),
+        ),
+        "course_name": str(latest_plan.get("course_name") or ""),
+        "course_icon": str(latest_plan.get("course_icon") or ""),
+        "suggestion": "可以先使用这版方案开始构建；如果需要更精细的章节边界，可以继续补充学习目标再调整。",
+        "plan": (
+            f"课程先按{path}组织成可执行学习路径。"
+            "每章都包含概念边界、方法步骤、典型例题、易错点和巩固练习，"
+            "确保资料能进入后续知识文档构建。"
+        ),
+        "chapters": chapters,
+        "diagnose": list(latest_plan.get("diagnose") or []),
+        "diagnose_status": str(latest_plan.get("diagnose_status") or state.get("diagnose_status") or ""),
+        "diagnose_note": str(latest_plan.get("diagnose_note") or state.get("diagnose_note") or ""),
+        "build_constraints": {
+            "fallback_used": True,
+            "fallback_reason": type(error).__name__,
+        },
+    }
+    normalized = normalize_planner_draft(
+        fallback_payload,
+        course_id=state["course_id"],
+        user_prompt=request_text,
+        requested_digest_mode=digest_mode,
+        shared_inputs=material_context,
+        latest_plan=latest_plan or None,
+    )
+    draft_payload = normalized.model_dump(mode="json")
+    draft_payload["build_constraints"] = {
+        **dict(draft_payload.get("build_constraints") or {}),
+        "fallback_used": True,
+        "fallback_reason": type(error).__name__,
+    }
+    return draft_payload
+
+
 async def _stream_diagnosis_response(state: BuildPlannerState) -> str:
     material_context = state["material_context"]
     latest_plan = dict(state.get("latest_plan") or {})
@@ -542,6 +711,46 @@ def build_compose_planner_draft_node(*, context: WorkflowContext):
                 course_id=state.get("course_id") or "",
                 error=str(exc),
             )
+            if not _should_generate_diagnosis_first(state):
+                try:
+                    draft_payload = _build_rule_fallback_planner_draft(state, error=exc)
+                    await emit_planner_event(
+                        state,
+                        event="planner.plan.fallback",
+                        detail="方案模型响应异常或超时，已先生成一版可确认的兜底学习方案。",
+                        payload={
+                            "chapter_count": len(draft_payload.get("chapters") or []),
+                            "fallback_reason": type(exc).__name__,
+                            "plan_preview": _plan_preview_payload(state, draft_payload),
+                        },
+                    )
+                    await emit_planner_event(
+                        state,
+                        event="planner.plan.ready",
+                        detail=f"方案已生成：{len(draft_payload.get('chapters') or [])} 个章节。",
+                        payload={
+                            "chapter_count": len(draft_payload.get("chapters") or []),
+                            "plan_preview": _plan_preview_payload(state, draft_payload),
+                        },
+                    )
+                    logger.warning(
+                        "planner_draft_rule_fallback_used",
+                        planner_session_id=state.get("planner_session_id") or "",
+                        course_id=state.get("course_id") or "",
+                        error_type=type(exc).__name__,
+                        chapter_count=len(draft_payload.get("chapters") or []),
+                    )
+                    return {
+                        "build_plan_draft": draft_payload,
+                        "plan_outline_markdown": str(draft_payload.get("plan") or ""),
+                    }
+                except Exception as fallback_exc:
+                    logger.exception(
+                        "planner_draft_rule_fallback_failed",
+                        planner_session_id=state.get("planner_session_id") or "",
+                        course_id=state.get("course_id") or "",
+                        error=str(fallback_exc),
+                    )
             await emit_planner_event(
                 state,
                 event="planner.plan.failed",

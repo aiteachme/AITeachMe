@@ -234,6 +234,67 @@ def test_compose_planner_diagnosis_falls_back_when_stream_fails(monkeypatch: pyt
     assert "planner.diagnose.ready" in stages
 
 
+def test_compose_planner_plan_falls_back_after_diagnosis_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fail_plan(state):
+        raise TimeoutError("plan timed out")
+
+    events: list[dict[str, object]] = []
+
+    async def record_event(payload: dict[str, object]) -> None:
+        events.append(payload)
+
+    monkeypatch.setattr(plan_draft_node, "_stream_planner_response", fail_plan)
+
+    node = plan_draft_node.build_compose_planner_draft_node(context=None)
+    result = asyncio.run(
+        node(
+            {
+                "course_id": "course_test",
+                "planner_session_id": "planner_test",
+                "planner_operation": "append",
+                "user_prompt": "请基于每日验收资料生成一个极简学习方案，只需要 2 章。",
+                "feedback_message": "跳过前置诊断，请直接生成正式方案。",
+                "digest_mode": "sprint",
+                "material_context": _material_context(),
+                "planning_note": "需要先建立核心概念和例题路径。",
+                "material_note": "资料重点是极限、导数和积分。",
+                "latest_plan": {
+                    "planner_stage": "diagnosis",
+                    "course_name": "高数主线重建",
+                    "course_icon": "sigma",
+                    "user_prompt": "请基于每日验收资料生成一个极简学习方案，只需要 2 章。",
+                    "digest_mode": "sprint",
+                    "planning_note": "需要先建立核心概念和例题路径。",
+                    "diagnose": [
+                        {
+                            "question": "解析怎么写？",
+                            "purpose": "影响正文解析粒度。",
+                            "options": ["只给要点", "步骤解析", "错因提醒", "补变式题"],
+                        }
+                    ],
+                    "diagnose_status": "pending",
+                    "chapters": [],
+                },
+                "diagnose_status": "skipped",
+                "diagnose_answers": [],
+                "progress_callback": record_event,
+            }
+        )
+    )
+
+    draft = result["build_plan_draft"]
+    assert draft["diagnose_status"] == "skipped"
+    assert len(draft["chapters"]) == 2
+    assert draft["build_constraints"]["fallback_used"] is True
+    assert draft["build_constraints"]["fallback_reason"] == "TimeoutError"
+    assert draft["course_name"]
+    assert result["plan_outline_markdown"]
+    stages = [str(event.get("stage") or "") for event in events]
+    assert "planner.plan.fallback" in stages
+    assert "planner.plan.ready" in stages
+    assert "planner.plan.failed" not in stages
+
+
 def test_docgen_diagnose_brief_maps_different_answers_to_different_actions() -> None:
     brief = _render_diagnose_brief(
         [
