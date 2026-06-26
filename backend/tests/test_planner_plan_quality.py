@@ -14,6 +14,7 @@ from app.workflows.digest.planner.lib.plans import (
 from app.workflows.digest.planner.lib.store import _ensure_chapter_count_payload
 from app.workflows.digest.docgen.nodes.load_context import _render_diagnose_brief
 from app.workflows.digest.planner.nodes import compose_planner_draft as plan_draft_node
+from app.workflows.digest.planner.nodes import understand_goal_and_materials as understand_node
 from app.workflows.digest.planner.nodes.save_planner_draft import _merge_diagnose_resolution
 from app.workflows.digest.planner.prompts.build_plan_composer import (
     CHAPTERS_END,
@@ -156,6 +157,44 @@ def test_docgen_diagnose_brief_renders_user_answers() -> None:
     assert "文档内解析方式" in brief
     assert "章末小测配置" in brief
     assert "快速回答" not in brief
+
+
+def test_understand_goal_and_materials_falls_back_when_auxiliary_llms_fail(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fail_planning_note(state):
+        raise TimeoutError("planning note timed out")
+
+    async def fail_material_note(state):
+        raise RuntimeError("material note unavailable")
+
+    events: list[dict[str, object]] = []
+
+    async def record_event(payload: dict[str, object]) -> None:
+        events.append(payload)
+
+    monkeypatch.setattr(understand_node, "_stream_planning_note", fail_planning_note)
+    monkeypatch.setattr(understand_node, "_summarize_materials", fail_material_note)
+
+    node = understand_node.build_understand_goal_and_materials_node(context=None)
+    result = asyncio.run(
+        node(
+            {
+                "course_id": "course_test",
+                "planner_session_id": "planner_test",
+                "planner_operation": "create",
+                "user_prompt": "两天速成线性代数",
+                "digest_mode": "sprint",
+                "material_context": _material_context(),
+                "progress_callback": record_event,
+            }
+        )
+    )
+
+    assert "两天速成线性代数" in result["planning_note"]
+    assert "资料边界" in result["material_note"]
+    stages = [str(event.get("stage") or "") for event in events]
+    assert "planner.planning_note.fallback" in stages
+    assert "planner.material_note.fallback" in stages
+    assert "planner.analysis.ready" in stages
 
 
 def test_docgen_diagnose_brief_maps_different_answers_to_different_actions() -> None:

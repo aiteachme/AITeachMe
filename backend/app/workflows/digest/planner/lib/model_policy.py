@@ -14,8 +14,8 @@ from app.workflows.common.model_policy import ProviderNativeToolPolicy, compact_
 PlannerModelSlot = Literal["light", "primary", "reason"]
 PlannerAPIMode = Literal["auto", "chat_completions", "responses"]
 _PLANNER_FAST_TIMEOUT_S = 60
-_PLANNER_UNDERSTAND_TIMEOUT_S = 90
-_PLANNER_UNDERSTAND_OVERALL_TIMEOUT_S = 150
+_PLANNER_UNDERSTAND_TIMEOUT_S = 45
+_PLANNER_UNDERSTAND_OVERALL_TIMEOUT_S = 45
 _PLANNER_DRAFT_TIMEOUT_S = 120
 _PLANNER_DRAFT_OVERALL_TIMEOUT_S = 180
 _PLANNER_IDENTITY_OVERALL_TIMEOUT_S = 90

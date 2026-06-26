@@ -20,11 +20,11 @@ def test_course_identity_policy_uses_structured_light_model() -> None:
     assert "task_type" not in kwargs
 
 
-def test_planner_policy_uses_extended_budgets_for_slow_steps() -> None:
+def test_planner_policy_uses_step_specific_budgets() -> None:
     expected = {
-        PlannerModelStep.MATERIAL_BATCH_SUMMARY: (90, 150),
-        PlannerModelStep.STREAM_PLANNING_NOTE: (90, 150),
-        PlannerModelStep.SUMMARIZE_MATERIALS: (90, 150),
+        PlannerModelStep.MATERIAL_BATCH_SUMMARY: (45, 45),
+        PlannerModelStep.STREAM_PLANNING_NOTE: (45, 45),
+        PlannerModelStep.SUMMARIZE_MATERIALS: (45, 45),
         PlannerModelStep.DRAFT_PLAN: (120, 180),
     }
 
@@ -52,7 +52,7 @@ def test_planner_stream_policy_keeps_gpt55_auto_on_responses_without_native_tool
         )
         for step in (PlannerModelStep.STREAM_PLANNING_NOTE, PlannerModelStep.DRAFT_PLAN):
             policy_kwargs = planner_completion_kwargs(step)
-            assert int(policy_kwargs.pop("overall_timeout_s")) > int(policy_kwargs["timeout"])
+            assert int(policy_kwargs.pop("overall_timeout_s")) >= int(policy_kwargs["timeout"])
             assert policy_kwargs[PROVIDER_NATIVE_TOOLS_KWARG] == []
             model_selector = str(policy_kwargs.pop("model"))
             context = build_completion_context(model=model_selector)
