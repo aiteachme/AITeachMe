@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -23,26 +23,27 @@ import structlog
 from app.workflows.ingest.parsing.lib.provider_contracts import ExternalProviderTimeoutError
 
 DEFAULT_PADDLE_OCR_JOB_URL = "https://paddleocr.aistudio-app.com/api/v2/ocr/jobs"
-DEFAULT_PADDLE_OCR_MODEL = "PaddleOCR-VL-1.5"
+DEFAULT_PADDLE_OCR_MODEL = "PaddleOCR-VL-1.6"
 DEFAULT_PADDLE_OCR_OPTIONAL_PAYLOAD = {
     "useDocOrientationClassify": False,
     "useDocUnwarping": False,
     "useChartRecognition": False,
 }
+DEFAULT_PADDLE_OCR_DOWNLOAD_GRACE_TIMEOUT_S = 10.0
 
 logger = structlog.get_logger(__name__)
 _MARKDOWN_IMAGE_RE = re.compile(r"!\[(?P<alt>[^\]]*)\]\((?P<target>[^)]+)\)")
 _HTML_IMAGE_RE = re.compile(r'(<img\b[^>]*?\bsrc=["\'])(?P<src>[^"\']+)(["\'])', re.IGNORECASE)
 
 
-def _get_requests():
+def _get_session():
     try:
         import requests  # type: ignore
     except Exception as exc:  # pragma: no cover
         raise RuntimeError(
             "缺少 requests 依赖：请先安装 requests（例如在 backend 环境里执行 `pip install requests`）。"
         ) from exc
-    return requests
+    return requests.Session()
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,6 +58,8 @@ class PaddleOCRExtractedResult:
     images_dir: Path | None
     job_id: str
     model: str
+    job_ids: tuple[str, ...] = ()
+    metadata: dict[str, object] = field(default_factory=dict)
 
 
 def _build_deadline(total_timeout_s: float | None) -> float | None:
@@ -99,6 +102,7 @@ def parse_file_to_dir(
     poll_interval_s: float = 1.0,
     poll_timeout_s: float = 600.0,
     total_timeout_s: float | None = None,
+    download_grace_timeout_s: float = DEFAULT_PADDLE_OCR_DOWNLOAD_GRACE_TIMEOUT_S,
 ) -> PaddleOCRExtractedResult:
     """Submit one PaddleOCR Cloud job and materialize a canonical markdown bundle."""
 
@@ -109,7 +113,7 @@ def parse_file_to_dir(
     if not file_path.exists():
         raise RuntimeError(f"PaddleOCR 输入文件不存在：{file_path}")
 
-    requests = _get_requests()
+    session = _get_session()
     output_dir.mkdir(parents=True, exist_ok=True)
     images_dir = output_dir / "images"
     images_dir.mkdir(parents=True, exist_ok=True)
@@ -125,9 +129,10 @@ def parse_file_to_dir(
 
     logger.info("paddle_ocr_cloud_parse_requested", file_name=file_path.name, model=options.model)
 
+    submit_started_at = time.monotonic()
     try:
         with file_path.open("rb") as file_obj:
-            job_response = requests.post(
+            job_response = session.post(
                 job_url,
                 headers=headers,
                 data=data,
@@ -146,6 +151,7 @@ def parse_file_to_dir(
             total_timeout_s=total_timeout_s,
         )
         raise RuntimeError(f"PaddleOCR 提交任务失败: {exc}") from exc
+    submit_elapsed_s = round(time.monotonic() - submit_started_at, 2)
 
     if job_response.status_code != 200:
         snippet = (job_response.text or "").strip().replace("\r", " ").replace("\n", " ")[:600]
@@ -158,7 +164,15 @@ def parse_file_to_dir(
         snippet = (job_response.text or "")[:240]
         raise RuntimeError(f"PaddleOCR 返回数据异常: {snippet}") from exc
 
+    logger.info(
+        "paddle_ocr_cloud_job_submitted",
+        job_id=job_id,
+        submit_elapsed_s=submit_elapsed_s,
+        timeout_budget_s=total_timeout_s,
+    )
+
     jsonl_url = _poll_until_done(
+        session=session,
         job_url=job_url,
         headers=headers,
         job_id=job_id,
@@ -167,11 +181,18 @@ def parse_file_to_dir(
         deadline=deadline,
         total_timeout_s=total_timeout_s,
     )
+    download_deadline = _build_deadline(download_grace_timeout_s)
+    logger.info(
+        "paddle_ocr_cloud_download_started",
+        job_id=job_id,
+        download_grace_timeout_s=download_grace_timeout_s,
+    )
     markdown_text = _download_and_materialize_jsonl(
+        session=session,
         jsonl_url=jsonl_url,
         images_dir=images_dir,
-        deadline=deadline,
-        total_timeout_s=total_timeout_s,
+        deadline=download_deadline,
+        total_timeout_s=download_grace_timeout_s,
     )
     markdown_path = output_dir / "full.md"
     markdown_path.write_text(markdown_text, encoding="utf-8")
@@ -181,11 +202,18 @@ def parse_file_to_dir(
         images_dir=images_dir if any(images_dir.iterdir()) else None,
         job_id=job_id,
         model=options.model,
+        job_ids=(job_id,),
+        metadata={
+            "strategy": "single",
+            "job_count": 1,
+            "download_grace_timeout_s": download_grace_timeout_s,
+        },
     )
 
 
 def _poll_until_done(
     *,
+    session,
     job_url: str,
     headers: dict[str, str],
     job_id: str,
@@ -194,12 +222,13 @@ def _poll_until_done(
     deadline: float | None,
     total_timeout_s: float | None,
 ) -> str:
-    requests = _get_requests()
     started_at = time.monotonic()
+    poll_count = 0
 
     while True:
+        poll_count += 1
         try:
-            job_result_response = requests.get(
+            job_result_response = session.get(
                 f"{job_url}/{job_id}",
                 headers=headers,
                 timeout=_remaining_timeout_s(
@@ -233,11 +262,34 @@ def _poll_until_done(
             jsonl_url = result_url.get("jsonUrl")
             if not jsonl_url:
                 raise RuntimeError("PaddleOCR 返回 done 但缺少 resultUrl.jsonUrl")
-            logger.info("paddle_ocr_cloud_poll_completed", job_id=job_id)
+            progress = payload.get("extractProgress") or {}
+            logger.info(
+                "paddle_ocr_cloud_poll_completed",
+                job_id=job_id,
+                poll_count=poll_count,
+                elapsed_s=round(time.monotonic() - started_at, 2),
+                extracted_pages=progress.get("extractedPages"),
+                total_pages=progress.get("totalPages"),
+                server_start_time=progress.get("startTime"),
+                server_end_time=progress.get("endTime"),
+            )
             return str(jsonl_url)
 
         if state == "failed":
             raise RuntimeError(f"PaddleOCR 解析失败: {payload.get('errorMsg') or 'unknown'}")
+
+        progress = payload.get("extractProgress") or {}
+        logger.info(
+            "paddle_ocr_cloud_poll_progress",
+            job_id=job_id,
+            poll_count=poll_count,
+            state=state,
+            elapsed_s=round(time.monotonic() - started_at, 2),
+            extracted_pages=progress.get("extractedPages"),
+            total_pages=progress.get("totalPages"),
+            server_start_time=progress.get("startTime"),
+            server_end_time=progress.get("endTime"),
+        )
 
         if time.monotonic() - started_at >= poll_timeout_s:
             raise RuntimeError("PaddleOCR 解析超时：等待结果时间过长")
@@ -253,15 +305,17 @@ def _poll_until_done(
 
 def _download_and_materialize_jsonl(
     *,
+    session,
     jsonl_url: str,
     images_dir: Path,
     deadline: float | None,
     total_timeout_s: float | None,
+    image_name_prefix: str = "",
 ) -> str:
-    requests = _get_requests()
+    download_started_at = time.monotonic()
 
     try:
-        jsonl_response = requests.get(
+        jsonl_response = session.get(
             jsonl_url,
             timeout=_remaining_timeout_s(
                 deadline=deadline,
@@ -281,6 +335,9 @@ def _download_and_materialize_jsonl(
 
     sections: list[str] = []
     image_counter = 0
+    layout_count = 0
+    skipped_markdown_images_total = 0
+    ignored_output_images_total = 0
 
     for line in jsonl_response.text.strip().splitlines():
         line = line.strip()
@@ -292,6 +349,7 @@ def _download_and_materialize_jsonl(
             raise RuntimeError(f"PaddleOCR JSONL 解析失败: {exc}") from exc
 
         for layout_index, layout_result in enumerate(result.get("layoutParsingResults") or [], start=1):
+            layout_count += 1
             markdown_payload = layout_result.get("markdown") or {}
             markdown_block = (markdown_payload.get("text") or "").strip()
             markdown_images = markdown_payload.get("images") or {}
@@ -309,9 +367,10 @@ def _download_and_materialize_jsonl(
                         continue
                     image_counter += 1
                     filename = _download_image(
+                        session=session,
                         image_url=str(image_url),
                         dest_dir=images_dir,
-                        preferred_name=f"{image_counter:03d}_{normalized_name}",
+                        preferred_name=f"{image_name_prefix}{image_counter:03d}_{normalized_name}",
                         deadline=deadline,
                         total_timeout_s=total_timeout_s,
                     )
@@ -326,8 +385,10 @@ def _download_and_materialize_jsonl(
                         skipped=skipped_markdown_images,
                         layout_index=layout_index,
                     )
+                    skipped_markdown_images_total += skipped_markdown_images
 
                 if output_images:
+                    ignored_output_images_total += len(output_images)
                     logger.info(
                         "paddle_ocr_cloud_output_images_ignored",
                         ignored=len(output_images),
@@ -344,20 +405,29 @@ def _download_and_materialize_jsonl(
         raise RuntimeError("PaddleOCR 返回空 Markdown")
     if not combined.endswith("\n"):
         combined += "\n"
+    logger.info(
+        "paddle_ocr_cloud_result_materialized",
+        layouts=layout_count,
+        markdown_images=image_counter,
+        skipped_markdown_images=skipped_markdown_images_total,
+        ignored_output_images=ignored_output_images_total,
+        chars=len(combined),
+        elapsed_s=round(time.monotonic() - download_started_at, 2),
+    )
     return combined
 
 
 def _download_image(
     *,
+    session,
     image_url: str,
     dest_dir: Path,
     preferred_name: str,
     deadline: float | None,
     total_timeout_s: float | None,
 ) -> str:
-    requests = _get_requests()
     try:
-        response = requests.get(
+        response = session.get(
             image_url,
             timeout=_remaining_timeout_s(
                 deadline=deadline,
@@ -483,6 +553,7 @@ def _sanitize_filename(value: str) -> str:
 
 __all__ = [
     "DEFAULT_PADDLE_OCR_JOB_URL",
+    "DEFAULT_PADDLE_OCR_DOWNLOAD_GRACE_TIMEOUT_S",
     "DEFAULT_PADDLE_OCR_MODEL",
     "PaddleOCRExtractedResult",
     "PaddleOCRRequestOptions",

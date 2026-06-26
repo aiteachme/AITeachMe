@@ -111,7 +111,7 @@ workflows/ingest/
 - 如果请求没有 token，则通过 `get_env()` 读取运行时配置：本地模式下设置页 DB 覆盖值优先，其次才是 `.env` / 部署环境变量中的 `MINERU_API_TOKENS` 或 `MINERU_API_TOKEN`，支持英文逗号分隔多个 token 并随机选择一个。
 - token 不长期落 DB。
 - MinerU 输出会进入同一套 Markdown/asset canonicalize 逻辑。
-- PPTX 默认按 MinerU 优先：配置了 MinerU Token 时先走 MinerU；MinerU 不可用、报错或 15 秒内未完成时回退到本地 MarkItDown。
+- PPTX 默认按 MinerU 优先：配置了 MinerU Token 时先走 MinerU；MinerU 不可用、报错或 25 秒内未完成时回退到本地 MarkItDown。
 
 ## 5.1 默认解析模式
 

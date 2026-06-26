@@ -726,6 +726,7 @@ export function LibraryPage() {
   const [statusFilter, setStatusFilter] = useState<FileStatusFilter>("all");
   const [sortKey, setSortKey] = useState<FileSortKey>("updated_desc");
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [menuButtonRect, setMenuButtonRect] = useState<DOMRect | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -1246,14 +1247,47 @@ export function LibraryPage() {
               type="button"
               onClick={() => {
                 setOpenMenuId(null);
-                deleteMutation.mutate(openMenuId);
+                setPendingDeleteId(openMenuId);
               }}
-              disabled={deleteMutation.isPending}
-              className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-950/30"
+              className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-red-600 transition hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
             >
               <Trash2 className="h-4 w-4" />
               删除
             </button>
+          </div>,
+          document.body,
+        )}
+
+      {pendingDeleteId &&
+        createPortal(
+          <div className="fixed inset-0 z-[10001] flex items-center justify-center">
+            <div className="absolute inset-0 bg-black/40" onClick={() => setPendingDeleteId(null)} />
+            <div className="relative z-10 mx-4 w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+              <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">确认删除</h3>
+              <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                删除后不可恢复，确定要删除这份资料吗？
+              </p>
+              <div className="mt-5 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setPendingDeleteId(null)}
+                  className="rounded-lg px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    deleteMutation.mutate(pendingDeleteId);
+                    setPendingDeleteId(null);
+                  }}
+                  disabled={deleteMutation.isPending}
+                  className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {deleteMutation.isPending ? "删除中..." : "确认删除"}
+                </button>
+              </div>
+            </div>
           </div>,
           document.body,
         )}
