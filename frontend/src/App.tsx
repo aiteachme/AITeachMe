@@ -262,7 +262,11 @@ function App() {
                       <Route
                         key={aliasPath}
                         path={`courses/:courseId/${aliasPath}`}
-                        element={<Navigate to={`../${targetRoute}`} replace />}
+                        element={
+                          <LegacyCourseRouteRedirect
+                            buildPath={({ courseId }) => buildCoursePath(courseId ?? "", targetRoute)}
+                          />
+                        }
                       />
                     ))}
                     {(Object.keys(COURSE_PAGE_ELEMENTS) as CourseRouteId[]).map((routeId) => (

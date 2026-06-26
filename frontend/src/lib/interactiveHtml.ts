@@ -52,7 +52,7 @@ export function parseInteractivePreviewHref(
   const courseId = (options.fallbackCourseId || decodeURIComponent((match ?? figureMatch ?? autoMatch)?.[1] ?? "")).trim();
   if (!courseId) return null;
 
-  const title = (url.searchParams.get("title") || "交互演示").trim();
+  const title = (url.searchParams.get("title") || (figureMatch ? "静态图示" : "交互演示")).trim();
   const previewUrl = `${url.pathname}${url.search}`;
 
   if (autoMatch) {
