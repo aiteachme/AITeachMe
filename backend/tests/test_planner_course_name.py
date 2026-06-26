@@ -14,10 +14,25 @@ def test_course_identity_policy_uses_structured_light_model() -> None:
 
     assert kwargs["max_tokens"] == 240
     assert kwargs["timeout"] == 60
-    assert kwargs["overall_timeout_s"] == 60
+    assert kwargs["overall_timeout_s"] == 90
     assert kwargs["max_retries"] == 3
     assert 0 <= kwargs["temperature"] <= 1
     assert "task_type" not in kwargs
+
+
+def test_planner_policy_uses_extended_budgets_for_slow_steps() -> None:
+    expected = {
+        PlannerModelStep.MATERIAL_BATCH_SUMMARY: (90, 150),
+        PlannerModelStep.STREAM_PLANNING_NOTE: (90, 150),
+        PlannerModelStep.SUMMARIZE_MATERIALS: (90, 150),
+        PlannerModelStep.DRAFT_PLAN: (120, 180),
+    }
+
+    for step, (timeout_s, overall_timeout_s) in expected.items():
+        kwargs = get_planner_model_policy(step).completion_kwargs()
+
+        assert kwargs["timeout"] == timeout_s
+        assert kwargs["overall_timeout_s"] == overall_timeout_s
 
 
 def test_planner_stream_policy_keeps_gpt55_auto_on_responses_without_native_tools(monkeypatch) -> None:
@@ -37,7 +52,7 @@ def test_planner_stream_policy_keeps_gpt55_auto_on_responses_without_native_tool
         )
         for step in (PlannerModelStep.STREAM_PLANNING_NOTE, PlannerModelStep.DRAFT_PLAN):
             policy_kwargs = planner_completion_kwargs(step)
-            assert policy_kwargs.pop("overall_timeout_s") == 60
+            assert int(policy_kwargs.pop("overall_timeout_s")) > int(policy_kwargs["timeout"])
             assert policy_kwargs[PROVIDER_NATIVE_TOOLS_KWARG] == []
             model_selector = str(policy_kwargs.pop("model"))
             context = build_completion_context(model=model_selector)
