@@ -59,6 +59,30 @@ def _collect_topic_hints(state: BuildPlannerState) -> list[str]:
     return cleaned
 
 
+def _fallback_course_identity(
+    state: BuildPlannerState,
+    *,
+    filenames: list[str],
+    topic_hints: list[str],
+) -> tuple[str, str]:
+    explicit_topic = extract_explicit_learning_topic(state.get("user_prompt") or "")
+    filename_hints = [filename.rsplit(".", 1)[0] for filename in filenames if filename.strip()]
+    candidates = [
+        explicit_topic,
+        *topic_hints,
+        *filename_hints,
+        state.get("user_prompt") or "",
+        state.get("course_id") or "",
+    ]
+    course_name = ""
+    for candidate in candidates:
+        course_name = _clean_course_name(str(candidate or ""))
+        if course_name:
+            break
+    course_icon = infer_course_icon_key(course_name)
+    return course_name, course_icon
+
+
 def build_generate_course_identity_node(*, context: WorkflowContext):
     """Build the course identity node."""
 
@@ -96,13 +120,28 @@ def build_generate_course_identity_node(*, context: WorkflowContext):
                 ),
                 response_model=PlannerCourseIdentity,
             )
-        except Exception:
-            logger.exception(
-                "planner_course_identity_generation_failed",
+        except Exception as exc:
+            course_name, course_icon = _fallback_course_identity(
+                state,
+                filenames=filenames,
+                topic_hints=topic_hints,
+            )
+            logger.warning(
+                "planner_course_identity_fallback_used",
                 planner_session_id=state.get("planner_session_id") or "",
                 course_id=state.get("course_id") or "",
+                error_type=type(exc).__name__,
+                error=str(exc),
+                generated_course_name=course_name or None,
+                generated_course_icon_key=course_icon or None,
             )
-            return {"generated_course_name": "", "generated_course_icon_key": ""}
+            await emit_planner_event(
+                state,
+                event="planner.identity.fallback",
+                detail=f"课程身份模型响应较慢，已先使用当前主题：{course_name or '当前主题'}。",
+                payload={"course_name": course_name, "course_icon": course_icon, "fallback_reason": type(exc).__name__},
+            )
+            return {"generated_course_name": course_name, "generated_course_icon_key": course_icon}
 
         identity = result if isinstance(result, PlannerCourseIdentity) else PlannerCourseIdentity.model_validate(result)
         explicit_topic = extract_explicit_learning_topic(state.get("user_prompt") or "")

@@ -392,6 +392,31 @@ def _should_generate_diagnosis_first(state: BuildPlannerState) -> bool:
     return not isinstance(latest_plan, dict) or not latest_plan
 
 
+def _fallback_diagnosis_questions() -> list[dict[str, Any]]:
+    return [
+        {
+            "question": "基础从哪起？",
+            "purpose": "文档落点：影响开篇前置概念、例题起点和讲解铺垫长度。",
+            "options": ["先补基础", "概念先讲", "例题带路", "直接进阶"],
+        },
+        {
+            "question": "讲解重哪里？",
+            "purpose": "文档落点：影响章节重点、正文篇幅分配和例题类型。",
+            "options": ["概念理解", "方法步骤", "典型例题", "易错辨析"],
+        },
+        {
+            "question": "练习怎么放？",
+            "purpose": "文档落点：影响随堂练习、变式题和章末小测密度。",
+            "options": ["少量精练", "每节小练", "章末小测", "多练变式"],
+        },
+        {
+            "question": "解析怎么写？",
+            "purpose": "文档落点：影响文档内例题、练习和小测的答案解析方式。",
+            "options": ["只给要点", "步骤解析", "错因提醒", "补变式题"],
+        },
+    ]
+
+
 async def _stream_diagnosis_response(state: BuildPlannerState) -> str:
     material_context = state["material_context"]
     latest_plan = dict(state.get("latest_plan") or {})
@@ -415,7 +440,7 @@ async def _stream_diagnosis_response(state: BuildPlannerState) -> str:
     stream = acompletion_stream(
         messages,
         **planner_completion_kwargs_with_metadata(
-            PlannerModelStep.DRAFT_PLAN,
+            PlannerModelStep.DIAGNOSE_QUESTIONS,
             model_override=state.get("model_override"),
             planner_session_id=state.get("planner_session_id") or "",
             substep="生成前置诊断",
@@ -443,7 +468,24 @@ def build_compose_planner_draft_node(*, context: WorkflowContext):
         )
         try:
             if _should_generate_diagnosis_first(state):
-                raw_output = await _stream_diagnosis_response(state)
+                try:
+                    raw_output = await _stream_diagnosis_response(state)
+                    diagnose_questions = _parse_diagnosis_response(raw_output)
+                except Exception as exc:
+                    logger.warning(
+                        "planner_diagnosis_fallback_used",
+                        planner_session_id=state.get("planner_session_id") or "",
+                        course_id=state.get("course_id") or "",
+                        error_type=type(exc).__name__,
+                        error=str(exc),
+                    )
+                    diagnose_questions = _fallback_diagnosis_questions()
+                    await emit_planner_event(
+                        state,
+                        event="planner.diagnose.fallback",
+                        detail="前置诊断模型响应较慢，已先生成默认诊断问题以继续规划流程。",
+                        payload={"diagnose_count": len(diagnose_questions), "fallback_reason": type(exc).__name__},
+                    )
                 latest_plan = dict(state.get("latest_plan") or {})
                 planning_note = compose_planning_note(
                     state.get("planning_note") or latest_plan.get("planning_note"),
@@ -454,7 +496,7 @@ def build_compose_planner_draft_node(*, context: WorkflowContext):
                     "planning_note": planning_note,
                     "course_name": str(latest_plan.get("course_name") or ""),
                     "course_icon": str(latest_plan.get("course_icon") or ""),
-                    "diagnose": _parse_diagnosis_response(raw_output),
+                    "diagnose": diagnose_questions,
                     "diagnose_status": "pending",
                     "build_constraints": {},
                 }

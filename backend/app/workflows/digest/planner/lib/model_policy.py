@@ -18,13 +18,14 @@ _PLANNER_UNDERSTAND_TIMEOUT_S = 45
 _PLANNER_UNDERSTAND_OVERALL_TIMEOUT_S = 45
 _PLANNER_DRAFT_TIMEOUT_S = 120
 _PLANNER_DRAFT_OVERALL_TIMEOUT_S = 180
-_PLANNER_IDENTITY_OVERALL_TIMEOUT_S = 90
+_PLANNER_IDENTITY_OVERALL_TIMEOUT_S = 60
 
 
 class PlannerModelStep(str, Enum):
     MATERIAL_BATCH_SUMMARY = "load_materials.summarize_section_batch"
     STREAM_PLANNING_NOTE = "understand_goal_and_materials.stream_planning_note"
     SUMMARIZE_MATERIALS = "understand_goal_and_materials.summarize_materials"
+    DIAGNOSE_QUESTIONS = "compose_planner_draft.diagnose_questions"
     DRAFT_PLAN = "compose_planner_draft"
     COURSE_IDENTITY = "generate_course_identity"
 
@@ -140,6 +141,16 @@ _POLICIES: dict[PlannerModelStep, PlannerModelPolicy] = {
         overall_timeout_s=_PLANNER_DRAFT_OVERALL_TIMEOUT_S,
         temperature=0.3,
         note="生成 suggestion、plan 和 chapters；plan 段落会流式展示。",
+    ),
+    PlannerModelStep.DIAGNOSE_QUESTIONS: PlannerModelPolicy(
+        step=PlannerModelStep.DIAGNOSE_QUESTIONS,
+        call_type="stream",
+        model="light",
+        max_tokens=1600,
+        timeout_s=_PLANNER_FAST_TIMEOUT_S,
+        overall_timeout_s=_PLANNER_FAST_TIMEOUT_S,
+        temperature=0.3,
+        note="生成前置诊断选择题；失败时使用本地 DocGen 可落地题目兜底。",
     ),
     PlannerModelStep.COURSE_IDENTITY: PlannerModelPolicy(
         step=PlannerModelStep.COURSE_IDENTITY,

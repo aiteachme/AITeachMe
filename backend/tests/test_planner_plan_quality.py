@@ -197,6 +197,43 @@ def test_understand_goal_and_materials_falls_back_when_auxiliary_llms_fail(monke
     assert "planner.analysis.ready" in stages
 
 
+def test_compose_planner_diagnosis_falls_back_when_stream_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fail_diagnosis(state):
+        raise TimeoutError("diagnosis timed out")
+
+    events: list[dict[str, object]] = []
+
+    async def record_event(payload: dict[str, object]) -> None:
+        events.append(payload)
+
+    monkeypatch.setattr(plan_draft_node, "_stream_diagnosis_response", fail_diagnosis)
+
+    node = plan_draft_node.build_compose_planner_draft_node(context=None)
+    result = asyncio.run(
+        node(
+            {
+                "course_id": "course_test",
+                "planner_session_id": "planner_test",
+                "planner_operation": "create",
+                "user_prompt": "两天速成线性代数",
+                "digest_mode": "sprint",
+                "material_context": _material_context(),
+                "planning_note": "需要先建立核心概念和例题路径。",
+                "material_note": "资料重点是矩阵和线性方程组。",
+                "progress_callback": record_event,
+            }
+        )
+    )
+
+    draft = result["build_plan_draft"]
+    assert draft["diagnose_status"] == "pending"
+    assert len(draft["diagnose"]) == 4
+    assert draft["diagnose"][0]["question"] == "基础从哪起？"
+    stages = [str(event.get("stage") or "") for event in events]
+    assert "planner.diagnose.fallback" in stages
+    assert "planner.diagnose.ready" in stages
+
+
 def test_docgen_diagnose_brief_maps_different_answers_to_different_actions() -> None:
     brief = _render_diagnose_brief(
         [
