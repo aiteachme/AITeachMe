@@ -572,7 +572,7 @@ jobs:
 
           pod="$(
             kubectl -n "${SEALOS_NAMESPACE}" get pods --no-headers 2>/dev/null \
-              | awk -v prefix="${SEALOS_FRONTEND_DEPLOYMENT}-" '$1 ~ "^" prefix && $3 == "Running" { print $1; exit }'
+              | awk -v prefix="${SEALOS_FRONTEND_DEPLOYMENT}-" '$1 ~ "^" prefix && $3 == "Running" && found != 1 { print $1; found = 1 }'
           )"
           if [ -z "${pod}" ]; then
             echo "No running frontend pod found for in-cluster proxy smoke." >&2
@@ -966,7 +966,7 @@ jobs:
           for attempt in {1..12}; do
             pod="$(
               kubectl -n "${SEALOS_NAMESPACE}" get pods --no-headers 2>/dev/null \
-                | awk -v prefix="${SEALOS_BACKEND_DEPLOYMENT}-" '$1 ~ "^" prefix && $3 == "Running" { print $1; exit }'
+                | awk -v prefix="${SEALOS_BACKEND_DEPLOYMENT}-" '$1 ~ "^" prefix && $3 == "Running" && found != 1 { print $1; found = 1 }'
             )"
 
             if [ -n "${pod}" ]; then
