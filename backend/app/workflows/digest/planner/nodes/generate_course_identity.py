@@ -21,7 +21,20 @@ from app.workflows.support.courses.icons import infer_course_icon_key, normalize
 
 logger = structlog.get_logger(__name__)
 
-_AUTO_TITLE_PLACEHOLDERS = {"", "untitled course", "新课程", "无标题", "未命名", "未命名课程"}
+_AUTO_TITLE_PLACEHOLDERS = {
+    "",
+    "untitled course",
+    "新课程",
+    "无标题",
+    "未命名",
+    "未命名课程",
+    "方案",
+    "学习方案",
+    "课程方案",
+    "构建方案",
+    "学习计划",
+    "课程规划",
+}
 _TITLE_MAX_CHARS = 16
 
 

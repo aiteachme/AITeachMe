@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from app.workflows.digest.common.models import DigestMaterialContext
+from app.workflows.digest.common.models import DigestMaterialContext, FastTopicHints, SourcePacket
 from app.shared.infra.llm_support.common import build_completion_context, prepare_completion_attempt
 from app.shared.infra.llm_support.native_tools import PROVIDER_NATIVE_TOOLS_KWARG
 from app.shared.infra.llm_support.responses_adapter import resolve_provider_call
@@ -87,6 +87,8 @@ def test_clean_course_name_handles_numbered_or_labeled_candidates() -> None:
     assert _clean_course_name("1. 高数主线重建\n2. 高数复习路线") == "高数主线重建"
     assert _clean_course_name("“心理学入门地图”") == "心理学入门地图"
     assert _clean_course_name("未命名课程") == ""
+    assert _clean_course_name("方案") == ""
+    assert _clean_course_name("学习方案") == ""
 
 
 def test_course_identity_falls_back_when_llm_fails(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -118,3 +120,41 @@ def test_course_identity_falls_back_when_llm_fails(monkeypatch: pytest.MonkeyPat
     assert result["generated_course_icon_key"]
     stages = [str(event.get("stage") or "") for event in events]
     assert "planner.identity.fallback" in stages
+
+
+def test_course_identity_fallback_skips_generic_plan_title(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fail_identity(*args, **kwargs):
+        raise TimeoutError("identity timed out")
+
+    monkeypatch.setattr(identity_node, "acompletion_with_fallback", fail_identity)
+
+    node = identity_node.build_generate_course_identity_node(context=None)
+    result = asyncio.run(
+        node(
+            {
+                "course_id": "course_test",
+                "planner_session_id": "planner_test",
+                "planner_operation": "create",
+                "user_prompt": "请基于每日验收资料生成一个极简学习方案，只需要 2 章。",
+                "material_context": DigestMaterialContext(
+                    material_hints=FastTopicHints(chapter_candidates=["方案"]),
+                    source_documents=[
+                        SourcePacket(
+                            file_id="file_test",
+                            filename="高等数学期末复习.md",
+                            filetype="md",
+                            markdown_path="",
+                            asset_dir="",
+                            normalized_content="",
+                            char_count=0,
+                            has_formulas=False,
+                            has_tables=False,
+                            has_images=False,
+                        )
+                    ],
+                ),
+            }
+        )
+    )
+
+    assert result["generated_course_name"] == "高等数学期末复习"
