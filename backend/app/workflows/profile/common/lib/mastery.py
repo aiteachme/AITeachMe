@@ -27,6 +27,7 @@ class _WeightedAttempt:
     is_correct: bool
     difficulty: str
     answered_at: datetime
+    score_ratio: float = 1.0
     coverage_weight: float = 1.0
     question_type: str = ""
     time_spent_seconds: int | None = None
@@ -80,8 +81,7 @@ def _compute_weighted_mastery_score(
         )
         weight = base_weight * max(0.0, item.coverage_weight)
         weighted_total += weight
-        if item.is_correct:
-            weighted_correct += weight
+        weighted_correct += weight * min(1.0, max(0.0, item.score_ratio))
 
     if weighted_total <= 0:
         return 0.0
@@ -283,6 +283,12 @@ def _normalize_knowledge_unit_links(payload: list[dict[str, object]]) -> list[tu
     return [(node_id, weight / total_weight) for node_id, weight in links]
 
 
+def _score_ratio(score_obtained: float | None, score_max: float | None, is_correct: bool) -> float:
+    if score_obtained is None or score_max is None or score_max <= 0:
+        return 1.0 if is_correct else 0.0
+    return min(1.0, max(0.0, float(score_obtained) / float(score_max)))
+
+
 def _upsert_state_from_attempts(
     session: Session,
     *,
@@ -392,6 +398,7 @@ def update_mastery_from_exam(
                     is_correct=item.is_correct,
                     difficulty=item.difficulty,
                     answered_at=answered_at,
+                    score_ratio=_score_ratio(item.score_obtained, item.score_max, item.is_correct),
                     coverage_weight=normalized_weight,
                     question_type=item.question_type,
                     time_spent_seconds=item.time_spent_seconds,

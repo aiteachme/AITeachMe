@@ -644,7 +644,9 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
 
           toast({
             title: "交卷成功",
-            description: `本次得分 ${graded?.score ?? 0}，掌握度已同步更新。`,
+            description: graded?.mastery_consumed
+              ? `本次得分 ${graded?.score ?? 0}，掌握度已同步更新。`
+              : `本次得分 ${graded?.score ?? 0}，画像同步未完成，可稍后刷新画像查看。`,
             variant: "success",
           });
           try {

@@ -6834,10 +6834,13 @@
         },
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "课程导出包（.atmx）。",
             "content": {
-              "application/json": {
-                "schema": {}
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
               }
             }
           },

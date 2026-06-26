@@ -70,7 +70,18 @@ async def export_preview_api(
 @router.post(
     "/courses/{course_id}/export",
     summary="导出课程",
-    responses=build_error_responses([404, 500]),
+    response_class=FileResponse,
+    responses={
+        200: {
+            "description": "课程导出包（.atmx）。",
+            "content": {
+                "application/octet-stream": {
+                    "schema": {"type": "string", "format": "binary"},
+                },
+            },
+        },
+        **build_error_responses([404, 500]),
+    },
 )
 async def export_course_api(
     course_id: str = PathParam(...),

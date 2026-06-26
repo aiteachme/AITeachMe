@@ -149,6 +149,24 @@ def test_update_mastery_from_exam_is_idempotent_per_paper(session: Session) -> N
     assert second_stats["consumed_exam_paper_ids"] == [paper.id]
 
 
+def test_update_mastery_uses_partial_credit_ratio(session: Session) -> None:
+    paper, item, unit = _seed_graded_paper(session)
+    item.is_correct = False
+    item.score_obtained = 0.5
+    item.score_max = 1.0
+    session.add(item)
+    session.commit()
+
+    result = update_mastery_from_exam(session, int(paper.id or 0))
+    state = session.get(UserKnowledgeState, result.updated_state_ids[0])
+
+    assert state is not None
+    assert state.knowledge_unit_id == unit.id
+    assert state.mastery_score == pytest.approx(0.5)
+    assert state.total_attempts == 1
+    assert state.correct_attempts == 0
+
+
 @pytest.mark.anyio
 async def test_grade_exam_records_profile_update_failure_without_blocking(
     session: Session,

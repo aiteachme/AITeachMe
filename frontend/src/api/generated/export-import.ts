@@ -158,7 +158,7 @@ export const useExportPreviewApiApiV1CoursesCourseIdExportPreviewPost = <TError 
       return useMutation(getExportPreviewApiApiV1CoursesCourseIdExportPreviewPostMutationOptions(options), queryClient);
     }
     export type exportCourseApiApiV1CoursesCourseIdExportPostResponse200 = {
-  data: unknown
+  data: Blob
   status: 200
 }
 
