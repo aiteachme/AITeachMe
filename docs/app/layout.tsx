@@ -37,6 +37,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           search={{
             options: {
               api: "/docs/api/search",
+              type: "static",
             },
           }}
         >

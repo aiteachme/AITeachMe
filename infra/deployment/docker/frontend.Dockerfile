@@ -17,6 +17,16 @@ RUN npm ci
 COPY frontend/ .
 RUN npm run build
 
+FROM node:24-alpine AS docs-builder
+
+WORKDIR /app/docs
+
+COPY docs/package*.json ./
+RUN npm ci --ignore-scripts
+
+COPY docs/ ./
+RUN npm run postinstall && npm run build
+
 # 生产镜像
 FROM nginx:alpine
 
@@ -27,6 +37,9 @@ ENV AITEACHME_NGINX_IMPORT_CLIENT_MAX_BODY_SIZE=260m
 
 # 复制构建产物到 nginx
 COPY --from=builder /app/dist /usr/share/nginx/html
+COPY --from=docs-builder /app/docs/out/docs /usr/share/nginx/html/docs
+COPY --from=docs-builder /app/docs/out/_next /usr/share/nginx/html/_next
+COPY --from=docs-builder /app/docs/out/favicon.ico /usr/share/nginx/html/favicon.ico
 
 # 注入 Kubernetes/Docker 运行时 DNS resolver，避免 Nginx 因 upstream 短暂解析失败而启动退出
 COPY infra/deployment/docker/frontend-nginx-resolver.envsh /docker-entrypoint.d/16-aiteachme-resolver.envsh
