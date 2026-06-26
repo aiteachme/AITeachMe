@@ -565,7 +565,7 @@ export function Sidebar({
       }
       return;
     }
-    window.open(docsUrl, "_blank", "noopener,noreferrer");
+    window.location.assign(resolveExternalDocsUrl(docsUrl));
   }, [closeMobileNavigation, dismissDocsHint]);
   const openCreateCoursePage = useCallback(() => {
     setCourseActionError(undefined);
