@@ -88,6 +88,43 @@ async def test_global_retrieval_uses_explicit_attached_user_files() -> None:
     assert "CPU 是中央处理器" in results[0].content
 
 
+@pytest.mark.anyio
+async def test_global_retrieval_uses_library_selection_source_file_id() -> None:
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False})
+    SQLModel.metadata.create_all(engine, tables=[User.__table__, RawFile.__table__])
+
+    with Session(engine, expire_on_commit=False) as session:
+        session.add(User(id="usr_1", username="learner"))
+        session.add(
+            RawFile(
+                id="file_1",
+                user_id="usr_1",
+                filename="uploaded-note.pdf",
+                filetype="pdf",
+                file_path="uploads/file_1.pdf",
+                mime_type="application/pdf",
+                status=TaskStatus.COMPLETED.value,
+                markdown_content="CPU executes instructions. Memory stores runtime data.",
+            )
+        )
+        session.commit()
+
+        results = await retrieval.retrieve_context(
+            session=session,
+            query="What does this file say about CPU?",
+            course_id="global",
+            top_k=3,
+            similarity_threshold=0.3,
+            user_id="usr_1",
+            source="library_selection:file_1",
+        )
+
+    assert len(results) == 1
+    assert results[0].retrieval_source == "attached_file"
+    assert results[0].file_id == "file_1"
+    assert "CPU executes instructions" in results[0].content
+
+
 def test_merge_context_results_keeps_vector_hits_before_weak_graph_hits() -> None:
     graph_results = [
         RetrievedContext(

@@ -82,6 +82,7 @@ interface PendingAutoSendRequest {
   source: string | null;
   pageContext: AiInteractionOpenRequest["pageContext"];
   attachedFileIds: string[];
+  newSession: boolean;
 }
 
 const QUICK_CHAT_UPDATED_EVENT = "aiteachme:quick-chat-updated";
@@ -274,13 +275,6 @@ function resolveConversationScene(input: {
   if (input.scope?.type === "global" && input.hasAttachedFiles) {
     return AI_SCENE_LIBRARY_SELECTION;
   }
-  const requestedSourceScene = sceneFromSource(input.requestedSource, false);
-  if (requestedSourceScene) {
-    return requestedSourceScene;
-  }
-  if (input.scope?.type === "library") {
-    return AI_SCENE_LIBRARY_SELECTION;
-  }
   if (
     input.scope?.type === "global" &&
     (
@@ -289,6 +283,13 @@ function resolveConversationScene(input: {
     )
   ) {
     return AI_SCENE_HOME_INTAKE;
+  }
+  const requestedSourceScene = sceneFromSource(input.requestedSource, false);
+  if (requestedSourceScene) {
+    return requestedSourceScene;
+  }
+  if (input.scope?.type === "library") {
+    return AI_SCENE_LIBRARY_SELECTION;
   }
   if (looksLikeWebResearchTurn(input.question)) {
     return AI_SCENE_WEB_RESEARCH;
@@ -1257,6 +1258,16 @@ export const AiConversationView = memo(function AiConversationView({
       setDraftAttachedFiles([]);
       setIsDraftUploadingFiles(false);
     }
+    if (request.newSession) {
+      requestedSessionIdRef.current = null;
+      preferEmptySessionRef.current = true;
+      pendingSelectionSubmittedRef.current = false;
+      setSelectedSessionId(null);
+      setActiveConversationSessionId(null);
+      if (!isStreaming) {
+        replaceMessages([], null);
+      }
+    }
     if (request.draft !== undefined) {
       setDraft(request.draft);
     }
@@ -1276,6 +1287,7 @@ export const AiConversationView = memo(function AiConversationView({
         source: request.source?.trim() || null,
         pageContext: request.pageContext ?? null,
         attachedFileIds: Array.from(new Set((request.attachedFileIds ?? []).map((item) => item.trim()).filter(Boolean))),
+        newSession: Boolean(request.newSession),
       });
     } else {
       setPendingAutoSendRequest(null);
@@ -1297,7 +1309,9 @@ export const AiConversationView = memo(function AiConversationView({
       requestedClientThreadId ||
       (isSameActiveQuickChatSelection ? existingQuickChatContext?.clientThreadId?.trim() ?? "" : "");
     const mappedSessionId = getQuickChatSessionId(effectiveClientThreadId);
+    const requestWantsNewSession = Boolean(request.newSession);
     const currentStreamingMessages =
+      !requestWantsNewSession &&
       isStreaming &&
       messagesRef.current.length > 0 &&
       (
@@ -1316,16 +1330,21 @@ export const AiConversationView = memo(function AiConversationView({
       request.sessionId === undefined
         ? undefined
         : request.sessionId?.trim() || null;
-    const effectiveRequestSessionId =
-      requestSessionId === undefined
-        ? mappedSessionId ?? activeStreamingSessionId
-        : requestSessionId ?? mappedSessionId ?? activeStreamingSessionId;
+    let effectiveRequestSessionId: string | null | undefined;
+    if (requestWantsNewSession) {
+      effectiveRequestSessionId = null;
+    } else if (requestSessionId === undefined) {
+      effectiveRequestSessionId = mappedSessionId ?? activeStreamingSessionId;
+    } else {
+      effectiveRequestSessionId = requestSessionId ?? mappedSessionId ?? activeStreamingSessionId;
+    }
     const shouldOpenEmptySession =
-      !effectiveRequestSessionId &&
+      requestWantsNewSession ||
+      (!effectiveRequestSessionId &&
       (
         request.sessionId === null ||
         Boolean(selectedText && (request.newSession ?? request.sessionId === undefined))
-      );
+      ));
     let restoredQuickChatMessages: ChatSessionMessage[] | null = null;
 
     if (shouldOpenEmptySession) {
@@ -1334,9 +1353,10 @@ export const AiConversationView = memo(function AiConversationView({
       pendingSelectionSubmittedRef.current = false;
       setSelectedSessionId(null);
       setActiveConversationSessionId(null);
-      const providerCachedMessages = getCachedQuickChatMessages(effectiveClientThreadId);
-      const cachedMessages = effectiveClientThreadId ? quickChatMessagesRef.current[effectiveClientThreadId] : null;
+      const providerCachedMessages = requestWantsNewSession ? null : getCachedQuickChatMessages(effectiveClientThreadId);
+      const cachedMessages = !requestWantsNewSession && effectiveClientThreadId ? quickChatMessagesRef.current[effectiveClientThreadId] : null;
       const currentThreadMessages =
+        !requestWantsNewSession &&
         effectiveClientThreadId &&
         effectiveClientThreadId === activeQuickChatThreadIdRef.current &&
         messagesRef.current.length > 0
@@ -1495,18 +1515,22 @@ export const AiConversationView = memo(function AiConversationView({
       autoRequest.model?.trim()
         ? autoRequest.model
         : toChatRequestModel(chatModel);
+    const resolvedScene = autoRequest.scene ?? resolveConversationScene({
+      scope,
+      question: autoRequest.question,
+      hasAttachedFiles: autoRequest.attachedFileIds.length > 0,
+      selectionContext: null,
+      requestedSource: autoRequest.source,
+    });
     const result = await sendMessage({
       question: autoRequest.question,
       model: requestModel,
-      session_id: undefined,
-      scene: autoRequest.scene ?? resolveConversationScene({
-        scope,
-        question: autoRequest.question,
-        hasAttachedFiles: autoRequest.attachedFileIds.length > 0,
-        selectionContext: null,
-        requestedSource: autoRequest.source,
-      }),
-      source: autoRequest.source ?? (scope?.type === "library" ? getLibrarySelectionSource(scope.fileId) : undefined),
+      session_id: autoRequest.newSession ? null : undefined,
+      scene: resolvedScene,
+      source:
+        autoRequest.source ??
+        (scope?.type === "library" ? getLibrarySelectionSource(scope.fileId) : sourceForScene(resolvedScene)) ??
+        undefined,
       page_context: autoRequest.pageContext ?? undefined,
       attached_file_ids: autoRequest.attachedFileIds,
     });

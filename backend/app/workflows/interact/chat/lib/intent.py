@@ -164,7 +164,10 @@ def should_use_course_grounding(
     """Decide whether course materials should be active evidence this turn."""
 
     explicit_scene = parse_chat_scene(scene)
+    normalized_source = (source or "").strip()
     if explicit_scene in {ChatScene.GLOBAL_ASSISTANT, ChatScene.HOME_INTAKE, ChatScene.WEB_RESEARCH}:
+        if explicit_scene == ChatScene.GLOBAL_ASSISTANT and _source_can_force_learning(normalized_source):
+            return True
         return False
     if explicit_scene in {
         ChatScene.COURSE_CHAT,
@@ -175,15 +178,15 @@ def should_use_course_grounding(
     }:
         return True
 
-    if (source or "").strip() == "home_intake":
-        return False
-    if (source or "").strip() in {"course_chat", "library_selection"}:
+    if _source_can_force_learning(normalized_source):
         return True
-    if (source or "").strip() in {"global_assistant", "web_research"}:
+    if normalized_source == "home_intake":
+        return False
+    if normalized_source in {"global_assistant", "web_research"}:
         return False
     if has_primary_context:
         return True
-    if (source or "").strip() in _CONTEXTUAL_SOURCES:
+    if normalized_source in _CONTEXTUAL_SOURCES:
         return True
     return has_explicit_learning_intent(question)
 
@@ -199,6 +202,7 @@ def resolve_prompt_scene(
     """Resolve the dedicated prompt template scene for one turn."""
 
     explicit_scene = parse_chat_scene(scene)
+    normalized_source = (source or "").strip()
     if explicit_scene == ChatScene.LIBRARY_SELECTION:
         return ChatPromptScene.LIBRARY_LEARNING
     if explicit_scene == ChatScene.DOCUMENT_SELECTION:
@@ -212,9 +216,15 @@ def resolve_prompt_scene(
     if explicit_scene == ChatScene.WEB_RESEARCH:
         return ChatPromptScene.WEB_RESEARCH
     if explicit_scene in {ChatScene.GLOBAL_ASSISTANT, ChatScene.HOME_INTAKE}:
+        if explicit_scene == ChatScene.GLOBAL_ASSISTANT:
+            source_scene = _prompt_scene_from_learning_source(normalized_source)
+            if source_scene is not None:
+                return source_scene
         return ChatPromptScene.GLOBAL_ASSISTANT
 
-    normalized_source = (source or "").strip()
+    source_scene = _prompt_scene_from_learning_source(normalized_source)
+    if source_scene is not None:
+        return source_scene
     if normalized_source == "exam_question":
         return ChatPromptScene.EXAM_QUESTION
     if normalized_source in _BUILD_SOURCES:
@@ -223,8 +233,6 @@ def resolve_prompt_scene(
         return ChatPromptScene.WEB_RESEARCH
     if normalized_source == "global_assistant":
         return ChatPromptScene.GLOBAL_ASSISTANT
-    if normalized_source == "course_chat":
-        return ChatPromptScene.COURSE_LEARNING
     if normalized_source == "quick_chat" and has_primary_context:
         return ChatPromptScene.DOCUMENT_SELECTION
     if is_global_course(course_id) and has_external_research_intent(question):
@@ -251,6 +259,22 @@ def parse_chat_scene(value: str | None) -> ChatScene | None:
         return ChatScene(normalized)
     except ValueError:
         return None
+
+
+def _is_library_selection_source(source: str) -> bool:
+    return source == "library_selection" or source.startswith("library_selection:")
+
+
+def _source_can_force_learning(source: str) -> bool:
+    return source == "course_chat" or _is_library_selection_source(source)
+
+
+def _prompt_scene_from_learning_source(source: str) -> ChatPromptScene | None:
+    if _is_library_selection_source(source):
+        return ChatPromptScene.LIBRARY_LEARNING
+    if source == "course_chat":
+        return ChatPromptScene.COURSE_LEARNING
+    return None
 
 
 def has_external_research_intent(question: str) -> bool:

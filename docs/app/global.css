@@ -18,19 +18,12 @@ body {
 .atm-docs-nav-title {
   display: inline-flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.5rem;
   font-weight: 760;
 }
 
-.atm-docs-nav-mark {
-  display: inline-flex;
-  height: 1.6rem;
-  width: 1.6rem;
-  align-items: center;
-  justify-content: center;
-  border-radius: 0.5rem;
-  background: linear-gradient(135deg, #111827, #4f46e5);
-  color: white;
-  font-size: 0.58rem;
-  letter-spacing: 0.04em;
+.atm-docs-nav-logo {
+  height: 1.5rem;
+  width: 1.5rem;
+  object-fit: contain;
 }

@@ -290,7 +290,7 @@ export function useChatSession(courseId: string, options: UseChatSessionOptions 
       return { accepted: false, sessionId: null };
     }
 
-    const resolvedSessionId = input.session_id ?? sessionId ?? null;
+    const resolvedSessionId = resolveRequestedSessionId(input, sessionId);
     const userLocalId = buildLocalId("user");
     const assistantLocalId = buildLocalId("assistant");
     const localThreadId = sendOptions.localThreadId?.trim() || resolvedSessionId || `thread-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -716,6 +716,16 @@ function normalizeChatAttachedFileIds(fileIds: ChatSendRequest["attached_file_id
     normalized.push(value);
   }
   return normalized;
+}
+
+function resolveRequestedSessionId(input: ChatSendRequest, fallbackSessionId: string | null): string | null {
+  const hasExplicitSessionId =
+    Object.prototype.hasOwnProperty.call(input, "session_id") &&
+    input.session_id !== undefined;
+  if (!hasExplicitSessionId) {
+    return fallbackSessionId;
+  }
+  return input.session_id?.trim() || null;
 }
 
 function resolvePersistedClientActions(

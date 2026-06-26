@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.workflows.interact.chat import graph as interact_graph
 from app.workflows.interact.chat.lib import home_intake
 from app.workflows.interact.chat.lib.intent import ChatPromptScene, resolve_prompt_scene, should_use_course_grounding
 from app.workflows.interact.chat.nodes import persist as persist_node
@@ -47,6 +48,62 @@ def test_explicit_chat_scene_controls_prompt_scene() -> None:
         has_primary_context=False,
     ) == ChatPromptScene.LIBRARY_LEARNING
 
+    assert should_use_course_grounding(
+        question="这份资料主要讲什么？",
+        scene="global_assistant",
+        source="library_selection",
+        has_primary_context=False,
+    )
+    assert resolve_prompt_scene(
+        question="这份资料主要讲什么？",
+        scene="global_assistant",
+        source="library_selection",
+        course_id="global",
+        has_primary_context=False,
+    ) == ChatPromptScene.LIBRARY_LEARNING
+
+    assert should_use_course_grounding(
+        question="What does this uploaded file cover?",
+        scene="global_assistant",
+        source="library_selection:file_123",
+        has_primary_context=False,
+    )
+    assert resolve_prompt_scene(
+        question="What does this uploaded file cover?",
+        scene="global_assistant",
+        source="library_selection:file_123",
+        course_id="global",
+        has_primary_context=False,
+    ) == ChatPromptScene.LIBRARY_LEARNING
+
+    assert not should_use_course_grounding(
+        question="Search the latest course policy.",
+        scene="web_research",
+        source="library_selection:file_123",
+        has_primary_context=False,
+    )
+    assert resolve_prompt_scene(
+        question="Search the latest course policy.",
+        scene="web_research",
+        source="library_selection:file_123",
+        course_id="global",
+        has_primary_context=False,
+    ) == ChatPromptScene.WEB_RESEARCH
+
+    assert not should_use_course_grounding(
+        question="Build a course from these materials.",
+        scene="home_intake",
+        source="library_selection:file_123",
+        has_primary_context=False,
+    )
+    assert resolve_prompt_scene(
+        question="Build a course from these materials.",
+        scene="home_intake",
+        source="library_selection:file_123",
+        course_id="global",
+        has_primary_context=False,
+    ) == ChatPromptScene.GLOBAL_ASSISTANT
+
 
 def test_course_keyword_alone_does_not_trigger_home_intake() -> None:
     assert not home_intake.should_use_home_intake_flow(
@@ -70,6 +127,32 @@ def test_creation_followup_routes_short_answer_to_home_intake() -> None:
             )
         ],
     )
+
+
+def test_graph_routes_home_intake_after_history_without_retrieval() -> None:
+    assert interact_graph._route_after_history_step(
+        {
+            "course_id": "global",
+            "scene": "global_assistant",
+            "source": "global_assistant",
+            "question": "帮我构建一门计算机组成原理期末冲刺课",
+            "recent_messages": [],
+            "error": None,
+        }
+    ) == "home_intake"
+
+
+def test_graph_keeps_library_selection_on_retrieval_path() -> None:
+    assert interact_graph._route_after_history_step(
+        {
+            "course_id": "global",
+            "scene": "global_assistant",
+            "source": "library_selection",
+            "question": "这份资料主要讲什么？",
+            "recent_messages": [],
+            "error": None,
+        }
+    ) == "continue"
 
 
 def test_explicit_ask_user_options_bypasses_home_intake() -> None:

@@ -30,6 +30,7 @@ from app.workflows.interact.chat.lib.events import (
     InteractFailedEvent,
     InteractRequestedEvent,
 )
+from app.workflows.interact.chat.lib.home_intake import should_use_home_intake_flow
 from app.workflows.interact.chat.lib.streaming import SSEEventEmitter
 from app.workflows.interact.chat.nodes import (
     build_finalize_chat_session_node,
@@ -77,7 +78,7 @@ NODE_TRACE_DETAILS = {
         "output_keys": ["session_id", "session_title", "session_created"],
     },
     NODE_LOAD_HISTORY: {
-        "description": "读取本会话近期消息、课程展示信息、学生整体画像、薄弱知识点和近期错题，作为个性化教学背景；这些信息只能辅助当前问题，不能抢占划选入口主题。",
+        "description": "读取本会话近期消息、课程展示信息、学生整体画像、薄弱知识点和近期错题，作为个性化教学背景；首页建课入口会在本节点之后直接分流，避免误走普通检索。",
         "reads": ["chat_message", "course", "user_knowledge_state", "exam_question_result"],
         "writes": [],
         "emits": [],
@@ -129,12 +130,13 @@ NODE_TRACE_DETAILS = {
         "output_keys": ["messages"],
     },
     NODE_STREAM_ANSWER: {
-        "description": "调用主模型或受控工具流式生成回答，把 token 逐步推给 SSE；如果客户端断开则标记中断，不继续写库。",
+        "description": "调用主模型或受控工具流式生成回答，把 token 逐步推给 SSE；首页建课入口会在这里处理确认与创建课程；如果客户端断开则标记中断，不继续写库。",
         "reads": ["LLM provider"],
         "writes": [],
         "emits": ["status:answering", "status:home_intake", "token"],
         "input_keys": [
             "messages",
+            "recent_messages",
             "execution_mode",
             "retrieval_results",
             "model_override",
@@ -282,9 +284,10 @@ def build_interact_workflow_graph(
     )
     workflow.add_conditional_edges(
         NODE_LOAD_HISTORY,
-        ROUTE_AFTER_STANDARD_STEP,
+        ROUTE_AFTER_HISTORY_STEP,
         {
             "continue": NODE_RETRIEVE_CONTEXT,
+            "home_intake": NODE_STREAM_ANSWER,
             "finish": END,
         },
     )
@@ -382,6 +385,21 @@ def _route_after_standard_step(state: InteractWorkflowState) -> str:
     return "finish" if state.get("error") else "continue"
 
 
+def _route_after_history_step(state: InteractWorkflowState) -> str:
+    if state.get("error"):
+        return "finish"
+    course_id = str(state.get("course_id") or "")
+    if should_use_home_intake_flow(
+        scene=state.get("scene"),
+        source=state.get("source"),
+        course_id=course_id,
+        question=state.get("question"),
+        recent_messages=state.get("recent_messages", []),
+    ):
+        return "home_intake"
+    return "continue"
+
+
 def _route_after_stream_step(state: InteractWorkflowState) -> str:
     if state.get("error") or state.get("stream_interrupted"):
         return "finish"
@@ -389,6 +407,7 @@ def _route_after_stream_step(state: InteractWorkflowState) -> str:
 
 
 ROUTE_AFTER_STANDARD_STEP = _named_route(_route_after_standard_step, "检查是否继续")
+ROUTE_AFTER_HISTORY_STEP = _named_route(_route_after_history_step, "识别首页建课入口")
 ROUTE_AFTER_STREAM_STEP = _named_route(_route_after_stream_step, "检查是否保存对话")
 
 

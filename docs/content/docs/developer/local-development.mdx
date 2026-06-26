@@ -37,7 +37,7 @@ npm install
 npm run dev
 ```
 
-默认前端端口是 `5180`。开发模式通过 Vite 代理把 `/api` 转发到 `http://127.0.0.1:9020`。
+默认前端端口是 `5180`。开发模式通过 Vite 代理把 `/api` 转发到 `http://127.0.0.1:9020`，把 `/docs` 转发到本地文档站。
 
 ## 文档站
 
@@ -47,7 +47,13 @@ npm install
 npm run dev
 ```
 
-文档站默认使用 `5182`，避免和主前端冲突。
+文档站默认运行在 `5182`，避免和主前端进程冲突。用户入口仍然可以走主前端地址：
+
+```text
+http://127.0.0.1:5180/docs
+```
+
+`5182` 只是 Vite 代理背后的内部目标。
 
 ## 根目录开发脚本
 
@@ -95,9 +101,4 @@ npm run build
 # 文档站构建
 cd docs
 npm run build
-```
-
-```powershell
-# 文档乱码检查
-python scripts\check_mojibake.py docs
 ```

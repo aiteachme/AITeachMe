@@ -71,6 +71,7 @@ def build_retrieve_context_node(*, context: WorkflowContext, session: Session | 
                 similarity_threshold=settings.rag.similarity_threshold,
                 user_id=state["user_id"],
                 attached_file_ids=attached_file_ids,
+                source=state.get("source"),
             )
         contexts = [item.to_context_item() for item in retrieval_results] or None
         workflow_logger.info(

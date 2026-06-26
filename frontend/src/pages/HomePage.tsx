@@ -51,7 +51,7 @@ import { HeroAnimation } from "../components/ui/HeroAnimation";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 import { CourseExportModal } from "../components/course/CourseExportModal";
 import { useToast } from "../components/ui/Toast";
-import { AI_SCENE_GLOBAL_ASSISTANT, AI_SCENE_LIBRARY_SELECTION, useAiInteraction } from "../components/interaction";
+import { useAiInteraction } from "../components/interaction";
 import {
   ChatModelSelect,
   toChatRequestModel,
@@ -332,10 +332,12 @@ function LibraryPickerModal({
   selectedFileIds,
   onClose,
   onConfirm,
+  onUploadRequest,
 }: {
   selectedFileIds: string[];
   onClose: () => void;
   onConfirm: (fileIds: string[], files: FileRecord[]) => void;
+  onUploadRequest: () => void;
 }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [selected, setSelected] = useState<Set<string>>(() => new Set(selectedFileIds));
@@ -387,6 +389,9 @@ function LibraryPickerModal({
   };
 
   const confirmSelection = () => {
+    if (selectedCount === 0 || filesQuery.isLoading) {
+      return;
+    }
     onConfirm(Array.from(selected), selectedFiles);
     onClose();
   };
@@ -459,6 +464,14 @@ function LibraryPickerModal({
               <FolderOpen className="h-8 w-8 text-slate-400" />
               <p className="mt-3 text-sm font-medium text-slate-700 dark:text-slate-300">资料库还没有文件</p>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-500">先上传资料后，就可以在这里选择。</p>
+              <button
+                type="button"
+                onClick={onUploadRequest}
+                className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900/15 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white dark:focus:ring-slate-100/15"
+              >
+                <FileUp className="h-4 w-4" />
+                上传资料
+              </button>
             </div>
           ) : null}
 
@@ -534,7 +547,7 @@ function LibraryPickerModal({
             <button
               type="button"
               onClick={confirmSelection}
-              disabled={filesQuery.isLoading && selectedCount === 0}
+              disabled={filesQuery.isLoading || selectedCount === 0}
               className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white dark:disabled:bg-slate-800 dark:disabled:text-slate-600"
             >
               <Check className="h-4 w-4" />
@@ -891,15 +904,12 @@ export function HomePage() {
     setError(null);
     const selectedModel = toChatRequestModel(chatModel);
     if (entryMode === "chat") {
-      const conversationScene = entryFileIds.length > 0 ? AI_SCENE_LIBRARY_SELECTION : AI_SCENE_GLOBAL_ASSISTANT;
       openAiInteraction({
         mode: "fullscreen",
         scope: { type: "global" },
         draft: prompt.trim(),
         autoSend: prompt.trim().length > 0,
         model: selectedModel,
-        scene: conversationScene,
-        source: entryFileIds.length > 0 ? "library_selection" : "global_assistant",
         attachedFileIds: entryFileIds,
         newSession: true,
       });
@@ -994,6 +1004,11 @@ export function HomePage() {
     void uploadPendingFiles(droppedFiles);
   }, [uploadPendingFiles]);
 
+  const handleLibraryUploadRequest = useCallback(() => {
+    setLibraryPickerOpen(false);
+    window.requestAnimationFrame(() => fileInputRef.current?.click());
+  }, []);
+
   const handleRemoveEntryFile = useCallback((fileId: string) => {
     const nextFileIds = entryFileIds.filter((item) => item !== fileId);
     setEntryFileIds(nextFileIds);
@@ -1033,7 +1048,7 @@ export function HomePage() {
     />
     <div
       className={cn(
-        "atm-home-surface relative flex w-full flex-col items-center overflow-x-clip p-4 pt-16 selection:bg-zinc-200 md:p-8 md:pt-20",
+        "atm-home-surface relative flex w-full flex-col items-center overflow-x-clip p-4 pt-[clamp(5rem,7vh,6.5rem)] selection:bg-zinc-200 md:p-8 md:pt-[clamp(5.5rem,7vh,7.5rem)]",
         isElectron ? "min-h-full" : "min-h-[100dvh]",
       )}
     >
@@ -1044,7 +1059,7 @@ export function HomePage() {
         className={cn(
           "relative z-20 flex w-full max-w-[920px] flex-col items-center",
           shouldReserveDemoCourseSection
-            ? "min-h-[43dvh] justify-end pb-5 pt-3 md:min-h-[45dvh] md:pb-6"
+            ? "min-h-[clamp(560px,64dvh,680px)] justify-end pb-5 pt-5 md:min-h-[clamp(480px,62dvh,660px)] md:pb-6 md:pt-7"
             : "min-h-[calc(100dvh-9rem)] translate-y-[8vh] justify-center md:translate-y-[11vh]",
         )}
       >
@@ -1132,7 +1147,7 @@ export function HomePage() {
               ref={textareaRef}
               aria-label={isCourseEntryMode ? "课程构建需求" : "自由对话输入"}
               placeholder={textareaPlaceholder}
-              className="w-full min-h-[132px] max-h-[320px] resize-none border-0 bg-transparent px-5 pb-2 pt-5 text-[15px] leading-7 text-zinc-900 focus:outline-none placeholder:text-zinc-400 dark:text-slate-100 dark:placeholder:text-slate-500 sm:min-h-[148px] sm:px-7 sm:pt-6 sm:text-[16px]"
+              className="w-full min-h-[112px] max-h-[320px] resize-none border-0 bg-transparent px-5 pb-2 pt-5 text-[15px] leading-7 text-zinc-900 focus:outline-none placeholder:text-zinc-400 dark:text-slate-100 dark:placeholder:text-slate-500 sm:min-h-[120px] sm:px-7 sm:pt-6 sm:text-[16px]"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -1444,6 +1459,7 @@ export function HomePage() {
           selectedFileIds={entryFileIds}
           onClose={() => setLibraryPickerOpen(false)}
           onConfirm={handleSelectLibraryFiles}
+          onUploadRequest={handleLibraryUploadRequest}
         />
       )}
       {renameTarget && (

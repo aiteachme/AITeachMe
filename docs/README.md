@@ -2,7 +2,7 @@
 
 `docs/` 现在同时承担两类职责：
 
-1. `docs/content/docs/`：Fumadocs 文档站的展示内容，面向用户教程、开发者入口和简短产品说明。
+1. `docs/content/docs/`：Fumadocs 文档站的展示内容，面向用户教程和开发者入口。
 2. `docs/architecture`、`docs/workflows`、`docs/development` 等：仓库已有的内部事实文档，先继续作为实现事实源保留，后续逐步整理进更清晰的 reference 区域。
 
 文档站不是另一个产品首页，也不单独承载营销落地页。根路径 `/` 仅重定向到 `/docs`，真正的阅读入口从 `/docs` 开始。
@@ -15,7 +15,6 @@
 - `quickstart/`：第一次使用、首页输入框和构建课程路径。
 - `user-guide/`：资料上传、课程构建、自由对话、测验与画像。
 - `developer/`：本地开发、架构、workflows/infra、API 契约。
-- `product/`：简短产品介绍，保持克制，不替代根 README。
 
 写展示文档时优先回答“用户或开发者下一步该做什么”，避免把临时 prompt、调试记录、历史方案写进对外页面。
 
@@ -42,7 +41,7 @@ npm install
 npm run dev
 ```
 
-开发服务器默认由 Next.js 分配端口。访问根路径时会自动进入 `/docs`。
+文档站开发服务器固定使用 `5182` 端口；主前端开发服务器会把 `http://127.0.0.1:5180/docs` 代理到文档站。直接访问文档站根路径时会自动进入 `/docs`。
 
 ## 维护规则
 

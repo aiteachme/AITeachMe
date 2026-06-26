@@ -278,10 +278,11 @@ def build_stream_answer_node(
             question=state.get("question"),
             recent_messages=state.get("recent_messages", []),
         ):
+            attached_file_count = len(state.get("attached_file_ids") or [])
             await _emit_status(
                 emitter,
                 "home_intake",
-                "正在理解你的意图...",
+                "正在结合资料判断下一步..." if attached_file_count else "正在判断是否需要建课...",
                 model=normalize_runtime_model_override(state.get("model_override")) or "settings",
             )
             try:

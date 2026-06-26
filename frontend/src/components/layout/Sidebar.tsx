@@ -54,7 +54,8 @@ const COURSE_ACTION_MENU_GAP = 6;
 const COURSE_ACTION_MENU_MARGIN = 8;
 const COLLAPSED_SIDEBAR_WIDTH = 56;
 const EXPANDED_SIDEBAR_WIDTH = 240;
-const DEFAULT_DEV_DOCS_URL = "http://127.0.0.1:5182/docs";
+const DEFAULT_DOCS_URL = "/docs";
+const PUBLIC_DOCS_URL = "https://aiteachme.cn/docs";
 
 type CourseActionMenuPosition = {
   left: number;
@@ -218,7 +219,21 @@ function resolveDocsUrl(): string {
   if (configuredUrl) {
     return configuredUrl;
   }
-  return import.meta.env.DEV ? DEFAULT_DEV_DOCS_URL : "/docs";
+  return DEFAULT_DOCS_URL;
+}
+
+function resolveExternalDocsUrl(docsUrl: string): string {
+  if (/^[a-z][a-z\d+\-.]*:\/\//i.test(docsUrl)) {
+    return docsUrl;
+  }
+  if (!/^https?:$/i.test(window.location.protocol)) {
+    return docsUrl;
+  }
+  return new URL(docsUrl, window.location.origin).toString();
+}
+
+function isHttpUrl(docsUrl: string): boolean {
+  return /^https?:\/\//i.test(docsUrl);
 }
 
 export function Sidebar({
@@ -507,11 +522,22 @@ export function Sidebar({
   const closeMobileNavigation = useCallback(() => {
     setIsMobileOpen(false);
   }, []);
-  const openDocs = useCallback(() => {
+  const openDocs = useCallback(async () => {
     const docsUrl = resolveDocsUrl();
     closeMobileNavigation();
     if (isElectronRuntime() && window.electronWindow?.openExternal) {
-      void window.electronWindow.openExternal(docsUrl);
+      const externalDocsUrl = resolveExternalDocsUrl(docsUrl);
+      if (!isHttpUrl(externalDocsUrl)) {
+        const opened = await window.electronWindow.openExternal(PUBLIC_DOCS_URL);
+        if (!opened) {
+          window.open(PUBLIC_DOCS_URL, "_blank", "noopener,noreferrer");
+        }
+        return;
+      }
+      const opened = await window.electronWindow.openExternal(externalDocsUrl);
+      if (!opened) {
+        window.open(externalDocsUrl, "_blank", "noopener,noreferrer");
+      }
       return;
     }
     window.open(docsUrl, "_blank", "noopener,noreferrer");

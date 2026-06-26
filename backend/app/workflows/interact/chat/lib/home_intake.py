@@ -434,7 +434,10 @@ async def _create_from_pending_action(
             if isinstance(payload, dict):
                 payload["model"] = model
     return HomeIntakeResult(
-        assistant_response=f"已创建「{course_name}」，正在打开构建规划页。",
+        assistant_response=(
+            f"已创建「{course_name}」，正在打开构建规划页。"
+            "下一步会先通过建课第一步的前置诊断确认你的学习起点，再生成章节方案。"
+        ),
         client_actions=actions,
     )
 

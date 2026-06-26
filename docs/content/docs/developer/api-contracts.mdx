@@ -44,22 +44,8 @@ backend/scripts/export_api_docs.py
 /api/v1/courses/{course}/knowledge
 ```
 
-常见能力：
-
-- 构建方案：创建、读取、流式生成、确认 planner 会话。
-- 知识构建：启动知识文档、取消构建、读取 runtime、SSE 进度。
-- 知识文档：读取已发布文档、草稿和构建状态。
-- 知识图谱：查询 KnowledgeUnit、关系、路径、子图和上下文。
-
-文档站不罗列所有字段，字段真相以 OpenAPI 和后端 schema 为准。
+文档站只说明入口和边界，不罗列所有字段。字段真相以 OpenAPI 和后端 schema 为准。
 
 ## SSE 和长链路
 
-长链路 API 需要同时考虑：
-
-- 用户可见进度。
-- 后端取消和失败摘要。
-- LangSmith trace。
-- 前端重连或刷新后的状态恢复。
-
-不要只为一个页面临时加调试接口。正式排障优先使用 runtime 状态、日志和 LangSmith。
+长链路 API 需要同时考虑用户可见进度、取消失败、刷新恢复和研发观测。不要只为一个页面临时加调试接口。

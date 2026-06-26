@@ -2,11 +2,10 @@ import type { BaseLayoutProps } from "fumadocs-ui/layouts/shared";
 
 export const baseOptions: BaseLayoutProps = {
   nav: {
+    url: "/docs",
     title: (
       <span className="atm-docs-nav-title">
-        <span className="atm-docs-nav-mark" aria-hidden="true">
-          ATM
-        </span>
+        <img className="atm-docs-nav-logo" src="/logo.svg" alt="" />
         <span>AITeachMe</span>
       </span>
     ),

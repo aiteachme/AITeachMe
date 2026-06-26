@@ -1157,7 +1157,7 @@ function PlannerOutlineCard({
   const stageDescription = inlineStreaming
     ? "正在生成正式方案"
     : diagnosisPending
-      ? "先完成前置诊断，方案会按选择继续细化"
+      ? "先完成建课第一步诊断，方案会按选择继续细化"
       : shouldShowResolvedPlan
         ? "方案已生成，可继续调整或开始构建"
         : "正在整理可确认方案";
@@ -1239,7 +1239,7 @@ function PlannerOutlineCard({
                 <Brain className="h-4 w-4" />
               </span>
               <div className="min-w-0">
-                <div className="text-sm font-semibold text-zinc-950 dark:text-slate-100">前置诊断</div>
+                <div className="text-sm font-semibold text-zinc-950 dark:text-slate-100">建课第一步：前置诊断</div>
                 <div className="text-xs text-zinc-500 dark:text-slate-400">
                   {diagnosisSubtitle}
                 </div>
@@ -3466,7 +3466,7 @@ export function BuildPlanPage() {
   ]);
 
   const inputPlaceholder = isDiagnosisPending
-    ? "先完成上方前置诊断，或直接跳过"
+    ? "先完成上方建课第一步诊断，或直接跳过"
     : hasUsablePlannerPlan(currentPlan)
       ? "直接说想怎么改当前方案，例如：把函数思想拆成两章"
       : "直接输入学习目标，也可以先上传资料再一起规划";
@@ -3910,7 +3910,7 @@ export function BuildPlanPage() {
                         isDiagnosisPending ||
                         (!isBuilding && !plannerStreaming && (!inputValue.trim() || confirmPlannerMutation.isPending))
                       }
-                      title={isBuilding ? "终止当前构建" : plannerStreaming ? "停止当前生成" : isDiagnosisPending ? "先完成前置诊断" : "发送"}
+                      title={isBuilding ? "终止当前构建" : plannerStreaming ? "停止当前生成" : isDiagnosisPending ? "先完成建课第一步诊断" : "发送"}
                       className={
                         "flex h-11 w-11 shrink-0 items-center justify-center rounded-md transition-all sm:h-9 sm:w-9 " +
                         (isBuilding || plannerStreaming

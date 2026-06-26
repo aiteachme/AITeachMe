@@ -39,7 +39,13 @@ def _trace_retrieval_inputs(inputs: dict[str, object]) -> dict[str, object]:
         "top_k": inputs.get("top_k"),
         "similarity_threshold": inputs.get("similarity_threshold"),
         "user_id": inputs.get("user_id"),
-        "attached_file_count": len(inputs.get("attached_file_ids") or []),
+        "source": inputs.get("source"),
+        "attached_file_count": len(
+            _resolve_attached_file_ids(
+                inputs.get("attached_file_ids") or [],
+                source=str(inputs.get("source") or ""),
+            )
+        ),
     }
 
 
@@ -84,6 +90,7 @@ async def retrieve_context(
     similarity_threshold: float,
     user_id: str = "local",
     attached_file_ids: list[str] | None = None,
+    source: str | None = None,
 ) -> list[RetrievedContext]:
     """Retrieve prompt-ready context with KnowledgeUnit as the primary unit.
 
@@ -97,10 +104,11 @@ async def retrieve_context(
     normalized_query = query.strip()
     if not normalized_query or top_k <= 0:
         return []
+    resolved_file_ids = _resolve_attached_file_ids(attached_file_ids or [], source=source)
     attached_contexts = _retrieve_attached_file_context(
         session,
         user_id=user_id,
-        attached_file_ids=attached_file_ids or [],
+        attached_file_ids=resolved_file_ids,
     )
     if is_global_course(course_id):
         if attached_contexts:
@@ -108,7 +116,7 @@ async def retrieve_context(
                 "interact_attached_file_retrieval_done",
                 course_id=course_id,
                 query_len=len(normalized_query),
-                attached_file_count=len(attached_file_ids or []),
+                attached_file_count=len(resolved_file_ids),
                 result_count=len(attached_contexts),
             )
             return attached_contexts[:top_k]
@@ -215,7 +223,28 @@ def _retrieve_attached_file_context(
     return results
 
 
-def _normalize_attached_file_ids(file_ids: list[str]) -> list[str]:
+def _resolve_attached_file_ids(file_ids: object, *, source: str | None) -> list[str]:
+    if isinstance(file_ids, (list, tuple, set)):
+        candidates = list(file_ids)
+    else:
+        candidates = []
+    normalized = _normalize_attached_file_ids(candidates)
+    source_file_id = _library_selection_source_file_id(source)
+    if source_file_id:
+        normalized = _normalize_attached_file_ids([*normalized, source_file_id])
+    return normalized
+
+
+def _library_selection_source_file_id(source: str | None) -> str | None:
+    normalized = str(source or "").strip()
+    prefix = "library_selection:"
+    if not normalized.startswith(prefix):
+        return None
+    file_id = normalized[len(prefix) :].strip()
+    return file_id or None
+
+
+def _normalize_attached_file_ids(file_ids: list[object]) -> list[str]:
     normalized: list[str] = []
     seen: set[str] = set()
     for file_id in file_ids:
