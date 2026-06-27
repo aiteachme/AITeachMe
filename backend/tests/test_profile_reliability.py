@@ -25,7 +25,9 @@ from app.models.knowledge_unit import KnowledgeUnit
 from app.utils.time import utcnow
 from app.workflows.examine.exam_grade.lib.grader import ExamItemGradeDecision
 from app.workflows.interact.chat.lib import retrieval as chat_retrieval
+from app.workflows.profile.common.lib.course_profile import build_course_profile_summary
 from app.workflows.profile.common.lib.mastery import update_mastery_from_exam
+from app.workflows.profile.common.lib.weakness import analyze_weakness
 
 
 COURSE_ID = "course_profrel00000"
@@ -165,6 +167,107 @@ def test_update_mastery_uses_partial_credit_ratio(session: Session) -> None:
     assert state.mastery_score == pytest.approx(0.5)
     assert state.total_attempts == 1
     assert state.correct_attempts == 0
+
+
+def test_course_profile_accuracy_uses_partial_credit_ratio(session: Session) -> None:
+    _paper, item, _unit = _seed_graded_paper(session)
+    item.is_correct = False
+    item.score_obtained = 0.5
+    item.score_max = 1.0
+    session.add(item)
+    session.commit()
+
+    summary = build_course_profile_summary(session, course_id=COURSE_ID, user_id=USER_ID)
+
+    assert summary.question_type_accuracy["single_choice"] == pytest.approx(0.5)
+    assert summary.difficulty_accuracy["easy"] == pytest.approx(0.5)
+
+
+def test_weakness_recent_wrong_rate_uses_partial_credit_ratio(session: Session) -> None:
+    paper, item, unit = _seed_graded_paper(session)
+    item.is_correct = False
+    item.score_obtained = 0.5
+    item.score_max = 1.0
+    session.add(item)
+    session.commit()
+    update_mastery_from_exam(session, int(paper.id or 0))
+
+    weaknesses = analyze_weakness(session, user_id=USER_ID, course_id=COURSE_ID)
+
+    assert weaknesses
+    assert weaknesses[0].knowledge_unit_id == unit.id
+    assert weaknesses[0].recent_wrong_rate == pytest.approx(0.5)
+
+
+@pytest.mark.anyio
+async def test_grade_exam_does_not_claim_mastery_consumed_without_state_updates(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seed_user_course(session)
+    _unit, template = _seed_template(session)
+    paper = ExamPaper(
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        exam_mode="web_practice",
+        status="submitted",
+        total_items=1,
+    )
+    session.add(paper)
+    session.commit()
+    session.refresh(paper)
+    session.add(
+        ExamPaperItem(
+            exam_paper_id=int(paper.id or 0),
+            question_template_id=int(template.id or 0),
+            item_order=1,
+            stem_snapshot=template.stem,
+            answer_snapshot=template.answer,
+            explanation_snapshot=template.explanation,
+            difficulty=template.difficulty,
+            question_type=template.question_type,
+            score=1.0,
+            answer_content="partial",
+            answered_at=utcnow(),
+        )
+    )
+    session.commit()
+
+    async def fake_run_exam_grade_workflow(**_kwargs):
+        return [
+            ExamItemGradeDecision(
+                is_correct=False,
+                score_obtained=0.5,
+                score_max=1.0,
+                feedback_text="Partially correct.",
+                error_cause_label="method_gap",
+                grading_mode="llm_rubric",
+            )
+        ]
+
+    async def fake_profile_update_workflow(**_kwargs):
+        return SimpleNamespace(
+            failed=False,
+            error=None,
+            require_value=lambda: {
+                "mastery_result": {"states_updated": 0},
+                "review_task_ids": [],
+            },
+        )
+
+    monkeypatch.setattr(exams_api, "run_exam_grade_workflow", fake_run_exam_grade_workflow)
+    monkeypatch.setattr(exams_api, "run_profile_update_workflow", fake_profile_update_workflow)
+
+    response = await exams_api._grade_exam(session, paper)
+    session.refresh(paper)
+    profile_update = json.loads(paper.selection_context_json)["profile_update"]
+
+    assert response.status == "completed"
+    assert response.score == pytest.approx(0.5)
+    assert response.states_updated == 0
+    assert response.mastery_consumed is False
+    assert profile_update["status"] == "completed"
+    assert profile_update["states_updated"] == 0
 
 
 @pytest.mark.anyio

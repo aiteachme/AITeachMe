@@ -32,6 +32,9 @@ function isSupportedPackage(file: File): boolean {
   return filename.endsWith(".atmx") || filename.endsWith(".zip");
 }
 
+const MAX_IMPORT_PACKAGE_SIZE_MB = 256;
+const MAX_IMPORT_PACKAGE_BYTES = MAX_IMPORT_PACKAGE_SIZE_MB * 1024 * 1024;
+
 export function CourseImportModal({ onClose, onImported }: CourseImportModalProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [customName, setCustomName] = useState("");
@@ -48,6 +51,11 @@ export function CourseImportModal({ onClose, onImported }: CourseImportModalProp
     if (!isSupportedPackage(file)) {
       setSelectedFile(null);
       setLocalError("请选择 .atmx 或 .zip 格式的课程包。");
+      return;
+    }
+    if (file.size > MAX_IMPORT_PACKAGE_BYTES) {
+      setSelectedFile(null);
+      setLocalError(`课程包不能超过 ${MAX_IMPORT_PACKAGE_SIZE_MB} MB，当前为 ${formatFileSize(file.size)}。`);
       return;
     }
     setSelectedFile(file);

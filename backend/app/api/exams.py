@@ -3405,7 +3405,7 @@ async def _grade_exam(session: Session, paper: ExamPaper) -> ExamGradeResponse:
         score=score_obtained,
         states_updated=int(mastery.get("states_updated") or 0),
         tasks_created=len(review_task_ids),
-        mastery_consumed=bool(mastery),
+        mastery_consumed=int(mastery.get("states_updated") or 0) > 0,
     )
 
 
