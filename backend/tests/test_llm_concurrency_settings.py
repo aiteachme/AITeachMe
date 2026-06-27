@@ -198,6 +198,65 @@ async def test_llm_limiter_uses_live_runtime_limit() -> None:
 
 
 @pytest.mark.anyio
+async def test_llm_limiter_traces_wait_for_concurrency_slot(monkeypatch) -> None:
+    set_system_settings_override({"llm": {"concurrency_limit": 1}})
+    limiter = get_llm_concurrency_limiter()
+    traces: list[dict[str, object]] = []
+
+    class FakeRun:
+        def __init__(self) -> None:
+            self.outputs: dict[str, object] | None = None
+
+        def end(self, outputs=None) -> None:
+            self.outputs = dict(outputs or {})
+
+    @contextmanager
+    def fake_trace_substep(name: str, **kwargs):
+        run = FakeRun()
+        traces.append({"name": name, "kwargs": kwargs, "run": run})
+        yield run
+
+    monkeypatch.setattr(llm_common, "trace_substep", fake_trace_substep)
+
+    first_inside = asyncio.Event()
+    release_first = asyncio.Event()
+    second_inside = asyncio.Event()
+
+    async def first_call() -> None:
+        async with limiter:
+            first_inside.set()
+            await release_first.wait()
+
+    async def second_call() -> None:
+        async with limiter:
+            second_inside.set()
+
+    first_task = asyncio.create_task(first_call())
+    await asyncio.wait_for(first_inside.wait(), timeout=1)
+    second_task = asyncio.create_task(second_call())
+    await asyncio.sleep(0.05)
+
+    assert second_inside.is_set() is False
+    assert len(traces) == 1
+    assert traces[0]["name"] == "LLM：等待并发槽"
+    trace_kwargs = traces[0]["kwargs"]
+    assert trace_kwargs["metadata"]["substep"] == "llm.concurrency.wait"
+    assert trace_kwargs["inputs"]["configured_limit"] == 1
+    assert trace_kwargs["inputs"]["active_count"] == 1
+
+    release_first.set()
+    await asyncio.wait_for(second_inside.wait(), timeout=1)
+    await asyncio.gather(first_task, second_task)
+
+    run = traces[0]["run"]
+    assert isinstance(run, FakeRun)
+    assert run.outputs is not None
+    assert run.outputs["outcome"] == "acquired"
+    assert run.outputs["configured_limit"] == 1
+    assert int(run.outputs["wait_ms"]) >= 0
+
+
+@pytest.mark.anyio
 async def test_llm_limiter_releases_slot_when_holder_is_cancelled() -> None:
     set_system_settings_override({"llm": {"concurrency_limit": 1}})
     limiter = get_llm_concurrency_limiter()
