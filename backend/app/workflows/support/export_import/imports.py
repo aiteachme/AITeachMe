@@ -53,6 +53,7 @@ from app.workflows.support.export_import.limits import (
 logger = structlog.get_logger()
 
 _DOCGEN_COVER_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+_IMPORT_EMBEDDING_BATCH_SIZE = 1
 _IMPORT_EMBEDDING_MAX_CONCURRENCY = 1
 _IMPORT_EMBEDDING_FOREGROUND_SLOT_RESERVE = 2
 _IMPORT_EMBEDDING_GLOBAL_FRACTION_DIVISOR = 3
@@ -574,6 +575,7 @@ def _rebuild_imported_embeddings(
     embeddings = _run_async(
         aembed_texts(
             payloads,
+            batch_size=_IMPORT_EMBEDDING_BATCH_SIZE,
             soft_fail=True,
             model=runtime.embedding_model,
             max_concurrent=concurrency_limit,

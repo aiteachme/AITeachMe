@@ -579,8 +579,9 @@ def test_imported_embedding_rebuild_reserves_foreground_llm_slots(
         )
     session.commit()
 
-    async def fake_aembed_texts(texts, *, soft_fail=False, model=None, max_concurrent=None, **_kwargs):
+    async def fake_aembed_texts(texts, *, batch_size=None, soft_fail=False, model=None, max_concurrent=None, **_kwargs):
         captured["text_count"] = len(texts)
+        captured["batch_size"] = batch_size
         captured["soft_fail"] = soft_fail
         captured["model"] = model
         captured["max_concurrent"] = max_concurrent
@@ -612,6 +613,7 @@ def test_imported_embedding_rebuild_reserves_foreground_llm_slots(
 
     assert warnings == []
     assert captured["text_count"] == 5
+    assert captured["batch_size"] == 1
     assert captured["soft_fail"] is True
     assert captured["model"] == "text-embedding-v4"
     assert captured["max_concurrent"] == 1
