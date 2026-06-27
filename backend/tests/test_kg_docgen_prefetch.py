@@ -18,8 +18,8 @@ def anyio_backend() -> str:
 @pytest.mark.parametrize(
     ("configured", "global_limit", "expected"),
     [
-        (12, 12, 4),
-        (6, 10, 3),
+        (12, 12, 2),
+        (6, 10, 2),
         (1, 10, 1),
         (6, 2, 1),
         (6, 1, 1),
@@ -448,19 +448,19 @@ async def test_start_docgen_kg_prefetch_caps_background_concurrency(monkeypatch)
             wait_timeout_s=1,
         )
 
-        assert captured_concurrency == [3]
+        assert captured_concurrency == [2]
         assert len(captured_traces) == 1
         trace_kwargs = captured_traces[0]["kwargs"]
         assert trace_kwargs["name"] == "KG：DocGen 预取"
-        assert trace_kwargs["inputs"]["concurrency_limit"] == 3
+        assert trace_kwargs["inputs"]["concurrency_limit"] == 2
         assert trace_kwargs["extra_metadata"]["background_sidecar"] == "kg_docgen_prefetch"
         assert metrics["prefetch_configured_concurrency"] == 6
         assert metrics["prefetch_llm_concurrency_cap"] == 10
-        assert metrics["prefetch_effective_concurrency"] == 3
+        assert metrics["prefetch_effective_concurrency"] == 2
         run = captured_traces[0]["run"]
         assert isinstance(run, FakeTraceRun)
         assert run.outputs is not None
-        assert run.outputs["concurrency_limit"] == 3
+        assert run.outputs["concurrency_limit"] == 2
     finally:
         prefetch.cancel_docgen_kg_prefetch(course_id=key[0], build_session_id=key[1])
         with prefetch._LOCK:

@@ -32,6 +32,7 @@ _PREFETCH_START_DELAY_S = 0.5
 _PREFETCH_CONSUME_GRACE_S = 8.0
 _PREFETCH_FOREGROUND_SLOT_RESERVE = 2
 _PREFETCH_GLOBAL_FRACTION_DIVISOR = 3
+_PREFETCH_BACKGROUND_HARD_CAP = 2
 
 
 @dataclass(slots=True)
@@ -72,6 +73,7 @@ def _prefetch_concurrency_limit(
         background_cap = min(
             max(1, llm_limit - _PREFETCH_FOREGROUND_SLOT_RESERVE),
             max(1, llm_limit // _PREFETCH_GLOBAL_FRACTION_DIVISOR),
+            _PREFETCH_BACKGROUND_HARD_CAP,
         )
     return max(1, min(configured_limit, llm_limit, background_cap))
 
