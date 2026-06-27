@@ -511,7 +511,7 @@ def test_import_lookup_and_background_rebuild_scheduling() -> None:
     assert import_module._lookup_imported_id("1", {1: "one"}) == "one"
     assert import_module._lookup_imported_id(2, {"2": "two"}) == "two"
     assert import_module._lookup_imported_or_existing_id("existing", {"old": "existing"}) == "existing"
-    assert import_module._import_embedding_rebuild_concurrency_limit(global_limit=10) == 3
+    assert import_module._import_embedding_rebuild_concurrency_limit(global_limit=10) == 1
     assert import_module._import_embedding_rebuild_concurrency_limit(global_limit=3) == 1
     assert import_module._import_embedding_rebuild_concurrency_limit(global_limit=1) == 1
     assert import_module.spawn_imported_embedding_rebuild_background(
@@ -614,7 +614,7 @@ def test_imported_embedding_rebuild_reserves_foreground_llm_slots(
     assert captured["text_count"] == 5
     assert captured["soft_fail"] is True
     assert captured["model"] == "text-embedding-v4"
-    assert captured["max_concurrent"] == 3
+    assert captured["max_concurrent"] == 1
     assert captured["course_id"] == IMPORTED_COURSE_ID
     assert captured["embedding_count"] == 5
     assert captured["embedding_model"] == "text-embedding-v4"

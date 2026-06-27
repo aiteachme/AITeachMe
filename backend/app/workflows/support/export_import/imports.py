@@ -53,6 +53,7 @@ from app.workflows.support.export_import.limits import (
 logger = structlog.get_logger()
 
 _DOCGEN_COVER_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+_IMPORT_EMBEDDING_MAX_CONCURRENCY = 1
 _IMPORT_EMBEDDING_FOREGROUND_SLOT_RESERVE = 2
 _IMPORT_EMBEDDING_GLOBAL_FRACTION_DIVISOR = 3
 
@@ -69,6 +70,7 @@ def _import_embedding_rebuild_concurrency_limit(global_limit: int | None = None)
     return max(
         1,
         min(
+            _IMPORT_EMBEDDING_MAX_CONCURRENCY,
             llm_limit - _IMPORT_EMBEDDING_FOREGROUND_SLOT_RESERVE,
             max(1, llm_limit // _IMPORT_EMBEDDING_GLOBAL_FRACTION_DIVISOR),
         ),
