@@ -105,6 +105,12 @@ class SSEEventEmitter:
                 if payload is None:
                     break
                 yield payload
+        except asyncio.CancelledError:
+            if cancel_on_disconnect:
+                raise
+            should_await_task = False
+            self._keep_detached_task(workflow_task)
+            return
         finally:
             if not cancel_on_disconnect and not should_await_task:
                 return
