@@ -1031,6 +1031,18 @@ def effective_max_retries(context: CompletionContext, call_kwargs: Mapping[str, 
     return max(1, min(10, max_retries))
 
 
+def effective_endpoint_group_max_retries(
+    context: CompletionContext,
+    call_kwargs: Mapping[str, Any] | None = None,
+) -> int:
+    """Cap fallback endpoint retries so an unhealthy backup gateway cannot occupy LLM slots for minutes."""
+
+    max_retries = effective_max_retries(context, call_kwargs)
+    if context.endpoint_role == "fallback":
+        return 1
+    return max_retries
+
+
 def pop_overall_timeout_s(call_kwargs: dict[str, Any]) -> float | None:
     """Remove and parse the optional whole-call timeout budget."""
 
