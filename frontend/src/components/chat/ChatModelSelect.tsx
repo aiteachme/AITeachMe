@@ -48,7 +48,7 @@ const CHAT_MODEL_META: Record<ChatModelChoice, {
     caption: "使用设置页的主文本模型",
     title: "使用设置页中配置的主文本模型",
     buildEstimate: {
-      shortLabel: "5-10分钟",
+      shortLabel: "10-15分钟",
     },
   },
   "gpt-5.5": {
@@ -68,7 +68,7 @@ const CHAT_MODEL_META: Record<ChatModelChoice, {
     caption: "稳定生成 · 日常问答",
     title: "适合快速规划、生成和问答",
     buildEstimate: {
-      shortLabel: "5-9分钟",
+      shortLabel: "10-15分钟",
     },
   },
   "gemini-3.1-flash-lite": {

@@ -1,5 +1,14 @@
 {
   "title": "用户教程",
-  "pages": ["upload-materials", "build-course", "knowledge-graph", "chat", "exam-modes", "exams-profile"],
+  "pages": [
+    "upload-materials",
+    "build-course",
+    "import-demo-courses",
+    "knowledge-graph",
+    "chat",
+    "exam-modes",
+    "exams-profile",
+    "settings-models"
+  ],
   "pagesIndex": "index"
 }
