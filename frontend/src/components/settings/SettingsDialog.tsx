@@ -91,13 +91,10 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
 
   const isCloudRuntime = overview?.mode === "cloud";
   const showExamScores = examResultDisplayMode === "score";
+  const hasRuntimeSections = Boolean(overview?.sections?.length);
   const sections = useMemo(
-    () => (
-      isCloudRuntime
-        ? [SYSTEM_SECTION]
-        : prioritizeSettingsSections([...(overview?.sections ?? []), SYSTEM_SECTION])
-    ),
-    [isCloudRuntime, overview?.sections],
+    () => prioritizeSettingsSections([...(overview?.sections ?? []), SYSTEM_SECTION]),
+    [overview?.sections],
   );
   const isLocalRuntime = !isCloudRuntime;
   const hasChanges = hasServerChanges || hasEnvChanges;
@@ -106,11 +103,14 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
     if (!isOpen) return;
     setActiveSection((current) => {
       if (current && sections.some((section) => section.id === current)) {
+        if (current === "system_ui" && hasRuntimeSections && sections[0]?.id !== "system_ui") {
+          return sections[0]?.id ?? current;
+        }
         return current;
       }
       return sections[0]?.id ?? "";
     });
-  }, [isOpen, sections]);
+  }, [hasRuntimeSections, isOpen, sections]);
 
   useEffect(() => {
     if (!isOpen) return;

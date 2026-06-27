@@ -1,6 +1,6 @@
 import { memo, useEffect, useState, type ComponentType } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Loader2, X } from "lucide-react";
+import { Loader2, MessageSquareText, X } from "lucide-react";
 import { buildApiUrl } from "../../api/client";
 
 /* ------------------------------------------------------------------ */
@@ -136,9 +136,11 @@ function ensureCommunityChannelPreloaded(channel: CommunityChannel): { src: stri
 export const CommunityModal = memo(function CommunityModal({
   isOpen,
   onClose,
+  onOpenFeedback,
 }: {
   isOpen: boolean;
   onClose: () => void;
+  onOpenFeedback?: () => void;
 }) {
   const [qrSrc, setQrSrc] = useState("");
   const [qrStatus, setQrStatus] = useState<QrStatus>("loading");
@@ -212,7 +214,7 @@ export const CommunityModal = memo(function CommunityModal({
                     style={{ width: 280, height: 280 }}
                   >
                     <span className="font-medium text-slate-700 dark:text-slate-200">图片加载失败</span>
-                    <span className="mt-2">可通过意见反馈告知我们。</span>
+                    <span className="mt-2">可通过下方入口告知我们。</span>
                   </div>
                 ) : (
                   <div
@@ -242,6 +244,17 @@ export const CommunityModal = memo(function CommunityModal({
                   </div>
                 )}
               </div>
+
+              {onOpenFeedback ? (
+                <button
+                  type="button"
+                  onClick={onOpenFeedback}
+                  className="mt-5 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 hover:text-slate-950 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 dark:hover:text-white"
+                >
+                  <MessageSquareText className="h-4 w-4" />
+                  意见反馈
+                </button>
+              ) : null}
             </div>
           </motion.div>
         </div>

@@ -42,6 +42,7 @@ import { CourseDeleteConfirmModal } from "./CourseDeleteConfirmModal";
 import { CommunityModal, ensureCommunityQrPreloaded } from "./CommunityPanel";
 import { AiConversationSidebarSection } from "../interaction/AiConversationSidebarSection";
 import { useAiInteraction, type AiConversationScope } from "../interaction";
+import { FeedbackModal } from "../ui/FeedbackModal";
 
 import { Button } from "../ui/Button";
 
@@ -255,6 +256,7 @@ export function Sidebar({
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [menuPosition, setMenuPosition] = useState<CourseActionMenuPosition | null>(null);
   const [isCommunityModalOpen, setIsCommunityModalOpen] = useState(false);
+  const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
   const [exportCourseId, setExportCourseId] = useState<string | null>(null);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [showDocsHint, setShowDocsHint] = useState(false);
@@ -1293,7 +1295,15 @@ export function Sidebar({
         <CourseImportModal onClose={() => setIsImportModalOpen(false)} />
       ) : null}
 
-      <CommunityModal isOpen={isCommunityModalOpen} onClose={() => setIsCommunityModalOpen(false)} />
+      <CommunityModal
+        isOpen={isCommunityModalOpen}
+        onClose={() => setIsCommunityModalOpen(false)}
+        onOpenFeedback={() => {
+          setIsCommunityModalOpen(false);
+          setIsFeedbackModalOpen(true);
+        }}
+      />
+      <FeedbackModal open={isFeedbackModalOpen} onClose={() => setIsFeedbackModalOpen(false)} />
     </>
   );
 }
