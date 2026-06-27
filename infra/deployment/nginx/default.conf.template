@@ -63,6 +63,12 @@ server {
         add_header Cache-Control "public, max-age=31536000, immutable" always;
     }
 
+    location = /docs/api/search {
+        default_type application/json;
+        try_files /docs/api/search =404;
+        add_header Cache-Control "no-cache" always;
+    }
+
     location /docs/ {
         try_files $uri $uri/index.html $uri.html =404;
         add_header Cache-Control "no-cache" always;
