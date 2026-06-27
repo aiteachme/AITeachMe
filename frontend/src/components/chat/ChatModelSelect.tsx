@@ -58,7 +58,7 @@ const CHAT_MODEL_META: Record<ChatModelChoice, {
     caption: "复杂规划 · 深入讲解",
     title: "适合复杂推理、规划和讲解",
     buildEstimate: {
-      shortLabel: "8-15分钟",
+      shortLabel: "15-25分钟",
     },
   },
   "gpt-5.4-mini": {
