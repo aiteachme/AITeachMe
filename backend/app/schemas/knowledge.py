@@ -834,6 +834,13 @@ class BuildPlannerSessionResponse(BaseModel):
     updated_at: datetime
 
 
+class BuildPlannerCancelResponse(BaseModel):
+    course_id: str
+    status: str = "cancelled"
+    cancelled_task_count: int = 0
+    message: str = "已停止当前方案生成。"
+
+
 class BuildPlannerConfirmResponse(BaseModel):
     planner_session_id: str
     confirmed_plan_id: str

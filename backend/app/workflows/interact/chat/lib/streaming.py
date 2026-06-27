@@ -6,6 +6,7 @@ import asyncio
 import json
 from collections.abc import AsyncGenerator
 from contextlib import suppress
+from typing import ClassVar
 
 from fastapi import Request
 
@@ -20,6 +21,13 @@ def format_sse_event(event: str, data: dict) -> str:
 
 class SSEEventEmitter:
     """In-process SSE event queue shared between workflow nodes and the response stream."""
+
+    _detached_tasks: ClassVar[set[asyncio.Task[None]]] = set()
+
+    @classmethod
+    def _keep_detached_task(cls, task: asyncio.Task[None]) -> None:
+        cls._detached_tasks.add(task)
+        task.add_done_callback(cls._detached_tasks.discard)
 
     def __init__(self) -> None:
         self._queue: asyncio.Queue[str | None] = asyncio.Queue()
@@ -74,13 +82,19 @@ class SSEEventEmitter:
         *,
         request: Request,
         workflow_task: asyncio.Task[None],
+        cancel_on_disconnect: bool = True,
     ) -> AsyncGenerator[str, None]:
         """Yield queued SSE events until the workflow finishes or the client disconnects."""
 
+        should_await_task = True
         try:
             while True:
                 if await request.is_disconnected():
-                    workflow_task.cancel()
+                    if cancel_on_disconnect:
+                        workflow_task.cancel()
+                    else:
+                        should_await_task = False
+                        self._keep_detached_task(workflow_task)
                     break
                 try:
                     payload = await asyncio.wait_for(self._queue.get(), timeout=0.25)
@@ -92,6 +106,8 @@ class SSEEventEmitter:
                     break
                 yield payload
         finally:
+            if not cancel_on_disconnect and not should_await_task:
+                return
             if not workflow_task.done():
                 workflow_task.cancel()
             with suppress(asyncio.CancelledError):

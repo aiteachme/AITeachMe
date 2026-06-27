@@ -24,6 +24,7 @@ from app.repositories.confirmed_plan_repo import get_confirmed_plan
 from app.schemas.common import ApiResponse, ok_response
 from app.schemas.knowledge import (
     BuildPlannerAdjustClickResponse,
+    BuildPlannerCancelResponse,
     BuildPlannerConfirmResponse,
     BuildPlannerCreateRequest,
     BuildPlannerMessageRequest,
@@ -47,6 +48,7 @@ from app.workflows.digest.planner import (
     get_latest_planner_session,
     record_build_planner_adjust_click,
 )
+from app.workflows.digest.planner.lib.store import mark_planner_session_cancelled
 from app.workflows.support.auth import set_guest_cookie_for_user
 from app.workflows.digest.common.build_lifecycle import cancel_knowledge_build
 from app.workflows.digest.docgen import (
@@ -268,6 +270,7 @@ def _capture_home_course_build_requested(
 def _planner_stream_response(
     *,
     request: Request,
+    course_id: str,
     user_id: str,
     runner,
     on_success=None,
@@ -323,8 +326,18 @@ def _planner_stream_response(
             await emitter.close()
 
     async def event_stream():
-        task = asyncio.create_task(workflow_task())
-        async for payload in emitter.stream(request=request, workflow_task=task):
+        registry = getattr(request.app.state, "background_task_registry", None)
+        if registry is not None:
+            task = registry.spawn(
+                workflow_task(),
+                kind="knowledge.build.planner",
+                course_id=course_id,
+                name=f"planner:{course_id}:{user_id}",
+                max_concurrency=1,
+            )
+        else:
+            task = asyncio.create_task(workflow_task())
+        async for payload in emitter.stream(request=request, workflow_task=task, cancel_on_disconnect=False):
             yield payload
 
     stream_response = StreamingResponse(
@@ -334,6 +347,19 @@ def _planner_stream_response(
     )
     set_guest_cookie_for_user(stream_response, user_id=user_id)
     return stream_response
+
+
+async def _cancel_planner_stream_task(*, request: Request, course_id: str) -> int:
+    registry = getattr(request.app.state, "background_task_registry", None)
+    if registry is None:
+        return 0
+    return int(
+        await registry.cancel_matching(
+            kind="knowledge.build.planner",
+            course_id=course_id,
+            timeout_s=2.0,
+        )
+    )
 
 
 @router.post(
@@ -424,6 +450,47 @@ def knowledge_build_plan_latest(
 
 
 @router.post(
+    "/build/plans/cancel",
+    response_model=ApiResponse[BuildPlannerCancelResponse],
+    summary="Cancel the active build planner stream for this course",
+    responses=build_error_responses([400, 404, 500]),
+)
+async def knowledge_build_plan_cancel(
+    request: Request,
+    course_id: str = Path(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[BuildPlannerCancelResponse]:
+    normalized = normalize_course_id(course_id)
+    course_record = get_course_record(session, normalized, owner_user_id=user.user_id)
+    cancelled_task_count = await _cancel_planner_stream_task(request=request, course_id=normalized)
+    latest = get_latest_planner_session(
+        session,
+        course=course_record,
+        user_id=user.user_id,
+    )
+    if latest is not None and str(latest.status or "").strip().lower() == "planning":
+        mark_planner_session_cancelled(
+            course_id=normalized,
+            user_id=user.user_id,
+            session_id=latest.session_id,
+        )
+    logger.info(
+        "planner_cancel_requested",
+        course_id=normalized,
+        user_id=user.user_id,
+        cancelled_task_count=cancelled_task_count,
+        planner_session_id=getattr(latest, "session_id", "") if latest else "",
+    )
+    return ok_response(
+        BuildPlannerCancelResponse(
+            course_id=normalized,
+            cancelled_task_count=cancelled_task_count,
+        )
+    )
+
+
+@router.post(
     "/build/plans/stream",
     summary="Create a build planner session with SSE progress",
     responses=build_error_responses([400, 404, 422, 500]),
@@ -485,6 +552,7 @@ async def knowledge_build_plan_create_stream(
 
     return _planner_stream_response(
         request=request,
+        course_id=normalized,
         user_id=user.user_id,
         runner=lambda progress_callback, token_callback: create_build_planner_session(
             course=course_record,
@@ -573,6 +641,7 @@ async def knowledge_build_plan_message_stream(
     )
     return _planner_stream_response(
         request=request,
+        course_id=normalized,
         user_id=user.user_id,
         runner=lambda progress_callback, token_callback: append_build_planner_message(
             course=course_record,

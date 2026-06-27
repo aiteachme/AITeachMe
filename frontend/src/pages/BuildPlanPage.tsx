@@ -738,6 +738,53 @@ function planFromTurn(
   } as PlannerViewPlan);
 }
 
+function buildPlannerMessagesFromSession(session: BuildPlannerSessionResponse): ChatMessage[] {
+  const restored: ChatMessage[] = [];
+  const lastAssistantIndex = session.turns
+    ?.map((turn, index) => ({ turn, index }))
+    .reverse()
+    .find(({ turn }) => turn.role === "assistant")?.index;
+  for (const [index, turn] of (session.turns ?? []).entries()) {
+    const turnPlan =
+      turn.role === "assistant"
+        ? planFromTurn(session, turn as PlannerTurnWithPlan)
+          ?? (index === lastAssistantIndex ? usablePlannerPlan(session.latest_plan) : null)
+        : null;
+    restored.push(createMessage(
+      turn.role as ChatRole,
+      turn.content,
+      turnPlan,
+    ));
+  }
+  return sanitizePlannerMessages(restored);
+}
+
+function plannerSessionStatus(session: BuildPlannerSessionResponse | null | undefined): string {
+  return String(session?.status ?? "").trim().toLowerCase();
+}
+
+function planStatus(plan: BuildPlannerPlanResponse | null | undefined): string {
+  return String(plannerView(plan)?.status ?? "").trim().toLowerCase();
+}
+
+function isPlannerServerStatusPending(status: string | null | undefined): boolean {
+  return String(status ?? "").trim().toLowerCase() === "planning";
+}
+
+function isPlannerServerStatusTerminal(status: string | null | undefined): boolean {
+  return ["draft", "failed", "cancelled"].includes(String(status ?? "").trim().toLowerCase());
+}
+
+function plannerTerminalMessage(status: string): string {
+  if (status === "failed") {
+    return "上一次方案生成失败了，请检查模型配置或稍后重试。";
+  }
+  if (status === "cancelled") {
+    return "上一次方案生成已中断，你可以继续输入新的要求重新生成。";
+  }
+  return "方案生成已完成。";
+}
+
 function planFromSsePreviewPayload(payload: unknown): BuildPlannerPlanResponse | null {
   if (!isRecord(payload)) {
     return null;
@@ -1838,6 +1885,13 @@ async function cancelKnowledgeBuild(course: string): Promise<DocGenBuildCancelDa
   };
 }
 
+async function cancelPlannerStream(course: string): Promise<void> {
+  await apiClient<ApiResponse<Record<string, unknown>>>({
+    method: "POST",
+    url: `/api/v1/courses/${course}/knowledge/build/plans/cancel`,
+  });
+}
+
 async function streamPlannerSession(
   url: string,
   body: object,
@@ -1988,6 +2042,7 @@ export function BuildPlanPage() {
   const [hasAutoUploaded, setHasAutoUploaded] = useState(false);
   const [libraryPickerOpen, setLibraryPickerOpen] = useState(false);
   const [plannerStreaming, setPlannerStreaming] = useState(false);
+  const [plannerServerStatus, setPlannerServerStatus] = useState<string | null>(null);
   const [plannerStreamingPreview, setPlannerStreamingPreview] = useState("");
   const [plannerStreamingStatus, setPlannerStreamingStatus] = useState("正在思考目标与资料...");
   const [plannerStreamingPlan, setPlannerStreamingPlan] = useState<BuildPlannerPlanResponse | null>(null);
@@ -2178,10 +2233,12 @@ export function BuildPlanPage() {
         hasCurrentPlan: Boolean(persisted.currentPlan),
       });
       const persistedPlan = usablePlannerPlan(persisted.currentPlan);
+      const hasPersistedStreamingMessage = persisted.messages.some((message) => message.streaming);
       const restoredGate = createPlannerDiagnosisGate(persisted.plannerSessionId, persistedPlan);
       setMessages(sanitizePlannerMessages(persisted.messages));
       setPlannerSessionId(persisted.plannerSessionId);
       setCurrentPlan(persistedPlan);
+      setPlannerServerStatus(hasPersistedStreamingMessage ? "planning" : planStatus(persistedPlan) || null);
       setInputValue(persisted.inputValue ?? navState?.initialPrompt ?? "");
       setPlannerNeedsRefresh(Boolean(persisted.plannerNeedsRefresh));
       setDiagnosisGate(
@@ -2219,6 +2276,7 @@ export function BuildPlanPage() {
           setMessages(createInitialMessages());
           setPlannerSessionId(null);
           setCurrentPlan(null);
+          setPlannerServerStatus(null);
           setInputValue(navState?.initialPrompt ?? "");
           setPlannerNeedsRefresh(false);
           setDiagnosisGate(null);
@@ -2234,29 +2292,13 @@ export function BuildPlanPage() {
           turnCount: session.turns.length,
           hasLatestPlan: Boolean(session.latest_plan),
           chapterCount: plannerChapters(session.latest_plan).length,
+          status: session.status,
         });
-        const restored: ChatMessage[] = [];
-        const lastAssistantIndex = session.turns
-          .map((turn, index) => ({ turn, index }))
-          .reverse()
-          .find(({ turn }) => turn.role === "assistant")?.index;
-        for (const [index, turn] of session.turns.entries()) {
-          const turnPlan =
-            turn.role === "assistant"
-              ? planFromTurn(session, turn as PlannerTurnWithPlan)
-                ?? (index === lastAssistantIndex ? usablePlannerPlan(session.latest_plan) : null)
-              : null;
-          restored.push(createMessage(
-            turn.role as ChatRole,
-            turn.content,
-            turnPlan,
-          ));
-        }
-
         const latestPlan = usablePlannerPlan(session.latest_plan);
         setPlannerSessionId(session.session_id);
         setCurrentPlan(latestPlan);
-        setMessages(sanitizePlannerMessages(restored));
+        setPlannerServerStatus(plannerSessionStatus(session));
+        setMessages(buildPlannerMessagesFromSession(session));
         setInputValue(navState?.initialPrompt ?? "");
         setPlannerNeedsRefresh(false);
         setDiagnosisGate(createPlannerDiagnosisGate(session.session_id, latestPlan));
@@ -2269,6 +2311,7 @@ export function BuildPlanPage() {
         setMessages(createInitialMessages());
         setPlannerSessionId(null);
         setCurrentPlan(null);
+        setPlannerServerStatus(null);
         setInputValue(navState?.initialPrompt ?? "");
         setPlannerNeedsRefresh(false);
         setDiagnosisGate(null);
@@ -2286,6 +2329,70 @@ export function BuildPlanPage() {
     plannerSessionIdRef.current = plannerSessionId;
     currentPlanRef.current = currentPlan;
   }, [plannerSessionId, currentPlan]);
+
+  useEffect(() => {
+    if (!courseId || !plannerSessionId || plannerStreaming || !isPlannerServerStatusPending(plannerServerStatus)) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function refreshLatestPlannerSession() {
+      try {
+        const response = await apiClient<ApiResponse<BuildPlannerSessionResponse | null>>({
+          method: "POST",
+          url: `/api/v1/courses/${courseId}/knowledge/build/plans/latest`,
+        });
+        if (cancelled) {
+          return;
+        }
+        const session = response.data;
+        if (!session || session.session_id !== plannerSessionId) {
+          return;
+        }
+
+        const status = plannerSessionStatus(session);
+        const latestPlan = usablePlannerPlan(session.latest_plan);
+        setPlannerServerStatus(status);
+        setCurrentPlan(latestPlan);
+        if (latestPlan) {
+          setPlannerNeedsRefresh(false);
+          setDiagnosisGate(createPlannerDiagnosisGate(session.session_id, latestPlan));
+        }
+        if (session.turns?.length) {
+          setMessages(() => {
+            const restoredMessages = buildPlannerMessagesFromSession(session);
+            if (
+              (status === "failed" || status === "cancelled") &&
+              !latestPlan &&
+              !restoredMessages.some((message) => message.role === "system" && message.content === plannerTerminalMessage(status))
+            ) {
+              return [...restoredMessages, createMessage("system", plannerTerminalMessage(status))];
+            }
+            return restoredMessages;
+          });
+        }
+        if (isPlannerServerStatusTerminal(status)) {
+          void queryClient.invalidateQueries({ queryKey: ["courses"] });
+        }
+      } catch (error) {
+        logPlannerDebug("poll_latest_planner_failed", {
+          courseId,
+          plannerSessionId,
+          error: getApiErrorMessage(error, "unknown"),
+        });
+      }
+    }
+
+    void refreshLatestPlannerSession();
+    const intervalId = window.setInterval(() => {
+      void refreshLatestPlannerSession();
+    }, 2500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [courseId, plannerServerStatus, plannerSessionId, plannerStreaming, queryClient]);
 
   useEffect(() => {
     if (!courseId || hydratedCourseRef.current !== courseId) {
@@ -2353,6 +2460,8 @@ export function BuildPlanPage() {
     setInputValue("");
     plannerStreamInFlightRef.current = true;
     setPlannerStreaming(true);
+    setPlannerServerStatus("planning");
+    setPlannerServerStatus("planning");
     const controller = new AbortController();
     plannerAbortControllerRef.current = controller;
     plannerStreamingRawRef.current = "";
@@ -2408,6 +2517,7 @@ export function BuildPlanPage() {
         });
       } catch (error) {
         if (isAbortError(error)) {
+          setPlannerServerStatus("cancelled");
           trackCourseAnalyticsEvent("course_plan_cancelled", courseId, {
             mode: "create",
             source: "autostart",
@@ -2427,6 +2537,7 @@ export function BuildPlanPage() {
           mode: "create",
           source: "autostart",
         });
+        setPlannerServerStatus("failed");
         setMessages((prev) => {
           const next = plannerPendingMessageIdRef.current
             ? removeMessageById(prev, plannerPendingMessageIdRef.current)
@@ -2624,13 +2735,16 @@ export function BuildPlanPage() {
     },
   });
 
-  const isPlannerPending = plannerStreaming || confirmPlannerMutation.isPending;
+  const isRestoredPlannerPending = isPlannerServerStatusPending(plannerServerStatus) && !plannerStreaming;
+  const isPlannerPending = plannerStreaming || isRestoredPlannerPending || confirmPlannerMutation.isPending;
   const isDiagnosisPending = isPlannerDiagnosisPending(diagnosisGate, currentPlan, plannerSessionId);
   const isBuilding = knowledgeBuild.isPending || isBuildActive;
   const shouldShowBuildDialog = isBuilding || isWaitingForRequestedBuild || isBuildFailure;
   const plannerPendingStatusText = plannerStreaming
     ? plannerStreamingStatus
-    : confirmPlannerMutation.isPending
+    : isRestoredPlannerPending
+      ? "方案仍在生成中，已恢复任务状态，完成后会自动显示结果..."
+      : confirmPlannerMutation.isPending
       ? "方案已确认，正在创建知识文档构建任务并准备跳转到知识文档页..."
       : "正在确认方案并准备启动构建...";
 
@@ -2756,6 +2870,15 @@ export function BuildPlanPage() {
       courseId,
       plannerSessionId,
     });
+    if (courseId) {
+      void cancelPlannerStream(courseId).catch((error) => {
+        logPlannerDebug("cancel_plan_stream_failed", {
+          courseId,
+          plannerSessionId,
+          error: getApiErrorMessage(error, "unknown"),
+        });
+      });
+    }
     plannerAbortControllerRef.current?.abort();
   }, [plannerSessionId, courseId]);
 
@@ -2772,6 +2895,7 @@ export function BuildPlanPage() {
       const pendingId = plannerPendingMessageIdRef.current;
       setPlannerSessionId(response.session_id);
       setCurrentPlan(latestPlan);
+      setPlannerServerStatus(plannerSessionStatus(response) || planStatus(latestPlan) || "draft");
       setPlannerNeedsRefresh(false);
       if (diagnosisMode === "start") {
         setDiagnosisGate(createPlannerDiagnosisGate(response.session_id, latestPlan));
@@ -2968,6 +3092,7 @@ export function BuildPlanPage() {
       });
     } catch (error) {
       if (isAbortError(error)) {
+        setPlannerServerStatus("cancelled");
         trackCourseAnalyticsEvent("course_plan_cancelled", courseId, {
           mode: "revise",
           source: "diagnosis",
@@ -2999,6 +3124,7 @@ export function BuildPlanPage() {
         mode: "revise",
         source: "diagnosis",
       });
+      setPlannerServerStatus("failed");
       setCurrentPlan(currentPlan);
       setMessages((prev) => {
         const next = reusedAssistantMessage
@@ -3123,6 +3249,7 @@ export function BuildPlanPage() {
     setInputValue("");
     plannerStreamInFlightRef.current = true;
     setPlannerStreaming(true);
+    setPlannerServerStatus("planning");
     const controller = new AbortController();
     plannerAbortControllerRef.current = controller;
     plannerStreamingRawRef.current = "";
@@ -3217,6 +3344,7 @@ export function BuildPlanPage() {
     } catch (error) {
       if (isAbortError(error)) {
         logPlannerDebug("send_plan_message_aborted", { courseId });
+        setPlannerServerStatus("cancelled");
         trackCourseAnalyticsEvent("course_plan_cancelled", courseId, {
           mode: shouldCreateSession ? "create" : "revise",
           source,
@@ -3240,6 +3368,7 @@ export function BuildPlanPage() {
         mode: shouldCreateSession ? "create" : "revise",
         source,
       });
+      setPlannerServerStatus("failed");
       setMessages((prev) => {
         const next = plannerPendingMessageIdRef.current
           ? removeMessageById(prev, plannerPendingMessageIdRef.current)
@@ -3481,11 +3610,12 @@ export function BuildPlanPage() {
     (message) => message.role === "assistant" && message.streaming,
   );
   const shouldShowCurrentPlanFallback = Boolean(hasRenderablePlannerDraft(currentPlan) && !hasRenderedPlannerPlan && !plannerStreaming);
-  const shouldShowPlannerStreamingFallback = plannerStreaming && !hasRenderedStreamingPlannerMessage;
+  const shouldShowPlannerStreamingFallback = (plannerStreaming || isRestoredPlannerPending) && !hasRenderedStreamingPlannerMessage;
   const shouldShowPlannerEmptyState =
     messages.length === 0 &&
     !currentPlan &&
     !plannerStreaming &&
+    !isRestoredPlannerPending &&
     !shouldShowBuildDialog &&
     !knowledgeBuild.errorMessage;
 
@@ -3795,8 +3925,14 @@ export function BuildPlanPage() {
                       void queueUploadFiles(files);
                     }
                   }}
-                disabled={isBuilding || plannerStreaming || isDiagnosisPending}
-                placeholder={plannerStreaming ? "正在生成方案，点击右侧按钮可停止当前生成" : inputPlaceholder}
+                disabled={isBuilding || isPlannerPending || isDiagnosisPending}
+                placeholder={
+                  plannerStreaming
+                    ? "正在生成方案，点击右侧按钮可停止当前生成"
+                    : isRestoredPlannerPending
+                      ? "方案仍在生成中，完成后会自动恢复结果"
+                      : inputPlaceholder
+                }
                 rows={1}
                 className="w-full min-h-[56px] max-h-[120px] resize-none border-0 bg-transparent px-4 pb-3 pt-4 text-[14px] leading-relaxed text-zinc-800 dark:text-zinc-200 placeholder:text-zinc-400 dark:placeholder:text-slate-500 focus:outline-none"
                 style={{ minHeight: "56px" }}
@@ -3845,6 +3981,7 @@ export function BuildPlanPage() {
                       accept={FILE_ACCEPT}
                       className="hidden"
                       id="files-page-upload"
+                      disabled={isBuilding || isPlannerPending}
                       onChange={(event: ChangeEvent<HTMLInputElement>) => {
                         const selected = Array.from(event.target.files ?? []);
                         event.target.value = "";
@@ -3869,7 +4006,7 @@ export function BuildPlanPage() {
                     <button
                       type="button"
                       onClick={() => setLibraryPickerOpen(true)}
-                      disabled={isBuilding || plannerStreaming || linkLibraryMutation.isPending}
+                      disabled={isBuilding || isPlannerPending || linkLibraryMutation.isPending}
                       className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 focus:outline-none focus:ring-4 focus:ring-zinc-900/10 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 dark:focus:ring-slate-100/10"
                       title="从我的资料库选择已有文件"
                     >
@@ -3892,8 +4029,9 @@ export function BuildPlanPage() {
                     <ChatModelSelect
                       value={chatModel}
                       onChange={setChatModel}
-                      disabled={isBuilding || plannerStreaming}
-                      className="flex-1 sm:flex-none sm:w-[128px]"
+                      disabled={isBuilding || isPlannerPending}
+                      showBuildEstimate
+                      className="flex-1 sm:flex-none sm:w-[132px]"
                     />
                     <button
                       type="button"
@@ -3908,19 +4046,32 @@ export function BuildPlanPage() {
                         (isBuilding && !isBuildActive) ||
                         cancelBuildMutation.isPending ||
                         isDiagnosisPending ||
+                        isRestoredPlannerPending ||
                         (!isBuilding && !plannerStreaming && (!inputValue.trim() || confirmPlannerMutation.isPending))
                       }
-                      title={isBuilding ? "终止当前构建" : plannerStreaming ? "停止当前生成" : isDiagnosisPending ? "先完成建课第一步诊断" : "发送"}
+                      title={
+                        isBuilding
+                          ? "终止当前构建"
+                          : plannerStreaming
+                            ? "停止当前生成"
+                            : isRestoredPlannerPending
+                              ? "方案仍在生成中"
+                              : isDiagnosisPending
+                                ? "先完成建课第一步诊断"
+                                : "发送"
+                      }
                       className={
                         "flex h-11 w-11 shrink-0 items-center justify-center rounded-md transition-all sm:h-9 sm:w-9 " +
                         (isBuilding || plannerStreaming
                           ? "rounded-full bg-zinc-100 text-zinc-950 shadow-sm hover:bg-zinc-200 focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98]"
-                          : (isDiagnosisPending || !inputValue.trim() || confirmPlannerMutation.isPending)
+                          : (isRestoredPlannerPending || isDiagnosisPending || !inputValue.trim() || confirmPlannerMutation.isPending)
                           ? "cursor-not-allowed bg-zinc-100 text-zinc-300"
                           : "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800 focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98]")
                       }
                     >
                       {cancelBuildMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : isRestoredPlannerPending ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
                       ) : isBuilding || plannerStreaming ? (
                         <Square className="h-3.5 w-3.5 fill-current stroke-0" />

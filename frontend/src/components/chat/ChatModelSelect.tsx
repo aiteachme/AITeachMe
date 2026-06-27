@@ -29,12 +29,17 @@ const CHAT_MODEL_VALUES = new Set<string>(CHAT_MODEL_OPTIONS);
 const CHAT_MODEL_CHANGED_EVENT = "aiteachme:global-chat-model-changed";
 let currentChatModelChoice: ChatModelChoice = DEFAULT_CHAT_MODEL_CHOICE;
 
+export interface ChatModelBuildEstimate {
+  shortLabel: string;
+}
+
 const CHAT_MODEL_META: Record<ChatModelChoice, {
   optionLabel: string;
   triggerLabel: string;
   menuLabel: string;
   caption: string;
   title: string;
+  buildEstimate: ChatModelBuildEstimate;
 }> = {
   settings: {
     optionLabel: "默认",
@@ -42,6 +47,9 @@ const CHAT_MODEL_META: Record<ChatModelChoice, {
     menuLabel: "默认",
     caption: "使用设置页的主文本模型",
     title: "使用设置页中配置的主文本模型",
+    buildEstimate: {
+      shortLabel: "5-10分钟",
+    },
   },
   "gpt-5.5": {
     optionLabel: "深度推理",
@@ -49,6 +57,9 @@ const CHAT_MODEL_META: Record<ChatModelChoice, {
     menuLabel: "深度推理",
     caption: "复杂规划 · 深入讲解",
     title: "适合复杂推理、规划和讲解",
+    buildEstimate: {
+      shortLabel: "8-15分钟",
+    },
   },
   "gpt-5.4-mini": {
     optionLabel: "均衡",
@@ -56,13 +67,19 @@ const CHAT_MODEL_META: Record<ChatModelChoice, {
     menuLabel: "均衡",
     caption: "稳定生成 · 日常问答",
     title: "适合快速规划、生成和问答",
+    buildEstimate: {
+      shortLabel: "5-9分钟",
+    },
   },
   "gemini-3.1-flash-lite": {
-    optionLabel: "快速响应",
-    triggerLabel: "快速响应",
-    menuLabel: "快速响应",
+    optionLabel: "快速",
+    triggerLabel: "快速",
+    menuLabel: "快速",
     caption: "轻量问答 · 快速响应",
     title: "适合轻量问答和快速响应",
+    buildEstimate: {
+      shortLabel: "3-6分钟",
+    },
   },
 };
 
@@ -75,6 +92,10 @@ export function toChatModelChoice(value: string | null | undefined): ChatModelCh
 
 export function toChatRequestModel(value: ChatModelChoice): string {
   return value;
+}
+
+export function getChatModelBuildEstimate(value: ChatModelChoice): ChatModelBuildEstimate {
+  return CHAT_MODEL_META[toChatModelChoice(value)].buildEstimate;
 }
 
 function readStoredChatModelChoice(): ChatModelChoice {
@@ -111,6 +132,7 @@ interface ChatModelSelectProps {
   onChange: (value: ChatModelChoice) => void;
   disabled?: boolean;
   className?: string;
+  showBuildEstimate?: boolean;
 }
 
 export function ChatModelSelect({
@@ -118,6 +140,7 @@ export function ChatModelSelect({
   onChange,
   disabled = false,
   className,
+  showBuildEstimate = false,
 }: ChatModelSelectProps) {
   const generatedId = useId();
   const triggerId = `chat-model-select-${generatedId}`;
@@ -309,6 +332,19 @@ export function ChatModelSelect({
                 {optionMeta.caption}
               </span>
             </span>
+            {showBuildEstimate ? (
+              <span
+                className={cn(
+                  "shrink-0 self-start pt-0.5 text-[11px] font-semibold tabular-nums",
+                  selected && option !== DEFAULT_CHAT_MODEL_CHOICE
+                    ? "text-violet-700 dark:text-violet-200"
+                    : "text-zinc-400 dark:text-slate-500",
+                )}
+                title={`预计构建时间约 ${optionMeta.buildEstimate.shortLabel}`}
+              >
+                {optionMeta.buildEstimate.shortLabel}
+              </span>
+            ) : null}
             {selected ? <Check className="h-4 w-4 shrink-0" aria-hidden="true" /> : null}
           </button>
         );
@@ -320,10 +356,11 @@ export function ChatModelSelect({
     <>
       <div
         ref={rootRef}
-        title={`选择生成模型：${meta.title}`}
+        title={showBuildEstimate ? `选择生成模型：${meta.title}。预计构建时间约 ${meta.buildEstimate.shortLabel}` : `选择生成模型：${meta.title}`}
         onKeyDown={handleKeyDown}
         className={cn(
-          "relative inline-flex h-7 w-auto min-w-0 max-w-full",
+          "relative inline-flex w-auto min-w-0 max-w-full",
+          "h-7",
           disabled && "cursor-not-allowed opacity-55",
           className,
         )}
@@ -344,7 +381,8 @@ export function ChatModelSelect({
             }
           }}
           className={cn(
-            "group inline-flex h-full w-auto max-w-[128px] items-center gap-1.5 rounded-md px-1.5 text-left text-[12px] font-medium leading-none text-zinc-500 transition-colors active:scale-[0.98]",
+            "group inline-flex h-full w-auto items-center gap-1.5 rounded-md px-1.5 text-left text-[12px] font-medium leading-none text-zinc-500 transition-colors active:scale-[0.98]",
+            showBuildEstimate ? "max-w-[138px]" : "max-w-[128px]",
             "hover:bg-zinc-100/70 hover:text-zinc-800 focus:outline-none focus:ring-2 focus:ring-zinc-900/10 dark:text-slate-400 dark:hover:bg-slate-800/70 dark:hover:text-slate-100 dark:focus:ring-slate-100/10",
             open && "bg-zinc-100/80 text-zinc-800 dark:bg-slate-800 dark:text-slate-100",
             disabled && "cursor-not-allowed active:scale-100",
@@ -354,10 +392,18 @@ export function ChatModelSelect({
             className="h-3.5 w-3.5 shrink-0 text-zinc-500 transition-colors group-hover:text-zinc-700 dark:text-slate-400 dark:group-hover:text-slate-100"
             aria-hidden="true"
           />
-          <span className="inline-flex min-w-0 items-baseline">
+          <span className="inline-flex min-w-0 items-baseline gap-1">
             <span className="truncate font-semibold text-zinc-700 dark:text-slate-200">{meta.triggerLabel}</span>
+            {showBuildEstimate ? (
+              <span
+                className="truncate text-[10.5px] font-semibold tabular-nums text-zinc-400 dark:text-slate-500"
+                aria-hidden="true"
+              >
+                {meta.buildEstimate.shortLabel}
+              </span>
+            ) : null}
             <span id={descriptionId} className="sr-only">
-              {meta.caption}
+              {showBuildEstimate ? `${meta.caption}，预计构建时间约${meta.buildEstimate.shortLabel}` : meta.caption}
             </span>
           </span>
           <ChevronDown

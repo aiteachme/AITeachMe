@@ -1103,7 +1103,6 @@ export function HomePage() {
     : canGenerate
       ? isCourseEntryMode ? "开始构建课程" : "发送到对话"
       : isCourseEntryMode ? "填写课程目标或选择资料后开始构建" : "输入问题或选择资料后开始对话";
-
   return (
     <>
     <FullPageDropOverlay
@@ -1318,7 +1317,11 @@ export function HomePage() {
                     value={chatModel}
                     onChange={setChatModel}
                     disabled={isWorking}
-                    className="w-[112px] flex-none sm:w-[112px]"
+                    showBuildEstimate={isCourseEntryMode}
+                    className={cn(
+                      "flex-none",
+                      isCourseEntryMode ? "w-[128px] sm:w-[132px]" : "w-[112px] sm:w-[112px]",
+                    )}
                   />
                   <button
                     type="button"

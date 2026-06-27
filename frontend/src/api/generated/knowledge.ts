@@ -25,6 +25,7 @@ import type {
 
 import type {
   ApiResponseBuildPlannerAdjustClickResponse,
+  ApiResponseBuildPlannerCancelResponse,
   ApiResponseBuildPlannerConfirmResponse,
   ApiResponseBuildPlannerSessionResponse,
   ApiResponseChunkContextResponse,
@@ -291,6 +292,109 @@ export const useKnowledgeBuildPlanLatestApiV1CoursesCourseIdKnowledgeBuildPlansL
         TContext
       > => {
       return useMutation(getKnowledgeBuildPlanLatestApiV1CoursesCourseIdKnowledgeBuildPlansLatestPostMutationOptions(options), queryClient);
+    }
+    export type knowledgeBuildPlanCancelApiV1CoursesCourseIdKnowledgeBuildPlansCancelPostResponse200 = {
+  data: ApiResponseBuildPlannerCancelResponse
+  status: 200
+}
+
+export type knowledgeBuildPlanCancelApiV1CoursesCourseIdKnowledgeBuildPlansCancelPostResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type knowledgeBuildPlanCancelApiV1CoursesCourseIdKnowledgeBuildPlansCancelPostResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type knowledgeBuildPlanCancelApiV1CoursesCourseIdKnowledgeBuildPlansCancelPostResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type knowledgeBuildPlanCancelApiV1CoursesCourseIdKnowledgeBuildPlansCancelPostResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type knowledgeBuildPlanCancelApiV1CoursesCourseIdKnowledgeBuildPlansCancelPostResponseSuccess = (knowledgeBuildPlanCancelApiV1CoursesCourseIdKnowledgeBuildPlansCancelPostResponse200) & {
+  headers: Headers;
+};
+export type knowledgeBuildPlanCancelApiV1CoursesCourseIdKnowledgeBuildPlansCancelPostResponseError = (knowledgeBuildPlanCancelApiV1CoursesCourseIdKnowledgeBuildPlansCancelPostResponse400 | knowledgeBuildPlanCancelApiV1CoursesCourseIdKnowledgeBuildPlansCancelPostResponse404 | knowledgeBuildPlanCancelApiV1CoursesCourseIdKnowledgeBuildPlansCancelPostResponse422 | knowledgeBuildPlanCancelApiV1CoursesCourseIdKnowledgeBuildPlansCancelPostResponse500) & {
+  headers: Headers;
+};
+
+export type knowledgeBuildPlanCancelApiV1CoursesCourseIdKnowledgeBuildPlansCancelPostResponse = (knowledgeBuildPlanCancelApiV1CoursesCourseIdKnowledgeBuildPlansCancelPostResponseSuccess | knowledgeBuildPlanCancelApiV1CoursesCourseIdKnowledgeBuildPlansCancelPostResponseError)
+
+export const getKnowledgeBuildPlanCancelApiV1CoursesCourseIdKnowledgeBuildPlansCancelPostUrl = (courseId: string,) => {
+
+
+
+
+  return `/api/v1/courses/${courseId}/knowledge/build/plans/cancel`
+}
+
+/**
+ * @summary Cancel the active build planner stream for this course
+ */
+export const knowledgeBuildPlanCancelApiV1CoursesCourseIdKnowledgeBuildPlansCancelPost = async (courseId: string, options?: RequestInit): Promise<knowledgeBuildPlanCancelApiV1CoursesCourseIdKnowledgeBuildPlansCancelPostResponse> => {
+
+  return orvalApiClient<knowledgeBuildPlanCancelApiV1CoursesCourseIdKnowledgeBuildPlansCancelPostResponse>(getKnowledgeBuildPlanCancelApiV1CoursesCourseIdKnowledgeBuildPlansCancelPostUrl(courseId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getKnowledgeBuildPlanCancelApiV1CoursesCourseIdKnowledgeBuildPlansCancelPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof knowledgeBuildPlanCancelApiV1CoursesCourseIdKnowledgeBuildPlansCancelPost>>, TError,{courseId: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof knowledgeBuildPlanCancelApiV1CoursesCourseIdKnowledgeBuildPlansCancelPost>>, TError,{courseId: string}, TContext> => {
+
+const mutationKey = ['knowledgeBuildPlanCancelApiV1CoursesCourseIdKnowledgeBuildPlansCancelPost'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof knowledgeBuildPlanCancelApiV1CoursesCourseIdKnowledgeBuildPlansCancelPost>>, {courseId: string}> = (props) => {
+          const {courseId} = props ?? {};
+
+          return  knowledgeBuildPlanCancelApiV1CoursesCourseIdKnowledgeBuildPlansCancelPost(courseId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type KnowledgeBuildPlanCancelApiV1CoursesCourseIdKnowledgeBuildPlansCancelPostMutationResult = NonNullable<Awaited<ReturnType<typeof knowledgeBuildPlanCancelApiV1CoursesCourseIdKnowledgeBuildPlansCancelPost>>>
+
+    export type KnowledgeBuildPlanCancelApiV1CoursesCourseIdKnowledgeBuildPlansCancelPostMutationError = ErrorResponse | HTTPValidationError
+
+    /**
+ * @summary Cancel the active build planner stream for this course
+ */
+export const useKnowledgeBuildPlanCancelApiV1CoursesCourseIdKnowledgeBuildPlansCancelPost = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof knowledgeBuildPlanCancelApiV1CoursesCourseIdKnowledgeBuildPlansCancelPost>>, TError,{courseId: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof knowledgeBuildPlanCancelApiV1CoursesCourseIdKnowledgeBuildPlansCancelPost>>,
+        TError,
+        {courseId: string},
+        TContext
+      > => {
+      return useMutation(getKnowledgeBuildPlanCancelApiV1CoursesCourseIdKnowledgeBuildPlansCancelPostMutationOptions(options), queryClient);
     }
     export type knowledgeBuildPlanCreateStreamApiV1CoursesCourseIdKnowledgeBuildPlansStreamPostResponse200 = {
   data: unknown
