@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -510,6 +511,9 @@ def test_import_lookup_and_background_rebuild_scheduling() -> None:
     assert import_module._lookup_imported_id("1", {1: "one"}) == "one"
     assert import_module._lookup_imported_id(2, {"2": "two"}) == "two"
     assert import_module._lookup_imported_or_existing_id("existing", {"old": "existing"}) == "existing"
+    assert import_module._import_embedding_rebuild_concurrency_limit(global_limit=10) == 3
+    assert import_module._import_embedding_rebuild_concurrency_limit(global_limit=3) == 1
+    assert import_module._import_embedding_rebuild_concurrency_limit(global_limit=1) == 1
     assert import_module.spawn_imported_embedding_rebuild_background(
         None,
         course_id=IMPORTED_COURSE_ID,
@@ -536,6 +540,84 @@ def test_import_lookup_and_background_rebuild_scheduling() -> None:
         imported_counts={"retrieval_chunk": 2},
     ) is True
     assert registry.names == [f"course.import.embeddings:{IMPORTED_COURSE_ID}"]
+
+
+def test_imported_embedding_rebuild_reserves_foreground_llm_slots(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+    session.add(
+        Course(
+            id=IMPORTED_COURSE_ID,
+            user_id="user-2",
+            name="Imported Algebra",
+            settings_json='{"embedding":{"mode":"enabled"}}',
+        )
+    )
+    session.add(
+        RawFile(
+            id="imported-file-1",
+            user_id="user-2",
+            filename="algebra.md",
+            filetype="markdown",
+            file_path="algebra.md",
+        )
+    )
+    for index in range(5):
+        session.add(
+            RetrievalChunk(
+                course_id=IMPORTED_COURSE_ID,
+                file_id="imported-file-1",
+                title=f"Chunk {index}",
+                level=1,
+                header_path=f"Chunk {index}",
+                chunk_index=index,
+                digest_chunk_uid=f"chunk-{index}",
+                content=f"content {index}",
+            )
+        )
+    session.commit()
+
+    async def fake_aembed_texts(texts, *, soft_fail=False, model=None, max_concurrent=None, **_kwargs):
+        captured["text_count"] = len(texts)
+        captured["soft_fail"] = soft_fail
+        captured["model"] = model
+        captured["max_concurrent"] = max_concurrent
+        return [[0.1, 0.2] for _ in texts]
+
+    def fake_bulk_insert_embeddings(_session, *, course_id, chunk_ids, embeddings, embedding_model=None):
+        captured["course_id"] = course_id
+        captured["chunk_ids"] = list(chunk_ids)
+        captured["embedding_count"] = len(embeddings)
+        captured["embedding_model"] = embedding_model
+
+    monkeypatch.setattr(import_module, "should_generate_course_embeddings", lambda *args, **kwargs: True)
+    monkeypatch.setattr(
+        import_module,
+        "get_runtime_embedding_config",
+        lambda: SimpleNamespace(embedding_model="text-embedding-v4"),
+    )
+    monkeypatch.setattr(import_module, "get_llm_concurrency_limit", lambda: 10)
+    monkeypatch.setattr(import_module, "aembed_texts", fake_aembed_texts)
+    monkeypatch.setattr(import_module.knowledge_repo, "bulk_insert_embeddings", fake_bulk_insert_embeddings)
+
+    warnings: list[str] = []
+    import_module._rebuild_imported_embeddings(
+        session,
+        course_id=IMPORTED_COURSE_ID,
+        imported_counts={"retrieval_chunk": 5},
+        warnings=warnings,
+    )
+
+    assert warnings == []
+    assert captured["text_count"] == 5
+    assert captured["soft_fail"] is True
+    assert captured["model"] == "text-embedding-v4"
+    assert captured["max_concurrent"] == 3
+    assert captured["course_id"] == IMPORTED_COURSE_ID
+    assert captured["embedding_count"] == 5
+    assert captured["embedding_model"] == "text-embedding-v4"
 
 
 def test_run_async_handles_plain_coroutines() -> None:

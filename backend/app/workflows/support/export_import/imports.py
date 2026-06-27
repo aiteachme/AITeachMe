@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 import tempfile
 import uuid
 import zipfile
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
 import structlog
+from langsmith import tracing_context
 from pydantic import ValidationError
 from sqlmodel import Session, select
 
@@ -22,6 +25,8 @@ from app.shared.infra.course import (
     get_runtime_embedding_config,
     should_generate_course_embeddings,
 )
+from app.shared.infra.llm_support import get_llm_concurrency_limit
+from app.shared.infra.observability.trace import langsmith_trace, llm_trace_scope
 from app.shared.infra.storage import (
     build_file_storage_segment,
     build_course_storage_scope,
@@ -48,6 +53,26 @@ from app.workflows.support.export_import.limits import (
 logger = structlog.get_logger()
 
 _DOCGEN_COVER_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+_IMPORT_EMBEDDING_FOREGROUND_SLOT_RESERVE = 2
+_IMPORT_EMBEDDING_GLOBAL_FRACTION_DIVISOR = 3
+
+
+def _import_embedding_rebuild_concurrency_limit(global_limit: int | None = None) -> int:
+    """Keep imported-course embedding rebuild from occupying all LLM slots."""
+
+    llm_limit = max(
+        1,
+        int(get_llm_concurrency_limit() if global_limit is None else global_limit or 1),
+    )
+    if llm_limit <= _IMPORT_EMBEDDING_FOREGROUND_SLOT_RESERVE:
+        return 1
+    return max(
+        1,
+        min(
+            llm_limit - _IMPORT_EMBEDDING_FOREGROUND_SLOT_RESERVE,
+            max(1, llm_limit // _IMPORT_EMBEDDING_GLOBAL_FRACTION_DIVISOR),
+        ),
+    )
 
 
 def import_course(
@@ -543,11 +568,13 @@ def _rebuild_imported_embeddings(
         return
 
     payloads = [f"{chunk.title}\n{chunk.content}".strip() for chunk in chunk_rows]
+    concurrency_limit = _import_embedding_rebuild_concurrency_limit()
     embeddings = _run_async(
         aembed_texts(
             payloads,
             soft_fail=True,
             model=runtime.embedding_model,
+            max_concurrent=concurrency_limit,
         )
     )
     if not embeddings:
@@ -555,6 +582,7 @@ def _rebuild_imported_embeddings(
             "course_import_embedding_soft_failed",
             course_id=course_id,
             chunk_count=len(chunk_rows),
+            concurrency_limit=concurrency_limit,
         )
         warnings.append("embedding_rebuild: skipped because embedding service is unavailable")
         return
@@ -571,6 +599,7 @@ def _rebuild_imported_embeddings(
         logger.warning(
             "course_import_embedding_rebuild_failed",
             course_id=course_id,
+            concurrency_limit=concurrency_limit,
             error=str(exc),
         )
         warnings.append(f"embedding_rebuild: failed: {exc}")
@@ -593,6 +622,65 @@ def _rebuild_imported_embeddings_with_new_session(
         )
 
 
+def _rebuild_imported_embeddings_with_trace(
+    *,
+    course_id: str,
+    imported_counts: dict[str, int],
+    warnings: list[str],
+) -> None:
+    workflow = "course_import_embeddings"
+    lane = "background"
+    node = "rebuild_retrieval_embeddings"
+    chunk_count = int(imported_counts.get("retrieval_chunk", 0) or 0)
+    concurrency_limit = _import_embedding_rebuild_concurrency_limit()
+    started = time.monotonic()
+    with llm_trace_scope(
+        course_id=course_id,
+        workflow=workflow,
+        lane=lane,
+        node=node,
+    ):
+        with langsmith_trace(
+            name="导入课程：重建检索索引",
+            run_type="chain",
+            inputs={
+                "course_id": course_id,
+                "retrieval_chunk_count": chunk_count,
+                "embedding_concurrency_limit": concurrency_limit,
+            },
+            course_id=course_id,
+            workflow=workflow,
+            lane=lane,
+            node=node,
+            extra_metadata={
+                "background_sidecar": "course_import_embeddings",
+                "retrieval_chunk_count": chunk_count,
+                "embedding_concurrency_limit": concurrency_limit,
+            },
+            extra_tags=["background:course_import_embeddings"],
+        ) as trace_run:
+            with (
+                tracing_context(parent=trace_run)
+                if trace_run is not None
+                else nullcontext()
+            ):
+                _rebuild_imported_embeddings_with_new_session(
+                    course_id=course_id,
+                    imported_counts=imported_counts,
+                    warnings=warnings,
+                )
+            if trace_run is not None:
+                trace_run.end(
+                    outputs={
+                        "status": "completed" if not warnings else "completed_with_warnings",
+                        "elapsed_s": round(time.monotonic() - started, 2),
+                        "retrieval_chunk_count": chunk_count,
+                        "embedding_concurrency_limit": concurrency_limit,
+                        "warning_count": len(warnings),
+                    }
+                )
+
+
 async def rebuild_imported_embeddings_background(
     *,
     course_id: str,
@@ -602,7 +690,7 @@ async def rebuild_imported_embeddings_background(
 
     warnings: list[str] = []
     await asyncio.to_thread(
-        _rebuild_imported_embeddings_with_new_session,
+        _rebuild_imported_embeddings_with_trace,
         course_id=course_id,
         imported_counts=dict(imported_counts),
         warnings=warnings,

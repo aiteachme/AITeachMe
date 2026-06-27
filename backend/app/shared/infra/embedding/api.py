@@ -25,6 +25,7 @@ from app.shared.infra.llm_support.common import (
 )
 from app.shared.infra.llm_support.litellm_loader import load_litellm
 from app.shared.infra.llm_support import run_llm_tasks
+from app.shared.infra.observability.trace import trace_substep
 
 logger = structlog.get_logger()
 
@@ -137,6 +138,7 @@ async def aembed_texts(
     *,
     batch_size: int | None = None,
     model: str | None = None,
+    max_concurrent: int | None = None,
     soft_fail: bool = False,
 ) -> list[list[float]]:
     """批量生成文本向量，自动分批处理。
@@ -144,6 +146,7 @@ async def aembed_texts(
     Args:
         texts: 待向量化的文本列表。
         batch_size: 每批大小（默认从运行时 settings 读取）。
+        max_concurrent: 多批次向量化时的上层并发窗口；None 表示沿用全局上限。
         soft_fail: 当 embedding 调用失败时，是否记录 warning 并返回空列表。
     """
 
@@ -207,29 +210,74 @@ async def aembed_texts(
             )
             raise LLMCallError(reason=f"Embedding 调用失败（批次 {batch_idx + 1}/{total_batches}）：{exc}") from exc
 
-    try:
-        if total_batches <= 1:
-            # Single batch — no concurrency overhead
-            _, vectors = await _embed_batch(0)
-            all_vectors = vectors
-        else:
-            results = await run_llm_tasks(range(total_batches), _embed_batch)
-            # Re-order by batch index
-            results_sorted = sorted(results, key=lambda r: r[0])
-            for _, vectors in results_sorted:
-                all_vectors.extend(vectors)
-    except (MissingLLMApiKeyError, LLMCallError) as exc:
-        if not soft_fail:
-            raise
-        logger.warning(
-            "embedding_call_soft_failed",
-            text_count=len(texts),
-            batch_count=total_batches,
-            model=resolved_model,
-            endpoint_role=context.endpoint_role,
-            error=str(exc),
-        )
-        return []
+    with trace_substep(
+        "Embedding：批量生成",
+        run_type="embedding",
+        metadata={
+            "text_count": len(texts),
+            "batch_count": total_batches,
+            "batch_size": batch_size,
+            "max_concurrent": max_concurrent or 0,
+            "model": resolved_model,
+            "endpoint_role": context.endpoint_role,
+        },
+        tags=["embedding:batch"],
+        inputs={
+            "text_count": len(texts),
+            "batch_count": total_batches,
+            "batch_size": batch_size,
+            "max_concurrent": max_concurrent or 0,
+        },
+    ) as trace_run:
+        try:
+            if total_batches <= 1:
+                # Single batch, no fan-out overhead.
+                _, vectors = await _embed_batch(0)
+                all_vectors = vectors
+            else:
+                results = await run_llm_tasks(
+                    range(total_batches),
+                    _embed_batch,
+                    max_concurrent=max_concurrent,
+                )
+                # Re-order by batch index.
+                results_sorted = sorted(results, key=lambda r: r[0])
+                for _, vectors in results_sorted:
+                    all_vectors.extend(vectors)
+            if trace_run is not None:
+                trace_run.end(
+                    outputs={
+                        "status": "completed",
+                        "elapsed_s": round(time.monotonic() - start, 2),
+                        "text_count": len(texts),
+                        "batch_count": total_batches,
+                        "model": resolved_model,
+                        "endpoint_role": context.endpoint_role,
+                        "embedding_dim": len(all_vectors[0]) if all_vectors else 0,
+                    }
+                )
+        except (MissingLLMApiKeyError, LLMCallError) as exc:
+            if trace_run is not None:
+                trace_run.end(
+                    outputs={
+                        "status": "soft_failed" if soft_fail else "failed",
+                        "text_count": len(texts),
+                        "batch_count": total_batches,
+                        "model": resolved_model,
+                        "error": str(exc),
+                    }
+                )
+            if not soft_fail:
+                raise
+            logger.warning(
+                "embedding_call_soft_failed",
+                text_count=len(texts),
+                batch_count=total_batches,
+                model=resolved_model,
+                endpoint_role=context.endpoint_role,
+                error=str(exc),
+            )
+            return []
 
     logger.info(
         "embedding_call_complete",
