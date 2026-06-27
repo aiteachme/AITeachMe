@@ -837,7 +837,12 @@ _CONCURRENCY_RATE_LIMIT_MARKERS = (
     "concurrent limit exceeded",
     "too many concurrent",
     "too many simultaneous",
+    "requests-per-minute limit exceeded",
+    "request per minute limit exceeded",
+    "rate limit exceeded",
+    "rate_limit_exceeded",
     "rate_limit_error",
+    "too many requests",
 )
 
 
@@ -854,6 +859,8 @@ def should_try_endpoint_fallback(error: Exception | None) -> bool:
     """Return whether a failed primary attempt should advance to fallback endpoints."""
 
     if error is None:
+        return False
+    if is_concurrency_rate_limit_error(error):
         return False
     if isinstance(error, LLMTimeoutError):
         return True

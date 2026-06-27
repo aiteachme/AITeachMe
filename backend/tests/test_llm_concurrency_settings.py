@@ -115,6 +115,22 @@ def test_primary_model_allowlist_remains_supported_as_hidden_override() -> None:
     assert "llm.primary_model_allowlist" not in exposed_keys
 
 
+def test_rpm_rate_limit_is_treated_as_local_throttle() -> None:
+    error = RuntimeError(
+        'litellm.RateLimitError: {"error":{"message":"user requests-per-minute limit exceeded",'
+        '"type":"rate_limit_exceeded"}}'
+    )
+
+    assert llm_common.is_concurrency_rate_limit_error(error)
+    assert not llm_common.should_try_endpoint_fallback(error)
+
+
+def test_gateway_outage_still_uses_endpoint_fallback() -> None:
+    error = RuntimeError("primary gateway timed out")
+
+    assert llm_common.should_try_endpoint_fallback(error)
+
+
 def test_existing_advanced_settings_remain_exposed_in_settings_page() -> None:
     overview = build_settings_overview_data()
     exposed_keys = {
