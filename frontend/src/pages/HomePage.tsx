@@ -50,7 +50,7 @@ import { HeroAnimation } from "../components/ui/HeroAnimation";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 import { CourseExportModal } from "../components/course/CourseExportModal";
 import { useToast } from "../components/ui/Toast";
-import { useAiInteraction } from "../components/interaction";
+import { AI_SCENE_HOME_INTAKE, useAiInteraction } from "../components/interaction";
 import {
   ChatModelSelect,
   toChatRequestModel,
@@ -253,6 +253,9 @@ const HOME_CHAT_PROMPT_STARTERS = [
     icon: MessageCircle,
   },
 ] as const;
+
+const HOME_CHAT_WITH_FILES_DEFAULT_PROMPT =
+  "我已经选择了这些资料，请先帮我判断适合建成什么课，并和我确认后再开始构建。";
 
 function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean)));
@@ -918,12 +921,15 @@ export function HomePage() {
     setError(null);
     const selectedModel = toChatRequestModel(chatModel);
     if (entryMode === "chat") {
+      const chatDraft = prompt.trim() || (entryFileIds.length > 0 ? HOME_CHAT_WITH_FILES_DEFAULT_PROMPT : "");
       openAiInteraction({
         mode: "fullscreen",
         scope: { type: "global" },
-        draft: prompt.trim(),
-        autoSend: prompt.trim().length > 0,
+        draft: chatDraft,
+        autoSend: chatDraft.length > 0,
         model: selectedModel,
+        scene: AI_SCENE_HOME_INTAKE,
+        source: AI_SCENE_HOME_INTAKE,
         attachedFileIds: entryFileIds,
         newSession: true,
       });
