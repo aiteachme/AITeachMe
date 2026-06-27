@@ -40,6 +40,8 @@ async def test_embedding_api_base_is_passed_through_without_rewriting(monkeypatc
         api_key: str | None,
         provider: str | None = None,
         api_version: str | None = None,
+        provider_timeout_s: int | None = None,
+        overall_timeout_s: int | None = None,
     ) -> list[list[float]]:
         captured.update(
             {
@@ -49,6 +51,8 @@ async def test_embedding_api_base_is_passed_through_without_rewriting(monkeypatc
                 "api_key": api_key,
                 "provider": provider,
                 "api_version": api_version,
+                "provider_timeout_s": provider_timeout_s,
+                "overall_timeout_s": overall_timeout_s,
             }
         )
         return [[0.1, 0.2, 0.3]]
@@ -65,6 +69,8 @@ async def test_embedding_api_base_is_passed_through_without_rewriting(monkeypatc
         "api_key": "primary-key",
         "provider": "openai_compatible",
         "api_version": None,
+        "provider_timeout_s": 120,
+        "overall_timeout_s": 122,
     }
 
 
@@ -88,6 +94,8 @@ async def test_embedding_model_outside_primary_allowlist_uses_fallback_endpoint(
         api_key: str | None,
         provider: str | None = None,
         api_version: str | None = None,
+        provider_timeout_s: int | None = None,
+        overall_timeout_s: int | None = None,
     ) -> list[list[float]]:
         captured.update(
             {
@@ -97,6 +105,8 @@ async def test_embedding_model_outside_primary_allowlist_uses_fallback_endpoint(
                 "api_key": api_key,
                 "provider": provider,
                 "api_version": api_version,
+                "provider_timeout_s": provider_timeout_s,
+                "overall_timeout_s": overall_timeout_s,
             }
         )
         return [[0.4, 0.5]]
@@ -113,6 +123,8 @@ async def test_embedding_model_outside_primary_allowlist_uses_fallback_endpoint(
         "api_key": "fallback-key",
         "provider": "openai_compatible",
         "api_version": None,
+        "provider_timeout_s": 120,
+        "overall_timeout_s": 122,
     }
 
 
@@ -148,6 +160,8 @@ async def test_embedding_batches_respect_explicit_concurrency_window(monkeypatch
         api_key: str | None,
         provider: str | None = None,
         api_version: str | None = None,
+        provider_timeout_s: int | None = None,
+        overall_timeout_s: int | None = None,
     ) -> list[list[float]]:
         return [[float(len(item))] for item in batch]
 
@@ -182,3 +196,40 @@ async def test_embedding_batches_respect_explicit_concurrency_window(monkeypatch
     assert trace_run.outputs is not None
     assert trace_run.outputs["status"] == "completed"
     assert trace_run.outputs["batch_count"] == 3
+
+
+@pytest.mark.anyio
+async def test_embedding_provider_call_receives_timeout(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeBadRequestError(Exception):
+        pass
+
+    class FakeLitellm:
+        drop_params = False
+
+        class exceptions:
+            BadRequestError = FakeBadRequestError
+
+        async def aembedding(self, **kwargs):
+            captured.update(kwargs)
+
+            class Response:
+                data = [{"embedding": [0.1, 0.2]}]
+
+            return Response()
+
+    monkeypatch.setattr(embedding_api, "load_litellm", lambda: FakeLitellm())
+
+    vectors = await embedding_api._call_embedding(
+        model="text-embedding-v4",
+        batch=["hello"],
+        api_base="https://gateway.example.com",
+        api_key="key",
+        provider="openai_compatible",
+        provider_timeout_s=17,
+        overall_timeout_s=19,
+    )
+
+    assert vectors == [[0.1, 0.2]]
+    assert captured["timeout"] == 17

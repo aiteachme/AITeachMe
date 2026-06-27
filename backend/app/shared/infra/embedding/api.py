@@ -9,17 +9,19 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 from urllib.parse import urlparse, urlunparse
 
 import structlog
 
 from app.shared.infra.embedding.defaults import DEFAULT_EMBEDDING_BATCH_SIZE
-from app.shared.infra.exceptions import LLMCallError, MissingLLMApiKeyError
+from app.shared.infra.exceptions import LLMCallError, LLMTimeoutError, MissingLLMApiKeyError
 from app.shared.infra.llm_support.common import (
     apply_provider_extra_headers,
     build_completion_contexts,
     build_litellm_provider_kwargs,
+    context_request_timeout_s,
     get_llm_concurrency_limiter,
     get_llm_runtime_snapshot,
 )
@@ -61,6 +63,8 @@ async def _call_embedding(
     api_key: str | None,
     provider: str | None = None,
     api_version: str | None = None,
+    provider_timeout_s: int | None = None,
+    overall_timeout_s: int | None = None,
 ) -> list[list[float]]:
     """调用 litellm embedding，自动处理 encoding_format 兼容性。
 
@@ -80,6 +84,14 @@ async def _call_embedding(
         api_base,
         provider_kwargs=provider_kwargs,
     )
+
+    async def _await_embedding(request_kwargs: dict[str, object]):
+        async with get_llm_concurrency_limiter():
+            provider_call = litellm.aembedding(**request_kwargs)
+            if overall_timeout_s is None:
+                return await provider_call
+            return await asyncio.wait_for(provider_call, timeout=overall_timeout_s)
+
     try:
         request_kwargs = {
             "model": model,
@@ -90,12 +102,13 @@ async def _call_embedding(
         }
         if api_key is not None:
             request_kwargs["api_key"] = api_key
+        if provider_timeout_s is not None:
+            request_kwargs["timeout"] = provider_timeout_s
         apply_provider_extra_headers(request_kwargs)
-        async with get_llm_concurrency_limiter():
-            response = await litellm.aembedding(
-                **request_kwargs,
-            )
+        response = await _await_embedding(request_kwargs)
         return [item["embedding"] for item in response.data]
+    except asyncio.TimeoutError as exc:
+        raise LLMTimeoutError(timeout_s=int(provider_timeout_s or overall_timeout_s or 0)) from exc
     except litellm.exceptions.BadRequestError as exc:
         error_text = str(exc)
         # encoding_format 不被支持，降级重试
@@ -112,9 +125,13 @@ async def _call_embedding(
             }
             if api_key is not None:
                 fallback_kwargs["api_key"] = api_key
+            if provider_timeout_s is not None:
+                fallback_kwargs["timeout"] = provider_timeout_s
             apply_provider_extra_headers(fallback_kwargs)
-            async with get_llm_concurrency_limiter():
-                response = await litellm.aembedding(**fallback_kwargs)
+            try:
+                response = await _await_embedding(fallback_kwargs)
+            except asyncio.TimeoutError as timeout_exc:
+                raise LLMTimeoutError(timeout_s=int(provider_timeout_s or overall_timeout_s or 0)) from timeout_exc
             return [item["embedding"] for item in response.data]
         if (
             "Incorrect model ID" in error_text
@@ -168,6 +185,11 @@ async def aembed_texts(
         raise LLMCallError(reason="models.embedding is not configured")
     context = build_completion_contexts(task_type="embedding", model=resolved_model)[0]
     api_base = context.base_url or "https://api.openai.com/v1"
+    provider_timeout_s = context.profile.timeout_s if context.settings.llm.enforce_request_timeout else None
+    overall_timeout_s = context_request_timeout_s(
+        context,
+        {"timeout": provider_timeout_s} if provider_timeout_s is not None else {},
+    )
     start = time.monotonic()
 
     all_vectors: list[list[float]] = []
@@ -185,6 +207,8 @@ async def aembed_texts(
                 api_key=context.api_key,
                 provider=context.provider,
                 api_version=context.api_version,
+                provider_timeout_s=provider_timeout_s,
+                overall_timeout_s=overall_timeout_s,
             )
             return batch_idx, batch_vectors
         except LLMCallError as exc:
@@ -218,6 +242,7 @@ async def aembed_texts(
             "batch_count": total_batches,
             "batch_size": batch_size,
             "max_concurrent": max_concurrent or 0,
+            "timeout_s": provider_timeout_s or 0,
             "model": resolved_model,
             "endpoint_role": context.endpoint_role,
         },
@@ -227,6 +252,7 @@ async def aembed_texts(
             "batch_count": total_batches,
             "batch_size": batch_size,
             "max_concurrent": max_concurrent or 0,
+            "timeout_s": provider_timeout_s or 0,
         },
     ) as trace_run:
         try:
