@@ -917,7 +917,7 @@ export function HomePage() {
   const canGenerate = prompt.trim().length > 0 || hasEntryFiles;
 
   const handleGenerate = async () => {
-    if (!canGenerate) return;
+    if (!canGenerate || isWorking) return;
     setError(null);
     const selectedModel = toChatRequestModel(chatModel);
     if (entryMode === "chat") {
@@ -958,6 +958,7 @@ export function HomePage() {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
+      if (isWorking) return;
       void handleGenerate();
     }
   };
