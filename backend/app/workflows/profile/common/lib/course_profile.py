@@ -70,12 +70,6 @@ def _to_accuracy_map(
     }
 
 
-def _item_score_ratio(item: ExamPaperItem) -> float:
-    if item.score_obtained is None or item.score_max is None or item.score_max <= 0:
-        return 1.0 if item.is_correct else 0.0
-    return min(1.0, max(0.0, float(item.score_obtained) / float(item.score_max)))
-
-
 def _pick_preferred_question_types(type_totals: Counter[str]) -> list[str]:
     if not type_totals:
         return []
@@ -241,9 +235,9 @@ def build_course_profile_summary(
     for item in recent_items:
         type_totals[item.question_type] += 1
         difficulty_totals[item.difficulty] += 1
-        score_ratio = _item_score_ratio(item)
-        type_correct[item.question_type] += score_ratio
-        difficulty_correct[item.difficulty] += score_ratio
+        if item.is_correct:
+            type_correct[item.question_type] += 1
+            difficulty_correct[item.difficulty] += 1
 
     avg_mastery = _average_mastery(knowledge_unit_states)
     weak_knowledge_unit_count = sum(1 for state in knowledge_unit_states if state.mastery_score < _WEAK_THRESHOLD)

@@ -33,7 +33,7 @@ def _recent_error_stats_by_knowledge_unit(
     *,
     user_id: str,
     course_id: str,
-) -> dict[int, tuple[int, float]]:
+) -> dict[int, tuple[int, int]]:
     now = utcnow()
     since = now - timedelta(days=30)
     rows = list(
@@ -49,7 +49,7 @@ def _recent_error_stats_by_knowledge_unit(
         ).all()
     )
 
-    stats: dict[int, tuple[int, float]] = {}
+    stats: dict[int, tuple[int, int]] = {}
     links_by_item_id = exams_repo.list_links_for_exam_items(session, [int(item.id or 0) for item in rows])
     for item in rows:
         knowledge_unit_ids = [
@@ -60,15 +60,10 @@ def _recent_error_stats_by_knowledge_unit(
         for knowledge_unit_id in knowledge_unit_ids:
             total, wrong = stats.get(knowledge_unit_id, (0, 0))
             total += 1
-            wrong += 1.0 - _item_score_ratio(item)
+            if item.is_correct is False:
+                wrong += 1
             stats[knowledge_unit_id] = (total, wrong)
     return stats
-
-
-def _item_score_ratio(item: ExamPaperItem) -> float:
-    if item.score_obtained is None or item.score_max is None or item.score_max <= 0:
-        return 1.0 if item.is_correct else 0.0
-    return min(1.0, max(0.0, float(item.score_obtained) / float(item.score_max)))
 
 
 def _forgetting_risk(state: UserKnowledgeState, *, now: datetime) -> float:

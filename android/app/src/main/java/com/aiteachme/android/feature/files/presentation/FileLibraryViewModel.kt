@@ -7,7 +7,6 @@ import com.aiteachme.android.core.data.repository.UploadFileRef
 import com.aiteachme.android.core.di.AppServices
 import com.aiteachme.android.core.network.dto.FileRecord
 import com.aiteachme.android.core.network.dto.FilesData
-import com.aiteachme.android.core.network.dto.SettingsOverviewData
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,7 +37,6 @@ data class FileLibraryUiState(
 
 class FileLibraryViewModel : ViewModel() {
     private val files = AppServices.fileRepository
-    private val systemRepository = AppServices.systemRepository
     private var pollingJob: Job? = null
 
     private val _uiState = MutableStateFlow(FileLibraryUiState())
@@ -86,6 +84,11 @@ class FileLibraryViewModel : ViewModel() {
         }
 
         val resolvedFiles = files.resolveUploadFiles(uris)
+        val validationMessage = validateUploadFiles(resolvedFiles)
+        if (validationMessage != null) {
+            _uiState.update { it.copy(errorMessage = validationMessage, infoMessage = null) }
+            return
+        }
 
         viewModelScope.launch {
             _uiState.update {
@@ -95,19 +98,6 @@ class FileLibraryViewModel : ViewModel() {
                     errorMessage = null,
                     infoMessage = null,
                 )
-            }
-            val uploadLimits = loadUploadLimits()
-            val validationMessage = validateUploadFiles(resolvedFiles, uploadLimits)
-            if (validationMessage != null) {
-                _uiState.update {
-                    it.copy(
-                        isUploading = false,
-                        uploadingNames = emptyList(),
-                        errorMessage = validationMessage,
-                        infoMessage = null,
-                    )
-                }
-                return@launch
             }
             runCatching {
                 files.uploadFiles(resolvedFiles)
@@ -197,44 +187,9 @@ class FileLibraryViewModel : ViewModel() {
         }
     }
 
-    private suspend fun loadUploadLimits(): UploadLimits {
-        val overview = runCatching { systemRepository.getSettings() }.getOrNull()
-        return UploadLimits(
-            maxFiles = numericSetting(
-                overview,
-                key = "ingest.max_files_per_upload",
-                fallback = DEFAULT_MAX_FILES_PER_UPLOAD,
-            ).toInt().coerceAtLeast(1),
-            maxTotalUploadMb = numericSetting(
-                overview,
-                key = "ingest.max_upload_size_mb",
-                fallback = DEFAULT_MAX_TOTAL_UPLOAD_MB,
-            ).coerceAtLeast(1.0),
-        )
-    }
-
-    private fun numericSetting(overview: SettingsOverviewData?, key: String, fallback: Double): Double {
-        if (overview == null) {
-            return fallback
-        }
-        for (section in overview.sections) {
-            for (entry in section.entries) {
-                if (entry.key != key) {
-                    continue
-                }
-                return when (val value = entry.value) {
-                    is Number -> value.toDouble()
-                    is String -> value.toDoubleOrNull() ?: fallback
-                    else -> fallback
-                }
-            }
-        }
-        return fallback
-    }
-
-    private fun validateUploadFiles(files: List<UploadFileRef>, limits: UploadLimits): String? {
-        if (files.size > limits.maxFiles) {
-            return "单次最多上传 ${limits.maxFiles} 个文件，当前选择 ${files.size} 个。"
+    private fun validateUploadFiles(files: List<UploadFileRef>): String? {
+        if (files.size > MAX_FILES_PER_UPLOAD) {
+            return "单次最多上传 $MAX_FILES_PER_UPLOAD 个文件，当前选择 ${files.size} 个。"
         }
         val unsupported = files.filterNot { file -> SUPPORTED_EXTENSIONS.contains(file.extension()) }
         if (unsupported.isNotEmpty()) {
@@ -243,8 +198,8 @@ class FileLibraryViewModel : ViewModel() {
             return "暂时仅支持 txt、docx、pptx、pdf、md、jpeg、jpg、png、bmp。未上传：$preview$suffix。"
         }
         val knownTotalBytes = files.mapNotNull { it.sizeBytes }.sum()
-        if (knownTotalBytes > limits.maxTotalBytes) {
-            return "单次上传总大小不能超过 ${limits.maxTotalUploadMbLabel} MB，当前约 ${formatFileSize(knownTotalBytes)}。"
+        if (knownTotalBytes > MAX_TOTAL_UPLOAD_BYTES) {
+            return "单次上传总大小不能超过 $MAX_TOTAL_UPLOAD_MB MB，当前约 ${formatFileSize(knownTotalBytes)}。"
         }
         return null
     }
@@ -256,23 +211,11 @@ class FileLibraryViewModel : ViewModel() {
     }
 
     private companion object {
-        const val DEFAULT_MAX_FILES_PER_UPLOAD = 10.0
-        const val DEFAULT_MAX_TOTAL_UPLOAD_MB = 20.0
+        const val MAX_FILES_PER_UPLOAD = 10
+        const val MAX_TOTAL_UPLOAD_MB = 20
+        const val MAX_TOTAL_UPLOAD_BYTES = MAX_TOTAL_UPLOAD_MB * 1024L * 1024L
         val SUPPORTED_EXTENSIONS = setOf("pdf", "docx", "pptx", "md", "txt", "jpeg", "jpg", "png", "bmp")
     }
-}
-
-private data class UploadLimits(
-    val maxFiles: Int,
-    val maxTotalUploadMb: Double,
-) {
-    val maxTotalBytes: Long = (maxTotalUploadMb * 1024 * 1024).toLong()
-    val maxTotalUploadMbLabel: String =
-        if (maxTotalUploadMb % 1.0 == 0.0) {
-            maxTotalUploadMb.toInt().toString()
-        } else {
-            maxTotalUploadMb.toString()
-        }
 }
 
 fun fileStatusKind(file: FileRecord): FileStatusFilter {
