@@ -499,7 +499,7 @@ export const getProbeSystemSettingsModelApiV1SystemSettingsModelProbePostUrl = (
 }
 
 /**
- * 按 reason / primary / light 槽位测试主模型网关或备用模型网关。主网关按当前接口模式自动路由，备用网关强制 Chat Completions。
+ * 按 reason / primary / light 槽位测试主模型网关或备用模型网关。主网关按当前主模型路由测试，备用网关强制 Chat Completions 并快速失败。
  * @summary 测试设置页模型连通性
  */
 export const probeSystemSettingsModelApiV1SystemSettingsModelProbePost = async (modelProbeRequest: ModelProbeRequest, options?: RequestInit): Promise<probeSystemSettingsModelApiV1SystemSettingsModelProbePostResponse> => {

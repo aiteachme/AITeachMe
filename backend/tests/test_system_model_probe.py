@@ -53,10 +53,14 @@ async def test_settings_model_probe_tests_primary_reason_slot_with_responses_api
     assert result.api_mode == "responses"
     assert captured["model"] == "reason"
     assert captured["api_mode"] == "responses"
+    assert captured["max_tokens"] == 16
+    assert captured["timeout"] == 20
+    assert captured["overall_timeout_s"] == 25
+    assert captured["max_retries"] == 1
 
 
 @pytest.mark.anyio
-async def test_settings_model_probe_tests_fallback_light_slot_with_auto_api_mode(monkeypatch) -> None:
+async def test_settings_model_probe_tests_fallback_light_slot_with_chat_completions(monkeypatch) -> None:
     captured: dict[str, object] = {}
     monkeypatch.setenv("LLM_API_KEY", "primary-key")
     monkeypatch.setenv("LLM_BASE_URL", "https://primary-gateway.example.com")
@@ -86,9 +90,13 @@ async def test_settings_model_probe_tests_fallback_light_slot_with_auto_api_mode
     assert result.endpoint_role == "fallback"
     assert result.model == "gpt-5.4-mini"
     assert result.provider == "openai_compatible"
-    assert result.api_mode == "auto"
+    assert result.api_mode == "chat_completions"
     assert captured["model"] == "light"
-    assert captured["api_mode"] == "auto"
+    assert captured["api_mode"] == "chat_completions"
+    assert captured["max_tokens"] == 16
+    assert captured["timeout"] == 20
+    assert captured["overall_timeout_s"] == 25
+    assert captured["max_retries"] == 1
 
 
 @pytest.mark.anyio
@@ -120,9 +128,9 @@ async def test_settings_model_probe_keeps_configured_fallback_model(monkeypatch)
     assert result.ok is True
     assert result.model == "gemini-3.1-flash-lite"
     assert result.provider == "gemini"
-    assert result.api_mode == "auto"
+    assert result.api_mode == "chat_completions"
     assert captured["model"] == "light"
-    assert captured["api_mode"] == "auto"
+    assert captured["api_mode"] == "chat_completions"
 
 
 @pytest.mark.anyio
@@ -139,5 +147,5 @@ async def test_settings_model_probe_reports_missing_fallback_endpoint(monkeypatc
     assert result.ok is False
     assert result.model_slot == "primary"
     assert result.endpoint_role == "fallback"
-    assert result.api_mode == "auto"
+    assert result.api_mode == "chat_completions"
     assert "备用模型网关未配置" in result.message
