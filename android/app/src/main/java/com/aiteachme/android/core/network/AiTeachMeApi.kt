@@ -20,7 +20,7 @@ interface AiTeachMeApi {
         @Body request: PageRequest = PageRequest(),
     ): ApiResponse<PaginatedData<CourseItem>>
 
-    @POST("/api/v1/courses/add")
+    @POST("/api/v1/courses/draft")
     suspend fun createDraftCourse(
         @Body request: Map<String, String> = emptyMap(),
     ): ApiResponse<CourseItem>

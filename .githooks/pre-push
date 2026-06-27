@@ -24,6 +24,7 @@ echo "[pre-push] Verifying OpenAPI and generated API client..."
 (
   cd backend
   run_python scripts/export_api_docs.py
+  run_python scripts/check_android_api_contract_sync.py
 )
 
 if ! git diff --quiet -- frontend/openapi.json frontend/src/api/generated ||
