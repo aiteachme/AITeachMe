@@ -150,7 +150,7 @@ _POLICIES: dict[PlannerModelStep, PlannerModelPolicy] = {
         timeout_s=_PLANNER_FAST_TIMEOUT_S,
         overall_timeout_s=_PLANNER_FAST_TIMEOUT_S,
         temperature=0.3,
-        note="生成前置诊断选择题；失败时使用本地 DocGen 可落地题目兜底。",
+        note="生成前置诊断选择题；失败时终止本轮 Planner 构建。",
     ),
     PlannerModelStep.COURSE_IDENTITY: PlannerModelPolicy(
         step=PlannerModelStep.COURSE_IDENTITY,

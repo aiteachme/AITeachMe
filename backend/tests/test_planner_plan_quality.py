@@ -159,7 +159,7 @@ def test_docgen_diagnose_brief_renders_user_answers() -> None:
     assert "快速回答" not in brief
 
 
-def test_understand_goal_and_materials_falls_back_when_auxiliary_llms_fail(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_understand_goal_and_materials_raises_when_auxiliary_llms_fail(monkeypatch: pytest.MonkeyPatch) -> None:
     async def fail_planning_note(state):
         raise TimeoutError("planning note timed out")
 
@@ -175,29 +175,29 @@ def test_understand_goal_and_materials_falls_back_when_auxiliary_llms_fail(monke
     monkeypatch.setattr(understand_node, "_summarize_materials", fail_material_note)
 
     node = understand_node.build_understand_goal_and_materials_node(context=None)
-    result = asyncio.run(
-        node(
-            {
-                "course_id": "course_test",
-                "planner_session_id": "planner_test",
-                "planner_operation": "create",
-                "user_prompt": "两天速成线性代数",
-                "digest_mode": "sprint",
-                "material_context": _material_context(),
-                "progress_callback": record_event,
-            }
+    with pytest.raises(Exception):
+        asyncio.run(
+            node(
+                {
+                    "course_id": "course_test",
+                    "planner_session_id": "planner_test",
+                    "planner_operation": "create",
+                    "user_prompt": "两天速成线性代数",
+                    "digest_mode": "sprint",
+                    "material_context": _material_context(),
+                    "progress_callback": record_event,
+                }
+            )
         )
-    )
 
-    assert "两天速成线性代数" in result["planning_note"]
-    assert "资料边界" in result["material_note"]
     stages = [str(event.get("stage") or "") for event in events]
-    assert "planner.planning_note.fallback" in stages
-    assert "planner.material_note.fallback" in stages
-    assert "planner.analysis.ready" in stages
+    assert "planner.analysis.failed" in stages
+    assert "planner.planning_note.fallback" not in stages
+    assert "planner.material_note.fallback" not in stages
+    assert "planner.analysis.ready" not in stages
 
 
-def test_compose_planner_diagnosis_falls_back_when_stream_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_compose_planner_diagnosis_raises_when_stream_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     async def fail_diagnosis(state):
         raise TimeoutError("diagnosis timed out")
 
@@ -209,32 +209,30 @@ def test_compose_planner_diagnosis_falls_back_when_stream_fails(monkeypatch: pyt
     monkeypatch.setattr(plan_draft_node, "_stream_diagnosis_response", fail_diagnosis)
 
     node = plan_draft_node.build_compose_planner_draft_node(context=None)
-    result = asyncio.run(
-        node(
-            {
-                "course_id": "course_test",
-                "planner_session_id": "planner_test",
-                "planner_operation": "create",
-                "user_prompt": "两天速成线性代数",
-                "digest_mode": "sprint",
-                "material_context": _material_context(),
-                "planning_note": "需要先建立核心概念和例题路径。",
-                "material_note": "资料重点是矩阵和线性方程组。",
-                "progress_callback": record_event,
-            }
+    with pytest.raises(TimeoutError, match="diagnosis timed out"):
+        asyncio.run(
+            node(
+                {
+                    "course_id": "course_test",
+                    "planner_session_id": "planner_test",
+                    "planner_operation": "create",
+                    "user_prompt": "两天速成线性代数",
+                    "digest_mode": "sprint",
+                    "material_context": _material_context(),
+                    "planning_note": "需要先建立核心概念和例题路径。",
+                    "material_note": "资料重点是矩阵和线性方程组。",
+                    "progress_callback": record_event,
+                }
+            )
         )
-    )
 
-    draft = result["build_plan_draft"]
-    assert draft["diagnose_status"] == "pending"
-    assert len(draft["diagnose"]) == 4
-    assert draft["diagnose"][0]["question"] == "基础从哪起？"
     stages = [str(event.get("stage") or "") for event in events]
-    assert "planner.diagnose.fallback" in stages
-    assert "planner.diagnose.ready" in stages
+    assert "planner.diagnose.failed" in stages
+    assert "planner.diagnose.fallback" not in stages
+    assert "planner.diagnose.ready" not in stages
 
 
-def test_compose_planner_plan_falls_back_after_diagnosis_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_compose_planner_plan_raises_after_generation_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     async def fail_plan(state):
         raise TimeoutError("plan timed out")
 
@@ -246,53 +244,47 @@ def test_compose_planner_plan_falls_back_after_diagnosis_timeout(monkeypatch: py
     monkeypatch.setattr(plan_draft_node, "_stream_planner_response", fail_plan)
 
     node = plan_draft_node.build_compose_planner_draft_node(context=None)
-    result = asyncio.run(
-        node(
-            {
-                "course_id": "course_test",
-                "planner_session_id": "planner_test",
-                "planner_operation": "append",
-                "user_prompt": "请基于每日验收资料生成一个极简学习方案，只需要 2 章。",
-                "feedback_message": "跳过前置诊断，请直接生成正式方案。",
-                "digest_mode": "sprint",
-                "material_context": _material_context(),
-                "planning_note": "需要先建立核心概念和例题路径。",
-                "material_note": "资料重点是极限、导数和积分。",
-                "latest_plan": {
-                    "planner_stage": "diagnosis",
-                    "course_name": "高数主线重建",
-                    "course_icon": "sigma",
+    with pytest.raises(TimeoutError, match="plan timed out"):
+        asyncio.run(
+            node(
+                {
+                    "course_id": "course_test",
+                    "planner_session_id": "planner_test",
+                    "planner_operation": "append",
                     "user_prompt": "请基于每日验收资料生成一个极简学习方案，只需要 2 章。",
+                    "feedback_message": "跳过前置诊断，请直接生成正式方案。",
                     "digest_mode": "sprint",
+                    "material_context": _material_context(),
                     "planning_note": "需要先建立核心概念和例题路径。",
-                    "diagnose": [
-                        {
-                            "question": "解析怎么写？",
-                            "purpose": "影响正文解析粒度。",
-                            "options": ["只给要点", "步骤解析", "错因提醒", "补变式题"],
-                        }
-                    ],
-                    "diagnose_status": "pending",
-                    "chapters": [],
-                },
-                "diagnose_status": "skipped",
-                "diagnose_answers": [],
-                "progress_callback": record_event,
-            }
+                    "material_note": "资料重点是极限、导数和积分。",
+                    "latest_plan": {
+                        "planner_stage": "diagnosis",
+                        "course_name": "高数主线重建",
+                        "course_icon": "sigma",
+                        "user_prompt": "请基于每日验收资料生成一个极简学习方案，只需要 2 章。",
+                        "digest_mode": "sprint",
+                        "planning_note": "需要先建立核心概念和例题路径。",
+                        "diagnose": [
+                            {
+                                "question": "解析怎么写？",
+                                "purpose": "影响正文解析粒度。",
+                                "options": ["只给要点", "步骤解析", "错因提醒", "补变式题"],
+                            }
+                        ],
+                        "diagnose_status": "pending",
+                        "chapters": [],
+                    },
+                    "diagnose_status": "skipped",
+                    "diagnose_answers": [],
+                    "progress_callback": record_event,
+                }
+            )
         )
-    )
 
-    draft = result["build_plan_draft"]
-    assert draft["diagnose_status"] == "skipped"
-    assert len(draft["chapters"]) == 2
-    assert draft["build_constraints"]["fallback_used"] is True
-    assert draft["build_constraints"]["fallback_reason"] == "TimeoutError"
-    assert draft["course_name"]
-    assert result["plan_outline_markdown"]
     stages = [str(event.get("stage") or "") for event in events]
-    assert "planner.plan.fallback" in stages
-    assert "planner.plan.ready" in stages
-    assert "planner.plan.failed" not in stages
+    assert "planner.plan.failed" in stages
+    assert "planner.plan.fallback" not in stages
+    assert "planner.plan.ready" not in stages
 
 
 def test_docgen_diagnose_brief_maps_different_answers_to_different_actions() -> None:
