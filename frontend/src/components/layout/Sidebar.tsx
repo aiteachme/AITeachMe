@@ -15,6 +15,7 @@ import {
   PanelLeftOpen,
   Plus,
   Settings,
+  Share2,
   Trash2,
   MessageCircle,
 } from "lucide-react";
@@ -36,6 +37,7 @@ import { buildPreferredCourseEntryPath, getCourseIdFromPathname } from "../../li
 import { CourseExportModal } from "../course/CourseExportModal";
 import { CourseImportModal } from "../course/CourseImportModal";
 import { CourseOperationModal } from "../course/CourseOperationModal";
+import { CourseShareModal } from "../course/CourseShareModal";
 import { CourseDeleteConfirmModal } from "./CourseDeleteConfirmModal";
 import { CommunityModal, ensureCommunityQrPreloaded } from "./CommunityPanel";
 import { AiConversationSidebarSection } from "../interaction/AiConversationSidebarSection";
@@ -230,6 +232,7 @@ export function Sidebar({
   const [menuPosition, setMenuPosition] = useState<CourseActionMenuPosition | null>(null);
   const [isCommunityModalOpen, setIsCommunityModalOpen] = useState(false);
   const [exportCourseId, setExportCourseId] = useState<string | null>(null);
+  const [shareCourseId, setShareCourseId] = useState<string | null>(null);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   const menuRef = useRef<HTMLDivElement>(null);
@@ -427,7 +430,7 @@ export function Sidebar({
 
     const rect = trigger.getBoundingClientRect();
     const width = Math.min(COURSE_ACTION_MENU_WIDTH, Math.max(180, window.innerWidth - COURSE_ACTION_MENU_MARGIN * 2));
-    const menuHeight = menuRef.current?.offsetHeight ?? 168;
+    const menuHeight = menuRef.current?.offsetHeight ?? 216;
     const spaceBelow = window.innerHeight - rect.bottom - COURSE_ACTION_MENU_MARGIN;
     const spaceAbove = rect.top - COURSE_ACTION_MENU_MARGIN;
     const placement = spaceBelow < menuHeight && spaceAbove > spaceBelow ? "top" : "bottom";
@@ -1087,6 +1090,22 @@ export function Sidebar({
                     onClick={() => {
                       setOpenMenuId(null);
                       setCourseActionError(undefined);
+                      setShareCourseId(openMenuCourse.course_id);
+                    }}
+                    className="group flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                  >
+                    <Share2 className="h-4 w-4 shrink-0 text-slate-400 transition group-hover:text-slate-700 dark:text-slate-500 dark:group-hover:text-slate-200" />
+                    <span className="min-w-0">
+                      <span className="block font-medium text-slate-900 dark:text-slate-100">分享课程</span>
+                      <span className="block text-[11px] leading-4 text-slate-500 dark:text-slate-400">生成可浏览链接</span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setOpenMenuId(null);
+                      setCourseActionError(undefined);
                       setExportCourseId(openMenuCourse.course_id);
                     }}
                     className="group flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400 dark:text-slate-200 dark:hover:bg-slate-800"
@@ -1171,6 +1190,10 @@ export function Sidebar({
 
       {exportCourseId ? (
         <CourseExportModal courseId={exportCourseId} onClose={() => setExportCourseId(null)} />
+      ) : null}
+
+      {shareCourseId ? (
+        <CourseShareModal courseId={shareCourseId} onClose={() => setShareCourseId(null)} />
       ) : null}
 
       {isImportModalOpen ? (

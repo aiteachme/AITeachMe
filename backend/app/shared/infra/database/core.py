@@ -63,6 +63,7 @@ from app.models.profile import UserKnowledgeState
 from app.models.raw_file import RawFile, CourseFileLink
 from app.models.chat import Highlight
 from app.models.course import Course
+from app.models.course_share import CourseShare
 from app.models.system import SystemRuntimeSettings
 from app.models.user import User
 
@@ -73,6 +74,7 @@ _SCHEMA_MODELS = (
     User,
     EmailConfirmation,
     Course,
+    CourseShare,
     RawFile,
     CourseFileLink,
     RetrievalChunk,

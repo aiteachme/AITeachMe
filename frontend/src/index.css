@@ -1143,6 +1143,23 @@
     vertical-align: baseline;
   }
 
+  .share-doc-content,
+  .share-doc-content * {
+    max-width: 100%;
+  }
+
+  .share-doc-content :where(h1, h2, h3, h4, h5, h6),
+  .share-doc-content :where(h1, h2, h3, h4, h5, h6) > span:last-child,
+  .share-doc-content :where(p, li, blockquote, aside) {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .share-doc-content :where(pre, table, .katex-display) {
+    max-width: none;
+  }
+
   @media (max-width: 640px) {
     .feishu-doc-content {
       font-size: 16px;
@@ -1151,6 +1168,10 @@
 
     .feishu-doc-content :where(h1, h2, h3, h4, h5, h6) {
       scroll-margin-top: 5rem;
+    }
+
+    .share-doc-content {
+      width: min(100%, calc(100vw - 2rem));
     }
   }
 

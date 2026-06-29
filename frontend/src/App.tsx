@@ -62,6 +62,9 @@ const ProfilePage = lazy(() => import("./pages/ProfilePage").then((module) => ({
 const UserProfilePage = lazy(() =>
   import("./pages/UserProfilePage").then((module) => ({ default: module.UserProfilePage })),
 );
+const CourseSharePage = lazy(() =>
+  import("./pages/CourseSharePage").then((module) => ({ default: module.CourseSharePage })),
+);
 const KnowledgeDocsPage = lazy(() =>
   import("./pages/KnowledgeDocsPage").then((module) => ({ default: module.KnowledgeDocsPage })),
 );
@@ -228,6 +231,7 @@ function App() {
                     <Route path="library" element={withRouteFallback(<LibraryPage />)} />
                     <Route path="library/:fileId" element={withRouteFallback(<LibraryFilePage />)} />
                     <Route path="profile" element={withRouteFallback(<UserProfilePage />)} />
+                    <Route path="share/courses/:token" element={withRouteFallback(<CourseSharePage />)} />
                     <Route path="courses/:courseId" element={<CourseEntryRedirect />} />
                     {(Object.entries(COURSE_PAGE_ELEMENTS) as Array<[CourseRouteId, ReactElement]>).map(
                       ([routeId, element]) => (

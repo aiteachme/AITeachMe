@@ -343,7 +343,7 @@ const VIEWER_STYLES: Record<MarkdownViewerVariant, ViewerStyles> = {
     codeLanguageBadge: "border-b border-[#DEE0E3] bg-[#F2F3F5] px-4 py-2 text-[11px] font-medium uppercase tracking-[0.08em] text-[#646A73] dark:border-slate-800 dark:bg-slate-900/95 dark:text-slate-400",
     codePre: "overflow-x-auto bg-[#F7F8FA] px-4 py-4 font-mono text-[13px] leading-6 text-[#24292F] dark:bg-slate-950 dark:text-slate-100",
     tableShell: "my-7 overflow-x-auto rounded-lg border border-[#DEE0E3] bg-white dark:border-slate-800 dark:bg-slate-950/60",
-    table: "min-w-full border-collapse text-[14px] sm:text-[15px]",
+    table: "w-full min-w-[560px] border-collapse text-[14px] sm:text-[15px]",
     thead: "bg-transparent",
     th: "border border-[#DEE0E3] bg-[#F5F6F7] px-3 py-2.5 text-left text-[13px] font-semibold leading-6 text-[#1F2329] dark:border-slate-800 dark:bg-slate-900/80 dark:text-slate-100 sm:px-4 sm:py-3 sm:text-[14px]",
     td: "border border-[#DEE0E3] px-3 py-2.5 leading-6 text-[#2F343D] dark:border-slate-800 dark:text-slate-300 sm:px-4 sm:py-3",

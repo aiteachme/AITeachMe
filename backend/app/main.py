@@ -544,6 +544,7 @@ def _register_routers(app: FastAPI) -> None:
     from app.api.chats import global_router as global_chats_router
     from app.api.chats import router as chats_router
     from app.api.exams import router as exams_router
+    from app.api.course_shares import router as course_shares_router
     from app.api.export_import import router as export_import_router
     from app.api.files import router as files_router
     from app.api.health import router as health_router
@@ -564,6 +565,7 @@ def _register_routers(app: FastAPI) -> None:
     app.include_router(chats_router)
     app.include_router(exams_router)
     app.include_router(profile_router)
+    app.include_router(course_shares_router)
     app.include_router(export_import_router)
 
 

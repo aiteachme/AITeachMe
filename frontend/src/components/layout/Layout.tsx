@@ -48,6 +48,7 @@ export function Layout() {
   const isExamFocusPage = /^\/courses?\/[^/]+\/exams\/\d+$/.test(pathname);
   const isAssistantPage = pathname === "/assistant";
   const isHomePage = pathname === "/";
+  const isSharePage = pathname.startsWith("/share/");
   const courseId = useMemo(() => getCourseIdFromPathname(pathname), [pathname]);
   const routeSegment = getCourseRouteSegmentFromPathname(pathname);
   const isKnowledgeDocsPage = !!courseId && routeSegment === "knowledge-docs";
@@ -123,7 +124,7 @@ export function Layout() {
     hasCoursePageTopNavigation &&
     !isExamFocusPage,
   );
-  const shouldShowTopBar = !isExamFocusPage && !isAssistantPage && !hasCoursePageTopNavigation;
+  const shouldShowTopBar = !isExamFocusPage && !isAssistantPage && !isSharePage && !hasCoursePageTopNavigation;
   const routeOutlet = <Outlet key={pathname} />;
   const contentContainerClassName = shouldShowTopBar
     ? cn(
@@ -174,11 +175,11 @@ export function Layout() {
             ) : null}
 
             <main className="relative flex min-h-0 w-full flex-1 flex-col overflow-x-hidden overflow-y-auto bg-transparent">
-              {isFullBleed || pathname === "/" || isAssistantPage ? (
+              {isFullBleed || pathname === "/" || isAssistantPage || isSharePage ? (
                 <div
                   className={cn(
                     "flex min-h-0 w-full flex-1 flex-col",
-                    !isElectron && "min-h-[calc(100dvh-4rem)]",
+                    !isElectron && (isSharePage ? "min-h-dvh" : "min-h-[calc(100dvh-4rem)]"),
                   )}
                 >
                   {routeOutlet}
@@ -194,6 +195,7 @@ export function Layout() {
             defaultPageContext={defaultAiPageContext}
             suppressFloatingTrigger={
               (isMobileSidebarOpen && !isExamFocusPage) ||
+              isSharePage ||
               isHomePage ||
               isCourseDashboardOrBuild ||
               isKnowledgeDocBuildActive

@@ -44,6 +44,7 @@ from app.models.knowledge_unit import KnowledgeAlias, KnowledgeRevision, Knowled
 from app.models.profile import UserKnowledgeState
 from app.models.raw_file import RawFile, RawFileAsset, CourseFileLink
 from app.models.course import Course
+from app.models.course_share import CourseShare
 from app.models.system import SystemRuntimeSettings
 from app.models.user import User
 
@@ -89,6 +90,7 @@ __all__ = [
     "ReviewTaskStatus",
     "ReviewTaskType",
     "Course",
+    "CourseShare",
     "CourseFileLink",
     "SystemRuntimeSettings",
     "TaskStatus",
