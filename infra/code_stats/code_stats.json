@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-06-22T03:57:18.192685",
-  "total_commits_analyzed": 1940,
+  "generated_at": "2026-06-29T03:37:54.750137",
+  "total_commits_analyzed": 2016,
   "stats": [
     {
       "date": "2026-03-11",
@@ -15521,6 +15521,614 @@
       "code_lines": 226957,
       "other_lines": 41955,
       "message": "fix: 修复知识文档与模型切换交互"
+    },
+    {
+      "date": "2026-06-22",
+      "commit": "0ccdd54",
+      "total_lines": 268912,
+      "code_lines": 226957,
+      "other_lines": 41955,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-06-22",
+      "commit": "468dc3f",
+      "total_lines": 268947,
+      "code_lines": 226991,
+      "other_lines": 41956,
+      "message": "style: 优化首页首屏与知识文档渲染"
+    },
+    {
+      "date": "2026-06-22",
+      "commit": "11708f5",
+      "total_lines": 269960,
+      "code_lines": 227888,
+      "other_lines": 42072,
+      "message": "fix: 完善测验预生成链路与生成状态同步"
+    },
+    {
+      "date": "2026-06-22",
+      "commit": "12c621c",
+      "total_lines": 271026,
+      "code_lines": 228856,
+      "other_lines": 42170,
+      "message": "fix: 完善知识图谱同步兜底与默认测验预热"
+    },
+    {
+      "date": "2026-06-22",
+      "commit": "b86fbab",
+      "total_lines": 270900,
+      "code_lines": 228768,
+      "other_lines": 42132,
+      "message": "chore: 同步 OpenAPI 生成客户端"
+    },
+    {
+      "date": "2026-06-22",
+      "commit": "849ba25",
+      "total_lines": 270975,
+      "code_lines": 228835,
+      "other_lines": 42140,
+      "message": "fix: 修复测验兜底与解析展示细节"
+    },
+    {
+      "date": "2026-06-22",
+      "commit": "9027c78",
+      "total_lines": 271060,
+      "code_lines": 228907,
+      "other_lines": 42153,
+      "message": "fix: 隔离不可信资料的提示词安全边界"
+    },
+    {
+      "date": "2026-06-22",
+      "commit": "0b74ca0",
+      "total_lines": 271803,
+      "code_lines": 229589,
+      "other_lines": 42214,
+      "message": "feat: 增加用户级学习画像入口"
+    },
+    {
+      "date": "2026-06-22",
+      "commit": "f9cfc59",
+      "total_lines": 272276,
+      "code_lines": 229982,
+      "other_lines": 42294,
+      "message": "fix: 优化知识文档性能与训练解锁"
+    },
+    {
+      "date": "2026-06-22",
+      "commit": "acc104e",
+      "total_lines": 272323,
+      "code_lines": 230024,
+      "other_lines": 42299,
+      "message": "fix: 优化演示课程卡片与文档生成策略"
+    },
+    {
+      "date": "2026-06-22",
+      "commit": "c595ec0",
+      "total_lines": 272316,
+      "code_lines": 230017,
+      "other_lines": 42299,
+      "message": "fix: 随机选择主模型网关"
+    },
+    {
+      "date": "2026-06-22",
+      "commit": "382a72f",
+      "total_lines": 272316,
+      "code_lines": 230017,
+      "other_lines": 42299,
+      "message": "chore: release v0.1.1"
+    },
+    {
+      "date": "2026-06-22",
+      "commit": "30a79d6",
+      "total_lines": 272373,
+      "code_lines": 230068,
+      "other_lines": 42305,
+      "message": "fix: 优化考试生成链路体验"
+    },
+    {
+      "date": "2026-06-22",
+      "commit": "8213f28",
+      "total_lines": 272373,
+      "code_lines": 230068,
+      "other_lines": 42305,
+      "message": "chore: release v0.1.2"
+    },
+    {
+      "date": "2026-06-23",
+      "commit": "74a8f1f",
+      "total_lines": 272100,
+      "code_lines": 229823,
+      "other_lines": 42277,
+      "message": "fix: 优化课程生成与画像体验"
+    },
+    {
+      "date": "2026-06-23",
+      "commit": "f3eced1",
+      "total_lines": 272100,
+      "code_lines": 229823,
+      "other_lines": 42277,
+      "message": "chore: release v0.1.3"
+    },
+    {
+      "date": "2026-06-23",
+      "commit": "9610a52",
+      "total_lines": 272111,
+      "code_lines": 229831,
+      "other_lines": 42280,
+      "message": "fix: 延长 DocGen LLM 整体超时"
+    },
+    {
+      "date": "2026-06-23",
+      "commit": "808df38",
+      "total_lines": 272103,
+      "code_lines": 229823,
+      "other_lines": 42280,
+      "message": "style: 优化首页提示词示例展示"
+    },
+    {
+      "date": "2026-06-23",
+      "commit": "7d943ff",
+      "total_lines": 273001,
+      "code_lines": 230584,
+      "other_lines": 42417,
+      "message": "feat: 接入课程上下文读取工具"
+    },
+    {
+      "date": "2026-06-24",
+      "commit": "0505afc",
+      "total_lines": 272452,
+      "code_lines": 230147,
+      "other_lines": 42305,
+      "message": "fix: 修复考试十题生成链路"
+    },
+    {
+      "date": "2026-06-24",
+      "commit": "7bbbd2d",
+      "total_lines": 273342,
+      "code_lines": 230900,
+      "other_lines": 42442,
+      "message": "Merge branch 'dev_ywl'"
+    },
+    {
+      "date": "2026-06-24",
+      "commit": "55bba6d",
+      "total_lines": 273393,
+      "code_lines": 230947,
+      "other_lines": 42446,
+      "message": "fix: 修复课程工具身份边界和画像页 AI 上下文"
+    },
+    {
+      "date": "2026-06-24",
+      "commit": "f092c41",
+      "total_lines": 273403,
+      "code_lines": 230956,
+      "other_lines": 42447,
+      "message": "fix: 优先使用页面上下文触发工具链"
+    },
+    {
+      "date": "2026-06-24",
+      "commit": "fd56492",
+      "total_lines": 273864,
+      "code_lines": 231358,
+      "other_lines": 42506,
+      "message": "fix: 加固 Profile 画像更新可靠性"
+    },
+    {
+      "date": "2026-06-24",
+      "commit": "9d9071a",
+      "total_lines": 274177,
+      "code_lines": 231642,
+      "other_lines": 42535,
+      "message": "fix: 修复知识文档目录与图谱状态展示问题"
+    },
+    {
+      "date": "2026-06-24",
+      "commit": "58ec5cd",
+      "total_lines": 274281,
+      "code_lines": 231740,
+      "other_lines": 42541,
+      "message": "fix: 加固预热恢复与生成兜底可信度"
+    },
+    {
+      "date": "2026-06-25",
+      "commit": "b06d46d",
+      "total_lines": 274786,
+      "code_lines": 232192,
+      "other_lines": 42594,
+      "message": "fix: 修复首页对话资料链路并优化社区入口"
+    },
+    {
+      "date": "2026-06-26",
+      "commit": "3893ebf",
+      "total_lines": 274783,
+      "code_lines": 232189,
+      "other_lines": 42594,
+      "message": "style: refine home backdrop"
+    },
+    {
+      "date": "2026-06-26",
+      "commit": "05975d5",
+      "total_lines": 274858,
+      "code_lines": 232268,
+      "other_lines": 42590,
+      "message": "docs: 新增 Fumadocs 文档站"
+    },
+    {
+      "date": "2026-06-26",
+      "commit": "cc447df",
+      "total_lines": 274892,
+      "code_lines": 232301,
+      "other_lines": 42591,
+      "message": "feat: 添加文档入口并修正文档导航"
+    },
+    {
+      "date": "2026-06-26",
+      "commit": "9fff93c",
+      "total_lines": 274977,
+      "code_lines": 232378,
+      "other_lines": 42599,
+      "message": "fix: 优化全局对话全页展示与附件反馈"
+    },
+    {
+      "date": "2026-06-26",
+      "commit": "ea64e54",
+      "total_lines": 273097,
+      "code_lines": 230709,
+      "other_lines": 42388,
+      "message": "feat: 优化 PaddleOCR 解析链路与资料删除确认"
+    },
+    {
+      "date": "2026-06-26",
+      "commit": "2397b1e",
+      "total_lines": 275464,
+      "code_lines": 232814,
+      "other_lines": 42650,
+      "message": "feat: 优化首页建课链路与文档站"
+    },
+    {
+      "date": "2026-06-26",
+      "commit": "9e7611a",
+      "total_lines": 276450,
+      "code_lines": 233692,
+      "other_lines": 42758,
+      "message": "Merge remote-tracking branch 'origin/dev_cy' into "
+    },
+    {
+      "date": "2026-06-26",
+      "commit": "7c76b0f",
+      "total_lines": 276450,
+      "code_lines": 233692,
+      "other_lines": 42758,
+      "message": "docs: 补充考试页面截图"
+    },
+    {
+      "date": "2026-06-27",
+      "commit": "9e10f3e",
+      "total_lines": 276572,
+      "code_lines": 233798,
+      "other_lines": 42774,
+      "message": "feat: 优化首页建课引导和教程文档"
+    },
+    {
+      "date": "2026-06-27",
+      "commit": "5abd4ba",
+      "total_lines": 276572,
+      "code_lines": 233798,
+      "other_lines": 42774,
+      "message": "fix: 修复多提交推送部署路径分类"
+    },
+    {
+      "date": "2026-06-27",
+      "commit": "50fd4a7",
+      "total_lines": 276445,
+      "code_lines": 233688,
+      "other_lines": 42757,
+      "message": "fix: 修复线上文档入口部署"
+    },
+    {
+      "date": "2026-06-27",
+      "commit": "521e535",
+      "total_lines": 276451,
+      "code_lines": 233694,
+      "other_lines": 42757,
+      "message": "fix: 修复课程文档入口跳转"
+    },
+    {
+      "date": "2026-06-27",
+      "commit": "e886ad4",
+      "total_lines": 276476,
+      "code_lines": 233715,
+      "other_lines": 42761,
+      "message": "fix: 延长 Planner 模型调用超时预算"
+    },
+    {
+      "date": "2026-06-27",
+      "commit": "417b203",
+      "total_lines": 276603,
+      "code_lines": 233825,
+      "other_lines": 42778,
+      "message": "fix: 避免 Planner 辅助理解超时阻断方案生成"
+    },
+    {
+      "date": "2026-06-27",
+      "commit": "d3e05d0",
+      "total_lines": 276770,
+      "code_lines": 233969,
+      "other_lines": 42801,
+      "message": "fix: 为 Planner 诊断和课程身份添加降级兜底"
+    },
+    {
+      "date": "2026-06-27",
+      "commit": "b330d27",
+      "total_lines": 276770,
+      "code_lines": 233969,
+      "other_lines": 42801,
+      "message": "fix: 修复部署烟测 Pod 选择管道失败"
+    },
+    {
+      "date": "2026-06-27",
+      "commit": "2740fc1",
+      "total_lines": 276809,
+      "code_lines": 234001,
+      "other_lines": 42808,
+      "message": "fix: 修复验收发现的契约问题"
+    },
+    {
+      "date": "2026-06-27",
+      "commit": "6ae62eb",
+      "total_lines": 276862,
+      "code_lines": 234049,
+      "other_lines": 42813,
+      "message": "fix: 避免 Planner 降级课程名过泛"
+    },
+    {
+      "date": "2026-06-27",
+      "commit": "8d5f481",
+      "total_lines": 276862,
+      "code_lines": 234049,
+      "other_lines": 42813,
+      "message": "fix: 让文档入口当前页跳转"
+    },
+    {
+      "date": "2026-06-27",
+      "commit": "86f2e34",
+      "total_lines": 277132,
+      "code_lines": 234294,
+      "other_lines": 42838,
+      "message": "fix: 为 Planner 跳过诊断增加方案兜底"
+    },
+    {
+      "date": "2026-06-27",
+      "commit": "cd4006a",
+      "total_lines": 277311,
+      "code_lines": 234450,
+      "other_lines": 42861,
+      "message": "fix: 完善画像与上传限制边界"
+    },
+    {
+      "date": "2026-06-27",
+      "commit": "fcf346e",
+      "total_lines": 277132,
+      "code_lines": 234294,
+      "other_lines": 42838,
+      "message": "revert: 回滚画像与上传限制边界变更"
+    },
+    {
+      "date": "2026-06-27",
+      "commit": "7700da2",
+      "total_lines": 277155,
+      "code_lines": 234311,
+      "other_lines": 42844,
+      "message": "fix: 识别 RPM 限流并避免误切备用网关"
+    },
+    {
+      "date": "2026-06-27",
+      "commit": "4c2ffbc",
+      "total_lines": 277601,
+      "code_lines": 234705,
+      "other_lines": 42896,
+      "message": "fix: 补齐 LLM 等待追踪并限制 KG 预取并发"
+    },
+    {
+      "date": "2026-06-27",
+      "commit": "d10934d",
+      "total_lines": 277889,
+      "code_lines": 234969,
+      "other_lines": 42920,
+      "message": "fix: 限制导入索引后台向量并发"
+    },
+    {
+      "date": "2026-06-27",
+      "commit": "0ceca92",
+      "total_lines": 277968,
+      "code_lines": 235036,
+      "other_lines": 42932,
+      "message": "fix: 为向量生成增加请求超时"
+    },
+    {
+      "date": "2026-06-27",
+      "commit": "c28d998",
+      "total_lines": 277970,
+      "code_lines": 235038,
+      "other_lines": 42932,
+      "message": "fix: 降低导入索引后台向量并发"
+    },
+    {
+      "date": "2026-06-27",
+      "commit": "5239d4e",
+      "total_lines": 277974,
+      "code_lines": 235042,
+      "other_lines": 42932,
+      "message": "fix: 缩小导入索引向量批次"
+    },
+    {
+      "date": "2026-06-27",
+      "commit": "86c44c9",
+      "total_lines": 278148,
+      "code_lines": 235194,
+      "other_lines": 42954,
+      "message": "fix: 为 DocGen 文件摘要增加本地降级"
+    },
+    {
+      "date": "2026-06-27",
+      "commit": "88f1e38",
+      "total_lines": 278249,
+      "code_lines": 235286,
+      "other_lines": 42963,
+      "message": "fix: 跳过失败的 DocGen 章末测试"
+    },
+    {
+      "date": "2026-06-27",
+      "commit": "ceb2c71",
+      "total_lines": 278268,
+      "code_lines": 235302,
+      "other_lines": 42966,
+      "message": "fix: 缩短 DocGen 非关键 LLM 等待"
+    },
+    {
+      "date": "2026-06-27",
+      "commit": "9e54793",
+      "total_lines": 278262,
+      "code_lines": 235298,
+      "other_lines": 42964,
+      "message": "fix: 区分线上游客身份文案"
+    },
+    {
+      "date": "2026-06-27",
+      "commit": "6e87c03",
+      "total_lines": 277883,
+      "code_lines": 234958,
+      "other_lines": 42925,
+      "message": "fix: 取消 Planner 本地兜底方案生成"
+    },
+    {
+      "date": "2026-06-27",
+      "commit": "f2b88da",
+      "total_lines": 277896,
+      "code_lines": 234971,
+      "other_lines": 42925,
+      "message": "fix: 加快模型探活失败反馈"
+    },
+    {
+      "date": "2026-06-27",
+      "commit": "7bf060d",
+      "total_lines": 277975,
+      "code_lines": 235035,
+      "other_lines": 42940,
+      "message": "fix: 限制备用模型网关重试"
+    },
+    {
+      "date": "2026-06-27",
+      "commit": "fda211a",
+      "total_lines": 278470,
+      "code_lines": 235435,
+      "other_lines": 43035,
+      "message": "fix: 保留规划任务并精简构建耗时提示"
+    },
+    {
+      "date": "2026-06-27",
+      "commit": "7bf6136",
+      "total_lines": 278476,
+      "code_lines": 235440,
+      "other_lines": 43036,
+      "message": "fix: 修复首页先聊再建课场景分流"
+    },
+    {
+      "date": "2026-06-27",
+      "commit": "4f6d407",
+      "total_lines": 278477,
+      "code_lines": 235441,
+      "other_lines": 43036,
+      "message": "fix: 阻止首页工作中重复触发建课入口"
+    },
+    {
+      "date": "2026-06-27",
+      "commit": "dbbd934",
+      "total_lines": 278477,
+      "code_lines": 235441,
+      "other_lines": 43036,
+      "message": "fix: 校准构建估时并补齐用户教程"
+    },
+    {
+      "date": "2026-06-27",
+      "commit": "30a86d4",
+      "total_lines": 278477,
+      "code_lines": 235441,
+      "other_lines": 43036,
+      "message": "fix: 修复文档截图静态资源部署"
+    },
+    {
+      "date": "2026-06-27",
+      "commit": "ff9db83",
+      "total_lines": 278477,
+      "code_lines": 235441,
+      "other_lines": 43036,
+      "message": "fix: 调整深度推理构建估时"
+    },
+    {
+      "date": "2026-06-27",
+      "commit": "c292f10",
+      "total_lines": 278477,
+      "code_lines": 235441,
+      "other_lines": 43036,
+      "message": "fix: 下调默认构建估时"
+    },
+    {
+      "date": "2026-06-27",
+      "commit": "cc109a2",
+      "total_lines": 278477,
+      "code_lines": 235441,
+      "other_lines": 43036,
+      "message": "fix: 修复文档静态图片和搜索索引响应"
+    },
+    {
+      "date": "2026-06-27",
+      "commit": "cf30fd5",
+      "total_lines": 278528,
+      "code_lines": 235483,
+      "other_lines": 43045,
+      "message": "fix: 保留断连后的规划后台任务"
+    },
+    {
+      "date": "2026-06-27",
+      "commit": "8823a2a",
+      "total_lines": 278551,
+      "code_lines": 235505,
+      "other_lines": 43046,
+      "message": "fix: 恢复云端设置分区和反馈入口"
+    },
+    {
+      "date": "2026-06-28",
+      "commit": "c769fec",
+      "total_lines": 278690,
+      "code_lines": 235616,
+      "other_lines": 43074,
+      "message": "fix: 同步 Android 草稿课程公开接口"
+    },
+    {
+      "date": "2026-06-28",
+      "commit": "c7b249f",
+      "total_lines": 278690,
+      "code_lines": 235616,
+      "other_lines": 43074,
+      "message": "docs: 添加用户引导动图"
+    },
+    {
+      "date": "2026-06-28",
+      "commit": "764f8d8",
+      "total_lines": 278690,
+      "code_lines": 235616,
+      "other_lines": 43074,
+      "message": "docs: 在文档首页展示引导动图"
+    },
+    {
+      "date": "2026-06-28",
+      "commit": "0fbe041",
+      "total_lines": 278690,
+      "code_lines": 235616,
+      "other_lines": 43074,
+      "message": "fix: 撤回文档引导动图并精简首页"
     }
   ]
 }
