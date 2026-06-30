@@ -1,5 +1,5 @@
-import { memo, useEffect, useMemo, useState } from "react";
-import { AlertCircle, ChevronRight, Loader2, SquareTerminal } from "lucide-react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { AlertCircle, Check, ChevronRight, Copy, Loader2, Paperclip, SquareTerminal } from "lucide-react";
 import type { ChatContextItem } from "../../api/generated/model";
 import { type ChatClientAction, type ChatMessageToolRun, type ChatSessionMessage } from "../../hooks/useChatSession";
 import { cn } from "../../lib/utils";
@@ -24,7 +24,24 @@ export const ChatTranscript = memo(function ChatTranscript({
     [messages],
   );
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const isSidebar = presentation === "sidebar";
+
+  const handleCopyMessage = useCallback(async (message: ChatSessionMessage) => {
+    const text = message.content.trim();
+    if (!text) {
+      return;
+    }
+    try {
+      await copyTextToClipboard(text);
+      setCopiedMessageId(message.localId);
+      window.setTimeout(() => {
+        setCopiedMessageId((current) => current === message.localId ? null : current);
+      }, 1400);
+    } catch {
+      setCopiedMessageId(null);
+    }
+  }, []);
 
   useEffect(() => {
     if (!hasStreamingAssistant) {
@@ -56,7 +73,7 @@ export const ChatTranscript = memo(function ChatTranscript({
           );
 
           return (
-            <div key={message.localId} className="flex w-full justify-start">
+            <div key={message.localId} className="group/message flex w-full justify-start">
               <div className={cn(
                 "min-w-0 w-full max-w-[min(780px,100%)]",
                 isSidebar ? "px-0" : "px-1",
@@ -90,6 +107,13 @@ export const ChatTranscript = memo(function ChatTranscript({
                   onSubmitOption={onSubmitClientActionOption}
                 />
 
+                <MessageCopyControls
+                  align="start"
+                  copied={copiedMessageId === message.localId}
+                  disabled={!message.content.trim() || message.status === "streaming"}
+                  onCopy={() => void handleCopyMessage(message)}
+                />
+
                 {message.errorDetail ? (
                   <div
                     className={cn(
@@ -117,11 +141,26 @@ export const ChatTranscript = memo(function ChatTranscript({
         }
 
         return (
-          <div key={message.localId} className="flex w-full justify-end">
+          <div key={message.localId} className="group/message flex w-full justify-end">
             <div className={cn(isSidebar ? "max-w-[88%]" : "max-w-[min(680px,82%)]")}>
               <p className="whitespace-pre-wrap rounded-[22px] bg-zinc-950 px-4 py-2.5 text-[14px] font-medium leading-6 text-white shadow-[0_16px_36px_-26px_rgba(24,24,27,0.95)] dark:bg-slate-100 dark:text-slate-950 dark:shadow-[0_18px_30px_-24px_rgba(255,255,255,0.22)] sm:px-5">
                 {message.content}
               </p>
+              {getAttachedFileCount(message) > 0 ? (
+                <div className="mt-1.5 flex justify-end pr-1">
+                  <span className="inline-flex h-6 items-center gap-1.5 rounded-full border border-zinc-200 bg-white/85 px-2.5 text-[11px] font-medium text-zinc-500 shadow-sm dark:border-slate-800 dark:bg-slate-900/85 dark:text-slate-400">
+                    <Paperclip className="h-3 w-3" strokeWidth={2} />
+                    已附加 {getAttachedFileCount(message)} 份资料
+                  </span>
+                </div>
+              ) : null}
+
+              <MessageCopyControls
+                align="end"
+                copied={copiedMessageId === message.localId}
+                disabled={!message.content.trim()}
+                onCopy={() => void handleCopyMessage(message)}
+              />
 
               {message.errorDetail ? (
                 <div
@@ -143,6 +182,65 @@ export const ChatTranscript = memo(function ChatTranscript({
     </div>
   );
 });
+
+function getAttachedFileCount(message: ChatSessionMessage): number {
+  return message.attachedFileCount ?? message.attachedFileIds?.length ?? 0;
+}
+
+function MessageCopyControls({
+  align,
+  copied,
+  disabled,
+  onCopy,
+}: {
+  align: "start" | "end";
+  copied: boolean;
+  disabled: boolean;
+  onCopy: () => void;
+}) {
+  if (disabled) {
+    return null;
+  }
+  return (
+    <div
+      className={cn(
+        "mt-1.5 flex h-7 items-center opacity-100 transition sm:opacity-0 sm:group-hover/message:opacity-100 sm:focus-within:opacity-100",
+        align === "end" ? "justify-end pr-1" : "justify-start pl-1",
+      )}
+    >
+      <button
+        type="button"
+        onClick={onCopy}
+        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-900 focus:outline-none focus:ring-4 focus:ring-zinc-900/10 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+        title={copied ? "已复制" : "复制"}
+        aria-label={copied ? "已复制" : "复制消息"}
+      >
+        {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+      </button>
+    </div>
+  );
+}
+
+async function copyTextToClipboard(text: string): Promise<void> {
+  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  if (typeof document === "undefined") {
+    throw new Error("Clipboard API is unavailable");
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  textarea.style.top = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  document.body.removeChild(textarea);
+}
 
 function AssistantMessageBody({ message }: { message: ChatSessionMessage }) {
   const parts = splitContentWithToolRuns(message.content, message.toolRuns ?? []);

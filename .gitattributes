@@ -14,6 +14,8 @@
 *.json  eol=lf
 *.json.example eol=lf
 *.toml  eol=lf
+*.conf  eol=lf
+*.conf.template eol=lf
 *.lock  eol=lf
 *.sample eol=lf
 *.bat   eol=crlf

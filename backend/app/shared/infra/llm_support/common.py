@@ -30,7 +30,7 @@ from app.shared.infra.llm_support.routing import (
     get_task_profile,
     normalize_task_type,
 )
-from app.shared.infra.observability.trace import get_llm_trace_context
+from app.shared.infra.observability.trace import get_llm_trace_context, trace_substep
 from app.shared.infra.observability.llm_stats import LLMCallRecord, get_tracker
 from app.shared.infra.settings.support import (
     detect_llm_provider_from_base_url,
@@ -181,23 +181,135 @@ class LLMConcurrencyLimiter:
 
     async def __aenter__(self) -> "LLMConcurrencyLimiter":
         loop = asyncio.get_running_loop()
+        wait_started_at = 0.0
+        wait_trace_cm: Any | None = None
+        wait_trace_run: Any | None = None
         while True:
             waiter: _LimiterWaiter | None = None
+            acquired = False
+            acquired_snapshot: dict[str, Any] | None = None
+            wait_trace_snapshot: dict[str, Any] | None = None
             with self._lock:
-                if self._active < self._effective_limit_locked():
+                effective_limit = self._effective_limit_locked()
+                if self._active < effective_limit:
                     self._active += 1
                     self._record_current_holder_locked()
-                    return self
-                future: asyncio.Future[None] = loop.create_future()
-                waiter = _LimiterWaiter(loop=loop, future=future)
-                self._waiters.append(waiter)
+                    acquired = True
+                    if wait_trace_cm is not None:
+                        acquired_snapshot = self._trace_snapshot_locked(
+                            effective_limit=effective_limit,
+                        )
+                else:
+                    if wait_trace_cm is None:
+                        wait_started_at = time.monotonic()
+                        wait_trace_snapshot = self._trace_snapshot_locked(
+                            effective_limit=effective_limit,
+                            queued_waiter=True,
+                        )
+                    future: asyncio.Future[None] = loop.create_future()
+                    waiter = _LimiterWaiter(loop=loop, future=future)
+                    self._waiters.append(waiter)
+            if acquired:
+                if wait_trace_cm is not None:
+                    self._close_wait_trace(
+                        wait_trace_cm,
+                        wait_trace_run,
+                        wait_started_at=wait_started_at,
+                        outcome="acquired",
+                        snapshot=acquired_snapshot,
+                    )
+                return self
+            if wait_trace_snapshot is not None:
+                wait_started_at = time.monotonic()
+                wait_trace_cm, wait_trace_run = self._open_wait_trace(wait_trace_snapshot)
             try:
                 await asyncio.wait_for(waiter.future, timeout=0.5)
             except asyncio.TimeoutError:
                 self._remove_waiter(waiter)
             except asyncio.CancelledError:
                 self._remove_waiter(waiter)
+                if wait_trace_cm is not None:
+                    self._close_wait_trace(
+                        wait_trace_cm,
+                        wait_trace_run,
+                        wait_started_at=wait_started_at,
+                        outcome="cancelled",
+                    )
                 raise
+
+    def _trace_snapshot_locked(
+        self,
+        *,
+        effective_limit: int | None = None,
+        queued_waiter: bool = False,
+    ) -> dict[str, Any]:
+        configured_limit = get_llm_concurrency_limit()
+        effective = int(effective_limit or self._effective_limit_locked())
+        waiters = len(self._waiters) + (1 if queued_waiter else 0)
+        cooldown_remaining_ms = int(max(0.0, self._rate_limit_until - time.monotonic()) * 1000)
+        return {
+            "configured_limit": configured_limit,
+            "effective_limit": effective,
+            "active_count": self._active,
+            "waiter_count": waiters,
+            "rate_limit_cap": self._rate_limit_cap or 0,
+            "cooldown_remaining_ms": cooldown_remaining_ms,
+        }
+
+    def _open_wait_trace(self, snapshot: Mapping[str, Any]) -> tuple[Any | None, Any | None]:
+        try:
+            trace_cm = trace_substep(
+                "LLM：等待并发槽",
+                metadata={"substep": "llm.concurrency.wait", **dict(snapshot)},
+                tags=["llm:concurrency", "llm:wait"],
+                run_type="tool",
+                inputs=dict(snapshot),
+            )
+            return trace_cm, trace_cm.__enter__()
+        except Exception as exc:
+            logger.warning(
+                "llm_concurrency_wait_trace_start_failed",
+                error_type=type(exc).__name__,
+                error=str(exc),
+                **trace_log_fields(),
+            )
+            return None, None
+
+    def _close_wait_trace(
+        self,
+        trace_cm: Any | None,
+        trace_run: Any | None,
+        *,
+        wait_started_at: float,
+        outcome: str,
+        snapshot: Mapping[str, Any] | None = None,
+    ) -> None:
+        if trace_cm is None:
+            return
+        outputs = {
+            **dict(snapshot or {}),
+            "wait_ms": int(max(0.0, time.monotonic() - wait_started_at) * 1000),
+            "outcome": outcome,
+        }
+        try:
+            if trace_run is not None:
+                trace_run.end(outputs=outputs)
+        except Exception as exc:
+            logger.warning(
+                "llm_concurrency_wait_trace_end_failed",
+                error_type=type(exc).__name__,
+                error=str(exc),
+                **trace_log_fields(),
+            )
+        try:
+            trace_cm.__exit__(None, None, None)
+        except Exception as exc:
+            logger.warning(
+                "llm_concurrency_wait_trace_close_failed",
+                error_type=type(exc).__name__,
+                error=str(exc),
+                **trace_log_fields(),
+            )
 
     def _record_current_holder_locked(self) -> None:
         task = asyncio.current_task()
@@ -837,7 +949,12 @@ _CONCURRENCY_RATE_LIMIT_MARKERS = (
     "concurrent limit exceeded",
     "too many concurrent",
     "too many simultaneous",
+    "requests-per-minute limit exceeded",
+    "request per minute limit exceeded",
+    "rate limit exceeded",
+    "rate_limit_exceeded",
     "rate_limit_error",
+    "too many requests",
 )
 
 
@@ -854,6 +971,8 @@ def should_try_endpoint_fallback(error: Exception | None) -> bool:
     """Return whether a failed primary attempt should advance to fallback endpoints."""
 
     if error is None:
+        return False
+    if is_concurrency_rate_limit_error(error):
         return False
     if isinstance(error, LLMTimeoutError):
         return True
@@ -910,6 +1029,18 @@ def effective_max_retries(context: CompletionContext, call_kwargs: Mapping[str, 
     except (TypeError, ValueError):
         return context.profile.max_retries
     return max(1, min(10, max_retries))
+
+
+def effective_endpoint_group_max_retries(
+    context: CompletionContext,
+    call_kwargs: Mapping[str, Any] | None = None,
+) -> int:
+    """Cap fallback endpoint retries so an unhealthy backup gateway cannot occupy LLM slots for minutes."""
+
+    max_retries = effective_max_retries(context, call_kwargs)
+    if context.endpoint_role == "fallback":
+        return 1
+    return max_retries
 
 
 def pop_overall_timeout_s(call_kwargs: dict[str, Any]) -> float | None:

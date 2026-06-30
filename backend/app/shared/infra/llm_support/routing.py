@@ -32,6 +32,7 @@ class TaskType:
     REASONING = "reasoning"
     DOCGEN = "docgen"
     DOCGEN_LIGHT = "docgen_light"
+    EMBEDDING = "embedding"
     IMAGE_GENERATION = "image_generation"
     DEFAULT = "default"
 
@@ -55,6 +56,7 @@ _DEFAULT_PROFILES: dict[str, LLMCallProfile] = {
     TaskType.REASONING: LLMCallProfile(timeout_s=480, max_retries=3),
     TaskType.DOCGEN: LLMCallProfile(timeout_s=600, max_retries=3),
     TaskType.DOCGEN_LIGHT: LLMCallProfile(timeout_s=480, max_retries=3),
+    TaskType.EMBEDDING: LLMCallProfile(timeout_s=120, max_retries=1),
     TaskType.IMAGE_GENERATION: LLMCallProfile(timeout_s=600, max_retries=3),
     TaskType.DEFAULT: LLMCallProfile(timeout_s=240, max_retries=3),
 }

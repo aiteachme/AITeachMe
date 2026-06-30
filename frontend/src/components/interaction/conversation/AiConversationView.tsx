@@ -82,6 +82,7 @@ interface PendingAutoSendRequest {
   source: string | null;
   pageContext: AiInteractionOpenRequest["pageContext"];
   attachedFileIds: string[];
+  newSession: boolean;
 }
 
 const QUICK_CHAT_UPDATED_EVENT = "aiteachme:quick-chat-updated";
@@ -271,25 +272,31 @@ function resolveConversationScene(input: {
   if (requestedScene) {
     return requestedScene;
   }
-  const sourceScene = sceneFromSource(input.requestedSource, false) ?? sceneFromSource(input.selectedSessionSource, false);
-  if (sourceScene) {
-    return sourceScene;
-  }
-  if (input.scope?.type === "library") {
+  if (input.scope?.type === "global" && input.hasAttachedFiles) {
     return AI_SCENE_LIBRARY_SELECTION;
   }
   if (
     input.scope?.type === "global" &&
     (
-      input.hasAttachedFiles ||
       input.selectedSessionSource?.trim() === "home_intake" ||
       looksLikeHomeIntakeTurn(input.question)
     )
   ) {
     return AI_SCENE_HOME_INTAKE;
   }
+  const requestedSourceScene = sceneFromSource(input.requestedSource, false);
+  if (requestedSourceScene) {
+    return requestedSourceScene;
+  }
+  if (input.scope?.type === "library") {
+    return AI_SCENE_LIBRARY_SELECTION;
+  }
   if (looksLikeWebResearchTurn(input.question)) {
     return AI_SCENE_WEB_RESEARCH;
+  }
+  const selectedSessionScene = sceneFromSource(input.selectedSessionSource, false);
+  if (selectedSessionScene) {
+    return selectedSessionScene;
   }
   return input.scope?.type === "course" ? AI_SCENE_COURSE_CHAT : AI_SCENE_GLOBAL_ASSISTANT;
 }
@@ -778,6 +785,7 @@ export const AiConversationView = memo(function AiConversationView({
   );
   const isPlannerConversation = selectedSession?.source === "build_planner";
   const isFullscreen = presentation === "fullscreen";
+  const canUseSidebarPresentation = scope?.type !== "global";
   const shouldShowFullscreenHistory = false;
   const currentMessagesSessionId = selectedSessionId ?? null;
   const hasLocalStreamingMessages = isStreaming && messages.length > 0;
@@ -862,7 +870,7 @@ export const AiConversationView = memo(function AiConversationView({
     [activeQuickChatContext, selectedSession],
   );
   const handleReturnToSidebar = useCallback(() => {
-    if (!onReturnToSidebar) {
+    if (!canUseSidebarPresentation || !onReturnToSidebar) {
       return;
     }
 
@@ -885,6 +893,7 @@ export const AiConversationView = memo(function AiConversationView({
     });
   }, [
     activeQuickChatContext,
+    canUseSidebarPresentation,
     chatModel,
     draft,
     draftAttachedFileIds,
@@ -904,7 +913,9 @@ export const AiConversationView = memo(function AiConversationView({
   ]);
   const handleTogglePresentation = useCallback(() => {
     if (isFullscreen) {
-      handleReturnToSidebar();
+      if (canUseSidebarPresentation) {
+        handleReturnToSidebar();
+      }
       return;
     }
     if (!scope) {
@@ -932,6 +943,7 @@ export const AiConversationView = memo(function AiConversationView({
     });
   }, [
     activeQuickChatContext,
+    canUseSidebarPresentation,
     chatModel,
     draft,
     draftAttachedFileIds,
@@ -1246,6 +1258,16 @@ export const AiConversationView = memo(function AiConversationView({
       setDraftAttachedFiles([]);
       setIsDraftUploadingFiles(false);
     }
+    if (request.newSession) {
+      requestedSessionIdRef.current = null;
+      preferEmptySessionRef.current = true;
+      pendingSelectionSubmittedRef.current = false;
+      setSelectedSessionId(null);
+      setActiveConversationSessionId(null);
+      if (!isStreaming) {
+        replaceMessages([], null);
+      }
+    }
     if (request.draft !== undefined) {
       setDraft(request.draft);
     }
@@ -1265,6 +1287,7 @@ export const AiConversationView = memo(function AiConversationView({
         source: request.source?.trim() || null,
         pageContext: request.pageContext ?? null,
         attachedFileIds: Array.from(new Set((request.attachedFileIds ?? []).map((item) => item.trim()).filter(Boolean))),
+        newSession: Boolean(request.newSession),
       });
     } else {
       setPendingAutoSendRequest(null);
@@ -1286,7 +1309,9 @@ export const AiConversationView = memo(function AiConversationView({
       requestedClientThreadId ||
       (isSameActiveQuickChatSelection ? existingQuickChatContext?.clientThreadId?.trim() ?? "" : "");
     const mappedSessionId = getQuickChatSessionId(effectiveClientThreadId);
+    const requestWantsNewSession = Boolean(request.newSession);
     const currentStreamingMessages =
+      !requestWantsNewSession &&
       isStreaming &&
       messagesRef.current.length > 0 &&
       (
@@ -1305,16 +1330,21 @@ export const AiConversationView = memo(function AiConversationView({
       request.sessionId === undefined
         ? undefined
         : request.sessionId?.trim() || null;
-    const effectiveRequestSessionId =
-      requestSessionId === undefined
-        ? mappedSessionId ?? activeStreamingSessionId
-        : requestSessionId ?? mappedSessionId ?? activeStreamingSessionId;
+    let effectiveRequestSessionId: string | null | undefined;
+    if (requestWantsNewSession) {
+      effectiveRequestSessionId = null;
+    } else if (requestSessionId === undefined) {
+      effectiveRequestSessionId = mappedSessionId ?? activeStreamingSessionId;
+    } else {
+      effectiveRequestSessionId = requestSessionId ?? mappedSessionId ?? activeStreamingSessionId;
+    }
     const shouldOpenEmptySession =
-      !effectiveRequestSessionId &&
+      requestWantsNewSession ||
+      (!effectiveRequestSessionId &&
       (
         request.sessionId === null ||
         Boolean(selectedText && (request.newSession ?? request.sessionId === undefined))
-      );
+      ));
     let restoredQuickChatMessages: ChatSessionMessage[] | null = null;
 
     if (shouldOpenEmptySession) {
@@ -1323,9 +1353,10 @@ export const AiConversationView = memo(function AiConversationView({
       pendingSelectionSubmittedRef.current = false;
       setSelectedSessionId(null);
       setActiveConversationSessionId(null);
-      const providerCachedMessages = getCachedQuickChatMessages(effectiveClientThreadId);
-      const cachedMessages = effectiveClientThreadId ? quickChatMessagesRef.current[effectiveClientThreadId] : null;
+      const providerCachedMessages = requestWantsNewSession ? null : getCachedQuickChatMessages(effectiveClientThreadId);
+      const cachedMessages = !requestWantsNewSession && effectiveClientThreadId ? quickChatMessagesRef.current[effectiveClientThreadId] : null;
       const currentThreadMessages =
+        !requestWantsNewSession &&
         effectiveClientThreadId &&
         effectiveClientThreadId === activeQuickChatThreadIdRef.current &&
         messagesRef.current.length > 0
@@ -1484,18 +1515,22 @@ export const AiConversationView = memo(function AiConversationView({
       autoRequest.model?.trim()
         ? autoRequest.model
         : toChatRequestModel(chatModel);
+    const resolvedScene = autoRequest.scene ?? resolveConversationScene({
+      scope,
+      question: autoRequest.question,
+      hasAttachedFiles: autoRequest.attachedFileIds.length > 0,
+      selectionContext: null,
+      requestedSource: autoRequest.source,
+    });
     const result = await sendMessage({
       question: autoRequest.question,
       model: requestModel,
-      session_id: undefined,
-      scene: autoRequest.scene ?? resolveConversationScene({
-        scope,
-        question: autoRequest.question,
-        hasAttachedFiles: autoRequest.attachedFileIds.length > 0,
-        selectionContext: null,
-        requestedSource: autoRequest.source,
-      }),
-      source: autoRequest.source ?? (scope?.type === "library" ? getLibrarySelectionSource(scope.fileId) : undefined),
+      session_id: autoRequest.newSession ? null : undefined,
+      scene: resolvedScene,
+      source:
+        autoRequest.source ??
+        (scope?.type === "library" ? getLibrarySelectionSource(scope.fileId) : sourceForScene(resolvedScene)) ??
+        undefined,
       page_context: autoRequest.pageContext ?? undefined,
       attached_file_ids: autoRequest.attachedFileIds,
     });
@@ -1807,25 +1842,27 @@ export const AiConversationView = memo(function AiConversationView({
               <Search className="h-4 w-4" strokeWidth={2} />
             </button>
             <div className="flex items-center justify-end gap-1.5">
-              <button
-                type="button"
-                onClick={handleTogglePresentation}
-                className="pointer-events-auto hidden h-7 w-7 items-center justify-center rounded-md text-zinc-400 transition hover:bg-zinc-100/70 hover:text-zinc-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-200 dark:text-slate-500 dark:hover:bg-slate-800/70 dark:hover:text-slate-200 dark:focus-visible:ring-slate-700 sm:inline-flex"
-                aria-label={isFullscreen ? "切换为侧边栏" : "切换为全屏"}
-                title={isFullscreen ? "切换为侧边栏" : "切换为全屏"}
-              >
-                {isFullscreen ? (
-                  <PanelRightOpen className="h-4 w-4" strokeWidth={2} />
-                ) : (
-                  <Maximize2 className="h-4 w-4" strokeWidth={2} />
-                )}
-              </button>
+              {canUseSidebarPresentation ? (
+                <button
+                  type="button"
+                  onClick={handleTogglePresentation}
+                  className="pointer-events-auto hidden h-7 w-7 items-center justify-center rounded-md text-zinc-400 transition hover:bg-zinc-100/70 hover:text-zinc-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-200 dark:text-slate-500 dark:hover:bg-slate-800/70 dark:hover:text-slate-200 dark:focus-visible:ring-slate-700 sm:inline-flex"
+                  aria-label={isFullscreen ? "切换为侧边栏" : "切换为全屏"}
+                  title={isFullscreen ? "切换为侧边栏" : "切换为全屏"}
+                >
+                  {isFullscreen ? (
+                    <PanelRightOpen className="h-4 w-4" strokeWidth={2} />
+                  ) : (
+                    <Maximize2 className="h-4 w-4" strokeWidth={2} />
+                  )}
+                </button>
+              ) : null}
               {onClose && isFullscreen ? (
                 <AiConversationCloseButton
                   onClick={onClose}
                   className="pointer-events-auto text-zinc-400 hover:bg-zinc-100/70 hover:text-zinc-700 dark:text-slate-500 dark:hover:bg-slate-800/70 dark:hover:text-slate-200"
                 />
-              ) : onReturnToSidebar ? (
+              ) : canUseSidebarPresentation && onReturnToSidebar ? (
                 <AiConversationReturnToSidebarButton
                   onClick={handleReturnToSidebar}
                   className="pointer-events-auto text-zinc-400 hover:bg-zinc-100/70 hover:text-zinc-700 dark:text-slate-500 dark:hover:bg-slate-800/70 dark:hover:text-slate-200"
@@ -1870,11 +1907,11 @@ export const AiConversationView = memo(function AiConversationView({
             title={panelTitle}
             selectionTarget={currentSelectionTarget}
             onClose={onClose}
-            onReturnToSidebar={onReturnToSidebar ? handleReturnToSidebar : undefined}
+            onReturnToSidebar={canUseSidebarPresentation && onReturnToSidebar ? handleReturnToSidebar : undefined}
             onStartNewSession={handleStartNewSession}
             onJumpToSelectionTarget={jumpToSelectionTarget}
             onToggleHistory={handleToggleFullscreenHistory}
-            onTogglePresentation={handleTogglePresentation}
+            onTogglePresentation={canUseSidebarPresentation ? handleTogglePresentation : undefined}
             isHistoryOpen={isFullscreenHistoryPanelOpen}
             isFullscreen={isFullscreen}
             isStreaming={isStreaming}

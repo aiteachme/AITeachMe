@@ -415,7 +415,7 @@ async def _stream_diagnosis_response(state: BuildPlannerState) -> str:
     stream = acompletion_stream(
         messages,
         **planner_completion_kwargs_with_metadata(
-            PlannerModelStep.DRAFT_PLAN,
+            PlannerModelStep.DIAGNOSE_QUESTIONS,
             model_override=state.get("model_override"),
             planner_session_id=state.get("planner_session_id") or "",
             substep="生成前置诊断",
@@ -441,69 +441,88 @@ def build_compose_planner_draft_node(*, context: WorkflowContext):
             course_id=state.get("course_id", ""),
             planner_operation=state.get("planner_operation", ""),
         )
-        try:
-            if _should_generate_diagnosis_first(state):
+        if _should_generate_diagnosis_first(state):
+            try:
                 raw_output = await _stream_diagnosis_response(state)
-                latest_plan = dict(state.get("latest_plan") or {})
-                planning_note = compose_planning_note(
-                    state.get("planning_note") or latest_plan.get("planning_note"),
-                    state.get("material_note"),
-                )
-                diagnosis_payload = {
-                    "planner_stage": "diagnosis",
-                    "planning_note": planning_note,
-                    "course_name": str(latest_plan.get("course_name") or ""),
-                    "course_icon": str(latest_plan.get("course_icon") or ""),
-                    "diagnose": _parse_diagnosis_response(raw_output),
-                    "diagnose_status": "pending",
-                    "build_constraints": {},
-                }
-                material_context = state["material_context"]
-                digest_mode = (
-                    state.get("digest_mode")
-                    or latest_plan.get("digest_mode")
-                    or material_context.course_mode_decision.mode.value
-                )
-                draft_payload = normalize_planner_diagnosis_draft(
-                    diagnosis_payload,
-                    course_id=state["course_id"],
-                    user_prompt=state.get("user_prompt") or latest_plan.get("user_prompt") or "",
-                    requested_digest_mode=digest_mode,
-                    shared_inputs=material_context,
-                    latest_plan=latest_plan or None,
+                diagnose_questions = _parse_diagnosis_response(raw_output)
+            except Exception as exc:
+                logger.exception(
+                    "planner_diagnosis_generation_failed",
+                    planner_session_id=state.get("planner_session_id") or "",
+                    course_id=state.get("course_id") or "",
+                    error_type=type(exc).__name__,
+                    error=str(exc),
                 )
                 await emit_planner_event(
                     state,
-                    event="planner.diagnose.ready",
-                    detail=f"前置诊断已生成：{len(draft_payload.get('diagnose') or [])} 道选择题。",
-                    payload={
-                        "diagnose_count": len(draft_payload.get("diagnose") or []),
-                        "plan_preview": _plan_preview_payload(state, draft_payload),
-                    },
+                    event="planner.diagnose.failed",
+                    detail="前置诊断生成失败，请重试。",
+                    payload={"error_type": type(exc).__name__},
                 )
-                logger.info(
-                    "planner_diagnosis_node_completed",
-                    planner_session_id=state.get("planner_session_id", ""),
-                    diagnose_count=len(draft_payload.get("diagnose") or []),
-                )
-                return {
-                    "build_plan_draft": draft_payload,
-                    "plan_outline_markdown": "",
-                }
+                raise
+            latest_plan = dict(state.get("latest_plan") or {})
+            planning_note = compose_planning_note(
+                state.get("planning_note") or latest_plan.get("planning_note"),
+                state.get("material_note"),
+            )
+            diagnosis_payload = {
+                "planner_stage": "diagnosis",
+                "planning_note": planning_note,
+                "course_name": str(latest_plan.get("course_name") or ""),
+                "course_icon": str(latest_plan.get("course_icon") or ""),
+                "diagnose": diagnose_questions,
+                "diagnose_status": "pending",
+                "build_constraints": {},
+            }
+            material_context = state["material_context"]
+            digest_mode = (
+                state.get("digest_mode")
+                or latest_plan.get("digest_mode")
+                or material_context.course_mode_decision.mode.value
+            )
+            draft_payload = normalize_planner_diagnosis_draft(
+                diagnosis_payload,
+                course_id=state["course_id"],
+                user_prompt=state.get("user_prompt") or latest_plan.get("user_prompt") or "",
+                requested_digest_mode=digest_mode,
+                shared_inputs=material_context,
+                latest_plan=latest_plan or None,
+            )
+            await emit_planner_event(
+                state,
+                event="planner.diagnose.ready",
+                detail=f"前置诊断已生成：{len(draft_payload.get('diagnose') or [])} 道选择题。",
+                payload={
+                    "diagnose_count": len(draft_payload.get("diagnose") or []),
+                    "plan_preview": _plan_preview_payload(state, draft_payload),
+                },
+            )
+            logger.info(
+                "planner_diagnosis_node_completed",
+                planner_session_id=state.get("planner_session_id", ""),
+                diagnose_count=len(draft_payload.get("diagnose") or []),
+            )
+            return {
+                "build_plan_draft": draft_payload,
+                "plan_outline_markdown": "",
+            }
 
+        try:
             raw_output = await _stream_planner_response(state)
             parsed = _parse_planner_response(raw_output)
         except Exception as exc:
             logger.exception(
-                "planner_draft_parse_failed",
+                "planner_draft_generation_failed",
                 planner_session_id=state.get("planner_session_id") or "",
                 course_id=state.get("course_id") or "",
+                error_type=type(exc).__name__,
                 error=str(exc),
             )
             await emit_planner_event(
                 state,
                 event="planner.plan.failed",
-                detail="模型没有按协议返回前置诊断或方案内容，请重试。",
+                detail="方案生成失败或模型没有按协议返回方案内容，请重试。",
+                payload={"error_type": type(exc).__name__},
             )
             raise
 

@@ -187,6 +187,15 @@ needs_asset_ocr
 | `quality_score` | 当前 Markdown 可用性评分 |
 | `needs_enhance` | 是否触发后续 OCR/视觉增强 |
 
+外部解析超时：
+
+- MinerU 沿用快速回退预算，默认 25 秒内未拿到最终结果则按策略 fallback。
+- PaddleOCR Cloud 是异步 job API，默认等待预算为 25 秒，可通过 `PADDLE_OCR_PARSE_TIMEOUT_S` 配置，范围 15-600 秒。
+- PaddleOCR 默认每 1 秒轮询一次任务状态，尽快发现服务端已完成的 job 并进入结果下载。
+- PaddleOCR 模型默认由后端代码决定，可通过 `PADDLE_OCR_MODEL` 覆盖，便于对比不同模型的速度和质量。
+- PaddleOCR 默认使用原单任务链路；设置 `PADDLE_OCR_PARSE_MODE=parallel` 后，大 PDF 会按 `PADDLE_OCR_CHUNK_MAX_PAGES`（默认 10）拆分并以 `PADDLE_OCR_CHUNK_CONCURRENCY`（默认 4）并发提交，所有分块完成后按页序合并 Markdown。
+- PaddleOCR 如果已经拿到结果 URL 并进入下载落地阶段，会重新给下载阶段 10 秒宽限；宽限内完成就算 PaddleOCR 成功，宽限后仍未完成才按超时 fallback。
+
 ## 6. `finalize_success`
 
 输入：`parsed_markdown`, `local_asset_dir`, `parse_metadata`, `parser_used`, `quality_score`

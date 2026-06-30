@@ -130,13 +130,29 @@ def build_understand_goal_and_materials_node(*, context: WorkflowContext):
             planner_session_id=state.get("planner_session_id", ""),
             course_id=state.get("course_id", ""),
         )
-        planning_note, material_note = await run_llm_tasks(
-            [
-                lambda: _stream_planning_note(state),
-                lambda: _summarize_materials(state),
-            ],
-            lambda task: task(),
-        )
+        try:
+            planning_note, material_note = await run_llm_tasks(
+                [
+                    lambda: _stream_planning_note(state),
+                    lambda: _summarize_materials(state),
+                ],
+                lambda task: task(),
+            )
+        except Exception as exc:
+            logger.exception(
+                "planner_analysis_generation_failed",
+                planner_session_id=state.get("planner_session_id") or "",
+                course_id=state.get("course_id") or "",
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
+            await emit_planner_event(
+                state,
+                event="planner.analysis.failed",
+                detail="规划判断或资料边界生成失败，请重试。",
+                payload={"error_type": type(exc).__name__},
+            )
+            raise
         await emit_planner_event(
             state,
             event="planner.analysis.ready",

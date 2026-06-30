@@ -263,3 +263,37 @@ def test_build_chat_messages_uses_course_context_history_and_tools(monkeypatch) 
     assert "Registered agent tool catalog" in captured["system_prompt"]
     assert captured["chat_history"] == [{"role": "assistant", "content": "previous answer"}]
     assert len(captured["retrieval_chunks"]) == 1
+
+
+def test_library_learning_prompt_keeps_retrieved_file_context(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeWindow:
+        def build_context(self, *, system_prompt, retrieval_chunks, chat_history, user_query):
+            captured["system_prompt"] = system_prompt
+            captured["retrieval_chunks"] = retrieval_chunks
+            return [
+                {"role": "system", "content": system_prompt},
+                *retrieval_chunks,
+                *chat_history,
+                {"role": "user", "content": user_query},
+            ]
+
+    monkeypatch.setattr(messages, "populate_prompt", lambda template, **kwargs: template)
+
+    messages.build_chat_messages(
+        course_id="global",
+        strategy_mode=StrategyMode.EXPLAIN,
+        retrieval_results=[_retrieved(chunk_id=1, content="CPU 是中央处理器。")],
+        recent_messages=[],
+        weak_points=[],
+        recent_mistakes=[],
+        question="这份资料里的 CPU 是什么？",
+        scene="library_selection",
+        source="library_selection",
+        context_window=FakeWindow(),
+    )
+
+    assert "资料伴读助手" in str(captured["system_prompt"])
+    assert len(captured["retrieval_chunks"]) == 1
+    assert "CPU 是中央处理器" in str(captured["retrieval_chunks"][0])

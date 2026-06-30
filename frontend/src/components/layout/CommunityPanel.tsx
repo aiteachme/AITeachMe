@@ -1,6 +1,6 @@
-import { memo, useEffect, useState } from "react";
+import { memo, useEffect, useState, type ComponentType } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Loader2, X } from "lucide-react";
+import { Loader2, MessageSquareText, X } from "lucide-react";
 import { buildApiUrl } from "../../api/client";
 
 /* ------------------------------------------------------------------ */
@@ -26,46 +26,125 @@ function WeChatIcon({ className }: { className?: string }) {
 /*  Community Modal                                                    */
 /* ------------------------------------------------------------------ */
 
-const QR_CACHE_BUSTER_TTL_MS = 60_000;
-let communityQrCacheToken = 0;
-let communityQrPreloadImage: HTMLImageElement | null = null;
-
 type QrStatus = "loading" | "ready" | "error";
+type CommunityChannel = {
+  id: string;
+  title: string;
+  qrPath: string;
+  qrAlt: string;
+  Icon: ComponentType<{ className?: string }>;
+  iconShellClassName: string;
+  loaderClassName: string;
+};
 
-function withCacheBuster(src: string): string {
+// Community QR channels stay config-driven so the sidebar can keep preloading
+// every active channel. When the Feishu QR is ready, add another entry here
+// with its icon, title such as "飞书交流群", and QR endpoint/link.
+const COMMUNITY_CHANNELS: CommunityChannel[] = [
+  {
+    id: "wechat",
+    title: "微信交流群",
+    qrPath: "/api/v1/system/community/wechat-qr",
+    qrAlt: "微信群二维码",
+    Icon: WeChatIcon,
+    iconShellClassName: "bg-[#07C160]/10 text-[#07C160] dark:bg-[#07C160]/20",
+    loaderClassName: "text-[#07C160]",
+  },
+];
+const DEFAULT_COMMUNITY_CHANNEL = COMMUNITY_CHANNELS[0];
+
+const QR_CACHE_BUSTER_TTL_MS = 60_000;
+type CommunityQrPreloadEntry = {
+  image: HTMLImageElement | null;
+  src: string;
+  status: QrStatus;
+  cacheToken: number;
+};
+
+const communityQrPreloadCache = new Map<string, CommunityQrPreloadEntry>();
+
+function withCacheBuster(channel: CommunityChannel, entry: CommunityQrPreloadEntry, forceRefresh = false): string {
   const now = Date.now();
-  if (!communityQrCacheToken || now - communityQrCacheToken > QR_CACHE_BUSTER_TTL_MS) {
-    communityQrCacheToken = now;
+  if (forceRefresh || !entry.cacheToken || now - entry.cacheToken > QR_CACHE_BUSTER_TTL_MS) {
+    entry.cacheToken = now;
   }
 
-  return `${src}${src.includes("?") ? "&" : "?"}t=${communityQrCacheToken}`;
+  const src = buildApiUrl(channel.qrPath);
+  return `${src}${src.includes("?") ? "&" : "?"}t=${entry.cacheToken}`;
 }
 
-function getWechatQrSrc(): string {
-  return withCacheBuster(buildApiUrl("/api/v1/system/community/wechat-qr"));
+function getPreloadEntry(channel: CommunityChannel): CommunityQrPreloadEntry {
+  const existing = communityQrPreloadCache.get(channel.id);
+  if (existing) {
+    return existing;
+  }
+  const entry: CommunityQrPreloadEntry = {
+    image: null,
+    src: "",
+    status: "loading",
+    cacheToken: 0,
+  };
+  communityQrPreloadCache.set(channel.id, entry);
+  return entry;
 }
 
-export function ensureCommunityQrPreloaded() {
-  if (typeof window === "undefined" || communityQrPreloadImage) {
-    return;
+export function ensureCommunityQrPreloaded(): { src: string; status: QrStatus } {
+  if (typeof window === "undefined") {
+    return { src: "", status: "loading" };
   }
 
+  let defaultResult: { src: string; status: QrStatus } = { src: "", status: "loading" };
+  for (const channel of COMMUNITY_CHANNELS) {
+    const result = ensureCommunityChannelPreloaded(channel);
+    if (channel.id === DEFAULT_COMMUNITY_CHANNEL.id) {
+      defaultResult = result;
+    }
+  }
+  return defaultResult;
+}
+
+function ensureCommunityChannelPreloaded(channel: CommunityChannel): { src: string; status: QrStatus } {
+  const entry = getPreloadEntry(channel);
+  if (
+    entry.image &&
+    entry.src &&
+    entry.status !== "error"
+  ) {
+    if (entry.image.complete && entry.image.naturalWidth > 0) {
+      entry.status = "ready";
+    }
+    return { src: entry.src, status: entry.status };
+  }
+
+  entry.src = withCacheBuster(channel, entry, entry.status === "error");
+  entry.status = "loading";
   const image = new Image();
   image.decoding = "async";
   image.loading = "eager";
-  image.src = getWechatQrSrc();
-  communityQrPreloadImage = image;
+  image.onload = () => {
+    entry.status = "ready";
+  };
+  image.onerror = () => {
+    entry.status = "error";
+    entry.image = null;
+  };
+  image.src = entry.src;
+  entry.image = image;
+  return { src: entry.src, status: entry.status };
 }
 
 export const CommunityModal = memo(function CommunityModal({
   isOpen,
   onClose,
+  onOpenFeedback,
 }: {
   isOpen: boolean;
   onClose: () => void;
+  onOpenFeedback?: () => void;
 }) {
   const [qrSrc, setQrSrc] = useState("");
   const [qrStatus, setQrStatus] = useState<QrStatus>("loading");
+  const ActiveIcon = DEFAULT_COMMUNITY_CHANNEL.Icon;
 
   useEffect(() => {
     if (!isOpen) return;
@@ -83,11 +162,11 @@ export const CommunityModal = memo(function CommunityModal({
     }
 
     let ignore = false;
-    setQrStatus("loading");
+    const preloaded = ensureCommunityQrPreloaded();
+    setQrStatus(preloaded.status === "ready" ? "ready" : "loading");
     if (!ignore) {
-      setQrSrc(getWechatQrSrc());
+      setQrSrc(preloaded.src);
     }
-    ensureCommunityQrPreloaded();
 
     return () => {
       ignore = true;
@@ -122,11 +201,10 @@ export const CommunityModal = memo(function CommunityModal({
 
             <div className="flex flex-col items-center px-8 pb-10 pt-12">
               <div className="mb-6 flex flex-col items-center">
-                <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#07C160]/10 text-[#07C160] dark:bg-[#07C160]/20">
-                  <WeChatIcon className="h-8 w-8" />
+                <div className={`mb-4 flex h-14 w-14 items-center justify-center rounded-2xl ${DEFAULT_COMMUNITY_CHANNEL.iconShellClassName}`}>
+                  <ActiveIcon className="h-8 w-8" />
                 </div>
-                <h2 className="text-xl font-bold tracking-tight text-slate-800 dark:text-slate-100">微信交流群</h2>
-                <p className="mt-2 text-[15px] text-slate-500 dark:text-slate-400">扫码加入交流群</p>
+                <h2 className="text-xl font-bold tracking-tight text-slate-800 dark:text-slate-100">{DEFAULT_COMMUNITY_CHANNEL.title}</h2>
               </div>
 
               <div className="rounded-2xl border border-slate-100 p-2 dark:border-slate-800 dark:bg-slate-800/50">
@@ -136,7 +214,7 @@ export const CommunityModal = memo(function CommunityModal({
                     style={{ width: 280, height: 280 }}
                   >
                     <span className="font-medium text-slate-700 dark:text-slate-200">图片加载失败</span>
-                    <span className="mt-2">可通过意见反馈告知我们。</span>
+                    <span className="mt-2">可通过下方入口告知我们。</span>
                   </div>
                 ) : (
                   <div
@@ -145,14 +223,14 @@ export const CommunityModal = memo(function CommunityModal({
                   >
                     {qrStatus === "loading" ? (
                       <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center text-sm leading-6 text-slate-500 dark:text-slate-400">
-                        <Loader2 className="mb-3 h-6 w-6 animate-spin text-[#07C160]" />
+                        <Loader2 className={`mb-3 h-6 w-6 animate-spin ${DEFAULT_COMMUNITY_CHANNEL.loaderClassName}`} />
                         <span>二维码加载中</span>
                       </div>
                     ) : null}
                     {qrSrc ? (
                       <img
                         src={qrSrc}
-                        alt="微信群二维码"
+                        alt={DEFAULT_COMMUNITY_CHANNEL.qrAlt}
                         loading="eager"
                         decoding="async"
                         onLoad={() => setQrStatus("ready")}
@@ -166,6 +244,17 @@ export const CommunityModal = memo(function CommunityModal({
                   </div>
                 )}
               </div>
+
+              {onOpenFeedback ? (
+                <button
+                  type="button"
+                  onClick={onOpenFeedback}
+                  className="mt-5 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 hover:text-slate-950 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 dark:hover:text-white"
+                >
+                  <MessageSquareText className="h-4 w-4" />
+                  意见反馈
+                </button>
+              ) : null}
             </div>
           </motion.div>
         </div>

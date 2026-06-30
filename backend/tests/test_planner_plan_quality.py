@@ -14,6 +14,7 @@ from app.workflows.digest.planner.lib.plans import (
 from app.workflows.digest.planner.lib.store import _ensure_chapter_count_payload
 from app.workflows.digest.docgen.nodes.load_context import _render_diagnose_brief
 from app.workflows.digest.planner.nodes import compose_planner_draft as plan_draft_node
+from app.workflows.digest.planner.nodes import understand_goal_and_materials as understand_node
 from app.workflows.digest.planner.nodes.save_planner_draft import _merge_diagnose_resolution
 from app.workflows.digest.planner.prompts.build_plan_composer import (
     CHAPTERS_END,
@@ -156,6 +157,134 @@ def test_docgen_diagnose_brief_renders_user_answers() -> None:
     assert "文档内解析方式" in brief
     assert "章末小测配置" in brief
     assert "快速回答" not in brief
+
+
+def test_understand_goal_and_materials_raises_when_auxiliary_llms_fail(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fail_planning_note(state):
+        raise TimeoutError("planning note timed out")
+
+    async def fail_material_note(state):
+        raise RuntimeError("material note unavailable")
+
+    events: list[dict[str, object]] = []
+
+    async def record_event(payload: dict[str, object]) -> None:
+        events.append(payload)
+
+    monkeypatch.setattr(understand_node, "_stream_planning_note", fail_planning_note)
+    monkeypatch.setattr(understand_node, "_summarize_materials", fail_material_note)
+
+    node = understand_node.build_understand_goal_and_materials_node(context=None)
+    with pytest.raises(Exception):
+        asyncio.run(
+            node(
+                {
+                    "course_id": "course_test",
+                    "planner_session_id": "planner_test",
+                    "planner_operation": "create",
+                    "user_prompt": "两天速成线性代数",
+                    "digest_mode": "sprint",
+                    "material_context": _material_context(),
+                    "progress_callback": record_event,
+                }
+            )
+        )
+
+    stages = [str(event.get("stage") or "") for event in events]
+    assert "planner.analysis.failed" in stages
+    assert "planner.planning_note.fallback" not in stages
+    assert "planner.material_note.fallback" not in stages
+    assert "planner.analysis.ready" not in stages
+
+
+def test_compose_planner_diagnosis_raises_when_stream_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fail_diagnosis(state):
+        raise TimeoutError("diagnosis timed out")
+
+    events: list[dict[str, object]] = []
+
+    async def record_event(payload: dict[str, object]) -> None:
+        events.append(payload)
+
+    monkeypatch.setattr(plan_draft_node, "_stream_diagnosis_response", fail_diagnosis)
+
+    node = plan_draft_node.build_compose_planner_draft_node(context=None)
+    with pytest.raises(TimeoutError, match="diagnosis timed out"):
+        asyncio.run(
+            node(
+                {
+                    "course_id": "course_test",
+                    "planner_session_id": "planner_test",
+                    "planner_operation": "create",
+                    "user_prompt": "两天速成线性代数",
+                    "digest_mode": "sprint",
+                    "material_context": _material_context(),
+                    "planning_note": "需要先建立核心概念和例题路径。",
+                    "material_note": "资料重点是矩阵和线性方程组。",
+                    "progress_callback": record_event,
+                }
+            )
+        )
+
+    stages = [str(event.get("stage") or "") for event in events]
+    assert "planner.diagnose.failed" in stages
+    assert "planner.diagnose.fallback" not in stages
+    assert "planner.diagnose.ready" not in stages
+
+
+def test_compose_planner_plan_raises_after_generation_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fail_plan(state):
+        raise TimeoutError("plan timed out")
+
+    events: list[dict[str, object]] = []
+
+    async def record_event(payload: dict[str, object]) -> None:
+        events.append(payload)
+
+    monkeypatch.setattr(plan_draft_node, "_stream_planner_response", fail_plan)
+
+    node = plan_draft_node.build_compose_planner_draft_node(context=None)
+    with pytest.raises(TimeoutError, match="plan timed out"):
+        asyncio.run(
+            node(
+                {
+                    "course_id": "course_test",
+                    "planner_session_id": "planner_test",
+                    "planner_operation": "append",
+                    "user_prompt": "请基于每日验收资料生成一个极简学习方案，只需要 2 章。",
+                    "feedback_message": "跳过前置诊断，请直接生成正式方案。",
+                    "digest_mode": "sprint",
+                    "material_context": _material_context(),
+                    "planning_note": "需要先建立核心概念和例题路径。",
+                    "material_note": "资料重点是极限、导数和积分。",
+                    "latest_plan": {
+                        "planner_stage": "diagnosis",
+                        "course_name": "高数主线重建",
+                        "course_icon": "sigma",
+                        "user_prompt": "请基于每日验收资料生成一个极简学习方案，只需要 2 章。",
+                        "digest_mode": "sprint",
+                        "planning_note": "需要先建立核心概念和例题路径。",
+                        "diagnose": [
+                            {
+                                "question": "解析怎么写？",
+                                "purpose": "影响正文解析粒度。",
+                                "options": ["只给要点", "步骤解析", "错因提醒", "补变式题"],
+                            }
+                        ],
+                        "diagnose_status": "pending",
+                        "chapters": [],
+                    },
+                    "diagnose_status": "skipped",
+                    "diagnose_answers": [],
+                    "progress_callback": record_event,
+                }
+            )
+        )
+
+    stages = [str(event.get("stage") or "") for event in events]
+    assert "planner.plan.failed" in stages
+    assert "planner.plan.fallback" not in stages
+    assert "planner.plan.ready" not in stages
 
 
 def test_docgen_diagnose_brief_maps_different_answers_to_different_actions() -> None:

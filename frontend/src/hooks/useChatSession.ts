@@ -20,6 +20,8 @@ export interface ChatSessionMessage {
   localId: string;
   role: "user" | "assistant";
   content: string;
+  attachedFileIds?: string[] | null;
+  attachedFileCount?: number;
   turnId: string | null;
   contexts: ChatContextItem[] | null;
   createdAt: string | null;
@@ -288,15 +290,18 @@ export function useChatSession(courseId: string, options: UseChatSessionOptions 
       return { accepted: false, sessionId: null };
     }
 
-    const resolvedSessionId = input.session_id ?? sessionId ?? null;
+    const resolvedSessionId = resolveRequestedSessionId(input, sessionId);
     const userLocalId = buildLocalId("user");
     const assistantLocalId = buildLocalId("assistant");
     const localThreadId = sendOptions.localThreadId?.trim() || resolvedSessionId || `thread-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const now = new Date().toISOString();
+    const attachedFileIds = normalizeChatAttachedFileIds(input.attached_file_ids);
     const userMessage: ChatSessionMessage = {
       localId: userLocalId,
       role: "user",
       content: question,
+      attachedFileIds: attachedFileIds.length > 0 ? attachedFileIds : null,
+      attachedFileCount: attachedFileIds.length,
       turnId: null,
       contexts: null,
       createdAt: now,
@@ -677,6 +682,8 @@ function mapHistoryItemToSessionMessage(item: ChatMessageItem, previousItem: Cha
     localId: `history-${item.id}`,
     role: item.role,
     content: item.content,
+    attachedFileIds: null,
+    attachedFileCount: 0,
     turnId: item.turn_id,
     contexts: item.contexts ?? null,
     createdAt: item.created_at,
@@ -695,6 +702,30 @@ function mapHistoryItemToSessionMessage(item: ChatMessageItem, previousItem: Cha
     errorDetail: null,
   };
   return restorePersistedToolRunState(mappedMessage);
+}
+
+function normalizeChatAttachedFileIds(fileIds: ChatSendRequest["attached_file_ids"] | undefined): string[] {
+  const normalized: string[] = [];
+  const seen = new Set<string>();
+  for (const fileId of fileIds ?? []) {
+    const value = String(fileId || "").trim();
+    if (!value || seen.has(value)) {
+      continue;
+    }
+    seen.add(value);
+    normalized.push(value);
+  }
+  return normalized;
+}
+
+function resolveRequestedSessionId(input: ChatSendRequest, fallbackSessionId: string | null): string | null {
+  const hasExplicitSessionId =
+    Object.prototype.hasOwnProperty.call(input, "session_id") &&
+    input.session_id !== undefined;
+  if (!hasExplicitSessionId) {
+    return fallbackSessionId;
+  }
+  return input.session_id?.trim() || null;
 }
 
 function resolvePersistedClientActions(

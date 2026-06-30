@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import pytest
+from sqlmodel import Session, SQLModel, create_engine
 
+from app.models import RawFile, User
+from app.models.enums import TaskStatus
 from app.shared.infra.search import api as search_api
 from app.shared.infra.search.knowledge import RetrievedChunk
 from app.workflows.interact.chat.lib import retrieval
@@ -46,6 +49,80 @@ async def test_interact_vector_fallback_uses_public_knowledge_search(monkeypatch
     assert len(results) == 1
     assert results[0].chunk_id == 11
     assert results[0].retrieval_source == "vector"
+
+
+@pytest.mark.anyio
+async def test_global_retrieval_uses_explicit_attached_user_files() -> None:
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False})
+    SQLModel.metadata.create_all(engine, tables=[User.__table__, RawFile.__table__])
+
+    with Session(engine, expire_on_commit=False) as session:
+        session.add(User(id="usr_1", username="learner"))
+        session.add(
+            RawFile(
+                id="file_1",
+                user_id="usr_1",
+                filename="计算机基础知识100题.pdf",
+                filetype="pdf",
+                file_path="uploads/file_1.pdf",
+                mime_type="application/pdf",
+                status=TaskStatus.COMPLETED.value,
+                markdown_content="CPU 是中央处理器，负责执行指令。内存用于临时存放正在运行的数据。",
+            )
+        )
+        session.commit()
+
+        results = await retrieval.retrieve_context(
+            session=session,
+            query="这份资料里的 CPU 是什么？",
+            course_id="",
+            top_k=3,
+            similarity_threshold=0.3,
+            user_id="usr_1",
+            attached_file_ids=["file_1"],
+        )
+
+    assert len(results) == 1
+    assert results[0].retrieval_source == "attached_file"
+    assert results[0].file_id == "file_1"
+    assert "CPU 是中央处理器" in results[0].content
+
+
+@pytest.mark.anyio
+async def test_global_retrieval_uses_library_selection_source_file_id() -> None:
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False})
+    SQLModel.metadata.create_all(engine, tables=[User.__table__, RawFile.__table__])
+
+    with Session(engine, expire_on_commit=False) as session:
+        session.add(User(id="usr_1", username="learner"))
+        session.add(
+            RawFile(
+                id="file_1",
+                user_id="usr_1",
+                filename="uploaded-note.pdf",
+                filetype="pdf",
+                file_path="uploads/file_1.pdf",
+                mime_type="application/pdf",
+                status=TaskStatus.COMPLETED.value,
+                markdown_content="CPU executes instructions. Memory stores runtime data.",
+            )
+        )
+        session.commit()
+
+        results = await retrieval.retrieve_context(
+            session=session,
+            query="What does this file say about CPU?",
+            course_id="global",
+            top_k=3,
+            similarity_threshold=0.3,
+            user_id="usr_1",
+            source="library_selection:file_1",
+        )
+
+    assert len(results) == 1
+    assert results[0].retrieval_source == "attached_file"
+    assert results[0].file_id == "file_1"
+    assert "CPU executes instructions" in results[0].content
 
 
 def test_merge_context_results_keeps_vector_hits_before_weak_graph_hits() -> None:

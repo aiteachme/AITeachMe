@@ -6,7 +6,7 @@ import { apiClient, getApiErrorMessage } from "../../api/client";
 import { listCoursesApiApiV1CoursesListPost } from "../../api/generated/courses";
 import { examHistoryApiV1CoursesCourseIdExamsHistoryGet } from "../../api/generated/exams";
 import { listChatApiApiV1CoursesCourseIdChatsListPost } from "../../api/generated/chats";
-import type { ChatMessageItem, CourseItem, ExamHistoryItem } from "../../api/generated/model";
+import type { AuthSessionData, ChatMessageItem, CourseItem, ExamHistoryItem, RuntimeUser } from "../../api/generated/model";
 import { resetAnalyticsIdentity, syncAnalyticsUserIdentity, trackAnalyticsEvent } from "../../lib/analytics";
 import { AUTH_SESSION_QUERY_KEY, AUTH_SESSION_STALE_TIME_MS, fetchAuthSession } from "../../lib/authSession";
 import {
@@ -23,19 +23,6 @@ import {
 import { cn } from "../../lib/utils";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { Modal } from "../ui/Modal";
-
-type RuntimeUser = {
-  user_id: string;
-  email?: string | null;
-  is_authenticated?: boolean;
-};
-
-type AuthSessionData = {
-  auth_enabled?: boolean;
-  auth_ready?: boolean;
-  access_token?: string | null;
-  current_user?: RuntimeUser | null;
-};
 
 type SendEmailCodeData = {
   expires_in_s: number;
@@ -68,7 +55,7 @@ interface LearningActivityPanelProps {
 
 function getDisplayName(user: RuntimeUser | null): string {
   if (!user?.is_authenticated) {
-    return "本地用户";
+    return user?.is_local ? "本地用户" : "游客";
   }
 
   const email = user.email?.trim() || "";
@@ -85,15 +72,16 @@ function getIdentitySubtitle(user: RuntimeUser | null): string {
   }
 
   if (user?.user_id) {
-    return `本地身份 ${user.user_id.slice(-6)}`;
+    const identityLabel = user.is_local ? "本地身份" : "游客身份";
+    return `${identityLabel} ${user.user_id.slice(-6)}`;
   }
 
-  return "当前设备上的本地身份";
+  return user?.is_local ? "当前设备上的本地身份" : "当前浏览器的游客身份";
 }
 
 function getAvatarText(user: RuntimeUser | null): string {
   if (!user?.is_authenticated) {
-    return "本";
+    return user?.is_local ? "本" : "游";
   }
 
   const displayName = getDisplayName(user).trim();
@@ -512,7 +500,7 @@ export function TopBar({ className }: TopBarProps) {
               {avatarText}
             </span>
             <span className="hidden max-w-[120px] truncate whitespace-nowrap lg:inline">
-              {isLoggedIn ? displayName : "本地"}
+              {isLoggedIn ? displayName : authUser?.is_local ? "本地" : "游客"}
             </span>
           </button>
 
@@ -586,7 +574,9 @@ export function TopBar({ className }: TopBarProps) {
                     </>
                   ) : (
                     <div className="px-4 py-2 text-sm text-slate-500 dark:text-slate-400">
-                      本地模式无需登录，数据保存在当前设备环境中。
+                      {authUser?.is_local
+                        ? "本地模式无需登录，数据保存在当前设备环境中。"
+                        : "当前为游客身份，登录后可将学习数据绑定到账号。"}
                     </div>
                   )}
                 </div>
@@ -690,7 +680,9 @@ export function TopBar({ className }: TopBarProps) {
                 </>
               ) : (
                 <div className="px-4 py-2.5 text-sm text-slate-500 dark:text-slate-400">
-                  本地模式无需登录，数据保存在当前设备环境中。
+                  {authUser?.is_local
+                    ? "本地模式无需登录，数据保存在当前设备环境中。"
+                    : "当前为游客身份，登录后可将学习数据绑定到账号。"}
                 </div>
               )}
             </div>
@@ -721,7 +713,9 @@ export function TopBar({ className }: TopBarProps) {
       >
         <form className="space-y-4" onSubmit={handleAuthSubmit}>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            {authMode === "login" ? "继续使用当前设备身份，并开启登录态同步。" : "将当前本地身份升级为邮箱账号。"}
+            {authMode === "login"
+              ? "继续使用当前身份，并开启登录态同步。"
+              : `将当前${authUser?.is_local ? "本地身份" : "游客身份"}升级为邮箱账号。`}
           </p>
 
           <div className="space-y-1.5">

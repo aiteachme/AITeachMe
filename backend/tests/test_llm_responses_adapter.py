@@ -8,6 +8,7 @@ import pytest
 from app.shared.infra.llm_support import common as llm_common
 from app.shared.infra.llm_support import responses_adapter
 from app.shared.infra.llm_support.common import build_completion_context, build_completion_contexts
+from app.shared.infra.llm_support.common import effective_endpoint_group_max_retries
 from app.shared.infra.llm_support.responses_adapter import (
     chat_fallback_for_auto_responses,
     extract_response_text,
@@ -149,6 +150,26 @@ def test_fallback_endpoint_uses_model_auto_mode_when_global_responses_is_configu
     assert call.api_mode == "chat_completions"
     assert call.requested_api_mode == "auto"
     assert call.route_reason == "auto_plain_chat"
+
+
+def test_fallback_endpoint_group_retries_are_capped(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "primary-key")
+    monkeypatch.setenv("LLM_BASE_URL", "https://primary-gateway.example.com/v1")
+    monkeypatch.setenv("LLM_FALLBACK_API_KEY", "fallback-key")
+    monkeypatch.setenv("LLM_FALLBACK_BASE_URL", "https://fallback-gateway.example.com/v1")
+    set_system_settings_override({
+        "models": {"primary": "gpt-5.4-mini"},
+        "llm": {"api_mode": "chat_completions"},
+    })
+    primary_context, fallback_context = build_completion_contexts(
+        task_type=TaskType.CHAT,
+        model="primary",
+    )
+
+    assert primary_context.endpoint_role == "primary"
+    assert fallback_context.endpoint_role == "fallback"
+    assert effective_endpoint_group_max_retries(primary_context, {"max_retries": 3}) == 3
+    assert effective_endpoint_group_max_retries(fallback_context, {"max_retries": 3}) == 1
 
 
 def test_auto_classifies_gemini_fallback_override_as_chat_completions(monkeypatch):
@@ -1434,6 +1455,52 @@ async def test_text_completion_exhausts_primary_retries_before_fallback(monkeypa
 
     assert result == "fallback ok"
     assert [call["api_key"] for call in calls] == [
+        "primary-key",
+        "primary-key",
+        "fallback-key",
+    ]
+
+
+@pytest.mark.anyio
+async def test_text_completion_caps_unhealthy_fallback_retries(monkeypatch):
+    from app.shared.infra.llm_support import text as text_module
+
+    calls: list[dict] = []
+
+    async def no_sleep(_attempt: int, **_kwargs) -> None:
+        return None
+
+    class FakeLiteLLM:
+        async def aresponses(self, **kwargs):  # pragma: no cover - chat mode in this test
+            raise AssertionError("Responses should not be used")
+
+        async def acompletion(self, **kwargs):
+            calls.append(kwargs)
+            if kwargs["api_key"] == "primary-key":
+                raise RuntimeError("primary gateway timed out")
+            raise RuntimeError("fallback gateway timed out")
+
+    monkeypatch.setenv("LLM_API_KEY", "primary-key")
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+    monkeypatch.setenv("LLM_FALLBACK_API_KEY", "fallback-key")
+    monkeypatch.setenv("LLM_FALLBACK_BASE_URL", "https://api.deepseek.com")
+    monkeypatch.setattr(text_module, "load_litellm", lambda: FakeLiteLLM())
+    monkeypatch.setattr(text_module, "sleep_before_retry", no_sleep)
+    set_system_settings_override({
+        "models": {"primary": "gpt-4.1"},
+        "llm": {"api_mode": "chat_completions"},
+    })
+
+    with pytest.raises(LLMCallError):
+        await text_module.acompletion(
+            [{"role": "user", "content": "hello"}],
+            task_type=TaskType.CHAT,
+            model="primary",
+            max_retries=3,
+        )
+
+    assert [call["api_key"] for call in calls] == [
+        "primary-key",
         "primary-key",
         "primary-key",
         "fallback-key",

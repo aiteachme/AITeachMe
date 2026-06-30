@@ -199,7 +199,7 @@ class FileLibraryViewModel : ViewModel() {
         }
         val knownTotalBytes = files.mapNotNull { it.sizeBytes }.sum()
         if (knownTotalBytes > MAX_TOTAL_UPLOAD_BYTES) {
-            return "单次上传总大小不能超过 10 MB，当前约 ${formatFileSize(knownTotalBytes)}。"
+            return "单次上传总大小不能超过 $MAX_TOTAL_UPLOAD_MB MB，当前约 ${formatFileSize(knownTotalBytes)}。"
         }
         return null
     }
@@ -212,7 +212,8 @@ class FileLibraryViewModel : ViewModel() {
 
     private companion object {
         const val MAX_FILES_PER_UPLOAD = 10
-        const val MAX_TOTAL_UPLOAD_BYTES = 10L * 1024L * 1024L
+        const val MAX_TOTAL_UPLOAD_MB = 20
+        const val MAX_TOTAL_UPLOAD_BYTES = MAX_TOTAL_UPLOAD_MB * 1024L * 1024L
         val SUPPORTED_EXTENSIONS = setOf("pdf", "docx", "pptx", "md", "txt", "jpeg", "jpg", "png", "bmp")
     }
 }

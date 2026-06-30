@@ -31,7 +31,11 @@ from app.workflows.digest.docgen.lib.models import (
     LockedChapterTitle,
 )
 from app.workflows.digest.docgen.lib.query_planning import ResearchSubQueryPlan
-from app.workflows.digest.docgen.lib.unit_tests import ChapterUnitTestItem, ChapterUnitTestSet
+from app.workflows.digest.docgen.lib.unit_tests import (
+    ChapterUnitTestGenerationError,
+    ChapterUnitTestItem,
+    ChapterUnitTestSet,
+)
 from app.workflows.digest.docgen.lib.writer import DocGenWriterRuntime
 from app.workflows.digest.docgen.nodes import generate_unit_tests
 
@@ -588,3 +592,93 @@ async def test_generate_unit_tests_node_batches_chapter_drafts_through_scheduler
     assert result["llm_calls_total"] == 2
     assert len(result["unit_test_chapter_drafts"]) == 2
     assert all("## 单元测试" in item["markdown"] for item in result["unit_test_chapter_drafts"])
+
+
+@pytest.mark.anyio
+async def test_generate_unit_tests_node_skips_failed_chapter_without_blocking_publish(monkeypatch) -> None:
+    progress_rows: list[dict[str, object]] = []
+    preview_rows: list[dict[str, object]] = []
+    recent_events: list[dict[str, object]] = []
+    progress_events: list[dict[str, object]] = []
+
+    async def fake_run_llm_tasks(items, worker, *, max_concurrent=None, on_result=None):
+        results = []
+        for index, item in enumerate(list(items)):
+            result = await worker(item)
+            if on_result is not None:
+                await on_result(index, item, result)
+            results.append(result)
+        return results
+
+    async def fake_generate_chapter_unit_tests(**kwargs):
+        draft = kwargs["draft"]
+        if draft.chapter_index == 2:
+            raise ChapterUnitTestGenerationError("connection error")
+        return ChapterUnitTestSet(
+            chapter_index=draft.chapter_index,
+            items=[
+                ChapterUnitTestItem(
+                    type="短答题",
+                    target=draft.title,
+                    stem=f"说明{draft.title}的核心判断 {index}。",
+                    answer="按正文要点作答。",
+                    basis="能说清概念与步骤即可。",
+                )
+                for index in range(1, 6)
+            ],
+        )
+
+    async def fake_publish(*args, **kwargs):
+        progress_events.append(dict(kwargs.get("payload") or {}, stage=kwargs.get("stage")))
+
+    monkeypatch.setattr(generate_unit_tests, "run_llm_tasks", fake_run_llm_tasks)
+    monkeypatch.setattr(generate_unit_tests, "generate_chapter_unit_tests", fake_generate_chapter_unit_tests)
+    monkeypatch.setattr(generate_unit_tests, "update_knowledge_build_status", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        generate_unit_tests,
+        "upsert_knowledge_build_chapter_progress",
+        lambda *args, **kwargs: progress_rows.append(dict(kwargs.get("chapter_progress") or {})),
+    )
+    monkeypatch.setattr(
+        generate_unit_tests,
+        "upsert_knowledge_build_chapter_preview",
+        lambda *args, **kwargs: preview_rows.append(dict(kwargs.get("chapter_preview") or {})),
+    )
+    monkeypatch.setattr(
+        generate_unit_tests,
+        "append_knowledge_build_recent_event",
+        lambda *args, **kwargs: recent_events.append(dict(kwargs.get("event") or {})),
+    )
+    monkeypatch.setattr(generate_unit_tests, "publish_docgen_progress", fake_publish)
+
+    drafts = [
+        ChapterDraft(chapter_index=1, title="变量基础", markdown="# 变量基础\n\n变量用于保存值。"),
+        ChapterDraft(chapter_index=2, title="函数调用", markdown="# 函数调用\n\n函数调用需要参数与返回值。"),
+    ]
+    node = generate_unit_tests.build_generate_unit_tests_node(
+        context=WorkflowContext(
+            workflow_name="digest.docgen.test",
+            course_id="course_docgen0000",
+            metadata={"build_session_id": "build-1"},
+        )
+    )
+
+    result = await node(
+        {
+            "course_id": "course_docgen0000",
+            "requested_at": "2026-06-17T00:00:00+08:00",
+            "digest_mode": "systematic",
+            "chapter_drafts": [item.model_dump(mode="json") for item in drafts],
+            "chapter_tasks": [],
+        }
+    )
+
+    assert len(result["unit_test_chapter_drafts"]) == 2
+    assert "## 单元测试" in result["unit_test_chapter_drafts"][0]["markdown"]
+    assert "## 单元测试" not in result["unit_test_chapter_drafts"][1]["markdown"]
+    assert result["unit_test_items"][1]["skipped"] is True
+    assert result["unit_test_skipped_count"] == 1
+    assert any(row.get("status") == "unit_test_skipped" for row in progress_rows)
+    assert any(row.get("status") == "unit_test_skipped" for row in preview_rows)
+    assert any(event.get("stage") == "chapter_unit_test_skipped" for event in recent_events)
+    assert any(event.get("stage") == "unit_tests_ready" and event.get("unit_test_skipped_count") == 1 for event in progress_events)

@@ -15,7 +15,7 @@ from .common import (
     build_completion_contexts,
     completion_context_groups,
     effective_call_timeout_s,
-    effective_max_retries,
+    effective_endpoint_group_max_retries,
     extract_usage,
     get_llm_concurrency_limiter,
     logger,
@@ -234,7 +234,7 @@ async def _acompletion_stream_impl(
                     error_type=last_error.__class__.__name__ if last_error is not None else "",
                 )
                 break
-            group_max_retries = max(effective_max_retries(context_group[0], kwargs), 1)
+            group_max_retries = effective_endpoint_group_max_retries(context_group[0], kwargs)
             for retry_round in range(1, group_max_retries + 1):
                 for context in context_group:
                     attempt_number += 1

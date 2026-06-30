@@ -283,6 +283,101 @@ def _has_explicit_noise(summary: FileMaterialSummary, sections: Sequence[Section
     return bool(section_refs & noise_refs)
 
 
+def _chapter_indices_from_titles(chapter_titles: Sequence[str]) -> list[int]:
+    return [index + 1 for index, title in enumerate(chapter_titles) if str(title or "").strip()] or [1]
+
+
+def _chapter_indices_from_chapters(chapters: Sequence[Mapping[str, Any]]) -> list[int]:
+    indices: list[int] = []
+    for offset, chapter in enumerate(chapters):
+        try:
+            chapter_index = int(chapter.get("chapter_index") or chapter.get("index") or offset + 1)
+        except (TypeError, ValueError):
+            chapter_index = offset + 1
+        if chapter_index > 0:
+            indices.append(chapter_index)
+    return indices or [1]
+
+
+def _fallback_file_summary(
+    packet: SourcePacket,
+    *,
+    sections: Sequence[SectionPacket],
+    chapter_indices: Sequence[int],
+    summary_mode: str,
+) -> FileMaterialSummary:
+    """Build a conservative local routing summary when the summary LLM is unavailable."""
+
+    usable_sections = [
+        section
+        for section in sections
+        if section.digest_chunk_uid and str(section.normalized_content or "").strip()
+    ]
+    if not usable_sections:
+        return FileMaterialSummary(
+            file_id=packet.file_id,
+            filename=packet.filename,
+            summary=_cap_text(str(packet.normalized_content or "").strip(), 360),
+            source_quality=0.25,
+            summary_mode=summary_mode,
+            fallback_used=True,
+        )
+
+    ordered_sections = sorted(
+        usable_sections,
+        key=lambda item: (item.question_block_count, len(item.formula_refs), item.char_count),
+        reverse=True,
+    )
+    selected_sections = ordered_sections[: min(24, max(1, len(ordered_sections)))]
+    resolved_indices = [index for index in chapter_indices if int(index or 0) > 0] or [1]
+    chapter_slices: list[ChapterSourceSlice] = []
+    high_value_sections: list[str] = []
+    concepts: list[str] = []
+    for position, section in enumerate(selected_sections):
+        chapter_index = resolved_indices[position % len(resolved_indices)]
+        title = section.title or section.header_path or f"Section {section.chunk_index + 1}"
+        preview = _cap_text(section.preview or section.normalized_content, 180)
+        high_value_sections.append(section.digest_chunk_uid)
+        concepts.append(title)
+        chapter_slices.append(
+            ChapterSourceSlice(
+                chapter_index=chapter_index,
+                file_id=packet.file_id,
+                filename=packet.filename,
+                section_ref=section.digest_chunk_uid,
+                section_title=title,
+                header_path=section.header_path,
+                line_start=getattr(section, "line_start", None),
+                line_end=getattr(section, "line_end", None),
+                relevance=0.55,
+                usage="context",
+                reason="LLM 文件摘要不可用时的本地保守路由。",
+                summary=preview,
+                excerpt=preview,
+            )
+        )
+
+    summary_parts = [
+        section.title or section.header_path or section.preview
+        for section in selected_sections[:6]
+        if str(section.title or section.header_path or section.preview or "").strip()
+    ]
+    summary = "；".join(summary_parts) or _cap_text(str(packet.normalized_content or "").strip(), 420)
+    return FileMaterialSummary(
+        file_id=packet.file_id,
+        filename=packet.filename,
+        summary=_cap_text(summary, 700),
+        concepts=clean_string_list(concepts, limit=16),
+        high_value_sections=clean_string_list(high_value_sections, limit=24),
+        chapter_affinity=_chapter_affinity_from_slices(chapter_slices),
+        chapter_slices=chapter_slices,
+        source_quality=0.45,
+        summary_mode=summary_mode,
+        fallback_used=True,
+        llm_call_count=0,
+    )
+
+
 def _merge_affinity(*items: Mapping[int, float]) -> dict[int, float]:
     merged: dict[int, float] = {}
     for item in items:
@@ -404,8 +499,8 @@ def _merge_file_summary_batches(
         chapter_affinity=_merge_chapter_affinity(usable) or _chapter_affinity_from_slices(chapter_slices),
         chapter_slices=chapter_slices,
         source_quality=max([float(item.source_quality or 0.0) for item in usable] + [0.0]),
-        summary_mode="llm_section_batches",
-        fallback_used=False,
+        summary_mode="fallback_section_batches" if any(item.fallback_used for item in usable) else "llm_section_batches",
+        fallback_used=any(item.fallback_used for item in usable),
         llm_call_count=sum(max(0, int(item.llm_call_count or 0)) for item in usable),
     )
     return merged
@@ -554,11 +649,22 @@ async def _summarize_one_file(
         )
     except Exception as exc:
         logger.warning("docgen_file_summary_failed", file_id=packet.file_id, error=str(exc))
-        raise FileSummaryRoutingError(f"LLM file summary failed for {packet.file_id}.") from exc
+        return _fallback_file_summary(
+            packet,
+            sections=file_sections,
+            chapter_indices=_chapter_indices_from_chapters(chapters),
+            summary_mode="fallback_file_summary",
+        )
     try:
         summary = response if isinstance(response, FileMaterialSummary) else FileMaterialSummary.model_validate(response)
     except Exception as exc:
-        raise FileSummaryRoutingError(f"LLM file summary returned invalid schema for {packet.file_id}.") from exc
+        logger.warning("docgen_file_summary_invalid_schema", file_id=packet.file_id, error=str(exc))
+        return _fallback_file_summary(
+            packet,
+            sections=file_sections,
+            chapter_indices=_chapter_indices_from_chapters(chapters),
+            summary_mode="fallback_file_summary",
+        )
     return _finalize_llm_summary(
         summary,
         packet=packet,
@@ -611,15 +717,27 @@ async def _summarize_one_file_batch(
             section_batch_index=batch.batch_index,
             error=str(exc),
         )
-        raise FileSummaryRoutingError(
-            f"LLM section-batch summary failed for {packet.file_id} batch {batch.batch_index}/{batch.total_batches}."
-        ) from exc
+        return _fallback_file_summary(
+            packet,
+            sections=batch.sections,
+            chapter_indices=_chapter_indices_from_titles(chapter_titles),
+            summary_mode="fallback_section_batch",
+        )
     try:
         summary = response if isinstance(response, FileMaterialSummary) else FileMaterialSummary.model_validate(response)
     except Exception as exc:
-        raise FileSummaryRoutingError(
-            f"LLM section-batch summary returned invalid schema for {packet.file_id} batch {batch.batch_index}."
-        ) from exc
+        logger.warning(
+            "docgen_file_section_batch_summary_invalid_schema",
+            file_id=packet.file_id,
+            section_batch_index=batch.batch_index,
+            error=str(exc),
+        )
+        return _fallback_file_summary(
+            packet,
+            sections=batch.sections,
+            chapter_indices=_chapter_indices_from_titles(chapter_titles),
+            summary_mode="fallback_section_batch",
+        )
     return _finalize_llm_summary(
         summary,
         packet=packet,

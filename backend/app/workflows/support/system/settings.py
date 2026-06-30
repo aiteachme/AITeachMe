@@ -73,6 +73,9 @@ _MISSING = object()
 SECRET_PRESERVE_SENTINEL = "__AITM_SECRET_PRESERVE__"
 logger = structlog.get_logger(__name__)
 _MODEL_PROBE_TIMEOUT_S = 20
+_MODEL_PROBE_OVERALL_TIMEOUT_S = 25
+_MODEL_PROBE_MAX_RETRIES = 1
+_MODEL_PROBE_MAX_TOKENS = 16
 _MODEL_PROBE_SLOT_LABELS: dict[ModelProbeSlot, str] = {
     "reason": "推理模型",
     "primary": "主文本模型",
@@ -624,7 +627,7 @@ async def test_settings_model_connection(payload: ModelProbeRequest) -> ModelPro
     """Run a small settings-page LLM probe against one explicit endpoint route."""
 
     snapshot = _model_probe_endpoint_snapshot(payload.endpoint_role)
-    requested_api_mode = "auto" if payload.endpoint_role == "fallback" else "responses"
+    requested_api_mode = "chat_completions" if payload.endpoint_role == "fallback" else "responses"
     if snapshot is None:
         return ModelProbeResult(
             ok=False,
@@ -651,9 +654,11 @@ async def test_settings_model_connection(payload: ModelProbeRequest) -> ModelPro
                 messages,
                 task_type=TaskType.CHAT,
                 model=payload.model_slot,
-                max_tokens=8,
+                max_tokens=_MODEL_PROBE_MAX_TOKENS,
                 temperature=0,
                 timeout=_MODEL_PROBE_TIMEOUT_S,
+                overall_timeout_s=_MODEL_PROBE_OVERALL_TIMEOUT_S,
+                max_retries=_MODEL_PROBE_MAX_RETRIES,
                 api_mode=requested_api_mode,
                 extra_metadata={
                     "settings_model_probe": True,

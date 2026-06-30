@@ -41,6 +41,7 @@ def build_retrieve_context_node(*, context: WorkflowContext, session: Session | 
             selected_context=state.get("selected_context"),
             selection_context=state.get("selection_context"),
         )
+        attached_file_ids = list(state.get("attached_file_ids") or [])
         if not should_use_course_grounding(
             question=state["question"],
             scene=state.get("scene"),
@@ -69,6 +70,8 @@ def build_retrieve_context_node(*, context: WorkflowContext, session: Session | 
                 top_k=settings.rag.top_k,
                 similarity_threshold=settings.rag.similarity_threshold,
                 user_id=state["user_id"],
+                attached_file_ids=attached_file_ids,
+                source=state.get("source"),
             )
         contexts = [item.to_context_item() for item in retrieval_results] or None
         workflow_logger.info(

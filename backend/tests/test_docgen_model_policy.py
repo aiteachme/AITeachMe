@@ -50,6 +50,20 @@ def test_docgen_model_policy_metadata_includes_timeout() -> None:
     assert metadata["docgen_provider_native_file_search_policy"] == "off"
 
 
+def test_docgen_noncritical_cleanup_steps_fail_fast() -> None:
+    for step in (DocGenModelStep.RESEARCH_PURIFY, DocGenModelStep.HEADING_REPAIR):
+        kwargs = docgen_completion_kwargs(step, digest_mode="sprint")
+        metadata = get_docgen_model_policy(step).metadata()
+
+        assert kwargs["model"] == "light"
+        assert kwargs["timeout"] == 30
+        assert kwargs["overall_timeout_s"] == 40
+        assert kwargs["max_retries"] == 1
+        assert metadata["docgen_timeout_s"] == 30
+        assert metadata["docgen_overall_timeout_s"] == 40
+        assert metadata["docgen_max_retries"] == 1
+
+
 def test_kg_doc_sync_model_policy_disables_provider_native_tools_by_default() -> None:
     kwargs = kg_doc_sync_completion_kwargs(KGDocSyncModelStep.SECTION_GRAPH)
     metadata = get_kg_doc_sync_model_policy(KGDocSyncModelStep.SECTION_GRAPH).metadata()

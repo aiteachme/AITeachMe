@@ -110,15 +110,15 @@ def build_generate_unit_tests_node(*, context: WorkflowContext):
                     },
                 )
             except ChapterUnitTestGenerationError as exc:
-                failure_summary = "章末单元测试没有生成可发布题目，已停止发布；不会使用模板题目兜底。"
+                failure_summary = "章末单元测试生成失败，已跳过该章测试并继续发布正文；不会使用模板题目兜底。"
                 upsert_knowledge_build_chapter_progress(
                     state["course_id"],
                     requested_at=state["requested_at"],
                     chapter_progress={
                         "chapter_index": draft.chapter_index,
                         "title": draft.title,
-                        "status": "unit_test_failed",
-                        "error": "unit_test_no_content",
+                        "status": "unit_test_skipped",
+                        "warning": "unit_test_generation_failed",
                     },
                 )
                 upsert_knowledge_build_chapter_preview(
@@ -127,7 +127,7 @@ def build_generate_unit_tests_node(*, context: WorkflowContext):
                     chapter_preview={
                         "chapter_index": draft.chapter_index,
                         "title": draft.title,
-                        "status": "unit_test_failed",
+                        "status": "unit_test_skipped",
                         "excerpt": draft.markdown.strip(),
                         "latest_headings": extract_markdown_preview_headings(draft.markdown),
                         "word_count": count_words(draft.markdown),
@@ -138,7 +138,7 @@ def build_generate_unit_tests_node(*, context: WorkflowContext):
                     state["course_id"],
                     requested_at=state["requested_at"],
                     event={
-                        "stage": "chapter_unit_test_failed",
+                        "stage": "chapter_unit_test_skipped",
                         "chapter_index": draft.chapter_index,
                         "title": draft.title,
                         "summary": failure_summary,
@@ -149,15 +149,20 @@ def build_generate_unit_tests_node(*, context: WorkflowContext):
                 await publish_docgen_progress(
                     context,
                     state=state,
-                    stage="chapter_unit_test_failed",
+                    stage="chapter_unit_test_skipped",
                     payload={
                         "chapter_index": draft.chapter_index,
                         "title": draft.title,
-                        "error": "unit_test_no_content",
+                        "warning": "unit_test_generation_failed",
                         "message": str(exc)[:240],
                     },
                 )
-                raise
+                return draft, {
+                    "chapter_index": draft.chapter_index,
+                    "items": [],
+                    "skipped": True,
+                    "error": str(exc)[:240],
+                }
             targets = []
             if task is not None:
                 targets = [
@@ -215,6 +220,7 @@ def build_generate_unit_tests_node(*, context: WorkflowContext):
             payload={
                 "chapter_count": len(updated_drafts),
                 "unit_test_count": sum(len(item.get("items") or []) for item in unit_tests),
+                "unit_test_skipped_count": sum(1 for item in unit_tests if bool(item.get("skipped"))),
             },
         )
         return {
@@ -222,6 +228,7 @@ def build_generate_unit_tests_node(*, context: WorkflowContext):
             "unit_test_items": unit_tests,
             "unit_test_ms": elapsed_ms,
             "llm_calls_total": len(updated_drafts),
+            "unit_test_skipped_count": sum(1 for item in unit_tests if bool(item.get("skipped"))),
         }
 
     return generate_unit_tests_node

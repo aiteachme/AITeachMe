@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 
 const LOCAL_HOST = "127.0.0.1";
 const DEFAULT_BACKEND_PORT = "9020";
+const DEFAULT_DOCS_PORT = "5182";
 const DEFAULT_FRONTEND_PORT = 5180;
 const DEFAULT_WEB_BASE_PATH = "/";
 
@@ -77,8 +78,11 @@ function normalizeBasePath(rawValue?: string): string {
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, "..", "");
   const backendPort = env.AITEACHME_BACKEND_PORT || DEFAULT_BACKEND_PORT;
+  const docsPort = env.AITEACHME_DOCS_PORT || DEFAULT_DOCS_PORT;
   const frontendPort = Number(env.AITEACHME_FRONTEND_PORT || DEFAULT_FRONTEND_PORT);
   const apiTarget = env.VITE_API_URL?.trim() || `http://${LOCAL_HOST}:${backendPort}`;
+  const docsTarget = env.VITE_DOCS_TARGET?.trim() || `http://${LOCAL_HOST}:${docsPort}`;
+  const docsWsTarget = docsTarget.replace(/^http:/i, "ws:").replace(/^https:/i, "wss:");
   const basePath = normalizeBasePath(env.VITE_BASE_PATH || env.AITEACHME_FRONTEND_BASE_PATH);
 
   return {
@@ -97,6 +101,29 @@ export default defineConfig(({ mode }) => {
         },
         "/openapi.json": {
           target: apiTarget,
+          changeOrigin: true,
+        },
+        "/docs": {
+          target: docsTarget,
+          changeOrigin: true,
+        },
+        "/_next/webpack-hmr": {
+          target: docsWsTarget,
+          changeOrigin: true,
+          ws: true,
+          rewriteWsOrigin: true,
+        },
+        "/_next": {
+          target: docsTarget,
+          changeOrigin: true,
+          ws: true,
+        },
+        "/__nextjs_font": {
+          target: docsTarget,
+          changeOrigin: true,
+        },
+        "/screenshots": {
+          target: docsTarget,
           changeOrigin: true,
         },
       },

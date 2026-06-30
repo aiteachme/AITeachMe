@@ -328,6 +328,7 @@ def _fallback_intent(*, question: str, attached_file_ids: list[str]) -> HomeInta
     course_name = _guess_course_name(question)
     return HomeIntakeIntent(
         intent="create_course",
+        assistant_reply="",
         ready_to_create=True,
         course_name=course_name,
         description=f"围绕「{course_name}」创建的学习空间。",
@@ -359,7 +360,8 @@ def _build_confirmation_reply(pending_action: dict[str, Any]) -> str:
     ]
     if user_intent:
         lines.append(f"学习目标：{user_intent}")
-    lines.append("如果没问题，回复“确认创建”，我再正式创建并打开构建规划页。")
+    lines.append("确认后我会创建课程，并进入构建页继续拆目标、排章节、关联资料和生成学习方案。")
+    lines.append("如果没问题，回复“确认创建”；如果想改方向，也可以直接补充新的课程名或目标。")
     return "\n".join(lines)
 
 
@@ -432,7 +434,10 @@ async def _create_from_pending_action(
             if isinstance(payload, dict):
                 payload["model"] = model
     return HomeIntakeResult(
-        assistant_response=f"已创建「{course_name}」，正在打开构建规划页。",
+        assistant_response=(
+            f"已创建「{course_name}」，正在打开构建规划页。"
+            "下一步会先通过建课第一步的前置诊断确认你的学习起点，再生成章节方案。"
+        ),
         client_actions=actions,
     )
 

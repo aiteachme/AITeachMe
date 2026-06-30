@@ -20,7 +20,7 @@ from .common import (
     build_completion_contexts,
     completion_context_groups,
     effective_call_timeout_s,
-    effective_max_retries,
+    effective_endpoint_group_max_retries,
     extract_usage,
     get_llm_concurrency_limiter,
     logger,
@@ -344,7 +344,6 @@ async def _acompletion_structured_impl(
     last_error: Exception | None = None
     call_started_at = time.monotonic()
     tracked_model = primary_context.model
-    max_retries = effective_max_retries(primary_context, kwargs)
     attempt_number = 0
 
     if not use_instructor:
@@ -373,7 +372,8 @@ async def _acompletion_structured_impl(
                     error_type=last_error.__class__.__name__ if last_error is not None else "",
                 )
                 break
-            for retry_round in range(1, max_retries + 1):
+            group_max_retries = effective_endpoint_group_max_retries(context_group[0], kwargs)
+            for retry_round in range(1, group_max_retries + 1):
                 for context in context_group:
                     attempt_number += 1
                     prepared = prepare_completion_attempt(
@@ -726,7 +726,7 @@ async def _acompletion_structured_impl(
                             },
                         )
 
-                if retry_round < max_retries:
+                if retry_round < group_max_retries:
                     await sleep_before_retry(retry_round, error=last_error)
 
     track_call(

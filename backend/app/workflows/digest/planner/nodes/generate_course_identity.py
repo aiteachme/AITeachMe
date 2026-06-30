@@ -21,7 +21,20 @@ from app.workflows.support.courses.icons import infer_course_icon_key, normalize
 
 logger = structlog.get_logger(__name__)
 
-_AUTO_TITLE_PLACEHOLDERS = {"", "untitled course", "新课程", "无标题", "未命名", "未命名课程"}
+_AUTO_TITLE_PLACEHOLDERS = {
+    "",
+    "untitled course",
+    "新课程",
+    "无标题",
+    "未命名",
+    "未命名课程",
+    "方案",
+    "学习方案",
+    "课程方案",
+    "构建方案",
+    "学习计划",
+    "课程规划",
+}
 _TITLE_MAX_CHARS = 16
 
 
@@ -96,13 +109,21 @@ def build_generate_course_identity_node(*, context: WorkflowContext):
                 ),
                 response_model=PlannerCourseIdentity,
             )
-        except Exception:
+        except Exception as exc:
             logger.exception(
                 "planner_course_identity_generation_failed",
                 planner_session_id=state.get("planner_session_id") or "",
                 course_id=state.get("course_id") or "",
+                error_type=type(exc).__name__,
+                error=str(exc),
             )
-            return {"generated_course_name": "", "generated_course_icon_key": ""}
+            await emit_planner_event(
+                state,
+                event="planner.identity.failed",
+                detail="课程名和图标生成失败，请重试。",
+                payload={"error_type": type(exc).__name__},
+            )
+            raise
 
         identity = result if isinstance(result, PlannerCourseIdentity) else PlannerCourseIdentity.model_validate(result)
         explicit_topic = extract_explicit_learning_topic(state.get("user_prompt") or "")

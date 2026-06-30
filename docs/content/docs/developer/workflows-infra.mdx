@@ -1,0 +1,32 @@
+---
+title: Workflows 和 Infra
+description: 区分业务工作流和共享基础设施，避免职责回流。
+---
+
+AITeachMe 后端最重要的边界是：`workflows` 决定业务怎么跑，`shared.infra` 提供通用能力怎么接。
+
+## Workflows 负责什么
+
+`backend/app/workflows/` 是当前唯一业务层。它承接五大引擎和 support 用例。
+
+如果一段代码要理解“怎么教、先学什么、怎么诊断”，它通常应该在 workflows。具体 lane 目录规则以 `backend/app/workflows/README.md` 为准。
+
+## Infra 负责什么
+
+`backend/app/shared/infra/` 是共享基础设施层，负责接通 LLM、embedding、检索、工具、存储、workflow runtime 和观测。
+
+一句话：
+
+```text
+infra 负责能力怎么接，workflows 负责业务怎么跑、怎么教。
+```
+
+## 不该放进 Infra 的内容
+
+- workflow graph、state、node。
+- 业务场景专属 prompt。
+- 教学策略、章节顺序、课程构建流程。
+
+## Progress 和观测
+
+前端进度只展示用户能理解的阶段；研发排障使用日志、运行状态和 LangSmith 等观测工具。不要把内部 trace 细节直接暴露给用户。

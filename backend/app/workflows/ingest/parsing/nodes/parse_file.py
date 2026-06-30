@@ -16,13 +16,23 @@ import time
 from pathlib import Path
 
 from app.shared.infra.workflow.context import WorkflowContext
-from app.workflows.ingest.parsing.lib.defaults import DEFAULT_EXTERNAL_PARSE_TIMEOUT_S
+from app.shared.infra.env_support import get_env, get_env_bounded_float, get_env_bounded_int
+from app.workflows.ingest.parsing.lib.defaults import (
+    DEFAULT_EXTERNAL_PARSE_TIMEOUT_S,
+    DEFAULT_PADDLE_OCR_PARSE_TIMEOUT_S,
+)
 from app.utils.path_helpers import list_asset_files
 from app.workflows.ingest.parsing.canonicalizer import canonicalize_markdown
 from app.workflows.ingest.parsing.mineru_cloud import MinerURequestOptions, parse_file_to_dir
 from app.workflows.ingest.parsing.paddle_ocr_cloud import (
+    DEFAULT_PADDLE_OCR_MODEL,
     PaddleOCRRequestOptions,
     parse_file_to_dir as parse_file_to_dir_with_paddle_ocr,
+)
+from app.workflows.ingest.parsing.paddle_ocr_parallel import (
+    DEFAULT_PADDLE_OCR_CHUNK_CONCURRENCY,
+    DEFAULT_PADDLE_OCR_MAX_PAGES_PER_CHUNK,
+    parse_file_to_dir_parallel as parse_file_to_dir_with_paddle_ocr_parallel,
 )
 from app.workflows.ingest.parsing.orchestrator import fast_parse_file
 from app.workflows.ingest.parsing.lib.formats import is_image_extension
@@ -161,6 +171,44 @@ def _copy_external_assets(
     return copied_assets
 
 
+def _paddle_ocr_parse_timeout_s() -> float:
+    return get_env_bounded_float(
+        "PADDLE_OCR_PARSE_TIMEOUT_S",
+        float(DEFAULT_PADDLE_OCR_PARSE_TIMEOUT_S),
+        min_value=15.0,
+        max_value=600.0,
+    )
+
+
+def _paddle_ocr_model() -> str:
+    return (get_env("PADDLE_OCR_MODEL") or "").strip() or DEFAULT_PADDLE_OCR_MODEL
+
+
+def _paddle_ocr_parse_mode() -> str:
+    raw_mode = (get_env("PADDLE_OCR_PARSE_MODE") or "").strip().lower()
+    if raw_mode in {"parallel", "split", "chunked", "async"}:
+        return "parallel"
+    return "single"
+
+
+def _paddle_ocr_chunk_max_pages() -> int:
+    return get_env_bounded_int(
+        "PADDLE_OCR_CHUNK_MAX_PAGES",
+        DEFAULT_PADDLE_OCR_MAX_PAGES_PER_CHUNK,
+        min_value=1,
+        max_value=100,
+    )
+
+
+def _paddle_ocr_chunk_concurrency() -> int:
+    return get_env_bounded_int(
+        "PADDLE_OCR_CHUNK_CONCURRENCY",
+        DEFAULT_PADDLE_OCR_CHUNK_CONCURRENCY,
+        min_value=1,
+        max_value=16,
+    )
+
+
 async def _run_mineru_external_parse(
     *,
     state: IngestParseState,
@@ -225,15 +273,36 @@ async def _run_paddle_ocr_external_parse(
     parse_plan: ParsePlan | None,
 ) -> tuple[_ExternalFastParseResult, dict[str, object]]:
     started_at = time.monotonic()
-    extracted = await asyncio.to_thread(
-        parse_file_to_dir_with_paddle_ocr,
-        file_path=Path(state["file_path"]),
-        options=PaddleOCRRequestOptions(
-            api_token=state.get("paddle_ocr_token") or "",
-        ),
-        output_dir=Path(state["temp_dir"]) / "paddle_ocr_output",
-        total_timeout_s=DEFAULT_EXTERNAL_PARSE_TIMEOUT_S,
+    timeout_budget_s = _paddle_ocr_parse_timeout_s()
+    model = _paddle_ocr_model()
+    parse_mode = _paddle_ocr_parse_mode()
+    output_dir = Path(state["temp_dir"]) / f"paddle_ocr_{parse_mode}_output"
+    request_options = PaddleOCRRequestOptions(
+        api_token=state.get("paddle_ocr_token") or "",
+        model=model,
     )
+    if parse_mode == "parallel":
+        chunk_max_pages = _paddle_ocr_chunk_max_pages()
+        chunk_concurrency = _paddle_ocr_chunk_concurrency()
+        extracted = await asyncio.to_thread(
+            parse_file_to_dir_with_paddle_ocr_parallel,
+            file_path=Path(state["file_path"]),
+            options=request_options,
+            output_dir=output_dir,
+            total_timeout_s=timeout_budget_s,
+            max_pages_per_chunk=chunk_max_pages,
+            max_concurrent_jobs=chunk_concurrency,
+        )
+    else:
+        chunk_max_pages = None
+        chunk_concurrency = None
+        extracted = await asyncio.to_thread(
+            parse_file_to_dir_with_paddle_ocr,
+            file_path=Path(state["file_path"]),
+            options=request_options,
+            output_dir=output_dir,
+            total_timeout_s=timeout_budget_s,
+        )
 
     paddle_ocr_markdown_raw = extracted.markdown_path.read_text(encoding="utf-8", errors="replace")
     copied_assets = _copy_external_assets(
@@ -250,6 +319,24 @@ async def _run_paddle_ocr_external_parse(
         asset_gallery_limit=parse_plan.options.asset_gallery_limit if parse_plan else 12,
     )
     elapsed = round(time.monotonic() - started_at, 2)
+    extracted_metadata = getattr(extracted, "metadata", {}) or {}
+    job_ids = tuple(getattr(extracted, "job_ids", ()) or ())
+    provider_metadata: dict[str, object] = {
+        "job_id": extracted.job_id,
+        "model": extracted.model,
+        "strategy": parse_mode,
+        "copied_assets": copied_assets,
+        "token_source": state.get("paddle_ocr_token_source"),
+        "timeout_budget_s": timeout_budget_s,
+    }
+    if job_ids:
+        provider_metadata["job_ids"] = list(job_ids)
+    if chunk_max_pages is not None:
+        provider_metadata["chunk_max_pages"] = chunk_max_pages
+    if chunk_concurrency is not None:
+        provider_metadata["chunk_concurrency"] = chunk_concurrency
+    if isinstance(extracted_metadata, dict):
+        provider_metadata.update(extracted_metadata)
     return (
         _ExternalFastParseResult(
             markdown=canonical_result.markdown,
@@ -261,13 +348,7 @@ async def _run_paddle_ocr_external_parse(
             appended_asset_images=canonical_result.appended_asset_images,
             needs_enhance=False,
         ),
-        {
-            "job_id": extracted.job_id,
-            "model": extracted.model,
-            "copied_assets": copied_assets,
-            "token_source": state.get("paddle_ocr_token_source"),
-            "timeout_budget_s": DEFAULT_EXTERNAL_PARSE_TIMEOUT_S,
-        },
+        provider_metadata,
     )
 
 
@@ -363,6 +444,11 @@ def build_parse_file_node(*, context: WorkflowContext):
                 timeout_triggered_provider: str | None = None
                 for provider_name in provider_order:
                     provider_started_at = time.monotonic()
+                    timeout_budget_s = (
+                        _paddle_ocr_parse_timeout_s()
+                        if provider_name == "paddle_ocr"
+                        else DEFAULT_EXTERNAL_PARSE_TIMEOUT_S
+                    )
                     try:
                         if provider_name == "mineru":
                             external_result, current_provider_metadata = await _run_mineru_external_parse(
@@ -409,7 +495,7 @@ def build_parse_file_node(*, context: WorkflowContext):
                         logger.warning(
                             "ingest_external_provider_attempt_timed_out",
                             provider=provider_name,
-                            timeout_budget_s=DEFAULT_EXTERNAL_PARSE_TIMEOUT_S,
+                            timeout_budget_s=timeout_budget_s,
                             error=str(exc),
                         )
                         if not is_external_only_image:
@@ -465,7 +551,11 @@ def build_parse_file_node(*, context: WorkflowContext):
                         "provider_failures": provider_failures,
                         "fallback_to": "local",
                         "timeout_provider": timeout_triggered_provider,
-                        "timeout_budget_s": DEFAULT_EXTERNAL_PARSE_TIMEOUT_S,
+                        "timeout_budget_s": (
+                            _paddle_ocr_parse_timeout_s()
+                            if timeout_triggered_provider == "paddle_ocr"
+                            else DEFAULT_EXTERNAL_PARSE_TIMEOUT_S
+                        ),
                     }
                     logger.info(
                         "ingest_external_provider_fell_back_to_local",

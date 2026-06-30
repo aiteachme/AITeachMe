@@ -119,6 +119,32 @@ async def test_docgen_summarize_files_blocks_unrouted_llm_summary(monkeypatch) -
 
 
 @pytest.mark.anyio
+async def test_docgen_summarize_files_falls_back_when_file_summary_llm_fails(monkeypatch) -> None:
+    sections = [_section(0, repeat=20), _section(1, repeat=20)]
+    packet = _source_packet(file_id="file_1", sections=sections)
+    context = DigestMaterialContext(source_documents=[packet], material_sections=sections)
+
+    async def fake_completion(messages, **kwargs):
+        raise RuntimeError("provider timeout")
+
+    monkeypatch.setattr(file_summaries, "acompletion_with_fallback", fake_completion)
+    monkeypatch.setattr(llm_scheduler, "get_llm_concurrency_limit", lambda: 4)
+
+    summaries = await file_summaries.summarize_files(
+        context,
+        chapters=[{"chapter_index": 1, "title": "chapter"}],
+        digest_mode="systematic",
+    )
+
+    assert len(summaries) == 1
+    assert summaries[0].fallback_used is True
+    assert summaries[0].summary_mode == "fallback_file_summary"
+    assert summaries[0].llm_call_count == 0
+    assert summaries[0].chapter_slices
+    assert summaries[0].high_value_sections
+
+
+@pytest.mark.anyio
 async def test_docgen_summarize_files_allows_explicit_noise_sections(monkeypatch) -> None:
     sections = [_section(0, repeat=20)]
     packet = _source_packet(file_id="file_1", sections=sections)
@@ -144,6 +170,36 @@ async def test_docgen_summarize_files_allows_explicit_noise_sections(monkeypatch
     assert summaries[0].fallback_used is False
     assert summaries[0].chapter_slices == []
     assert summaries[0].noise_sections == [sections[0].digest_chunk_uid]
+
+
+@pytest.mark.anyio
+async def test_docgen_summarize_files_falls_back_for_failed_section_batches(monkeypatch) -> None:
+    sections = [_section(index) for index in range(48)]
+    packet = _source_packet(file_id="file_1", sections=sections)
+    context = DigestMaterialContext(source_documents=[packet], material_sections=sections)
+    calls = 0
+
+    async def fake_completion(messages, **kwargs):
+        nonlocal calls
+        calls += 1
+        raise RuntimeError("rate limited")
+
+    monkeypatch.setattr(file_summaries, "acompletion_with_fallback", fake_completion)
+    monkeypatch.setattr(llm_scheduler, "get_llm_concurrency_limit", lambda: 16)
+
+    summaries = await file_summaries.summarize_files(
+        context,
+        chapters=[{"chapter_index": 1, "title": "核心主题"}, {"chapter_index": 2, "title": "迁移应用"}],
+        digest_mode="systematic",
+    )
+
+    assert calls > 1
+    assert len(summaries) == 1
+    assert summaries[0].fallback_used is True
+    assert summaries[0].summary_mode == "fallback_section_batches"
+    assert summaries[0].llm_call_count == 0
+    assert {item.chapter_index for item in summaries[0].chapter_slices}.issubset({1, 2})
+    assert len(summaries[0].chapter_slices) > 1
 
 
 def test_docgen_long_file_batch_count_is_not_capped_by_concurrency() -> None:

@@ -238,7 +238,7 @@
           "system"
         ],
         "summary": "测试设置页模型连通性",
-        "description": "按 reason / primary / light 槽位测试主模型网关或备用模型网关。主网关按当前接口模式自动路由，备用网关强制 Chat Completions。",
+        "description": "按 reason / primary / light 槽位测试主模型网关或备用模型网关。主网关按当前主模型路由测试，备用网关强制 Chat Completions 并快速失败。",
         "operationId": "probe_system_settings_model_api_v1_system_settings_model_probe_post",
         "requestBody": {
           "content": {
@@ -2240,6 +2240,79 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ApiResponse_Union_BuildPlannerSessionResponse__NoneType__"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/courses/{course_id}/knowledge/build/plans/cancel": {
+      "post": {
+        "tags": [
+          "knowledge",
+          "knowledge"
+        ],
+        "summary": "Cancel the active build planner stream for this course",
+        "operationId": "knowledge_build_plan_cancel_api_v1_courses__course_id__knowledge_build_plans_cancel_post",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_BuildPlannerCancelResponse_"
                 }
               }
             }
@@ -7324,10 +7397,13 @@
         },
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "课程导出包（.atmx）。",
             "content": {
-              "application/json": {
-                "schema": {}
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
               }
             }
           },
@@ -7684,6 +7760,40 @@
         },
         "type": "object",
         "title": "ApiResponse[BuildPlannerAdjustClickResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_BuildPlannerCancelResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BuildPlannerCancelResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[BuildPlannerCancelResponse]",
         "example": {
           "code": 0,
           "data": {},
@@ -10323,6 +10433,34 @@
         ],
         "title": "BuildPlannerAdjustClickResponse",
         "description": "Acknowledgement for entering planner adjustment mode."
+      },
+      "BuildPlannerCancelResponse": {
+        "properties": {
+          "course_id": {
+            "type": "string",
+            "title": "Course Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "cancelled"
+          },
+          "cancelled_task_count": {
+            "type": "integer",
+            "title": "Cancelled Task Count",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "default": "已停止当前方案生成。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "course_id"
+        ],
+        "title": "BuildPlannerCancelResponse"
       },
       "BuildPlannerChapterResponse": {
         "properties": {

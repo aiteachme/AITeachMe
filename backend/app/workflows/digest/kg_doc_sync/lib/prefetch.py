@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from threading import RLock
 from typing import Any
@@ -16,7 +17,7 @@ from app.shared.infra.llm_support.common import (
     capture_llm_runtime_snapshot,
     use_llm_runtime_snapshot,
 )
-from app.shared.infra.observability.trace import suppress_langsmith_child_runs
+from app.shared.infra.observability.trace import langsmith_trace, llm_trace_scope
 from app.shared.infra.settings import get_settings
 from app.workflows.digest.kg_doc_sync.lib.incremental_sync import (
     _graph_llm_concurrency_cap,
@@ -29,6 +30,9 @@ logger = structlog.get_logger(__name__)
 
 _PREFETCH_START_DELAY_S = 0.5
 _PREFETCH_CONSUME_GRACE_S = 8.0
+_PREFETCH_FOREGROUND_SLOT_RESERVE = 2
+_PREFETCH_GLOBAL_FRACTION_DIVISOR = 3
+_PREFETCH_BACKGROUND_HARD_CAP = 2
 
 
 @dataclass(slots=True)
@@ -49,6 +53,143 @@ _CACHES: dict[tuple[str, str], _PrefetchCache] = {}
 
 def _key(course_id: str, build_session_id: str) -> tuple[str, str]:
     return str(course_id or "").strip(), str(build_session_id or "").strip()
+
+
+def _prefetch_concurrency_limit(
+    configured: int | None,
+    *,
+    global_limit: int | None = None,
+) -> int:
+    """Cap background prefetch so foreground workflows keep LLM capacity."""
+
+    configured_limit = max(1, int(configured or 1))
+    llm_limit = max(
+        1,
+        int(_graph_llm_concurrency_cap() if global_limit is None else global_limit or 1),
+    )
+    if llm_limit <= _PREFETCH_FOREGROUND_SLOT_RESERVE:
+        background_cap = 1
+    else:
+        background_cap = min(
+            max(1, llm_limit - _PREFETCH_FOREGROUND_SLOT_RESERVE),
+            max(1, llm_limit // _PREFETCH_GLOBAL_FRACTION_DIVISOR),
+            _PREFETCH_BACKGROUND_HARD_CAP,
+        )
+    return max(1, min(configured_limit, llm_limit, background_cap))
+
+
+def _prefetch_trace_phase(docgen_manifest: dict[str, Any] | None) -> str:
+    return str((docgen_manifest or {}).get("kg_prefetch_phase") or "unknown").strip() or "unknown"
+
+
+def _prefetch_trace_inputs(
+    *,
+    chapters: list[dict[str, Any]],
+    markdown: str,
+    concurrency: int,
+    docgen_manifest: dict[str, Any] | None,
+    incremental: bool,
+) -> dict[str, Any]:
+    return {
+        "chapter_count": len(chapters),
+        "markdown_chars": len(markdown),
+        "concurrency_limit": concurrency,
+        "kg_prefetch_phase": _prefetch_trace_phase(docgen_manifest),
+        "incremental": bool(incremental),
+    }
+
+
+def _prefetch_trace_metadata(
+    *,
+    concurrency: int,
+    configured_concurrency: int,
+    llm_concurrency_cap: int,
+    docgen_manifest: dict[str, Any] | None,
+    incremental: bool,
+) -> dict[str, Any]:
+    return {
+        "background_sidecar": "kg_docgen_prefetch",
+        "kg_prefetch_phase": _prefetch_trace_phase(docgen_manifest),
+        "incremental": bool(incremental),
+        "configured_concurrency": configured_concurrency,
+        "llm_concurrency_cap": llm_concurrency_cap,
+        "effective_concurrency": concurrency,
+    }
+
+
+async def _extract_prefetch_records_with_trace(
+    *,
+    course_id: str,
+    build_session_id: str,
+    markdown: str,
+    chapters: list[dict[str, Any]],
+    course_context: Any,
+    structured_context: dict[str, Any],
+    docgen_manifest: dict[str, Any] | None,
+    snapshot: LLMRuntimeSnapshot,
+    concurrency: int,
+    configured_concurrency: int,
+    llm_concurrency_cap: int,
+    incremental: bool,
+    on_record: Any,
+) -> tuple[list[SectionExtractionRecord], dict[str, Any]]:
+    workflow = "kg_docgen_prefetch"
+    lane = "background"
+    phase = _prefetch_trace_phase(docgen_manifest)
+    trace_name = "KG：DocGen 增量预取" if incremental else "KG：DocGen 预取"
+    with use_llm_runtime_snapshot(snapshot):
+        with llm_trace_scope(
+            course_id=course_id,
+            build_session_id=build_session_id,
+            workflow=workflow,
+            lane=lane,
+            node=phase,
+        ):
+            with langsmith_trace(
+                name=trace_name,
+                run_type="chain",
+                inputs=_prefetch_trace_inputs(
+                    chapters=chapters,
+                    markdown=markdown,
+                    concurrency=concurrency,
+                    docgen_manifest=docgen_manifest,
+                    incremental=incremental,
+                ),
+                course_id=course_id,
+                build_session_id=build_session_id,
+                workflow=workflow,
+                lane=lane,
+                node=phase,
+                extra_metadata=_prefetch_trace_metadata(
+                    concurrency=concurrency,
+                    configured_concurrency=configured_concurrency,
+                    llm_concurrency_cap=llm_concurrency_cap,
+                    docgen_manifest=docgen_manifest,
+                    incremental=incremental,
+                ),
+                extra_tags=["background:kg_docgen_prefetch"],
+            ) as trace_run:
+                with (
+                    tracing_context(parent=trace_run)
+                    if trace_run is not None
+                    else nullcontext()
+                ):
+                    records, metrics = await extract_knowledge_graph_section_records_async(
+                        markdown=markdown,
+                        course_context=course_context,
+                        structured_context=structured_context,
+                        concurrency_limit=concurrency,
+                        on_record=on_record,
+                    )
+                if trace_run is not None:
+                    trace_run.end(
+                        outputs={
+                            **dict(metrics),
+                            "record_count": len(records),
+                            "concurrency_limit": concurrency,
+                        }
+                    )
+                return records, dict(metrics)
 
 
 def _drop_cache_if_current(key: tuple[str, str], cache: _PrefetchCache) -> None:
@@ -236,13 +377,20 @@ def start_docgen_kg_prefetch(
         document_backbone=document_backbone,
         docgen_manifest=docgen_manifest,
     )
-    concurrency = max(
-        1,
-        min(
-            int(settings.knowledge_graph.prefetch_concurrency or 1),
-            _graph_llm_concurrency_cap(),
-        ),
+    configured_concurrency = int(settings.knowledge_graph.prefetch_concurrency or 1)
+    llm_concurrency_cap = _graph_llm_concurrency_cap()
+    concurrency = _prefetch_concurrency_limit(
+        configured_concurrency,
+        global_limit=llm_concurrency_cap,
     )
+    with _LOCK:
+        cache.metrics.update(
+            {
+                "prefetch_configured_concurrency": configured_concurrency,
+                "prefetch_llm_concurrency_cap": llm_concurrency_cap,
+                "prefetch_effective_concurrency": concurrency,
+            }
+        )
 
     def _on_record(record: SectionExtractionRecord) -> None:
         with _LOCK:
@@ -256,15 +404,21 @@ def start_docgen_kg_prefetch(
             await asyncio.sleep(_PREFETCH_START_DELAY_S)
             with managed_session() as session:
                 course_context = load_course_llm_context(session, course_id=course_id)
-            with use_llm_runtime_snapshot(snapshot):
-                with tracing_context(enabled=False), suppress_langsmith_child_runs():
-                    _records, metrics = await extract_knowledge_graph_section_records_async(
-                        markdown=markdown,
-                        course_context=course_context,
-                        structured_context=structured_context,
-                        concurrency_limit=concurrency,
-                        on_record=_on_record,
-                    )
+            _records, metrics = await _extract_prefetch_records_with_trace(
+                course_id=course_id,
+                build_session_id=build_session_id,
+                markdown=markdown,
+                chapters=chapters,
+                course_context=course_context,
+                structured_context=structured_context,
+                docgen_manifest=docgen_manifest,
+                snapshot=snapshot,
+                concurrency=concurrency,
+                configured_concurrency=configured_concurrency,
+                llm_concurrency_cap=llm_concurrency_cap,
+                incremental=False,
+                on_record=_on_record,
+            )
             with _LOCK:
                 active = _CACHES.get(key)
                 if active is cache:
@@ -381,13 +535,20 @@ def start_docgen_kg_prefetch_incremental(
         document_backbone=document_backbone,
         docgen_manifest=docgen_manifest,
     )
-    concurrency = max(
-        1,
-        min(
-            int(settings.knowledge_graph.prefetch_concurrency or 1),
-            _graph_llm_concurrency_cap(),
-        ),
+    configured_concurrency = int(settings.knowledge_graph.prefetch_concurrency or 1)
+    llm_concurrency_cap = _graph_llm_concurrency_cap()
+    concurrency = _prefetch_concurrency_limit(
+        configured_concurrency,
+        global_limit=llm_concurrency_cap,
     )
+    with _LOCK:
+        cache.metrics.update(
+            {
+                "prefetch_configured_concurrency": configured_concurrency,
+                "prefetch_llm_concurrency_cap": llm_concurrency_cap,
+                "prefetch_effective_concurrency": concurrency,
+            }
+        )
 
     def _on_record(record: SectionExtractionRecord) -> None:
         with _LOCK:
@@ -400,15 +561,21 @@ def start_docgen_kg_prefetch_incremental(
             await asyncio.sleep(_PREFETCH_START_DELAY_S)
             with managed_session() as session:
                 course_context = load_course_llm_context(session, course_id=course_id)
-            with use_llm_runtime_snapshot(snapshot):
-                with tracing_context(enabled=False), suppress_langsmith_child_runs():
-                    _records, metrics = await extract_knowledge_graph_section_records_async(
-                        markdown=markdown,
-                        course_context=course_context,
-                        structured_context=structured_context,
-                        concurrency_limit=concurrency,
-                        on_record=_on_record,
-                    )
+            _records, metrics = await _extract_prefetch_records_with_trace(
+                course_id=course_id,
+                build_session_id=build_session_id,
+                markdown=markdown,
+                chapters=chapters,
+                course_context=course_context,
+                structured_context=structured_context,
+                docgen_manifest=docgen_manifest,
+                snapshot=snapshot,
+                concurrency=concurrency,
+                configured_concurrency=configured_concurrency,
+                llm_concurrency_cap=llm_concurrency_cap,
+                incremental=True,
+                on_record=_on_record,
+            )
             with _LOCK:
                 active = _CACHES.get(key)
                 if active is cache:

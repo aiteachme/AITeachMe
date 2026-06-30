@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 import pytest
 
 from app.shared.infra.workflow.context import WorkflowContext
+from app.workflows.ingest.parsing.lib.defaults import (
+    DEFAULT_EXTERNAL_PARSE_TIMEOUT_S,
+    DEFAULT_PADDLE_OCR_PARSE_TIMEOUT_S,
+)
+from app.workflows.ingest.parsing import paddle_ocr_cloud
 from app.workflows.ingest.parsing.nodes import parse_file as parse_lib
 from app.workflows.ingest.parsing.orchestrator import FastParseResult
 from app.workflows.ingest.parsing.lib.provider_contracts import ExternalProviderTimeoutError, ParseDecision
@@ -22,7 +28,7 @@ async def test_paddle_timeout_falls_back_directly_to_local_parse(monkeypatch, tm
 
     async def fake_paddle_external_parse(**kwargs):
         del kwargs
-        raise ExternalProviderTimeoutError("PaddleOCR", 15)
+        raise ExternalProviderTimeoutError("PaddleOCR", DEFAULT_PADDLE_OCR_PARSE_TIMEOUT_S)
 
     async def fake_mineru_external_parse(**kwargs):
         del kwargs
@@ -51,6 +57,11 @@ async def test_paddle_timeout_falls_back_directly_to_local_parse(monkeypatch, tm
 
     monkeypatch.setattr(parse_lib, "_run_paddle_ocr_external_parse", fake_paddle_external_parse)
     monkeypatch.setattr(parse_lib, "_run_mineru_external_parse", fake_mineru_external_parse)
+    monkeypatch.setattr(
+        parse_lib,
+        "_paddle_ocr_parse_timeout_s",
+        lambda: float(DEFAULT_PADDLE_OCR_PARSE_TIMEOUT_S),
+    )
     monkeypatch.setattr(parse_lib, "build_parse_plan", fake_build_parse_plan)
     monkeypatch.setattr(parse_lib, "fast_parse_file", fake_local_parse)
 
@@ -96,7 +107,7 @@ async def test_paddle_timeout_falls_back_directly_to_local_parse(monkeypatch, tm
     provider_metadata = metadata["provider_metadata"]
     assert provider_metadata["fallback_to"] == "local"
     assert provider_metadata["timeout_provider"] == "paddle_ocr"
-    assert provider_metadata["timeout_budget_s"] == 15
+    assert provider_metadata["timeout_budget_s"] == DEFAULT_PADDLE_OCR_PARSE_TIMEOUT_S
     assert "PaddleOCR 解析超时" in provider_metadata["provider_failures"]["paddle_ocr"]
 
 
@@ -110,7 +121,7 @@ async def test_image_paddle_timeout_falls_back_to_mineru_without_local_parse(mon
 
     async def fake_paddle_external_parse(**kwargs):
         del kwargs
-        raise ExternalProviderTimeoutError("PaddleOCR", 15)
+        raise ExternalProviderTimeoutError("PaddleOCR", DEFAULT_PADDLE_OCR_PARSE_TIMEOUT_S)
 
     async def fake_mineru_external_parse(**kwargs):
         del kwargs
@@ -183,6 +194,284 @@ async def test_image_paddle_timeout_falls_back_to_mineru_without_local_parse(mon
 
 
 @pytest.mark.anyio
+async def test_paddle_ocr_single_mode_routes_to_cloud_adapter(monkeypatch, tmp_path) -> None:
+    source_path = tmp_path / "source.pdf"
+    source_path.write_bytes(b"fake-pdf")
+    local_asset_dir = tmp_path / "assets"
+    captured: dict[str, object] = {}
+
+    def fake_parse_file_to_dir_with_paddle_ocr(**kwargs):
+        captured.update(kwargs)
+        output_dir = kwargs["output_dir"]
+        markdown_path = output_dir / "full.md"
+        markdown_path.parent.mkdir(parents=True, exist_ok=True)
+        markdown_path.write_text("# paddle", encoding="utf-8")
+        return SimpleNamespace(
+            markdown_path=markdown_path,
+            images_dir=None,
+            job_id="job_test",
+            model=kwargs["options"].model,
+        )
+
+    monkeypatch.setenv("PADDLE_OCR_PARSE_TIMEOUT_S", "42")
+    monkeypatch.setenv("PADDLE_OCR_MODEL", "PaddleOCR-VL-1.5")
+    monkeypatch.delenv("PADDLE_OCR_PARSE_MODE", raising=False)
+    monkeypatch.setattr(
+        parse_lib,
+        "parse_file_to_dir_with_paddle_ocr",
+        fake_parse_file_to_dir_with_paddle_ocr,
+    )
+
+    result, metadata = await parse_lib._run_paddle_ocr_external_parse(
+        state={
+            "file_path": str(source_path),
+            "temp_dir": str(tmp_path / "temp"),
+            "asset_name_prefix": "file_test_",
+            "asset_link_prefix": "assets/file_test",
+            "paddle_ocr_token": "token",
+            "paddle_ocr_token_source": "request",
+        },
+        local_asset_dir=local_asset_dir,
+        parse_plan=ParsePlan(
+            mode="external_paddle_ocr",
+            parser_chain=["paddle_ocr"],
+            decision_reason="test",
+            options=ParserRunOptions(),
+        ),
+    )
+
+    assert result.markdown == "# paddle\n"
+    assert captured["total_timeout_s"] == 42.0
+    assert captured["options"].model == "PaddleOCR-VL-1.5"
+    assert metadata["timeout_budget_s"] == 42.0
+    assert metadata["model"] == "PaddleOCR-VL-1.5"
+    assert metadata["strategy"] == "single"
+
+
+@pytest.mark.anyio
+async def test_paddle_ocr_parallel_mode_routes_to_chunk_adapter(monkeypatch, tmp_path) -> None:
+    source_path = tmp_path / "source.pdf"
+    source_path.write_bytes(b"fake-pdf")
+    local_asset_dir = tmp_path / "assets"
+    captured: dict[str, object] = {}
+
+    def fake_parse_file_to_dir_with_paddle_ocr(**kwargs):
+        del kwargs
+        raise AssertionError("parallel mode should not call the single PaddleOCR adapter")
+
+    def fake_parse_file_to_dir_with_paddle_ocr_parallel(**kwargs):
+        captured.update(kwargs)
+        output_dir = kwargs["output_dir"]
+        markdown_path = output_dir / "full.md"
+        markdown_path.parent.mkdir(parents=True, exist_ok=True)
+        markdown_path.write_text("# paddle parallel", encoding="utf-8")
+        return SimpleNamespace(
+            markdown_path=markdown_path,
+            images_dir=None,
+            job_id="job_a,job_b",
+            job_ids=("job_a", "job_b"),
+            model=kwargs["options"].model,
+            metadata={
+                "strategy": "parallel",
+                "job_count": 2,
+                "chunk_count": 2,
+                "chunk_page_counts": [10, 8],
+            },
+        )
+
+    monkeypatch.setenv("PADDLE_OCR_PARSE_MODE", "parallel")
+    monkeypatch.setenv("PADDLE_OCR_PARSE_TIMEOUT_S", "42")
+    monkeypatch.setenv("PADDLE_OCR_CHUNK_MAX_PAGES", "10")
+    monkeypatch.setenv("PADDLE_OCR_CHUNK_CONCURRENCY", "3")
+    monkeypatch.setattr(
+        parse_lib,
+        "parse_file_to_dir_with_paddle_ocr",
+        fake_parse_file_to_dir_with_paddle_ocr,
+    )
+    monkeypatch.setattr(
+        parse_lib,
+        "parse_file_to_dir_with_paddle_ocr_parallel",
+        fake_parse_file_to_dir_with_paddle_ocr_parallel,
+    )
+
+    result, metadata = await parse_lib._run_paddle_ocr_external_parse(
+        state={
+            "file_path": str(source_path),
+            "temp_dir": str(tmp_path / "temp"),
+            "asset_name_prefix": "file_test_",
+            "asset_link_prefix": "assets/file_test",
+            "paddle_ocr_token": "token",
+            "paddle_ocr_token_source": "request",
+        },
+        local_asset_dir=local_asset_dir,
+        parse_plan=ParsePlan(
+            mode="external_paddle_ocr",
+            parser_chain=["paddle_ocr"],
+            decision_reason="test",
+            options=ParserRunOptions(),
+        ),
+    )
+
+    assert result.markdown == "# paddle parallel\n"
+    assert captured["total_timeout_s"] == 42.0
+    assert captured["max_pages_per_chunk"] == 10
+    assert captured["max_concurrent_jobs"] == 3
+    assert metadata["strategy"] == "parallel"
+    assert metadata["job_ids"] == ["job_a", "job_b"]
+    assert metadata["job_count"] == 2
+    assert metadata["chunk_count"] == 2
+    assert metadata["chunk_page_counts"] == [10, 8]
+    assert metadata["chunk_max_pages"] == 10
+    assert metadata["chunk_concurrency"] == 3
+
+
+@pytest.mark.anyio
+async def test_paddle_ocr_parallel_uses_ten_page_chunks_by_default(monkeypatch, tmp_path) -> None:
+    source_path = tmp_path / "source.pdf"
+    source_path.write_bytes(b"fake-pdf")
+    captured: dict[str, object] = {}
+
+    def fake_parse_file_to_dir_with_paddle_ocr_parallel(**kwargs):
+        captured.update(kwargs)
+        output_dir = kwargs["output_dir"]
+        markdown_path = output_dir / "full.md"
+        markdown_path.parent.mkdir(parents=True, exist_ok=True)
+        markdown_path.write_text("# paddle parallel", encoding="utf-8")
+        return SimpleNamespace(
+            markdown_path=markdown_path,
+            images_dir=None,
+            job_id="job_a",
+            job_ids=("job_a",),
+            model=kwargs["options"].model,
+            metadata={"strategy": "parallel"},
+        )
+
+    monkeypatch.setenv("PADDLE_OCR_PARSE_MODE", "parallel")
+    monkeypatch.delenv("PADDLE_OCR_CHUNK_MAX_PAGES", raising=False)
+    monkeypatch.setattr(
+        parse_lib,
+        "parse_file_to_dir_with_paddle_ocr_parallel",
+        fake_parse_file_to_dir_with_paddle_ocr_parallel,
+    )
+
+    await parse_lib._run_paddle_ocr_external_parse(
+        state={
+            "file_path": str(source_path),
+            "temp_dir": str(tmp_path / "temp"),
+            "asset_name_prefix": "file_test_",
+            "asset_link_prefix": "assets/file_test",
+            "paddle_ocr_token": "token",
+            "paddle_ocr_token_source": "request",
+        },
+        local_asset_dir=tmp_path / "assets",
+        parse_plan=ParsePlan(
+            mode="external_paddle_ocr",
+            parser_chain=["paddle_ocr"],
+            decision_reason="test",
+            options=ParserRunOptions(),
+        ),
+    )
+
+    assert captured["max_pages_per_chunk"] == 10
+
+
+def test_paddle_ocr_cloud_uses_one_second_default_poll_interval(monkeypatch, tmp_path) -> None:
+    source_path = tmp_path / "source.pdf"
+    source_path.write_bytes(b"fake-pdf")
+    captured: dict[str, object] = {}
+
+    class FakeResponse:
+        status_code = 200
+        text = '{"data": {"jobId": "job_test"}}'
+
+        def json(self):
+            return {"data": {"jobId": "job_test"}}
+
+    class FakeSession:
+        def post(self, *args, **kwargs):
+            return FakeResponse()
+
+    def fake_poll_until_done(**kwargs):
+        captured["poll_interval_s"] = kwargs["poll_interval_s"]
+        return "https://example.test/result.jsonl"
+
+    def fake_download_and_materialize_jsonl(**kwargs):
+        del kwargs
+        return "# paddle\n"
+
+    monkeypatch.setattr(paddle_ocr_cloud, "_get_session", lambda: FakeSession())
+    monkeypatch.setattr(paddle_ocr_cloud, "_poll_until_done", fake_poll_until_done)
+    monkeypatch.setattr(
+        paddle_ocr_cloud,
+        "_download_and_materialize_jsonl",
+        fake_download_and_materialize_jsonl,
+    )
+
+    paddle_ocr_cloud.parse_file_to_dir(
+        file_path=source_path,
+        options=paddle_ocr_cloud.PaddleOCRRequestOptions(api_token="token"),
+        output_dir=tmp_path / "out",
+        total_timeout_s=20,
+    )
+
+    assert captured["poll_interval_s"] == 1.0
+
+
+def test_paddle_ocr_download_uses_fresh_grace_timeout_after_poll_done(monkeypatch, tmp_path) -> None:
+    source_path = tmp_path / "source.pdf"
+    source_path.write_bytes(b"fake-pdf")
+    captured: dict[str, object] = {}
+
+    class FakeResponse:
+        status_code = 200
+        text = '{"data": {"jobId": "job_test"}}'
+
+        def json(self):
+            return {"data": {"jobId": "job_test"}}
+
+    class FakeSession:
+        def post(self, *args, **kwargs):
+            return FakeResponse()
+
+    def fake_poll_until_done(**kwargs):
+        return "https://example.test/result.jsonl"
+
+    def fake_build_deadline(timeout_s):
+        captured.setdefault("deadlines", []).append(timeout_s)
+        if timeout_s == 42:
+            return paddle_ocr_cloud.time.monotonic() + 100
+        if timeout_s == 7:
+            return paddle_ocr_cloud.time.monotonic() + 200
+        return None
+
+    def fake_download_and_materialize_jsonl(**kwargs):
+        captured["download_deadline"] = kwargs["deadline"]
+        captured["download_total_timeout_s"] = kwargs["total_timeout_s"]
+        return "# paddle\n"
+
+    monkeypatch.setattr(paddle_ocr_cloud, "_get_session", lambda: FakeSession())
+    monkeypatch.setattr(paddle_ocr_cloud, "_poll_until_done", fake_poll_until_done)
+    monkeypatch.setattr(paddle_ocr_cloud, "_build_deadline", fake_build_deadline)
+    monkeypatch.setattr(
+        paddle_ocr_cloud,
+        "_download_and_materialize_jsonl",
+        fake_download_and_materialize_jsonl,
+    )
+
+    paddle_ocr_cloud.parse_file_to_dir(
+        file_path=source_path,
+        options=paddle_ocr_cloud.PaddleOCRRequestOptions(api_token="token"),
+        output_dir=tmp_path / "out",
+        total_timeout_s=42,
+        download_grace_timeout_s=7,
+    )
+
+    assert captured["deadlines"] == [42, 7]
+    assert captured["download_deadline"] > paddle_ocr_cloud.time.monotonic()
+    assert captured["download_total_timeout_s"] == 7
+
+
+@pytest.mark.anyio
 async def test_pptx_mineru_timeout_falls_back_to_local_markitdown(monkeypatch, tmp_path) -> None:
     source_path = tmp_path / "source.pptx"
     source_path.write_bytes(b"fake-pptx")
@@ -192,7 +481,7 @@ async def test_pptx_mineru_timeout_falls_back_to_local_markitdown(monkeypatch, t
 
     async def fake_mineru_external_parse(**kwargs):
         del kwargs
-        raise ExternalProviderTimeoutError("MinerU", 15)
+        raise ExternalProviderTimeoutError("MinerU", DEFAULT_EXTERNAL_PARSE_TIMEOUT_S)
 
     async def fake_local_parse(**kwargs):
         assert kwargs["parse_plan"].mode == "local_markitdown"
@@ -263,5 +552,5 @@ async def test_pptx_mineru_timeout_falls_back_to_local_markitdown(monkeypatch, t
     provider_metadata = metadata["provider_metadata"]
     assert provider_metadata["fallback_to"] == "local"
     assert provider_metadata["timeout_provider"] == "mineru"
-    assert provider_metadata["timeout_budget_s"] == 15
+    assert provider_metadata["timeout_budget_s"] == DEFAULT_EXTERNAL_PARSE_TIMEOUT_S
     assert "MinerU 解析超时" in provider_metadata["provider_failures"]["mineru"]

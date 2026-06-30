@@ -151,6 +151,41 @@
   }
 }
 
+/* Home uses a restrained, product-specific backdrop: the input remains the
+   focal point while the logo and course cards stay crisp on a quiet surface. */
+.atm-home-surface {
+  isolation: isolate;
+  background:
+    linear-gradient(180deg, #fbfcff 0%, #f8fafc 48%, #f7f9fc 100%);
+}
+
+.atm-home-surface::before {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse 22rem 10rem at 50% 8.25rem, rgba(109, 40, 217, 0.09), rgba(79, 70, 229, 0.032) 44%, transparent 74%),
+    radial-gradient(ellipse 56rem 17rem at 50% 27rem, rgba(14, 165, 233, 0.06), rgba(99, 102, 241, 0.028) 48%, transparent 78%);
+}
+
+.atm-home-surface > * {
+  position: relative;
+  z-index: 1;
+}
+
+.dark .atm-home-surface {
+  background:
+    linear-gradient(180deg, #020617 0%, #07111f 52%, #020617 100%);
+}
+
+.dark .atm-home-surface::before {
+  background:
+    radial-gradient(ellipse 22rem 10rem at 50% 8.25rem, rgba(129, 140, 248, 0.14), rgba(79, 70, 229, 0.052) 46%, transparent 74%),
+    radial-gradient(ellipse 56rem 17rem at 50% 27rem, rgba(6, 182, 212, 0.11), rgba(99, 102, 241, 0.05) 48%, transparent 78%);
+}
+
 /* Keep KaTeX's accessibility-only MathML out of the visual flow even when
    package CSS order changes in dev, desktop, or packaged builds. */
 .katex .katex-mathml {

@@ -1,9 +1,15 @@
+import asyncio
+
+import pytest
+
+from app.workflows.digest.common.models import DigestMaterialContext
 from app.shared.infra.llm_support.common import build_completion_context, prepare_completion_attempt
 from app.shared.infra.llm_support.native_tools import PROVIDER_NATIVE_TOOLS_KWARG
 from app.shared.infra.llm_support.responses_adapter import resolve_provider_call
 from app.shared.infra.settings import set_system_settings_override
 from app.workflows.digest.planner.lib.model_policy import PlannerModelStep, get_planner_model_policy
 from app.workflows.digest.planner.lib.model_policy import planner_completion_kwargs
+from app.workflows.digest.planner.nodes import generate_course_identity as identity_node
 from app.workflows.digest.planner.nodes.generate_course_identity import _clean_course_name
 
 
@@ -18,6 +24,22 @@ def test_course_identity_policy_uses_structured_light_model() -> None:
     assert kwargs["max_retries"] == 3
     assert 0 <= kwargs["temperature"] <= 1
     assert "task_type" not in kwargs
+
+
+def test_planner_policy_uses_step_specific_budgets() -> None:
+    expected = {
+        PlannerModelStep.MATERIAL_BATCH_SUMMARY: (45, 45),
+        PlannerModelStep.STREAM_PLANNING_NOTE: (45, 45),
+        PlannerModelStep.SUMMARIZE_MATERIALS: (45, 45),
+        PlannerModelStep.DIAGNOSE_QUESTIONS: (60, 60),
+        PlannerModelStep.DRAFT_PLAN: (120, 180),
+    }
+
+    for step, (timeout_s, overall_timeout_s) in expected.items():
+        kwargs = get_planner_model_policy(step).completion_kwargs()
+
+        assert kwargs["timeout"] == timeout_s
+        assert kwargs["overall_timeout_s"] == overall_timeout_s
 
 
 def test_planner_stream_policy_keeps_gpt55_auto_on_responses_without_native_tools(monkeypatch) -> None:
@@ -37,7 +59,7 @@ def test_planner_stream_policy_keeps_gpt55_auto_on_responses_without_native_tool
         )
         for step in (PlannerModelStep.STREAM_PLANNING_NOTE, PlannerModelStep.DRAFT_PLAN):
             policy_kwargs = planner_completion_kwargs(step)
-            assert policy_kwargs.pop("overall_timeout_s") == 60
+            assert int(policy_kwargs.pop("overall_timeout_s")) >= int(policy_kwargs["timeout"])
             assert policy_kwargs[PROVIDER_NATIVE_TOOLS_KWARG] == []
             model_selector = str(policy_kwargs.pop("model"))
             context = build_completion_context(model=model_selector)
@@ -65,3 +87,38 @@ def test_clean_course_name_handles_numbered_or_labeled_candidates() -> None:
     assert _clean_course_name("1. 高数主线重建\n2. 高数复习路线") == "高数主线重建"
     assert _clean_course_name("“心理学入门地图”") == "心理学入门地图"
     assert _clean_course_name("未命名课程") == ""
+    assert _clean_course_name("方案") == ""
+    assert _clean_course_name("学习方案") == ""
+
+
+def test_course_identity_raises_when_llm_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fail_identity(*args, **kwargs):
+        raise TimeoutError("identity timed out")
+
+    events: list[dict[str, object]] = []
+
+    async def record_event(payload: dict[str, object]) -> None:
+        events.append(payload)
+
+    monkeypatch.setattr(identity_node, "acompletion_with_fallback", fail_identity)
+
+    node = identity_node.build_generate_course_identity_node(context=None)
+    with pytest.raises(TimeoutError, match="identity timed out"):
+        asyncio.run(
+            node(
+                {
+                    "course_id": "course_test",
+                    "planner_session_id": "planner_test",
+                    "planner_operation": "create",
+                    "user_prompt": "我想学习线性代数",
+                    "material_context": DigestMaterialContext(),
+                    "progress_callback": record_event,
+                }
+            )
+        )
+
+    stages = [str(event.get("stage") or "") for event in events]
+    assert "planner.identity.started" in stages
+    assert "planner.identity.failed" in stages
+    assert "planner.identity.fallback" not in stages
+    assert "planner.identity.ready" not in stages

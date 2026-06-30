@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion, type Variants } from "framer-motion";
 import {
+  BookOpenText,
   ChevronRight,
   Download,
   Edit3,
@@ -33,6 +34,7 @@ import { COURSES_IMPORTED_EVENT } from "../../lib/courseEvents";
 import { cn } from "../../lib/utils";
 import { publicAssetPath } from "../../lib/publicAsset";
 import { buildPreferredCourseEntryPath, getCourseIdFromPathname } from "../../lib/courseNavigation";
+import { isElectronRuntime } from "../../lib/electronRuntime";
 
 import { CourseExportModal } from "../course/CourseExportModal";
 import { CourseImportModal } from "../course/CourseImportModal";
@@ -42,6 +44,7 @@ import { CourseDeleteConfirmModal } from "./CourseDeleteConfirmModal";
 import { CommunityModal, ensureCommunityQrPreloaded } from "./CommunityPanel";
 import { AiConversationSidebarSection } from "../interaction/AiConversationSidebarSection";
 import { useAiInteraction, type AiConversationScope } from "../interaction";
+import { FeedbackModal } from "../ui/FeedbackModal";
 
 import { Button } from "../ui/Button";
 
@@ -54,6 +57,8 @@ const COURSE_ACTION_MENU_GAP = 6;
 const COURSE_ACTION_MENU_MARGIN = 8;
 const COLLAPSED_SIDEBAR_WIDTH = 56;
 const EXPANDED_SIDEBAR_WIDTH = 240;
+const DEFAULT_DOCS_URL = "/docs";
+const PUBLIC_DOCS_URL = "https://aiteachme.cn/docs";
 
 type CourseActionMenuPosition = {
   left: number;
@@ -212,6 +217,28 @@ function writeCourseSectionExpanded(value: boolean) {
   }
 }
 
+function resolveDocsUrl(): string {
+  const configuredUrl = import.meta.env.VITE_DOCS_URL?.trim();
+  if (configuredUrl) {
+    return configuredUrl;
+  }
+  return DEFAULT_DOCS_URL;
+}
+
+function resolveExternalDocsUrl(docsUrl: string): string {
+  if (/^[a-z][a-z\d+\-.]*:\/\//i.test(docsUrl)) {
+    return docsUrl;
+  }
+  if (!/^https?:$/i.test(window.location.protocol)) {
+    return docsUrl;
+  }
+  return new URL(docsUrl, window.location.origin).toString();
+}
+
+function isHttpUrl(docsUrl: string): boolean {
+  return /^https?:\/\//i.test(docsUrl);
+}
+
 export function Sidebar({
   onOpenSettings,
   onMobileOpenChange,
@@ -231,9 +258,11 @@ export function Sidebar({
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [menuPosition, setMenuPosition] = useState<CourseActionMenuPosition | null>(null);
   const [isCommunityModalOpen, setIsCommunityModalOpen] = useState(false);
+  const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
   const [exportCourseId, setExportCourseId] = useState<string | null>(null);
   const [shareCourseId, setShareCourseId] = useState<string | null>(null);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [showDocsHint, setShowDocsHint] = useState(false);
 
   const menuRef = useRef<HTMLDivElement>(null);
   const menuButtonRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
@@ -257,6 +286,7 @@ export function Sidebar({
   const isLibraryActive = location.pathname === "/library";
   const isAssistantPage = location.pathname === "/assistant";
   const isCreateCourseActive = location.pathname === "/";
+  const shouldHighlightDocsEntry = isCreateCourseActive && !renderCollapsedChrome && !isMobileOpen;
   const assistantScope = isAssistantPage ? fullscreenScope ?? activeScope : activeScope;
   const routeCourseId = useMemo(() => getCourseIdFromPathname(location.pathname), [location.pathname]);
   const sidebarConversationScope = useMemo<AiConversationScope>(() => {
@@ -499,6 +529,50 @@ export function Sidebar({
   const closeMobileNavigation = useCallback(() => {
     setIsMobileOpen(false);
   }, []);
+
+  const dismissDocsHint = useCallback(() => {
+    setShowDocsHint(false);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!shouldHighlightDocsEntry) {
+      setShowDocsHint(false);
+      return;
+    }
+
+    const showTimer = window.setTimeout(() => setShowDocsHint(true), 450);
+    const hideTimer = window.setTimeout(() => setShowDocsHint(false), 8600);
+
+    return () => {
+      window.clearTimeout(showTimer);
+      window.clearTimeout(hideTimer);
+    };
+  }, [shouldHighlightDocsEntry, location.key]);
+
+
+  const openDocs = useCallback(async () => {
+    const docsUrl = resolveDocsUrl();
+    closeMobileNavigation();
+    dismissDocsHint();
+    if (isElectronRuntime() && window.electronWindow?.openExternal) {
+      const externalDocsUrl = resolveExternalDocsUrl(docsUrl);
+      if (!isHttpUrl(externalDocsUrl)) {
+        const opened = await window.electronWindow.openExternal(PUBLIC_DOCS_URL);
+        if (!opened) {
+          window.open(PUBLIC_DOCS_URL, "_blank", "noopener,noreferrer");
+        }
+        return;
+      }
+      const opened = await window.electronWindow.openExternal(externalDocsUrl);
+      if (!opened) {
+        window.open(externalDocsUrl, "_blank", "noopener,noreferrer");
+      }
+      return;
+    }
+    const externalDocsUrl = resolveExternalDocsUrl(docsUrl);
+    window.open(externalDocsUrl, "_blank", "noopener,noreferrer");
+  }, [closeMobileNavigation, dismissDocsHint]);
   const openCreateCoursePage = useCallback(() => {
     setCourseActionError(undefined);
     setOpenMenuId(null);
@@ -1028,6 +1102,50 @@ export function Sidebar({
             renderCollapsedChrome ? "w-[56px] self-start p-2" : isMobileOpen ? "px-4 py-2.5" : "px-3 py-2",
           )}
         >
+          <div className="relative">
+            <button
+              type="button"
+              onClick={openDocs}
+              className={cn(
+                "flex items-center text-slate-500 transition-colors hover:bg-[#eef3f8] hover:text-slate-900 focus:outline-none focus-visible:outline-none dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
+                showDocsHint && "bg-indigo-50/90 text-indigo-700 shadow-[0_0_0_4px_rgba(99,102,241,0.10),inset_0_0_0_1px_rgba(99,102,241,0.16)] ring-1 ring-indigo-200 hover:bg-indigo-50 hover:text-indigo-800 dark:bg-indigo-500/10 dark:text-indigo-200 dark:ring-indigo-400/30 dark:hover:bg-indigo-500/15 dark:hover:text-indigo-100",
+                renderCollapsedChrome ? "mx-auto h-8 w-8 justify-center rounded-md" : isMobileOpen ? "h-10 w-full rounded-md px-2 gap-2.5" : "h-8 w-full rounded-md px-2 gap-2",
+              )}
+              title="文档"
+              aria-label="打开文档"
+            >
+              <BookOpenText className={cn("shrink-0", isMobileOpen ? "h-5 w-5" : "h-4 w-4")} />
+              {!renderCollapsedChrome ? <span className={cn("whitespace-nowrap", isMobileOpen ? "text-sm" : "text-xs")}>文档</span> : null}
+            </button>
+            <AnimatePresence>
+              {showDocsHint && !renderCollapsedChrome ? (
+                <motion.span
+                  className="pointer-events-none absolute inset-[-3px] rounded-lg border border-indigo-300/60 dark:border-indigo-300/40"
+                  initial={{ opacity: 0.55, scale: 1 }}
+                  animate={{ opacity: [0.55, 0], scale: [1, 1.12] }}
+                  exit={{ opacity: 0, scale: 1.05 }}
+                  transition={{ duration: 1.35, repeat: 3, ease: "easeOut" }}
+                  aria-hidden="true"
+                />
+              ) : null}
+            </AnimatePresence>
+            <AnimatePresence>
+              {showDocsHint && !renderCollapsedChrome ? (
+                <motion.div
+                  initial={{ opacity: 0, y: 6, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 4, scale: 0.98 }}
+                  transition={{ duration: 0.18, ease: [0.2, 0, 0, 1] }}
+                  className="pointer-events-none absolute bottom-[calc(100%+0.5rem)] left-1 z-30 w-[218px] rounded-xl border border-indigo-100 bg-white/95 px-3 py-2.5 text-left shadow-[0_14px_36px_rgba(79,70,229,0.16)] backdrop-blur dark:border-indigo-400/20 dark:bg-slate-950/95"
+                  role="status"
+                >
+                  <div className="text-xs font-semibold text-slate-900 dark:text-slate-100">不知道怎么开始？先看文档</div>
+                  <div className="mt-1 text-[11px] leading-4 text-slate-500 dark:text-slate-400">上传资料、构建课程、考试模式都有图文教程。</div>
+                  <span className="absolute -bottom-1.5 left-5 h-3 w-3 rotate-45 border-b border-r border-indigo-100 bg-white dark:border-indigo-400/20 dark:bg-slate-950" aria-hidden="true" />
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
+          </div>
           <button
             type="button"
             onClick={() => setIsCommunityModalOpen(true)}
@@ -1200,7 +1318,15 @@ export function Sidebar({
         <CourseImportModal onClose={() => setIsImportModalOpen(false)} />
       ) : null}
 
-      <CommunityModal isOpen={isCommunityModalOpen} onClose={() => setIsCommunityModalOpen(false)} />
+      <CommunityModal
+        isOpen={isCommunityModalOpen}
+        onClose={() => setIsCommunityModalOpen(false)}
+        onOpenFeedback={() => {
+          setIsCommunityModalOpen(false);
+          setIsFeedbackModalOpen(true);
+        }}
+      />
+      <FeedbackModal open={isFeedbackModalOpen} onClose={() => setIsFeedbackModalOpen(false)} />
     </>
   );
 }

@@ -8,7 +8,9 @@ export function KnowledgeInteractivePage() {
   const { courseId } = useParams<{ courseId: string }>();
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  const title = (searchParams.get("title") || "知识文档交互演示").trim();
+  const isFigureRoute = location.pathname.includes("/html-figure");
+  const fallbackTitle = isFigureRoute ? "知识文档静态图示" : "知识文档交互演示";
+  const title = (searchParams.get("title") || fallbackTitle).trim();
   const [html, setHtml] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -20,7 +22,7 @@ export function KnowledgeInteractivePage() {
   }, [courseId, location.pathname, searchParams]);
 
   const assetUrl = preview?.assetUrl ?? "";
-  const pageLabel = preview?.kind === "figure" ? "静态图示" : "交互演示";
+  const pageLabel = preview?.kind === "figure" || isFigureRoute ? "静态图示" : "交互演示";
 
   const patchedHtml = useMemo(() => (html ? patchHtmlForIframe(html) : ""), [html]);
 
