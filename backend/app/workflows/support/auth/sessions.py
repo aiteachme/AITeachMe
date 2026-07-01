@@ -41,7 +41,6 @@ from app.models import EmailConfirmation, User
 from app.repositories.user_repo import (
     attach_device_key,
     create_user,
-    get_or_create_user_by_device_key,
     get_user_by_device_key,
     get_user_by_email,
     get_user_by_id,
@@ -869,19 +868,20 @@ def _persist_guest_user(session: Session) -> User:
             session.rollback()
 
 
-def create_guest_user(session: Session, *, device_key: str | None = None) -> User:
+def _attach_unclaimed_device_key(session: Session, *, user: User, device_key: str | None) -> User:
     normalized_device_key = (device_key or "").strip() or None
     if normalized_device_key is None:
-        return _persist_guest_user(session)
+        return user
 
     owner = get_user_by_device_key(session, normalized_device_key)
-    if owner is not None and not owner.is_registered:
-        return owner
-    if owner is None:
-        return get_or_create_user_by_device_key(session, device_key=normalized_device_key)
+    if owner is not None and owner.id != user.id:
+        return user
+    return attach_device_key(session, user=user, device_key=normalized_device_key)
 
+
+def create_guest_user(session: Session, *, device_key: str | None = None) -> User:
     guest = _persist_guest_user(session)
-    return attach_device_key(session, user=guest, device_key=normalized_device_key)
+    return _attach_unclaimed_device_key(session, user=guest, device_key=device_key)
 
 
 def build_logout_guest_user(session: Session, *, device_key: str | None) -> User:

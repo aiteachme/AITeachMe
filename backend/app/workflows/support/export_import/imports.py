@@ -36,8 +36,11 @@ from app.shared.infra.storage import (
 from app.shared.infra.exceptions import (
     ImportPackageTooLargeError,
     InvalidImportPackageError,
+    LLMCallError,
+    MissingLLMApiKeyError,
 )
 from app.workflows.digest.docgen.lib.published_manifest import ensure_published_knowledge_manifest
+from app.shared.infra.llm_support.common import build_completion_contexts
 from app.workflows.support.export_import.exports import (
     TABLE_REGISTRY,
     _create_unique_course_id,
@@ -76,6 +79,23 @@ def _import_embedding_rebuild_concurrency_limit(global_limit: int | None = None)
             max(1, llm_limit // _IMPORT_EMBEDDING_GLOBAL_FRACTION_DIVISOR),
         ),
     )
+
+
+def _import_embedding_rebuild_route_unavailable_reason() -> str | None:
+    """Return a reason when imported-course embedding rebuild cannot be routed."""
+
+    try:
+        runtime = get_runtime_embedding_config()
+        model = (runtime.embedding_model or "").strip()
+        if not model:
+            return "embedding_model_not_configured"
+        build_completion_contexts(task_type="embedding", model=model)
+    except (LLMCallError, MissingLLMApiKeyError) as exc:
+        return str(exc)
+    except Exception as exc:  # pragma: no cover - defensive config guard
+        logger.warning("course_import_embedding_route_preflight_failed", error=str(exc))
+        return str(exc)
+    return None
 
 
 def import_course(
@@ -721,6 +741,14 @@ def spawn_imported_embedding_rebuild_background(
         logger.warning(
             "course_import_embedding_background_registry_missing",
             course_id=course_id,
+        )
+        return False
+    route_unavailable_reason = _import_embedding_rebuild_route_unavailable_reason()
+    if route_unavailable_reason:
+        logger.info(
+            "course_import_embedding_background_skipped",
+            course_id=course_id,
+            reason=route_unavailable_reason,
         )
         return False
 

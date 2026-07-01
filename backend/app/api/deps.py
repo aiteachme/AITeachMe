@@ -147,7 +147,7 @@ def get_current_user_context(
     if guest_token:
         user = resolve_guest_user_from_token(session, guest_token)
         if user is not None:
-            if device_key is not None and user.device_key != device_key:
+            if device_key is not None and user.device_key is not None and user.device_key != device_key:
                 logger.warning(
                     "guest_token_device_key_mismatch",
                     path=request.url.path,

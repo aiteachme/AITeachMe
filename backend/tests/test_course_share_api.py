@@ -4,6 +4,7 @@ import tempfile
 import json
 import zipfile
 from collections.abc import Generator
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,7 @@ from app.models import Course, CourseShare, User
 from app.schemas.export_import import ExportOptions, ExportPreviewData, ExportPreviewStats, ImportResultData
 from app.shared.infra.exceptions import AITeachMeError
 from app.workflows.support import course_shares as course_shares_workflow
+from app.utils.time import utcnow
 
 TEST_COURSE_ID = "course_123456789abc"
 
@@ -28,6 +30,7 @@ TEST_COURSE_ID = "course_123456789abc"
 class _MemoryShareStore:
     def __init__(self) -> None:
         self.files: dict[str, bytes] = {}
+        self.last_export_options: ExportOptions | None = None
 
     async def write_file(self, key: str, local_path: Path) -> None:
         self.files[key] = local_path.read_bytes()
@@ -59,7 +62,8 @@ def course_share_client(
     store = _MemoryShareStore()
 
     def fake_export_course(*args: Any, **kwargs: Any) -> Path:
-        del args, kwargs
+        del args
+        store.last_export_options = kwargs.get("options")
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".atmx")
         path = Path(tmp.name)
         tmp.close()
@@ -75,7 +79,11 @@ def course_share_client(
                                 "id": 1,
                                 "title": "变量与数据类型",
                                 "summary": "Python 变量、数字、字符串和布尔值的基础。",
-                                "content_markdown": "# 变量与数据类型\n\n变量用于保存程序运行中的数据。",
+                                "content_markdown": (
+                                    "# 变量与数据类型\n\n"
+                                    "变量用于保存程序运行中的数据。\n\n"
+                                    "![图示](assets/docgen/figure.html)"
+                                ),
                                 "chapter_index": 1,
                                 "order_index": 0,
                                 "is_current": True,
@@ -86,6 +94,7 @@ def course_share_client(
                     ensure_ascii=False,
                 ),
             )
+            zf.writestr("share_assets/docgen/figure.html", "<html><body>figure</body></html>")
         return path
 
     def fake_preview_export(*args: Any, **kwargs: Any) -> ExportPreviewData:
@@ -146,7 +155,12 @@ def test_course_share_create_preview_and_revoke(
         f"/api/v1/courses/{TEST_COURSE_ID}/shares",
         json={
             "expires_in_days": 30,
-            "export_options": ExportOptions(include_chat_history=False, include_profile=False).model_dump(),
+            "export_options": ExportOptions(
+                include_raw_files=True,
+                include_chat_history=True,
+                include_exam_history=True,
+                include_profile=True,
+            ).model_dump(),
         },
     )
 
@@ -156,8 +170,17 @@ def test_course_share_create_preview_and_revoke(
     assert payload["share_path"] == f"/share/courses/{payload['token']}"
     assert payload["status"] == "active"
     assert payload["can_import"] is True
+    assert payload["export_options"]["include_raw_files"] is False
+    assert payload["export_options"]["include_chat_history"] is False
+    assert payload["export_options"]["include_exam_history"] is False
+    assert payload["export_options"]["include_profile"] is False
     assert payload["stats"]["knowledge_unit_count"] == 24
     assert len(store.files) == 1
+    assert store.last_export_options is not None
+    assert store.last_export_options.include_raw_files is False
+    assert store.last_export_options.include_chat_history is False
+    assert store.last_export_options.include_exam_history is False
+    assert store.last_export_options.include_profile is False
 
     preview = client.get(f"/api/v1/course-shares/{payload['token']}")
     assert preview.status_code == 200
@@ -170,10 +193,71 @@ def test_course_share_create_preview_and_revoke(
     assert document.status_code == 200
     assert "# 变量与数据类型" in document.json()["data"]["content_markdown"]
 
+    asset = client.get(f"/api/v1/course-shares/{payload['token']}/assets/docgen/figure.html")
+    assert asset.status_code == 200
+    assert b"figure" in asset.content
+
+    traversal = client.get(f"/api/v1/course-shares/{payload['token']}/assets/..%2Fmanifest.json")
+    assert traversal.status_code == 404
+
     revoked = client.delete(f"/api/v1/courses/{TEST_COURSE_ID}/shares/{payload['share_id']}")
     assert revoked.status_code == 200
     assert revoked.json()["data"]["status"] == "revoked"
     assert revoked.json()["data"]["can_import"] is False
+
+    assert client.get(f"/api/v1/course-shares/{payload['token']}/documents/{preview_data['documents'][0]['doc_id']}").status_code == 410
+    assert client.get(f"/api/v1/course-shares/{payload['token']}/assets/docgen/figure.html").status_code == 410
+
+
+def test_course_share_empty_options_still_use_safe_policy(
+    course_share_client: tuple[TestClient, Session, _MemoryShareStore],
+) -> None:
+    client, _session, store = course_share_client
+
+    created = client.post(
+        f"/api/v1/courses/{TEST_COURSE_ID}/shares",
+        json={"expires_in_days": 30, "export_options": {}},
+    )
+
+    assert created.status_code == 200
+    assert store.last_export_options is not None
+    assert store.last_export_options.include_raw_files is False
+    assert store.last_export_options.include_chat_history is False
+    assert store.last_export_options.include_exam_history is False
+    assert store.last_export_options.include_profile is False
+
+
+def test_course_share_snapshot_read_failure_is_unavailable(
+    course_share_client: tuple[TestClient, Session, _MemoryShareStore],
+) -> None:
+    client, _session, store = course_share_client
+    created = client.post(f"/api/v1/courses/{TEST_COURSE_ID}/shares", json={"expires_in_days": 30})
+    token = created.json()["data"]["token"]
+    store.files.clear()
+
+    preview = client.get(f"/api/v1/course-shares/{token}")
+
+    assert preview.status_code == 410
+    assert preview.json()["error_code"] == "COURSE_SHARE_UNAVAILABLE"
+
+
+def test_course_share_expired_asset_and_document_are_unavailable(
+    course_share_client: tuple[TestClient, Session, _MemoryShareStore],
+) -> None:
+    client, session, _store = course_share_client
+    created = client.post(f"/api/v1/courses/{TEST_COURSE_ID}/shares", json={"expires_in_days": 30})
+    data = created.json()["data"]
+    share = session.get(CourseShare, data["share_id"])
+    assert share is not None
+    share.expires_at = utcnow() - timedelta(days=1)
+    session.add(share)
+    session.commit()
+
+    document = client.get(f"/api/v1/course-shares/{data['token']}/documents/1")
+    asset = client.get(f"/api/v1/course-shares/{data['token']}/assets/docgen/figure.html")
+
+    assert document.status_code == 410
+    assert asset.status_code == 410
 
 
 def test_course_share_import_reuses_materialized_package(

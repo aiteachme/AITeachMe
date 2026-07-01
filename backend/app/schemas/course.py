@@ -67,12 +67,3 @@ class CourseDeletePreviewData(BaseModel):
         description="Human-readable deletion impact items.",
     )
     detail_counts: dict[str, int] = Field(default_factory=dict, description="Internal detail counts.")
-
-
-class CourseNameSuggestionRequest(BaseModel):
-    prompt: str | None = Field(default=None, description="User input learning goal.")
-    filenames: list[str] | None = Field(default=None, description="Uploaded filenames.")
-
-
-class CourseNameSuggestionResponse(BaseModel):
-    name: str = Field(description="AI-generated course name.")

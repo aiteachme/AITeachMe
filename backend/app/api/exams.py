@@ -1969,8 +1969,7 @@ def _reserve_exam_prewarm_paper(
         question_count=question_count,
     )
     if _is_active_prepared_exam_candidate(candidate):
-        claimed = exams_repo.claim_prepared_exam_paper_by_id(session, paper_id=int(candidate.id or 0))
-        return claimed or candidate, False
+        return candidate, False
 
     paper = _create_exam_generation_paper(
         session,
@@ -1984,7 +1983,7 @@ def _reserve_exam_prewarm_paper(
         config_snapshot=config_snapshot,
         config_hash=config_hash,
         paper_layout_mode=paper_layout_mode,
-        visibility="visible",
+        visibility="hidden",
         generation_origin="prewarm",
     )
     return paper, True
@@ -3492,6 +3491,7 @@ async def generate_exam(
         )
     served_from_prepared = paper is not None
     if paper is not None:
+        paper = _mark_prewarm_paper_claimed(session, paper)
         paper_id = int(paper.id or 0)
 
         _capture_exam_event(
@@ -3599,46 +3599,42 @@ async def generate_exam(
 def _prewarm_status_from_candidate(paper: ExamPaper | None) -> str:
     if paper is None:
         return "missing"
+    unclaimed_prewarm = _is_unclaimed_prewarm_paper(paper)
     now = utcnow()
     expires_at = ensure_utc_datetime(paper.expires_at)
     if expires_at is not None and expires_at <= now:
+        if unclaimed_prewarm:
+            return "missing"
         return "stale"
     if paper.status == "ready":
         return "ready"
     if paper.status == "generating":
         return "preparing"
     if paper.status == "failed":
+        if unclaimed_prewarm:
+            return "missing"
         return "failed"
     return "missing"
 
 
-def _is_retryable_prewarm_failure(paper: ExamPaper | None) -> bool:
+def _is_unclaimed_prewarm_paper(paper: ExamPaper | None) -> bool:
     if paper is None:
         return False
-    if paper.status != "failed":
-        return False
-    if str(getattr(paper, "generation_origin", "") or "") != "prewarm":
-        return False
-    return True
+    return str(getattr(paper, "generation_origin", "") or "") == "prewarm" and paper.claimed_at is None
 
-def _should_compensate_default_prewarm_status(
-    *,
-    status: str,
-    exam_mode: str,
-    question_count: int,
-    user_prompt: str | None,
-    sample_file_ids: list[str] | None,
-    paper_layout_mode: str | None,
-) -> bool:
-    if status not in {"missing", "stale"}:
-        return False
-    return _is_default_auto_prewarm_request(
-        exam_mode=exam_mode,
-        question_count=question_count,
-        user_prompt=user_prompt,
-        sample_file_ids=sample_file_ids,
-        paper_layout_mode=paper_layout_mode,
-    )
+
+def _mark_prewarm_paper_claimed(session: Session, paper: ExamPaper) -> ExamPaper:
+    if not _is_unclaimed_prewarm_paper(paper):
+        return paper
+    now = utcnow()
+    paper.visibility = "visible"
+    paper.claimed_at = now
+    paper.expires_at = None
+    paper.updated_at = now
+    session.add(paper)
+    session.commit()
+    session.refresh(paper)
+    return paper
 
 
 @router.get(
@@ -3720,47 +3716,6 @@ async def exam_prewarm_status(
         )
     status = _prewarm_status_from_candidate(candidate)
     background_requested = False
-    registry = getattr(request.app.state, "background_task_registry", None)
-    should_schedule_prewarm = (
-        registry is not None
-        and (
-            (
-                status == "failed"
-                and _is_retryable_prewarm_failure(candidate)
-                and _is_default_auto_prewarm_request(
-                    exam_mode=mode,
-                    question_count=question_count,
-                    user_prompt=user_prompt,
-                    sample_file_ids=sample_file_ids or [],
-                    paper_layout_mode=resolved_paper_layout_mode,
-                )
-            )
-            or _should_compensate_default_prewarm_status(
-                status=status,
-                exam_mode=mode,
-                question_count=question_count,
-                user_prompt=user_prompt,
-                sample_file_ids=sample_file_ids or [],
-                paper_layout_mode=resolved_paper_layout_mode,
-            )
-        )
-    )
-    if should_schedule_prewarm:
-        _schedule_exam_prewarm_task(
-            registry,
-            course_id=normalized,
-            user_id=user.user_id,
-            exam_mode=mode,
-            unit_ids=unit_ids,
-            question_count=question_count,
-            user_prompt=user_prompt,
-            sample_file_ids=sample_file_ids or [],
-            config_snapshot=config_snapshot,
-            config_hash=config_hash,
-            paper_layout_mode=resolved_paper_layout_mode,
-        )
-        status = "preparing"
-        background_requested = True
 
     return ok_response(
         ExamPrewarmStatusResponse(

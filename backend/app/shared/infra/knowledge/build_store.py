@@ -292,6 +292,35 @@ def sanitize_knowledge_build_error_message(
         return "当前没有可用于图谱构建的输入来源。"
     if text == "confirmed_plan_required":
         return "知识文档构建必须基于已确认的构建方案执行，请先完成 planner 确认。"
+
+    lower_text = text.lower()
+    if any(
+        snippet in lower_text
+        for snippet in (
+            "authenticationerror",
+            "401 unauthorized",
+            "failed to retrieve token",
+            "incorrect api key",
+            "invalid api key",
+            "invalid_api_key",
+            "apikey-error",
+            "llm_api_key",
+            "api key is not configured",
+            "aihubmix_api_error",
+        )
+    ):
+        return "模型服务认证失败，当前无法生成内容。请检查模型服务密钥或稍后重试。"
+    if any(
+        snippet in lower_text
+        for snippet in (
+            "upstream model call failed",
+            "上游模型调用失败",
+            "litellm.",
+            "litellm_",
+            "model call",
+        )
+    ):
+        return "模型服务暂时不可用，当前无法生成内容。请稍后重试。"
     if (
         "Dimension mismatch" in text
         or "sqlite3.OperationalError" in text

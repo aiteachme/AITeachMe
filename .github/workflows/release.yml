@@ -500,6 +500,11 @@ jobs:
             exit 1
           fi
 
+      - name: Sync release commit to branch
+        run: |
+          set -euo pipefail
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
       - name: Download installer artifacts
         uses: actions/download-artifact@v4
         with:
@@ -548,8 +553,3 @@ jobs:
             --title "$TAG" \
             --generate-notes \
             "${RELEASE_ARGS[@]}"
-
-      - name: Sync release commit to branch
-        run: |
-          set -euo pipefail
-          git push origin "HEAD:${GITHUB_REF_NAME}"

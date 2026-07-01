@@ -173,7 +173,7 @@ def test_register_login_and_token_resolution(monkeypatch: pytest.MonkeyPatch) ->
     with Session(engine, expire_on_commit=False) as session:
         guest = sessions.create_guest_user(session, device_key="device-a")
         assert guest.is_registered is False
-        assert sessions.create_guest_user(session, device_key="device-a").id == guest.id
+        assert sessions.create_guest_user(session, device_key="device-a").id != guest.id
 
         sessions.send_register_email_verification_code(session, email="learner@example.com")
         registration = sessions.register_user(
@@ -225,6 +225,27 @@ def test_register_login_and_token_resolution(monkeypatch: pytest.MonkeyPatch) ->
         assert guest_session.current_user.is_authenticated is False
         assert context_session.current_user is not None
         assert context_session.current_user.device_key == "device-context"
+
+
+def test_guest_device_key_cannot_claim_existing_user() -> None:
+    engine = _auth_engine()
+
+    with Session(engine, expire_on_commit=False) as session:
+        registered = User(
+            id="usr_existing",
+            username="existing",
+            email="existing@example.com",
+            device_key="device-claimed",
+            is_registered=True,
+        )
+        session.add(registered)
+        session.commit()
+
+        guest = sessions.create_guest_user(session, device_key="device-claimed")
+
+        assert guest.id != registered.id
+        assert guest.is_registered is False
+        assert guest.device_key is None
 
 
 def test_email_code_consumption_attempt_limits_and_expiry(monkeypatch: pytest.MonkeyPatch) -> None:

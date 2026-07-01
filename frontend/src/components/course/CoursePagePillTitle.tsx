@@ -31,9 +31,9 @@ import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { apiClient } from "../../api/client";
 import type { ApiResponse } from "../../api/types";
 import type { DocGenGetResponse, ExamHistoryItem } from "../../api/generated/model";
-import { TopBar } from "../layout/TopBar";
 import { ACTIVE_DOC_BUILD_STATUSES } from "../knowledge-docs/utils";
 import { CourseShareModal } from "./CourseShareModal";
+import { TopBar } from "../layout/TopBar";
 
 interface CoursePagePillTitleProps {
   icon: LucideIcon;
@@ -56,6 +56,8 @@ interface CourseSharePillTitleProps {
   isSaving: boolean;
   canSave: boolean;
   importError?: string;
+  saveLabel?: string;
+  saveDescription?: string;
   onSave: () => void;
   onViewChange: (view: "build" | "knowledge-docs" | "exams" | "profile") => void;
   className?: string;
@@ -89,6 +91,8 @@ export function CourseSharePillTitle({
   isSaving,
   canSave,
   importError,
+  saveLabel = "保存到我的课程",
+  saveDescription = "导入后继续训练和编辑",
   onSave,
   onViewChange,
   className,
@@ -147,7 +151,7 @@ export function CourseSharePillTitle({
       <div className="hidden min-w-0 pr-4 md:block">
         <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{courseName}</p>
       </div>
-      <nav className={cn(COURSE_NAV_LIST_CLASS, "min-w-0 max-md:absolute max-md:left-20 max-md:right-16 max-md:top-2 max-md:max-w-none", innerClassName)} aria-label="共享课程页面导航">
+      <nav className={cn(COURSE_NAV_LIST_CLASS, "min-w-0 max-md:absolute max-md:left-16 max-md:right-3 max-md:top-2 max-md:max-w-none", innerClassName)} aria-label="共享课程页面导航">
         {navItems.map((item) => {
           const isActive = item.id === activeView;
           const ItemIcon = item.icon;
@@ -157,17 +161,19 @@ export function CourseSharePillTitle({
               key={item.id}
               type="button"
               onClick={() => onViewChange(item.id)}
+              aria-label={item.label}
               aria-current={isActive ? "page" : undefined}
               title={`${item.label}：查看共享课程的只读内容。`}
               className={cn(
                 COURSE_NAV_ITEM_CLASS,
+                "max-[480px]:w-9 max-[480px]:justify-center max-[480px]:gap-0 max-[480px]:px-0",
                 isActive
                   ? "bg-slate-950 text-white shadow-sm dark:bg-slate-100 dark:text-slate-950"
                   : "text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white",
               )}
             >
               <ItemIcon className={cn("h-3.5 w-3.5 shrink-0", isActive ? "text-white dark:text-slate-950" : "text-slate-400 transition-colors group-hover:text-indigo-600 dark:group-hover:text-indigo-300")} />
-              <span className="whitespace-nowrap">{item.label}</span>
+              <span className="whitespace-nowrap max-[480px]:hidden">{item.label}</span>
               {isActive ? (
                 <span className="absolute inset-x-2 -bottom-1 h-0.5 rounded-full bg-indigo-400 dark:bg-indigo-500" />
               ) : null}
@@ -190,9 +196,6 @@ export function CourseSharePillTitle({
           <MoreHorizontal className="h-4 w-4 shrink-0 text-slate-400 transition-colors group-hover:text-indigo-600 dark:group-hover:text-indigo-300" />
         </button>
       </nav>
-      <div className="flex items-center justify-end pr-1 max-md:absolute max-md:right-4 max-md:top-3 max-md:pr-0">
-        <TopBar />
-      </div>
       {isActionMenuOpen && actionMenuPosition && typeof document !== "undefined"
         ? createPortal(
             <div
@@ -210,7 +213,7 @@ export function CourseSharePillTitle({
                   onSave();
                 }}
                 className="group flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400 dark:text-slate-200 dark:hover:bg-slate-800"
-                title={importError || "保存到我的课程"}
+                title={importError || saveLabel}
               >
                 {isSaving ? (
                   <Loader2 className="h-4 w-4 shrink-0 animate-spin text-slate-400" />
@@ -218,8 +221,8 @@ export function CourseSharePillTitle({
                   <Save className="h-4 w-4 shrink-0 text-slate-400 transition group-hover:text-slate-700 dark:text-slate-500 dark:group-hover:text-slate-200" />
                 )}
                 <span className="min-w-0">
-                  <span className="block font-medium text-slate-900 group-disabled:text-slate-400 dark:text-slate-100">保存到我的课程</span>
-                  <span className="block text-[11px] leading-4 text-slate-500 dark:text-slate-400">导入后继续训练和编辑</span>
+                  <span className="block font-medium text-slate-900 group-disabled:text-slate-400 dark:text-slate-100">{saveLabel}</span>
+                  <span className="block text-[11px] leading-4 text-slate-500 dark:text-slate-400">{saveDescription}</span>
                 </span>
               </button>
             </div>,

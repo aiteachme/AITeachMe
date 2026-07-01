@@ -9,7 +9,6 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
-  Bot,
   CheckCircle2,
   ClipboardCheck,
   ExternalLink,
@@ -29,7 +28,7 @@ import {
   Trophy,
 } from "lucide-react";
 
-import { apiClient, getApiErrorMessage } from "../api/client";
+import { apiClient, getApiErrorMessage, hasStoredAccessToken } from "../api/client";
 import type { ApiResponse } from "../api/types";
 import type { CourseShareDocumentContent, CourseShareDocumentPreview, CourseSharePreviewData, ImportResultData } from "../api/generated/model";
 import { CourseSharePillTitle } from "../components/course/CoursePagePillTitle";
@@ -105,6 +104,31 @@ function shareStat(preview: CourseSharePreviewData, key: string): number {
 
 function formatStat(value: number): string {
   return value.toLocaleString("zh-CN");
+}
+
+function formatSharedPreviewText(value: string | null | undefined, fallback = ""): string {
+  const source = String(value || "").trim();
+  if (!source) {
+    return fallback;
+  }
+  return source
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/!\[[^\]]*]\([^)]*\)/g, " ")
+    .replace(/\[([^\]]+)]\([^)]*\)/g, "$1")
+    .replace(/`([^`]*)`/g, "$1")
+    .replace(/^#{1,6}\s*/gm, "")
+    .replace(/^\s*>\s?/gm, "")
+    .replace(/^\s*[-*+]\s+/gm, "")
+    .replace(/\*\*|__|\*|_/g, "")
+    .replace(/^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$/gm, " ")
+    .replace(/\s*\|\s*/g, "；")
+    .replace(/(?:^|；)\s*:?-{3,}:?\s*(?=；|$)/g, "；")
+    .replace(/[ \t]*\n[ \t]*/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/；{2,}/g, "；")
+    .replace(/^；|；$/g, "")
+    .trim()
+    || fallback;
 }
 
 function SaveRequiredButton({
@@ -225,9 +249,9 @@ function SharedReadonlyBuildView({
                           </span>
                           <div className="min-w-0">
                             <p className="font-semibold text-slate-950 dark:text-slate-100">{doc.title}</p>
-                            {doc.summary || doc.excerpt ? (
+                            {formatSharedPreviewText(doc.summary || doc.excerpt) ? (
                               <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
-                                {doc.summary || doc.excerpt}
+                                {formatSharedPreviewText(doc.summary || doc.excerpt)}
                               </p>
                             ) : null}
                           </div>
@@ -277,7 +301,6 @@ function SharedReadonlyBuildView({
     </div>
   );
 }
-
 function SharedTrainingModeCard({
   icon,
   title,
@@ -748,7 +771,9 @@ function SharedReadonlyProfileView({
                     </div>
                     <div className="min-w-0">
                       <p className="truncate text-sm font-bold text-slate-950 dark:text-slate-100">{doc.title}</p>
-                      <p className="mt-1 line-clamp-2 text-sm leading-6 text-slate-500 dark:text-slate-400">{doc.summary || doc.excerpt || "回看知识库文档，补齐这部分内容。"}</p>
+                      <p className="mt-1 line-clamp-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
+                        {formatSharedPreviewText(doc.summary || doc.excerpt, "回看知识库文档，补齐这部分内容。")}
+                      </p>
                     </div>
                   </li>
                 ))}
@@ -860,11 +885,13 @@ function SharedReadonlyProfileView({
 export function CourseSharePage() {
   const params = useParams<{ token: string }>();
   const token = params.token ?? "";
+  const shareAssetBaseUrl = token ? `/api/v1/course-shares/${encodeURIComponent(token)}/assets` : "";
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
   const [isMobileTocOpen, setIsMobileTocOpen] = useState(false);
   const [isTocCollapsed, setIsTocCollapsed] = useState(false);
   const [pageWideMode, setPageWideMode] = useState(false);
@@ -896,9 +923,9 @@ export function CourseSharePage() {
   const selectedDocPreview = documents.find((doc) => doc.doc_id === selectedDocId) ?? documents[0] ?? null;
 
   useEffect(() => {
-    const container = scrollRef.current;
+    const container = scrollElement ?? scrollRef.current;
     if (container) container.scrollTop = 0;
-  }, [activeShareView, selectedDocId]);
+  }, [activeShareView, scrollElement, selectedDocId]);
 
   const documentQuery = useQuery({
     queryKey: ["course-share-document", token, selectedDocId],
@@ -915,7 +942,11 @@ export function CourseSharePage() {
   });
 
   const documentContent = documentQuery.data?.content_markdown?.trim() || selectedDocPreview?.excerpt || "";
-  const { tocTree, activeHeading, scrollToHeading } = useDocToc(isKnowledgeView ? documentContent : "", scrollRef);
+  const bindScrollContainer = useCallback((node: HTMLDivElement | null) => {
+    scrollRef.current = node;
+    setScrollElement(node);
+  }, []);
+  const { tocTree, activeHeading, scrollToHeading } = useDocToc(isKnowledgeView ? documentContent : "", scrollRef, scrollElement);
   const collapsibleTocIds = useMemo(() => collectCollapsibleTocIds(tocTree), [tocTree]);
   const pageShellMaxWidthClass = pageWideMode ? "max-w-none" : "max-w-[1120px]";
   const docColumnMaxWidthClass = pageWideMode ? "max-w-none" : "max-w-[980px]";
@@ -1104,6 +1135,9 @@ export function CourseSharePage() {
   const importError = importMutation.isError
     ? getApiErrorMessage(importMutation.error, "保存失败，请稍后重试")
     : "";
+  const canSaveWithCurrentSession = Boolean(preview?.can_import && hasStoredAccessToken());
+  const saveRequiresLogin = Boolean(preview?.can_import && !canSaveWithCurrentSession);
+  const saveLoginMessage = "请先登录或注册后再保存课程到自己的账号。";
   const requiresLogin = importError.includes("登录") || importError.includes("注册") || importError.includes("AUTH_REQUIRED");
   const unavailableText = preview?.status === "expired"
     ? "这个分享链接已经过期。"
@@ -1113,9 +1147,21 @@ export function CourseSharePage() {
 
   if (previewQuery.isLoading) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-white text-slate-500 dark:bg-slate-950 dark:text-slate-400">
-        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-        正在打开共享课程...
+      <div className="flex min-h-dvh items-center justify-center bg-white px-6 text-slate-500 dark:bg-slate-950 dark:text-slate-400">
+        <section className="w-full max-w-sm text-center">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-indigo-500 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-indigo-300">
+            <Loader2 className="h-5 w-5 animate-spin" />
+          </div>
+          <h1 className="mt-4 text-base font-semibold text-slate-900 dark:text-slate-100">正在读取共享课程</h1>
+          <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
+            正在加载课程快照和知识文档，首次打开可能需要多等几秒。
+          </p>
+          <div className="mt-6 space-y-2" aria-hidden="true">
+            <div className="mx-auto h-2.5 w-full max-w-[280px] animate-pulse rounded-full bg-slate-100 dark:bg-slate-800" />
+            <div className="mx-auto h-2.5 w-4/5 animate-pulse rounded-full bg-slate-100 dark:bg-slate-800" />
+            <div className="mx-auto h-2.5 w-2/3 animate-pulse rounded-full bg-slate-100 dark:bg-slate-800" />
+          </div>
+        </section>
       </div>
     );
   }
@@ -1140,19 +1186,30 @@ export function CourseSharePage() {
         courseName={preview.course_name}
         activeView={activeShareView}
         isSaving={importMutation.isPending}
-        canSave={preview.can_import}
-        importError={importError}
+        canSave={canSaveWithCurrentSession}
+        importError={importError || (saveRequiresLogin ? saveLoginMessage : "")}
+        saveLabel={saveRequiresLogin ? "登录后保存" : "保存到我的课程"}
+        saveDescription={saveRequiresLogin ? "公开预览可直接浏览" : "导入后继续训练和编辑"}
         onSave={() => importMutation.mutate()}
         onViewChange={changeShareView}
         className="z-40 shrink-0 bg-white/92 backdrop-blur-md transition-all duration-300 ease-in-out max-md:pl-20 dark:bg-slate-900/92"
       />
+
+      {saveRequiresLogin && !importError ? (
+        <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+          <span className="inline-flex items-center gap-2">
+            <LogIn className="h-4 w-4" />
+            公开内容可直接浏览；登录或注册后可以保存到自己的课程继续训练。
+          </span>
+        </div>
+      ) : null}
 
       {importError ? (
         <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
           {requiresLogin ? (
             <span className="inline-flex items-center gap-2">
               <LogIn className="h-4 w-4" />
-              请先登录或注册，再保存这门课程到自己的账号。
+              {saveLoginMessage}
             </span>
           ) : importError}
         </div>
@@ -1170,7 +1227,7 @@ export function CourseSharePage() {
             <Lock className="h-4 w-4" />
             {savePromptFeature}需要先保存到我的课程。
           </span>
-          {preview.can_import ? (
+          {canSaveWithCurrentSession ? (
             <Button
               type="button"
               size="sm"
@@ -1182,6 +1239,10 @@ export function CourseSharePage() {
               {importMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
               保存课程
             </Button>
+          ) : saveRequiresLogin ? (
+            <span className="text-xs font-medium text-indigo-700 dark:text-indigo-200">
+              登录或注册后可保存课程。
+            </span>
           ) : null}
         </div>
       ) : null}
@@ -1278,7 +1339,7 @@ export function CourseSharePage() {
         ) : null}
 
         <div className="relative flex min-h-0 min-w-0 max-w-full flex-1 flex-col overflow-x-hidden">
-          <div ref={scrollRef} className="relative h-full max-w-full overflow-x-hidden overflow-y-auto doc-scroll-container content-scroll">
+          <div ref={bindScrollContainer} className="relative h-full max-w-full overflow-x-hidden overflow-y-auto doc-scroll-container content-scroll">
             <div className={cn("min-h-full max-w-full px-4 pb-8 pt-4 md:px-6 lg:px-8", !isKnowledgeView && "px-0 pt-0 md:px-0 lg:px-0")}>
               {isKnowledgeView ? (
               <div className={cn("mx-auto flex min-h-full w-full items-start justify-center", pageShellMaxWidthClass)}>
@@ -1303,6 +1364,9 @@ export function CourseSharePage() {
                         <div className="knowledge-doc-markdown">
                           <MarkdownViewer
                             content={documentContent}
+                            assetBaseUrl={shareAssetBaseUrl}
+                            publicMode
+                            allowRawHtml={false}
                             variant="document"
                             headingAnchors
                             headingNumbering
@@ -1362,21 +1426,11 @@ export function CourseSharePage() {
         <button
           type="button"
           onClick={() => promptSaveForFullInteraction("知识图谱")}
-          className={cn(FLOATING_ACTION_CLASS, "bottom-[4.5rem] z-[86]")}
+          className={cn(FLOATING_ACTION_CLASS, "bottom-6 z-[86]")}
           aria-label="打开知识图谱"
         >
           <Network className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" />
           <span className="hidden truncate sm:inline">知识图谱</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => promptSaveForFullInteraction("AI 交互窗口")}
-          className={cn(FLOATING_ACTION_CLASS, "bottom-6 z-[80]")}
-          aria-label="打开 AI 交互窗口"
-        >
-          <Bot className="h-4 w-4 shrink-0" />
-          <span className="hidden truncate sm:inline">AI 交互窗口</span>
         </button>
           </>
         ) : null}

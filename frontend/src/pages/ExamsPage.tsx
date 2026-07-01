@@ -964,7 +964,7 @@ export function ExamsPage() {
     staleTime: 30_000,
     refetchInterval: (query) => {
       const status = query.state.data?.status;
-      return status === "missing" || status === "preparing" ? 5000 : false;
+      return status === "preparing" ? 5000 : false;
     },
   });
   const paperPrewarmStatusQuery = useQuery({

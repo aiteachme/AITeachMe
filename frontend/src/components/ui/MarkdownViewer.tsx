@@ -109,6 +109,8 @@ interface MarkdownViewerProps {
   content: string;
   assetBaseUrl?: string;
   assetCourse?: string;
+  publicMode?: boolean;
+  allowRawHtml?: boolean;
   variant?: MarkdownViewerVariant;
   headingAnchors?: boolean;
   headingNumbering?: boolean;
@@ -2177,10 +2179,21 @@ function encodePathSegments(path: string): string {
 }
 
 function extractCourseAssetPath(src: string): string | null {
-  const normalized = src.split("#")[0]?.split("?")[0]?.replace(/\\/g, "/").trim() ?? "";
-  if (!normalized || /^(https?:)?\/\//i.test(normalized) || normalized.startsWith("data:")) {
+  const normalizedRaw = src.replace(/\\/g, "/").trim();
+  if (!normalizedRaw || /^(https?:)?\/\//i.test(normalizedRaw) || normalizedRaw.startsWith("data:")) {
     return null;
   }
+  try {
+    const url = new URL(normalizedRaw, "http://localhost");
+    const assetParam = url.searchParams.get("asset");
+    if (assetParam) {
+      return assetParam.replace(/^\/+/, "");
+    }
+  } catch {
+    // Fall through to path-based extraction.
+  }
+
+  const normalized = normalizedRaw.split("#")[0]?.split("?")[0]?.trim() ?? "";
 
   const assetMatch = normalized.match(/(?:^|\/)assets\/(.+)$/);
   if (!assetMatch?.[1]) {
@@ -2195,19 +2208,24 @@ function resolveMarkdownImageSrc(
   {
     assetBaseUrl,
     assetCourse,
+    publicMode = false,
   }: {
   assetBaseUrl?: string;
   assetCourse?: string;
+  publicMode?: boolean;
 }): string | undefined {
   if (!src) {
     return src;
   }
 
+  const assetPath = extractCourseAssetPath(src);
   if (assetCourse) {
-    const assetPath = extractCourseAssetPath(src);
     if (assetPath) {
       return `/api/v1/courses/${encodeURIComponent(assetCourse)}/files/assets/${encodePathSegments(assetPath)}`;
     }
+  }
+  if (assetBaseUrl && assetPath) {
+    return `${assetBaseUrl.replace(/\/$/, "")}/${encodePathSegments(assetPath)}`;
   }
 
   if (!assetBaseUrl || isAbsoluteAssetUrl(src)) {
@@ -2234,7 +2252,42 @@ function resolveMarkdownImageSrc(
     return src;
   }
 
-  return `${assetBaseUrl.replace(/\/$/, "")}/${encodeURIComponent(filename)}`;
+  const publicAssetPath = normalized
+    .replace(/^(\.\/)+/, "")
+    .replace(/^(\.\.\/)+assets\//, "")
+    .replace(/^assets\//, "");
+  const resolvedPath = publicMode ? publicAssetPath : filename;
+
+  return `${assetBaseUrl.replace(/\/$/, "")}/${encodePathSegments(resolvedPath)}`;
+}
+
+function toPublicInteractivePreview(
+  preview: InteractiveHtmlPreview,
+  assetBaseUrl: string | undefined,
+): InteractiveHtmlPreview | null {
+  if (!assetBaseUrl || preview.mode !== "asset" || !preview.assetPath) {
+    return null;
+  }
+  const assetUrl = `${assetBaseUrl.replace(/\/$/, "")}/${encodePathSegments(preview.assetPath)}`;
+  return {
+    ...preview,
+    previewUrl: assetUrl,
+    assetUrl,
+  };
+}
+
+function patchPublicHtmlForIframe(html: string): string {
+  const sanitized = html
+    .replace(/<script\b[\s\S]*?<\/script>/gi, "")
+    .replace(/\s+on[a-z]+\s*=\s*(['"])[\s\S]*?\1/gi, "")
+    .replace(/\s+srcdoc\s*=\s*(['"])[\s\S]*?\1/gi, "")
+    .replace(/\s+(href|src)\s*=\s*(['"])\s*(?:javascript:|data:text\/html)[\s\S]*?\2/gi, ' $1="#"');
+  const csp =
+    '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src data: blob:; style-src \'unsafe-inline\'; font-src data:; base-uri \'none\'; form-action \'none\'">';
+  const htmlWithCsp = /<head(?:\s[^>]*)?>/i.test(sanitized)
+    ? sanitized.replace(/<head(?:\s[^>]*)?>/i, (match) => `${match}${csp}`)
+    : `${csp}${sanitized}`;
+  return patchHtmlForIframe(htmlWithCsp);
 }
 
 function shouldFetchAuthorizedAsset(src: string | undefined): src is string {
@@ -2357,9 +2410,11 @@ function MarkdownImage({
 function InteractiveHtmlEmbed({
   preview,
   label,
+  publicMode = false,
 }: {
   preview: InteractiveHtmlPreview;
   label: ReactNode;
+  publicMode?: boolean;
 }) {
   const isStaticFigure = preview.kind === "figure";
   const [expanded, setExpanded] = useState(true);
@@ -2374,7 +2429,7 @@ function InteractiveHtmlEmbed({
   const [regeneratePrompt, setRegeneratePrompt] = useState("");
   const regenerateControllerRef = useRef<AbortController | null>(null);
   const activePreview = generatedPreview ?? preview;
-  const canRegenerate = !isStaticFigure && Boolean(preview.anchorId && (preview.selectedText || preview.title));
+  const canRegenerate = !publicMode && !isStaticFigure && Boolean(preview.anchorId && (preview.selectedText || preview.title));
   const loadingStepLabel = isStaticFigure ? "正在读取静态图示资产" : INTERACTIVE_LOADING_STEPS[loadingStepIndex % INTERACTIVE_LOADING_STEPS.length];
 
   const requestInteractiveAsset = useCallback(
@@ -2475,6 +2530,9 @@ function InteractiveHtmlEmbed({
     const loadInteractiveHtml = async () => {
       let resolvedPreview = generatedPreview ?? preview;
       if (preview.mode === "auto" && !generatedPreview) {
+        if (publicMode) {
+          throw new Error("公开分享不支持自动生成交互页。");
+        }
         const parsed = await requestInteractiveAsset({
           signal: controller.signal,
           prompt: preview.prompt,
@@ -2530,10 +2588,14 @@ function InteractiveHtmlEmbed({
     preview.prompt,
     preview.selectedText,
     preview.title,
+    publicMode,
     retryKey,
   ]);
 
-  const patchedHtml = useMemo(() => (html ? patchHtmlForIframe(html) : ""), [html]);
+  const patchedHtml = useMemo(
+    () => (html ? (publicMode ? patchPublicHtmlForIframe(html) : patchHtmlForIframe(html)) : ""),
+    [html, publicMode],
+  );
 
   const handleRegenerateInteractive = useCallback(async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -2798,7 +2860,7 @@ function InteractiveHtmlEmbed({
           <iframe
             title={preview.title || "交互演示"}
             srcDoc={patchedHtml}
-            sandbox="allow-scripts"
+            sandbox={publicMode ? "" : "allow-scripts"}
             loading="lazy"
             className="h-[min(620px,76vh)] min-h-[420px] w-full rounded-lg border border-slate-200 bg-white dark:border-slate-800"
           />
@@ -2876,6 +2938,8 @@ export function MarkdownViewer({
   content,
   assetBaseUrl,
   assetCourse,
+  publicMode = false,
+  allowRawHtml = true,
   variant = "default",
   headingAnchors = false,
   headingNumbering = false,
@@ -2989,11 +3053,11 @@ export function MarkdownViewer({
 
   const rehypePlugins = useMemo(
     () => [
-      variant === "document" && hasRawHtmlContent ? rehypeRaw : noopMarkdownPlugin,
+      allowRawHtml && variant === "document" && hasRawHtmlContent ? rehypeRaw : noopMarkdownPlugin,
       hasMathContent ? [rehypeKatex, { throwOnError: false, strict: false, errorColor: "#1F2329", output: "html" }] : noopMarkdownPlugin,
       shouldHighlightCode ? rehypeHighlight : noopMarkdownPlugin,
     ] as any[],
-    [hasMathContent, hasRawHtmlContent, shouldHighlightCode, variant],
+    [allowRawHtml, hasMathContent, hasRawHtmlContent, shouldHighlightCode, variant],
   );
 
   const components = useMemo(() => {
@@ -3203,9 +3267,15 @@ export function MarkdownViewer({
       td: ({ children }: ComponentPropsWithoutRef<"td">) => <td className={styles.td}>{children}</td>,
       hr: () => <hr className={styles.hr} />,
       a: ({ href, children }: ComponentPropsWithoutRef<"a">) => {
-        const preview = parseInteractivePreviewHref(href, { fallbackCourseId: assetCourse });
-        if (preview) {
-          return <InteractiveHtmlEmbed preview={preview} label={children} />;
+        const parsedPreview = parseInteractivePreviewHref(href, { fallbackCourseId: assetCourse });
+        if (parsedPreview) {
+          const preview = publicMode
+            ? toPublicInteractivePreview(parsedPreview, assetBaseUrl)
+            : parsedPreview;
+          if (preview) {
+            return <InteractiveHtmlEmbed preview={preview} label={children} publicMode={publicMode} />;
+          }
+          return <span className={styles.link}>{children}</span>;
         }
         return (
           <a href={href} className={styles.link} target="_blank" rel="noopener noreferrer">
@@ -3220,6 +3290,7 @@ export function MarkdownViewer({
         const resolvedSrc = resolveMarkdownImageSrc(src, {
           assetBaseUrl,
           assetCourse,
+          publicMode,
         });
 
         return (
@@ -3241,6 +3312,7 @@ export function MarkdownViewer({
     toggleHeadingCollapse,
     assetCourse,
     assetBaseUrl,
+    publicMode,
     nextHeadingId,
   ]);
 

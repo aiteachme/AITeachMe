@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 import structlog
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Request, Response
 from fastapi.responses import StreamingResponse
+from starlette.concurrency import run_in_threadpool
 from sqlmodel import Session
 
 from app.api.deps import (
@@ -67,7 +68,10 @@ from app.workflows.interact.chat.lib.streaming import SSEEventEmitter
 from app.shared.infra.database import managed_session
 from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.analytics.posthog import capture_course_build_event_later
-from app.shared.infra.knowledge.build_store import read_knowledge_build_runtime
+from app.shared.infra.knowledge.build_store import (
+    read_knowledge_build_runtime,
+    sanitize_knowledge_build_error_message,
+)
 from app.shared.infra.llm_support import run_llm_tasks
 from app.shared.infra.llm_support.model_choices import normalize_runtime_model_override, use_runtime_model_override
 from app.shared.infra.observability.trace import (
@@ -267,6 +271,21 @@ def _capture_home_course_build_requested(
     )
 
 
+_PLANNER_STREAM_ERROR_FALLBACK = "构建方案生成失败，请稍后重试。"
+
+
+def _sanitize_planner_stream_error_detail(error: object) -> str:
+    raw = str(error or "").strip()
+    if not raw:
+        return _PLANNER_STREAM_ERROR_FALLBACK
+    sanitized = sanitize_knowledge_build_error_message(raw, build_kind="docgen")
+    if sanitized and sanitized != raw:
+        if sanitized.startswith("知识文档构建"):
+            return _PLANNER_STREAM_ERROR_FALLBACK
+        return sanitized
+    return _PLANNER_STREAM_ERROR_FALLBACK
+
+
 def _planner_stream_response(
     *,
     request: Request,
@@ -320,7 +339,10 @@ def _planner_stream_response(
             pass
         except Exception as exc:
             logger.exception("planner_stream_task_failed", user_id=user_id, error=str(exc))
-            await emitter.emit_error(detail=str(exc), error_code="planner_stream_failed")
+            await emitter.emit_error(
+                detail=_sanitize_planner_stream_error_detail(exc),
+                error_code="planner_stream_failed",
+            )
         finally:
             logger.info("planner_stream_task_closed", user_id=user_id)
             await emitter.close()
@@ -1102,7 +1124,12 @@ async def knowledge_docs(
         user = get_current_user_context(request, response, session)
         course_record = get_course_record(session, normalized, owner_user_id=user.user_id)
         course_scope = _storage_scope_for_course_record(course_record)
-    return ok_response(get_docgen_result(course_id=normalized, course_scope=course_scope))
+    result = await run_in_threadpool(
+        get_docgen_result,
+        course_id=normalized,
+        course_scope=course_scope,
+    )
+    return ok_response(result)
 
 
 @router.post(

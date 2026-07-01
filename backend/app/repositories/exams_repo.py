@@ -385,23 +385,26 @@ def list_exam_papers(
     limit: int,
     offset: int,
 ) -> tuple[list[ExamPaper], int]:
+    user_visible_conditions = [
+        ExamPaper.course_id == course_id,
+        ExamPaper.user_id == user_id,
+        ExamPaper.visibility != "hidden",
+        sa.or_(
+            ExamPaper.generation_origin != "prewarm",
+            ExamPaper.claimed_at.is_not(None),
+            ExamPaper.submitted_at.is_not(None),
+            ExamPaper.graded_at.is_not(None),
+        ),
+    ]
     total = session.exec(
         select(func.count())
         .select_from(ExamPaper)
-        .where(
-            ExamPaper.course_id == course_id,
-            ExamPaper.user_id == user_id,
-            ExamPaper.visibility != "hidden",
-        )
+        .where(*user_visible_conditions)
     ).one()
     rows = list(
         session.exec(
             select(ExamPaper)
-            .where(
-                ExamPaper.course_id == course_id,
-                ExamPaper.user_id == user_id,
-                ExamPaper.visibility != "hidden",
-            )
+            .where(*user_visible_conditions)
             .order_by(ExamPaper.created_at.desc())
             .offset(offset)
             .limit(limit)

@@ -2017,8 +2017,8 @@ function DocReadingPositionRestoreState() {
         <BookOpen className="h-5 w-5" />
         <Loader2 className="absolute -right-1 -top-1 h-4 w-4 animate-spin text-indigo-500 dark:text-indigo-300" />
       </div>
-      <h2 className="mt-4 text-base font-semibold text-slate-900 dark:text-slate-100">正在恢复阅读位置</h2>
-      <p className="mt-2 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">文档加载完成后会直接回到上次阅读处。</p>
+      <h2 className="mt-4 text-base font-semibold text-slate-900 dark:text-slate-100">正在读取知识文档</h2>
+      <p className="mt-2 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">内容加载完成后，会自动回到上次阅读处。</p>
       <div className="mt-6 w-full max-w-md space-y-2" aria-hidden="true">
         <div className="h-2.5 w-full animate-pulse rounded-full bg-slate-100 dark:bg-slate-800" />
         <div className="h-2.5 w-4/5 animate-pulse rounded-full bg-slate-100 dark:bg-slate-800" />

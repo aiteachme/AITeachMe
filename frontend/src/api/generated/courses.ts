@@ -18,12 +18,10 @@ import type {
   ApiResponseCourseDeleteData,
   ApiResponseCourseDeletePreviewData,
   ApiResponseCourseItem,
-  ApiResponseCourseNameSuggestionResponse,
   ApiResponsePaginatedDataCourseItem,
   CourseDeletePreviewRequest,
   CourseDeleteRequest,
   CourseListRequest,
-  CourseNameSuggestionRequest,
   CourseUpdateRequest,
   ErrorResponse,
   HTTPValidationError
@@ -541,102 +539,4 @@ export const useUpdateCourseApiApiV1CoursesUpdatePost = <TError = ErrorResponse 
         TContext
       > => {
       return useMutation(getUpdateCourseApiApiV1CoursesUpdatePostMutationOptions(options), queryClient);
-    }
-    export type suggestCourseNameApiV1CoursesSuggestNamePostResponse200 = {
-  data: ApiResponseCourseNameSuggestionResponse
-  status: 200
-}
-
-export type suggestCourseNameApiV1CoursesSuggestNamePostResponse400 = {
-  data: ErrorResponse
-  status: 400
-}
-
-export type suggestCourseNameApiV1CoursesSuggestNamePostResponse422 = {
-  data: HTTPValidationError
-  status: 422
-}
-
-export type suggestCourseNameApiV1CoursesSuggestNamePostResponse500 = {
-  data: ErrorResponse
-  status: 500
-}
-
-export type suggestCourseNameApiV1CoursesSuggestNamePostResponseSuccess = (suggestCourseNameApiV1CoursesSuggestNamePostResponse200) & {
-  headers: Headers;
-};
-export type suggestCourseNameApiV1CoursesSuggestNamePostResponseError = (suggestCourseNameApiV1CoursesSuggestNamePostResponse400 | suggestCourseNameApiV1CoursesSuggestNamePostResponse422 | suggestCourseNameApiV1CoursesSuggestNamePostResponse500) & {
-  headers: Headers;
-};
-
-export type suggestCourseNameApiV1CoursesSuggestNamePostResponse = (suggestCourseNameApiV1CoursesSuggestNamePostResponseSuccess | suggestCourseNameApiV1CoursesSuggestNamePostResponseError)
-
-export const getSuggestCourseNameApiV1CoursesSuggestNamePostUrl = () => {
-
-
-
-
-  return `/api/v1/courses/suggest-name`
-}
-
-/**
- * @summary 根据用户输入快速生成课程名称
- */
-export const suggestCourseNameApiV1CoursesSuggestNamePost = async (courseNameSuggestionRequest: CourseNameSuggestionRequest, options?: RequestInit): Promise<suggestCourseNameApiV1CoursesSuggestNamePostResponse> => {
-
-  return orvalApiClient<suggestCourseNameApiV1CoursesSuggestNamePostResponse>(getSuggestCourseNameApiV1CoursesSuggestNamePostUrl(),
-  {
-    ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(courseNameSuggestionRequest)
-  }
-);}
-
-
-
-
-export const getSuggestCourseNameApiV1CoursesSuggestNamePostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof suggestCourseNameApiV1CoursesSuggestNamePost>>, TError,{data: CourseNameSuggestionRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
-): UseMutationOptions<Awaited<ReturnType<typeof suggestCourseNameApiV1CoursesSuggestNamePost>>, TError,{data: CourseNameSuggestionRequest}, TContext> => {
-
-const mutationKey = ['suggestCourseNameApiV1CoursesSuggestNamePost'];
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof suggestCourseNameApiV1CoursesSuggestNamePost>>, {data: CourseNameSuggestionRequest}> = (props) => {
-          const {data} = props ?? {};
-
-          return  suggestCourseNameApiV1CoursesSuggestNamePost(data,requestOptions)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type SuggestCourseNameApiV1CoursesSuggestNamePostMutationResult = NonNullable<Awaited<ReturnType<typeof suggestCourseNameApiV1CoursesSuggestNamePost>>>
-    export type SuggestCourseNameApiV1CoursesSuggestNamePostMutationBody = CourseNameSuggestionRequest
-    export type SuggestCourseNameApiV1CoursesSuggestNamePostMutationError = ErrorResponse | HTTPValidationError
-
-    /**
- * @summary 根据用户输入快速生成课程名称
- */
-export const useSuggestCourseNameApiV1CoursesSuggestNamePost = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof suggestCourseNameApiV1CoursesSuggestNamePost>>, TError,{data: CourseNameSuggestionRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
- , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof suggestCourseNameApiV1CoursesSuggestNamePost>>,
-        TError,
-        {data: CourseNameSuggestionRequest},
-        TContext
-      > => {
-      return useMutation(getSuggestCourseNameApiV1CoursesSuggestNamePostMutationOptions(options), queryClient);
     }

@@ -595,7 +595,7 @@ async def test_exam_prewarm_status_does_not_start_background_generation(
 
 
 @pytest.mark.anyio
-async def test_exam_prewarm_status_starts_missing_default_background_generation(
+async def test_exam_prewarm_status_reports_missing_default_without_background_generation(
     session: Session,
 ) -> None:
     _seed_exam_course(session)
@@ -625,10 +625,9 @@ async def test_exam_prewarm_status_starts_missing_default_background_generation(
     )
 
     assert response.data is not None
-    assert response.data.status == "preparing"
-    assert response.data.background_requested is True
-    assert len(registry.calls) == 1
-    assert registry.calls[0]["kind"] == "exam.prewarm"
+    assert response.data.status == "missing"
+    assert response.data.background_requested is False
+    assert len(registry.calls) == 0
     assert len(background_tasks.tasks) == 0
     assert session.exec(select(ExamPaper)).all() == []
 
@@ -698,7 +697,7 @@ async def test_exam_prewarm_status_finds_visible_preparing_candidate(
 
 @pytest.mark.parametrize("visibility", ["hidden", "visible"])
 @pytest.mark.anyio
-async def test_exam_prewarm_status_retries_failed_default_prewarm(
+async def test_exam_prewarm_status_ignores_unclaimed_failed_default_prewarm(
     session: Session,
     visibility: str,
 ) -> None:
@@ -764,10 +763,84 @@ async def test_exam_prewarm_status_retries_failed_default_prewarm(
     )
 
     assert response.data is not None
-    assert response.data.status == "preparing"
-    assert response.data.background_requested is True
-    assert len(registry.calls) == 1
-    assert registry.calls[0]["kind"] == "exam.prewarm"
+    assert response.data.status == "missing"
+    assert response.data.background_requested is False
+    assert response.data.error_message is None
+    assert len(registry.calls) == 0
+    assert len(background_tasks.tasks) == 0
+
+
+@pytest.mark.anyio
+async def test_exam_prewarm_status_reports_claimed_failed_default_prewarm(
+    session: Session,
+) -> None:
+    units = _seed_exam_course(session)
+    unit_ids = [int(unit.id or 0) for unit in units]
+    config_snapshot = exams_api._build_exam_config_snapshot(
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        exam_mode="web_practice",
+        question_count=exams_api.DEFAULT_AUTO_PREWARM_QUESTION_COUNT,
+        user_prompt=None,
+        sample_file_ids=[],
+        knowledge_unit_ids=unit_ids,
+        mastery_fingerprint=exams_api._exam_mastery_fingerprint(session, course_id=COURSE_ID, user_id=USER_ID),
+    )
+    failed = exams_api._create_exam_generation_paper(
+        session,
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        exam_mode="web_practice",
+        question_count=exams_api.DEFAULT_AUTO_PREWARM_QUESTION_COUNT,
+        user_prompt=None,
+        sample_file_ids=[],
+        unit_ids=unit_ids,
+        config_snapshot=config_snapshot,
+        config_hash=exams_api._exam_config_hash(config_snapshot),
+        visibility="visible",
+        generation_origin="prewarm",
+    )
+    failed.status = "failed"
+    failed.claimed_at = utcnow()
+    failed.selection_context_json = json.dumps(
+        {
+            "generation_status": "failed",
+            "error_message": "Question candidate filtering was cancelled.",
+        },
+        ensure_ascii=False,
+    )
+    session.add(failed)
+    session.commit()
+    background_tasks = BackgroundTasks()
+
+    class FakeRegistry:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, object]] = []
+
+        def spawn(self, coro, **kwargs):
+            self.calls.append(kwargs)
+            coro.close()
+
+    registry = FakeRegistry()
+
+    response = await exams_api.exam_prewarm_status(
+        request=SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(background_task_registry=registry))),
+        background_tasks=background_tasks,
+        course_id=COURSE_ID,
+        exam_mode="web_practice",
+        num_questions=exams_api.DEFAULT_AUTO_PREWARM_QUESTION_COUNT,
+        user_prompt=None,
+        sample_file_ids=None,
+        paper_layout_mode=None,
+        user=CurrentUserContext(user_id=USER_ID, email=None, is_local=True),
+        session=session,
+    )
+
+    assert response.data is not None
+    assert response.data.status == "failed"
+    assert response.data.background_requested is False
+    assert response.data.error_message == "Question candidate filtering was cancelled."
+    assert len(registry.calls) == 0
     assert len(background_tasks.tasks) == 0
 
 
@@ -823,7 +896,7 @@ async def test_exam_prewarm_status_finds_default_candidate_with_changed_unit_sna
 
 
 @pytest.mark.anyio
-async def test_exam_prewarm_status_rebuilds_stale_default_candidate(
+async def test_exam_prewarm_status_ignores_stale_unclaimed_default_candidate(
     session: Session,
 ) -> None:
     units = _seed_exam_course(session)
@@ -882,10 +955,9 @@ async def test_exam_prewarm_status_rebuilds_stale_default_candidate(
     )
 
     assert response.data is not None
-    assert response.data.status == "preparing"
-    assert response.data.background_requested is True
-    assert len(registry.calls) == 1
-    assert registry.calls[0]["dedupe_key"].startswith(f"exam.prewarm:{COURSE_ID}:")
+    assert response.data.status == "missing"
+    assert response.data.background_requested is False
+    assert len(registry.calls) == 0
 
 
 @pytest.mark.anyio
@@ -909,6 +981,58 @@ async def test_exam_history_does_not_start_default_prewarm(
     assert response.data.items == []
     assert len(background_tasks.tasks) == 0
     assert session.exec(select(ExamPaper)).all() == []
+
+
+@pytest.mark.parametrize("visibility", ["hidden", "visible"])
+@pytest.mark.anyio
+async def test_exam_history_hides_unclaimed_failed_prewarm_papers(
+    session: Session,
+    visibility: str,
+) -> None:
+    units = _seed_exam_course(session)
+    unit_ids = [int(unit.id or 0) for unit in units]
+    config_snapshot = exams_api._build_exam_config_snapshot(
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        exam_mode="web_practice",
+        question_count=exams_api.DEFAULT_AUTO_PREWARM_QUESTION_COUNT,
+        user_prompt=None,
+        sample_file_ids=[],
+        knowledge_unit_ids=unit_ids,
+        mastery_fingerprint=exams_api._exam_mastery_fingerprint(session, course_id=COURSE_ID, user_id=USER_ID),
+    )
+    failed = exams_api._create_exam_generation_paper(
+        session,
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        exam_mode="web_practice",
+        question_count=exams_api.DEFAULT_AUTO_PREWARM_QUESTION_COUNT,
+        user_prompt=None,
+        sample_file_ids=[],
+        unit_ids=unit_ids,
+        config_snapshot=config_snapshot,
+        config_hash=exams_api._exam_config_hash(config_snapshot),
+        visibility=visibility,
+        generation_origin="prewarm",
+    )
+    failed.status = "failed"
+    session.add(failed)
+    session.commit()
+    background_tasks = BackgroundTasks()
+
+    response = await exams_api.exam_history(
+        request=SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(background_task_registry=None))),
+        background_tasks=background_tasks,
+        course_id=COURSE_ID,
+        page=1,
+        size=20,
+        user=CurrentUserContext(user_id=USER_ID, email=None, is_local=True),
+        session=session,
+    )
+
+    assert response.data is not None
+    assert response.data.items == []
+    assert len(background_tasks.tasks) == 0
 
 
 @pytest.mark.anyio
@@ -1556,6 +1680,7 @@ async def test_generate_exam_endpoint_reuses_visible_prewarm_paper(
         user=CurrentUserContext(user_id=USER_ID, email=None, is_local=True),
         session=session,
     )
+    session.refresh(visible_prewarm)
     papers = session.exec(select(ExamPaper)).all()
 
     assert response.data is not None
@@ -1563,6 +1688,7 @@ async def test_generate_exam_endpoint_reuses_visible_prewarm_paper(
     assert response.data.status == "generating"
     assert response.data.num_questions == exams_api.DEFAULT_AUTO_PREWARM_QUESTION_COUNT
     assert response.data.served_from_prepared is True
+    assert visible_prewarm.claimed_at is not None
     assert len(papers) == 1
     assert len(background_tasks.tasks) == 0
     assert captured[0][0] == "exam_generation_requested"

@@ -151,7 +151,7 @@ def test_active_prepared_exam_ignores_expired_stock() -> None:
         assert claimed.visibility == "visible"
 
 
-def test_reserved_in_progress_prewarm_is_visible_and_reused() -> None:
+def test_reserved_in_progress_prewarm_stays_hidden_and_reused() -> None:
     engine = _engine()
     with Session(engine) as session:
         config_snapshot = {"version": 1, "course": "math", "num_questions": 8}
@@ -169,7 +169,7 @@ def test_reserved_in_progress_prewarm_is_visible_and_reused() -> None:
         )
 
         assert created
-        assert reserved.visibility == "visible"
+        assert reserved.visibility == "hidden"
         assert reserved.generation_origin == "prewarm"
         assert reserved.status == "generating"
 
@@ -187,6 +187,7 @@ def test_reserved_in_progress_prewarm_is_visible_and_reused() -> None:
         )
         assert not repeated_created
         assert repeated.id == reserved.id
+        assert repeated.visibility == "hidden"
 
         reused = exams_repo.get_visible_active_exam_candidate(
             session,
@@ -203,10 +204,18 @@ def test_reserved_in_progress_prewarm_is_visible_and_reused() -> None:
             question_count=10,
         )
 
-        assert reused is not None
-        assert reused.id == reserved.id
-        assert reused.status == "generating"
-        assert reused.visibility == "visible"
+        prepared = exams_repo.get_prepared_exam_candidate(
+            session,
+            course_id="course_math00000000",
+            user_id="user-a",
+            config_hash="hash-a",
+            question_count=8,
+        )
+        assert reused is None
+        assert prepared is not None
+        assert prepared.id == reserved.id
+        assert prepared.status == "generating"
+        assert prepared.visibility == "hidden"
         assert mismatched is None
 
 

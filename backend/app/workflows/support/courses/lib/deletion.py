@@ -35,10 +35,12 @@ from app.models import (
     RetrievalChunk,
     Course,
     CourseFileLink,
+    CourseShare,
     UserKnowledgeState,
 )
 from app.schemas.course import CourseDeletePreviewData
 from app.utils.path_helpers import build_course_dir
+from app.utils.time import utcnow
 
 logger = structlog.get_logger()
 _POSTGRES_IDENTIFIER_RE = re.compile(r"[a-z_][a-z0-9_]*")
@@ -105,6 +107,7 @@ def collect_course_delete_counts(session: Session, *, course_id: str) -> dict[st
             KnowledgeGraphSourceRef,
             KnowledgeGraphSourceRef.course_id == course_id,
         ),
+        "course_share": _count_rows(session, CourseShare, CourseShare.source_course_id == course_id),
     }
 
 
@@ -132,6 +135,7 @@ def delete_course_with_all_content(
     owner_user_id = course.user_id
     counts = dict(counts) if counts is not None else collect_course_delete_counts(session, course_id=course_id)
     try:
+        _revoke_course_shares(session, course_id=course_id)
         _delete_profiles(session, course_id=course_id)
         _delete_exam_records(session, course_id=course_id)
         _delete_chat_messages(session, course_id=course_id)
@@ -253,6 +257,20 @@ def _delete_chat_messages(session: Session, *, course_id: str) -> None:
 
 def _delete_profiles(session: Session, *, course_id: str) -> None:
     _bulk_delete_by_course(session, UserKnowledgeState, course_id=course_id)
+
+
+def _revoke_course_shares(session: Session, *, course_id: str) -> None:
+    now = utcnow()
+    shares = session.exec(
+        select(CourseShare)
+        .where(CourseShare.source_course_id == course_id)
+        .where(CourseShare.status != "revoked")
+    ).all()
+    for share in shares:
+        share.status = "revoked"
+        share.revoked_at = share.revoked_at or now
+        share.updated_at = now
+        session.add(share)
 
 
 def _delete_knowledge_and_curriculum(session: Session, *, course_id: str) -> None:

@@ -17,6 +17,7 @@ from app.schemas.knowledge import (
     BuildPlannerPlanResponse,
     BuildPlannerSessionResponse,
     DocGenBuildData,
+    DocGenGetResponse,
     DocGenBuildRequest,
     KnowledgeDocInteractiveSelectionRequest,
     KnowledgeGraphBuildData,
@@ -46,6 +47,14 @@ def _request(*, request_id: str = "request-1", registry=None):
         state=SimpleNamespace(request_id=request_id),
         app=SimpleNamespace(state=SimpleNamespace(background_task_registry=registry)),
     )
+
+
+class _ConnectedRequest:
+    state = SimpleNamespace(request_id="request-stream-error")
+    app = SimpleNamespace(state=SimpleNamespace(background_task_registry=None))
+
+    async def is_disconnected(self) -> bool:
+        return False
 
 
 def _capture_course_build_event_inline(
@@ -161,6 +170,34 @@ def test_interactive_overlay_helpers_normalize_cached_response() -> None:
     assert "/preview/asset.html" in response.link_markdown
 
 
+@pytest.mark.anyio
+async def test_planner_stream_error_payload_hides_upstream_provider_details() -> None:
+    async def failing_runner(_progress_callback, _token_callback):
+        raise RuntimeError(
+            "上游模型调用失败。litellm.AuthenticationError: AuthenticationError: "
+            'OpenAIException - {"error":{"message":"Failed to retrieve token",'
+            '"type":"Aihubmix_api_error"}}'
+        )
+
+    response = api._planner_stream_response(
+        request=_ConnectedRequest(),
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        runner=failing_runner,
+    )
+
+    chunks: list[str] = []
+    async for chunk in response.body_iterator:
+        chunks.append(chunk.decode("utf-8") if isinstance(chunk, bytes) else str(chunk))
+    payload = "".join(chunks)
+
+    assert "event: error" in payload
+    assert "模型服务认证失败，当前无法生成内容。请检查模型服务密钥或稍后重试。" in payload
+    assert "litellm" not in payload
+    assert "Aihubmix" not in payload
+    assert "Failed to retrieve token" not in payload
+
+
 def test_knowledge_build_spawns_background_docgen_with_accepted_files(monkeypatch) -> None:
     spawned: list[dict[str, object]] = []
     run_kwargs: dict[str, object] = {}
@@ -236,6 +273,52 @@ def test_knowledge_build_spawns_background_docgen_with_accepted_files(monkeypatc
     assert all(properties["analytics_source"] == "backend" for _event, _distinct_id, properties in captured)
     assert captured[0][2]["has_confirmed_plan"] is True
     assert captured[1][2]["build_group_id_suffix"] == "group-1"
+
+
+def test_knowledge_docs_offloads_blocking_docgen_read(monkeypatch) -> None:
+    calls: list[dict[str, object]] = []
+    expected = DocGenGetResponse(exists=True, markdown="# Ready")
+    course_scope = SimpleNamespace(course_id=COURSE_ID)
+
+    @contextmanager
+    def fake_managed_session():
+        yield object()
+
+    async def fake_run_in_threadpool(func, *args, **kwargs):
+        calls.append({"func": func, "args": args, "kwargs": kwargs})
+        return func(*args, **kwargs)
+
+    def fake_get_docgen_result(**kwargs):
+        assert kwargs["course_id"] == COURSE_ID
+        assert kwargs["course_scope"] is course_scope
+        return expected
+
+    monkeypatch.setattr(api, "managed_session", fake_managed_session)
+    monkeypatch.setattr(api, "get_current_user_context", lambda _request, _response, _session: _user())
+    monkeypatch.setattr(api, "get_course_record", lambda _session, course_id, owner_user_id: _course(course_id))
+    monkeypatch.setattr(api, "_storage_scope_for_course_record", lambda _course_record: course_scope)
+    monkeypatch.setattr(api, "get_docgen_result", fake_get_docgen_result)
+    monkeypatch.setattr(api, "run_in_threadpool", fake_run_in_threadpool)
+
+    response = asyncio.run(
+        api.knowledge_docs(
+            request=_request(),
+            response=SimpleNamespace(),
+            course_id=COURSE_ID,
+        )
+    )
+
+    assert response.data is expected
+    assert calls == [
+        {
+            "func": fake_get_docgen_result,
+            "args": (),
+            "kwargs": {
+                "course_id": COURSE_ID,
+                "course_scope": course_scope,
+            },
+        }
+    ]
 
 
 def test_build_planner_create_and_confirm_capture_backend_analytics(monkeypatch) -> None:

@@ -3,7 +3,11 @@ import axios, { AxiosHeaders, AxiosRequestConfig, AxiosResponse } from "axios";
 const DEFAULT_ELECTRON_LOCAL_API_BASE_URL = "http://127.0.0.1:19020";
 
 function shouldUseMockApi(): boolean {
-  return typeof window !== "undefined" && window.location.search.includes("mock=1");
+  return (
+    typeof window !== "undefined" &&
+    (import.meta.env.DEV || import.meta.env.MODE === "test") &&
+    window.location.search.includes("mock=1")
+  );
 }
 
 function resolveDesktopApiBaseUrl(): string {
@@ -88,9 +92,18 @@ let backendOffline = false;
 let recoveryProbeTimer: number | null = null;
 let recoveryProbeAttempt = 0;
 let connectionIssueProbeInFlight = false;
+let fallbackDeviceKey: string | null = null;
 
 function getAccessToken(): string | null {
-  return localStorage.getItem("token");
+  try {
+    return localStorage.getItem("token");
+  } catch {
+    return null;
+  }
+}
+
+export function hasStoredAccessToken(): boolean {
+  return Boolean(getAccessToken());
 }
 
 function generateDeviceKey(): string {
@@ -111,7 +124,8 @@ export function getDeviceKey(): string {
     localStorage.setItem(DEVICE_KEY_STORAGE_KEY, generated);
     return generated;
   } catch {
-    return "dk_fallback_local";
+    fallbackDeviceKey = fallbackDeviceKey || generateDeviceKey();
+    return fallbackDeviceKey;
   }
 }
 
@@ -781,6 +795,9 @@ export function getApiErrorMessage(
   error: unknown,
   fallback = "请求失败，请稍后重试",
 ): string {
+  if (!isRecord(error)) {
+    return fallback;
+  }
   const apiError = error as ApiErrorShape;
   if (apiError.code === "BACKEND_OFFLINE") {
     return "后端服务已断开，正在尝试重连。";
@@ -814,6 +831,9 @@ export function getApiErrorMessage(
 }
 
 export function getApiErrorCode(error: unknown): string | null {
+  if (!isRecord(error)) {
+    return null;
+  }
   const apiError = error as ApiErrorShape;
   const errorCode = apiError.response?.data?.error_code;
 
@@ -821,6 +841,9 @@ export function getApiErrorCode(error: unknown): string | null {
 }
 
 export function getApiErrorData<T>(error: unknown): T | null {
+  if (!isRecord(error)) {
+    return null;
+  }
   const apiError = error as ApiErrorShape;
   const data = apiError.response?.data?.data;
 

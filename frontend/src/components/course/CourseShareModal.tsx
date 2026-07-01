@@ -18,12 +18,20 @@ const BASE_SHARE_OPTIONS: Required<ExportOptions> = {
   include_profile: false,
 };
 
+function getAppBasePath(): string {
+  const base = (import.meta.env.BASE_URL || "").trim();
+  if (!base || base === "/" || base === "./") {
+    return "";
+  }
+  return `/${base.replace(/^\/+|\/+$/g, "")}`;
+}
+
 function buildShareUrl(share: CourseShareData): string {
   const path = share.share_path || (share.token ? `/share/courses/${share.token}` : "");
   if (!path || typeof window === "undefined") {
     return path;
   }
-  return new URL(path, window.location.origin).toString();
+  return new URL(`${getAppBasePath()}${path.startsWith("/") ? path : `/${path}`}`, window.location.origin).toString();
 }
 
 function formatDateTime(value: string): string {

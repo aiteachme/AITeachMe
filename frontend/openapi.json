@@ -1024,67 +1024,6 @@
         }
       }
     },
-    "/api/v1/courses/suggest-name": {
-      "post": {
-        "tags": [
-          "courses"
-        ],
-        "summary": "根据用户输入快速生成课程名称",
-        "operationId": "suggest_course_name_api_v1_courses_suggest_name_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CourseNameSuggestionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_CourseNameSuggestionResponse_"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务内部异常。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/files/upload": {
       "post": {
         "tags": [
@@ -7177,6 +7116,85 @@
         }
       }
     },
+    "/api/v1/course-shares/{token}/assets/{asset_path}": {
+      "get": {
+        "tags": [
+          "course-shares"
+        ],
+        "summary": "读取课程分享快照资产",
+        "operationId": "read_course_share_asset_api_api_v1_course_shares__token__assets__asset_path__get",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Token"
+            }
+          },
+          {
+            "name": "asset_path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Asset Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "接口可能返回业务错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/course-shares/{token}/import": {
       "post": {
         "tags": [
@@ -8134,40 +8152,6 @@
         },
         "type": "object",
         "title": "ApiResponse[CourseItem]",
-        "example": {
-          "code": 0,
-          "data": {},
-          "message": "ok"
-        }
-      },
-      "ApiResponse_CourseNameSuggestionResponse_": {
-        "properties": {
-          "code": {
-            "type": "integer",
-            "title": "Code",
-            "description": "业务码，0 表示成功。",
-            "default": 0
-          },
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "description": "响应消息。",
-            "default": "ok"
-          },
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/CourseNameSuggestionResponse"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "业务数据。"
-          }
-        },
-        "type": "object",
-        "title": "ApiResponse[CourseNameSuggestionResponse]",
         "example": {
           "code": 0,
           "data": {},
@@ -12657,53 +12641,6 @@
           "page": 1,
           "size": 20
         }
-      },
-      "CourseNameSuggestionRequest": {
-        "properties": {
-          "prompt": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Prompt",
-            "description": "User input learning goal."
-          },
-          "filenames": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Filenames",
-            "description": "Uploaded filenames."
-          }
-        },
-        "type": "object",
-        "title": "CourseNameSuggestionRequest"
-      },
-      "CourseNameSuggestionResponse": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "title": "Name",
-            "description": "AI-generated course name."
-          }
-        },
-        "type": "object",
-        "required": [
-          "name"
-        ],
-        "title": "CourseNameSuggestionResponse"
       },
       "CoursePackageItem": {
         "properties": {

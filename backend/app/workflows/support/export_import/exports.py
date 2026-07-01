@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import posixpath
+import re
 import tempfile
 import uuid
 import zipfile
@@ -14,6 +16,7 @@ from dataclasses import dataclass, field as dc_field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, unquote, urlsplit
 
 import structlog
 from pydantic import BaseModel, ConfigDict, Field
@@ -64,6 +67,7 @@ logger = structlog.get_logger()
 SUPPORTED_FORMAT_VERSIONS = {"1.0"}
 MANIFEST_SCHEMA = "aiteachme.atmx.manifest"
 PACKAGE_KIND = "course_export"
+SHARE_ASSET_ROOT = "share_assets"
 
 
 # ---------------------------------------------------------------------------
@@ -106,7 +110,7 @@ class _ManifestPackage(BaseModel):
     package_id: str
     kind: str = PACKAGE_KIND
     manifest_schema: str = MANIFEST_SCHEMA
-    content_roots: list[str] = Field(default_factory=lambda: ["db", "files", "knowledge"])
+    content_roots: list[str] = Field(default_factory=lambda: ["db", "files", "knowledge", SHARE_ASSET_ROOT])
     capabilities: list[str] = Field(default_factory=list)
     min_reader_format_version: str = "1.0"
 
@@ -363,7 +367,13 @@ def export_course(
                 )
 
             raw_files = list_all_raw_files_by_course(session, course_id)
-            _pack_files(zf, course_scope.namespace, options, raw_files=raw_files)
+            _pack_files(
+                zf,
+                course_scope.namespace,
+                options,
+                raw_files=raw_files,
+                knowledge_documents=exported.get("knowledge_document", []),
+            )
 
             manifest = _build_manifest(course, exported, options)
             zf.writestr("manifest.json", manifest.model_dump_json(indent=2))
@@ -1029,6 +1039,7 @@ def _pack_files(
     options: ExportOptions,
     *,
     raw_files: list[RawFile],
+    knowledge_documents: list[dict[str, Any]],
 ) -> None:
     """Read files from ContentStore and pack them into the zip archive."""
     cs = get_content_store()
@@ -1060,9 +1071,96 @@ def _pack_files(
         zf.writestr(f"knowledge/cover{extension}", data)
 
     # KnowledgeDocument rows already carry the published markdown content. The package only
-    # needs non-DB docgen assets such as the cover image.
+    # needs non-DB docgen assets such as the cover image and referenced public assets.
     if options.include_knowledge_docs:
         _pack_latest_docgen_cover()
+        _pack_referenced_share_assets(zf, cs, namespace, knowledge_documents)
+
+
+def _pack_referenced_share_assets(
+    zf: zipfile.ZipFile,
+    cs,
+    namespace: str,
+    knowledge_documents: list[dict[str, Any]],
+) -> None:
+    packed: set[str] = set()
+    for asset_path in _extract_referenced_asset_paths(knowledge_documents):
+        if asset_path in packed:
+            continue
+        data = run_store_sync(cs.read_bytes, f"{namespace}/assets/{asset_path}", default=None)
+        if data is None:
+            logger.warning("course_export_share_asset_missing", namespace=namespace, asset_path=asset_path)
+            continue
+        zf.writestr(f"{SHARE_ASSET_ROOT}/{asset_path}", data)
+        packed.add(asset_path)
+
+
+def _extract_referenced_asset_paths(knowledge_documents: list[dict[str, Any]]) -> list[str]:
+    found: set[str] = set()
+    for record in knowledge_documents:
+        if not isinstance(record, dict):
+            continue
+        for field_name in ("content_markdown", "markdown_content", "summary"):
+            text = str(record.get(field_name) or "")
+            if not text:
+                continue
+            for reference in _iter_potential_asset_references(text):
+                normalized = _normalize_referenced_asset_path(reference)
+                if normalized:
+                    found.add(normalized)
+    return sorted(found)
+
+
+def _iter_potential_asset_references(text: str):
+    patterns = (
+        r"!\[[^\]]*]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)",
+        r"\[[^\]]+]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)",
+        r"(?:src|href)=['\"]([^'\"]+)['\"]",
+        r"(/api/v1/courses/[^)\s\"'<>]+/files/assets/[^)\s\"'<>]+)",
+        r"((?:\.\./|\./)?assets/[^)\s\"'<>]+)",
+        r"(/courses/[^)\s\"'<>]+/knowledge-docs/(?:interactive|html-figure)[^)\s\"'<>]*)",
+    )
+    for pattern in patterns:
+        for match in re.finditer(pattern, text):
+            yield match.group(1)
+
+
+def _normalize_referenced_asset_path(reference: str) -> str | None:
+    raw = unquote(str(reference or "")).replace("\\", "/").strip().strip("'\"")
+    if not raw or raw.lower().startswith("data:") or raw.lower().startswith("javascript:"):
+        return None
+    try:
+        parsed = urlsplit(raw)
+    except ValueError:
+        parsed = None
+
+    if parsed is not None:
+        for asset in parse_qs(parsed.query).get("asset", []):
+            normalized = _normalize_asset_path(asset)
+            if normalized:
+                return normalized
+        path = parsed.path or raw.split("?", 1)[0]
+    else:
+        path = raw.split("?", 1)[0]
+
+    for marker in ("/files/assets/", "/assets/", "assets/"):
+        if marker in path:
+            return _normalize_asset_path(path.split(marker, 1)[1])
+    return None
+
+
+def _normalize_asset_path(path: str) -> str | None:
+    raw = unquote(str(path or "")).replace("\\", "/").split("#", 1)[0].split("?", 1)[0].lstrip("/")
+    normalized = posixpath.normpath(raw)
+    if (
+        not normalized
+        or normalized in {".", ".."}
+        or normalized.startswith("../")
+        or normalized.startswith("/")
+        or "\x00" in normalized
+    ):
+        return None
+    return normalized
 # ===================================================================
 # Internal: Manifest
 # ===================================================================

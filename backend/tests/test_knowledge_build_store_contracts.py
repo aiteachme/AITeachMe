@@ -40,6 +40,21 @@ def _scope():
     return build_course_storage_scope(user_id="user_a", course_id="course_runtime00001")
 
 
+def test_build_error_sanitizer_hides_upstream_provider_auth_details() -> None:
+    raw = (
+        "上游模型调用失败。litellm.AuthenticationError: AuthenticationError: "
+        'OpenAIException - {"error":{"message":"Failed to retrieve token",'
+        '"type":"Aihubmix_api_error"}}'
+    )
+
+    sanitized = build_store.sanitize_knowledge_build_error_message(raw)
+
+    assert sanitized == "模型服务认证失败，当前无法生成内容。请检查模型服务密钥或稍后重试。"
+    assert "litellm" not in sanitized
+    assert "Aihubmix" not in sanitized
+    assert "Failed to retrieve token" not in sanitized
+
+
 def test_runtime_status_hydration_sanitizes_progress_metrics_and_events() -> None:
     requested_at = datetime.now(timezone.utc) - timedelta(minutes=5)
     status = build_store.KnowledgeBuildRuntimeStatus(

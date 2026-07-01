@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import mimetypes
+import posixpath
 import re
 import secrets
 import tempfile
@@ -12,6 +14,7 @@ from datetime import timedelta
 from io import BytesIO
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote
 
 from sqlmodel import Session, col, select
 
@@ -32,6 +35,7 @@ from app.workflows.support.export_import import export_course, import_course, pr
 DEFAULT_SHARE_EXPIRES_IN_DAYS = 30
 MAX_SHARE_EXPIRES_IN_DAYS = 365
 SHARE_STORAGE_PREFIX = "shared/course_snapshots"
+SHARE_ASSET_ROOT = "share_assets"
 SHARE_PUBLIC_EXCERPT_CHARS = 900
 
 DEFAULT_SHARE_EXPORT_OPTIONS = ExportOptions(
@@ -70,7 +74,7 @@ def create_course_share(
 ) -> CourseShareData:
     """创建一个静态课程分享快照。"""
 
-    options = export_options or DEFAULT_SHARE_EXPORT_OPTIONS
+    options = _secure_share_export_options(export_options)
     normalized_days = max(1, min(MAX_SHARE_EXPIRES_IN_DAYS, int(expires_in_days or DEFAULT_SHARE_EXPIRES_IN_DAYS)))
     token = _new_share_token(session)
     share_id = _new_share_id(session)
@@ -189,6 +193,35 @@ def read_course_share_document(
     raise CourseShareNotFoundError()
 
 
+def read_course_share_asset(
+    session: Session,
+    *,
+    token: str,
+    asset_path: str,
+) -> tuple[bytes, str]:
+    """读取分享快照中 token 作用域内的公开资产。"""
+
+    share = _get_share_by_token(session, token)
+    if not _can_import_share(share):
+        raise CourseShareUnavailableError(_unavailable_reason(share))
+
+    normalized_asset_path = _normalize_share_asset_path(asset_path)
+    package_bytes = _load_snapshot_archive_bytes(share)
+    archive_path = f"{SHARE_ASSET_ROOT}/{normalized_asset_path}"
+    try:
+        with zipfile.ZipFile(BytesIO(package_bytes), "r") as archive:
+            if archive_path not in set(archive.namelist()):
+                raise CourseShareNotFoundError()
+            data = archive.read(archive_path)
+    except CourseShareNotFoundError:
+        raise
+    except Exception as exc:
+        raise CourseShareUnavailableError("分享课程包已不可用，请让创建者重新生成链接。") from exc
+
+    media_type = mimetypes.guess_type(normalized_asset_path)[0] or "application/octet-stream"
+    return data, media_type
+
+
 def import_course_share(
     session: Session,
     *,
@@ -221,6 +254,20 @@ def import_course_share(
     session.add(share)
     session.commit()
     return result
+
+
+def _secure_share_export_options(export_options: ExportOptions | None = None) -> ExportOptions:
+    """Return the server-enforced public share policy, ignoring client-sensitive flags."""
+
+    del export_options
+    return ExportOptions(
+        include_raw_files=False,
+        include_raw_markdowns=True,
+        include_knowledge_docs=True,
+        include_chat_history=False,
+        include_exam_history=False,
+        include_profile=False,
+    )
 
 
 def _new_share_id(session: Session) -> str:
@@ -334,17 +381,46 @@ def _share_documents_from_snapshot(share: CourseShare) -> list[tuple[CourseShare
 
 
 def _load_document_records_from_snapshot(share: CourseShare) -> list[dict[str, Any]]:
-    try:
-        package_bytes = run_store_sync(get_content_store().read_bytes, share.storage_key)
-        with zipfile.ZipFile(BytesIO(package_bytes), "r") as archive:
-            payload = json.loads(archive.read("db/knowledge_document.json").decode("utf-8"))
-    except Exception:
-        return []
-
+    payload = _load_snapshot_json(share, "knowledge_document")
     records = payload.get("records") if isinstance(payload, dict) else None
     if not isinstance(records, list):
         return []
     return [record for record in records if isinstance(record, dict)]
+
+
+def _load_snapshot_archive_bytes(share: CourseShare) -> bytes:
+    try:
+        return run_store_sync(get_content_store().read_bytes, share.storage_key)
+    except Exception as exc:
+        raise CourseShareUnavailableError("分享课程包已不可用，请让创建者重新生成链接。") from exc
+
+
+def _load_snapshot_json(share: CourseShare, table_name: str) -> dict[str, Any]:
+    safe_table_name = re.sub(r"[^a-z0-9_]", "", str(table_name or "").lower())
+    if not safe_table_name:
+        raise CourseShareUnavailableError("分享课程包格式异常，请让创建者重新生成链接。")
+    package_bytes = _load_snapshot_archive_bytes(share)
+    try:
+        with zipfile.ZipFile(BytesIO(package_bytes), "r") as archive:
+            payload = json.loads(archive.read(f"db/{safe_table_name}.json").decode("utf-8"))
+    except Exception as exc:
+        raise CourseShareUnavailableError("分享课程包格式异常，请让创建者重新生成链接。") from exc
+    return payload if isinstance(payload, dict) else {}
+
+
+def _normalize_share_asset_path(asset_path: str) -> str:
+    raw = unquote(str(asset_path or "")).replace("\\", "/").strip()
+    raw = raw.split("#", 1)[0].split("?", 1)[0].lstrip("/")
+    normalized = posixpath.normpath(raw)
+    if (
+        not normalized
+        or normalized in {".", ".."}
+        or normalized.startswith("../")
+        or normalized.startswith("/")
+        or "\x00" in normalized
+    ):
+        raise CourseShareNotFoundError()
+    return normalized
 
 
 def _compact_text(value: str, *, limit: int) -> str:

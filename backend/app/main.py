@@ -493,6 +493,9 @@ def _register_middlewares(app: FastAPI) -> None:
         "http://127.0.0.1:5180",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        "http://tauri.localhost",
+        "https://tauri.localhost",
+        "tauri://localhost",
     ]
     configured = get_env("CORS_ALLOWED_ORIGINS", "")
     origins = [o.strip() for o in configured.split(",") if o.strip()] if configured else default_origins

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Body, Depends, Path as PathParam, Request
+from fastapi import APIRouter, Body, Depends, Path as PathParam, Request, Response
 from sqlmodel import Session
 
 from app.api.deps import CurrentUserContext, get_current_user_context, get_db, normalize_course_id
@@ -22,6 +22,7 @@ from app.workflows.support.course_shares import (
     import_course_share,
     list_course_shares,
     preview_course_share,
+    read_course_share_asset,
     read_course_share_document,
     revoke_course_share,
 )
@@ -121,6 +122,20 @@ async def read_course_share_document_api(
     session: Session = Depends(get_db),
 ) -> ApiResponse[CourseShareDocumentContent]:
     return ok_response(read_course_share_document(session, token=token, doc_id=doc_id))
+
+
+@router.get(
+    "/course-shares/{token}/assets/{asset_path:path}",
+    summary="读取课程分享快照资产",
+    responses=build_error_responses([404, 410, 500]),
+)
+async def read_course_share_asset_api(
+    token: str,
+    asset_path: str,
+    session: Session = Depends(get_db),
+) -> Response:
+    data, media_type = read_course_share_asset(session, token=token, asset_path=asset_path)
+    return Response(content=data, media_type=media_type)
 
 
 @router.post(

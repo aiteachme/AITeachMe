@@ -507,7 +507,9 @@ def test_import_archive_validation_rejects_bad_shapes_and_paths(tmp_path: Path) 
         export_module._read_manifest(bad_manifest_dir)
 
 
-def test_import_lookup_and_background_rebuild_scheduling() -> None:
+def test_import_lookup_and_background_rebuild_scheduling(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(import_module, "_import_embedding_rebuild_route_unavailable_reason", lambda: None)
+
     assert import_module._lookup_imported_id("1", {1: "one"}) == "one"
     assert import_module._lookup_imported_id(2, {"2": "two"}) == "two"
     assert import_module._lookup_imported_or_existing_id("existing", {"old": "existing"}) == "existing"
@@ -540,6 +542,27 @@ def test_import_lookup_and_background_rebuild_scheduling() -> None:
         imported_counts={"retrieval_chunk": 2},
     ) is True
     assert registry.names == [f"course.import.embeddings:{IMPORTED_COURSE_ID}"]
+
+
+def test_import_embedding_rebuild_not_scheduled_when_model_route_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        import_module,
+        "_import_embedding_rebuild_route_unavailable_reason",
+        lambda: "embedding route unavailable",
+    )
+
+    class Registry:
+        def spawn(self, coroutine, **_kwargs) -> None:  # pragma: no cover - must not be called
+            coroutine.close()
+            raise AssertionError("background rebuild should not be scheduled")
+
+    assert import_module.spawn_imported_embedding_rebuild_background(
+        Registry(),
+        course_id=IMPORTED_COURSE_ID,
+        imported_counts={"retrieval_chunk": 2},
+    ) is False
 
 
 def test_imported_embedding_rebuild_reserves_foreground_llm_slots(

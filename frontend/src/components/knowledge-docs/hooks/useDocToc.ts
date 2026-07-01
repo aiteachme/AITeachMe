@@ -2,7 +2,7 @@
 /*  useDocToc — TOC parsing, active heading tracking, scroll-to        */
 /* ------------------------------------------------------------------ */
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useLayoutEffect, useMemo, useRef } from "react";
 import type { TocItem, TocTreeNode } from "../types";
 import { tocEqual, buildTocTree, findAncestorIds } from "../utils";
 
@@ -21,6 +21,7 @@ export interface DocTocState {
 export function useDocToc(
   renderedMarkdown: string,
   scrollRef: React.RefObject<HTMLDivElement | null>,
+  scrollElement?: HTMLDivElement | null,
 ): DocTocState {
   const [toc, setToc] = useState<TocItem[]>([]);
   const [activeHeading, setActiveHeading] = useState("");
@@ -36,11 +37,23 @@ export function useDocToc(
   );
 
   /* Parse headings from rendered markdown */
-  useEffect(() => {
-    const rafId = window.requestAnimationFrame(() => {
-      const container = scrollRef.current;
+  useLayoutEffect(() => {
+    let rafId = 0;
+    let disposed = false;
+    const retryTimerIds: number[] = [];
+    const observers: MutationObserver[] = [];
+
+    const resolveScrollContainer = () => (
+      scrollElement ?? scrollRef.current ?? document.querySelector<HTMLDivElement>(".doc-scroll-container")
+    );
+
+    const collectHeadings = () => {
+      if (disposed) return;
+      const container = resolveScrollContainer();
       if (!container) return;
-      const headingNodes = container.querySelectorAll<HTMLElement>("[data-heading-id]");
+      const headingNodes = container.querySelectorAll<HTMLElement>(
+        "h1[data-heading-id], h2[data-heading-id], h3[data-heading-id], h4[data-heading-id], h5[data-heading-id], h6[data-heading-id]",
+      );
       const nextToc: TocItem[] = Array.from(headingNodes)
         .map((node) => {
           const id = node.getAttribute("data-heading-id") ?? node.id;
@@ -52,9 +65,40 @@ export function useDocToc(
         })
         .filter((item): item is TocItem => item !== null);
       setToc((prev) => (tocEqual(prev, nextToc) ? prev : nextToc));
-    });
-    return () => window.cancelAnimationFrame(rafId);
-  }, [renderedMarkdown, scrollRef]);
+    };
+    const scheduleCollect = () => {
+      window.cancelAnimationFrame(rafId);
+      rafId = window.requestAnimationFrame(collectHeadings);
+    };
+
+    scheduleCollect();
+    for (const delay of [80, 180, 360, 720, 1200]) {
+      retryTimerIds.push(window.setTimeout(scheduleCollect, delay));
+    }
+
+    const observe = (target: HTMLElement | null) => {
+      if (!target) return;
+      const observer = new MutationObserver(scheduleCollect);
+      observer.observe(target, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["data-heading-id", "id"],
+      });
+      observers.push(observer);
+    };
+
+    const container = resolveScrollContainer();
+    observe(container);
+    if (!container) observe(document.body);
+
+    return () => {
+      disposed = true;
+      window.cancelAnimationFrame(rafId);
+      retryTimerIds.forEach((timerId) => window.clearTimeout(timerId));
+      observers.forEach((observer) => observer.disconnect());
+    };
+  }, [renderedMarkdown, scrollElement, scrollRef]);
 
   /* Auto-expand ancestors of active heading */
   useEffect(() => {
@@ -89,7 +133,7 @@ export function useDocToc(
 
   /* Track active heading on scroll */
   useEffect(() => {
-    const container = scrollRef.current;
+    const container = scrollElement ?? scrollRef.current;
     if (!container) return;
     let rafPending = false;
     const handleScroll = () => {
@@ -111,7 +155,7 @@ export function useDocToc(
     container.addEventListener("scroll", handleScroll, { passive: true });
     handleScroll();
     return () => container.removeEventListener("scroll", handleScroll);
-  }, [renderedMarkdown, scrollRef]);
+  }, [renderedMarkdown, scrollElement, scrollRef]);
 
   /* Flash heading animation */
   const flashHeading = useCallback((node: HTMLElement) => {
@@ -130,7 +174,7 @@ export function useDocToc(
 
   const scrollToHeading = useCallback(
     (id: string) => {
-      const container = scrollRef.current;
+      const container = scrollElement ?? scrollRef.current;
       if (!container) return;
       const el = container.querySelector(`[data-heading-id="${id}"]`) as HTMLElement | null;
       if (!el) return;
@@ -143,7 +187,7 @@ export function useDocToc(
       el.scrollIntoView({ behavior: "smooth", block: "start" });
       flashHeading(el);
     },
-    [flashHeading, scrollRef],
+    [flashHeading, scrollElement, scrollRef],
   );
 
   const toggleTocCollapse = useCallback((id: string) => {

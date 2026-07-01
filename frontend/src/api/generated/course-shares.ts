@@ -677,6 +677,148 @@ export function useReadCourseShareDocumentApiApiV1CourseSharesTokenDocumentsDocI
 
 
 
+export type readCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGetResponse200 = {
+  data: unknown
+  status: 200
+}
+
+export type readCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGetResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type readCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGetResponse410 = {
+  data: ErrorResponse
+  status: 410
+}
+
+export type readCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGetResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type readCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGetResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type readCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGetResponseSuccess = (readCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGetResponse200) & {
+  headers: Headers;
+};
+export type readCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGetResponseError = (readCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGetResponse404 | readCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGetResponse410 | readCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGetResponse422 | readCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGetResponse500) & {
+  headers: Headers;
+};
+
+export type readCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGetResponse = (readCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGetResponseSuccess | readCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGetResponseError)
+
+export const getReadCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGetUrl = (token: string,
+    assetPath: string,) => {
+
+
+
+
+  return `/api/v1/course-shares/${token}/assets/${assetPath}`
+}
+
+/**
+ * @summary 读取课程分享快照资产
+ */
+export const readCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGet = async (token: string,
+    assetPath: string, options?: RequestInit): Promise<readCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGetResponse> => {
+
+  return orvalApiClient<readCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGetResponse>(getReadCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGetUrl(token,assetPath),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getReadCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGetQueryKey = (token: string,
+    assetPath: string,) => {
+    return [
+    `/api/v1/course-shares/${token}/assets/${assetPath}`
+    ] as const;
+    }
+
+
+export const getReadCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGetQueryOptions = <TData = Awaited<ReturnType<typeof readCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGet>>, TError = ErrorResponse | HTTPValidationError>(token: string,
+    assetPath: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof readCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getReadCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGetQueryKey(token,assetPath);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof readCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGet>>> = ({ signal }) => readCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGet(token,assetPath, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: token !== null && token !== undefined && assetPath !== null && assetPath !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof readCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ReadCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGetQueryResult = NonNullable<Awaited<ReturnType<typeof readCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGet>>>
+export type ReadCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGetQueryError = ErrorResponse | HTTPValidationError
+
+
+export function useReadCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGet<TData = Awaited<ReturnType<typeof readCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGet>>, TError = ErrorResponse | HTTPValidationError>(
+ token: string,
+    assetPath: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof readCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGet>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof readCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGet>>,
+          TError,
+          Awaited<ReturnType<typeof readCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useReadCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGet<TData = Awaited<ReturnType<typeof readCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGet>>, TError = ErrorResponse | HTTPValidationError>(
+ token: string,
+    assetPath: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof readCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGet>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof readCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGet>>,
+          TError,
+          Awaited<ReturnType<typeof readCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useReadCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGet<TData = Awaited<ReturnType<typeof readCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGet>>, TError = ErrorResponse | HTTPValidationError>(
+ token: string,
+    assetPath: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof readCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary 读取课程分享快照资产
+ */
+
+export function useReadCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGet<TData = Awaited<ReturnType<typeof readCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGet>>, TError = ErrorResponse | HTTPValidationError>(
+ token: string,
+    assetPath: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof readCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getReadCourseShareAssetApiApiV1CourseSharesTokenAssetsAssetPathGetQueryOptions(token,assetPath,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 export type importCourseShareApiApiV1CourseSharesTokenImportPostResponse200 = {
   data: ApiResponseImportResultData
   status: 200
