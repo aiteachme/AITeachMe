@@ -4,6 +4,8 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
+import type { KnowledgeDocInteractiveSelectionResponseWidgetConfig } from './knowledgeDocInteractiveSelectionResponseWidgetConfig.ts';
+import type { KnowledgeDocInteractiveSelectionResponseWidgetOutline } from './knowledgeDocInteractiveSelectionResponseWidgetOutline.ts';
 
 /**
  * Generated interactive HTML asset anchored back into a knowledge-doc section.
@@ -16,4 +18,8 @@ export interface KnowledgeDocInteractiveSelectionResponse {
   preview_url: string;
   link_markdown: string;
   version_no?: number;
+  widget_type?: string;
+  widget_outline?: KnowledgeDocInteractiveSelectionResponseWidgetOutline;
+  widget_config?: KnowledgeDocInteractiveSelectionResponseWidgetConfig;
+  language_directive?: string;
 }

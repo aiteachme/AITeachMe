@@ -5,9 +5,16 @@
  * 本地优先的 AI 助教后端服务。
  */
 import type { HighlightData } from './highlightData.ts';
+import type { InteractiveGenerateDataWidgetConfig } from './interactiveGenerateDataWidgetConfig.ts';
+import type { InteractiveGenerateDataWidgetOutline } from './interactiveGenerateDataWidgetOutline.ts';
 
 export interface InteractiveGenerateData {
   html: string;
   highlight_id?: number | null;
   highlight?: HighlightData | null;
+  title?: string | null;
+  widget_type?: string | null;
+  widget_outline?: InteractiveGenerateDataWidgetOutline;
+  widget_config?: InteractiveGenerateDataWidgetConfig;
+  language_directive?: string | null;
 }

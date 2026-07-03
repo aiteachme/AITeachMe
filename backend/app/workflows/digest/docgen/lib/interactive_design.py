@@ -207,12 +207,21 @@ def assess_interactive_html_quality(
     has_script_state_update = bool(
         re.search(
             r"\b(textContent|innerText|innerHTML|classList|setAttribute|style\.|value\s*=|"
-            r"clearRect|fillRect|stroke|arc|lineTo|draw[A-Z_]?)\b",
+            r"clearRect|fillRect|stroke|arc|lineTo|draw[A-Z_]?|requestAnimationFrame|"
+            r"renderer\.render|controls\.update|scene\.add|position\.set|rotation\.|"
+            r"scale\.set|scale\.setScalar|material\.|THREE\.)\b",
             script,
             re.IGNORECASE,
         )
     )
     has_svg_or_canvas = bool(re.search(r"<(?:svg|canvas)\b", raw, re.IGNORECASE))
+    has_dynamic_canvas_or_3d = bool(
+        re.search(
+            r"createElement\(\s*['\"]canvas['\"]\s*\)|new\s+THREE\.WebGLRenderer|renderer\.domElement",
+            script,
+            re.IGNORECASE,
+        )
+    )
     dom_visual_element_count = len(
         re.findall(r"<(?:div|span|section|article|li|p|table|tr|td)\b", raw, re.IGNORECASE)
     )
@@ -223,9 +232,9 @@ def assess_interactive_html_quality(
         issues.append("缺少学生能主动操作的控件或交互事件。")
     if not has_event_hook:
         issues.append("缺少事件驱动逻辑，页面更像静态说明而不是微实验。")
-    if not (has_svg_or_canvas or has_dom_visual):
+    if not (has_svg_or_canvas or has_dynamic_canvas_or_3d or has_dom_visual):
         issues.append("缺少随状态变化的可视表达；不能只依赖静态说明或占位块。")
-    if _has_interaction_design_contract(design_brief) and not (has_svg_or_canvas or has_dom_visual):
+    if _has_interaction_design_contract(design_brief) and not (has_svg_or_canvas or has_dynamic_canvas_or_3d or has_dom_visual):
         issues.append("设计 brief 已建立可观察变化合同，但页面没有 SVG/Canvas 或真实 DOM 等清晰图形载体。")
     if not has_script_state_update:
         issues.append("交互没有明显更新文本、图形、样式或绘制状态。")

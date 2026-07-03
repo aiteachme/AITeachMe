@@ -114,14 +114,16 @@ def normalize_single_file_html(
     *,
     title: str,
     allow_scripts: bool,
+    allow_external_resources: bool = False,
 ) -> str:
     """Normalize a model-produced sidecar into one complete HTML document."""
 
     cleaned = strip_html_fence(html).replace("\r\n", "\n").replace("\r", "\n").strip()
     cleaned = _extract_main_document(cleaned)
-    cleaned = re.sub(r"<script[^>]+src=[\"'][^\"']+[\"'][^>]*>\s*</script>", "", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"<link[^>]+href=[\"']https?://[^\"']+[\"'][^>]*>", "", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"<img[^>]+src=[\"']https?://[^\"']+[\"'][^>]*>", "", cleaned, flags=re.IGNORECASE)
+    if not allow_external_resources:
+        cleaned = re.sub(r"<script[^>]+src=[\"'][^\"']+[\"'][^>]*>\s*</script>", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"<link[^>]+href=[\"']https?://[^\"']+[\"'][^>]*>", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"<img[^>]+src=[\"']https?://[^\"']+[\"'][^>]*>", "", cleaned, flags=re.IGNORECASE)
     if not allow_scripts:
         cleaned = re.sub(r"<script\b[^>]*>.*?</script>", "", cleaned, flags=re.IGNORECASE | re.DOTALL)
         cleaned = re.sub(r"\s+on[a-z]+\s*=\s*(['\"]).*?\1", "", cleaned, flags=re.IGNORECASE | re.DOTALL)

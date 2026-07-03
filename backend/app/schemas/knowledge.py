@@ -474,6 +474,7 @@ class KnowledgeDocInteractiveSelectionRequest(BaseModel):
     anchor_id: str = Field(min_length=1, max_length=160)
     selected_text: str = Field(min_length=1, max_length=2000)
     prompt: str | None = Field(default=None, max_length=1000)
+    model: str | None = Field(default=None, max_length=120)
     client_reference_id: str | None = Field(default=None, max_length=160)
     force_regenerate: bool = False
     replace_overlay_id: str | None = Field(default=None, max_length=180)
@@ -484,6 +485,7 @@ class KnowledgeDocInteractiveSelectionRequest(BaseModel):
         self.anchor_id = self.anchor_id.strip()
         self.selected_text = self.selected_text.strip()
         self.prompt = (self.prompt or "").strip() or None
+        self.model = (self.model or "").strip() or None
         self.client_reference_id = (self.client_reference_id or "").strip() or None
         self.replace_overlay_id = (self.replace_overlay_id or "").strip() or None
         if not self.anchor_id:
@@ -503,6 +505,10 @@ class KnowledgeDocInteractiveSelectionResponse(BaseModel):
     preview_url: str
     link_markdown: str
     version_no: int = 0
+    widget_type: str = ""
+    widget_outline: dict[str, object] = Field(default_factory=dict)
+    widget_config: dict[str, object] = Field(default_factory=dict)
+    language_directive: str = ""
 
 
 class KnowledgeUnitResponse(BaseModel):

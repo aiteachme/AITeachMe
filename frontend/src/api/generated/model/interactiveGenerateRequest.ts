@@ -9,5 +9,7 @@ import type { InteractiveGenerateRequestSegments } from './interactiveGenerateRe
 export interface InteractiveGenerateRequest {
   selected_text: string;
   description?: string | null;
+  model?: string | null;
+  replace_highlight_id?: number | null;
   segments?: InteractiveGenerateRequestSegments;
 }

@@ -105,7 +105,7 @@ export function KnowledgeInteractivePage() {
             <iframe
               title={title}
               srcDoc={patchedHtml}
-              sandbox={preview?.kind === "figure" ? "" : "allow-scripts"}
+              sandbox={preview?.kind === "figure" ? "" : "allow-scripts allow-forms allow-popups"}
               className="h-[calc(100dvh-7.5rem)] min-h-[520px] w-full border-0 bg-white"
             />
           )}

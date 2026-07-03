@@ -43,6 +43,11 @@ import { CourseGraphNotice, CourseVectorNotice } from "../components/knowledge-g
 import { MarkdownViewer } from "../components/ui/MarkdownViewer";
 import { useToast } from "../components/ui/Toast";
 import { CoursePagePillTitle } from "../components/course/CoursePagePillTitle";
+import {
+  ChatModelSelect,
+  toChatRequestModel,
+  useGlobalChatModelChoice,
+} from "../components/chat/ChatModelSelect";
 import { buildCoursePath } from "../lib/courseNavigation";
 import { OVERVIEW_INCLUDE_PRESETS, buildKnowledgeOverviewQueryKey } from "../lib/knowledgeOverview";
 import { buildKnowledgeBuildRuntimeQueryKey, triggerKnowledgeGraphBuild } from "../lib/knowledgeBuildRuntime";
@@ -2426,6 +2431,7 @@ export function KnowledgeDocsPage() {
   const [floatingInteractive, setFloatingInteractive] = useState<FloatingInteractiveComposer | null>(null);
   const [pendingInteractiveBlocks, setPendingInteractiveBlocks] = useState<PendingInteractiveBlock[]>([]);
   const [interactivePrompt, setInteractivePrompt] = useState("");
+  const [interactiveModel, setInteractiveModel] = useGlobalChatModelChoice();
   const [isGeneratingInteractive, setIsGeneratingInteractive] = useState(false);
   const [interactiveError, setInteractiveError] = useState<string | null>(null);
   const [floatingInput, setFloatingInput] = useState("");
@@ -4633,7 +4639,7 @@ export function KnowledgeDocsPage() {
     const toolbar = floatingToolbar;
     const selectionContext = buildSelectionContextPayload(contentAreaRef.current, toolbar.anchorId, toolbar.selectedText);
     const container = scrollRef.current;
-    const composerWidth = 360;
+    const composerWidth = 420;
     const composerLeft = container
       ? Math.max(
         container.scrollLeft + 12,
@@ -4698,6 +4704,7 @@ export function KnowledgeDocsPage() {
           anchor_id: composer.anchorId,
           selected_text: composer.selectedText,
           prompt: prompt || undefined,
+          model: toChatRequestModel(interactiveModel),
           selection_context: composer.selectionContext,
         },
       });
@@ -4732,6 +4739,7 @@ export function KnowledgeDocsPage() {
     courseId,
     docMarkdownQuery,
     floatingInteractive,
+    interactiveModel,
     interactivePrompt,
     isCompactToc,
     isGeneratingInteractive,
@@ -7166,7 +7174,7 @@ export function KnowledgeDocsPage() {
           {floatingInteractive && (
             <div
               ref={floatingRef}
-              className="absolute z-50 w-[min(360px,calc(100vw-32px))] rounded-2xl border border-slate-200/90 bg-white p-3 shadow-[0_24px_64px_-28px_rgba(15,23,42,0.9)] dark:border-slate-700 dark:bg-slate-950"
+              className="absolute z-50 w-[min(420px,calc(100vw-32px))] rounded-2xl border border-slate-200/90 bg-white p-3 shadow-[0_24px_64px_-28px_rgba(15,23,42,0.9)] dark:border-slate-700 dark:bg-slate-950"
               style={{
                 top: floatingInteractive.top,
                 left: floatingInteractive.left,
@@ -7202,8 +7210,15 @@ export function KnowledgeDocsPage() {
               {interactiveError && (
                 <p className="mt-2 text-xs leading-5 text-red-600 dark:text-red-300">{interactiveError}</p>
               )}
-              <div className="mt-3 flex items-center justify-between gap-3">
-                <span className="text-[11px] text-slate-400 dark:text-slate-500">会添加到当前章节下方</span>
+              <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="shrink-0 text-[11px] text-slate-400 dark:text-slate-500">模型</span>
+                  <ChatModelSelect
+                    value={interactiveModel}
+                    onChange={setInteractiveModel}
+                    disabled={isGeneratingInteractive}
+                  />
+                </div>
                 <button
                   type="button"
                   onClick={submitInteractiveComposer}

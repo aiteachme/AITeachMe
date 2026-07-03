@@ -1045,7 +1045,7 @@ export type generateInteractiveApiV1FilesFileIdInteractivePostResponse404 = {
 }
 
 export type generateInteractiveApiV1FilesFileIdInteractivePostResponse422 = {
-  data: HTTPValidationError
+  data: ErrorResponse
   status: 422
 }
 
@@ -1054,10 +1054,15 @@ export type generateInteractiveApiV1FilesFileIdInteractivePostResponse500 = {
   status: 500
 }
 
+export type generateInteractiveApiV1FilesFileIdInteractivePostResponse503 = {
+  data: ErrorResponse
+  status: 503
+}
+
 export type generateInteractiveApiV1FilesFileIdInteractivePostResponseSuccess = (generateInteractiveApiV1FilesFileIdInteractivePostResponse200) & {
   headers: Headers;
 };
-export type generateInteractiveApiV1FilesFileIdInteractivePostResponseError = (generateInteractiveApiV1FilesFileIdInteractivePostResponse400 | generateInteractiveApiV1FilesFileIdInteractivePostResponse404 | generateInteractiveApiV1FilesFileIdInteractivePostResponse422 | generateInteractiveApiV1FilesFileIdInteractivePostResponse500) & {
+export type generateInteractiveApiV1FilesFileIdInteractivePostResponseError = (generateInteractiveApiV1FilesFileIdInteractivePostResponse400 | generateInteractiveApiV1FilesFileIdInteractivePostResponse404 | generateInteractiveApiV1FilesFileIdInteractivePostResponse422 | generateInteractiveApiV1FilesFileIdInteractivePostResponse500 | generateInteractiveApiV1FilesFileIdInteractivePostResponse503) & {
   headers: Headers;
 };
 
@@ -1089,7 +1094,7 @@ export const generateInteractiveApiV1FilesFileIdInteractivePost = async (fileId:
 
 
 
-export const getGenerateInteractiveApiV1FilesFileIdInteractivePostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+export const getGenerateInteractiveApiV1FilesFileIdInteractivePostMutationOptions = <TError = ErrorResponse,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateInteractiveApiV1FilesFileIdInteractivePost>>, TError,{fileId: string;data: InteractiveGenerateRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
 ): UseMutationOptions<Awaited<ReturnType<typeof generateInteractiveApiV1FilesFileIdInteractivePost>>, TError,{fileId: string;data: InteractiveGenerateRequest}, TContext> => {
 
@@ -1118,12 +1123,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type GenerateInteractiveApiV1FilesFileIdInteractivePostMutationResult = NonNullable<Awaited<ReturnType<typeof generateInteractiveApiV1FilesFileIdInteractivePost>>>
     export type GenerateInteractiveApiV1FilesFileIdInteractivePostMutationBody = InteractiveGenerateRequest
-    export type GenerateInteractiveApiV1FilesFileIdInteractivePostMutationError = ErrorResponse | HTTPValidationError
+    export type GenerateInteractiveApiV1FilesFileIdInteractivePostMutationError = ErrorResponse
 
     /**
  * @summary Generate interactive content from selected text
  */
-export const useGenerateInteractiveApiV1FilesFileIdInteractivePost = <TError = ErrorResponse | HTTPValidationError,
+export const useGenerateInteractiveApiV1FilesFileIdInteractivePost = <TError = ErrorResponse,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateInteractiveApiV1FilesFileIdInteractivePost>>, TError,{fileId: string;data: InteractiveGenerateRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
  , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof generateInteractiveApiV1FilesFileIdInteractivePost>>,
