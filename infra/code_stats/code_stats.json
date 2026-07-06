@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-06-29T03:37:54.750137",
-  "total_commits_analyzed": 2016,
+  "generated_at": "2026-07-06T02:49:44.683605",
+  "total_commits_analyzed": 2017,
   "stats": [
     {
       "date": "2026-03-11",
@@ -16129,6 +16129,14 @@
       "code_lines": 235616,
       "other_lines": 43074,
       "message": "fix: 撤回文档引导动图并精简首页"
+    },
+    {
+      "date": "2026-06-29",
+      "commit": "8d1d95d",
+      "total_lines": 278690,
+      "code_lines": 235616,
+      "other_lines": 43074,
+      "message": "chore: update code statistics [skip ci]"
     }
   ]
 }
