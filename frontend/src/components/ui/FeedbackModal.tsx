@@ -9,7 +9,7 @@ interface FeedbackModalProps {
   onClose: () => void;
 }
 
-const CONTACT_EMAIL = "aiteachme_test1@163.com";
+const CONTACT_EMAIL = "aiteachme@163.com";
 const CONTACT_MAILTO = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent("AITeachMe 意见反馈")}`;
 
 export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
