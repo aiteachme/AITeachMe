@@ -39,6 +39,7 @@ PRIVATE_MARKERS = (
     "private-source-user-marker",
     "private-retrieval-marker",
 )
+UNPUBLISHED_KG_MARKER = "unpublished-knowledge-graph-marker"
 
 
 class _MemoryShareStore:
@@ -196,7 +197,9 @@ def course_share_client(
                                 "knowledge_unit_type": "concept",
                                 "canonical_name": "变量",
                                 "normalized_name": "变量",
-                                "summary": "变量基础",
+                                "summary": f"{UNPUBLISHED_KG_MARKER}-summary",
+                                "body": f"{UNPUBLISHED_KG_MARKER}-body",
+                                "body_markdown": f"{UNPUBLISHED_KG_MARKER}-body-markdown",
                                 "evidence_refs_json": "[{\"file_id\":\"private-file-id\"}]",
                                 "status": "active",
                             }
@@ -218,6 +221,7 @@ def course_share_client(
                                 "source_node_id": 10,
                                 "target_node_id": 10,
                                 "edge_type": "explains",
+                                "description": f"{UNPUBLISHED_KG_MARKER}-description",
                                 "evidence_refs_json": "[{\"file_id\":\"private-file-id\"}]",
                                 "status": "active",
                             }
@@ -339,7 +343,8 @@ def test_course_share_create_preview_and_revoke(
     assert payload["export_options"]["include_chat_history"] is False
     assert payload["export_options"]["include_exam_history"] is False
     assert payload["export_options"]["include_profile"] is False
-    assert payload["stats"]["knowledge_unit_count"] == 1
+    assert payload["stats"]["knowledge_unit_count"] == 0
+    assert payload["stats"]["knowledge_edge_count"] == 0
     assert len(store.files) == 1
     assert store.last_export_options is not None
     assert store.last_export_options.include_raw_files is False
@@ -367,11 +372,16 @@ def test_course_share_create_preview_and_revoke(
         public_doc = json.loads(archive.read("db/knowledge_document.json").decode("utf-8"))["records"][0]
         assert public_doc["source_file_ids"] == "[]"
         assert "manifest_json" not in public_doc
-        public_unit = json.loads(archive.read("db/knowledge_unit.json").decode("utf-8"))["records"][0]
-        assert public_unit["evidence_refs_json"] == "[]"
+        public_units = json.loads(archive.read("db/knowledge_unit.json").decode("utf-8"))
+        public_edges = json.loads(archive.read("db/knowledge_edge.json").decode("utf-8"))
+        assert public_units["count"] == 0
+        assert public_units["records"] == []
+        assert public_edges["count"] == 0
+        assert public_edges["records"] == []
         unpacked = b"\n".join(archive.read(name) for name in names)
         for marker in PRIVATE_MARKERS:
             assert marker.encode("utf-8") not in unpacked
+        assert UNPUBLISHED_KG_MARKER.encode("utf-8") not in unpacked
 
     preview = client.get(f"/api/v1/course-shares/{payload['token']}")
     assert preview.status_code == 200

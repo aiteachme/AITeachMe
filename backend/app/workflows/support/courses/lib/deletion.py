@@ -149,6 +149,8 @@ def delete_course_with_all_content(
         course_name = locked_course.name
         counts = dict(counts) if counts is not None else collect_course_delete_counts(session, course_id=course_id)
         share_storage_keys: list[str] = []
+        commit_attempted = False
+        bind: Any | None = None
         try:
             share_storage_keys = _revoke_course_shares(session, course_id=course_id)
             _delete_profiles(session, course_id=course_id)
@@ -159,10 +161,35 @@ def delete_course_with_all_content(
             _delete_planner_records(session, course_id=course_id)
             _delete_raw_files_and_artifacts(session, course_id=course_id, owner_user_id=owner_user_id)
             session.delete(locked_course)
+            bind = session.get_bind()
+            commit_attempted = True
             session.commit()
-        except Exception:
-            session.rollback()
-            raise
+        except Exception as commit_exc:
+            try:
+                session.rollback()
+            except Exception as rollback_exc:  # pragma: no cover - defensive connection failure guard
+                logger.warning(
+                    "course_delete_rollback_failed",
+                    course_id=course_id,
+                    error=str(rollback_exc),
+                )
+
+            if not commit_attempted or bind is None:
+                raise
+
+            verified, committed = _verify_course_delete_commit_outcome(
+                bind,
+                course_id=course_id,
+                expected_share_storage_keys=share_storage_keys,
+            )
+            if not committed:
+                if not verified:
+                    logger.warning(
+                        "course_delete_cleanup_retained_after_uncertain_commit",
+                        course_id=course_id,
+                        error=str(commit_exc),
+                    )
+                raise
 
     _delete_course_share_snapshots_best_effort(share_storage_keys)
     _schedule_course_external_cleanup(
@@ -289,6 +316,42 @@ def _revoke_course_shares(session: Session, *, course_id: str) -> list[str]:
             share.updated_at = now
             session.add(share)
     return list(dict.fromkeys(share.storage_key for share in shares if share.storage_key))
+
+
+def _verify_course_delete_commit_outcome(
+    bind: Any,
+    *,
+    course_id: str,
+    expected_share_storage_keys: list[str],
+) -> tuple[bool, bool]:
+    """Confirm an ambiguous delete commit before irreversible external cleanup."""
+
+    try:
+        with Session(bind, expire_on_commit=False) as verification_session:
+            if verification_session.get(Course, course_id) is not None:
+                return True, False
+
+            shares = verification_session.exec(
+                select(CourseShare).where(CourseShare.source_course_id == course_id)
+            ).all()
+            if any(share.status != "revoked" for share in shares):
+                return True, False
+
+            actual_storage_keys = {
+                share.storage_key
+                for share in shares
+                if share.storage_key
+            }
+            if actual_storage_keys != set(expected_share_storage_keys):
+                return True, False
+            return True, True
+    except Exception as exc:
+        logger.warning(
+            "course_delete_commit_outcome_verification_failed",
+            course_id=course_id,
+            error=str(exc),
+        )
+        return False, False
 
 
 def _delete_course_share_snapshots_best_effort(storage_keys: list[str]) -> None:

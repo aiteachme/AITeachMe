@@ -97,43 +97,6 @@ SHARE_TABLE_FIELDS: dict[str, frozenset[str]] = {
             "updated_at",
         }
     ),
-    "knowledge_unit": frozenset(
-        {
-            "id",
-            "course_id",
-            "knowledge_unit_type",
-            "canonical_name",
-            "normalized_name",
-            "summary",
-            "body",
-            "body_markdown",
-            "aliases_json",
-            "status",
-            "confidence",
-            "type_confidence",
-            "type_source",
-            "build_revision_no",
-            "merged_into_knowledge_unit_id",
-            "created_at",
-            "updated_at",
-        }
-    ),
-    "knowledge_edge": frozenset(
-        {
-            "id",
-            "course_id",
-            "source_node_id",
-            "target_node_id",
-            "edge_type",
-            "description",
-            "weight",
-            "confidence",
-            "status",
-            "build_revision_no",
-            "created_at",
-            "updated_at",
-        }
-    ),
 }
 
 DEFAULT_SHARE_EXPORT_OPTIONS = ExportOptions(
@@ -774,24 +737,19 @@ def _build_share_snapshot(
             documents = _project_knowledge_documents(
                 _read_table_records_from_archive(source, "knowledge_document")
             )
-            units = _project_knowledge_units(
-                _read_table_records_from_archive(source, "knowledge_unit")
-            )
-            edges = _project_knowledge_edges(
-                _read_table_records_from_archive(source, "knowledge_edge"),
-                unit_ids={_stable_record_id(item.get("id")) for item in units},
-            )
+            # KG lacks immutable provenance bound to published document versions.
+            # Keep schema-compatible empty tables until that publication boundary exists.
             tables = {
                 "course": [_public_course_record(course)],
                 "knowledge_document": documents,
-                "knowledge_unit": units,
-                "knowledge_edge": edges,
+                "knowledge_unit": [],
+                "knowledge_edge": [],
             }
             stats = {
                 "raw_file_count": 0,
                 "knowledge_document_count": len(documents),
-                "knowledge_unit_count": len(units),
-                "knowledge_edge_count": len(edges),
+                "knowledge_unit_count": 0,
+                "knowledge_edge_count": 0,
                 "knowledge_graph_sync_run_count": 0,
                 "knowledge_graph_source_ref_count": 0,
                 "confirmed_build_plan_count": 0,
@@ -915,56 +873,6 @@ def _project_knowledge_documents(records: list[dict[str, Any]]) -> list[dict[str
         for field_name in ("root_document_id", "parent_document_id"):
             if _stable_record_id(item.get(field_name)) not in included_ids:
                 item[field_name] = None
-    return projected
-
-
-def _project_knowledge_units(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    projected: list[dict[str, Any]] = []
-    for record in records:
-        status = str(record.get("status") or "").strip().lower()
-        if status in {"deprecated", "merged"}:
-            continue
-        if (
-            record.get("id") is None
-            or not str(record.get("knowledge_unit_type") or "").strip()
-            or not str(record.get("canonical_name") or "").strip()
-            or not str(record.get("normalized_name") or "").strip()
-        ):
-            continue
-        item = _allowlisted_record(record, SHARE_TABLE_FIELDS["knowledge_unit"])
-        item["course_id"] = SHARE_SNAPSHOT_COURSE_ID
-        item["evidence_refs_json"] = "[]"
-        projected.append(item)
-
-    included_ids = {_stable_record_id(item.get("id")) for item in projected}
-    for item in projected:
-        if _stable_record_id(item.get("merged_into_knowledge_unit_id")) not in included_ids:
-            item["merged_into_knowledge_unit_id"] = None
-    return projected
-
-
-def _project_knowledge_edges(
-    records: list[dict[str, Any]],
-    *,
-    unit_ids: set[str],
-) -> list[dict[str, Any]]:
-    projected: list[dict[str, Any]] = []
-    for record in records:
-        if str(record.get("status") or "").strip().lower() == "deprecated":
-            continue
-        source_id = _stable_record_id(record.get("source_node_id"))
-        target_id = _stable_record_id(record.get("target_node_id"))
-        if (
-            record.get("id") is None
-            or source_id not in unit_ids
-            or target_id not in unit_ids
-            or not str(record.get("edge_type") or "").strip()
-        ):
-            continue
-        item = _allowlisted_record(record, SHARE_TABLE_FIELDS["knowledge_edge"])
-        item["course_id"] = SHARE_SNAPSHOT_COURSE_ID
-        item["evidence_refs_json"] = "[]"
-        projected.append(item)
     return projected
 
 
