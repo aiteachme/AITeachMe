@@ -1,7 +1,7 @@
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { BarChart3, Github, Loader2, LogIn, LogOut, User } from "lucide-react";
+import { BarChart3, Github, Loader2, LogIn, LogOut, MessageSquareText, User } from "lucide-react";
 import { apiClient, getApiErrorMessage } from "../../api/client";
 import { listCoursesApiApiV1CoursesListPost } from "../../api/generated/courses";
 import { examHistoryApiV1CoursesCourseIdExamsHistoryGet } from "../../api/generated/exams";
@@ -23,6 +23,7 @@ import {
 import { cn } from "../../lib/utils";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { Modal } from "../ui/Modal";
+import { FeedbackModal } from "../ui/FeedbackModal";
 
 type SendEmailCodeData = {
   expires_in_s: number;
@@ -186,6 +187,7 @@ export function TopBar({ className }: TopBarProps) {
   const [codeSentToEmail, setCodeSentToEmail] = useState<string | null>(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
   const authSessionQuery = useQuery({
     queryKey: AUTH_SESSION_QUERY_KEY,
     queryFn: ({ signal }) => fetchAuthSession(signal),
@@ -405,6 +407,11 @@ export function TopBar({ className }: TopBarProps) {
       { replace: true },
     );
   }, [authEnabled, location.hash, location.pathname, location.search, navigate]);
+
+  const openFeedbackModal = () => {
+    closeMenus();
+    setIsFeedbackModalOpen(true);
+  };
 
   const handleLogout = async () => {
     try {
@@ -651,6 +658,14 @@ export function TopBar({ className }: TopBarProps) {
                 </div>
 
                 <div className="border-t border-slate-100 py-1 dark:border-slate-800/80">
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800/50"
+                    onClick={openFeedbackModal}
+                  >
+                    <MessageSquareText className="h-4 w-4 text-slate-400 dark:text-slate-500" />
+                    <span>意见反馈</span>
+                  </button>
                   <a
                     href="https://github.com/aiteachme/AiTeachMe"
                     target="_blank"
@@ -759,6 +774,14 @@ export function TopBar({ className }: TopBarProps) {
             <div className="my-1 border-t border-slate-100 dark:border-slate-800/80" />
 
             <div className="py-1">
+              <button
+                type="button"
+                className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-slate-700 transition-colors hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800/50"
+                onClick={openFeedbackModal}
+              >
+                <MessageSquareText className="h-4 w-4 text-slate-400 dark:text-slate-500" />
+                <span>意见反馈</span>
+              </button>
               <a
                 href="https://github.com/aiteachme/AiTeachMe"
                 target="_blank"
@@ -773,6 +796,8 @@ export function TopBar({ className }: TopBarProps) {
           </div>
         )}
       </div>
+
+      <FeedbackModal open={isFeedbackModalOpen} onClose={() => setIsFeedbackModalOpen(false)} />
 
       <Modal
         open={canUseAuth && isAuthModalOpen}

@@ -278,6 +278,131 @@ export function useGetCommunityWechatQrApiV1SystemCommunityWechatQrGet<TData = A
 
 
 
+export type getCommunityFeishuQrApiV1SystemCommunityFeishuQrGetResponse200 = {
+  data: unknown
+  status: 200
+}
+
+export type getCommunityFeishuQrApiV1SystemCommunityFeishuQrGetResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type getCommunityFeishuQrApiV1SystemCommunityFeishuQrGetResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type getCommunityFeishuQrApiV1SystemCommunityFeishuQrGetResponseSuccess = (getCommunityFeishuQrApiV1SystemCommunityFeishuQrGetResponse200) & {
+  headers: Headers;
+};
+export type getCommunityFeishuQrApiV1SystemCommunityFeishuQrGetResponseError = (getCommunityFeishuQrApiV1SystemCommunityFeishuQrGetResponse404 | getCommunityFeishuQrApiV1SystemCommunityFeishuQrGetResponse500) & {
+  headers: Headers;
+};
+
+export type getCommunityFeishuQrApiV1SystemCommunityFeishuQrGetResponse = (getCommunityFeishuQrApiV1SystemCommunityFeishuQrGetResponseSuccess | getCommunityFeishuQrApiV1SystemCommunityFeishuQrGetResponseError)
+
+export const getGetCommunityFeishuQrApiV1SystemCommunityFeishuQrGetUrl = () => {
+
+
+
+
+  return `/api/v1/system/community/feishu-qr`
+}
+
+/**
+ * 从项目公开 assets 仓库的远程图片直链读取社区飞书二维码，并以 no-store 返回给前端。
+ * @summary 读取社区飞书二维码
+ */
+export const getCommunityFeishuQrApiV1SystemCommunityFeishuQrGet = async ( options?: RequestInit): Promise<getCommunityFeishuQrApiV1SystemCommunityFeishuQrGetResponse> => {
+
+  return orvalApiClient<getCommunityFeishuQrApiV1SystemCommunityFeishuQrGetResponse>(getGetCommunityFeishuQrApiV1SystemCommunityFeishuQrGetUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCommunityFeishuQrApiV1SystemCommunityFeishuQrGetQueryKey = () => {
+    return [
+    `/api/v1/system/community/feishu-qr`
+    ] as const;
+    }
+
+
+export const getGetCommunityFeishuQrApiV1SystemCommunityFeishuQrGetQueryOptions = <TData = Awaited<ReturnType<typeof getCommunityFeishuQrApiV1SystemCommunityFeishuQrGet>>, TError = ErrorResponse>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCommunityFeishuQrApiV1SystemCommunityFeishuQrGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCommunityFeishuQrApiV1SystemCommunityFeishuQrGetQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCommunityFeishuQrApiV1SystemCommunityFeishuQrGet>>> = ({ signal }) => getCommunityFeishuQrApiV1SystemCommunityFeishuQrGet({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCommunityFeishuQrApiV1SystemCommunityFeishuQrGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetCommunityFeishuQrApiV1SystemCommunityFeishuQrGetQueryResult = NonNullable<Awaited<ReturnType<typeof getCommunityFeishuQrApiV1SystemCommunityFeishuQrGet>>>
+export type GetCommunityFeishuQrApiV1SystemCommunityFeishuQrGetQueryError = ErrorResponse
+
+
+export function useGetCommunityFeishuQrApiV1SystemCommunityFeishuQrGet<TData = Awaited<ReturnType<typeof getCommunityFeishuQrApiV1SystemCommunityFeishuQrGet>>, TError = ErrorResponse>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCommunityFeishuQrApiV1SystemCommunityFeishuQrGet>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getCommunityFeishuQrApiV1SystemCommunityFeishuQrGet>>,
+          TError,
+          Awaited<ReturnType<typeof getCommunityFeishuQrApiV1SystemCommunityFeishuQrGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetCommunityFeishuQrApiV1SystemCommunityFeishuQrGet<TData = Awaited<ReturnType<typeof getCommunityFeishuQrApiV1SystemCommunityFeishuQrGet>>, TError = ErrorResponse>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCommunityFeishuQrApiV1SystemCommunityFeishuQrGet>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getCommunityFeishuQrApiV1SystemCommunityFeishuQrGet>>,
+          TError,
+          Awaited<ReturnType<typeof getCommunityFeishuQrApiV1SystemCommunityFeishuQrGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetCommunityFeishuQrApiV1SystemCommunityFeishuQrGet<TData = Awaited<ReturnType<typeof getCommunityFeishuQrApiV1SystemCommunityFeishuQrGet>>, TError = ErrorResponse>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCommunityFeishuQrApiV1SystemCommunityFeishuQrGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary 读取社区飞书二维码
+ */
+
+export function useGetCommunityFeishuQrApiV1SystemCommunityFeishuQrGet<TData = Awaited<ReturnType<typeof getCommunityFeishuQrApiV1SystemCommunityFeishuQrGet>>, TError = ErrorResponse>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCommunityFeishuQrApiV1SystemCommunityFeishuQrGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetCommunityFeishuQrApiV1SystemCommunityFeishuQrGetQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 export type getSystemSettingsApiV1SystemSettingsPostResponse200 = {
   data: ApiResponseSettingsOverviewData
   status: 200

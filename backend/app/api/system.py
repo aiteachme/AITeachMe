@@ -22,6 +22,7 @@ from app.schemas.system import (
 from app.workflows.support.system import (
     build_init_data,
     build_settings_overview_data,
+    read_community_feishu_qr_bytes,
     read_community_wechat_qr_bytes,
     test_settings_model_connection,
     update_user_settings_overview_data,
@@ -29,6 +30,21 @@ from app.workflows.support.system import (
 
 router = APIRouter(prefix="/api/v1/system", tags=["system"])
 logger = structlog.get_logger(__name__)
+
+
+async def _community_qr_response(read_image_bytes, *, media_type: str, unavailable_detail: str) -> Response:
+    image_bytes = await read_image_bytes()
+    if image_bytes is None:
+        raise HTTPException(status_code=404, detail=unavailable_detail)
+
+    return Response(
+        content=image_bytes,
+        media_type=media_type,
+        headers={
+            "Cache-Control": "no-store, max-age=0",
+            "Pragma": "no-cache",
+        },
+    )
 
 
 @router.post(
@@ -64,17 +80,26 @@ async def init_system(
 async def get_community_wechat_qr() -> Response:
     """读取社区微信二维码图片。"""
 
-    image_bytes = await read_community_wechat_qr_bytes()
-    if image_bytes is None:
-        raise HTTPException(status_code=404, detail="社区二维码暂不可用。")
-
-    return Response(
-        content=image_bytes,
+    return await _community_qr_response(
+        read_community_wechat_qr_bytes,
         media_type="image/jpeg",
-        headers={
-            "Cache-Control": "no-store, max-age=0",
-            "Pragma": "no-cache",
-        },
+        unavailable_detail="社区二维码暂不可用。",
+    )
+
+
+@router.get(
+    "/community/feishu-qr",
+    summary="读取社区飞书二维码",
+    description="从项目公开 assets 仓库的远程图片直链读取社区飞书二维码，并以 no-store 返回给前端。",
+    responses=build_error_responses([404, 500]),
+)
+async def get_community_feishu_qr() -> Response:
+    """读取社区飞书二维码图片。"""
+
+    return await _community_qr_response(
+        read_community_feishu_qr_bytes,
+        media_type="image/png",
+        unavailable_detail="社区飞书二维码暂不可用。",
     )
 
 

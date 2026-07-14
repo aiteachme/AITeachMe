@@ -3,7 +3,7 @@
   "info": {
     "title": "AITeachMe",
     "description": "本地优先的 AI 助教后端服务。",
-    "version": "0.1.3"
+    "version": "0.1.4"
   },
   "paths": {
     "/api/health": {
@@ -98,6 +98,46 @@
         "summary": "读取社区微信二维码",
         "description": "从项目公开 assets 仓库的远程图片直链读取社区微信二维码，并以 no-store 返回给前端。",
         "operationId": "get_community_wechat_qr_api_v1_system_community_wechat_qr_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/community/feishu-qr": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "读取社区飞书二维码",
+        "description": "从项目公开 assets 仓库的远程图片直链读取社区飞书二维码，并以 no-store 返回给前端。",
+        "operationId": "get_community_feishu_qr_api_v1_system_community_feishu_qr_get",
         "responses": {
           "200": {
             "description": "Successful Response",

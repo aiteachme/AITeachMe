@@ -10,6 +10,7 @@ import {
   FolderOpen,
   Loader2,
   Menu,
+  MessageSquareText,
   MoreVertical,
   PackagePlus,
   PanelLeftClose,
@@ -269,6 +270,7 @@ export function Sidebar({
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const shouldShowSidebarFeedback = location.pathname === "/assistant";
 
   const {
     activeScope,
@@ -1146,6 +1148,20 @@ export function Sidebar({
               ) : null}
             </AnimatePresence>
           </div>
+          {shouldShowSidebarFeedback ? (
+            <button
+              type="button"
+              onClick={() => setIsFeedbackModalOpen(true)}
+              className={cn(
+                "flex items-center text-slate-500 transition-colors hover:bg-[#eef3f8] hover:text-slate-900 focus:outline-none focus-visible:outline-none dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
+                renderCollapsedChrome ? "mx-auto h-8 w-8 justify-center rounded-md" : isMobileOpen ? "h-10 w-full rounded-md px-2 gap-2.5" : "h-8 w-full rounded-md px-2 gap-2",
+              )}
+              title="意见反馈"
+            >
+              <MessageSquareText className={cn("shrink-0", isMobileOpen ? "h-5 w-5" : "h-4 w-4")} />
+              {!renderCollapsedChrome ? <span className={cn("whitespace-nowrap", isMobileOpen ? "text-sm" : "text-xs")}>意见反馈</span> : null}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => setIsCommunityModalOpen(true)}
@@ -1321,10 +1337,6 @@ export function Sidebar({
       <CommunityModal
         isOpen={isCommunityModalOpen}
         onClose={() => setIsCommunityModalOpen(false)}
-        onOpenFeedback={() => {
-          setIsCommunityModalOpen(false);
-          setIsFeedbackModalOpen(true);
-        }}
       />
       <FeedbackModal open={isFeedbackModalOpen} onClose={() => setIsFeedbackModalOpen(false)} />
     </>
