@@ -353,8 +353,38 @@
               }
             }
           },
+          "401": {
+            "description": "接口可能返回业务错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "上游模型调用失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "依赖服务当前不可用。",
             "content": {
               "application/json": {
                 "schema": {
@@ -12073,7 +12103,8 @@
           "prompt": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 2000
               },
               {
                 "type": "null"
@@ -12086,9 +12117,12 @@
             "anyOf": [
               {
                 "items": {
-                  "type": "string"
+                  "type": "string",
+                  "maxLength": 255,
+                  "minLength": 1
                 },
-                "type": "array"
+                "type": "array",
+                "maxItems": 5
               },
               {
                 "type": "null"

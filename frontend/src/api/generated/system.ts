@@ -690,6 +690,11 @@ export const useProbeSystemSettingsModelApiV1SystemSettingsModelProbePost = <TEr
   status: 200
 }
 
+export type submitFeedbackApiV1SystemFeedbackPostResponse401 = {
+  data: ErrorResponse
+  status: 401
+}
+
 export type submitFeedbackApiV1SystemFeedbackPostResponse422 = {
   data: HTTPValidationError
   status: 422
@@ -700,10 +705,20 @@ export type submitFeedbackApiV1SystemFeedbackPostResponse500 = {
   status: 500
 }
 
+export type submitFeedbackApiV1SystemFeedbackPostResponse502 = {
+  data: ErrorResponse
+  status: 502
+}
+
+export type submitFeedbackApiV1SystemFeedbackPostResponse503 = {
+  data: ErrorResponse
+  status: 503
+}
+
 export type submitFeedbackApiV1SystemFeedbackPostResponseSuccess = (submitFeedbackApiV1SystemFeedbackPostResponse200) & {
   headers: Headers;
 };
-export type submitFeedbackApiV1SystemFeedbackPostResponseError = (submitFeedbackApiV1SystemFeedbackPostResponse422 | submitFeedbackApiV1SystemFeedbackPostResponse500) & {
+export type submitFeedbackApiV1SystemFeedbackPostResponseError = (submitFeedbackApiV1SystemFeedbackPostResponse401 | submitFeedbackApiV1SystemFeedbackPostResponse422 | submitFeedbackApiV1SystemFeedbackPostResponse500 | submitFeedbackApiV1SystemFeedbackPostResponse502 | submitFeedbackApiV1SystemFeedbackPostResponse503) & {
   headers: Headers;
 };
 
@@ -735,7 +750,7 @@ export const submitFeedbackApiV1SystemFeedbackPost = async (feedbackRequest: Fee
 
 
 
-export const getSubmitFeedbackApiV1SystemFeedbackPostMutationOptions = <TError = HTTPValidationError | ErrorResponse,
+export const getSubmitFeedbackApiV1SystemFeedbackPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitFeedbackApiV1SystemFeedbackPost>>, TError,{data: FeedbackRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
 ): UseMutationOptions<Awaited<ReturnType<typeof submitFeedbackApiV1SystemFeedbackPost>>, TError,{data: FeedbackRequest}, TContext> => {
 
@@ -764,12 +779,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type SubmitFeedbackApiV1SystemFeedbackPostMutationResult = NonNullable<Awaited<ReturnType<typeof submitFeedbackApiV1SystemFeedbackPost>>>
     export type SubmitFeedbackApiV1SystemFeedbackPostMutationBody = FeedbackRequest
-    export type SubmitFeedbackApiV1SystemFeedbackPostMutationError = HTTPValidationError | ErrorResponse
+    export type SubmitFeedbackApiV1SystemFeedbackPostMutationError = ErrorResponse | HTTPValidationError
 
     /**
  * @summary 提交意见反馈
  */
-export const useSubmitFeedbackApiV1SystemFeedbackPost = <TError = HTTPValidationError | ErrorResponse,
+export const useSubmitFeedbackApiV1SystemFeedbackPost = <TError = ErrorResponse | HTTPValidationError,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitFeedbackApiV1SystemFeedbackPost>>, TError,{data: FeedbackRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
  , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof submitFeedbackApiV1SystemFeedbackPost>>,

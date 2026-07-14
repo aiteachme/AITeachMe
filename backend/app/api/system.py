@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
+
+import httpx
 import structlog
-from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Response
 
 from sqlmodel import Session
 
@@ -19,6 +23,8 @@ from app.schemas.system import (
     SettingsOverviewData,
     UpdateUserSettingsRequest,
 )
+from app.shared.infra.env_support import get_env
+from app.shared.infra.exceptions import AITeachMeError
 from app.workflows.support.system import (
     build_init_data,
     build_settings_overview_data,
@@ -30,6 +36,148 @@ from app.workflows.support.system import (
 
 router = APIRouter(prefix="/api/v1/system", tags=["system"])
 logger = structlog.get_logger(__name__)
+_FEEDBACK_HTTP_TIMEOUT = httpx.Timeout(10.0, connect=5.0)
+
+
+def _feishu_webhook_accepted(response: httpx.Response) -> bool:
+    if not 200 <= response.status_code < 300:
+        return False
+    try:
+        payload = response.json()
+    except ValueError:
+        return False
+    if not isinstance(payload, dict):
+        return False
+
+    code = payload.get("code", payload.get("StatusCode"))
+    return isinstance(code, int) and not isinstance(code, bool) and code == 0
+
+
+async def _upload_feedback_images(
+    client: httpx.AsyncClient,
+    *,
+    images: list[str],
+    app_id: str | None,
+    app_secret: str | None,
+) -> list[str]:
+    if not images or not app_id or not app_secret:
+        return []
+
+    try:
+        auth_response = await client.post(
+            "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
+            json={"app_id": app_id, "app_secret": app_secret},
+            timeout=5.0,
+        )
+        auth_payload = auth_response.json()
+        if (
+            not 200 <= auth_response.status_code < 300
+            or not isinstance(auth_payload, dict)
+            or auth_payload.get("code") != 0
+            or not auth_payload.get("tenant_access_token")
+        ):
+            logger.warning(
+                "feedback_image_auth_failed",
+                status_code=auth_response.status_code,
+            )
+            return []
+        tenant_access_token = str(auth_payload["tenant_access_token"])
+    except (httpx.RequestError, ValueError, TypeError) as exc:
+        logger.warning(
+            "feedback_image_auth_failed",
+            error_type=type(exc).__name__,
+        )
+        return []
+
+    image_keys: list[str] = []
+    for index, data_url in enumerate(images):
+        try:
+            _, encoded = data_url.split(",", 1)
+            image_bytes = base64.b64decode(encoded, validate=True)
+            upload_response = await client.post(
+                "https://open.feishu.cn/open-apis/im/v1/images",
+                headers={"Authorization": f"Bearer {tenant_access_token}"},
+                data={"image_type": "message"},
+                files={"image": (f"screenshot_{index}.png", image_bytes, "image/png")},
+                timeout=10.0,
+            )
+            upload_payload = upload_response.json()
+            upload_data = upload_payload.get("data") if isinstance(upload_payload, dict) else None
+            image_key = upload_data.get("image_key") if isinstance(upload_data, dict) else None
+            if (
+                200 <= upload_response.status_code < 300
+                and isinstance(upload_payload, dict)
+                and upload_payload.get("code") == 0
+                and isinstance(image_key, str)
+                and image_key
+            ):
+                image_keys.append(image_key)
+            else:
+                logger.warning(
+                    "feedback_image_upload_failed",
+                    image_index=index,
+                    status_code=upload_response.status_code,
+                )
+        except (binascii.Error, httpx.RequestError, ValueError, TypeError) as exc:
+            logger.warning(
+                "feedback_image_upload_failed",
+                image_index=index,
+                error_type=type(exc).__name__,
+            )
+
+    return image_keys
+
+
+async def _deliver_feedback_to_feishu(
+    client: httpx.AsyncClient,
+    *,
+    webhook_url: str,
+    user_info: str,
+    content: str,
+    images: list[str],
+    app_id: str | None,
+    app_secret: str | None,
+) -> None:
+    image_keys = await _upload_feedback_images(
+        client,
+        images=images,
+        app_id=app_id,
+        app_secret=app_secret,
+    )
+
+    if image_keys:
+        post_content: list[list[dict[str, str]]] = [
+            [{"tag": "text", "text": f"内容：\n{content}\n\n附件截图：\n"}]
+        ]
+        post_content.extend([[{"tag": "img", "image_key": key}] for key in image_keys])
+        webhook_payload = {
+            "msg_type": "post",
+            "content": {
+                "post": {
+                    "zh_cn": {
+                        "title": f"📢 新的用户反馈 (来自: {user_info})",
+                        "content": post_content,
+                    }
+                }
+            },
+        }
+    else:
+        text = f"📢 新的用户反馈 (来自: {user_info})\n\n内容：\n{content}"
+        if images:
+            text += f"\n\n📎 附带了 {len(images)} 张截图，但截图上传失败，请联系用户补充。"
+        webhook_payload = {"msg_type": "text", "content": {"text": text}}
+
+    response = await client.post(webhook_url, json=webhook_payload, timeout=5.0)
+    if not _feishu_webhook_accepted(response):
+        logger.warning(
+            "feedback_webhook_rejected",
+            status_code=response.status_code,
+        )
+        raise AITeachMeError(
+            detail="反馈接收服务拒绝了本次提交，请稍后重试或通过邮箱联系我们。",
+            error_code="FEEDBACK_DELIVERY_REJECTED",
+            status_code=502,
+        )
 
 
 async def _community_qr_response(read_image_bytes, *, media_type: str, unavailable_detail: str) -> Response:
@@ -172,22 +320,23 @@ async def probe_system_settings_model(
     response_model=ApiResponse[bool],
     summary="提交意见反馈",
     description="接收用户的意见反馈及可选截图。",
-    responses=build_error_responses([500]),
+    responses=build_error_responses([401, 500, 502, 503]),
 )
 async def submit_feedback(
     payload: FeedbackRequest,
-    background_tasks: BackgroundTasks,
     user: CurrentUserContext = Depends(get_current_user_context),
 ) -> ApiResponse[bool]:
     """提交用户反馈。"""
 
-    import base64
-    import os
-    
-    import httpx
+    if not user.is_local and not user.is_authenticated:
+        raise AITeachMeError(
+            detail="请登录后再提交反馈。",
+            error_code="FEEDBACK_AUTHENTICATION_REQUIRED",
+            status_code=401,
+        )
 
     logger.info(
-        "feedback_submitted",
+        "feedback_submission_received",
         user_id=user.user_id,
         has_email=bool(user.email),
         email_domain=(user.email.rsplit("@", 1)[-1].lower() if user.email and "@" in user.email else None),
@@ -195,90 +344,40 @@ async def submit_feedback(
         image_count=len(payload.images),
     )
 
-    feishu_webhook = os.getenv("FEISHU_WEBHOOK_URL")
-    feishu_app_id = os.getenv("FEISHU_APP_ID")
-    feishu_app_secret = os.getenv("FEISHU_APP_SECRET")
-    
-    if feishu_webhook:
-        user_info = user.email or f"访客 {user.user_id}"
-        
-        async def push_to_feishu():
-            try:
-                # Fire-and-forget style push so we don't block
-                async with httpx.AsyncClient() as client:
-                    tenant_access_token = None
-                    if feishu_app_id and feishu_app_secret and payload.images:
-                        auth_resp = await client.post(
-                            "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
-                            json={"app_id": feishu_app_id, "app_secret": feishu_app_secret},
-                            timeout=5.0
-                        )
-                        if auth_resp.status_code == 200:
-                            data = auth_resp.json()
-                            if data.get("code") == 0:
-                                tenant_access_token = data.get("tenant_access_token")
+    feishu_webhook = (get_env("FEISHU_WEBHOOK_URL") or "").strip()
+    if not feishu_webhook:
+        logger.warning("feedback_webhook_not_configured", user_id=user.user_id)
+        raise AITeachMeError(
+            detail="反馈接收服务暂未配置，请稍后重试或通过邮箱联系我们。",
+            error_code="FEEDBACK_DELIVERY_NOT_CONFIGURED",
+            status_code=503,
+        )
 
-                    image_keys = []
-                    if tenant_access_token and payload.images:
-                        for idx, b64_img in enumerate(payload.images):
-                            if not b64_img.startswith("data:image"):
-                                continue
-                            try:
-                                header, encoded = b64_img.split(",", 1)
-                                img_bytes = base64.b64decode(encoded)
-                                upload_resp = await client.post(
-                                    "https://open.feishu.cn/open-apis/im/v1/images",
-                                    headers={"Authorization": f"Bearer {tenant_access_token}"},
-                                    data={"image_type": "message"},
-                                    files={"image": (f"screenshot_{idx}.png", img_bytes, "image/png")},
-                                    timeout=10.0
-                                )
-                                if upload_resp.status_code == 200:
-                                    resp_data = upload_resp.json()
-                                    if resp_data.get("code") == 0:
-                                        image_keys.append(resp_data["data"]["image_key"])
-                            except Exception as e:
-                                logger.error(
-                                    "feedback_image_upload_failed",
-                                    image_index=idx,
-                                    error=str(e),
-                                )
+    try:
+        async with httpx.AsyncClient(timeout=_FEEDBACK_HTTP_TIMEOUT) as client:
+            await _deliver_feedback_to_feishu(
+                client,
+                webhook_url=feishu_webhook,
+                user_info=user.email or f"访客 {user.user_id}",
+                content=payload.content,
+                images=payload.images,
+                app_id=(get_env("FEISHU_APP_ID") or "").strip() or None,
+                app_secret=(get_env("FEISHU_APP_SECRET") or "").strip() or None,
+            )
+    except AITeachMeError:
+        raise
+    except httpx.RequestError as exc:
+        logger.warning(
+            "feedback_webhook_unavailable",
+            user_id=user.user_id,
+            error_type=type(exc).__name__,
+        )
+        raise AITeachMeError(
+            detail="反馈接收服务暂时无法连接，请稍后重试或通过邮箱联系我们。",
+            error_code="FEEDBACK_DELIVERY_UNAVAILABLE",
+            status_code=503,
+        ) from exc
 
-                    if image_keys:
-                        post_content = [
-                            [{"tag": "text", "text": f"内容：\n{payload.content}\n\n附件截图：\n"}]
-                        ]
-                        for key in image_keys:
-                            post_content.append([{"tag": "img", "image_key": key}])
-                            
-                        await client.post(
-                            feishu_webhook,
-                            json={
-                                "msg_type": "post",
-                                "content": {
-                                    "post": {
-                                        "zh_cn": {
-                                            "title": f"📢 新的用户反馈 (来自: {user_info})",
-                                            "content": post_content
-                                        }
-                                    }
-                                }
-                            },
-                            timeout=5.0
-                        )
-                    else:
-                        text = f"📢 新的用户反馈 (来自: {user_info})\n\n内容：\n{payload.content}"
-                        if payload.images:
-                            text += f"\n\n📎 附带了 {len(payload.images)} 张截图。由于凭证问题或其他原因未能通过飞书接口上传图片展示。"
-                        await client.post(
-                            feishu_webhook,
-                            json={"msg_type": "text", "content": {"text": text}},
-                            timeout=5.0
-                        )
-            except Exception as e:
-                logger.error("feedback_push_to_feishu_failed", error=str(e))
-
-        # 使用 BackgroundTasks 进行真正的异步非阻塞执行
-        background_tasks.add_task(push_to_feishu)
+    logger.info("feedback_delivered", user_id=user.user_id)
 
     return ok_response(True)

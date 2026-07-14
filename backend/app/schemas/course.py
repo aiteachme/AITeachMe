@@ -1,10 +1,17 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Annotated
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 
 from app.schemas.common import PageParams
+
+
+CourseNameSuggestionFilename = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=255),
+]
 
 
 class CourseDetailRequest(BaseModel):
@@ -70,8 +77,12 @@ class CourseDeletePreviewData(BaseModel):
 
 
 class CourseNameSuggestionRequest(BaseModel):
-    prompt: str | None = Field(default=None, description="User input learning goal.")
-    filenames: list[str] | None = Field(default=None, description="Uploaded filenames.")
+    prompt: str | None = Field(default=None, max_length=2000, description="User input learning goal.")
+    filenames: list[CourseNameSuggestionFilename] | None = Field(
+        default=None,
+        max_length=5,
+        description="Uploaded filenames.",
+    )
 
 
 class CourseNameSuggestionResponse(BaseModel):
