@@ -36,6 +36,8 @@ import type {
   ApiResponseFullGraphResponse,
   ApiResponseKnowledgeBuildRuntimeResponse,
   ApiResponseKnowledgeDocInteractiveSelectionResponse,
+  ApiResponseKnowledgeDocPublishedChunkResponse,
+  ApiResponseKnowledgeDocsPublishedManifestResponse,
   ApiResponseKnowledgeGraphBuildData,
   ApiResponseKnowledgeOverviewResponse,
   ApiResponseKnowledgePathResponse,
@@ -53,6 +55,7 @@ import type {
   ErrorResponse,
   HTTPValidationError,
   KnowledgeDocInteractiveSelectionRequest,
+  KnowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPostParams,
   KnowledgeOverviewRequest,
   KnowledgeRelationExplanationRequest,
   KnowledgeSubgraphRequest,
@@ -1514,20 +1517,29 @@ export type knowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPostResponseError = (k
 
 export type knowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPostResponse = (knowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPostResponseSuccess | knowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPostResponseError)
 
-export const getKnowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPostUrl = (courseId: string,) => {
+export const getKnowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPostUrl = (courseId: string,
+    params?: KnowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPostParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/v1/courses/${courseId}/knowledge/docs`
+  return stringifiedParams.length > 0 ? `/api/v1/courses/${courseId}/knowledge/docs?${stringifiedParams}` : `/api/v1/courses/${courseId}/knowledge/docs`
 }
 
 /**
  * @summary Fetch knowledge docs and minimal build state
  */
-export const knowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPost = async (courseId: string, options?: RequestInit): Promise<knowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPostResponse> => {
+export const knowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPost = async (courseId: string,
+    params?: KnowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPostParams, options?: RequestInit): Promise<knowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPostResponse> => {
 
-  return orvalApiClient<knowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPostResponse>(getKnowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPostUrl(courseId),
+  return orvalApiClient<knowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPostResponse>(getKnowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPostUrl(courseId,params),
   {
     ...options,
     method: 'POST'
@@ -1540,8 +1552,8 @@ export const knowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPost = async (courseI
 
 
 export const getKnowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof knowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPost>>, TError,{courseId: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
-): UseMutationOptions<Awaited<ReturnType<typeof knowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPost>>, TError,{courseId: string}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof knowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPost>>, TError,{courseId: string;params?: KnowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPostParams}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof knowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPost>>, TError,{courseId: string;params?: KnowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPostParams}, TContext> => {
 
 const mutationKey = ['knowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPost'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -1553,10 +1565,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof knowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPost>>, {courseId: string}> = (props) => {
-          const {courseId} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof knowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPost>>, {courseId: string;params?: KnowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPostParams}> = (props) => {
+          const {courseId,params} = props ?? {};
 
-          return  knowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPost(courseId,requestOptions)
+          return  knowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPost(courseId,params,requestOptions)
         }
 
 
@@ -1574,16 +1586,320 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
  * @summary Fetch knowledge docs and minimal build state
  */
 export const useKnowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPost = <TError = ErrorResponse | HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof knowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPost>>, TError,{courseId: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof knowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPost>>, TError,{courseId: string;params?: KnowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPostParams}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
  , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof knowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPost>>,
         TError,
-        {courseId: string},
+        {courseId: string;params?: KnowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPostParams},
         TContext
       > => {
       return useMutation(getKnowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPostMutationOptions(options), queryClient);
     }
-    export type knowledgeDocsInteractiveSelectionApiV1CoursesCourseIdKnowledgeDocsInteractiveSelectionsPostResponse200 = {
+    export type knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGetResponse200 = {
+  data: ApiResponseKnowledgeDocsPublishedManifestResponse
+  status: 200
+}
+
+export type knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGetResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGetResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGetResponse409 = {
+  data: ErrorResponse
+  status: 409
+}
+
+export type knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGetResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGetResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGetResponse503 = {
+  data: ErrorResponse
+  status: 503
+}
+
+export type knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGetResponseSuccess = (knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGetResponse200) & {
+  headers: Headers;
+};
+export type knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGetResponseError = (knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGetResponse400 | knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGetResponse404 | knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGetResponse409 | knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGetResponse422 | knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGetResponse500 | knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGetResponse503) & {
+  headers: Headers;
+};
+
+export type knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGetResponse = (knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGetResponseSuccess | knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGetResponseError)
+
+export const getKnowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGetUrl = (courseId: string,) => {
+
+
+
+
+  return `/api/v1/courses/${courseId}/knowledge/docs/manifest`
+}
+
+/**
+ * @summary Fetch the current published knowledge-doc manifest
+ */
+export const knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGet = async (courseId: string, options?: RequestInit): Promise<knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGetResponse> => {
+
+  return orvalApiClient<knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGetResponse>(getKnowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGetUrl(courseId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getKnowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGetQueryKey = (courseId: string,) => {
+    return [
+    `/api/v1/courses/${courseId}/knowledge/docs/manifest`
+    ] as const;
+    }
+
+
+export const getKnowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGetQueryOptions = <TData = Awaited<ReturnType<typeof knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGet>>, TError = ErrorResponse | HTTPValidationError>(courseId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getKnowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGetQueryKey(courseId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGet>>> = ({ signal }) => knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGet(courseId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: courseId !== null && courseId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type KnowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGetQueryResult = NonNullable<Awaited<ReturnType<typeof knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGet>>>
+export type KnowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGetQueryError = ErrorResponse | HTTPValidationError
+
+
+export function useKnowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGet<TData = Awaited<ReturnType<typeof knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGet>>, TError = ErrorResponse | HTTPValidationError>(
+ courseId: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGet>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGet>>,
+          TError,
+          Awaited<ReturnType<typeof knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useKnowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGet<TData = Awaited<ReturnType<typeof knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGet>>, TError = ErrorResponse | HTTPValidationError>(
+ courseId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGet>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGet>>,
+          TError,
+          Awaited<ReturnType<typeof knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useKnowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGet<TData = Awaited<ReturnType<typeof knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGet>>, TError = ErrorResponse | HTTPValidationError>(
+ courseId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Fetch the current published knowledge-doc manifest
+ */
+
+export function useKnowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGet<TData = Awaited<ReturnType<typeof knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGet>>, TError = ErrorResponse | HTTPValidationError>(
+ courseId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getKnowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGetQueryOptions(courseId,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+export type knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGetResponse200 = {
+  data: ApiResponseKnowledgeDocPublishedChunkResponse
+  status: 200
+}
+
+export type knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGetResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGetResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGetResponse409 = {
+  data: ErrorResponse
+  status: 409
+}
+
+export type knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGetResponse422 = {
+  data: ErrorResponse
+  status: 422
+}
+
+export type knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGetResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGetResponse503 = {
+  data: ErrorResponse
+  status: 503
+}
+
+export type knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGetResponseSuccess = (knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGetResponse200) & {
+  headers: Headers;
+};
+export type knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGetResponseError = (knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGetResponse400 | knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGetResponse404 | knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGetResponse409 | knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGetResponse422 | knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGetResponse500 | knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGetResponse503) & {
+  headers: Headers;
+};
+
+export type knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGetResponse = (knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGetResponseSuccess | knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGetResponseError)
+
+export const getKnowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGetUrl = (courseId: string,
+    publicationId: string,
+    chunkIndex: number,) => {
+
+
+
+
+  return `/api/v1/courses/${courseId}/knowledge/docs/publications/${publicationId}/chunks/${chunkIndex}`
+}
+
+/**
+ * @summary Fetch one chunk from an exact current knowledge-doc publication
+ */
+export const knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGet = async (courseId: string,
+    publicationId: string,
+    chunkIndex: number, options?: RequestInit): Promise<knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGetResponse> => {
+
+  return orvalApiClient<knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGetResponse>(getKnowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGetUrl(courseId,publicationId,chunkIndex),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getKnowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGetQueryKey = (courseId: string,
+    publicationId: string,
+    chunkIndex: number,) => {
+    return [
+    `/api/v1/courses/${courseId}/knowledge/docs/publications/${publicationId}/chunks/${chunkIndex}`
+    ] as const;
+    }
+
+
+export const getKnowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGetQueryOptions = <TData = Awaited<ReturnType<typeof knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGet>>, TError = ErrorResponse>(courseId: string,
+    publicationId: string,
+    chunkIndex: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getKnowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGetQueryKey(courseId,publicationId,chunkIndex);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGet>>> = ({ signal }) => knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGet(courseId,publicationId,chunkIndex, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: courseId !== null && courseId !== undefined && publicationId !== null && publicationId !== undefined && chunkIndex !== null && chunkIndex !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type KnowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGetQueryResult = NonNullable<Awaited<ReturnType<typeof knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGet>>>
+export type KnowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGetQueryError = ErrorResponse
+
+
+export function useKnowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGet<TData = Awaited<ReturnType<typeof knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGet>>, TError = ErrorResponse>(
+ courseId: string,
+    publicationId: string,
+    chunkIndex: number, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGet>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGet>>,
+          TError,
+          Awaited<ReturnType<typeof knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useKnowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGet<TData = Awaited<ReturnType<typeof knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGet>>, TError = ErrorResponse>(
+ courseId: string,
+    publicationId: string,
+    chunkIndex: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGet>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGet>>,
+          TError,
+          Awaited<ReturnType<typeof knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useKnowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGet<TData = Awaited<ReturnType<typeof knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGet>>, TError = ErrorResponse>(
+ courseId: string,
+    publicationId: string,
+    chunkIndex: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Fetch one chunk from an exact current knowledge-doc publication
+ */
+
+export function useKnowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGet<TData = Awaited<ReturnType<typeof knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGet>>, TError = ErrorResponse>(
+ courseId: string,
+    publicationId: string,
+    chunkIndex: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof knowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getKnowledgeDocsPublicationChunkApiV1CoursesCourseIdKnowledgeDocsPublicationsPublicationIdChunksChunkIndexGetQueryOptions(courseId,publicationId,chunkIndex,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+export type knowledgeDocsInteractiveSelectionApiV1CoursesCourseIdKnowledgeDocsInteractiveSelectionsPostResponse200 = {
   data: ApiResponseKnowledgeDocInteractiveSelectionResponse
   status: 200
 }

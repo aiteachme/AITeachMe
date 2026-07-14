@@ -41,6 +41,7 @@ import {
 } from "../components/knowledge-docs";
 import { CourseGraphNotice, CourseVectorNotice } from "../components/knowledge-graph/CourseVectorNotice";
 import { MarkdownViewer } from "../components/ui/MarkdownViewer";
+import { FloatingToolTrigger } from "../components/ui/FloatingToolTrigger";
 import { useToast } from "../components/ui/Toast";
 import { CoursePagePillTitle } from "../components/course/CoursePagePillTitle";
 import { buildCoursePath } from "../lib/courseNavigation";
@@ -705,6 +706,8 @@ function buildDefaultCollapsedTocIds(items: TocItem[]): Set<string> {
 }
 
 const TOC_SCAN_RETRY_DELAYS_MS = [0, 80, 220, 500, 1000] as const;
+const HEADING_REALIGN_DELAY_MS = 320;
+const HEADING_LAYOUT_SETTLE_TIMEOUT_MS = 10000;
 
 function collectTocItemsFromRoot(root: HTMLElement): TocItem[] {
   const headingNodes = root.querySelectorAll<HTMLElement>("[data-heading-id]");
@@ -2382,6 +2385,17 @@ export function KnowledgeDocsPage() {
     showDocUpdatingBanner,
     sourceFiles,
     sourceFilesFetching,
+    publicationId,
+    publicationHeadings,
+    loadedChunkCount,
+    totalChunkCount,
+    hasNextChunk,
+    isLoadingNextChunk,
+    publicationError,
+    loadNextChunk,
+    ensureHeadingLoaded,
+    ensureAllChunksLoaded,
+    refreshDocument,
   } = useDocMarkdown();
   const { buildProgress, buildStatusText } = useDocBuildProgress({
     buildMeta,
@@ -2393,10 +2407,18 @@ export function KnowledgeDocsPage() {
     isRequestedBuildReady,
     isWaitingForRequestedBuild,
   });
+  const documentLoadError = docMarkdownQuery.error ?? publicationError;
   const hasSavedReadingPosition = useMemo(() => {
     const saved = readKnowledgeDocsReadingPosition(courseId);
     return Boolean(courseId && saved && (saved.scrollTop > 0 || Boolean(saved.headingId)));
   }, [courseId]);
+  const readingDocumentIdentity = publicationId ?? (
+    effectiveDocViewMode === "draft"
+      ? `draft:${draftUpdatedAt ?? "pending"}`
+      : "publication-pending"
+  );
+  const renderedMarkdownLengthRef = useRef(renderedMarkdown.length);
+  renderedMarkdownLengthRef.current = renderedMarkdown.length;
 
   const [toc, setToc] = useState<TocItem[]>([]);
   const [activeHeading, setActiveHeading] = useState("");
@@ -2438,6 +2460,7 @@ export function KnowledgeDocsPage() {
   const [isCardsPanelOpen, setIsCardsPanelOpen] = useState(false);
   const [knowledgeCards, setKnowledgeCards] = useState<KnowledgeCard[]>([]);
   const [cardsGenerated, setCardsGenerated] = useState(false);
+  const [isGeneratingCards, setIsGeneratingCards] = useState(false);
   const [activeDrawer, setActiveDrawer] = useState<"toc" | "comment" | null>(null);
   const [isReadingPositionRestoring, setIsReadingPositionRestoring] = useState(false);
   const [isTocScrollbarVisible, setIsTocScrollbarVisible] = useState(false);
@@ -2467,6 +2490,7 @@ export function KnowledgeDocsPage() {
   }, [isGraphDrawerOpen]);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const lazyLoadSentinelRef = useRef<HTMLDivElement | null>(null);
   const contentAreaRef = useRef<HTMLDivElement>(null);
   const floatingRef = useRef<HTMLDivElement>(null);
   const commentPanelRef = useRef<HTMLDivElement>(null);
@@ -2532,12 +2556,37 @@ export function KnowledgeDocsPage() {
   const collapsedDocHeadingCommitTimerRef = useRef<number | null>(null);
   const scrollingToHeadingTargetRef = useRef<string | null>(null);
   const scrollspyIgnoreTimerRef = useRef<number | null>(null);
+  const headingNavigationRequestRef = useRef(0);
+  const pendingHeadingScrollRef = useRef<{ requestId: number; tryScroll: () => boolean } | null>(null);
+  const headingLayoutSettleCleanupRef = useRef<(() => void) | null>(null);
   const docCollapseLayoutRefreshNeededRef = useRef(false);
   const pendingHeadingCollapseScrollRef = useRef<{ id: string; top: number } | null>(null);
 
   const setScrollContainerRef = useCallback((node: HTMLDivElement | null) => {
     scrollRef.current = node;
   }, []);
+
+  useEffect(() => {
+    const root = scrollRef.current;
+    const sentinel = lazyLoadSentinelRef.current;
+    if (!root || !sentinel || !hasNextChunk || effectiveDocViewMode !== "live") {
+      return;
+    }
+    if (typeof IntersectionObserver === "undefined") {
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        void loadNextChunk();
+      }
+    }, {
+      root,
+      rootMargin: "0px 0px 720px 0px",
+      threshold: 0,
+    });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [effectiveDocViewMode, hasNextChunk, loadNextChunk, loadedChunkCount]);
 
   const isCompactToc = viewportWidth < TOC_DRAWER_BREAKPOINT;
   const isCompactComment = viewportWidth < COMMENT_DRAWER_BREAKPOINT;
@@ -2859,6 +2908,14 @@ export function KnowledgeDocsPage() {
   }, [isGraphDrawerOpen]);
 
   // Build hierarchical tree from flat TOC (Feishu-style)
+  const publicationToc = useMemo<TocItem[]>(
+    () => compactTocItems(publicationHeadings.map((item) => ({
+      id: item.id,
+      text: item.text,
+      level: item.level,
+    }))),
+    [publicationHeadings],
+  );
   const tocTree = useMemo(() => buildTocTree(toc), [toc]);
   const tocSignature = useMemo(() => toc.map((item) => item.id).join("\u001f"), [toc]);
 
@@ -2937,12 +2994,39 @@ export function KnowledgeDocsPage() {
     setIsAutoCommentHighlightSuppressed(false);
   }, [activeHeading]);
 
+  useEffect(() => {
+    tocDefaultInitializedRef.current = false;
+    lastTocSourceRef.current = "";
+    setToc([]);
+  }, [publicationId]);
+
   // Keep the active TOC item visible without mirroring the document's scroll position.
   useEffect(() => {
     alignActiveTocItem();
   }, [visibleActiveHeading, collapsedTocIds, alignActiveTocItem]);
 
   useEffect(() => {
+    if (effectiveDocViewMode === "live" && publicationToc.length > 0) {
+      const renderedToc = contentAreaRef.current
+        ? collectTocItemsFromRoot(contentAreaRef.current)
+        : [];
+      const renderedById = new Map(renderedToc.map((item) => [item.id, item]));
+      const nextToc = publicationToc.map((item) => ({
+        ...item,
+        hasInteractive: renderedById.get(item.id)?.hasInteractive ?? false,
+      }));
+      const shouldInitializeCollapsedToc = !tocDefaultInitializedRef.current;
+      if (shouldInitializeCollapsedToc) {
+        tocDefaultInitializedRef.current = true;
+      }
+      startTransition(() => {
+        setToc((prev) => (tocEqual(prev, nextToc) ? prev : nextToc));
+        if (shouldInitializeCollapsedToc) {
+          setCollapsedTocIds(buildDefaultCollapsedTocIds(nextToc));
+        }
+      });
+      return;
+    }
     if (isReadingPositionRestoring && renderedMarkdown.trim().length > 0) {
       return;
     }
@@ -3068,6 +3152,7 @@ export function KnowledgeDocsPage() {
     isGraphSyncActive,
     isReadingPositionRestoring,
     isWaitingForRequestedBuild,
+    publicationToc,
     renderedMarkdown,
     showDocGeneratingState,
     toc.length,
@@ -3083,7 +3168,7 @@ export function KnowledgeDocsPage() {
     startTransition(() => {
       setCollapsedDocHeadingIds((prev) => (prev.size === 0 ? prev : next));
     });
-  }, [renderedMarkdown]);
+  }, [effectiveDocViewMode, readingDocumentIdentity]);
 
   useEffect(() => {
     setViewPrefs(readKnowledgeDocsViewPrefs(courseId));
@@ -3147,6 +3232,10 @@ export function KnowledgeDocsPage() {
       if (scrollspyIgnoreTimerRef.current !== null) {
         window.clearTimeout(scrollspyIgnoreTimerRef.current);
       }
+      headingNavigationRequestRef.current += 1;
+      pendingHeadingScrollRef.current = null;
+      headingLayoutSettleCleanupRef.current?.();
+      headingLayoutSettleCleanupRef.current = null;
       for (const controller of streamControllersRef.current.values()) {
         controller.abort();
       }
@@ -3282,6 +3371,17 @@ export function KnowledgeDocsPage() {
     activeHeadingRef.current = activeHeading;
   }, [activeHeading]);
 
+  useEffect(() => {
+    if (!courseId || effectiveDocViewMode !== "live") return;
+    const saved = readKnowledgeDocsReadingPosition(courseId);
+    if (!saved) return;
+    if (saved.headingId) {
+      void ensureHeadingLoaded(saved.headingId);
+    } else if (saved.scrollTop > 0) {
+      void ensureAllChunksLoaded().catch(() => undefined);
+    }
+  }, [courseId, effectiveDocViewMode, ensureAllChunksLoaded, ensureHeadingLoaded, readingDocumentIdentity]);
+
   useLayoutEffect(() => {
     readingPositionRestoredRef.current = "";
     readingPositionRestorePendingRef.current = false;
@@ -3292,21 +3392,20 @@ export function KnowledgeDocsPage() {
       courseId &&
       !pendingSelectionJumpRef.current &&
       hasRestorablePosition &&
-      (renderedMarkdown.trim() || showDocLoadingState),
+      (hasRenderedMarkdown || showDocLoadingState),
     ));
-  }, [courseId, renderedMarkdown, showDocLoadingState]);
+  }, [courseId, hasRenderedMarkdown, readingDocumentIdentity, showDocLoadingState]);
 
   useLayoutEffect(() => {
-    if (!courseId || !renderedMarkdown.trim()) {
+    if (!courseId || !hasRenderedMarkdown) {
       setIsReadingPositionRestoring(false);
       return;
     }
-    const restoreKey = `${courseId}:${renderedMarkdown.length}`;
+    const restoreKey = `${courseId}:${readingDocumentIdentity}`;
     if (readingPositionRestoredRef.current === restoreKey || pendingSelectionJumpRef.current) {
       setIsReadingPositionRestoring(false);
       return;
     }
-    readingPositionRestoredRef.current = restoreKey;
     const saved = readKnowledgeDocsReadingPosition(courseId);
     if (!saved) {
       setIsReadingPositionRestoring(false);
@@ -3323,12 +3422,18 @@ export function KnowledgeDocsPage() {
     const restoreStartedAt = performance.now();
     const shouldWaitForFullHeight = () => (
       saved.scrollTop > 0 &&
-      saved.contentLength === renderedMarkdown.length &&
-      performance.now() - restoreStartedAt < 1500
+      hasNextChunk &&
+      performance.now() - restoreStartedAt < 5000
     );
 
+    let fallbackTimeoutId: number | null = null;
     const finishRestore = (): true => {
+      readingPositionRestoredRef.current = restoreKey;
       readingPositionRestorePendingRef.current = false;
+      if (fallbackTimeoutId !== null) {
+        window.clearTimeout(fallbackTimeoutId);
+        fallbackTimeoutId = null;
+      }
       setIsReadingPositionRestoring(false);
       return true;
     };
@@ -3339,6 +3444,25 @@ export function KnowledgeDocsPage() {
         return finishRestore();
       }
 
+      const targetHeading = saved.headingId
+        ? contentAreaRef.current?.querySelector<HTMLElement>(`[data-heading-id="${CSS.escape(saved.headingId)}"]`) ?? null
+        : null;
+
+      const savedHeadingBelongsToPublication =
+        effectiveDocViewMode !== "live" ||
+        !saved.headingId ||
+        publicationHeadings.some((heading) => heading.id === saved.headingId);
+      if (!savedHeadingBelongsToPublication) {
+        setKnowledgeScrollTop(container, 0);
+        return finishRestore();
+      }
+
+      if (saved.headingId && !targetHeading) {
+        // The manifest tells us which chunk owns this heading; wait for that
+        // chunk to render before restoring the saved position.
+        return false;
+      }
+
       if (saved.scrollTop > 0) {
         setKnowledgeScrollTop(container, saved.scrollTop);
         const maxScrollTop = getKnowledgeMaxScrollTop(container);
@@ -3346,19 +3470,13 @@ export function KnowledgeDocsPage() {
           return false;
         }
         if (saved.scrollTop > maxScrollTop + 2 && shouldWaitForFullHeight()) {
+          if (targetHeading) {
+            scrollElementToKnowledgeHeading(container, targetHeading, "auto");
+            return finishRestore();
+          }
           return false;
         }
         return finishRestore();
-      }
-
-      const targetHeading = saved.headingId
-        ? contentAreaRef.current?.querySelector<HTMLElement>(`[data-heading-id="${CSS.escape(saved.headingId)}"]`) ?? null
-        : null;
-
-      if (saved.headingId && !targetHeading) {
-        // Heading is specified but not yet in the DOM, we should wait and retry
-        // (the Markdown rendering is in progress)
-        return false;
       }
 
       if (targetHeading) {
@@ -3397,20 +3515,40 @@ export function KnowledgeDocsPage() {
       }
     }
     scheduleRestore();
+    fallbackTimeoutId = window.setTimeout(() => {
+      if (!restorePosition()) {
+        const container = scrollRef.current;
+        if (container) {
+          setKnowledgeScrollTop(container, 0);
+        }
+        finishRestore();
+      }
+      observer?.disconnect();
+    }, 5200);
 
     return () => {
       if (rafId !== null) {
         window.cancelAnimationFrame(rafId);
       }
+      if (fallbackTimeoutId !== null) {
+        window.clearTimeout(fallbackTimeoutId);
+      }
       observer?.disconnect();
       readingPositionRestorePendingRef.current = false;
       setIsReadingPositionRestoring(false);
     };
-  }, [courseId, renderedMarkdown]);
+  }, [
+    courseId,
+    effectiveDocViewMode,
+    hasNextChunk,
+    hasRenderedMarkdown,
+    publicationHeadings,
+    readingDocumentIdentity,
+  ]);
 
   useEffect(() => {
     const container = scrollRef.current;
-    if (!courseId || !renderedMarkdown.trim() || !container) {
+    if (!courseId || !hasRenderedMarkdown || !container) {
       return;
     }
 
@@ -3436,7 +3574,7 @@ export function KnowledgeDocsPage() {
       persistKnowledgeDocsReadingPosition(courseId, {
         scrollTop,
         headingId: activeHeadingRef.current,
-        contentLength: renderedMarkdown.length,
+        contentLength: renderedMarkdownLengthRef.current,
         updatedAt: Date.now(),
       });
       readingPositionDirtyRef.current = false;
@@ -3473,7 +3611,7 @@ export function KnowledgeDocsPage() {
         saveNow();
       }
     };
-  }, [courseId, renderedMarkdown]);
+  }, [courseId, hasRenderedMarkdown, readingDocumentIdentity]);
 
   // Track active heading from the actual scroll targets so the TOC follows both inner and shell scrolling.
   useEffect(() => {
@@ -3611,18 +3749,25 @@ export function KnowledgeDocsPage() {
   }, []);
 
   const scrollToHeading = useCallback((id: string, options: { retryingAfterExpand?: boolean } = {}) => {
-    const scroll = (headingId: string, opts: { retryingAfterExpand?: boolean }) => {
+    const requestId = headingNavigationRequestRef.current + 1;
+    headingNavigationRequestRef.current = requestId;
+    pendingHeadingScrollRef.current = null;
+    headingLayoutSettleCleanupRef.current?.();
+    headingLayoutSettleCleanupRef.current = null;
+
+    const scroll = (headingId: string, opts: { retryingAfterExpand?: boolean }): boolean => {
+      if (headingNavigationRequestRef.current !== requestId) return false;
       const container = scrollRef.current;
-      if (!container) return;
+      if (!container) return false;
       const headingRoot = contentAreaRef.current;
       const el = findHeadingById(headingRoot ?? container, headingId);
-      if (!el) return;
+      if (!el) return false;
 
       if (!opts.retryingAfterExpand && expandCollapsedDocHeadingSections(el)) {
         window.requestAnimationFrame(() => {
           scroll(headingId, { ...opts, retryingAfterExpand: true });
         });
-        return;
+        return true;
       }
 
       setActiveHeading((prev) => (prev === headingId ? prev : headingId));
@@ -3638,10 +3783,107 @@ export function KnowledgeDocsPage() {
 
       scrollElementToKnowledgeHeading(container, el, "smooth");
       flashHeading(el);
+      return true;
     };
 
-    scroll(id, options);
-  }, [expandCollapsedDocHeadingSections, flashHeading]);
+    const keepHeadingAlignedWhileLayoutSettles = (headingId: string) => {
+      const contentRoot = contentAreaRef.current;
+      const scrollContainer = scrollRef.current;
+      if (!contentRoot || !scrollContainer || typeof ResizeObserver === "undefined") return;
+
+      const startedAt = window.performance.now();
+      let rafId: number | null = null;
+      let deferredTimerId: number | null = null;
+      let settleTimerId: number | null = null;
+
+      const realign = () => {
+        if (headingNavigationRequestRef.current !== requestId) return;
+        const container = scrollRef.current;
+        const headingRoot = contentAreaRef.current;
+        const element = container ? findHeadingById(headingRoot ?? container, headingId) : null;
+        if (!container || !element) return;
+
+        const currentOffset = element.getBoundingClientRect().top - container.getBoundingClientRect().top;
+        if (Math.abs(currentOffset - getHeadingActivationOffset(container)) <= 2) return;
+        scrollElementToKnowledgeHeading(container, element, "auto");
+      };
+
+      const scheduleRealign = () => {
+        const remainingDelay = HEADING_REALIGN_DELAY_MS - (window.performance.now() - startedAt);
+        if (remainingDelay > 0) {
+          if (deferredTimerId !== null) window.clearTimeout(deferredTimerId);
+          deferredTimerId = window.setTimeout(scheduleRealign, remainingDelay);
+          return;
+        }
+        if (rafId !== null) window.cancelAnimationFrame(rafId);
+        rafId = window.requestAnimationFrame(() => {
+          rafId = null;
+          realign();
+        });
+      };
+
+      let cleanup = () => {};
+      const observer = new ResizeObserver(scheduleRealign);
+      const handleUserScrollIntent = () => cleanup();
+      const handleUserScrollKey = (event: KeyboardEvent) => {
+        if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)) {
+          cleanup();
+        }
+      };
+      cleanup = () => {
+        observer.disconnect();
+        scrollContainer.removeEventListener("wheel", handleUserScrollIntent);
+        scrollContainer.removeEventListener("touchstart", handleUserScrollIntent);
+        scrollContainer.removeEventListener("pointerdown", handleUserScrollIntent);
+        window.removeEventListener("keydown", handleUserScrollKey);
+        if (rafId !== null) window.cancelAnimationFrame(rafId);
+        if (deferredTimerId !== null) window.clearTimeout(deferredTimerId);
+        if (settleTimerId !== null) window.clearTimeout(settleTimerId);
+        if (headingLayoutSettleCleanupRef.current === cleanup) {
+          headingLayoutSettleCleanupRef.current = null;
+        }
+      };
+
+      observer.observe(contentRoot);
+      scrollContainer.addEventListener("wheel", handleUserScrollIntent, { passive: true });
+      scrollContainer.addEventListener("touchstart", handleUserScrollIntent, { passive: true });
+      scrollContainer.addEventListener("pointerdown", handleUserScrollIntent, { passive: true });
+      window.addEventListener("keydown", handleUserScrollKey);
+      settleTimerId = window.setTimeout(() => {
+        realign();
+        cleanup();
+      }, HEADING_LAYOUT_SETTLE_TIMEOUT_MS);
+      headingLayoutSettleCleanupRef.current = cleanup;
+    };
+
+    const tryScroll = (): boolean => {
+      if (!scroll(id, options)) return false;
+      if (pendingHeadingScrollRef.current?.requestId === requestId) {
+        pendingHeadingScrollRef.current = null;
+      }
+      keepHeadingAlignedWhileLayoutSettles(id);
+      return true;
+    };
+    pendingHeadingScrollRef.current = { requestId, tryScroll };
+
+    void ensureHeadingLoaded(id).then((loaded) => {
+      if (headingNavigationRequestRef.current !== requestId) return;
+      if (!loaded && effectiveDocViewMode === "live") {
+        if (pendingHeadingScrollRef.current?.requestId === requestId) {
+          pendingHeadingScrollRef.current = null;
+        }
+        return;
+      }
+      window.requestAnimationFrame(() => {
+        const pending = pendingHeadingScrollRef.current;
+        if (pending?.requestId === requestId) pending.tryScroll();
+      });
+    });
+  }, [effectiveDocViewMode, ensureHeadingLoaded, expandCollapsedDocHeadingSections, flashHeading]);
+
+  useLayoutEffect(() => {
+    pendingHeadingScrollRef.current?.tryScroll();
+  }, [loadedChunkCount, renderedMarkdown]);
 
   const scrollElementIntoDocView = useCallback((element: HTMLElement, behavior: ScrollBehavior = "smooth") => {
     const container = scrollRef.current;
@@ -4706,7 +4948,7 @@ export function KnowledgeDocsPage() {
         description: "新的交互块已添加到当前章节下方。",
         variant: "success",
       });
-      await docMarkdownQuery.refetch();
+      await refreshDocument();
       setPendingInteractiveBlocks((prev) => prev.filter((item) => item.id !== pendingId));
       const created = response.data;
       window.requestAnimationFrame(() => {
@@ -4730,11 +4972,11 @@ export function KnowledgeDocsPage() {
   }, [
     clearSelectionHighlight,
     courseId,
-    docMarkdownQuery,
     floatingInteractive,
     interactivePrompt,
     isCompactToc,
     isGeneratingInteractive,
+    refreshDocument,
     scrollToInteractiveAsset,
     scrollToPendingInteractiveBlock,
     toast,
@@ -4989,18 +5231,44 @@ export function KnowledgeDocsPage() {
   useEffect(() => {
     setKnowledgeCards([]);
     setCardsGenerated(false);
-  }, [renderedMarkdown]);
+  }, [effectiveDocViewMode, readingDocumentIdentity]);
 
-  const generateKnowledgeCards = useCallback(() => {
-    const cards = buildKnowledgeCardsFromMarkdown(renderedMarkdown, toc);
-    setKnowledgeCards(cards);
-    setCardsGenerated(true);
-    toast({
-      title: cards.length > 0 ? "知识卡片已生成" : "暂未生成卡片",
-      description: cards.length > 0 ? `已整理 ${cards.length} 张正反面卡片。` : "当前文档内容还不足以整理成稳定卡片。",
-      variant: cards.length > 0 ? "success" : "info",
-    });
-  }, [renderedMarkdown, toast, toc]);
+  const generateKnowledgeCards = useCallback(async () => {
+    if (isGeneratingCards) return;
+    setIsGeneratingCards(true);
+    try {
+      const fullMarkdown = effectiveDocViewMode === "live"
+        ? await ensureAllChunksLoaded()
+        : renderedMarkdown;
+      const cards = buildKnowledgeCardsFromMarkdown(
+        fullMarkdown,
+        publicationToc.length > 0 ? publicationToc : toc,
+      );
+      setKnowledgeCards(cards);
+      setCardsGenerated(true);
+      toast({
+        title: cards.length > 0 ? "知识卡片已生成" : "暂未生成卡片",
+        description: cards.length > 0 ? `已整理 ${cards.length} 张正反面卡片。` : "当前文档内容还不足以整理成稳定卡片。",
+        variant: cards.length > 0 ? "success" : "info",
+      });
+    } catch (error) {
+      toast({
+        title: "知识卡片生成失败",
+        description: getApiErrorMessage(error, "完整文档加载失败，请稍后重试。"),
+        variant: "error",
+      });
+    } finally {
+      setIsGeneratingCards(false);
+    }
+  }, [
+    effectiveDocViewMode,
+    ensureAllChunksLoaded,
+    isGeneratingCards,
+    publicationToc,
+    renderedMarkdown,
+    toast,
+    toc,
+  ]);
   const commentThreadIds = useMemo(
     () => commentThreads.map((item) => item.threadId),
     [commentThreads]
@@ -5336,13 +5604,57 @@ export function KnowledgeDocsPage() {
     if (!pending || !hasRenderedMarkdown) {
       return;
     }
-    const rafId = window.requestAnimationFrame(() => {
-      if (pendingSelectionJumpRef.current && jumpToSelectionLocation(pendingSelectionJumpRef.current)) {
-        pendingSelectionJumpRef.current = null;
+    let cancelled = false;
+    let firstRafId: number | null = null;
+    let secondRafId: number | null = null;
+
+    const resolvePendingJump = async () => {
+      try {
+        const ready = pending.anchorId
+          ? await ensureHeadingLoaded(pending.anchorId)
+          : pending.selectedText
+            ? Boolean(await ensureAllChunksLoaded())
+            : true;
+        if (cancelled) return;
+        if (!ready) {
+          toast({
+            title: "暂时无法定位到原文",
+            description: "目标章节不属于当前文档版本，请从目录重新选择。",
+            variant: "warning",
+          });
+          return;
+        }
+        firstRafId = window.requestAnimationFrame(() => {
+          secondRafId = window.requestAnimationFrame(() => {
+            if (cancelled || pendingSelectionJumpRef.current !== pending) return;
+            if (jumpToSelectionLocation(pending)) {
+              pendingSelectionJumpRef.current = null;
+              return;
+            }
+            toast({
+              title: "暂时无法定位到原文",
+              description: "章节已加载，但原引用片段可能已在新版文档中调整。",
+              variant: "warning",
+            });
+          });
+        });
+      } catch (error) {
+        if (cancelled) return;
+        toast({
+          title: "原文加载失败",
+          description: getApiErrorMessage(error, "加载目标章节失败，请稍后重试。"),
+          variant: "error",
+        });
       }
-    });
-    return () => window.cancelAnimationFrame(rafId);
-  }, [hasRenderedMarkdown, jumpToSelectionLocation, renderedMarkdown]);
+    };
+
+    void resolvePendingJump();
+    return () => {
+      cancelled = true;
+      if (firstRafId !== null) window.cancelAnimationFrame(firstRafId);
+      if (secondRafId !== null) window.cancelAnimationFrame(secondRafId);
+    };
+  }, [ensureAllChunksLoaded, ensureHeadingLoaded, hasRenderedMarkdown, jumpToSelectionLocation, toast]);
 
   const highlightTopByThreadId = useMemo(() => {
     const next = new Map<string, number>();
@@ -6676,7 +6988,7 @@ export function KnowledgeDocsPage() {
     );
   }
 
-  if (!hasRenderedMarkdown && docMarkdownQuery.isError) {
+  if (!hasRenderedMarkdown && documentLoadError) {
     return (
       <div className="relative flex h-full min-h-0 flex-1 w-full flex-col overflow-hidden bg-white dark:bg-slate-950">
         <CoursePagePillTitle
@@ -6687,9 +6999,9 @@ export function KnowledgeDocsPage() {
         />
         <div className="relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
           <DocLoadErrorState
-            message={getApiErrorMessage(docMarkdownQuery.error, "获取知识文档失败，请稍后重试。")}
+            message={getApiErrorMessage(documentLoadError, "获取知识文档失败，请稍后重试。")}
             onRetry={() => {
-              void docMarkdownQuery.refetch();
+              void refreshDocument();
             }}
           />
         </div>
@@ -6710,7 +7022,7 @@ export function KnowledgeDocsPage() {
           <DocLoadErrorState
             message={buildStatusText}
             onRetry={() => {
-              void docMarkdownQuery.refetch();
+              void refreshDocument();
             }}
           />
         </div>
@@ -6938,11 +7250,11 @@ export function KnowledgeDocsPage() {
                     rebuildPending={graphRebuildFromNoticeMutation.isPending}
                     rebuildDisabled={!courseId}
                   />
-                  {docMarkdownQuery.isError ? (
+                  {documentLoadError && !hasRenderedMarkdown ? (
                     <DocLoadErrorState
-                      message={getApiErrorMessage(docMarkdownQuery.error, "获取知识文档失败，请稍后重试。")}
+                      message={getApiErrorMessage(documentLoadError, "获取知识文档失败，请稍后重试。")}
                       onRetry={() => {
-                        void docMarkdownQuery.refetch();
+                        void refreshDocument();
                       }}
                     />
                   ) : showDocLoadingState ? (
@@ -6966,7 +7278,7 @@ export function KnowledgeDocsPage() {
                     <DocLoadErrorState
                       message={buildStatusText}
                       onRetry={() => {
-                        void docMarkdownQuery.refetch();
+                        void refreshDocument();
                       }}
                     />
                   ) : showDocEmptyState ? (
@@ -6991,6 +7303,39 @@ export function KnowledgeDocsPage() {
                         courseId={courseId}
                         onHeadingCollapseChange={handleDocHeadingCollapseChange}
                       />
+                      {effectiveDocViewMode === "live" && totalChunkCount > 0 && (
+                        <div
+                          ref={lazyLoadSentinelRef}
+                          className="flex min-h-16 items-center justify-center py-5 text-xs text-slate-400 dark:text-slate-500"
+                          aria-live="polite"
+                        >
+                          {publicationError && hasNextChunk ? (
+                            <button
+                              type="button"
+                              onClick={() => void loadNextChunk()}
+                              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/30 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                            >
+                              <RefreshCw className="h-3.5 w-3.5" />
+                              下一章加载失败，点击重试
+                            </button>
+                          ) : isLoadingNextChunk ? (
+                            <span className="inline-flex items-center gap-2">
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              正在加载下一章…
+                            </span>
+                          ) : hasNextChunk ? (
+                            <button
+                              type="button"
+                              onClick={() => void loadNextChunk()}
+                              className="rounded-lg px-3 py-2 transition hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/30 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                            >
+                              继续向下阅读以加载下一章
+                            </button>
+                          ) : loadedChunkCount > 1 ? (
+                            <span>已加载全部 {totalChunkCount} 章内容</span>
+                          ) : null}
+                        </div>
+                      )}
                       {pendingInteractiveBlocks.map((block) => (
                         <PendingInteractiveBlockPortal
                           key={block.id}
@@ -7255,11 +7600,12 @@ export function KnowledgeDocsPage() {
                 </p>
                 <button
                   type="button"
-                  onClick={generateKnowledgeCards}
-                  className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg bg-slate-900 px-3 text-xs font-semibold text-white transition hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-slate-200"
+                  onClick={() => void generateKnowledgeCards()}
+                  disabled={isGeneratingCards}
+                  className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg bg-slate-900 px-3 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:cursor-wait disabled:opacity-70 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-slate-200"
                 >
-                  <Sparkles className="h-3.5 w-3.5" />
-                  生成知识卡片
+                  {isGeneratingCards ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                  {isGeneratingCards ? "正在加载完整文档…" : "生成知识卡片"}
                 </button>
               </div>
             ) : knowledgeCards.length === 0 ? (
@@ -7311,42 +7657,38 @@ export function KnowledgeDocsPage() {
       )}
 
       {showFloatingActions && (
-        <button
-          type="button"
+        <FloatingToolTrigger
+          stackIndex={2}
+          label={pageWideMode ? "标准宽度" : "宽页模式"}
+          icon={<ExternalLink className="h-4 w-4" />}
+          active={pageWideMode}
           onClick={() => {
             updateViewPrefs((prev) => ({ ...prev, widePage: !prev.widePage }));
           }}
-          className={cn(
-            "fixed bottom-[7.5rem] right-6 z-[88] inline-flex h-10 w-10 items-center justify-center gap-2 rounded-xl border border-slate-200/70 bg-white/90 text-[13px] font-medium text-slate-700 shadow-[0_12px_32px_-24px_rgba(15,23,42,0.55)] backdrop-blur-md transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/30 active:translate-y-0 active:scale-[0.98] sm:w-[9.25rem] sm:justify-start sm:px-3 dark:border-slate-800/80 dark:bg-slate-950/88 dark:text-slate-300 dark:shadow-[0_18px_44px_-28px_rgba(0,0,0,0.9)] dark:hover:border-slate-700 dark:hover:bg-slate-950 dark:hover:text-slate-100",
-            pageWideMode && "border-indigo-200 bg-indigo-50/95 text-indigo-700 shadow-[0_14px_34px_-22px_rgba(79,70,229,0.45)] dark:border-indigo-500/40 dark:bg-indigo-500/12 dark:text-indigo-200"
-          )}
           aria-label={pageWideMode ? "关闭宽页模式" : "开启宽页模式"}
           aria-pressed={pageWideMode}
-        >
-          <ExternalLink className="h-4 w-4 shrink-0" />
-          <span className="hidden truncate sm:inline">{pageWideMode ? "标准宽度" : "宽页模式"}</span>
-        </button>
+        />
       )}
 
       {/* Graph Floating Button */}
       {showFloatingActions && (
-        <button
-          type="button"
+        <FloatingToolTrigger
+          stackIndex={1}
+          label="知识图谱"
+          icon={<Network className="h-4 w-4 text-slate-500 dark:text-slate-400" />}
+          className="z-[86]"
           onClick={openGraphPanel}
-          className={cn(
-            "fixed bottom-[4.5rem] right-6 z-[86] inline-flex h-10 w-10 items-center justify-center gap-2 rounded-xl border border-slate-200/70 bg-white/90 text-[13px] font-medium text-slate-700 shadow-[0_12px_32px_-24px_rgba(15,23,42,0.55)] backdrop-blur-md transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/30 active:translate-y-0 active:scale-[0.98] sm:w-[9.25rem] sm:justify-start sm:px-3 dark:border-slate-800/80 dark:bg-slate-950/88 dark:text-slate-300 dark:shadow-[0_18px_44px_-28px_rgba(0,0,0,0.9)] dark:hover:border-slate-700 dark:hover:bg-slate-950 dark:hover:text-slate-100",
-            isGraphDrawerOpen ? "pointer-events-none translate-y-4 opacity-0" : "translate-y-0 opacity-100"
-          )}
           aria-label="打开知识图谱"
-        >
-          <Network className="h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" />
-          <span className="hidden truncate sm:inline">知识图谱</span>
-        </button>
+          aria-controls="knowledge-graph-side-panel"
+          aria-expanded={isGraphDrawerOpen}
+        />
       )}
 
       {/* Graph Drawer Panel */}
       <div
+        id="knowledge-graph-side-panel"
         ref={graphDrawerRef}
+        aria-hidden={!isGraphDrawerOpen || !courseId}
         className={cn(
           "fixed bottom-0 right-0 top-0 z-[110] flex w-screen border-l border-zinc-200/80 bg-slate-50 shadow-[0_0_40px_rgba(0,0,0,0.15)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_0_44px_rgba(0,0,0,0.55)] lg:z-[84] lg:w-[var(--graph-panel-width)]",
           isGraphDrawerOpen && courseId ? "translate-x-0 pointer-events-auto" : "translate-x-full pointer-events-none",

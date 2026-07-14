@@ -837,7 +837,7 @@ export function Sidebar({
 
           <div
             className={cn(
-              "min-h-0 flex-1 space-y-2 overflow-y-auto overflow-x-hidden pb-3 scrollbar-thin scrollbar-webkit",
+              "min-h-0 flex-1 space-y-2 overflow-y-auto overflow-x-hidden pb-3 scrollbar-thin scrollbar-webkit [scrollbar-gutter:stable]",
                renderCollapsedChrome ? "w-[56px] self-start px-2" : isMobileOpen ? "px-4" : "px-3",
              )}
           >

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { Link, useParams, useLocation } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -37,6 +37,7 @@ interface CoursePagePillTitleProps {
   className?: string;
   innerClassName?: string;
   placement?: "layout" | "page";
+  scrollRootRef?: RefObject<HTMLElement | null>;
 }
 
 interface CourseNavTooltipState {
@@ -56,6 +57,9 @@ function courseNavTooltipFromTarget(text: string, target: HTMLElement): CourseNa
 
 export const ENABLE_PERSISTENT_COURSE_NAV = true;
 export const SHOW_COURSE_OVERVIEW_NAV_ENTRY = false;
+const COURSE_NAV_TOP_REVEAL_PX = 24;
+const COURSE_NAV_HIDE_DELTA_PX = 12;
+const COURSE_NAV_SHOW_DELTA_PX = 6;
 
 export function CoursePagePillTitle({
   icon: Icon,
@@ -64,17 +68,92 @@ export function CoursePagePillTitle({
   className,
   innerClassName,
   placement = "page",
+  scrollRootRef,
 }: CoursePagePillTitleProps) {
   const params = useParams<{ courseId: string }>();
   const { pathname } = useLocation();
   const queryClient = useQueryClient();
   const [tooltip, setTooltip] = useState<CourseNavTooltipState | null>(null);
+  const [isScrollHidden, setIsScrollHidden] = useState(false);
   const previousTrainingUnlockedRef = useRef<boolean | null>(null);
   const courseId = params.courseId || (href ? href.split("/")[2] : undefined);
   const shouldHideInlineCourseNav = Boolean(courseId && ENABLE_PERSISTENT_COURSE_NAV && placement === "page");
 
+  useLayoutEffect(() => {
+    setIsScrollHidden(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    const scrollRoot = scrollRootRef?.current;
+    if (!scrollRoot) return;
+
+    const previousScrollTops = new WeakMap<HTMLElement, number>();
+    let activeScrollTarget: HTMLElement | null = null;
+    let accumulatedDelta = 0;
+    let activeDirection = 0;
+    let ignoreDirectionUntil = 0;
+
+    const handleScroll = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      if (target !== scrollRoot && !target.classList.contains("doc-scroll-container")) return;
+
+      const currentScrollTop = target.scrollTop;
+      const previousScrollTop = previousScrollTops.get(target);
+      previousScrollTops.set(target, currentScrollTop);
+
+      if (currentScrollTop <= COURSE_NAV_TOP_REVEAL_PX) {
+        activeScrollTarget = target;
+        accumulatedDelta = 0;
+        activeDirection = 0;
+        setIsScrollHidden(false);
+        return;
+      }
+
+      if (previousScrollTop === undefined || activeScrollTarget !== target) {
+        activeScrollTarget = target;
+        accumulatedDelta = 0;
+        activeDirection = 0;
+        return;
+      }
+
+      if (performance.now() < ignoreDirectionUntil) {
+        accumulatedDelta = 0;
+        activeDirection = 0;
+        return;
+      }
+
+      const delta = currentScrollTop - previousScrollTop;
+      if (Math.abs(delta) < 1) return;
+
+      const direction = delta > 0 ? 1 : -1;
+      accumulatedDelta = direction === activeDirection ? accumulatedDelta + delta : delta;
+      activeDirection = direction;
+
+      if (accumulatedDelta >= COURSE_NAV_HIDE_DELTA_PX) {
+        accumulatedDelta = 0;
+        ignoreDirectionUntil = performance.now() + 240;
+        setIsScrollHidden(true);
+      } else if (accumulatedDelta <= -COURSE_NAV_SHOW_DELTA_PX) {
+        accumulatedDelta = 0;
+        ignoreDirectionUntil = performance.now() + 240;
+        setIsScrollHidden(false);
+      }
+    };
+
+    scrollRoot.addEventListener("scroll", handleScroll, { capture: true, passive: true });
+    return () => scrollRoot.removeEventListener("scroll", handleScroll, true);
+  }, [pathname, scrollRootRef]);
+
+  useEffect(() => {
+    if (isScrollHidden) setTooltip(null);
+  }, [isScrollHidden]);
+
   const shellClassName = cn(
-    "sticky top-0 z-30 grid h-16 w-full shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center border-b border-slate-200/70 bg-[#fafafa]/92 px-4 backdrop-blur-md dark:border-slate-800/60 dark:bg-[#0b0f19]/92",
+    "sticky top-0 z-30 grid w-full shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center border-b bg-[#fafafa]/92 px-4 backdrop-blur-md transition-[height,transform,opacity,border-color] duration-200 ease-out motion-reduce:transition-none dark:bg-[#0b0f19]/92",
+    isScrollHidden
+      ? "pointer-events-none h-0 -translate-y-3 overflow-hidden border-transparent opacity-0"
+      : "h-16 translate-y-0 overflow-visible border-slate-200/70 opacity-100 dark:border-slate-800/60",
     className,
   );
   const navClassName = cn(
@@ -223,7 +302,7 @@ export function CoursePagePillTitle({
       </div>
     );
     return (
-      <div className={shellClassName}>
+      <div className={shellClassName} onFocusCapture={() => setIsScrollHidden(false)}>
         <div />
         {inner}
         <div className="flex justify-end">
@@ -269,7 +348,7 @@ export function CoursePagePillTitle({
   ] as const;
 
   return (
-    <div className={shellClassName}>
+    <div className={shellClassName} onFocusCapture={() => setIsScrollHidden(false)}>
       <div />
       <nav className={navClassName} aria-label="课程页面导航">
         {SHOW_COURSE_OVERVIEW_NAV_ENTRY && href ? (
@@ -286,6 +365,7 @@ export function CoursePagePillTitle({
             >
               <Compass className="h-3.5 w-3.5 shrink-0 text-slate-400 transition-colors group-hover:text-indigo-600 dark:group-hover:text-indigo-300" />
               <span className="whitespace-nowrap">总览</span>
+              <span className="h-3 w-3 shrink-0" aria-hidden="true" />
             </Link>
             <div className="h-5 w-px shrink-0 bg-slate-200 dark:bg-slate-800" />
           </>
@@ -334,7 +414,9 @@ export function CoursePagePillTitle({
               >
                 <ItemIcon className="h-3.5 w-3.5 shrink-0 text-slate-300 dark:text-slate-700" />
                 <span className="whitespace-nowrap">{item.label}</span>
-                <Lock className="h-3 w-3 shrink-0 text-slate-300 dark:text-slate-700" strokeWidth={1.5} />
+                <span className="flex h-3 w-3 shrink-0 items-center justify-center" aria-hidden="true">
+                  <Lock className="h-3 w-3 text-slate-300 dark:text-slate-700" strokeWidth={1.5} />
+                </span>
               </div>
             );
           }
@@ -354,6 +436,7 @@ export function CoursePagePillTitle({
             >
               <ItemIcon className={cn("h-3.5 w-3.5 shrink-0", isActive ? "text-white dark:text-slate-950" : "text-slate-400 transition-colors group-hover:text-indigo-600 dark:group-hover:text-indigo-300")} />
               <span className="whitespace-nowrap">{item.label}</span>
+              <span className="h-3 w-3 shrink-0" aria-hidden="true" />
               {isActive ? (
                 <span className="absolute inset-x-2 -bottom-1 h-0.5 rounded-full bg-indigo-400 dark:bg-indigo-500" />
               ) : null}

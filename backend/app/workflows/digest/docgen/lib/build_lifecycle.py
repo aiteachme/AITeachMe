@@ -1683,16 +1683,17 @@ def get_docgen_result(
     *,
     course_id: str,
     course_scope: CourseStorageScope | None = None,
+    include_markdown: bool = True,
+    include_draft: bool = True,
 ) -> DocGenGetResponse:
     """组装知识文档页面轮询所需的当前状态。
 
-    读取已发布 Markdown、构建中草稿、manifest、build status、preview 和
-    LLM 统计；该函数不触发构建，只服务 `/knowledge/docs` 轮询查询。
+    默认读取已发布 Markdown 和构建中草稿以保持原有接口兼容；轮询客户端
+    可分别关闭两项正文读取，仅获取 manifest、build status、preview 和
+    LLM 统计。该函数不触发构建，只服务 /knowledge/docs 查询。
     """
 
-    cs = get_content_store()
     course_scope = course_scope or resolve_course_storage_scope(course_id, session=session)
-    draft_key = course_scope.knowledge_build_prefix() + "merged_knowledge_base.md"
     runtime = read_knowledge_build_runtime(course_id, course_scope=course_scope)
     docgen_build_status = runtime.docgen_runtime if runtime is not None else None
     manifest = _resolve_current_published_manifest(
@@ -1701,42 +1702,48 @@ def get_docgen_result(
         course_scope=course_scope,
         build_status=docgen_build_status,
     )
-    try:
-        markdown, published_updated_at = _load_current_published_markdown(
-            session,
-            course_id=course_id,
-            course_scope=course_scope,
-            manifest=manifest,
-        )
-    except Exception as exc:
-        logger.warning(
-            "docgen_result_published_markdown_degraded",
-            course_id=course_id,
-            error_type=type(exc).__name__,
-            error=str(exc),
-        )
-        markdown, published_updated_at = "", None
-    else:
+    markdown = ""
+    published_updated_at = None
+    if include_markdown:
         try:
-            markdown = apply_interactive_overlays_to_markdown(
-                markdown,
-                overlays=load_current_interactive_overlays(
-                    course_scope,
-                    version_no=(manifest.version_no if manifest is not None else 0),
-                ),
+            markdown, published_updated_at = _load_current_published_markdown(
+                session,
+                course_id=course_id,
+                course_scope=course_scope,
+                manifest=manifest,
             )
         except Exception as exc:
             logger.warning(
-                "docgen_result_interactive_overlays_degraded",
+                "docgen_result_published_markdown_degraded",
                 course_id=course_id,
                 error_type=type(exc).__name__,
                 error=str(exc),
             )
-    draft_markdown = sanitize_public_markdown(
-        normalize_mermaid_blocks(
-            normalize_markdown_rendering(run_store_sync(cs.read_text, draft_key, default="") or "")
+        else:
+            try:
+                markdown = apply_interactive_overlays_to_markdown(
+                    markdown,
+                    overlays=load_current_interactive_overlays(
+                        course_scope,
+                        version_no=(manifest.version_no if manifest is not None else 0),
+                    ),
+                )
+            except Exception as exc:
+                logger.warning(
+                    "docgen_result_interactive_overlays_degraded",
+                    course_id=course_id,
+                    error_type=type(exc).__name__,
+                    error=str(exc),
+                )
+    draft_markdown = ""
+    if include_draft:
+        cs = get_content_store()
+        draft_key = course_scope.knowledge_build_prefix() + "merged_knowledge_base.md"
+        draft_markdown = sanitize_public_markdown(
+            normalize_mermaid_blocks(
+                normalize_markdown_rendering(run_store_sync(cs.read_text, draft_key, default="") or "")
+            )
         )
-    )
     updated_at = published_updated_at or (manifest.updated_at if manifest is not None else None)
     draft_updated_at = (
         docgen_build_status.draft_updated_at
@@ -1779,7 +1786,7 @@ def get_docgen_result(
         vector_status = CourseVectorStatusResponse()
 
     return DocGenGetResponse(
-        exists=bool(markdown.strip()),
+        exists=manifest is not None,
         markdown=markdown,
         updated_at=updated_at,
         source_file_ids=source_file_ids,

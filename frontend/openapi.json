@@ -3268,6 +3268,30 @@
               "type": "string",
               "title": "Course Id"
             }
+          },
+          {
+            "name": "include_markdown",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include the full published Markdown in the response.",
+              "default": true,
+              "title": "Include Markdown"
+            },
+            "description": "Include the full published Markdown in the response."
+          },
+          {
+            "name": "include_draft",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include the current staging draft Markdown in the response.",
+              "default": true,
+              "title": "Include Draft"
+            },
+            "description": "Include the current staging draft Markdown in the response."
           }
         ],
         "responses": {
@@ -3317,6 +3341,213 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/courses/{course_id}/knowledge/docs/manifest": {
+      "get": {
+        "tags": [
+          "knowledge",
+          "knowledge"
+        ],
+        "summary": "Fetch the current published knowledge-doc manifest",
+        "operationId": "knowledge_docs_manifest_api_v1_courses__course_id__knowledge_docs_manifest_get",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_KnowledgeDocsPublishedManifestResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态不允许执行该操作。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "依赖服务当前不可用。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/courses/{course_id}/knowledge/docs/publications/{publication_id}/chunks/{chunk_index}": {
+      "get": {
+        "tags": [
+          "knowledge",
+          "knowledge"
+        ],
+        "summary": "Fetch one chunk from an exact current knowledge-doc publication",
+        "operationId": "knowledge_docs_publication_chunk_api_v1_courses__course_id__knowledge_docs_publications__publication_id__chunks__chunk_index__get",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          },
+          {
+            "name": "publication_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 96,
+              "title": "Publication Id"
+            }
+          },
+          {
+            "name": "chunk_index",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "title": "Chunk Index"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_KnowledgeDocPublishedChunkResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态不允许执行该操作。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "业务校验未通过。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "依赖服务当前不可用。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -8496,6 +8727,74 @@
         },
         "type": "object",
         "title": "ApiResponse[KnowledgeDocInteractiveSelectionResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_KnowledgeDocPublishedChunkResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgeDocPublishedChunkResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[KnowledgeDocPublishedChunkResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_KnowledgeDocsPublishedManifestResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgeDocsPublishedManifestResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[KnowledgeDocsPublishedManifestResponse]",
         "example": {
           "code": 0,
           "data": {},
@@ -15494,6 +15793,138 @@
         "title": "KnowledgeDocInteractiveSelectionResponse",
         "description": "Generated interactive HTML asset anchored back into a knowledge-doc section."
       },
+      "KnowledgeDocPublishedChunkResponse": {
+        "properties": {
+          "publication_id": {
+            "type": "string",
+            "title": "Publication Id",
+            "description": "Publication id supplied by the manifest."
+          },
+          "version_no": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version No",
+            "description": "Published DocGen version number."
+          },
+          "chunk_index": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Chunk Index",
+            "description": "Zero-based chunk index."
+          },
+          "chapter_index": {
+            "type": "integer",
+            "title": "Chapter Index",
+            "description": "DocGen chapter index represented by this chunk."
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "Published chapter title."
+          },
+          "markdown": {
+            "type": "string",
+            "title": "Markdown",
+            "description": "Unmodified Markdown slice for this chunk."
+          },
+          "headings": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeDocPublishedHeadingResponse"
+            },
+            "type": "array",
+            "title": "Headings",
+            "description": "Root-level headings contained in this chunk."
+          }
+        },
+        "type": "object",
+        "required": [
+          "publication_id",
+          "version_no",
+          "chunk_index",
+          "chapter_index",
+          "title",
+          "markdown"
+        ],
+        "title": "KnowledgeDocPublishedChunkResponse",
+        "description": "One chunk from an exact current publication snapshot."
+      },
+      "KnowledgeDocPublishedChunkSummary": {
+        "properties": {
+          "chunk_index": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Chunk Index",
+            "description": "Zero-based chunk index."
+          },
+          "chapter_index": {
+            "type": "integer",
+            "title": "Chapter Index",
+            "description": "DocGen chapter index represented by this chunk."
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "Published chapter title."
+          },
+          "heading_id": {
+            "type": "string",
+            "title": "Heading Id",
+            "description": "Stable id of the chapter H1 heading."
+          },
+          "char_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Char Count",
+            "description": "Exact number of Markdown characters in this chunk."
+          }
+        },
+        "type": "object",
+        "required": [
+          "chunk_index",
+          "chapter_index",
+          "title",
+          "heading_id",
+          "char_count"
+        ],
+        "title": "KnowledgeDocPublishedChunkSummary",
+        "description": "Lightweight metadata for one published Markdown chunk."
+      },
+      "KnowledgeDocPublishedHeadingResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable heading id matching the frontend Markdown renderer."
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "Rendered heading text used to derive the id."
+          },
+          "level": {
+            "type": "integer",
+            "maximum": 6.0,
+            "minimum": 1.0,
+            "title": "Level",
+            "description": "Markdown heading level."
+          },
+          "chunk_index": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Chunk Index",
+            "description": "Zero-based chunk containing this heading."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "text",
+          "level",
+          "chunk_index"
+        ],
+        "title": "KnowledgeDocPublishedHeadingResponse",
+        "description": "One root-level heading in the published Markdown."
+      },
       "KnowledgeDocSelectionContext": {
         "properties": {
           "selected_text": {
@@ -15589,6 +16020,67 @@
         "type": "object",
         "title": "KnowledgeDocSelectionContext",
         "description": "Context captured around one selected knowledge-doc fragment."
+      },
+      "KnowledgeDocsPublishedManifestResponse": {
+        "properties": {
+          "exists": {
+            "type": "boolean",
+            "title": "Exists",
+            "description": "Whether a current publication exists.",
+            "default": false
+          },
+          "publication_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publication Id",
+            "description": "Opaque id for the exact current publication and overlay snapshot."
+          },
+          "version_no": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Version No",
+            "description": "Published DocGen version number.",
+            "default": 0
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At",
+            "description": "Publication update timestamp."
+          },
+          "chunks": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeDocPublishedChunkSummary"
+            },
+            "type": "array",
+            "title": "Chunks",
+            "description": "Ordered chapter chunks; concatenating their Markdown preserves the source exactly."
+          },
+          "headings": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeDocPublishedHeadingResponse"
+            },
+            "type": "array",
+            "title": "Headings",
+            "description": "Ordered root-level heading index across all chunks."
+          }
+        },
+        "type": "object",
+        "title": "KnowledgeDocsPublishedManifestResponse",
+        "description": "Version-pinned table of contents for the current published document."
       },
       "KnowledgeGraphBuildData": {
         "properties": {

@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime, timezone
 
 import structlog
-from fastapi import APIRouter, Body, Depends, HTTPException, Path, Request, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from sqlmodel import Session
 
@@ -35,8 +35,10 @@ from app.schemas.knowledge import (
     DocGenBuildRequest,
     DocGenGetResponse,
     KnowledgeBuildRuntimeResponse,
+    KnowledgeDocPublishedChunkResponse,
     KnowledgeDocInteractiveSelectionRequest,
     KnowledgeDocInteractiveSelectionResponse,
+    KnowledgeDocsPublishedManifestResponse,
     KnowledgeGraphBuildData,
     KnowledgeOverviewRequest,
     KnowledgeOverviewResponse,
@@ -52,9 +54,15 @@ from app.workflows.digest.planner.lib.store import mark_planner_session_cancelle
 from app.workflows.support.auth import set_guest_cookie_for_user
 from app.workflows.digest.common.build_lifecycle import cancel_knowledge_build
 from app.workflows.digest.docgen import (
+    PublishedDocumentBoundaryError,
+    PublishedDocumentChunkNotFoundError,
+    PublishedDocumentStaleError,
+    PublishedDocumentUnavailableError,
     clear_course_knowledge,
     get_docgen_result,
     get_knowledge_build_runtime_result,
+    get_published_doc_chunk,
+    get_published_doc_manifest,
     run_docgen_background,
     trigger_docgen_build,
 )
@@ -1148,13 +1156,101 @@ async def knowledge_docs(
     request: Request,
     response: Response,
     course_id: str = Path(...),
+    include_markdown: bool = Query(
+        default=True,
+        description="Include the full published Markdown in the response.",
+    ),
+    include_draft: bool = Query(
+        default=True,
+        description="Include the current staging draft Markdown in the response.",
+    ),
 ) -> ApiResponse[DocGenGetResponse]:
     normalized = normalize_course_id(course_id)
     with managed_session() as session:
         user = get_current_user_context(request, response, session)
         course_record = get_course_record(session, normalized, owner_user_id=user.user_id)
         course_scope = _storage_scope_for_course_record(course_record)
-    return ok_response(get_docgen_result(course_id=normalized, course_scope=course_scope))
+    return ok_response(
+        get_docgen_result(
+            course_id=normalized,
+            course_scope=course_scope,
+            include_markdown=include_markdown,
+            include_draft=include_draft,
+        )
+    )
+
+
+@router.get(
+    "/docs/manifest",
+    response_model=ApiResponse[KnowledgeDocsPublishedManifestResponse],
+    summary="Fetch the current published knowledge-doc manifest",
+    responses=build_error_responses([400, 404, 409, 500, 503]),
+)
+async def knowledge_docs_manifest(
+    request: Request,
+    response: Response,
+    course_id: str = Path(...),
+) -> ApiResponse[KnowledgeDocsPublishedManifestResponse]:
+    normalized = normalize_course_id(course_id)
+    with managed_session() as session:
+        user = get_current_user_context(request, response, session)
+        course_record = get_course_record(session, normalized, owner_user_id=user.user_id)
+        course_scope = _storage_scope_for_course_record(course_record)
+    try:
+        return ok_response(
+            get_published_doc_manifest(course_id=normalized, course_scope=course_scope)
+        )
+    except PublishedDocumentStaleError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="知识文档发布版本刚刚发生变化，请刷新后重试。",
+        ) from exc
+    except (PublishedDocumentBoundaryError, PublishedDocumentUnavailableError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="当前知识文档无法安全分块，请稍后重试或重新构建。",
+        ) from exc
+
+
+@router.get(
+    "/docs/publications/{publication_id}/chunks/{chunk_index}",
+    response_model=ApiResponse[KnowledgeDocPublishedChunkResponse],
+    summary="Fetch one chunk from an exact current knowledge-doc publication",
+    responses=build_error_responses([400, 404, 409, 422, 500, 503]),
+)
+async def knowledge_docs_publication_chunk(
+    request: Request,
+    response: Response,
+    course_id: str = Path(...),
+    publication_id: str = Path(..., min_length=1, max_length=96),
+    chunk_index: int = Path(..., ge=0),
+) -> ApiResponse[KnowledgeDocPublishedChunkResponse]:
+    normalized = normalize_course_id(course_id)
+    with managed_session() as session:
+        user = get_current_user_context(request, response, session)
+        course_record = get_course_record(session, normalized, owner_user_id=user.user_id)
+        course_scope = _storage_scope_for_course_record(course_record)
+    try:
+        return ok_response(
+            get_published_doc_chunk(
+                course_id=normalized,
+                course_scope=course_scope,
+                publication_id=publication_id,
+                chunk_index=chunk_index,
+            )
+        )
+    except PublishedDocumentStaleError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="请求的知识文档发布版本已过期，请刷新后重试。",
+        ) from exc
+    except PublishedDocumentChunkNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="知识文档分块不存在。") from exc
+    except (PublishedDocumentBoundaryError, PublishedDocumentUnavailableError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="当前知识文档无法安全分块，请稍后重试或重新构建。",
+        ) from exc
 
 
 @router.post(
