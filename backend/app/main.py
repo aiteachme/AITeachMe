@@ -411,11 +411,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     _log_infra_diagnostics(settings)
     _maybe_export_openapi_schema(app)
 
-    from app.workflows.ingest import recover_stalled_enhancements
+    from app.workflows.ingest import run_ingest_recovery_loop
     from app.workflows.support.system import refresh_community_qr_cache
 
     app.state.background_task_registry.spawn(
-        recover_stalled_enhancements(task_registry=app.state.background_task_registry),
+        run_ingest_recovery_loop(task_registry=app.state.background_task_registry),
         kind="ingest.recovery",
         name="ingest.recovery",
         dedupe_key="ingest.recovery",

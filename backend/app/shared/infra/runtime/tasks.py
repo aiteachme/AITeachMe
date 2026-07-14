@@ -6,7 +6,7 @@ import asyncio
 from dataclasses import dataclass
 import inspect
 from threading import RLock
-from typing import Any
+from typing import Any, Callable
 from uuid import uuid4
 
 import structlog
@@ -27,6 +27,7 @@ class ManagedTaskRecord:
     name: str
     created_at: object
     dedupe_key: str | None = None
+    cancel_cleanup: Callable[[], Any] | None = None
 
 
 _DEFAULT_KIND_LIMITS: dict[str, int] = {
@@ -63,6 +64,7 @@ class BackgroundTaskRegistry:
         name: str | None = None,
         dedupe_key: str | None = None,
         max_concurrency: int | None = None,
+        cancel_cleanup: Callable[[], Any] | None = None,
     ) -> asyncio.Task[Any]:
         """Create and register a tracked task with optional local admission control."""
 
@@ -97,6 +99,7 @@ class BackgroundTaskRegistry:
             name=task_name,
             created_at=utcnow(),
             dedupe_key=normalized_dedupe_key,
+            cancel_cleanup=cancel_cleanup,
         )
         with self._lock:
             self._tasks[record.task_id] = record
@@ -212,6 +215,7 @@ class BackgroundTaskRegistry:
             [record.task for record in records],
             timeout=max(0.1, float(timeout_s)),
         )
+        await self._run_confirmed_cancel_cleanups(records, done=done)
         if pending:
             logger.warning(
                 "background_task_cancel_timeout",
@@ -242,6 +246,7 @@ class BackgroundTaskRegistry:
             [record.task for record in records],
             timeout=cancel_timeout_s,
         )
+        await self._run_confirmed_cancel_cleanups(records, done=done)
         if pending:
             logger.warning(
                 "background_task_shutdown_timeout",
@@ -249,6 +254,31 @@ class BackgroundTaskRegistry:
                 pending=len(pending),
             )
         logger.info("background_task_shutdown_completed", completed=len(done), pending=len(pending))
+
+    async def _run_confirmed_cancel_cleanups(
+        self,
+        records: list[ManagedTaskRecord],
+        *,
+        done: set[asyncio.Task[Any]],
+    ) -> None:
+        """Run owner cleanup only after cancellation has fully completed."""
+
+        for record in records:
+            cleanup = record.cancel_cleanup
+            if cleanup is None or record.task not in done or not record.task.cancelled():
+                continue
+            try:
+                result = cleanup()
+                if inspect.isawaitable(result):
+                    await result
+            except Exception:
+                logger.exception(
+                    "background_task_cancel_cleanup_failed",
+                    task_id=record.task_id,
+                    kind=record.kind,
+                    course_id=record.course_id,
+                    name=record.name,
+                )
 
 
 def _normalize_kind_limit(kind: str, *, max_concurrency: int | None) -> int | None:
