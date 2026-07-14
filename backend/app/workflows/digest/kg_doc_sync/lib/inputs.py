@@ -5,16 +5,25 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import json
 
+import structlog
 from sqlmodel import Session, select
 
 from app.repositories.knowledge.docgen_repo import get_current_published_docs
 from app.shared.infra.database import managed_session
 from app.shared.infra.knowledge.build_store import read_knowledge_manifest
-from app.shared.infra.storage import CourseStorageScope, get_content_store, run_store_sync
+from app.shared.infra.storage import (
+    CourseStorageScope,
+    get_content_store,
+    resolve_course_storage_scope,
+    run_store_sync,
+)
 from app.shared.infra.tools.builtin.markdown_processing import normalize_mermaid_blocks
 from app.models.knowledge_doc import KnowledgeDoc
 from app.models.course import Course
 from app.workflows.digest.common.markdown_knowledge_anchors import extract_markdown_chapter_chunks
+from app.workflows.digest.docgen.lib.published_manifest import select_published_knowledge_manifest
+
+logger = structlog.get_logger(__name__)
 
 
 @dataclass(slots=True)
@@ -122,7 +131,10 @@ def _load_docgen_manifest(
     *,
     course_scope: CourseStorageScope | None = None,
 ) -> dict[str, object]:
-    manifest = read_knowledge_manifest(course_id, course_scope=course_scope)
+    manifest = _resolve_published_manifest_record(
+        course_id,
+        course_scope=course_scope,
+    )
     if manifest is None or not manifest.docgen_manifest_key:
         return {}
     payload = run_store_sync(
@@ -131,6 +143,31 @@ def _load_docgen_manifest(
         default=None,
     )
     return dict(payload) if isinstance(payload, dict) else {}
+
+
+def _resolve_published_manifest_record(
+    course_id: str,
+    *,
+    course_scope: CourseStorageScope | None = None,
+):
+    try:
+        stored_manifest = read_knowledge_manifest(course_id, course_scope=course_scope)
+    except Exception as exc:
+        logger.warning(
+            "knowledge_manifest_projection_read_failed",
+            course_id=course_id,
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+        stored_manifest = None
+    with managed_session() as session:
+        resolved_scope = course_scope or resolve_course_storage_scope(course_id, session=session)
+        return select_published_knowledge_manifest(
+            session,
+            course_id=course_id,
+            course_scope=resolved_scope,
+            stored_manifest=stored_manifest,
+        )
 
 
 def _load_docgen_manifest_for_scope(
@@ -212,7 +249,7 @@ def build_knowledge_doc_sync_input_from_docgen_state(
     )
     manifest_version_no = _safe_int(manifest_build_metadata.get("version_no"))
     manifest_record = (
-        read_knowledge_manifest(course_id, course_scope=course_scope)
+        _resolve_published_manifest_record(course_id, course_scope=course_scope)
         if manifest_version_no <= 0
         else None
     )

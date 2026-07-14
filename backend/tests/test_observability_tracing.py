@@ -4,6 +4,8 @@ import asyncio
 from contextlib import contextmanager
 from typing import Any
 
+import pytest
+
 from app.shared.infra.observability import trace as trace_module
 from app.shared.infra.llm_support import observability as llm_observability
 from app.shared.infra.tools.definition import ToolDefinition
@@ -137,6 +139,84 @@ def test_traceable_with_context_defaults_to_traceable_io(monkeypatch) -> None:
         "model": "safe-model",
     }
     assert process_outputs({"content": "private explanation"}) == {"content": "private explanation"}
+
+
+def test_expected_cancellation_scope_is_forwarded_and_does_not_swallow(monkeypatch) -> None:
+    trace_calls: list[dict[str, Any]] = []
+    trace_runs: list[Any] = []
+
+    class FakeTraceRun:
+        def __init__(self) -> None:
+            self.outputs: dict[str, Any] = {}
+            self.error: str | None = None
+            self.end_calls: list[dict[str, Any]] = []
+
+        def end(self, *, outputs=None, error=None) -> None:
+            self.end_calls.append({"outputs": outputs, "error": error})
+            self.outputs.update(dict(outputs or {}))
+            if error is not None:
+                self.error = str(error)
+
+    @contextmanager
+    def fake_tracing_context(**_kwargs):
+        yield
+
+    @contextmanager
+    def fake_langsmith_trace_run(**kwargs):
+        run = FakeTraceRun()
+        trace_calls.append(dict(kwargs))
+        trace_runs.append(run)
+        try:
+            yield run
+        except BaseException as exc:
+            handled = isinstance(exc, kwargs.get("exceptions_to_handle") or ())
+            run.end(error=None if handled else repr(exc))
+            raise
+
+    monkeypatch.setattr(trace_module, "langsmith_tracing_enabled", lambda: True)
+    monkeypatch.setattr(trace_module, "tracing_context", fake_tracing_context)
+    monkeypatch.setattr(trace_module, "langsmith_trace_run", fake_langsmith_trace_run)
+
+    with trace_module.langsmith_trace(name="before", run_type="chain"):
+        pass
+
+    cancellation = asyncio.CancelledError("expected sidecar stop")
+    with pytest.raises(asyncio.CancelledError) as exc_info:
+        with trace_module.langsmith_expected_cancellation_scope(
+            "kg_docgen_prefetch_sidecar"
+        ):
+            with trace_module.langsmith_trace(name="sidecar", run_type="chain"):
+                raise cancellation
+
+    ordinary_cancellation = asyncio.CancelledError("user cancellation")
+    with pytest.raises(asyncio.CancelledError) as ordinary_exc_info:
+        with trace_module.langsmith_trace(name="after", run_type="chain"):
+            raise ordinary_cancellation
+
+    assert exc_info.value is cancellation
+    assert ordinary_exc_info.value is ordinary_cancellation
+    assert [call.get("exceptions_to_handle") for call in trace_calls] == [
+        None,
+        (asyncio.CancelledError,),
+        None,
+    ]
+    assert trace_runs[1].outputs == {
+        "trace_outcome": "cancelled_expected",
+        "cancellation_scope": "kg_docgen_prefetch_sidecar",
+    }
+    assert trace_runs[1].error is None
+    assert trace_runs[1].end_calls == [
+        {
+            "outputs": {
+                "trace_outcome": "cancelled_expected",
+                "cancellation_scope": "kg_docgen_prefetch_sidecar",
+            },
+            "error": None,
+        },
+        {"outputs": None, "error": None},
+    ]
+    assert trace_runs[2].outputs == {}
+    assert trace_runs[2].error == repr(ordinary_cancellation)
 
 
 def test_langsmith_capture_text_defaults_to_redacted_outside_local(monkeypatch) -> None:

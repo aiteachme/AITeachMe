@@ -95,6 +95,7 @@ def build_assemble_chapter_tasks_node(*, context: WorkflowContext):
         update_knowledge_build_status(
             state["course_id"],
             requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
             status="running",
             stage="generating_chapters",
             digest_mode=state.get("digest_mode") or None,
@@ -106,6 +107,7 @@ def build_assemble_chapter_tasks_node(*, context: WorkflowContext):
         append_knowledge_build_recent_event(
             state["course_id"],
             requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
             event={
                 "stage": "chapter_tasks_ready",
                 "summary": f"最终章节任务已装配完成，共 {len(tasks)} 章，开始并行生成章节草稿。",

@@ -23,6 +23,12 @@ def test_digest_workflow_nodes_have_langsmith_metadata() -> None:
     assert "图谱同步：复核图谱质量" == kg_doc_sync_graph.NODE_DISPLAY_NAMES[kg_doc_sync_graph.NODE_AUDIT_GRAPH]
     assert "同步课程知识图谱" == docgen_graph.NODE_DISPLAY_NAMES[docgen_graph.NODE_SYNC_KNOWLEDGE_GRAPH]
     assert "同一 DocGen trace" in docgen_graph.NODE_TRACE_DETAILS[docgen_graph.NODE_SYNC_KNOWLEDGE_GRAPH]["description"]
+    prepare_details = docgen_graph.NODE_TRACE_DETAILS[docgen_graph.NODE_PREPARE_KNOWLEDGE_GRAPH]
+    assert {"error", "cancel_after_rollback"} <= set(prepare_details["writes"])
+    assert {"error", "cancel_after_rollback"} <= set(prepare_details["output_keys"])
+    rollback_details = docgen_graph.NODE_TRACE_DETAILS[docgen_graph.NODE_ROLLBACK_KNOWLEDGE_GRAPH]
+    assert "cancel_after_rollback" in rollback_details["reads"]
+    assert "cancel_after_rollback" in rollback_details["input_keys"]
     assert "run_llm_tasks" in kg_doc_sync_graph.NODE_TRACE_DETAILS[kg_doc_sync_graph.NODE_EXTRACT]["fanout"]
     assert "async gather + semaphore" not in kg_doc_sync_graph.NODE_TRACE_DETAILS[kg_doc_sync_graph.NODE_EXTRACT]["fanout"]
 

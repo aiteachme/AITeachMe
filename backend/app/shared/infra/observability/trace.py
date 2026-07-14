@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import functools
 import inspect
 import json
@@ -64,6 +65,10 @@ class LLMTraceContext:
 
 _TRACE_CONTEXT: ContextVar[LLMTraceContext | None] = ContextVar("llm_trace_context", default=None)
 _SUPPRESS_LANGSMITH_CHILD_RUNS: ContextVar[bool] = ContextVar("suppress_langsmith_child_runs", default=False)
+_EXPECTED_CANCELLATION_SCOPE: ContextVar[str] = ContextVar(
+    "expected_langsmith_cancellation_scope",
+    default="",
+)
 _LANGSMITH_REACHABILITY_CACHE: dict[str, tuple[float, bool]] = {}
 
 
@@ -422,6 +427,17 @@ def suppress_langsmith_child_runs() -> Iterator[None]:
 
 
 @contextmanager
+def langsmith_expected_cancellation_scope(scope: str) -> Iterator[None]:
+    """Keep expected sidecar cancellation from marking LangSmith runs as errors."""
+
+    token = _EXPECTED_CANCELLATION_SCOPE.set(str(scope or "").strip())
+    try:
+        yield
+    finally:
+        _EXPECTED_CANCELLATION_SCOPE.reset(token)
+
+
+@contextmanager
 def llm_trace_scope(
     *,
     course_id: str = "",
@@ -506,6 +522,7 @@ def langsmith_trace(
         yield None
         return
 
+    expected_cancellation_scope = _EXPECTED_CANCELLATION_SCOPE.get()
     project_name, metadata, tags = _build_langsmith_context(
         course_id=course_id,
         build_session_id=build_session_id,
@@ -528,8 +545,21 @@ def langsmith_trace(
             project_name=project_name,
             metadata=metadata,
             tags=tags,
+            exceptions_to_handle=(
+                (asyncio.CancelledError,) if expected_cancellation_scope else None
+            ),
         ) as run:
-            yield run
+            try:
+                yield run
+            except asyncio.CancelledError:
+                if expected_cancellation_scope:
+                    run.end(
+                        outputs={
+                            "trace_outcome": "cancelled_expected",
+                            "cancellation_scope": expected_cancellation_scope,
+                        }
+                    )
+                raise
 
 
 @contextmanager
@@ -702,6 +732,7 @@ __all__ = [
     "langsmith_child_runs_suppressed",
     "langsmith_capture_inputs_enabled",
     "langsmith_capture_outputs_enabled",
+    "langsmith_expected_cancellation_scope",
     "langsmith_trace",
     "langsmith_tracing_enabled",
     "langsmith_tracing_requested",

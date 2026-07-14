@@ -51,6 +51,7 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
         update_knowledge_build_status(
             state["course_id"],
             requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
             status="running",
             stage="enhancing_chapters",
             digest_mode=state.get("digest_mode") or None,
@@ -72,11 +73,13 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
             upsert_knowledge_build_chapter_progress(
                 state["course_id"],
                 requested_at=state["requested_at"],
+                build_group_id=state.get("build_group_id") or None,
                 chapter_progress={"chapter_index": draft.chapter_index, "title": draft.title, "status": "enhancing"},
             )
             upsert_knowledge_build_chapter_preview(
                 state["course_id"],
                 requested_at=state["requested_at"],
+                build_group_id=state.get("build_group_id") or None,
                 chapter_preview={
                     "chapter_index": draft.chapter_index,
                     "title": draft.title,
@@ -94,6 +97,7 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
             upsert_knowledge_build_chapter_preview(
                 state["course_id"],
                 requested_at=state["requested_at"],
+                build_group_id=state.get("build_group_id") or None,
                 chapter_preview={
                     "chapter_index": draft.chapter_index,
                     "title": enhanced.title,
@@ -107,6 +111,7 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
             upsert_knowledge_build_chapter_progress(
                 state["course_id"],
                 requested_at=state["requested_at"],
+                build_group_id=state.get("build_group_id") or None,
                 chapter_progress={
                     "chapter_index": draft.chapter_index,
                     "title": enhanced.title,
@@ -118,6 +123,7 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
             append_knowledge_build_recent_event(
                 state["course_id"],
                 requested_at=state["requested_at"],
+                build_group_id=state.get("build_group_id") or None,
                 event={
                     "stage": "chapter_enhanced",
                     "chapter_index": draft.chapter_index,
@@ -164,6 +170,7 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
             append_knowledge_build_recent_event(
                 state["course_id"],
                 requested_at=state["requested_at"],
+                build_group_id=state.get("build_group_id") or None,
                 event={
                     "stage": "kg_prefetch_incremental_started",
                     "summary": "增强后的章节已追加进入知识图谱预抽取，不打断已有图谱 sidecar。",
@@ -173,6 +180,7 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
         update_knowledge_build_status(
             state["course_id"],
             requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
             status="running",
             stage="chapters_enhanced",
             digest_mode=state.get("digest_mode") or None,

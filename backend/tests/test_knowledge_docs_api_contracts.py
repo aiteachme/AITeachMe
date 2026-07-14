@@ -230,7 +230,7 @@ def test_knowledge_build_spawns_background_docgen_with_accepted_files(monkeypatc
             "task": "docgen-task",
             "kind": "knowledge.build.docs",
             "course_id": COURSE_ID,
-            "name": f"knowledge.build.docs:{COURSE_ID}",
+            "name": f"knowledge.build.docs:{COURSE_ID}:group-1",
         }
     ]
     assert run_kwargs["course_id"] == COURSE_ID

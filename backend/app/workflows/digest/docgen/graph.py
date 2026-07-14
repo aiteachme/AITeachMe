@@ -462,10 +462,10 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
     },
     NODE_PREPARE_KNOWLEDGE_GRAPH: {
         "description": (
-            "在 review/repair、整本文档合并和最终标题同步后，发布前准备并提前落库 KG 候选。"
+            "在 review/repair、整本文档合并和最终标题同步后，发布前准备 KG 候选草稿。"
             "它会等待 DocGen 期间持续刷新的 KG 预抽取 sidecar 尽量完成；如果缓存缺失，会用 reviewed/repaired 章节兜底启动一次预抽取。"
-            "质量门通过时会基于最终章节 metadata 写入可查询的 KnowledgeUnit 和合法候选边，让 publish 阶段前图谱已经可见。"
-            "source_ref/废弃收口仍由发布后的固化节点负责。"
+            "质量门只决定草稿是否可被发布后的 fast-finalize 复用；KnowledgeUnit、KnowledgeEdge、source_ref 和废弃收口"
+            "都必须等 KnowledgeDoc 发布成功后由固化节点写入。"
         ),
         "reads": [
             "reviewed_chapter_drafts",
@@ -486,6 +486,8 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "kg_prefetch_ready",
             "kg_draft_early_persist_metrics",
             "graph_prepare_ms",
+            "error",
+            "cancel_after_rollback",
         ],
         "input_keys": [
             "course_id",
@@ -505,15 +507,23 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "kg_prefetch_ready",
             "kg_draft_early_persist_metrics",
             "graph_prepare_ms",
+            "error",
+            "cancel_after_rollback",
         ],
     },
     NODE_ROLLBACK_KNOWLEDGE_GRAPH: {
         "description": (
-            "仅在发布前失败路径运行：如果 prepare_knowledge_graph 已经提前写入可查询 KG 草稿，"
-            "而 KnowledgeDoc 尚未发布，则删除本轮新建的候选节点/边，并恢复本轮更新过的旧节点/边。"
-            "已发布文档后的图谱同步失败不会走这条清理路径。"
+            "仅在发布前失败路径运行。当前 prepare_knowledge_graph 不写图谱表，因此新构建通常在此无操作；"
+            "仍保留对旧版 early-persist 状态的兼容清理，并负责在清理后重新抛出取消。"
+            "已发布文档后的图谱同步失败不会走这条路径。"
         ),
-        "reads": ["kg_draft_early_persist_metrics", "doc_ids", "error", "build_session_id"],
+        "reads": [
+            "kg_draft_early_persist_metrics",
+            "doc_ids",
+            "error",
+            "build_session_id",
+            "cancel_after_rollback",
+        ],
         "writes": ["kg_draft_rollback_metrics", "kg_draft_rollback_ms"],
         "input_keys": [
             "course_id",
@@ -521,6 +531,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "doc_ids",
             "kg_draft_early_persist_metrics",
             "error",
+            "cancel_after_rollback",
         ],
         "output_keys": ["kg_draft_rollback_metrics", "kg_draft_rollback_ms"],
     },
@@ -569,9 +580,22 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "docgen_kg_draft",
             "kg_draft_early_persist_metrics",
         ],
-        "writes": ["doc_ids", "built_paths", "merged_path", "enriched_markdown"],
+        "writes": [
+            "doc_ids",
+            "built_paths",
+            "merged_path",
+            "enriched_markdown",
+            "cancel_after_rollback",
+        ],
         "input_keys": ["merged_markdown", "chapter_metadatas", "document_context", "build_session_id"],
-        "output_keys": ["doc_ids", "built_paths", "merged_path", "enriched_markdown", "error"],
+        "output_keys": [
+            "doc_ids",
+            "built_paths",
+            "merged_path",
+            "enriched_markdown",
+            "cancel_after_rollback",
+            "error",
+        ],
     },
     NODE_SYNC_KNOWLEDGE_GRAPH: {
         "description": (
@@ -965,6 +989,7 @@ def create_docgen_initial_state(
         "docgen_kg_draft": {},
         "kg_draft_early_persist_metrics": {},
         "kg_draft_rollback_metrics": {},
+        "cancel_after_rollback": False,
         "unit_test_chapter_drafts": [],
         "unit_test_items": [],
         "error": None,
@@ -987,6 +1012,7 @@ def _child_state_base(state: DocGenState, *, teaching_action: str) -> dict[str, 
         "course_id": state["course_id"],
         "course_name": state.get("course_name", ""),
         "requested_at": state["requested_at"],
+        "build_group_id": state.get("build_group_id", ""),
         "build_session_id": state.get("build_session_id", ""),
         "planner_session_id": state.get("planner_session_id", ""),
         "confirmed_plan_id": state.get("confirmed_plan_id", ""),

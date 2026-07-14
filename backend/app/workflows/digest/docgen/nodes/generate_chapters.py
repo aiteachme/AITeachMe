@@ -94,9 +94,17 @@ STREAM_PERSIST_MIN_INTERVAL_S = get_env_bounded_float(
 class _ChapterPreviewPersistBuffer:
     """Coalesce draft preview persistence without backpressuring SSE."""
 
-    def __init__(self, *, course_id: str, requested_at, chapter_index: int) -> None:
+    def __init__(
+        self,
+        *,
+        course_id: str,
+        requested_at,
+        build_group_id: str | None,
+        chapter_index: int,
+    ) -> None:
         self.course_id = course_id
         self.requested_at = requested_at
+        self.build_group_id = build_group_id
         self.chapter_index = chapter_index
         self._pending_progress: dict[str, object] | None = None
         self._pending_preview: dict[str, object] | None = None
@@ -167,12 +175,14 @@ class _ChapterPreviewPersistBuffer:
             upsert_knowledge_build_chapter_progress(
                 self.course_id,
                 requested_at=self.requested_at,
+                build_group_id=self.build_group_id,
                 chapter_progress=chapter_progress,
             )
         if chapter_preview is not None:
             upsert_knowledge_build_chapter_preview(
                 self.course_id,
                 requested_at=self.requested_at,
+                build_group_id=self.build_group_id,
                 chapter_preview=chapter_preview,
             )
 
@@ -639,11 +649,13 @@ def build_generate_chapters_node(*, context: WorkflowContext):
         upsert_knowledge_build_chapter_progress(
             state["course_id"],
             requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
             chapter_progress={"chapter_index": task.chapter_index, "title": title, "status": "generating"},
         )
         upsert_knowledge_build_chapter_preview(
             state["course_id"],
             requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
             chapter_preview={
                 "chapter_index": task.chapter_index,
                 "title": title,
@@ -657,6 +669,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
         append_knowledge_build_recent_event(
             state["course_id"],
             requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
             event={
                 "stage": "chapter_generating",
                 "chapter_index": task.chapter_index,
@@ -804,6 +817,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
         upsert_knowledge_build_chapter_preview(
             state["course_id"],
             requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
             chapter_preview={
                 "chapter_index": task.chapter_index,
                 "title": title,
@@ -817,6 +831,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
         append_knowledge_build_recent_event(
             state["course_id"],
             requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
             event={
                 "stage": "chapter_research_ready",
                 "chapter_index": task.chapter_index,
@@ -897,6 +912,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
         preview_persist_buffer = _ChapterPreviewPersistBuffer(
             course_id=state["course_id"],
             requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
             chapter_index=task.chapter_index,
         )
 
@@ -979,6 +995,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
             upsert_knowledge_build_chapter_progress(
                 state["course_id"],
                 requested_at=state["requested_at"],
+                build_group_id=state.get("build_group_id") or None,
                 chapter_progress={
                     "chapter_index": task.chapter_index,
                     "title": title,
@@ -993,6 +1010,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
             upsert_knowledge_build_chapter_preview(
                 state["course_id"],
                 requested_at=state["requested_at"],
+                build_group_id=state.get("build_group_id") or None,
                 chapter_preview={
                     "chapter_index": task.chapter_index,
                     "title": title,
@@ -1006,6 +1024,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
             append_knowledge_build_recent_event(
                 state["course_id"],
                 requested_at=state["requested_at"],
+                build_group_id=state.get("build_group_id") or None,
                 event={
                     "stage": "chapter_failed",
                     "chapter_index": task.chapter_index,
@@ -1095,6 +1114,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
         upsert_knowledge_build_chapter_preview(
             state["course_id"],
             requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
             chapter_preview={
                 "chapter_index": task.chapter_index,
                 "title": title,
@@ -1108,6 +1128,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
         upsert_knowledge_build_chapter_progress(
             state["course_id"],
             requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
             chapter_progress={
                 "chapter_index": task.chapter_index,
                 "title": title,
@@ -1123,6 +1144,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
         append_knowledge_build_recent_event(
             state["course_id"],
             requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
             event={
                 "stage": "chapter_generated",
                 "chapter_index": task.chapter_index,

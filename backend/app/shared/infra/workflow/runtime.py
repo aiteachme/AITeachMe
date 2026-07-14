@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable
 from time import perf_counter
-from typing import Any
+from typing import Any, TypeVar
 
 import structlog
 from langsmith import tracing_context
@@ -25,6 +26,8 @@ from app.shared.infra.workflow.context import WorkflowContext
 from app.shared.infra.workflow.result import WorkflowResult, err_result, ok_result
 
 logger = structlog.get_logger(__name__)
+
+T = TypeVar("T")
 
 _GRAPH_STATE_SCALAR_FIELDS = (
     "course_id",
@@ -183,6 +186,30 @@ async def cancel_tasks_and_drain(tasks: list[asyncio.Task[Any]]) -> None:
         task.cancel()
     if active_tasks:
         await asyncio.gather(*active_tasks, return_exceptions=True)
+
+
+async def await_shielded_and_drain(awaitable: Awaitable[T]) -> T:
+    """Finish an operation before propagating caller cancellation."""
+
+    task = asyncio.ensure_future(awaitable)
+    cancelled_error: asyncio.CancelledError | None = None
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError as exc:
+            cancelled_error = cancelled_error or exc
+        except BaseException:
+            break
+
+    try:
+        result = task.result()
+    except BaseException:
+        if cancelled_error is not None:
+            raise cancelled_error
+        raise
+    if cancelled_error is not None:
+        raise cancelled_error
+    return result
 
 
 async def invoke_state_graph(

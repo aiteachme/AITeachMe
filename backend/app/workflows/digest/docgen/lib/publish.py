@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import re
 from datetime import datetime
@@ -28,7 +29,7 @@ from app.shared.infra.tools.builtin.markdown_processing import (
 )
 from app.shared.infra.knowledge.build_store import (
     KnowledgeDocsManifest,
-    clear_current_published_knowledge_docs_files,
+    managed_knowledge_build_owner_transaction,
     update_knowledge_build_status,
     write_knowledge_manifest,
 )
@@ -42,7 +43,7 @@ from app.workflows.digest.docgen.lib.unit_tests import normalize_published_unit_
 from app.workflows.support.courses.learning_context import update_course_learning_context_from_docgen
 from app.utils.path_helpers import sanitize_doc_title
 from app.utils.time import utcnow
-from app.shared.infra.workflow.runtime import cancel_tasks_and_drain
+from app.shared.infra.workflow.runtime import await_shielded_and_drain
 
 
 class StagedKnowledgeDocs(BaseModel):
@@ -215,17 +216,31 @@ def _build_chapter_key(namespace: str, chapter_index: int, title: str) -> str:
     return f"{namespace}/knowledge_markdowns/chapter_{chapter_index:02d}_{safe_title}.md"
 
 
-def _build_versioned_chapter_key(namespace: str, version_no: int, chapter_index: int, title: str) -> str:
+def _build_versioned_artifact_prefix(namespace: str, version_no: int, publish_token: str) -> str:
+    token_fingerprint = hashlib.sha256(publish_token.encode("utf-8")).hexdigest()[:16]
+    return f"{namespace}/knowledge_markdowns/versions/v{version_no:04d}/{token_fingerprint}"
+
+
+def _build_versioned_chapter_key(
+    namespace: str,
+    version_no: int,
+    publish_token: str,
+    chapter_index: int,
+    title: str,
+) -> str:
     safe_title = sanitize_doc_title(title)
-    return f"{namespace}/knowledge_markdowns/versions/v{version_no:04d}/chapter_{chapter_index:02d}_{safe_title}.md"
+    prefix = _build_versioned_artifact_prefix(namespace, version_no, publish_token)
+    return f"{prefix}/chapter_{chapter_index:02d}_{safe_title}.md"
 
 
-def _build_versioned_merged_key(namespace: str, version_no: int) -> str:
-    return f"{namespace}/knowledge_markdowns/versions/v{version_no:04d}/merged_knowledge_base.md"
+def _build_versioned_merged_key(namespace: str, version_no: int, publish_token: str) -> str:
+    prefix = _build_versioned_artifact_prefix(namespace, version_no, publish_token)
+    return f"{prefix}/merged_knowledge_base.md"
 
 
-def _build_versioned_docgen_manifest_key(namespace: str, version_no: int) -> str:
-    return f"{namespace}/knowledge_markdowns/versions/v{version_no:04d}/docgen_manifest.json"
+def _build_versioned_docgen_manifest_key(namespace: str, version_no: int, publish_token: str) -> str:
+    prefix = _build_versioned_artifact_prefix(namespace, version_no, publish_token)
+    return f"{prefix}/docgen_manifest.json"
 
 
 def _build_current_docgen_manifest_key(namespace: str) -> str:
@@ -363,6 +378,8 @@ async def stage_knowledge_docs(
     cover_markdown: str | None = None,
     docgen_artifacts: dict[str, Any] | None = None,
     course_scope: CourseStorageScope | None = None,
+    requested_at: datetime | None = None,
+    build_group_id: str | None = None,
 ) -> StagedKnowledgeDocs:
     """Write chapter markdown into staging storage."""
 
@@ -375,7 +392,7 @@ async def stage_knowledge_docs(
         sorted(chapter_metadatas, key=lambda item: item.get("chapter_index", 0))
     )
     built_paths: list[tuple[int, str]] = []
-    write_tasks: list[asyncio.Task[None]] = []
+    chapter_writes: list[tuple[str, str]] = []
 
     for index, chapter in enumerate(sorted_chapters, start=1):
         chapter_index = int(chapter.get("chapter_index", index))
@@ -387,36 +404,48 @@ async def stage_knowledge_docs(
             focus_items=[str(item) for item in chapter.get("required_elements", []) if str(item).strip()],
         )
         staging_key = _staging_chapter_key(course_scope.namespace, chapter_index, chapter_title)
-        write_tasks.append(asyncio.create_task(cs.write_text(staging_key, chapter_markdown)))
+        chapter_writes.append((staging_key, chapter_markdown))
         built_paths.append((chapter_index, chapter_title))
-
-    try:
-        if write_tasks:
-            await asyncio.gather(*write_tasks)
-    except asyncio.CancelledError:
-        await cancel_tasks_and_drain(write_tasks)
-        raise
 
     merged_markdown = build_merged_markdown(
         sorted_chapters,
         document_context=document_context,
         cover_markdown=cover_markdown,
     )
-    await cs.write_text(course_scope.knowledge_build_prefix() + "merged_knowledge_base.md", merged_markdown)
     reference_debug = _collect_reference_debug_section(sorted_chapters)
-    if reference_debug:
-        await cs.write_text(course_scope.knowledge_build_prefix() + "source_references.md", reference_debug + "\n")
-    if docgen_artifacts is not None:
-        await cs.write_json_raw(course_scope.knowledge_build_prefix() + "docgen_manifest.json", docgen_artifacts)
 
+    async def persist_staged_docs() -> None:
+        write_results = await asyncio.gather(
+            *(cs.write_text(key, markdown) for key, markdown in chapter_writes),
+            return_exceptions=True,
+        )
+        for result in write_results:
+            if isinstance(result, BaseException):
+                raise result
+
+        await cs.write_text(course_scope.knowledge_build_prefix() + "merged_knowledge_base.md", merged_markdown)
+        if reference_debug:
+            await cs.write_text(course_scope.knowledge_build_prefix() + "source_references.md", reference_debug + "\n")
+        if docgen_artifacts is not None:
+            await cs.write_json_raw(course_scope.knowledge_build_prefix() + "docgen_manifest.json", docgen_artifacts)
+
+    await await_shielded_and_drain(persist_staged_docs())
+
+    status_payload: dict[str, object] = {
+        "status": "running",
+        "stage": "doc_lane_staged",
+        "draft_available": bool(merged_markdown.strip()),
+        "draft_updated_at": utcnow(),
+        "staged_chapter_count": len(sorted_chapters),
+    }
+    if requested_at is not None:
+        status_payload["requested_at"] = requested_at
+    if build_group_id:
+        status_payload["build_group_id"] = build_group_id
     update_knowledge_build_status(
         course_id,
         course_scope=course_scope,
-        status="running",
-        stage="doc_lane_staged",
-        draft_available=bool(merged_markdown.strip()),
-        draft_updated_at=utcnow(),
-        staged_chapter_count=len(sorted_chapters),
+        **status_payload,
     )
     return StagedKnowledgeDocs(merged_markdown=merged_markdown, built_paths=built_paths)
 
@@ -425,6 +454,8 @@ async def stage_knowledge_docs(
 def publish_staged_knowledge_docs(
     *,
     course_id: str,
+    build_group_id: str,
+    publish_token: str,
     chapter_metadatas: list[dict],
     chapter_assignments: list[dict],
     document_context: dict[str, object] | None,
@@ -440,18 +471,23 @@ def publish_staged_knowledge_docs(
 
     if not chapter_metadatas:
         return []
+    owner = str(build_group_id or "").strip()
+    token = str(publish_token or "").strip()
+    if not owner or not token:
+        raise ValueError("knowledge_build_publish_claim_required")
 
     cs = get_content_store()
     course_scope = course_scope or resolve_course_storage_scope(course_id)
     sorted_chapters = _dedupe_chapter_metadatas(
         sorted(chapter_metadatas, key=lambda item: item.get("chapter_index", 0))
     )
+    published_at = utcnow()
+    assignments_by_index = _assignments_by_chapter_index(chapter_assignments)
+
     with managed_session() as session:
         latest_version_no = docgen_repo.get_latest_version_no(session, course_id)
     resolved_version_no = max(int(version_no or 0), latest_version_no + 1)
     package_key = f"{course_id}:docgen:v{resolved_version_no:04d}"
-    published_at = utcnow()
-    assignments_by_index = _assignments_by_chapter_index(chapter_assignments)
     resolved_docgen_artifacts: dict[str, Any] | None = None
     if docgen_artifacts is not None:
         resolved_docgen_artifacts = dict(docgen_artifacts)
@@ -464,9 +500,8 @@ def publish_staged_knowledge_docs(
         )
         resolved_docgen_artifacts["build_metadata"] = build_metadata
 
-    clear_current_published_knowledge_docs_files(course_id, course_scope=course_scope)
-
     docs_to_create: list[KnowledgeDoc] = []
+    current_chapter_writes: list[tuple[str, str]] = []
     for index, chapter in enumerate(sorted_chapters):
         chapter_index = int(chapter.get("chapter_index", index + 1))
         chapter_title = resolve_effective_chapter_title(chapter, chapter_index=chapter_index)
@@ -495,12 +530,12 @@ def publish_staged_knowledge_docs(
         archive_key = _build_versioned_chapter_key(
             course_scope.namespace,
             resolved_version_no,
+            token,
             chapter_index,
             chapter_title,
         )
         run_store_sync(cs.write_text, archive_key, chapter_markdown)
-        run_store_sync(cs.write_text, final_key, chapter_markdown)
-
+        current_chapter_writes.append((final_key, chapter_markdown))
         docs_to_create.append(
             KnowledgeDoc(
                 course_id=course_id,
@@ -530,15 +565,27 @@ def publish_staged_knowledge_docs(
         document_context=document_context,
         cover_markdown=cover_markdown,
     )
-    run_store_sync(cs.write_text, _build_versioned_merged_key(course_scope.namespace, resolved_version_no), merged_markdown)
-    run_store_sync(cs.write_text, course_scope.knowledge_doc_key("merged_knowledge_base.md"), merged_markdown)
+    run_store_sync(
+        cs.write_text,
+        _build_versioned_merged_key(course_scope.namespace, resolved_version_no, token),
+        merged_markdown,
+    )
     if resolved_docgen_artifacts is not None:
-        versioned_manifest_key = _build_versioned_docgen_manifest_key(course_scope.namespace, resolved_version_no)
-        current_manifest_key = _build_current_docgen_manifest_key(course_scope.namespace)
+        versioned_manifest_key = _build_versioned_docgen_manifest_key(
+            course_scope.namespace,
+            resolved_version_no,
+            token,
+        )
         run_store_sync(cs.write_json_raw, versioned_manifest_key, resolved_docgen_artifacts)
-        run_store_sync(cs.write_json_raw, current_manifest_key, resolved_docgen_artifacts)
 
-    with managed_session() as session:
+    with managed_knowledge_build_owner_transaction(
+        course_id,
+        build_group_id=owner,
+        publish_token=token,
+        allowed_phases=("publishing_claimed",),
+        course_scope=course_scope,
+        ownership_error="knowledge_build_publish_claim_lost",
+    ) as session:
         current_docs = docgen_repo.get_docs_by_course(session, course_id, only_current=True)
         for doc in current_docs:
             doc.is_current = False
@@ -561,11 +608,8 @@ def publish_staged_knowledge_docs(
             build_session_id=build_session_id,
             requested_at=requested_at,
         )
-        session.commit()
-        created_docs: list[KnowledgeDoc] = []
-        for doc in docs_to_create:
-            session.refresh(doc)
-            created_docs.append(doc)
+        session.flush()
+        created_doc_ids = [doc.id for doc in docs_to_create if doc.id is not None]
 
     manifest = KnowledgeDocsManifest(
         updated_at=published_at,
@@ -588,23 +632,62 @@ def publish_staged_knowledge_docs(
         ],
     )
     if resolved_docgen_artifacts is not None:
-        manifest.docgen_manifest_key = _build_versioned_docgen_manifest_key(course_scope.namespace, resolved_version_no)
+        manifest.docgen_manifest_key = _build_versioned_docgen_manifest_key(
+            course_scope.namespace,
+            resolved_version_no,
+            token,
+        )
         manifest.merge_review_report = dict(resolved_docgen_artifacts.get("merge_review_report") or {})
-    # Do not mark the build completed until live docs are committed and staging is cleared,
-    # otherwise `/knowledge/docs` can briefly report 100% while no readable document is available.
-    write_knowledge_manifest(course_id, manifest, course_scope=course_scope)
-    run_store_sync(cs.delete_prefix, course_scope.knowledge_build_prefix(), default=0)
-    update_knowledge_build_status(
-        course_id,
-        course_scope=course_scope,
-        requested_at=requested_at,
-        status="completed",
-        stage="completed",
-        error_message=None,
-        draft_available=False,
-        draft_updated_at=None,
-        staged_chapter_count=len(sorted_chapters),
-        published_doc_count=len(docs_to_create),
-    )
 
-    return [doc.id for doc in created_docs if doc.id is not None]
+    # Revalidate the same owner/token while projecting mutable aliases. In
+    # cloud mode the Course row remains locked; in local mode the course RLock
+    # remains held until every storage write and finish_publish completes.
+    with managed_knowledge_build_owner_transaction(
+        course_id,
+        build_group_id=owner,
+        publish_token=token,
+        allowed_phases=("publishing_claimed",),
+        course_scope=course_scope,
+        finish_publish=True,
+        ownership_error="knowledge_build_publish_claim_lost",
+    ):
+        current_prefix = course_scope.knowledge_doc_key("")
+        existing_current_keys = set(run_store_sync(cs.list_prefix, current_prefix, default=[]) or [])
+        current_merged_key = course_scope.knowledge_doc_key("merged_knowledge_base.md")
+        target_current_keys = {key for key, _markdown in current_chapter_writes}
+        target_current_keys.add(current_merged_key)
+        if resolved_docgen_artifacts is not None:
+            current_manifest_key = _build_current_docgen_manifest_key(course_scope.namespace)
+            target_current_keys.add(current_manifest_key)
+            run_store_sync(cs.write_json_raw, current_manifest_key, resolved_docgen_artifacts)
+        for current_key, chapter_markdown in current_chapter_writes:
+            run_store_sync(cs.write_text, current_key, chapter_markdown)
+        run_store_sync(cs.write_text, current_merged_key, merged_markdown)
+
+        # The database is the authoritative publish pointer. This manifest
+        # marks the derived live aliases ready only after every replacement
+        # write passed.
+        write_knowledge_manifest(course_id, manifest, course_scope=course_scope)
+        for key in existing_current_keys - target_current_keys:
+            relative = key.removeprefix(current_prefix)
+            if relative.startswith("versions/"):
+                continue
+            filename = relative.rsplit("/", 1)[-1] if "/" in relative else relative
+            if filename.startswith("chapter_") or filename in {
+                "merged_knowledge_base.md",
+                "docgen_manifest.json",
+            }:
+                run_store_sync(cs.delete, key, default=None)
+
+        # Runtime/status still receive final previews and terminal events after
+        # the publish worker returns. Remove only staging artifacts so those
+        # generation-guarded updates keep their active runtime lane.
+        build_prefix = course_scope.knowledge_build_prefix()
+        runtime_keys = {
+            course_scope.build_runtime_key(),
+            course_scope.build_status_key(),
+        }
+        for key in run_store_sync(cs.list_prefix, build_prefix, default=[]) or []:
+            if key not in runtime_keys:
+                run_store_sync(cs.delete, key, default=None)
+    return created_doc_ids

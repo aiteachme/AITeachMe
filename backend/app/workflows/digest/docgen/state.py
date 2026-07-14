@@ -117,6 +117,7 @@ class DocGenState(TypedDict, total=False):
     kg_prefetch_ready: bool
     kg_draft_early_persist_metrics: dict[str, Any]
     kg_draft_rollback_metrics: dict[str, Any]
+    cancel_after_rollback: bool
     graph_sync_status: str
     graph_sync_metrics: dict[str, Any]
 

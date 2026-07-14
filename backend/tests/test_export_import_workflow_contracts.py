@@ -17,30 +17,75 @@ from app.models import (
     Course,
     CourseFileLink,
     KnowledgeEdge,
+    KnowledgeDocument,
     KnowledgeUnit,
     RawFile,
     RetrievalChunk,
 )
 from app.schemas.export_import import ExportOptions, ImportOptions
 from app.shared.infra.exceptions import InvalidImportPackageError
+from app.shared.infra.storage import build_course_storage_scope
+from app.workflows.digest.docgen.lib import build_lifecycle as docgen_build_lifecycle
 from app.workflows.support.export_import import exports as export_module
 from app.workflows.support.export_import import imports as import_module
 
 
 COURSE_ID = "course_math00000000"
 IMPORTED_COURSE_ID = "course_imported1234"
+EMPTY_DOCS_COURSE_ID = "course_emptydocs000"
+LEGACY_DOCS_COURSE_ID = "course_legacydocs00"
+PUBLISHED_COVER_FILENAME = "cover.published123.png"
+UNPUBLISHED_COVER_FILENAME = "cover.unpublished999.png"
 
 
 class _FakeStore:
     def __init__(self) -> None:
         self.writes: dict[str, bytes] = {}
+        self.read_keys: list[str] = []
 
     def list_prefix(self, prefix: str) -> list[str]:
-        return [f"{prefix.rstrip('/')}/docgen_cover_latest.png"]
+        return [
+            f"{prefix.rstrip('/')}/cover.png",
+            f"{prefix.rstrip('/')}/{PUBLISHED_COVER_FILENAME}",
+            f"{prefix.rstrip('/')}/{UNPUBLISHED_COVER_FILENAME}",
+        ]
+
+    def read_json_raw(self, key: str) -> dict[str, object] | None:
+        if key.endswith("/knowledge_markdowns/manifest.json"):
+            namespace = key.split("/knowledge_markdowns/", 1)[0]
+            return {
+                "docgen_manifest_key": (
+                    f"{namespace}/knowledge_markdowns/versions/v0001/stale/docgen_manifest.json"
+                )
+            }
+        if key.endswith("/versions/v0001/receipt/docgen_manifest.json"):
+            namespace = key.split("/knowledge_markdowns/", 1)[0]
+            return {
+                "cover_artifact": {
+                    "storage_key": f"{namespace}/assets/docgen/{PUBLISHED_COVER_FILENAME}",
+                }
+            }
+        if key.endswith("/versions/v0001/stale/docgen_manifest.json"):
+            namespace = key.split("/knowledge_markdowns/", 1)[0]
+            return {
+                "cover_artifact": {
+                    "storage_key": f"{namespace}/assets/docgen/{UNPUBLISHED_COVER_FILENAME}",
+                }
+            }
+        return None
+
+    def read_text(self, _key: str) -> str:
+        return ""
 
     def read_bytes(self, key: str) -> bytes:
-        assert key.endswith("docgen_cover_latest.png")
-        return b"cover-bytes"
+        self.read_keys.append(key)
+        if key in self.writes:
+            return self.writes[key]
+        if key.endswith(PUBLISHED_COVER_FILENAME):
+            return b"cover-bytes"
+        if key.endswith("/cover.png"):
+            return b"stale-cover-bytes"
+        raise AssertionError(f"unexpected cover read: {key}")
 
     def write_bytes(self, key: str, data: bytes) -> None:
         self.writes[key] = data
@@ -127,6 +172,20 @@ def _seed_course_graph(session: Session) -> None:
     session.add(first)
     session.add(second)
     session.add(planner_session)
+    session.add(
+        KnowledgeDocument(
+            course_id=COURSE_ID,
+            chapter_index=1,
+            title="Matrices",
+            markdown_content="# Matrices",
+            markdown_path=(
+                f"users/user-1/courses/{COURSE_ID}/knowledge_markdowns/"
+                "versions/v0001/receipt/chapter_01_Matrices.md"
+            ),
+            is_current=True,
+            status="published",
+        )
+    )
     session.commit()
     session.refresh(first)
     session.refresh(second)
@@ -184,6 +243,135 @@ def test_export_preview_and_archive_include_selected_course_graph(
         package_path.unlink(missing_ok=True)
 
 
+def test_export_skips_stale_cover_without_current_published_docs(
+    session: Session,
+    export_import_store: _FakeStore,
+) -> None:
+    session.add(
+        Course(
+            id=EMPTY_DOCS_COURSE_ID,
+            user_id="user-1",
+            name="Empty Docs",
+        )
+    )
+    session.commit()
+
+    package_path = export_module.export_course(
+        session,
+        course_id=EMPTY_DOCS_COURSE_ID,
+        options=ExportOptions(
+            include_raw_markdowns=False,
+            include_knowledge_docs=True,
+            include_chat_history=False,
+            include_exam_history=False,
+            include_profile=False,
+        ),
+    )
+
+    try:
+        with zipfile.ZipFile(package_path, "r") as zf:
+            assert "knowledge/cover.png" not in set(zf.namelist())
+        assert export_import_store.read_keys == []
+    finally:
+        package_path.unlink(missing_ok=True)
+
+
+@pytest.mark.parametrize(
+    "invalid_path",
+    [
+        (
+            f"users/foreign-user/courses/{COURSE_ID}/knowledge_markdowns/"
+            "versions/v0001/receipt/chapter_02_Determinants.md"
+        ),
+        (
+            f"users/user-1/courses/{COURSE_ID}/knowledge_markdowns/"
+            "versions/v0001"
+        ),
+    ],
+)
+def test_export_skips_cover_when_versioned_current_docs_have_invalid_receipt_path(
+    session: Session,
+    export_import_store: _FakeStore,
+    invalid_path: str,
+) -> None:
+    _seed_course_graph(session)
+    session.add(
+        KnowledgeDocument(
+            course_id=COURSE_ID,
+            chapter_index=2,
+            title="Determinants",
+            markdown_content="# Determinants",
+            markdown_path=invalid_path,
+            is_current=True,
+            status="published",
+        )
+    )
+    session.commit()
+
+    package_path = export_module.export_course(
+        session,
+        course_id=COURSE_ID,
+        options=ExportOptions(
+            include_raw_markdowns=False,
+            include_knowledge_docs=True,
+            include_chat_history=False,
+            include_exam_history=False,
+            include_profile=False,
+        ),
+    )
+
+    try:
+        with zipfile.ZipFile(package_path, "r") as zf:
+            assert "knowledge/cover.png" not in set(zf.namelist())
+        assert export_import_store.read_keys == []
+    finally:
+        package_path.unlink(missing_ok=True)
+
+
+def test_export_skips_legacy_storage_cover_without_current_doc_reference(
+    session: Session,
+    export_import_store: _FakeStore,
+) -> None:
+    session.add(
+        Course(
+            id=LEGACY_DOCS_COURSE_ID,
+            user_id="user-1",
+            name="Legacy Docs",
+        )
+    )
+    session.add(
+        KnowledgeDocument(
+            course_id=LEGACY_DOCS_COURSE_ID,
+            chapter_index=1,
+            title="Legacy Chapter",
+            markdown_content="# Legacy Chapter\n\nNo published cover reference.",
+            markdown_path=None,
+            is_current=True,
+            status="published",
+        )
+    )
+    session.commit()
+
+    package_path = export_module.export_course(
+        session,
+        course_id=LEGACY_DOCS_COURSE_ID,
+        options=ExportOptions(
+            include_raw_markdowns=False,
+            include_knowledge_docs=True,
+            include_chat_history=False,
+            include_exam_history=False,
+            include_profile=False,
+        ),
+    )
+
+    try:
+        with zipfile.ZipFile(package_path, "r") as zf:
+            assert "knowledge/cover.png" not in set(zf.namelist())
+        assert export_import_store.read_keys == []
+    finally:
+        package_path.unlink(missing_ok=True)
+
+
 def test_import_course_remaps_ids_and_restores_docgen_assets(
     session: Session,
     export_import_store: _FakeStore,
@@ -209,6 +397,7 @@ def test_import_course_remaps_ids_and_restores_docgen_assets(
     )
     SQLModel.metadata.create_all(engine)
     monkeypatch.setattr(import_module, "_create_unique_course_id", lambda session: IMPORTED_COURSE_ID)
+    reexport_path: Path | None = None
 
     try:
         with Session(engine, expire_on_commit=False) as target_session:
@@ -221,6 +410,40 @@ def test_import_course_remaps_ids_and_restores_docgen_assets(
             imported_course = target_session.exec(select(Course).where(Course.id == IMPORTED_COURSE_ID)).first()
             imported_units = target_session.exec(select(KnowledgeUnit).where(KnowledgeUnit.course_id == IMPORTED_COURSE_ID)).all()
             imported_edges = target_session.exec(select(KnowledgeEdge).where(KnowledgeEdge.course_id == IMPORTED_COURSE_ID)).all()
+            imported_doc = target_session.exec(
+                select(KnowledgeDocument)
+                .where(
+                    KnowledgeDocument.course_id == IMPORTED_COURSE_ID,
+                    KnowledgeDocument.is_current.is_(True),
+                    KnowledgeDocument.status == "published",
+                )
+                .order_by(
+                    KnowledgeDocument.order_index,
+                    KnowledgeDocument.chapter_index,
+                    KnowledgeDocument.id,
+                )
+            ).first()
+            published_result = docgen_build_lifecycle.get_docgen_result(
+                target_session,
+                course_id=IMPORTED_COURSE_ID,
+                course_scope=build_course_storage_scope(
+                    user_id="user-2",
+                    course_id=IMPORTED_COURSE_ID,
+                ),
+            )
+            reexport_path = export_module.export_course(
+                target_session,
+                course_id=IMPORTED_COURSE_ID,
+                options=ExportOptions(
+                    include_raw_markdowns=False,
+                    include_knowledge_docs=True,
+                    include_chat_history=False,
+                    include_exam_history=False,
+                    include_profile=False,
+                ),
+            )
+            with zipfile.ZipFile(reexport_path, "r") as reexported:
+                reexported_cover = reexported.read("knowledge/cover.png")
 
         assert result.course_id == IMPORTED_COURSE_ID
         assert result.course_name == "Imported Algebra"
@@ -232,9 +455,23 @@ def test_import_course_remaps_ids_and_restores_docgen_assets(
         assert imported_course.name == "Imported Algebra"
         assert len(imported_units) == 2
         assert len(imported_edges) == 1
+        assert imported_doc is not None
+        assert imported_doc.markdown_path is None
+        assert imported_doc.markdown_content.startswith(
+            "![](../assets/docgen/cover.png)\n\n# Matrices"
+        )
+        assert imported_doc.markdown_content.count(
+            "![](../assets/docgen/cover.png)"
+        ) == 1
+        assert published_result.exists is True
+        assert "![](../assets/docgen/cover.png)" in published_result.markdown
+        assert "# Matrices" in published_result.markdown
+        assert reexported_cover == b"cover-bytes"
         assert any(key.endswith("/assets/docgen/cover.png") for key in export_import_store.writes)
     finally:
         package_path.unlink(missing_ok=True)
+        if reexport_path is not None:
+            reexport_path.unlink(missing_ok=True)
 
 
 def test_import_course_remaps_chat_context_citation_ids(

@@ -5,7 +5,7 @@ import json
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime, timezone
-from threading import Event
+from threading import Event, get_ident
 from types import SimpleNamespace
 
 import pytest
@@ -16,6 +16,7 @@ import app.models  # noqa: F401 - ensure all SQLModel tables are registered
 import app.shared.infra.knowledge.build_store as build_store
 from app.models import Course, CourseFileLink, IngestStatus, RawFile, TaskStatus
 from app.models.build_planner import ConfirmedBuildPlan
+from app.models.knowledge_doc import KnowledgeDocument
 from app.models.knowledge_graph_sync import KnowledgeGraphSyncRun
 from app.schemas.knowledge import CourseVectorStatusResponse, KnowledgeBuildStatusResponse
 from app.shared.infra.exceptions import (
@@ -28,6 +29,7 @@ from app.workflows.digest.common import build_lifecycle as common_build_lifecycl
 from app.workflows.digest.common import cleanup as common_cleanup
 from app.workflows.digest.docgen.lib import build_lifecycle
 from app.workflows.digest.docgen.nodes import publish_document as publish_document_module
+from app.workflows.digest.docgen.nodes import rollback_knowledge_graph as rollback_knowledge_graph_module
 
 
 COURSE_ID = "course_docgen000000"
@@ -406,15 +408,19 @@ def test_publish_document_rejects_lost_owner_before_shared_writes(
     assert calls == []
 
 
-def test_publish_document_rechecks_owner_after_staging(
+def test_publish_document_claims_owner_after_staging(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[str] = []
-    owner_results = iter([True, False])
     monkeypatch.setattr(
         publish_document_module,
         "is_knowledge_build_lock_owner",
-        lambda *args, **kwargs: next(owner_results),
+        lambda *args, **kwargs: True,
+    )
+    monkeypatch.setattr(
+        publish_document_module,
+        "claim_knowledge_build_publish",
+        lambda *args, **kwargs: calls.append("claim") or None,
     )
     monkeypatch.setattr(
         publish_document_module,
@@ -438,8 +444,492 @@ def test_publish_document_rechecks_owner_after_staging(
 
     result = asyncio.run(node(_publish_state()))
 
-    assert result["error"] == "knowledge_build_lock_ownership_lost"
-    assert calls == ["status", "stage"]
+    assert result["error"] == "knowledge_build_publish_claim_rejected"
+    assert calls == ["status", "stage", "claim"]
+
+
+@pytest.mark.parametrize(
+    ("failed_stage", "expected_calls"),
+    [
+        ("doc_lane_staging", ["status:doc_lane_staging"]),
+        (
+            "publishing",
+            ["status:doc_lane_staging", "stage", "claim", "status:publishing"],
+        ),
+    ],
+)
+def test_publish_document_routes_pre_publish_status_failure_to_rollback_state(
+    monkeypatch: pytest.MonkeyPatch,
+    failed_stage: str,
+    expected_calls: list[str],
+) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr(
+        publish_document_module,
+        "is_knowledge_build_lock_owner",
+        lambda *args, **kwargs: True,
+    )
+    monkeypatch.setattr(
+        publish_document_module,
+        "claim_knowledge_build_publish",
+        lambda *args, **kwargs: calls.append("claim") or "publish-token",
+    )
+
+    def update_status(*_args, **kwargs) -> None:
+        stage = str(kwargs.get("stage") or "")
+        calls.append(f"status:{stage}")
+        if stage == failed_stage:
+            raise RuntimeError("runtime store unavailable")
+
+    monkeypatch.setattr(publish_document_module, "update_knowledge_build_status", update_status)
+
+    async def fake_stage(**_kwargs):
+        calls.append("stage")
+        return SimpleNamespace(merged_markdown="# 矩阵", built_paths=[(1, "矩阵")])
+
+    monkeypatch.setattr(publish_document_module, "stage_knowledge_docs", fake_stage)
+    monkeypatch.setattr(
+        publish_document_module,
+        "publish_staged_knowledge_docs",
+        lambda **_kwargs: calls.append("publish") or [],
+    )
+    node = publish_document_module.build_publish_document_node(
+        context=SimpleNamespace(get_logger=lambda: _NoopNodeLogger())
+    )
+
+    result = asyncio.run(node(_publish_state()))
+
+    assert result == {
+        "error": "knowledge_build_publish_failed",
+        "cancel_after_rollback": False,
+    }
+    assert calls == expected_calls
+
+
+def test_publish_document_passes_claim_token_to_live_publish(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    publish_kwargs: dict[str, object] = {}
+    caller_thread_id = get_ident()
+    monkeypatch.setattr(
+        publish_document_module,
+        "is_knowledge_build_lock_owner",
+        lambda *args, **kwargs: True,
+    )
+    monkeypatch.setattr(
+        publish_document_module,
+        "claim_knowledge_build_publish",
+        lambda *args, **kwargs: calls.append("claim") or "publish-token",
+    )
+    monkeypatch.setattr(
+        publish_document_module,
+        "update_knowledge_build_status",
+        lambda *args, **kwargs: calls.append(f"status:{kwargs.get('stage')}"),
+    )
+
+    async def fake_stage(**_kwargs):
+        calls.append("stage")
+        return SimpleNamespace(merged_markdown="# 矩阵", built_paths=[(1, "矩阵")])
+
+    def fake_publish(**kwargs):
+        calls.append("publish")
+        publish_kwargs.update(kwargs)
+        publish_kwargs["thread_id"] = get_ident()
+        return ["doc-1"]
+
+    monkeypatch.setattr(publish_document_module, "stage_knowledge_docs", fake_stage)
+    monkeypatch.setattr(publish_document_module, "publish_staged_knowledge_docs", fake_publish)
+    monkeypatch.setattr(
+        publish_document_module,
+        "update_knowledge_build_merge_preview",
+        lambda *args, **kwargs: calls.append("merge_preview"),
+    )
+    monkeypatch.setattr(
+        publish_document_module,
+        "upsert_knowledge_build_chapter_progress",
+        lambda *args, **kwargs: calls.append("chapter_completed"),
+    )
+    monkeypatch.setattr(
+        publish_document_module,
+        "append_knowledge_build_recent_event",
+        lambda *args, **kwargs: calls.append("final_event"),
+    )
+
+    async def fake_progress(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(publish_document_module, "publish_docgen_progress", fake_progress)
+    node = publish_document_module.build_publish_document_node(
+        context=SimpleNamespace(get_logger=lambda: _NoopNodeLogger())
+    )
+
+    result = asyncio.run(node(_publish_state()))
+
+    assert result["doc_ids"] == ["doc-1"]
+    assert calls[:4] == ["status:doc_lane_staging", "stage", "claim", "status:publishing"]
+    assert calls[4] == "publish"
+    assert calls[5:] == [
+        "merge_preview",
+        "chapter_completed",
+        "final_event",
+        "status:completed",
+    ]
+    assert publish_kwargs["build_group_id"] == "group-publish"
+    assert publish_kwargs["publish_token"] == "publish-token"
+    assert publish_kwargs["thread_id"] != caller_thread_id
+
+
+def test_publish_document_drains_worker_before_propagating_cancellation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    publish_started = Event()
+    allow_publish_finish = Event()
+    publish_finished = Event()
+    monkeypatch.setattr(
+        publish_document_module,
+        "is_knowledge_build_lock_owner",
+        lambda *args, **kwargs: True,
+    )
+    monkeypatch.setattr(
+        publish_document_module,
+        "claim_knowledge_build_publish",
+        lambda *args, **kwargs: "publish-token",
+    )
+    monkeypatch.setattr(
+        publish_document_module,
+        "update_knowledge_build_status",
+        lambda *args, **kwargs: None,
+    )
+
+    async def fake_stage(**_kwargs):
+        return SimpleNamespace(merged_markdown="# 矩阵", built_paths=[(1, "矩阵")])
+
+    def blocking_publish(**_kwargs):
+        publish_started.set()
+        assert allow_publish_finish.wait(timeout=5)
+        publish_finished.set()
+        return ["doc-1"]
+
+    monkeypatch.setattr(publish_document_module, "stage_knowledge_docs", fake_stage)
+    monkeypatch.setattr(publish_document_module, "publish_staged_knowledge_docs", blocking_publish)
+    node = publish_document_module.build_publish_document_node(
+        context=SimpleNamespace(get_logger=lambda: _NoopNodeLogger())
+    )
+
+    async def run_scenario() -> None:
+        node_task = asyncio.create_task(node(_publish_state()))
+        assert await asyncio.to_thread(publish_started.wait, 2)
+
+        node_task.cancel()
+        await asyncio.sleep(0.05)
+
+        assert node_task.done() is False
+        assert publish_finished.is_set() is False
+
+        allow_publish_finish.set()
+        with pytest.raises(asyncio.CancelledError):
+            await node_task
+        assert publish_finished.is_set() is True
+
+    asyncio.run(run_scenario())
+
+
+def test_publish_document_routes_worker_failure_to_rollback_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        publish_document_module,
+        "is_knowledge_build_lock_owner",
+        lambda *args, **kwargs: True,
+    )
+    monkeypatch.setattr(
+        publish_document_module,
+        "claim_knowledge_build_publish",
+        lambda *args, **kwargs: "publish-token",
+    )
+    monkeypatch.setattr(
+        publish_document_module,
+        "update_knowledge_build_status",
+        lambda *args, **kwargs: None,
+    )
+
+    async def fake_stage(**_kwargs):
+        return SimpleNamespace(merged_markdown="# 矩阵", built_paths=[(1, "矩阵")])
+
+    def failing_publish(**_kwargs):
+        raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr(publish_document_module, "stage_knowledge_docs", fake_stage)
+    monkeypatch.setattr(publish_document_module, "publish_staged_knowledge_docs", failing_publish)
+    node = publish_document_module.build_publish_document_node(
+        context=SimpleNamespace(get_logger=lambda: _NoopNodeLogger())
+    )
+
+    result = asyncio.run(node(_publish_state()))
+
+    assert result == {
+        "error": "knowledge_build_publish_failed",
+        "cancel_after_rollback": False,
+    }
+
+
+def test_publish_document_routes_cancelled_worker_failure_to_rollback_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    publish_started = Event()
+    allow_publish_finish = Event()
+    monkeypatch.setattr(
+        publish_document_module,
+        "is_knowledge_build_lock_owner",
+        lambda *args, **kwargs: True,
+    )
+    monkeypatch.setattr(
+        publish_document_module,
+        "claim_knowledge_build_publish",
+        lambda *args, **kwargs: "publish-token",
+    )
+    monkeypatch.setattr(
+        publish_document_module,
+        "update_knowledge_build_status",
+        lambda *args, **kwargs: None,
+    )
+
+    async def fake_stage(**_kwargs):
+        return SimpleNamespace(merged_markdown="# 矩阵", built_paths=[(1, "矩阵")])
+
+    def failing_publish(**_kwargs):
+        publish_started.set()
+        assert allow_publish_finish.wait(timeout=5)
+        raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr(publish_document_module, "stage_knowledge_docs", fake_stage)
+    monkeypatch.setattr(publish_document_module, "publish_staged_knowledge_docs", failing_publish)
+    node = publish_document_module.build_publish_document_node(
+        context=SimpleNamespace(get_logger=lambda: _NoopNodeLogger())
+    )
+
+    async def run_scenario() -> None:
+        node_task = asyncio.create_task(node(_publish_state()))
+        assert await asyncio.to_thread(publish_started.wait, 2)
+        node_task.cancel()
+        await asyncio.sleep(0.05)
+        assert node_task.done() is False
+
+        allow_publish_finish.set()
+        result = await node_task
+        assert result == {
+            "error": "knowledge_build_publish_failed",
+            "cancel_after_rollback": True,
+        }
+
+    asyncio.run(run_scenario())
+
+
+def test_knowledge_graph_rollback_skips_after_owner_fence_rejects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transaction_kwargs: dict[str, object] = {}
+    rollback_calls: list[str] = []
+
+    @contextmanager
+    def rejected_transaction(*_args, **kwargs):
+        transaction_kwargs.update(kwargs)
+        raise RuntimeError("knowledge_build_rollback_owner_lost")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(
+        rollback_knowledge_graph_module,
+        "managed_knowledge_build_owner_transaction",
+        rejected_transaction,
+    )
+    monkeypatch.setattr(
+        rollback_knowledge_graph_module,
+        "rollback_docgen_kg_draft_graph_early",
+        lambda *args, **kwargs: rollback_calls.append("rollback") or {},
+    )
+    node = rollback_knowledge_graph_module.build_rollback_knowledge_graph_node(
+        context=SimpleNamespace(get_logger=lambda: _NoopNodeLogger())
+    )
+
+    result = asyncio.run(
+        node(
+            {
+                "course_id": COURSE_ID,
+                "user_id": USER_ID,
+                "build_group_id": "group-stale",
+                "kg_draft_early_persist_metrics": {"build_revision_no": 1},
+            }
+        )
+    )
+
+    assert rollback_calls == []
+    assert transaction_kwargs["build_group_id"] == "group-stale"
+    assert transaction_kwargs["allowed_phases"] == ("active", "publishing_claimed")
+    assert result["kg_draft_rollback_metrics"]["skip_reason"] == "rollback_owner_lost"
+
+
+def test_knowledge_graph_rollback_uses_owner_fenced_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fenced_session = object()
+    transaction_kwargs: dict[str, object] = {}
+    rollback_sessions: list[object] = []
+    stream_events: list[tuple[str, str, dict[str, object]]] = []
+
+    @contextmanager
+    def accepted_transaction(*_args, **kwargs):
+        transaction_kwargs.update(kwargs)
+        yield fenced_session
+
+    def rollback(session, **_kwargs):
+        rollback_sessions.append(session)
+        return {
+            "ok": True,
+            "skipped": False,
+            "build_revision_no": 2,
+            "deleted_unit_count": 1,
+        }
+
+    monkeypatch.setattr(
+        rollback_knowledge_graph_module,
+        "managed_knowledge_build_owner_transaction",
+        accepted_transaction,
+    )
+    monkeypatch.setattr(
+        rollback_knowledge_graph_module,
+        "rollback_docgen_kg_draft_graph_early",
+        rollback,
+    )
+    monkeypatch.setattr(
+        rollback_knowledge_graph_module,
+        "publish_workflow_stream_event",
+        lambda course_id, event, payload: stream_events.append((course_id, event, payload)),
+    )
+    node = rollback_knowledge_graph_module.build_rollback_knowledge_graph_node(
+        context=SimpleNamespace(get_logger=lambda: _NoopNodeLogger())
+    )
+
+    result = asyncio.run(
+        node(
+            {
+                "course_id": COURSE_ID,
+                "user_id": USER_ID,
+                "build_group_id": "group-current",
+                "kg_draft_early_persist_metrics": {"build_revision_no": 2},
+            }
+        )
+    )
+
+    assert rollback_sessions == [fenced_session]
+    assert transaction_kwargs["build_group_id"] == "group-current"
+    assert transaction_kwargs["allowed_phases"] == ("active", "publishing_claimed")
+    assert result["kg_draft_rollback_metrics"]["deleted_unit_count"] == 1
+    assert stream_events[0][1] == "graph_delta"
+
+
+def test_knowledge_graph_rollback_keeps_database_publish_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rollback_calls: list[str] = []
+
+    @contextmanager
+    def accepted_transaction(*_args, **_kwargs):
+        yield object()
+
+    monkeypatch.setattr(
+        rollback_knowledge_graph_module,
+        "managed_knowledge_build_owner_transaction",
+        accepted_transaction,
+    )
+    monkeypatch.setattr(
+        rollback_knowledge_graph_module,
+        "get_current_published_docs",
+        lambda *_args, **_kwargs: [SimpleNamespace(build_session_id="build-published")],
+    )
+    monkeypatch.setattr(
+        rollback_knowledge_graph_module,
+        "rollback_docgen_kg_draft_graph_early",
+        lambda *args, **kwargs: rollback_calls.append("rollback") or {},
+    )
+    node = rollback_knowledge_graph_module.build_rollback_knowledge_graph_node(
+        context=SimpleNamespace(get_logger=lambda: _NoopNodeLogger())
+    )
+
+    result = asyncio.run(
+        node(
+            {
+                "course_id": COURSE_ID,
+                "user_id": USER_ID,
+                "build_group_id": "group-current",
+                "build_session_id": "build-published",
+                "kg_draft_early_persist_metrics": {"build_revision_no": 2},
+            }
+        )
+    )
+
+    assert rollback_calls == []
+    assert result["kg_draft_rollback_metrics"]["skip_reason"] == "document_already_published"
+
+
+def test_knowledge_graph_rollback_rethrows_cancellation_after_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    import app.shared.infra.database as database
+
+    rollback_calls: list[str] = []
+    course_scope = build_course_storage_scope(user_id=USER_ID, course_id=COURSE_ID)
+    monkeypatch.setattr(build_store, "is_cloud_mode", lambda: False)
+    monkeypatch.setattr(build_store, "get_runtime_data_dir", lambda: tmp_path)
+
+    @contextmanager
+    def fake_managed_session():
+        yield object()
+
+    monkeypatch.setattr(database, "managed_session", fake_managed_session)
+    assert build_store.acquire_knowledge_build_lock(
+        COURSE_ID,
+        build_store.KnowledgeBuildLock(
+            requested_at=datetime.now(timezone.utc),
+            build_group_id="group-current",
+        ),
+        course_scope=course_scope,
+    )
+    assert build_store.request_knowledge_build_cancellation(
+        COURSE_ID,
+        build_group_id="group-current",
+        course_scope=course_scope,
+    )
+    monkeypatch.setattr(
+        rollback_knowledge_graph_module,
+        "get_current_published_docs",
+        lambda *_args, **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        rollback_knowledge_graph_module,
+        "rollback_docgen_kg_draft_graph_early",
+        lambda *args, **kwargs: rollback_calls.append("rollback")
+        or {"ok": True, "skipped": False},
+    )
+    node = rollback_knowledge_graph_module.build_rollback_knowledge_graph_node(
+        context=SimpleNamespace(get_logger=lambda: _NoopNodeLogger())
+    )
+
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(
+            node(
+                {
+                    "course_id": COURSE_ID,
+                    "user_id": USER_ID,
+                    "build_group_id": "group-current",
+                    "cancel_after_rollback": True,
+                    "kg_draft_early_persist_metrics": {"build_revision_no": 2},
+                }
+            )
+        )
+
+    assert rollback_calls == ["rollback"]
 
 
 def test_build_lock_heartbeat_cancels_owner_before_lease_ttl(
@@ -528,6 +1018,170 @@ def test_build_lock_heartbeat_observes_persisted_cancellation(
     assert owner_task.cancelled is True
 
 
+def test_build_lock_heartbeat_marks_published_docgen_completed_on_cancellation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _OwnerTask:
+        cancelled = False
+
+        def cancel(self) -> None:
+            self.cancelled = True
+
+    owner_task = _OwnerTask()
+    marker_calls: list[dict[str, object]] = []
+    now = datetime.now(timezone.utc)
+
+    async def fake_to_thread(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(common_build_lifecycle.asyncio, "to_thread", fake_to_thread)
+    monkeypatch.setattr(common_build_lifecycle, "renew_knowledge_build_lock", lambda *args, **kwargs: False)
+    monkeypatch.setattr(
+        common_build_lifecycle,
+        "read_knowledge_build_lock",
+        lambda *args, **kwargs: build_store.KnowledgeBuildLock(
+            requested_at=now,
+            build_group_id="group-published",
+            cancel_requested_at=now,
+            phase="published",
+            publish_started_at=now,
+            publish_completed_at=now,
+            publish_token="publish-token",
+        ),
+    )
+    monkeypatch.setattr(
+        common_build_lifecycle,
+        "mark_knowledge_build_runtime_cancelled",
+        lambda _course_id, **kwargs: marker_calls.append(dict(kwargs)),
+    )
+
+    asyncio.run(
+        common_build_lifecycle.maintain_knowledge_build_lock_lease(
+            course_id=COURSE_ID,
+            build_group_id="group-published",
+            course_scope=build_course_storage_scope(user_id=USER_ID, course_id=COURSE_ID),
+            owner_task=owner_task,  # type: ignore[arg-type]
+        )
+    )
+
+    assert marker_calls[0]["docgen_published"] is True
+    assert owner_task.cancelled is True
+
+
+def test_build_lock_heartbeat_retries_when_read_confirms_same_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _OwnerTask:
+        cancel_count = 0
+
+        def cancel(self) -> None:
+            self.cancel_count += 1
+
+    owner_task = _OwnerTask()
+    now = datetime.now(timezone.utc)
+    renew_calls: list[str] = []
+    lock_reads = iter(
+        [
+            build_store.KnowledgeBuildLock(
+                requested_at=now,
+                build_group_id="group-heartbeat",
+            ),
+            None,
+        ]
+    )
+
+    async def fake_to_thread(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    async def fake_sleep(_delay: float) -> None:
+        return None
+
+    monkeypatch.setattr(common_build_lifecycle.asyncio, "to_thread", fake_to_thread)
+    monkeypatch.setattr(common_build_lifecycle.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(
+        common_build_lifecycle,
+        "renew_knowledge_build_lock",
+        lambda *args, **kwargs: renew_calls.append("renew") or False,
+    )
+    monkeypatch.setattr(
+        common_build_lifecycle,
+        "read_knowledge_build_lock",
+        lambda *args, **kwargs: next(lock_reads),
+    )
+
+    asyncio.run(
+        common_build_lifecycle.maintain_knowledge_build_lock_lease(
+            course_id=COURSE_ID,
+            build_group_id="group-heartbeat",
+            course_scope=build_course_storage_scope(user_id=USER_ID, course_id=COURSE_ID),
+            owner_task=owner_task,  # type: ignore[arg-type]
+        )
+    )
+
+    assert renew_calls == ["renew", "renew"]
+    assert owner_task.cancel_count == 1
+
+
+def test_build_lock_heartbeat_retries_transient_read_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _OwnerTask:
+        cancel_count = 0
+
+        def cancel(self) -> None:
+            self.cancel_count += 1
+
+    owner_task = _OwnerTask()
+    now = datetime.now(timezone.utc)
+    renew_calls: list[str] = []
+    read_calls: list[str] = []
+    lock_reads = iter(
+        [
+            RuntimeError("database unavailable"),
+            build_store.KnowledgeBuildLock(
+                requested_at=now,
+                build_group_id="group-heartbeat",
+            ),
+            None,
+        ]
+    )
+
+    async def fake_to_thread(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    async def fake_sleep(_delay: float) -> None:
+        return None
+
+    def read_lock(*_args, **_kwargs):
+        read_calls.append("read")
+        result = next(lock_reads)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    monkeypatch.setattr(common_build_lifecycle.asyncio, "to_thread", fake_to_thread)
+    monkeypatch.setattr(common_build_lifecycle.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(
+        common_build_lifecycle,
+        "renew_knowledge_build_lock",
+        lambda *args, **kwargs: renew_calls.append("renew") or False,
+    )
+    monkeypatch.setattr(common_build_lifecycle, "read_knowledge_build_lock", read_lock)
+
+    asyncio.run(
+        common_build_lifecycle.maintain_knowledge_build_lock_lease(
+            course_id=COURSE_ID,
+            build_group_id="group-heartbeat",
+            course_scope=build_course_storage_scope(user_id=USER_ID, course_id=COURSE_ID),
+            owner_task=owner_task,  # type: ignore[arg-type]
+        )
+    )
+
+    assert renew_calls == ["renew", "renew", "renew"]
+    assert read_calls == ["read", "read", "read"]
+    assert owner_task.cancel_count == 1
+
+
 def test_cancel_knowledge_build_persists_request_before_cancelling_local_tasks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -544,8 +1198,8 @@ def test_cancel_knowledge_build_persists_request_before_cancelling_local_tasks(
     events: list[str] = []
 
     class _Registry:
-        async def cancel_matching(self, *, kind: str, course_id: str) -> int:
-            events.append(f"cancel:{kind}:{course_id}")
+        async def cancel_matching(self, *, kind: str, course_id: str, name: str) -> int:
+            events.append(f"cancel:{kind}:{course_id}:{name}")
             return 1
 
     monkeypatch.setattr(common_build_lifecycle, "read_knowledge_build_runtime", lambda *args, **kwargs: runtime)
@@ -579,10 +1233,510 @@ def test_cancel_knowledge_build_persists_request_before_cancelling_local_tasks(
 
     assert events[:2] == ["persist-cancel", "write-cancelled-runtime"]
     assert set(events[2:]) == {
-        f"cancel:knowledge.build.docs:{COURSE_ID}",
-        f"cancel:knowledge.build.graph:{COURSE_ID}",
+        f"cancel:knowledge.build.docs:{COURSE_ID}:knowledge.build.docs:{COURSE_ID}:group-cancel",
+        f"cancel:knowledge.build.graph:{COURSE_ID}:knowledge.build.graph:{COURSE_ID}:group-cancel",
     }
     assert result.cancelled_task_count == 2
+
+
+def test_cancel_published_build_keeps_docgen_and_plan_completed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime.now(timezone.utc)
+    course = Course(id=COURSE_ID, user_id=USER_ID, name="Linear Algebra")
+    runtime = build_store.KnowledgeBuildRuntimeEnvelope(
+        build_group_id="group-published",
+        docgen_runtime=build_store.KnowledgeBuildRuntimeStatus(
+            requested_at=now,
+            build_group_id="group-published",
+            status="completed",
+            stage="completed",
+            confirmed_plan_id="plan-1",
+        ),
+        graph_runtime=build_store.KnowledgeBuildRuntimeStatus(
+            requested_at=now,
+            build_kind="graph",
+            build_group_id="group-published",
+            status="running",
+            stage="graph_docs_sync",
+        ),
+    )
+    lane_updates: list[dict[str, object]] = []
+    plan_updates: list[dict[str, object]] = []
+
+    class _Registry:
+        async def cancel_matching(self, **_kwargs) -> int:
+            return 0
+
+    monkeypatch.setattr(common_build_lifecycle, "read_knowledge_build_runtime", lambda *args, **kwargs: runtime)
+    monkeypatch.setattr(
+        common_build_lifecycle,
+        "read_knowledge_build_lock",
+        lambda *args, **kwargs: build_store.KnowledgeBuildLock(
+            requested_at=now,
+            build_group_id="group-published",
+            phase="published",
+            publish_started_at=now,
+            publish_completed_at=now,
+            publish_token="publish-token",
+        ),
+    )
+    monkeypatch.setattr(
+        common_build_lifecycle,
+        "request_knowledge_build_cancellation",
+        lambda *args, **kwargs: True,
+    )
+    monkeypatch.setattr(
+        common_build_lifecycle,
+        "update_knowledge_build_lane_status",
+        lambda *args, **kwargs: lane_updates.append(dict(kwargs)),
+    )
+    monkeypatch.setattr(
+        common_build_lifecycle,
+        "mark_confirmed_build_plan_status",
+        lambda *args, **kwargs: plan_updates.append(dict(kwargs)),
+    )
+
+    result = asyncio.run(
+        common_build_lifecycle.cancel_knowledge_build(
+            object(),  # type: ignore[arg-type]
+            course=course,
+            user_id=USER_ID,
+            background_task_registry=_Registry(),
+        )
+    )
+
+    assert result.cancelled_task_count == 0
+    assert [update["lane"] for update in lane_updates] == ["graph"]
+    assert lane_updates[0]["status"] == "cancelled"
+    assert plan_updates == [
+        {
+            "course_id": COURSE_ID,
+            "user_id": USER_ID,
+            "plan_id": "plan-1",
+            "status": "completed",
+        }
+    ]
+
+
+@pytest.mark.parametrize("retain_published_lock", [True, False])
+def test_cancel_knowledge_build_rechecks_publish_after_request(
+    monkeypatch: pytest.MonkeyPatch,
+    retain_published_lock: bool,
+) -> None:
+    now = datetime.now(timezone.utc)
+    course = Course(id=COURSE_ID, user_id=USER_ID, name="Linear Algebra")
+    runtime = build_store.KnowledgeBuildRuntimeEnvelope(
+        build_group_id="group-publish-race",
+        docgen_runtime=build_store.KnowledgeBuildRuntimeStatus(
+            requested_at=now,
+            build_group_id="group-publish-race",
+            build_session_id="build-session-publish-race",
+            status="publishing",
+            stage="publishing",
+            confirmed_plan_id="plan-1",
+        ),
+        graph_runtime=build_store.KnowledgeBuildRuntimeStatus(
+            requested_at=now,
+            build_kind="graph",
+            build_group_id="group-publish-race",
+            status="running",
+            stage="graph_docs_sync",
+        ),
+    )
+    publish_completed = False
+    lock_reads: list[str] = []
+    database_receipt_reads: list[str] = []
+    lane_updates: list[dict[str, object]] = []
+    plan_updates: list[dict[str, object]] = []
+
+    def read_lock(*_args, **_kwargs):
+        lock_reads.append("published" if publish_completed else "active")
+        if publish_completed and not retain_published_lock:
+            return None
+        if publish_completed:
+            return build_store.KnowledgeBuildLock(
+                requested_at=now,
+                build_group_id="group-publish-race",
+                phase="published",
+                publish_started_at=now,
+                publish_completed_at=now,
+                publish_token="publish-token",
+                cancel_requested_at=now,
+            )
+        return build_store.KnowledgeBuildLock(
+            requested_at=now,
+            build_group_id="group-publish-race",
+        )
+
+    def request_cancellation(*_args, **_kwargs) -> bool:
+        nonlocal publish_completed
+        publish_completed = True
+        return True
+
+    @contextmanager
+    def fake_receipt_session():
+        yield object()
+
+    monkeypatch.setattr(common_build_lifecycle, "read_knowledge_build_runtime", lambda *args, **kwargs: runtime)
+    monkeypatch.setattr(common_build_lifecycle, "read_knowledge_build_lock", read_lock)
+    monkeypatch.setattr(common_build_lifecycle, "request_knowledge_build_cancellation", request_cancellation)
+    monkeypatch.setattr(common_build_lifecycle, "managed_session", fake_receipt_session)
+    monkeypatch.setattr(
+        common_build_lifecycle,
+        "get_docs_by_course",
+        lambda _session, course_id: database_receipt_reads.append(course_id)
+        or [SimpleNamespace(build_session_id="build-session-publish-race")],
+    )
+    monkeypatch.setattr(
+        common_build_lifecycle,
+        "update_knowledge_build_lane_status",
+        lambda *args, **kwargs: lane_updates.append(dict(kwargs)),
+    )
+    monkeypatch.setattr(
+        common_build_lifecycle,
+        "mark_confirmed_build_plan_status",
+        lambda *args, **kwargs: plan_updates.append(dict(kwargs)),
+    )
+
+    result = asyncio.run(
+        common_build_lifecycle.cancel_knowledge_build(
+            object(),  # type: ignore[arg-type]
+            course=course,
+            user_id=USER_ID,
+        )
+    )
+
+    assert result.cancelled_task_count == 0
+    assert lock_reads == ["active", "published"]
+    assert database_receipt_reads == ([] if retain_published_lock else [COURSE_ID])
+    assert [(update["lane"], update["status"]) for update in lane_updates] == [
+        ("docgen", "completed"),
+        ("graph", "cancelled"),
+    ]
+    assert lane_updates[0]["error_message"] is None
+    assert plan_updates[-1]["status"] == "completed"
+
+
+def test_cancel_knowledge_build_preserves_docgen_when_publish_receipt_is_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime.now(timezone.utc)
+    course = Course(id=COURSE_ID, user_id=USER_ID, name="Linear Algebra")
+    runtime = build_store.KnowledgeBuildRuntimeEnvelope(
+        build_group_id="group-unknown-receipt",
+        docgen_runtime=build_store.KnowledgeBuildRuntimeStatus(
+            requested_at=now,
+            build_group_id="group-unknown-receipt",
+            build_session_id="build-session-unknown-receipt",
+            status="publishing",
+            stage="publishing",
+            confirmed_plan_id="plan-1",
+        ),
+        graph_runtime=build_store.KnowledgeBuildRuntimeStatus(
+            requested_at=now,
+            build_kind="graph",
+            build_group_id="group-unknown-receipt",
+            status="running",
+            stage="graph_docs_sync",
+        ),
+    )
+    lock_reads = iter(
+        [
+            build_store.KnowledgeBuildLock(
+                requested_at=now,
+                build_group_id="group-unknown-receipt",
+            ),
+            None,
+        ]
+    )
+    lane_updates: list[dict[str, object]] = []
+    plan_updates: list[dict[str, object]] = []
+    cancelled_tasks: list[str] = []
+
+    class _Registry:
+        async def cancel_matching(self, *, kind: str, **_kwargs) -> int:
+            cancelled_tasks.append(kind)
+            return 1
+
+    @contextmanager
+    def fake_receipt_session():
+        yield object()
+
+    monkeypatch.setattr(common_build_lifecycle, "read_knowledge_build_runtime", lambda *args, **kwargs: runtime)
+    monkeypatch.setattr(common_build_lifecycle, "read_knowledge_build_lock", lambda *args, **kwargs: next(lock_reads))
+    monkeypatch.setattr(common_build_lifecycle, "request_knowledge_build_cancellation", lambda *args, **kwargs: True)
+    monkeypatch.setattr(common_build_lifecycle, "managed_session", fake_receipt_session)
+    monkeypatch.setattr(
+        common_build_lifecycle,
+        "get_docs_by_course",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("database unavailable")),
+    )
+    monkeypatch.setattr(
+        common_build_lifecycle,
+        "update_knowledge_build_lane_status",
+        lambda *args, **kwargs: lane_updates.append(dict(kwargs)),
+    )
+    monkeypatch.setattr(
+        common_build_lifecycle,
+        "mark_confirmed_build_plan_status",
+        lambda *args, **kwargs: plan_updates.append(dict(kwargs)),
+    )
+
+    result = asyncio.run(
+        common_build_lifecycle.cancel_knowledge_build(
+            object(),  # type: ignore[arg-type]
+            course=course,
+            user_id=USER_ID,
+            background_task_registry=_Registry(),
+        )
+    )
+
+    assert result.cancelled_task_count == 2
+    assert [(update["lane"], update["status"]) for update in lane_updates] == [
+        ("graph", "cancelled")
+    ]
+    assert plan_updates == []
+    assert set(cancelled_tasks) == {"knowledge.build.docs", "knowledge.build.graph"}
+
+
+@pytest.mark.parametrize("failure_mode", ["result", "exception"])
+def test_docgen_background_preserves_published_docs_when_downstream_graph_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    failure_mode: str,
+) -> None:
+    import app.workflows.digest as digest_workflows
+    from app.shared.infra.workflow import err_result
+    from app.workflows.digest.kg_doc_sync.lib import prefetch as prefetch_module
+
+    now = datetime.now(timezone.utc)
+    docgen_writes: list[dict[str, object]] = []
+    graph_writes: list[dict[str, object]] = []
+    plan_statuses: list[str] = []
+    staging_clears: list[str] = []
+    releases: list[tuple[str, str]] = []
+
+    async def fake_heartbeat(**_kwargs) -> None:
+        await asyncio.Future()
+
+    async def fake_workflow(**_kwargs):
+        if failure_mode == "exception":
+            raise RuntimeError("kg crashed after publish")
+        return err_result("kg_sync_failed", "kg failed after publish")
+
+    @contextmanager
+    def fake_trace(**_kwargs):
+        yield None
+
+    monkeypatch.setattr(
+        build_lifecycle,
+        "get_settings",
+        lambda: SimpleNamespace(knowledge_graph=SimpleNamespace(sync_after_docgen=True)),
+    )
+    monkeypatch.setattr(build_lifecycle, "_new_build_session_id", lambda: "build-session-published")
+    monkeypatch.setattr(build_lifecycle, "langsmith_trace", fake_trace)
+    monkeypatch.setattr(build_lifecycle, "maintain_knowledge_build_lock_lease", fake_heartbeat)
+    monkeypatch.setattr(build_lifecycle, "_still_owns_build_lock", lambda **_kwargs: True)
+    monkeypatch.setattr(
+        build_lifecycle,
+        "read_knowledge_build_lock",
+        lambda *args, **kwargs: build_store.KnowledgeBuildLock(
+            requested_at=now,
+            build_group_id="group-published",
+            phase="published",
+            publish_started_at=now,
+            publish_completed_at=now,
+            publish_token="publish-token",
+        ),
+    )
+    monkeypatch.setattr(
+        build_lifecycle,
+        "_load_confirmed_plan_payload",
+        lambda **_kwargs: (
+            SimpleNamespace(planner_session_id="planner-1", digest_mode="systematic"),
+            {"plan": "confirmed"},
+        ),
+    )
+    monkeypatch.setattr(build_lifecycle, "_confirmed_plan_model_override", lambda _payload: None)
+    monkeypatch.setattr(
+        build_lifecycle,
+        "_mark_confirmed_plan_status",
+        lambda **kwargs: plan_statuses.append(str(kwargs["status"])),
+    )
+    monkeypatch.setattr(
+        build_lifecycle,
+        "_write_docgen_status",
+        lambda *args, **kwargs: docgen_writes.append(dict(kwargs)),
+    )
+    monkeypatch.setattr(
+        build_lifecycle,
+        "_write_graph_status",
+        lambda *args, **kwargs: graph_writes.append(dict(kwargs)),
+    )
+    monkeypatch.setattr(
+        build_lifecycle,
+        "_clear_docgen_staging_safely",
+        lambda *args, **kwargs: staging_clears.append("clear"),
+    )
+    monkeypatch.setattr(
+        build_lifecycle,
+        "release_knowledge_build_lock",
+        lambda course_id, *, build_group_id, **_kwargs: releases.append((course_id, build_group_id)) or True,
+    )
+    monkeypatch.setattr(digest_workflows, "run_docgen_workflow", fake_workflow)
+    monkeypatch.setattr(prefetch_module, "cancel_docgen_kg_prefetch", lambda **_kwargs: None)
+
+    asyncio.run(
+        build_lifecycle.run_docgen_background(
+            course_id=COURSE_ID,
+            course_name="Linear Algebra",
+            file_ids=["file-ready"],
+            prompt="build",
+            requested_at=now,
+            build_group_id="group-published",
+            confirmed_plan_id="plan-1",
+            user_id=USER_ID,
+        )
+    )
+
+    assert [write["status"] for write in docgen_writes] == ["running", "completed"]
+    assert graph_writes[-1]["status"] == "failed"
+    assert plan_statuses == ["building", "completed"]
+    assert staging_clears == ["clear"]
+    assert releases == [(COURSE_ID, "group-published")]
+
+
+def test_docgen_background_marks_completed_when_cancelled_publish_drain_succeeds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.workflows.digest as digest_workflows
+    from app.workflows.digest.kg_doc_sync.lib import prefetch as prefetch_module
+
+    now = datetime.now(timezone.utc)
+    publish_started = Event()
+    allow_publish_finish = Event()
+    publish_finished = Event()
+    docgen_writes: list[dict[str, object]] = []
+    graph_writes: list[dict[str, object]] = []
+    plan_statuses: list[str] = []
+    staging_clears: list[str] = []
+    releases: list[tuple[str, str]] = []
+
+    async def fake_heartbeat(**_kwargs) -> None:
+        await asyncio.Future()
+
+    async def publish_worker() -> None:
+        publish_started.set()
+        assert await asyncio.to_thread(allow_publish_finish.wait, 2)
+        publish_finished.set()
+
+    async def fake_workflow(**_kwargs):
+        worker_task = asyncio.create_task(publish_worker())
+        try:
+            await asyncio.shield(worker_task)
+        except asyncio.CancelledError:
+            await worker_task
+            raise
+        raise AssertionError("workflow should have been cancelled during publish")
+
+    @contextmanager
+    def fake_trace(**_kwargs):
+        yield None
+
+    def read_lock(*_args, **_kwargs) -> build_store.KnowledgeBuildLock:
+        if publish_finished.is_set():
+            return build_store.KnowledgeBuildLock(
+                requested_at=now,
+                build_group_id="group-publish-cancel",
+                phase="published",
+                publish_started_at=now,
+                publish_completed_at=now,
+                publish_token="publish-token",
+            )
+        return build_store.KnowledgeBuildLock(
+            requested_at=now,
+            build_group_id="group-publish-cancel",
+        )
+
+    monkeypatch.setattr(
+        build_lifecycle,
+        "get_settings",
+        lambda: SimpleNamespace(knowledge_graph=SimpleNamespace(sync_after_docgen=True)),
+    )
+    monkeypatch.setattr(build_lifecycle, "_new_build_session_id", lambda: "build-session-publish-cancel")
+    monkeypatch.setattr(build_lifecycle, "langsmith_trace", fake_trace)
+    monkeypatch.setattr(build_lifecycle, "maintain_knowledge_build_lock_lease", fake_heartbeat)
+    monkeypatch.setattr(build_lifecycle, "_still_owns_build_lock", lambda **_kwargs: True)
+    monkeypatch.setattr(build_lifecycle, "read_knowledge_build_lock", read_lock)
+    monkeypatch.setattr(
+        build_lifecycle,
+        "_load_confirmed_plan_payload",
+        lambda **_kwargs: (
+            SimpleNamespace(planner_session_id="planner-1", digest_mode="systematic"),
+            {"plan": "confirmed"},
+        ),
+    )
+    monkeypatch.setattr(build_lifecycle, "_confirmed_plan_model_override", lambda _payload: None)
+    monkeypatch.setattr(
+        build_lifecycle,
+        "_mark_confirmed_plan_status",
+        lambda **kwargs: plan_statuses.append(str(kwargs["status"])),
+    )
+    monkeypatch.setattr(
+        build_lifecycle,
+        "_write_docgen_status",
+        lambda *args, **kwargs: docgen_writes.append(dict(kwargs)),
+    )
+    monkeypatch.setattr(
+        build_lifecycle,
+        "_write_graph_status",
+        lambda *args, **kwargs: graph_writes.append(dict(kwargs)),
+    )
+    monkeypatch.setattr(
+        build_lifecycle,
+        "_clear_docgen_staging_safely",
+        lambda *args, **kwargs: staging_clears.append("clear"),
+    )
+    monkeypatch.setattr(
+        build_lifecycle,
+        "release_knowledge_build_lock",
+        lambda course_id, *, build_group_id, **_kwargs: releases.append((course_id, build_group_id)) or True,
+    )
+    monkeypatch.setattr(digest_workflows, "run_docgen_workflow", fake_workflow)
+    monkeypatch.setattr(prefetch_module, "cancel_docgen_kg_prefetch", lambda **_kwargs: None)
+
+    async def run_scenario() -> None:
+        task = asyncio.create_task(
+            build_lifecycle.run_docgen_background(
+                course_id=COURSE_ID,
+                course_name="Linear Algebra",
+                file_ids=["file-ready"],
+                prompt="build",
+                requested_at=now,
+                build_group_id="group-publish-cancel",
+                confirmed_plan_id="plan-1",
+                user_id=USER_ID,
+            )
+        )
+        assert await asyncio.to_thread(publish_started.wait, 2)
+
+        task.cancel()
+        await asyncio.sleep(0.05)
+        assert task.done() is False
+        assert publish_finished.is_set() is False
+
+        allow_publish_finish.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(run_scenario())
+
+    assert publish_finished.is_set() is True
+    assert [write["status"] for write in docgen_writes] == ["running", "completed"]
+    assert graph_writes[-1]["status"] == "cancelled"
+    assert plan_statuses == ["building", "completed"]
+    assert staging_clears == ["clear"]
+    assert releases == [(COURSE_ID, "group-publish-cancel")]
 
 
 def test_cancel_knowledge_build_does_not_interrupt_maintenance_lock(
@@ -744,6 +1898,42 @@ def test_clear_course_knowledge_stops_when_maintenance_lease_is_lost(
     assert events == ["acquire", "heartbeat-start", "heartbeat-stop", "release"]
 
 
+@pytest.mark.parametrize(
+    ("build_group_id", "cancel_requested"),
+    [
+        ("knowledge-clear:owner", False),
+        ("group-cancelled", True),
+    ],
+)
+def test_runtime_fallback_ignores_non_runnable_build_locks(
+    monkeypatch: pytest.MonkeyPatch,
+    build_group_id: str,
+    cancel_requested: bool,
+) -> None:
+    now = datetime.now(timezone.utc)
+    status_updates: list[dict[str, object]] = []
+    monkeypatch.setattr(build_lifecycle, "read_knowledge_build_runtime", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        build_lifecycle,
+        "read_knowledge_build_lock",
+        lambda *args, **kwargs: build_store.KnowledgeBuildLock(
+            requested_at=now,
+            build_group_id=build_group_id,
+            cancel_requested_at=now if cancel_requested else None,
+        ),
+    )
+    monkeypatch.setattr(
+        build_lifecycle,
+        "update_knowledge_build_lane_status",
+        lambda *args, **kwargs: status_updates.append(dict(kwargs)),
+    )
+
+    result = build_lifecycle._resolve_runtime_build_status(course_id=COURSE_ID)
+
+    assert result is None
+    assert status_updates == []
+
+
 def test_runtime_preview_metrics_and_build_runtime_result(monkeypatch: pytest.MonkeyPatch) -> None:
     now = datetime.now(timezone.utc)
     scope = build_course_storage_scope(user_id=USER_ID, course_id=COURSE_ID)
@@ -789,7 +1979,7 @@ def test_runtime_preview_metrics_and_build_runtime_result(monkeypatch: pytest.Mo
     monkeypatch.setattr(build_lifecycle, "resolve_course_storage_scope", lambda *args, **kwargs: scope)
     monkeypatch.setattr(build_lifecycle, "get_content_store", lambda: store)
     monkeypatch.setattr(build_lifecycle, "run_store_sync", lambda func, *args, default=None, **kwargs: func(*args, **kwargs))
-    monkeypatch.setattr(build_lifecycle, "read_knowledge_manifest", lambda *args, **kwargs: manifest)
+    monkeypatch.setattr(build_lifecycle, "_resolve_current_published_manifest", lambda *args, **kwargs: manifest)
     monkeypatch.setattr(build_lifecycle, "read_knowledge_build_runtime", lambda *args, **kwargs: runtime)
     monkeypatch.setattr(
         build_lifecycle,
@@ -855,7 +2045,7 @@ def test_build_runtime_training_unlocks_on_graph_terminal_states(monkeypatch: py
     monkeypatch.setattr(build_lifecycle, "resolve_course_storage_scope", lambda *args, **kwargs: scope)
     monkeypatch.setattr(build_lifecycle, "get_content_store", lambda: store)
     monkeypatch.setattr(build_lifecycle, "run_store_sync", lambda func, *args, default=None, **kwargs: func(*args, **kwargs))
-    monkeypatch.setattr(build_lifecycle, "read_knowledge_manifest", lambda *args, **kwargs: manifest)
+    monkeypatch.setattr(build_lifecycle, "_resolve_current_published_manifest", lambda *args, **kwargs: manifest)
     monkeypatch.setattr(
         build_lifecycle,
         "get_settings",
@@ -1002,7 +2192,7 @@ def test_build_runtime_backfills_graph_status_from_latest_sync_run(
     monkeypatch.setattr(build_lifecycle, "resolve_course_storage_scope", lambda *args, **kwargs: scope)
     monkeypatch.setattr(build_lifecycle, "get_content_store", lambda: store)
     monkeypatch.setattr(build_lifecycle, "run_store_sync", lambda func, *args, default=None, **kwargs: func(*args, **kwargs))
-    monkeypatch.setattr(build_lifecycle, "read_knowledge_manifest", lambda *args, **kwargs: manifest)
+    monkeypatch.setattr(build_lifecycle, "_resolve_current_published_manifest", lambda *args, **kwargs: manifest)
     monkeypatch.setattr(
         build_lifecycle,
         "read_knowledge_build_runtime",
@@ -1030,6 +2220,78 @@ def test_build_runtime_backfills_graph_status_from_latest_sync_run(
     assert result.graph_metrics.source_ref_count == 21
     assert result.graph_metrics.revision_no == 2
     assert result.graph_metrics.last_synced_doc_version_no == 3
+
+
+def test_build_runtime_uses_committed_docs_when_manifest_projection_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+) -> None:
+    _seed_course_and_files(session)
+    now = datetime.now(timezone.utc)
+    scope = build_course_storage_scope(user_id=USER_ID, course_id=COURSE_ID)
+    session.add(
+        KnowledgeDocument(
+            course_id=COURSE_ID,
+            chapter_index=1,
+            title="矩阵",
+            markdown_content="# 矩阵",
+            markdown_path=(
+                f"{scope.namespace}/knowledge_markdowns/versions/"
+                "v0001/token-hash/chapter_001.md"
+            ),
+            source_file_ids='["file-ready"]',
+            version_no=1,
+            build_session_id="build-published",
+            is_current=True,
+            status="published",
+            published_at=now,
+        )
+    )
+    session.commit()
+    docgen_status = build_store.KnowledgeBuildRuntimeStatus(
+        requested_at=now,
+        build_kind="docgen",
+        build_group_id="group-published",
+        build_session_id="build-published",
+        status="completed",
+        stage="completed",
+        prompt="published prompt",
+        progress_pct=100,
+    )
+    monkeypatch.setattr(build_lifecycle, "get_content_store", lambda: _TextStore())
+    monkeypatch.setattr(
+        build_lifecycle,
+        "run_store_sync",
+        lambda func, *args, default=None, **kwargs: func(*args, **kwargs),
+    )
+    monkeypatch.setattr(
+        build_lifecycle,
+        "read_knowledge_manifest",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("manifest store unavailable")),
+    )
+    monkeypatch.setattr(
+        build_lifecycle,
+        "read_knowledge_build_runtime",
+        lambda *args, **kwargs: build_store.KnowledgeBuildRuntimeEnvelope(
+            build_group_id="group-published",
+            docgen_runtime=docgen_status,
+        ),
+    )
+    monkeypatch.setattr(
+        build_lifecycle,
+        "get_settings",
+        lambda: SimpleNamespace(knowledge_graph=SimpleNamespace(sync_after_docgen=False)),
+    )
+
+    result = build_lifecycle.get_knowledge_build_runtime_result(
+        session,
+        course_id=COURSE_ID,
+        course_scope=scope,
+    )
+
+    assert result.docs_ready is True
+    assert result.graph_status == "skipped"
+    assert result.training_unlocked is True
 
 
 def test_get_docgen_result_assembles_published_draft_and_runtime(monkeypatch: pytest.MonkeyPatch, session: Session) -> None:
@@ -1060,7 +2322,7 @@ def test_get_docgen_result_assembles_published_draft_and_runtime(monkeypatch: py
     monkeypatch.setattr(build_lifecycle, "get_content_store", lambda: store)
     monkeypatch.setattr(build_lifecycle, "resolve_course_storage_scope", lambda *args, **kwargs: scope)
     monkeypatch.setattr(build_lifecycle, "run_store_sync", lambda func, *args, default=None, **kwargs: func(*args, **kwargs))
-    monkeypatch.setattr(build_lifecycle, "read_knowledge_manifest", lambda *args, **kwargs: manifest)
+    monkeypatch.setattr(build_lifecycle, "_resolve_current_published_manifest", lambda *args, **kwargs: manifest)
     monkeypatch.setattr(build_lifecycle, "read_knowledge_build_runtime", lambda *args, **kwargs: runtime)
     monkeypatch.setattr(build_lifecycle, "_load_current_published_markdown", lambda *args, **kwargs: ("# Published\n\n正文", now))
     monkeypatch.setattr(build_lifecycle, "load_current_interactive_overlays", lambda *args, **kwargs: [])

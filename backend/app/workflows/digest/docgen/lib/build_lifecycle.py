@@ -92,6 +92,10 @@ from app.workflows.digest.docgen.lib.interactive_overlays import (
     apply_interactive_overlays_to_markdown,
     load_current_interactive_overlays,
 )
+from app.workflows.digest.docgen.lib.published_manifest import (
+    resolve_published_versioned_paths,
+    select_published_knowledge_manifest,
+)
 from app.workflows.digest.docgen.lib.public_markdown import sanitize_public_markdown
 from app.workflows.digest.planner import (
     get_confirmed_build_plan,
@@ -121,6 +125,52 @@ def _still_owns_build_lock(
             error=str(exc),
         )
         return False
+
+
+def _docgen_publish_completed_for_owner(
+    *,
+    course_id: str,
+    build_group_id: str,
+    build_session_id: str | None,
+    course_scope: CourseStorageScope,
+) -> bool:
+    try:
+        lock = read_knowledge_build_lock(course_id, course_scope=course_scope)
+    except Exception as exc:
+        logger.warning(
+            "knowledge_build_publish_state_read_failed",
+            course_id=course_id,
+            build_group_id=build_group_id,
+            error=str(exc),
+        )
+        lock = None
+    lock_marks_published = bool(
+        lock is not None
+        and lock.build_group_id == build_group_id
+        and (
+            lock.phase == "published"
+            or lock.publish_completed_at is not None
+        )
+    )
+    if lock_marks_published:
+        return True
+
+    session_id = str(build_session_id or "").strip()
+    if not session_id:
+        return False
+    try:
+        with managed_session() as session:
+            docs = get_current_published_docs(session, course_id)
+    except Exception as exc:
+        logger.warning(
+            "knowledge_build_publish_database_receipt_read_failed",
+            course_id=course_id,
+            build_group_id=build_group_id,
+            build_session_id=session_id,
+            error=str(exc),
+        )
+        return False
+    return any(str(doc.build_session_id or "").strip() == session_id for doc in docs)
 
 
 def _clean_prompt(prompt: str | None) -> str | None:
@@ -159,6 +209,43 @@ def _new_build_session_id() -> str:
 
 def _session_context(session: Session | None):
     return nullcontext(session) if session is not None else managed_session()
+
+
+def _resolve_current_published_manifest(
+    session: Session | None,
+    *,
+    course_id: str,
+    course_scope: CourseStorageScope,
+    build_status,
+):
+    try:
+        stored_manifest = read_knowledge_manifest(course_id, course_scope=course_scope)
+    except Exception as exc:
+        logger.warning(
+            "knowledge_manifest_projection_read_failed",
+            course_id=course_id,
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+        stored_manifest = None
+    try:
+        with _session_context(session) as db_session:
+            return select_published_knowledge_manifest(
+                db_session,
+                course_id=course_id,
+                course_scope=course_scope,
+                stored_manifest=stored_manifest,
+                prompt=(build_status.prompt if build_status is not None else None),
+                build_session_id=(build_status.build_session_id if build_status is not None else None),
+            )
+    except Exception as exc:
+        logger.warning(
+            "knowledge_manifest_database_reconciliation_failed",
+            course_id=course_id,
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+        return stored_manifest
 
 
 def _clear_docgen_staging_safely(
@@ -292,21 +379,10 @@ def _load_current_published_markdown(
     manifest,
 ) -> tuple[str, datetime | None]:
     cs = get_content_store()
-    manifest_titles = [str(title).strip() for title in list(getattr(manifest, "chapter_titles", []) or []) if str(title).strip()]
-    stored_markdown = _normalize_public_result_markdown(
-        run_store_sync(
-            cs.read_text,
-            course_scope.knowledge_doc_key("merged_knowledge_base.md"),
-            default="",
-        )
-        or "",
-        allowed_h1_titles=manifest_titles,
-    )
-    if stored_markdown:
-        return stored_markdown, manifest.updated_at if manifest is not None else None
-
     with _session_context(session) as db_session:
         docs = get_current_published_docs(db_session, course_id)
+    if not docs:
+        return "", None
     parts: list[str] = []
     updated_at: datetime | None = None
     for doc in docs:
@@ -319,7 +395,39 @@ def _load_current_published_markdown(
         for candidate in (doc.updated_at, doc.published_at, doc.created_at):
             if candidate is not None and (updated_at is None or candidate > updated_at):
                 updated_at = candidate
-    return ("\n\n---\n\n".join(parts)).strip(), updated_at
+    versioned_paths = resolve_published_versioned_paths(docs, course_scope=course_scope)
+    if versioned_paths.parent is not None:
+        versioned_merged = _normalize_public_result_markdown(
+            run_store_sync(
+                cs.read_text,
+                f"{versioned_paths.parent}/merged_knowledge_base.md",
+                default="",
+            )
+            or "",
+            allowed_h1_titles=[str(doc.title or "").strip() for doc in docs],
+        )
+        if versioned_merged:
+            return versioned_merged, updated_at
+    if parts:
+        return ("\n\n---\n\n".join(parts)).strip(), updated_at
+    if versioned_paths.detected:
+        return "", updated_at
+
+    manifest_titles = [
+        str(title).strip()
+        for title in list(getattr(manifest, "chapter_titles", []) or [])
+        if str(title).strip()
+    ]
+    stored_markdown = _normalize_public_result_markdown(
+        run_store_sync(
+            cs.read_text,
+            course_scope.knowledge_doc_key("merged_knowledge_base.md"),
+            default="",
+        )
+        or "",
+        allowed_h1_titles=manifest_titles,
+    )
+    return stored_markdown, manifest.updated_at if stored_markdown and manifest is not None else None
 
 
 def _resolve_preview_chapter_titles(*, draft_markdown: str, manifest) -> list[str]:
@@ -607,13 +715,22 @@ def _resolve_runtime_build_status(
         build_lock = read_knowledge_build_lock(course_id, session=session, course_scope=course_scope)
     else:
         build_lock = None
-    if effective is None and build_lock is not None:
+    lock_owner = str(build_lock.build_group_id or "").strip() if build_lock is not None else ""
+    lock_phase = str(getattr(build_lock, "phase", "active") or "active").strip()
+    if (
+        effective is None
+        and build_lock is not None
+        and lock_owner
+        and not lock_owner.startswith("knowledge-clear:")
+        and build_lock.cancel_requested_at is None
+        and lock_phase == "active"
+    ):
         effective = update_knowledge_build_lane_status(
             course_id,
             lane="docgen",
             course_scope=course_scope,
             requested_at=build_lock.requested_at,
-            build_group_id=build_lock.build_group_id,
+            build_group_id=lock_owner,
             status="running",
             stage="build_accepted",
             source_file_ids=build_lock.source_file_ids,
@@ -679,7 +796,6 @@ def get_knowledge_build_runtime_result(
             default="",
         ) or ""
     )
-    manifest = read_knowledge_manifest(course_id, course_scope=course_scope)
     runtime = read_knowledge_build_runtime(course_id, course_scope=course_scope)
     graph_expected = bool(get_settings().knowledge_graph.sync_after_docgen)
     aggregate_runtime = build_aggregate_knowledge_build_status(
@@ -687,6 +803,12 @@ def get_knowledge_build_runtime_result(
         graph_expected=graph_expected,
     )
     docgen_runtime = runtime.docgen_runtime if runtime is not None else None
+    manifest = _resolve_current_published_manifest(
+        session,
+        course_id=course_id,
+        course_scope=course_scope,
+        build_status=docgen_runtime,
+    )
     graph_runtime = runtime.graph_runtime if runtime is not None else None
     docs_ready = manifest is not None
     graph_status = (graph_runtime.status if graph_runtime is not None else "").strip()
@@ -1210,6 +1332,12 @@ async def run_docgen_background(
         )
         if result.failed:
             cancel_docgen_kg_prefetch(course_id=course_id, build_session_id=build_session_id)
+            docgen_published = _docgen_publish_completed_for_owner(
+                course_id=course_id,
+                build_group_id=build_group_id,
+                build_session_id=build_session_id,
+                course_scope=course_scope,
+            )
             if not _still_owns_build_lock(
                 course_id=course_id,
                 build_group_id=build_group_id,
@@ -1233,30 +1361,52 @@ async def run_docgen_background(
                     requested_at=requested_at,
                     build_group_id=build_group_id,
                     course_scope=course_scope,
-                    status="skipped",
-                    stage="blocked_by_docgen_failure",
-                    current_stage_description="知识文档构建失败，未继续图谱同步。",
-            )
-            _clear_docgen_staging_safely(course_id, course_scope=course_scope)
-            _write_docgen_status(
-                course_id,
-                requested_at=requested_at,
-                build_group_id=build_group_id,
-                course_scope=course_scope,
-                status="failed",
-                stage="failed",
-                build_session_id=build_session_id,
-                planner_session_id=planner_session_id,
-                confirmed_plan_id=confirmed_plan_id,
-                digest_mode=resolved_digest_mode,
-                error_message=result.error.detail,
-                draft_available=False,
-            )
+                    status="failed" if docgen_published else "skipped",
+                    stage="failed" if docgen_published else "blocked_by_docgen_failure",
+                    error_message=result.error.detail if docgen_published else None,
+                    current_stage_description=(
+                        "知识文档已发布，但后续图谱构建失败。"
+                        if docgen_published
+                        else "知识文档构建失败，未继续图谱同步。"
+                    ),
+                )
+            if docgen_published:
+                _write_docgen_status(
+                    course_id,
+                    requested_at=requested_at,
+                    build_group_id=build_group_id,
+                    course_scope=course_scope,
+                    status="completed",
+                    stage="completed",
+                    build_session_id=build_session_id,
+                    planner_session_id=planner_session_id,
+                    confirmed_plan_id=confirmed_plan_id,
+                    digest_mode=resolved_digest_mode,
+                    error_message=None,
+                    draft_available=False,
+                    current_stage_description="知识文档已发布完成。",
+                )
+            else:
+                _clear_docgen_staging_safely(course_id, course_scope=course_scope)
+                _write_docgen_status(
+                    course_id,
+                    requested_at=requested_at,
+                    build_group_id=build_group_id,
+                    course_scope=course_scope,
+                    status="failed",
+                    stage="failed",
+                    build_session_id=build_session_id,
+                    planner_session_id=planner_session_id,
+                    confirmed_plan_id=confirmed_plan_id,
+                    digest_mode=resolved_digest_mode,
+                    error_message=result.error.detail,
+                    draft_available=False,
+                )
             _mark_confirmed_plan_status(
                 course_id=course_id,
                 user_id=user_id,
                 confirmed_plan_id=confirmed_plan_id,
-                status="failed",
+                status="completed" if docgen_published else "failed",
             )
             logger.error("knowledge_build_failed", course_id=course_id, error=result.error.detail)
             lifecycle_outputs = {
@@ -1337,6 +1487,12 @@ async def run_docgen_background(
         }
     except asyncio.CancelledError:
         cancel_docgen_kg_prefetch(course_id=course_id, build_session_id=build_session_id)
+        docgen_published = _docgen_publish_completed_for_owner(
+            course_id=course_id,
+            build_group_id=build_group_id,
+            build_session_id=build_session_id,
+            course_scope=course_scope,
+        )
         if not _still_owns_build_lock(
             course_id=course_id,
             build_group_id=build_group_id,
@@ -1354,7 +1510,7 @@ async def run_docgen_background(
                 "build_group_id": build_group_id,
             }
             raise
-        if sync_graph_after_docgen and not docgen_published:
+        if sync_graph_after_docgen:
             _write_graph_status(
                 course_id,
                 requested_at=requested_at,
@@ -1363,9 +1519,29 @@ async def run_docgen_background(
                 status="cancelled",
                 stage="cancelled",
                 error_message="build_cancelled",
-                current_stage_description="图谱构建已取消。",
-        )
-        if not docgen_published:
+                current_stage_description=(
+                    "知识文档已发布，后续图谱构建已取消。"
+                    if docgen_published
+                    else "图谱构建已取消。"
+                ),
+            )
+        if docgen_published:
+            _write_docgen_status(
+                course_id,
+                requested_at=requested_at,
+                build_group_id=build_group_id,
+                course_scope=course_scope,
+                status="completed",
+                stage="completed",
+                build_session_id=build_session_id,
+                planner_session_id=planner_session_id,
+                confirmed_plan_id=confirmed_plan_id,
+                digest_mode=resolved_digest_mode,
+                error_message=None,
+                draft_available=False,
+                current_stage_description="知识文档已发布完成。",
+            )
+        else:
             _clear_docgen_staging_safely(course_id, course_scope=course_scope)
             _write_docgen_status(
                 course_id,
@@ -1397,6 +1573,12 @@ async def run_docgen_background(
         raise
     except Exception as exc:
         cancel_docgen_kg_prefetch(course_id=course_id, build_session_id=build_session_id)
+        docgen_published = _docgen_publish_completed_for_owner(
+            course_id=course_id,
+            build_group_id=build_group_id,
+            build_session_id=build_session_id,
+            course_scope=course_scope,
+        )
         if not _still_owns_build_lock(
             course_id=course_id,
             build_group_id=build_group_id,
@@ -1416,17 +1598,38 @@ async def run_docgen_background(
                 "error_type": type(exc).__name__,
             }
             return
-        if sync_graph_after_docgen and not docgen_published:
+        if sync_graph_after_docgen:
             _write_graph_status(
                 course_id,
                 requested_at=requested_at,
                 build_group_id=build_group_id,
                 course_scope=course_scope,
-                status="skipped",
-                stage="blocked_by_docgen_failure",
-                current_stage_description="知识文档构建异常失败，未完成图谱同步。",
-        )
-        if not docgen_published:
+                status="failed" if docgen_published else "skipped",
+                stage="failed" if docgen_published else "blocked_by_docgen_failure",
+                error_message="build_crashed" if docgen_published else None,
+                current_stage_description=(
+                    "知识文档已发布，但后续图谱构建异常失败。"
+                    if docgen_published
+                    else "知识文档构建异常失败，未完成图谱同步。"
+                ),
+            )
+        if docgen_published:
+            _write_docgen_status(
+                course_id,
+                requested_at=requested_at,
+                build_group_id=build_group_id,
+                course_scope=course_scope,
+                status="completed",
+                stage="completed",
+                build_session_id=build_session_id,
+                planner_session_id=planner_session_id,
+                confirmed_plan_id=confirmed_plan_id,
+                digest_mode=resolved_digest_mode,
+                error_message=None,
+                draft_available=False,
+                current_stage_description="知识文档已发布完成。",
+            )
+        else:
             _clear_docgen_staging_safely(course_id, course_scope=course_scope)
             _write_docgen_status(
                 course_id,
@@ -1490,9 +1693,14 @@ def get_docgen_result(
     cs = get_content_store()
     course_scope = course_scope or resolve_course_storage_scope(course_id, session=session)
     draft_key = course_scope.knowledge_build_prefix() + "merged_knowledge_base.md"
-    manifest = read_knowledge_manifest(course_id, course_scope=course_scope)
     runtime = read_knowledge_build_runtime(course_id, course_scope=course_scope)
     docgen_build_status = runtime.docgen_runtime if runtime is not None else None
+    manifest = _resolve_current_published_manifest(
+        session,
+        course_id=course_id,
+        course_scope=course_scope,
+        build_status=docgen_build_status,
+    )
     try:
         markdown, published_updated_at = _load_current_published_markdown(
             session,

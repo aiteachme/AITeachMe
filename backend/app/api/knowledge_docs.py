@@ -846,7 +846,7 @@ async def knowledge_build(
             background_task,
             kind="knowledge.build.docs",
             course_id=normalized,
-            name=f"knowledge.build.docs:{normalized}",
+            name=f"knowledge.build.docs:{normalized}:{build_group_id}",
         )
     except BaseException:
         close = getattr(background_task, "close", None)

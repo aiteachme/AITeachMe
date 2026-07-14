@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import mimetypes
 from collections.abc import Mapping
 from datetime import datetime
@@ -13,6 +14,7 @@ import httpx
 import structlog
 
 from app.shared.infra.env_support import get_env
+from app.shared.infra.knowledge.build_store import append_knowledge_build_recent_event
 from app.shared.infra.llm_support import GeneratedImage, agenerate_image
 from app.shared.infra.settings import get_settings
 from app.shared.infra.settings.support import (
@@ -20,7 +22,7 @@ from app.shared.infra.settings.support import (
     resolve_runtime_llm_provider,
 )
 from app.shared.infra.storage import get_content_store, resolve_course_storage_scope
-from app.shared.infra.knowledge.build_store import append_knowledge_build_recent_event
+from app.shared.infra.workflow.runtime import await_shielded_and_drain
 from app.utils.time import utcnow
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, get_docgen_model_policy
 
@@ -188,33 +190,6 @@ def build_docgen_cover_markdown(artifact: Mapping[str, Any] | None) -> str:
     return f"![]({asset_path})"
 
 
-def _is_docgen_cover_filename(filename: str) -> bool:
-    lowered = str(filename or "").strip().lower()
-    return lowered.startswith("docgen_cover_") or lowered.startswith("cover.")
-
-
-async def _cleanup_stale_docgen_covers(*, namespace: str, keep_key: str) -> None:
-    """Keep one stable DocGen cover in assets/docgen/.
-
-    Older builds used build-session-specific names. Once the current build
-    writes the stable cover path, those legacy images only create duplicate
-    files and confuse Markdown asset resolution.
-    """
-
-    cs = get_content_store()
-    prefix = f"{namespace}/assets/docgen/"
-    try:
-        keys = await cs.list_prefix(prefix)
-        for key in keys:
-            if key == keep_key:
-                continue
-            filename = key.rsplit("/", 1)[-1]
-            if _is_docgen_cover_filename(filename):
-                await cs.delete(key)
-    except Exception as exc:  # pragma: no cover - best-effort cleanup
-        logger.warning("docgen_cover_cleanup_failed", namespace=namespace, error=str(exc))
-
-
 async def read_docgen_cover_artifact(course_id: str) -> dict[str, Any] | None:
     cs = get_content_store()
     course_scope = resolve_course_storage_scope(course_id)
@@ -253,7 +228,8 @@ async def generate_docgen_cover_artifact(
     plan: str | None,
     digest_mode: str | None,
     confirmed_plan: Mapping[str, Any] | None,
-    requested_at: datetime | None = None,
+    requested_at: datetime,
+    build_group_id: str | None,
     file_summaries: list[Mapping[str, Any]] | None = None,
     intent_profile: Mapping[str, Any] | None = None,
 ) -> dict[str, Any] | None:
@@ -310,13 +286,17 @@ async def generate_docgen_cover_artifact(
             image = result.images[0]
             image_bytes, mime_type = await _image_bytes(image)
             extension = _mime_extension(mime_type)
-            filename = f"cover{extension}"
+            cover_identity = (
+                str(build_session_id or "").strip()
+                or str(build_group_id or "").strip()
+                or requested_at.isoformat()
+            )
+            cover_fingerprint = hashlib.sha256(cover_identity.encode("utf-8")).hexdigest()[:16]
+            filename = f"cover.{cover_fingerprint}{extension}"
             storage_key = f"{course_scope.namespace}/assets/docgen/{filename}"
             # merged_knowledge_base.md lives under knowledge_markdowns/, so it
             # needs to walk up one level to reach the sibling assets/ tree.
             asset_path = f"../assets/docgen/{filename}"
-            await cs.write_bytes(storage_key, image_bytes)
-            await _cleanup_stale_docgen_covers(namespace=course_scope.namespace, keep_key=storage_key)
             artifact = {
                 "kind": "docgen_cover",
                 "asset_path": asset_path,
@@ -328,13 +308,19 @@ async def generate_docgen_cover_artifact(
                 "prompt": prompt,
                 "cover_markdown": build_docgen_cover_markdown({"asset_path": asset_path}),
             }
-            await cs.write_json_raw(
-                course_scope.knowledge_build_prefix() + DOCGEN_COVER_ARTIFACT_NAME,
-                artifact,
-            )
+
+            async def persist_cover_artifact() -> None:
+                await cs.write_bytes(storage_key, image_bytes)
+                await cs.write_json_raw(
+                    course_scope.knowledge_build_prefix() + DOCGEN_COVER_ARTIFACT_NAME,
+                    artifact,
+                )
+
+            await await_shielded_and_drain(persist_cover_artifact())
             append_knowledge_build_recent_event(
                 course_id,
                 requested_at=requested_at,
+                build_group_id=build_group_id,
                 event={
                     "stage": "docgen_cover_ready",
                     "summary": "文档封面已生成，将在发布时置于文档顶部。",

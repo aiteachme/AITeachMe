@@ -38,7 +38,6 @@ def _patch_manual_graph_trigger_inputs(monkeypatch: pytest.MonkeyPatch) -> None:
             structured_context={"doc_version_no": 1, "chapters": []},
         ),
     )
-    monkeypatch.setattr(kg_builds, "read_knowledge_manifest", lambda *args, **kwargs: None)
 
 
 def _build_tiny_graph() -> StateGraph:
@@ -72,10 +71,12 @@ def test_manual_graph_trigger_requires_course_build_lock(monkeypatch: pytest.Mon
 def test_manual_graph_trigger_releases_lock_when_spawn_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_manual_graph_trigger_inputs(monkeypatch)
     released: list[tuple[str, str]] = []
+    spawned: list[dict[str, object]] = []
 
     class _FailingRegistry:
         @staticmethod
-        def spawn(_coro, **_kwargs):
+        def spawn(_coro, **kwargs):
+            spawned.append(kwargs)
             raise RuntimeError("registry unavailable")
 
     monkeypatch.setattr(kg_builds, "acquire_knowledge_build_lock", lambda *args, **kwargs: True)
@@ -96,6 +97,7 @@ def test_manual_graph_trigger_releases_lock_when_spawn_fails(monkeypatch: pytest
 
     assert len(released) == 1
     assert released[0][0] == MANUAL_GRAPH_COURSE_ID
+    assert spawned[0]["name"] == f"knowledge.build.graph:{MANUAL_GRAPH_COURSE_ID}:{released[0][1]}"
 
 
 @pytest.mark.anyio

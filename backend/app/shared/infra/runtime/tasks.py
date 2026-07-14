@@ -194,9 +194,10 @@ class BackgroundTaskRegistry:
         *,
         kind: str | None = None,
         course_id: str | None = None,
+        name: str | None = None,
         timeout_s: float = 3.0,
     ) -> int:
-        """Cancel active tasks matching kind and course, returning task count."""
+        """Cancel active tasks matching kind, course, and exact name."""
 
         with self._lock:
             records = [
@@ -204,6 +205,7 @@ class BackgroundTaskRegistry:
                 for record in self._tasks.values()
                 if (kind is None or record.kind == kind)
                 and (course_id is None or record.course_id == course_id)
+                and (name is None or record.name == name)
             ]
         if not records:
             return 0
@@ -221,6 +223,7 @@ class BackgroundTaskRegistry:
                 "background_task_cancel_timeout",
                 kind=kind,
                 course_id=course_id,
+                name=name,
                 completed=len(done),
                 pending=len(pending),
             )

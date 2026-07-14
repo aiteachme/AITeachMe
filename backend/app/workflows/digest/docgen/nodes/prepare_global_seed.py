@@ -64,6 +64,7 @@ def build_prepare_global_seed_node(*, context: WorkflowContext):
         update_knowledge_build_status(
             state["course_id"],
             requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
             status="running",
             stage="preparing_docgen_global_seed",
             digest_mode=state.get("digest_mode") or None,
@@ -72,6 +73,7 @@ def build_prepare_global_seed_node(*, context: WorkflowContext):
         append_knowledge_build_recent_event(
             state["course_id"],
             requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
             event={
                 "stage": "preparing_docgen_global_seed",
                 "summary": "开始准备 DocGen 全局种子：推断文档级意图并摘要文件材料。",
@@ -138,6 +140,7 @@ def build_prepare_global_seed_node(*, context: WorkflowContext):
         append_knowledge_build_recent_event(
             state["course_id"],
             requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
             event={
                 "stage": "docgen_global_seed_ready",
                 "summary": f"DocGen 全局种子准备完成：意图推断 1 次，文件摘要 {len(file_summaries)} 份。",

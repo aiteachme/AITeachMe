@@ -357,6 +357,8 @@ def build_docs_sync_graph(*, context: WorkflowContext) -> StateGraph:
 def create_docs_sync_initial_state(
     *,
     course_id: str,
+    build_group_id: str,
+    build_lock_phase: str,
     markdown: str,
     build_revision_no: int | None,
     build_session_id: str | None = None,
@@ -367,6 +369,8 @@ def create_docs_sync_initial_state(
 ) -> DocsSyncState:
     return {
         "course_id": course_id,
+        "build_group_id": build_group_id,
+        "build_lock_phase": build_lock_phase,
         "markdown": markdown,
         "course_context": course_context or "",
         "structured_context": dict(structured_context or {}),
@@ -396,6 +400,8 @@ def _normalize_docs_sync_inputs(
 async def run_graph_docs_sync_workflow(
     *,
     course_id: str,
+    build_group_id: str,
+    build_lock_phase: str,
     markdown: str,
     build_revision_no: int | None = None,
     build_session_id: str | None = None,
@@ -415,6 +421,8 @@ async def run_graph_docs_sync_workflow(
         )
         error_course_id = normalized_course_id
         context_metadata: dict[str, object] = {
+            "build_group_id": build_group_id,
+            "build_lock_phase": build_lock_phase,
             "build_session_id": build_session_id or "",
             "lane": "kg_doc_sync",
             "langsmith_run_name": RUN_NAME_KG_DOC_SYNC,
@@ -434,6 +442,8 @@ async def run_graph_docs_sync_workflow(
             graph_builder=lambda: build_docs_sync_graph(context=context),
             initial_state=create_docs_sync_initial_state(
                 course_id=normalized_course_id,
+                build_group_id=build_group_id,
+                build_lock_phase=build_lock_phase,
                 markdown=normalized_markdown,
                 build_revision_no=normalized_revision,
                 build_session_id=build_session_id,

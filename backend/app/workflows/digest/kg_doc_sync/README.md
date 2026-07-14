@@ -53,18 +53,17 @@ early_units_callback
 
 边界：不写 `KnowledgeUnit`、`KnowledgeEdge`、`SourceRef`。
 
-## 0.5 DocGen 发布前候选
+## 0.5 DocGen 发布前草稿
 
 DocGen 的 `prepare_knowledge_graph` 会在 `merge_review / sync_locked_titles` 之后、`publish_document` 之前收口 `docgen_kg_draft`。
 
-如果质量门通过，DocGen 会提前写入可查询的 `KnowledgeUnit` 和端点唯一、方向合法的候选 `KnowledgeEdge`，让图谱面板和 examine/profile 依赖的骨架尽早可见。
+质量门通过时只标记该草稿可供发布后的 fast-finalize 复用。发布前不写可查询的 `KnowledgeUnit`、`KnowledgeEdge` 或 `KnowledgeGraphSourceRef`，避免进程崩溃留下没有对应已发布文档的图谱半成品。
 
 边界：
 
-- 不写 `KnowledgeGraphSourceRef`。
-- 不废弃旧节点/旧边。
-- 如果 KnowledgeDoc 发布前失败，会回滚本轮早写候选。
-- 发布后的 `persist` 仍是 source_ref、补抽、废弃收口和 sync_run 完成状态的权威落库。
+- `docgen_kg_draft` 保留在 DocGen 状态，并随发布产物传给最终同步。
+- `KnowledgeUnit`、`KnowledgeEdge`、source_ref、补抽、废弃收口和 sync_run 完成状态只由发布后的 `persist` 权威落库。
+- `kg_draft_early_persist_metrics` 仅作为旧状态兼容字段保留，当前值为 deferred 且所有发布前写入计数为 0。
 
 ## 1. `prepare`
 

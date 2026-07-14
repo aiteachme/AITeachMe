@@ -12,7 +12,9 @@ import structlog
 from sqlmodel import Session
 
 from app.models.course import Course
+from app.repositories.knowledge.docgen_repo import get_current_published_docs
 from app.schemas.knowledge import KnowledgeGraphBuildData
+from app.shared.infra.database import managed_session
 from app.shared.infra.exceptions import AITeachMeError, CourseBuildLockConflictError
 from app.shared.infra.knowledge.build_store import (
     KnowledgeBuildLock,
@@ -20,7 +22,6 @@ from app.shared.infra.knowledge.build_store import (
     acquire_knowledge_build_lock,
     is_knowledge_build_lock_owner,
     read_knowledge_build_runtime,
-    read_knowledge_manifest,
     release_knowledge_build_lock,
     sanitize_knowledge_build_error_message,
     update_knowledge_build_lane_status,
@@ -170,8 +171,10 @@ def _current_doc_version_no(
     *,
     course_scope: CourseStorageScope | None = None,
 ) -> int:
-    manifest = read_knowledge_manifest(course_id, course_scope=course_scope)
-    return int(manifest.version_no or 0) if manifest is not None else 0
+    del course_scope
+    with managed_session() as session:
+        docs = get_current_published_docs(session, course_id)
+    return max((int(doc.version_no or doc.version or 0) for doc in docs), default=0)
 
 
 def _schedule_exam_prewarm_after_completed_graph(
@@ -407,10 +410,8 @@ def trigger_graph_docs_sync_manual_build(
             status_code=422,
         )
 
-    manifest = read_knowledge_manifest(course.id, course_scope=course_scope)
-    manifest_source_file_ids = list(manifest.source_file_ids) if manifest is not None else []
-    source_file_ids = manifest_source_file_ids or _collect_graph_source_file_ids(sync_input.structured_context)
-    prompt = manifest.prompt if manifest is not None else None
+    source_file_ids = _collect_graph_source_file_ids(sync_input.structured_context)
+    prompt = docgen_status.prompt if docgen_status is not None else None
     requested_at = utcnow()
     build_group_id = uuid.uuid4().hex
     build_session_id = uuid.uuid4().hex
@@ -468,7 +469,7 @@ def trigger_graph_docs_sync_manual_build(
             background_task_registry,
             background_coro,
             course_id=course.id,
-            name=f"knowledge.build.graph:{course.id}",
+            name=f"knowledge.build.graph:{course.id}:{build_group_id}",
         )
     except BaseException:
         close = getattr(background_coro, "close", None)
@@ -594,6 +595,8 @@ async def run_graph_docs_sync_after_doc_build(
     with use_llm_runtime_snapshot(llm_snapshot):
         sync_result = await run_graph_docs_sync_workflow(
             course_id=course_id,
+            build_group_id=build_group_id,
+            build_lock_phase="active" if enforce_build_lock else "published",
             markdown=knowledge_doc_markdown,
             build_revision_no=doc_version_no,
             build_session_id=build_session_id,

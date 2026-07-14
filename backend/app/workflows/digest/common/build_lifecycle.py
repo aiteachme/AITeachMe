@@ -18,7 +18,9 @@ import structlog
 from sqlmodel import Session
 
 from app.models.course import Course
+from app.repositories.knowledge.docgen_repo import get_docs_by_course
 from app.schemas.knowledge import DocGenBuildCancelData
+from app.shared.infra.database import managed_session
 from app.shared.infra.knowledge.build_store import (
     STALE_BUILD_LOCK_TTL,
     KnowledgeBuildRuntimeEnvelope,
@@ -158,12 +160,72 @@ def _is_active_build_status(status: str | None) -> bool:
     return str(status or "").strip() in ACTIVE_KNOWLEDGE_BUILD_STATUSES
 
 
+def _lock_marks_docgen_published(lock: Any | None) -> bool:
+    return bool(
+        lock is not None
+        and (
+            str(getattr(lock, "phase", "") or "").strip() == "published"
+            or getattr(lock, "publish_completed_at", None) is not None
+        )
+    )
+
+
+def _docgen_publish_completed_after_cancellation(
+    *,
+    course_id: str,
+    build_group_id: str,
+    build_session_id: str | None,
+    course_scope: CourseStorageScope,
+) -> bool | None:
+    try:
+        lock = read_knowledge_build_lock(course_id, course_scope=course_scope)
+    except Exception as exc:
+        logger.warning(
+            "knowledge_build_cancel_publish_state_read_failed",
+            course_id=course_id,
+            build_group_id=build_group_id,
+            error=str(exc),
+        )
+        lock = None
+    if (
+        lock is not None
+        and lock.build_group_id == build_group_id
+        and _lock_marks_docgen_published(lock)
+    ):
+        return True
+    if (
+        lock is not None
+        and lock.build_group_id == build_group_id
+        and lock.phase == "active"
+        and lock.cancel_requested_at is not None
+    ):
+        return False
+
+    session_id = str(build_session_id or "").strip()
+    if not session_id:
+        return None
+    try:
+        with managed_session() as receipt_session:
+            docs = get_docs_by_course(receipt_session, course_id)
+    except Exception as exc:
+        logger.warning(
+            "knowledge_build_cancel_publish_database_receipt_read_failed",
+            course_id=course_id,
+            build_group_id=build_group_id,
+            build_session_id=session_id,
+            error=str(exc),
+        )
+        return None
+    return any(str(doc.build_session_id or "").strip() == session_id for doc in docs)
+
+
 def mark_knowledge_build_runtime_cancelled(
     course_id: str,
     *,
     build_group_id: str,
     course_scope: CourseStorageScope,
     runtime: KnowledgeBuildRuntimeEnvelope | None = None,
+    docgen_published: bool | None = False,
 ) -> None:
     """Mark only active runtime lanes that belong to the cancelled lock owner."""
 
@@ -182,21 +244,27 @@ def mark_knowledge_build_runtime_cancelled(
         docgen_status is not None
         and docgen_status.build_group_id == owner
         and _is_active_build_status(docgen_status.status)
+        and docgen_published is not None
     ):
+        docgen_status_value = "completed" if docgen_published else "cancelled"
         update_knowledge_build_lane_status(
             course_id,
             lane="docgen",
             course_scope=course_scope,
             requested_at=docgen_status.requested_at,
             build_group_id=owner,
-            status="cancelled",
-            stage="cancelled",
-            error_message="build_cancelled",
+            status=docgen_status_value,
+            stage=docgen_status_value,
+            error_message=None if docgen_published else "build_cancelled",
             draft_available=False,
             planner_session_id=docgen_status.planner_session_id,
             confirmed_plan_id=docgen_status.confirmed_plan_id,
             digest_mode=docgen_status.digest_mode,
-            current_stage_description="本轮知识构建已被用户终止。",
+            current_stage_description=(
+                "知识文档已发布完成，正在停止后续图谱构建。"
+                if docgen_published
+                else "本轮知识构建已被用户终止。"
+            ),
         )
 
     graph_status = resolved_runtime.graph_runtime
@@ -277,13 +345,46 @@ async def maintain_knowledge_build_lock_lease(
                 course_scope=course_scope,
             )
         except Exception as exc:
+            unconfirmed_seconds = monotonic() - last_confirmed_at
             logger.warning(
                 "knowledge_build_lock_read_after_renew_rejected_failed",
                 course_id=course_id,
                 build_group_id=build_group_id,
                 error=str(exc),
+                unconfirmed_seconds=round(unconfirmed_seconds, 3),
             )
-            lock = None
+            if unconfirmed_seconds >= BUILD_LOCK_RENEW_DEADLINE_SECONDS:
+                logger.error(
+                    "knowledge_build_lock_read_deadline_exceeded",
+                    course_id=course_id,
+                    build_group_id=build_group_id,
+                    unconfirmed_seconds=round(unconfirmed_seconds, 3),
+                )
+                owner_task.cancel()
+                return
+            next_delay = min(
+                BUILD_LOCK_RENEW_RETRY_SECONDS,
+                max(
+                    0.1,
+                    BUILD_LOCK_RENEW_DEADLINE_SECONDS - unconfirmed_seconds,
+                ),
+            )
+            continue
+
+        if (
+            lock is not None
+            and lock.build_group_id == build_group_id
+            and lock.cancel_requested_at is None
+        ):
+            last_confirmed_at = monotonic()
+            next_delay = BUILD_LOCK_RENEW_RETRY_SECONDS
+            logger.info(
+                "knowledge_build_lock_renew_confirmed_by_read",
+                course_id=course_id,
+                build_group_id=build_group_id,
+                phase=lock.phase,
+            )
+            continue
 
         if (
             lock is not None
@@ -296,6 +397,7 @@ async def maintain_knowledge_build_lock_lease(
                     course_id,
                     build_group_id=build_group_id,
                     course_scope=course_scope,
+                    docgen_published=_lock_marks_docgen_published(lock),
                 )
             except Exception as exc:
                 logger.warning(
@@ -362,18 +464,34 @@ async def cancel_knowledge_build(
             requested_at=requested_at,
         )
 
+    # A successful request atomically observed either an active or published lock.
+    # Active locks can no longer enter publish after cancellation. If neither the
+    # lock nor the committed document receipt is readable, preserve the DocGen and
+    # plan terminal state instead of guessing that publication did not happen.
+    docgen_published = _docgen_publish_completed_after_cancellation(
+        course_id=course.id,
+        build_group_id=lock_owner,
+        build_session_id=(
+            docgen_status.build_session_id
+            if docgen_status is not None and docgen_status.build_group_id == lock_owner
+            else None
+        ),
+        course_scope=course_scope,
+    )
     mark_knowledge_build_runtime_cancelled(
         course.id,
         build_group_id=lock_owner,
         course_scope=course_scope,
         runtime=runtime,
+        docgen_published=docgen_published,
     )
 
     confirmed_plan_id = (
         docgen_status.confirmed_plan_id
-        if docgen_status is not None
+        if docgen_published is not None
+        and docgen_status is not None
         and docgen_status.build_group_id == lock_owner
-        and _is_active_build_status(docgen_status.status)
+        and (docgen_published or _is_active_build_status(docgen_status.status))
         else None
     )
     if confirmed_plan_id is not None:
@@ -382,7 +500,7 @@ async def cancel_knowledge_build(
             course_id=course.id,
             user_id=user_id,
             plan_id=confirmed_plan_id,
-            status="cancelled",
+            status="completed" if docgen_published else "cancelled",
         )
 
     cancelled_task_count = 0
@@ -391,10 +509,12 @@ async def cancel_knowledge_build(
             background_task_registry.cancel_matching(
                 kind="knowledge.build.docs",
                 course_id=course.id,
+                name=f"knowledge.build.docs:{course.id}:{lock_owner}",
             ),
             background_task_registry.cancel_matching(
                 kind="knowledge.build.graph",
                 course_id=course.id,
+                name=f"knowledge.build.graph:{course.id}:{lock_owner}",
             ),
         )
         cancelled_task_count = sum(int(count or 0) for count in cancelled_counts)

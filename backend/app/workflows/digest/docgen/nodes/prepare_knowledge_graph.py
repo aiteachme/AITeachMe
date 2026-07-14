@@ -2,19 +2,20 @@
 
 from __future__ import annotations
 
+import asyncio
 from time import perf_counter
 from typing import Any
 
-from app.shared.infra.database import managed_session
-from app.shared.infra.knowledge.build_store import append_knowledge_build_recent_event, update_knowledge_build_status
+from app.shared.infra.knowledge.build_store import (
+    append_knowledge_build_recent_event,
+    update_knowledge_build_status,
+)
 from app.shared.infra.settings import get_settings
 from app.shared.infra.workflow.context import WorkflowContext
-from app.shared.infra.workflow.live_stream import publish_workflow_stream_event
 from app.utils.time import utcnow
 from app.workflows.digest.docgen.lib.pipeline_artifacts import build_docgen_kg_draft
 from app.workflows.digest.docgen.nodes.common import publish_docgen_progress
 from app.workflows.digest.docgen.state import DocGenState
-from app.workflows.digest.kg_doc_sync.lib.incremental_sync import persist_docgen_kg_draft_graph_early
 from app.workflows.digest.kg_doc_sync.lib.prefetch import (
     await_docgen_kg_prefetch,
     snapshot_docgen_kg_prefetch,
@@ -102,68 +103,63 @@ async def _await_prefetch(
     )
 
 
-def _persist_draft_graph_before_publish(*, course_id: str, draft: dict[str, Any]) -> dict[str, object]:
-    if not bool(draft.get("quality_ready") or draft.get("fast_visible_ready")):
-        return {
-            "ok": True,
-            "skipped": True,
-            "skip_reason": "docgen_kg_draft_quality_not_ready",
-        }
-    with managed_session() as session:
-        return persist_docgen_kg_draft_graph_early(
-            session,
-            course_id=course_id,
-            docgen_kg_draft=draft,
-            require_quality_ready=not bool(draft.get("fast_visible_ready")),
-        )
+def _deferred_pre_publish_metrics(*, sync_after_docgen: bool) -> dict[str, object]:
+    """Keep the legacy state shape without exposing KG rows before publish."""
 
-
-def _publish_graph_lane_preview(
-    *,
-    course_id: str,
-    state: DocGenState,
-    metrics: dict[str, object],
-    early_persist_metrics: dict[str, object],
-) -> None:
-    unit_count = int(early_persist_metrics.get("unit_count", 0) or 0)
-    edge_count = int(early_persist_metrics.get("edge_count", 0) or 0)
-    if unit_count <= 0:
-        return
-    graph_metrics = {
-        **dict(metrics),
-        "graph_active_unit_count": unit_count,
-        "graph_active_edge_count": edge_count,
-        "doc_sync_unit_changes": unit_count,
-        "doc_sync_edge_changes": edge_count,
-        "revision_no": int(early_persist_metrics.get("build_revision_no", 0) or 0),
+    return {
+        "ok": True,
+        "skipped": True,
+        "skip_reason": (
+            "deferred_until_document_publish"
+            if sync_after_docgen
+            else "knowledge_graph_sync_disabled"
+        ),
+        "persisted": 0,
+        "unit_count": 0,
+        "created_unit_count": 0,
+        "updated_unit_count": 0,
+        "edge_count": 0,
+        "created_edge_count": 0,
+        "updated_edge_count": 0,
     }
-    update_knowledge_build_status(
-        course_id,
-        requested_at=state["requested_at"],
-        build_kind="graph",
-        status="running",
-        stage="knowledge_graph_prefetch_prepared",
-        digest_mode=state.get("digest_mode") or None,
-        metrics=graph_metrics,
-        current_stage_description="可预览知识图谱已写入，文档发布后将继续补齐证据和关系。",
-    )
 
 
 def build_prepare_knowledge_graph_node(*, context: WorkflowContext):
     """Build the DocGen-side KG preparation node.
 
-    This node makes the DocGen sidecar extraction visible right after
-    review/repair, so merge/title/publish can continue while a queryable graph
-    skeleton is already available. Source refs, catch-up extraction, and
-    deprecated cleanup remain owned by final sync.
+    This node finishes the DocGen sidecar draft after review/repair. The draft
+    remains in workflow state until the document is published; only the final
+    sync may persist query-visible graph rows.
     """
 
     async def prepare_knowledge_graph_node(state: DocGenState) -> dict[str, object]:
         started_at = perf_counter()
         settings = get_settings()
         course_id = state["course_id"]
+        build_group_id = str(state.get("build_group_id") or "").strip()
         build_session_id = str(state.get("build_session_id") or "").strip()
         node_logger = context.get_logger().bind(node="prepare_knowledge_graph")
+
+        def finalize_failure_result(
+            *,
+            error: str,
+            cancel_after_rollback: bool,
+            prefetch_status: str,
+            prefetch_metrics: dict[str, object],
+            prefetch_ready: bool,
+            draft: dict[str, Any],
+            early_persist_metrics: dict[str, object],
+        ) -> dict[str, object]:
+            return {
+                "error": error,
+                "cancel_after_rollback": cancel_after_rollback,
+                "kg_prefetch_status": prefetch_status,
+                "kg_prefetch_metrics": dict(prefetch_metrics),
+                "kg_prefetch_ready": prefetch_ready,
+                "docgen_kg_draft": draft,
+                "kg_draft_early_persist_metrics": dict(early_persist_metrics),
+                "graph_prepare_ms": int((perf_counter() - started_at) * 1000),
+            }
 
         if not settings.knowledge_graph.sync_after_docgen or not settings.knowledge_graph.prefetch_during_docgen:
             metrics = {
@@ -202,80 +198,72 @@ def build_prepare_knowledge_graph_node(*, context: WorkflowContext):
                     "docgen_kg_examine_profile_ready": 1 if quality_audit.get("examine_profile_ready") else 0,
                 }
             )
-            if settings.knowledge_graph.sync_after_docgen:
-                try:
-                    early_persist_metrics = _persist_draft_graph_before_publish(course_id=course_id, draft=draft)
-                except Exception as exc:
-                    early_persist_metrics = {
-                        "ok": False,
-                        "skipped": True,
-                        "skip_reason": "docgen_kg_draft_pre_publish_persist_failed",
-                        "error": str(exc),
-                    }
-                    node_logger.warning(
-                        "docgen_kg_draft_pre_publish_persist_failed",
-                        course_id=course_id,
-                        build_session_id=build_session_id,
-                        error_type=type(exc).__name__,
-                        error=str(exc),
-                    )
-            else:
-                early_persist_metrics = {
-                    "ok": True,
-                    "skipped": True,
-                    "skip_reason": "knowledge_graph_sync_disabled",
-                }
-            metrics["docgen_kg_pre_publish_unit_count"] = int(early_persist_metrics.get("unit_count", 0) or 0)
-            metrics["docgen_kg_pre_publish_edge_count"] = int(early_persist_metrics.get("edge_count", 0) or 0)
-            metrics["docgen_kg_pre_publish_persisted"] = 0 if early_persist_metrics.get("skipped") else 1
-            _publish_graph_lane_preview(
-                course_id=course_id,
-                state=state,
-                metrics=metrics,
-                early_persist_metrics=early_persist_metrics,
+            early_persist_metrics = _deferred_pre_publish_metrics(
+                sync_after_docgen=settings.knowledge_graph.sync_after_docgen
             )
-            if int(early_persist_metrics.get("unit_count", 0) or 0) > 0:
-                publish_workflow_stream_event(
+            try:
+                metrics["docgen_kg_pre_publish_unit_count"] = 0
+                metrics["docgen_kg_pre_publish_edge_count"] = 0
+                metrics["docgen_kg_pre_publish_persisted"] = 0
+                update_knowledge_build_status(
                     course_id,
-                    "graph_delta",
-                    {
-                        "stage": "prepare_knowledge_graph",
-                        "build_revision_no": int(early_persist_metrics.get("build_revision_no", 0) or 0),
-                        "unit_count": int(early_persist_metrics.get("unit_count", 0) or 0),
-                        "created_unit_count": int(early_persist_metrics.get("created_unit_count", 0) or 0),
-                        "updated_unit_count": int(early_persist_metrics.get("updated_unit_count", 0) or 0),
-                        "edge_count": int(early_persist_metrics.get("edge_count", 0) or 0),
-                        "created_edge_count": int(early_persist_metrics.get("created_edge_count", 0) or 0),
-                        "updated_edge_count": int(early_persist_metrics.get("updated_edge_count", 0) or 0),
-                        "deprecated_edge_count": 0,
-                        "emitted_at": utcnow().isoformat(),
-                    },
+                    requested_at=state["requested_at"],
+                    build_group_id=build_group_id,
+                    status="running",
+                    stage="knowledge_graph_prefetch_prepared",
+                    digest_mode=state.get("digest_mode") or None,
+                    metrics=dict(metrics),
+                    current_stage_description="知识图谱规则候选已准备，后续会在最终同步中补齐并固化。",
                 )
-            update_knowledge_build_status(
-                course_id,
-                requested_at=state["requested_at"],
-                status="running",
-                stage="knowledge_graph_prefetch_prepared",
-                digest_mode=state.get("digest_mode") or None,
-                metrics=dict(metrics),
-                current_stage_description="知识图谱规则候选已准备，后续会在最终同步中补齐并固化。",
-            )
-            return {
-                "kg_prefetch_status": "skipped",
-                "kg_prefetch_metrics": metrics,
-                "kg_prefetch_ready": False,
-                "docgen_kg_draft": draft,
-                "kg_draft_early_persist_metrics": early_persist_metrics,
-                "graph_prepare_ms": int((perf_counter() - started_at) * 1000),
-            }
+                return {
+                    "kg_prefetch_status": "skipped",
+                    "kg_prefetch_metrics": metrics,
+                    "kg_prefetch_ready": False,
+                    "docgen_kg_draft": draft,
+                    "kg_draft_early_persist_metrics": early_persist_metrics,
+                    "graph_prepare_ms": int((perf_counter() - started_at) * 1000),
+                }
+            except asyncio.CancelledError:
+                node_logger.info(
+                    "knowledge_graph_prepare_finalize_cancelled",
+                    course_id=course_id,
+                    build_session_id=build_session_id,
+                )
+                return finalize_failure_result(
+                    error="knowledge_build_cancelled",
+                    cancel_after_rollback=True,
+                    prefetch_status="skipped",
+                    prefetch_metrics=metrics,
+                    prefetch_ready=False,
+                    draft=draft,
+                    early_persist_metrics=early_persist_metrics,
+                )
+            except Exception as exc:
+                node_logger.warning(
+                    "knowledge_graph_prepare_finalize_failed",
+                    course_id=course_id,
+                    build_session_id=build_session_id,
+                    error_type=type(exc).__name__,
+                    error=str(exc),
+                )
+                return finalize_failure_result(
+                    error="knowledge_graph_prepare_finalize_failed",
+                    cancel_after_rollback=False,
+                    prefetch_status="skipped",
+                    prefetch_metrics=metrics,
+                    prefetch_ready=False,
+                    draft=draft,
+                    early_persist_metrics=early_persist_metrics,
+                )
 
         update_knowledge_build_status(
             course_id,
             requested_at=state["requested_at"],
+            build_group_id=build_group_id,
             status="running",
             stage="preparing_knowledge_graph",
             digest_mode=state.get("digest_mode") or None,
-            current_stage_description="正在等待知识图谱预抽取完成，准备在发布前提前展示候选图谱。",
+            current_stage_description="正在等待知识图谱预抽取完成，准备供文档发布后正式固化。",
         )
 
         final_title_changed = int(dict(state.get("title_review_report") or {}).get("changed_count", 0) or 0) > 0
@@ -383,114 +371,119 @@ def build_prepare_knowledge_graph_node(*, context: WorkflowContext):
         metrics["docgen_kg_diagnostic_unit_count"] = int(quality_audit.get("diagnostic_unit_count", 0) or 0)
         metrics["docgen_kg_structure_edge_count"] = int(quality_audit.get("structure_edge_count", 0) or 0)
         metrics["docgen_kg_examine_profile_ready"] = 1 if quality_audit.get("examine_profile_ready") else 0
+        early_persist_metrics = _deferred_pre_publish_metrics(
+            sync_after_docgen=settings.knowledge_graph.sync_after_docgen
+        )
         try:
-            early_persist_metrics = _persist_draft_graph_before_publish(course_id=course_id, draft=draft)
-        except Exception as exc:
-            early_persist_metrics = {
-                "ok": False,
-                "skipped": True,
-                "skip_reason": "docgen_kg_draft_pre_publish_persist_failed",
-                "error": str(exc),
+            metrics["docgen_kg_pre_publish_unit_count"] = 0
+            metrics["docgen_kg_pre_publish_edge_count"] = 0
+            metrics["docgen_kg_pre_publish_persisted"] = 0
+            elapsed_ms = int((perf_counter() - started_at) * 1000)
+            update_knowledge_build_status(
+                course_id,
+                requested_at=state["requested_at"],
+                build_group_id=build_group_id,
+                status="running",
+                stage="knowledge_graph_prefetch_prepared",
+                digest_mode=state.get("digest_mode") or None,
+                metrics=dict(metrics),
+                current_stage_description=(
+                    "知识图谱候选已准备，文档收口和最终固化将继续进行。"
+                    if draft.get("fast_visible_ready")
+                    else "知识图谱候选已准备但仍需最终同步补齐，文档收口将继续进行。"
+                ),
+            )
+
+            append_knowledge_build_recent_event(
+                course_id,
+                requested_at=state["requested_at"],
+                build_group_id=build_group_id or None,
+                event={
+                    "stage": "knowledge_graph_prefetch_prepared",
+                    "summary": (
+                        f"知识图谱预抽取准备完成，状态 {prefetch_status}，"
+                        f"候选 section {int(metrics.get('prefetch_section_count', 0) or 0)} 个，"
+                        f"草稿节点 {int(draft.get('node_count', 0) or 0)} 个，"
+                        f"质量状态 {metrics['docgen_kg_quality_status'] or 'unknown'}。"
+                    ),
+                    "created_at": utcnow(),
+                },
+            )
+            await publish_docgen_progress(
+                context,
+                state=state,
+                stage="knowledge_graph_prefetch_prepared",
+                payload={
+                    "kg_prefetch_status": prefetch_status,
+                    "kg_prefetch_ready": prefetch_ready,
+                    "kg_prefetch_metrics": dict(metrics),
+                    "docgen_kg_draft_node_count": int(draft.get("node_count", 0) or 0),
+                    "docgen_kg_draft_edge_count": int(draft.get("edge_count", 0) or 0),
+                    "docgen_kg_fast_visible_ready": bool(draft.get("fast_visible_ready")),
+                    "docgen_kg_chapter_coverage_ratio": draft.get("chapter_coverage_ratio", 0.0),
+                    "docgen_kg_quality_status": draft.get("quality_status"),
+                    "docgen_kg_quality_score": draft.get("quality_score"),
+                    "docgen_kg_quality_audit": quality_audit,
+                    "docgen_kg_exam_ready_unit_count": int(quality_audit.get("exam_ready_unit_count", 0) or 0),
+                    "docgen_kg_profile_ready_unit_count": int(quality_audit.get("profile_ready_unit_count", 0) or 0),
+                    "docgen_kg_diagnostic_unit_count": int(quality_audit.get("diagnostic_unit_count", 0) or 0),
+                    "docgen_kg_structure_edge_count": int(quality_audit.get("structure_edge_count", 0) or 0),
+                    "docgen_kg_edge_endpoint_ambiguity_count": int(
+                        quality_audit.get("edge_endpoint_ambiguity_count", 0) or 0
+                    ),
+                    "docgen_kg_relation_direction_issue_count": int(
+                        quality_audit.get("relation_direction_issue_count", 0) or 0
+                    ),
+                    "docgen_kg_valid_relation_edge_count": int(
+                        quality_audit.get("valid_relation_edge_count", 0) or 0
+                    ),
+                    "docgen_kg_examine_profile_ready": bool(quality_audit.get("examine_profile_ready")),
+                    "docgen_kg_pre_publish_unit_count": 0,
+                    "docgen_kg_pre_publish_edge_count": 0,
+                    "docgen_kg_pre_publish_persisted": 0,
+                },
+            )
+
+            return {
+                "kg_prefetch_status": prefetch_status,
+                "kg_prefetch_metrics": dict(metrics),
+                "kg_prefetch_ready": prefetch_ready,
+                "docgen_kg_draft": draft,
+                "kg_draft_early_persist_metrics": early_persist_metrics,
+                "graph_prepare_ms": elapsed_ms,
             }
+        except asyncio.CancelledError:
+            node_logger.info(
+                "knowledge_graph_prepare_finalize_cancelled",
+                course_id=course_id,
+                build_session_id=build_session_id,
+            )
+            return finalize_failure_result(
+                error="knowledge_build_cancelled",
+                cancel_after_rollback=True,
+                prefetch_status=prefetch_status,
+                prefetch_metrics=metrics,
+                prefetch_ready=prefetch_ready,
+                draft=draft,
+                early_persist_metrics=early_persist_metrics,
+            )
+        except Exception as exc:
             node_logger.warning(
-                "docgen_kg_draft_pre_publish_persist_failed",
+                "knowledge_graph_prepare_finalize_failed",
                 course_id=course_id,
                 build_session_id=build_session_id,
                 error_type=type(exc).__name__,
                 error=str(exc),
             )
-        metrics["docgen_kg_pre_publish_unit_count"] = int(early_persist_metrics.get("unit_count", 0) or 0)
-        metrics["docgen_kg_pre_publish_edge_count"] = int(early_persist_metrics.get("edge_count", 0) or 0)
-        metrics["docgen_kg_pre_publish_persisted"] = 0 if early_persist_metrics.get("skipped") else 1
-        _publish_graph_lane_preview(
-            course_id=course_id,
-            state=state,
-            metrics=metrics,
-            early_persist_metrics=early_persist_metrics,
-        )
-        elapsed_ms = int((perf_counter() - started_at) * 1000)
-        update_knowledge_build_status(
-            course_id,
-            requested_at=state["requested_at"],
-            status="running",
-            stage="knowledge_graph_prefetch_prepared",
-            digest_mode=state.get("digest_mode") or None,
-            metrics=dict(metrics),
-            current_stage_description=(
-                "知识图谱候选已准备，文档收口和最终固化将继续进行。"
-                if draft.get("fast_visible_ready")
-                else "知识图谱候选已准备但仍需最终同步补齐，文档收口将继续进行。"
-            ),
-        )
-
-        append_knowledge_build_recent_event(
-            course_id,
-            requested_at=state["requested_at"],
-            event={
-                "stage": "knowledge_graph_prefetch_prepared",
-                "summary": (
-                    f"知识图谱预抽取准备完成，状态 {prefetch_status}，"
-                    f"候选 section {int(metrics.get('prefetch_section_count', 0) or 0)} 个，"
-                    f"草稿节点 {int(draft.get('node_count', 0) or 0)} 个，"
-                    f"质量状态 {metrics['docgen_kg_quality_status'] or 'unknown'}。"
-                ),
-                "created_at": utcnow(),
-            },
-        )
-        await publish_docgen_progress(
-            context,
-            state=state,
-            stage="knowledge_graph_prefetch_prepared",
-            payload={
-                "kg_prefetch_status": prefetch_status,
-                "kg_prefetch_ready": prefetch_ready,
-                "kg_prefetch_metrics": dict(metrics),
-                "docgen_kg_draft_node_count": int(draft.get("node_count", 0) or 0),
-                "docgen_kg_draft_edge_count": int(draft.get("edge_count", 0) or 0),
-                "docgen_kg_fast_visible_ready": bool(draft.get("fast_visible_ready")),
-                "docgen_kg_chapter_coverage_ratio": draft.get("chapter_coverage_ratio", 0.0),
-                "docgen_kg_quality_status": draft.get("quality_status"),
-                "docgen_kg_quality_score": draft.get("quality_score"),
-                "docgen_kg_quality_audit": quality_audit,
-                "docgen_kg_exam_ready_unit_count": int(quality_audit.get("exam_ready_unit_count", 0) or 0),
-                "docgen_kg_profile_ready_unit_count": int(quality_audit.get("profile_ready_unit_count", 0) or 0),
-                "docgen_kg_diagnostic_unit_count": int(quality_audit.get("diagnostic_unit_count", 0) or 0),
-                "docgen_kg_structure_edge_count": int(quality_audit.get("structure_edge_count", 0) or 0),
-                "docgen_kg_edge_endpoint_ambiguity_count": int(quality_audit.get("edge_endpoint_ambiguity_count", 0) or 0),
-                "docgen_kg_relation_direction_issue_count": int(quality_audit.get("relation_direction_issue_count", 0) or 0),
-                "docgen_kg_valid_relation_edge_count": int(quality_audit.get("valid_relation_edge_count", 0) or 0),
-                "docgen_kg_examine_profile_ready": bool(quality_audit.get("examine_profile_ready")),
-                "docgen_kg_pre_publish_unit_count": int(early_persist_metrics.get("unit_count", 0) or 0),
-                "docgen_kg_pre_publish_edge_count": int(early_persist_metrics.get("edge_count", 0) or 0),
-                "docgen_kg_pre_publish_persisted": not bool(early_persist_metrics.get("skipped")),
-            },
-        )
-        if int(early_persist_metrics.get("unit_count", 0) or 0) > 0:
-            publish_workflow_stream_event(
-                course_id,
-                "graph_delta",
-                {
-                    "stage": "prepare_knowledge_graph",
-                    "build_revision_no": int(early_persist_metrics.get("build_revision_no", 0) or 0),
-                    "unit_count": int(early_persist_metrics.get("unit_count", 0) or 0),
-                    "created_unit_count": int(early_persist_metrics.get("created_unit_count", 0) or 0),
-                    "updated_unit_count": int(early_persist_metrics.get("updated_unit_count", 0) or 0),
-                    "edge_count": int(early_persist_metrics.get("edge_count", 0) or 0),
-                    "created_edge_count": int(early_persist_metrics.get("created_edge_count", 0) or 0),
-                    "updated_edge_count": int(early_persist_metrics.get("updated_edge_count", 0) or 0),
-                    "deprecated_edge_count": 0,
-                    "emitted_at": utcnow().isoformat(),
-                },
+            return finalize_failure_result(
+                error="knowledge_graph_prepare_finalize_failed",
+                cancel_after_rollback=False,
+                prefetch_status=prefetch_status,
+                prefetch_metrics=metrics,
+                prefetch_ready=prefetch_ready,
+                draft=draft,
+                early_persist_metrics=early_persist_metrics,
             )
-
-        return {
-            "kg_prefetch_status": prefetch_status,
-            "kg_prefetch_metrics": dict(metrics),
-            "kg_prefetch_ready": prefetch_ready,
-            "docgen_kg_draft": draft,
-            "kg_draft_early_persist_metrics": early_persist_metrics,
-            "graph_prepare_ms": elapsed_ms,
-        }
 
     return prepare_knowledge_graph_node
 
