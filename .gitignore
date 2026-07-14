@@ -18,6 +18,7 @@ Thumbs.db
 /env/
 /venv/
 /data/
+/.codex-tmp/
 .coverage*
 coverage.json
 *.log
