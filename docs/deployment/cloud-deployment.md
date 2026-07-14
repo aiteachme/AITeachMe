@@ -83,6 +83,7 @@ S3_REGION=<region>
 S3_ADDRESSING_STYLE=virtual
 CORS_ALLOWED_ORIGINS=<frontend-origins>
 AUTH_ENABLED=true
+AUTH_TOKEN_SECRET=<at-least-32-random-characters>
 LLM_API_KEY=<model-api-key>
 LLM_BASE_URL=<model-api-base-url>
 # Optional: comma-separated fallback endpoint pairs.
@@ -138,6 +139,7 @@ Environment:
   APP_MODE=cloud
   PORT=9020
   AUTH_ENABLED=true
+  AUTH_TOKEN_SECRET=<at-least-32-random-characters>
   DATABASE_URL=<postgres connection string>
   STORAGE_BACKEND=s3
   S3_*=<object storage config>
@@ -163,7 +165,7 @@ python scripts/bootstrap_cloud_db.py
 
 真正授权部署的内容必须放 GitHub Secrets：
 
-- Cloudflare Pages：`CLOUDFLARE_DEPLOY_KEY`。
+- Cloudflare Pages：Secrets `CLOUDFLARE_ACCOUNT_ID`、`CLOUDFLARE_API_TOKEN`，以及 Repository Variable `CLOUDFLARE_PAGES_PROJECT_NAME`。工作流直接上传由已验证 SHA 构建的静态产物，不使用无法绑定 commit 的 deploy hook。
 - Sealos：`SEALOS_KUBECONFIG_B64`、`ALIYUN_ACR_USERNAME`、`ALIYUN_ACR_PASSWORD`。
 
 缺少对应 Secret 时，部署 job 会跳过并在 GitHub Actions summary 中说明原因。
@@ -173,6 +175,7 @@ python scripts/bootstrap_cloud_db.py
 - 通过 Sealos 前端公网域名访问 `GET /api/health` 正常，或在集群内对后端 Pod 执行 localhost health check 正常。
 - PostgreSQL 已通过 `python scripts/bootstrap_cloud_db.py` 完成 migration、运行时对象准备和 schema 检查。
 - `STORAGE_BACKEND=s3` 时对象存储变量完整。
+- `AUTH_ENABLED=true`，且 `AUTH_TOKEN_SECRET` 是至少 32 位的随机密钥。
 - 首次接入新 OSS 可临时打开 `S3_STARTUP_SMOKE_TEST=true`，验证完成后关闭。
 - 如果使用 Office 镜像，确认 `soffice --headless --version` 可执行。
 - SSE 网关关闭响应缓冲和压缩；自建 Nginx 可参考 `infra/deployment/nginx/default.conf`。

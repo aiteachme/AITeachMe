@@ -34,6 +34,7 @@ from app.shared.infra.logger import (
 )
 from app.shared.infra.runtime import get_runtime_data_dir
 from app.shared.infra.runtime import (
+    collect_cloud_runtime_config_errors,
     get_app_version,
     resolve_auth_enabled,
     resolve_app_mode,
@@ -66,6 +67,18 @@ _SENSITIVE_SETTING_KEY_RE = re.compile(
     r"(api[_-]?key|secret|token|password|access[_-]?key|private[_-]?key|credential)",
     re.IGNORECASE,
 )
+
+
+def _ensure_cloud_runtime_config_valid() -> None:
+    """Reject incomplete cloud configuration before any database work starts."""
+
+    if resolve_app_mode() != "cloud":
+        return
+    errors = collect_cloud_runtime_config_errors()
+    if not errors:
+        return
+    logger.critical("cloud_runtime_configuration_invalid", errors=errors)
+    raise RuntimeError("cloud runtime configuration is invalid: " + "; ".join(errors))
 
 
 def _redact_for_logs(value: Any) -> Any:
@@ -389,6 +402,7 @@ def _log_infra_diagnostics(settings) -> None:
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """应用生命周期。"""
 
+    _ensure_cloud_runtime_config_valid()
     app.state.background_task_registry = BackgroundTaskRegistry()
     init_db()
 

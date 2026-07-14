@@ -32,6 +32,6 @@ USER 10001:10001
 # 默认部署端口统一为 9020；Render 等平台仍可通过 PORT 覆盖。
 EXPOSE 9020
 
-# start_cloud_app 会在 APP_MODE=cloud 时先做数据库 bootstrap，再启动 uvicorn。
+# start_cloud_app 会先校验完整云端配置并做数据库 bootstrap，再启动 uvicorn。
 # 正式多副本平台如 Sealos 可改为单独 Job 跑迁移，Web 容器只跑 uvicorn。
 CMD ["sh", "-c", "python scripts/start_cloud_app.py --host 0.0.0.0 --port ${PORT:-9020}"]
