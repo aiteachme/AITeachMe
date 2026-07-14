@@ -12,11 +12,10 @@ import {
 import type { ExamPaperDetailResponse, ExamPaperItemResponse } from "../../api/generated/model";
 import { getMasteryOverviewApiV1CoursesCourseIdProfileMasteryGetQueryKey } from "../../api/generated/profile";
 import {
-  buildApiUrl,
   getApiErrorMessage,
   LONG_RUNNING_API_TIMEOUT_MS,
+  openAuthenticatedSse,
   orvalApiClient,
-  registerBackendEventSource,
   reportBackendConnectionIssue,
 } from "../../api/client";
 import {
@@ -316,11 +315,10 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
 
   useEffect(() => {
     if (!courseId || !paperId || paper?.status !== "generating") return;
-    const stream = new EventSource(
-      buildApiUrl(`/api/v1/courses/${encodeURIComponent(courseId)}/exams/${paperId}/stream`),
-      { withCredentials: true },
+    const stream = openAuthenticatedSse(
+      `/api/v1/courses/${encodeURIComponent(courseId)}/exams/${paperId}/stream`,
+      { disconnectReason: "exam_stream_error" },
     );
-    const unregisterEventSource = registerBackendEventSource(stream);
     const historyQueryKey = getExamHistoryApiV1CoursesCourseIdExamsHistoryGetQueryKey(courseId, { page: 1, size: 24 });
     const detailQueryKey = getExamDetailApiV1CoursesCourseIdExamsExamPaperIdGetQueryKey(courseId, paperId);
 
@@ -350,7 +348,6 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
       const message = event as MessageEvent<string>;
       const payload = applySnapshotPayload(message);
       refreshPaper();
-      unregisterEventSource();
       stream.close();
       if (payload.status === "failed") {
         toast({
@@ -379,7 +376,6 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
     };
 
     return () => {
-      unregisterEventSource();
       stream.removeEventListener("done", handleDone);
       stream.removeEventListener("snapshot", handleSnapshot);
       stream.close();

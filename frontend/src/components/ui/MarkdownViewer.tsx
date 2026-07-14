@@ -26,6 +26,7 @@ import {
 
 import { getApiErrorMessage, runTrackedApiFetch } from "../../api/client";
 import { parseInteractivePreviewHref, patchHtmlForIframe, type InteractiveHtmlPreview } from "../../lib/interactiveHtml";
+import { rehypeMarkdownSanitize } from "../../lib/markdownSanitize";
 import { cn } from "../../lib/utils";
 import { MermaidBlock } from "./MermaidBlock";
 
@@ -2990,6 +2991,7 @@ export function MarkdownViewer({
   const rehypePlugins = useMemo(
     () => [
       variant === "document" && hasRawHtmlContent ? rehypeRaw : noopMarkdownPlugin,
+      variant === "document" ? rehypeMarkdownSanitize : noopMarkdownPlugin,
       hasMathContent ? [rehypeKatex, { throwOnError: false, strict: false, errorColor: "#1F2329", output: "html" }] : noopMarkdownPlugin,
       shouldHighlightCode ? rehypeHighlight : noopMarkdownPlugin,
     ] as any[],

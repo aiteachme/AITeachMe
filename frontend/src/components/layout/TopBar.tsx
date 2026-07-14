@@ -2,7 +2,7 @@ import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { BarChart3, Github, Loader2, LogIn, LogOut, MessageSquareText, User } from "lucide-react";
-import { apiClient, getApiErrorMessage } from "../../api/client";
+import { abortActiveApiRequests, apiClient, getApiErrorMessage } from "../../api/client";
 import { listCoursesApiApiV1CoursesListPost } from "../../api/generated/courses";
 import { examHistoryApiV1CoursesCourseIdExamsHistoryGet } from "../../api/generated/exams";
 import { listChatApiApiV1CoursesCourseIdChatsListPost } from "../../api/generated/chats";
@@ -357,6 +357,7 @@ export function TopBar({ className }: TopBarProps) {
         data: {},
       });
       localStorage.removeItem("token");
+      abortActiveApiRequests();
       const currentUser = response.data.current_user ?? null;
       queryClient.setQueryData(AUTH_SESSION_QUERY_KEY, response.data);
       trackAnalyticsEvent("auth_logout_succeeded", {
@@ -371,6 +372,7 @@ export function TopBar({ className }: TopBarProps) {
       setAuthUser(currentUser);
     } catch {
       localStorage.removeItem("token");
+      abortActiveApiRequests();
       resetAnalyticsIdentity();
       setAuthUser(null);
     }

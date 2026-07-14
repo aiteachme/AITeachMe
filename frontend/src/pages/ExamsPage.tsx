@@ -36,10 +36,9 @@ import type {
   ExamPaperItemResponse,
 } from "../api/generated/model";
 import {
-  buildApiUrl,
   getApiErrorMessage,
+  openAuthenticatedSse,
   orvalApiClient,
-  registerBackendEventSource,
   reportBackendConnectionIssue,
 } from "../api/client";
 import { Button } from "../components/ui/Button";
@@ -1191,11 +1190,10 @@ export function ExamsPage() {
     };
 
     const streams = generatingPaperIds.map((paperId) => {
-      const stream = new EventSource(
-        buildApiUrl(`/api/v1/courses/${encodeURIComponent(courseId)}/exams/${paperId}/stream`),
-        { withCredentials: true },
+      const stream = openAuthenticatedSse(
+        `/api/v1/courses/${encodeURIComponent(courseId)}/exams/${paperId}/stream`,
+        { disconnectReason: "exam_stream_error" },
       );
-      const unregisterEventSource = registerBackendEventSource(stream);
       const handleSnapshot = (event: Event) => {
         applySnapshot(event);
       };
@@ -1203,7 +1201,6 @@ export function ExamsPage() {
         applySnapshot(event);
         refreshHistory();
         void queryClient.invalidateQueries({ queryKey: ["exam-question-templates", courseId] });
-        unregisterEventSource();
         stream.close();
       };
 
@@ -1214,12 +1211,11 @@ export function ExamsPage() {
         refreshHistory();
       };
 
-      return { stream, handleSnapshot, handleDone, unregisterEventSource };
+      return { stream, handleSnapshot, handleDone };
     });
 
     return () => {
-      streams.forEach(({ stream, handleSnapshot, handleDone, unregisterEventSource }) => {
-        unregisterEventSource();
+      streams.forEach(({ stream, handleSnapshot, handleDone }) => {
         stream.removeEventListener("snapshot", handleSnapshot);
         stream.removeEventListener("done", handleDone);
         stream.close();
