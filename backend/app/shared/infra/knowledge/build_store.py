@@ -198,6 +198,8 @@ class KnowledgeBuildLock(BaseModel):
 
     requested_at: datetime
     build_group_id: str | None = None
+    heartbeat_at: datetime | None = None
+    cancel_requested_at: datetime | None = None
     source_file_ids: list[str] = Field(default_factory=list)
     prompt: str | None = None
 
@@ -1053,6 +1055,16 @@ def _read_build_lock_path(path: Path) -> KnowledgeBuildLock | None:
         return None
 
 
+def _build_lock_lease_at(lock: KnowledgeBuildLock) -> datetime:
+    return lock.heartbeat_at or lock.requested_at
+
+
+def _build_lock_is_stale(lock: KnowledgeBuildLock, *, now: datetime | None = None) -> bool:
+    lease_at = _build_lock_lease_at(lock)
+    current_time = now or datetime.now(lease_at.tzinfo)
+    return current_time - lease_at > STALE_BUILD_LOCK_TTL
+
+
 def read_knowledge_build_lock(
     course_id: str,
     *,
@@ -1064,7 +1076,9 @@ def read_knowledge_build_lock(
     if is_cloud_mode():
         return _cloud_read_build_lock(course_id, session=session)
     resolved_scope = _course_scope_or_resolve(course_id, course_scope, session=session)
-    return _read_build_lock_path(_local_build_lock_path(resolved_scope))
+    with _get_status_lock(course_id):
+        lock = _read_build_lock_path(_local_build_lock_path(resolved_scope))
+        return None if lock is not None and _build_lock_is_stale(lock) else lock
 
 
 def acquire_knowledge_build_lock(
@@ -1082,33 +1096,110 @@ def acquire_knowledge_build_lock(
     path = _local_build_lock_path(resolved_scope)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    existing = _read_build_lock_path(path)
-    if existing is not None and datetime.now(existing.requested_at.tzinfo) - existing.requested_at > STALE_BUILD_LOCK_TTL:
-        path.unlink(missing_ok=True)
+    with _get_status_lock(course_id):
+        existing = _read_build_lock_path(path)
+        if existing is not None and _build_lock_is_stale(existing):
+            path.unlink(missing_ok=True)
 
-    try:
-        with path.open("x", encoding="utf-8") as handle:
-            handle.write(lock.model_dump_json(indent=2))
-    except FileExistsError:
+        try:
+            with path.open("x", encoding="utf-8") as handle:
+                handle.write(lock.model_dump_json(indent=2))
+        except FileExistsError:
+            return False
+    return True
+
+
+def renew_knowledge_build_lock(
+    course_id: str,
+    *,
+    build_group_id: str,
+    course_scope: CourseStorageScope | None = None,
+) -> bool:
+    """Refresh a build lease only while ``build_group_id`` still owns it."""
+
+    owner = str(build_group_id or "").strip()
+    if not owner:
         return False
+    if is_cloud_mode():
+        return _cloud_renew_build_lock(course_id, build_group_id=owner)
+
+    resolved_scope = _course_scope_or_resolve(course_id, course_scope)
+    path = _local_build_lock_path(resolved_scope)
+    with _get_status_lock(course_id):
+        existing = _read_build_lock_path(path)
+        if (
+            existing is None
+            or existing.build_group_id != owner
+            or existing.cancel_requested_at is not None
+        ):
+            return False
+        renewed = existing.model_copy(update={"heartbeat_at": utcnow()})
+        temp_path = path.with_name(f"{path.name}.{os.getpid()}.{id(existing)}.tmp")
+        try:
+            temp_path.write_text(renewed.model_dump_json(indent=2), encoding="utf-8")
+            os.replace(temp_path, path)
+        finally:
+            temp_path.unlink(missing_ok=True)
+    return True
+
+
+def request_knowledge_build_cancellation(
+    course_id: str,
+    *,
+    build_group_id: str,
+    course_scope: CourseStorageScope | None = None,
+) -> bool:
+    """Persist a cancellation request without making the lease acquirable."""
+
+    owner = str(build_group_id or "").strip()
+    if not owner:
+        return False
+    if is_cloud_mode():
+        return _cloud_request_build_cancellation(
+            course_id,
+            build_group_id=owner,
+        )
+
+    resolved_scope = _course_scope_or_resolve(course_id, course_scope)
+    path = _local_build_lock_path(resolved_scope)
+    with _get_status_lock(course_id):
+        existing = _read_build_lock_path(path)
+        if existing is None or existing.build_group_id != owner:
+            return False
+        if existing.cancel_requested_at is not None:
+            return True
+        cancelled = existing.model_copy(update={"cancel_requested_at": utcnow()})
+        temp_path = path.with_name(f"{path.name}.{os.getpid()}.{id(existing)}.tmp")
+        try:
+            temp_path.write_text(cancelled.model_dump_json(indent=2), encoding="utf-8")
+            os.replace(temp_path, path)
+        finally:
+            temp_path.unlink(missing_ok=True)
     return True
 
 
 def release_knowledge_build_lock(
     course_id: str,
     *,
+    build_group_id: str,
     course_scope: CourseStorageScope | None = None,
-) -> None:
-    """Remove the course-level build lock if it exists."""
+) -> bool:
+    """Remove a course-level build lock only when the expected owner matches."""
 
+    owner = str(build_group_id or "").strip()
+    if not owner:
+        return False
     if is_cloud_mode():
-        _cloud_release_build_lock(course_id)
-        return
+        return _cloud_release_build_lock(course_id, build_group_id=owner)
 
     resolved_scope = _course_scope_or_resolve(course_id, course_scope)
     path = _local_build_lock_path(resolved_scope)
-    if path.exists():
-        path.unlink()
+    with _get_status_lock(course_id):
+        existing = _read_build_lock_path(path)
+        if existing is None or existing.build_group_id != owner:
+            return False
+        path.unlink(missing_ok=True)
+    return True
 
 
 def is_knowledge_build_locked(
@@ -1120,8 +1211,31 @@ def is_knowledge_build_locked(
 
     if is_cloud_mode():
         return _cloud_read_build_lock(course_id) is not None
-    resolved_scope = _course_scope_or_resolve(course_id, course_scope)
-    return _local_build_lock_path(resolved_scope).exists()
+    return read_knowledge_build_lock(course_id, course_scope=course_scope) is not None
+
+
+def is_knowledge_build_lock_owner(
+    course_id: str,
+    *,
+    build_group_id: str,
+    session: Session | None = None,
+    course_scope: CourseStorageScope | None = None,
+) -> bool:
+    """Return whether one non-stale lease is still owned by ``build_group_id``."""
+
+    owner = str(build_group_id or "").strip()
+    if not owner:
+        return False
+    lock = read_knowledge_build_lock(
+        course_id,
+        session=session,
+        course_scope=course_scope,
+    )
+    return (
+        lock is not None
+        and lock.build_group_id == owner
+        and lock.cancel_requested_at is None
+    )
 
 
 def _read_cloud_build_lock_from_session(session: Session, course_id: str) -> KnowledgeBuildLock | None:
@@ -1133,12 +1247,8 @@ def _read_cloud_build_lock_from_session(session: Session, course_id: str) -> Kno
     if record is None or record.build_lock_holder is None:
         return None
     if record.build_lock_at is not None:
-        now = datetime.now(record.build_lock_at.tzinfo) if record.build_lock_at.tzinfo else datetime.utcnow()
-        if now - record.build_lock_at > STALE_BUILD_LOCK_TTL:
-            record.build_lock_holder = None
-            record.build_lock_at = None
-            session.add(record)
-            session.commit()
+        lock_at = ensure_utc_datetime(record.build_lock_at)
+        if lock_at is not None and utcnow() - lock_at > STALE_BUILD_LOCK_TTL:
             return None
     try:
         return KnowledgeBuildLock.model_validate_json(record.build_lock_holder)
@@ -1161,6 +1271,35 @@ def _cloud_read_build_lock(
 
 
 def _cloud_acquire_build_lock(course_id: str, lock: KnowledgeBuildLock) -> bool:
+    import sqlalchemy as sa
+
+    from app.models.course import Course
+    from app.shared.infra.database import managed_session
+
+    now = utcnow()
+    stale_before = now - STALE_BUILD_LOCK_TTL
+    with managed_session() as session:
+        result = session.exec(
+            sa.update(Course)
+            .where(
+                Course.id == course_id,
+                sa.or_(
+                    Course.build_lock_holder.is_(None),
+                    Course.build_lock_at.is_(None),
+                    Course.build_lock_at <= stale_before,
+                ),
+            )
+            .values(
+                build_lock_holder=lock.model_dump_json(),
+                build_lock_at=now,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        return int(getattr(result, "rowcount", 0) or 0) == 1
+
+
+def _cloud_renew_build_lock(course_id: str, *, build_group_id: str) -> bool:
+    import sqlalchemy as sa
     from sqlmodel import select
 
     from app.models.course import Course
@@ -1168,23 +1307,79 @@ def _cloud_acquire_build_lock(course_id: str, lock: KnowledgeBuildLock) -> bool:
 
     with managed_session() as session:
         record = session.exec(select(Course).where(Course.id == course_id)).first()
-        if record is None:
+        raw_holder = record.build_lock_holder if record is not None else None
+        if not raw_holder:
+            return False
+        try:
+            existing = KnowledgeBuildLock.model_validate_json(raw_holder)
+        except Exception:
+            return False
+        if (
+            existing.build_group_id != build_group_id
+            or existing.cancel_requested_at is not None
+        ):
             return False
 
-        if record.build_lock_holder is not None:
-            if record.build_lock_at is not None:
-                now = datetime.now(record.build_lock_at.tzinfo) if record.build_lock_at.tzinfo else datetime.utcnow()
-                if now - record.build_lock_at <= STALE_BUILD_LOCK_TTL:
-                    return False
+        now = utcnow()
+        renewed = existing.model_copy(update={"heartbeat_at": now})
+        result = session.exec(
+            sa.update(Course)
+            .where(
+                Course.id == course_id,
+                Course.build_lock_holder == raw_holder,
+            )
+            .values(
+                build_lock_holder=renewed.model_dump_json(),
+                build_lock_at=now,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        return int(getattr(result, "rowcount", 0) or 0) == 1
 
-        record.build_lock_holder = lock.model_dump_json()
-        record.build_lock_at = utcnow()
-        session.add(record)
-        session.commit()
-    return True
+
+def _cloud_request_build_cancellation(
+    course_id: str,
+    *,
+    build_group_id: str,
+) -> bool:
+    import sqlalchemy as sa
+    from sqlmodel import select
+
+    from app.models.course import Course
+    from app.shared.infra.database import managed_session
+
+    for _attempt in range(3):
+        with managed_session() as session:
+            record = session.exec(select(Course).where(Course.id == course_id)).first()
+            raw_holder = record.build_lock_holder if record is not None else None
+            if not raw_holder:
+                return False
+            try:
+                existing = KnowledgeBuildLock.model_validate_json(raw_holder)
+            except Exception:
+                return False
+            if existing.build_group_id != build_group_id:
+                return False
+            if existing.cancel_requested_at is not None:
+                return True
+
+            cancelled = existing.model_copy(update={"cancel_requested_at": utcnow()})
+            result = session.exec(
+                sa.update(Course)
+                .where(
+                    Course.id == course_id,
+                    Course.build_lock_holder == raw_holder,
+                )
+                .values(build_lock_holder=cancelled.model_dump_json())
+                .execution_options(synchronize_session=False)
+            )
+            if int(getattr(result, "rowcount", 0) or 0) == 1:
+                return True
+    return False
 
 
-def _cloud_release_build_lock(course_id: str) -> None:
+def _cloud_release_build_lock(course_id: str, *, build_group_id: str) -> bool:
+    import sqlalchemy as sa
     from sqlmodel import select
 
     from app.models.course import Course
@@ -1192,11 +1387,29 @@ def _cloud_release_build_lock(course_id: str) -> None:
 
     with managed_session() as session:
         record = session.exec(select(Course).where(Course.id == course_id)).first()
-        if record is not None and record.build_lock_holder is not None:
-            record.build_lock_holder = None
-            record.build_lock_at = None
-            session.add(record)
-            session.commit()
+        raw_holder = record.build_lock_holder if record is not None else None
+        if not raw_holder:
+            return False
+        try:
+            existing = KnowledgeBuildLock.model_validate_json(raw_holder)
+        except Exception:
+            return False
+        if existing.build_group_id != build_group_id:
+            return False
+
+        result = session.exec(
+            sa.update(Course)
+            .where(
+                Course.id == course_id,
+                Course.build_lock_holder == raw_holder,
+            )
+            .values(
+                build_lock_holder=None,
+                build_lock_at=None,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        return int(getattr(result, "rowcount", 0) or 0) == 1
 
 
 def read_knowledge_build_runtime(
@@ -1629,8 +1842,6 @@ def clear_knowledge_runtime_artifacts(
     run_store_sync(cs.delete, resolved_scope.build_manifest_key(), default=None)
     run_store_sync(cs.delete, _staged_build_manifest_key(resolved_scope), default=None)
 
-    release_knowledge_build_lock(course_id, course_scope=resolved_scope)
-
 
 __all__ = [
     "KnowledgeBuildLock",
@@ -1647,12 +1858,15 @@ __all__ = [
     "clear_knowledge_runtime_artifacts",
     "clear_published_knowledge_docs_files",
     "is_knowledge_build_locked",
+    "is_knowledge_build_lock_owner",
     "read_knowledge_build_lock",
     "read_knowledge_build_runtime",
     "read_knowledge_build_aggregate_status",
     "read_knowledge_build_status",
     "read_knowledge_manifest",
     "release_knowledge_build_lock",
+    "request_knowledge_build_cancellation",
+    "renew_knowledge_build_lock",
     "sanitize_knowledge_build_error_message",
     "update_knowledge_build_lane_status",
     "update_knowledge_build_merge_preview",

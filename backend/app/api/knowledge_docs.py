@@ -67,7 +67,10 @@ from app.workflows.interact.chat.lib.streaming import SSEEventEmitter
 from app.shared.infra.database import managed_session
 from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.analytics.posthog import capture_course_build_event_later
-from app.shared.infra.knowledge.build_store import read_knowledge_build_runtime
+from app.shared.infra.knowledge.build_store import (
+    read_knowledge_build_runtime,
+    release_knowledge_build_lock,
+)
 from app.shared.infra.llm_support import run_llm_tasks
 from app.shared.infra.llm_support.model_choices import normalize_runtime_model_override, use_runtime_model_override
 from app.shared.infra.observability.trace import (
@@ -95,6 +98,29 @@ from app.workflows.digest.docgen.lib.published_manifest import ensure_published_
 
 router = APIRouter(tags=["knowledge"])
 logger = structlog.get_logger(__name__)
+
+
+def _release_docgen_build_lock_safely(
+    *,
+    course_id: str,
+    user_id: str,
+    build_group_id: str,
+) -> None:
+    try:
+        release_knowledge_build_lock(
+            course_id,
+            build_group_id=build_group_id,
+            course_scope=build_course_storage_scope(
+                user_id=user_id,
+                course_id=course_id,
+            ),
+        )
+    except Exception:
+        logger.exception(
+            "knowledge_build_lock_release_after_handoff_failure_failed",
+            course_id=course_id,
+            build_group_id=build_group_id,
+        )
 
 
 def _interactive_generation_origin(client_reference_id: str | None) -> str:
@@ -773,36 +799,37 @@ async def knowledge_build(
         embedding_resolution=body.embedding_resolution,
         confirmed_plan_id=body.confirmed_plan_id,
     )
-    _capture_course_build_event(
-        "knowledge_build_submitted",
-        course_id=normalized,
-        user_id=user.user_id,
-        insert_id_parts=[
-            _request_id(request),
-            data.confirmed_plan_id or "",
-            data.requested_at.isoformat(),
-            "submitted",
-        ],
-        properties={
-            "build_type": body.build_type,
-            "confirmed_plan_id_suffix": _suffix(data.confirmed_plan_id),
-            "file_count": len(body.file_ids or []),
-            "has_confirmed_plan": bool(data.confirmed_plan_id),
-            "has_prompt": bool((body.prompt or "").strip()),
-            "embedding_resolution": body.embedding_resolution,
-        },
-    )
+    background_task = None
+    try:
+        _capture_course_build_event(
+            "knowledge_build_submitted",
+            course_id=normalized,
+            user_id=user.user_id,
+            insert_id_parts=[
+                _request_id(request),
+                data.confirmed_plan_id or "",
+                data.requested_at.isoformat(),
+                "submitted",
+            ],
+            properties={
+                "build_type": body.build_type,
+                "confirmed_plan_id_suffix": _suffix(data.confirmed_plan_id),
+                "file_count": len(body.file_ids or []),
+                "has_confirmed_plan": bool(data.confirmed_plan_id),
+                "has_prompt": bool((body.prompt or "").strip()),
+                "embedding_resolution": body.embedding_resolution,
+            },
+        )
 
-    logger.info(
-        "knowledge_build_docs_background_spawning",
-        course_id=normalized,
-        user_id=user.user_id,
-        confirmed_plan_id=data.confirmed_plan_id,
-        accepted_file_count=len(accepted_file_ids),
-        requested_at=data.requested_at.isoformat(),
-    )
-    request.app.state.background_task_registry.spawn(
-        run_docgen_background(
+        logger.info(
+            "knowledge_build_docs_background_spawning",
+            course_id=normalized,
+            user_id=user.user_id,
+            confirmed_plan_id=data.confirmed_plan_id,
+            accepted_file_count=len(accepted_file_ids),
+            requested_at=data.requested_at.isoformat(),
+        )
+        background_task = run_docgen_background(
             course_id=normalized,
             course_name=course_record.name,
             file_ids=accepted_file_ids,
@@ -814,11 +841,36 @@ async def knowledge_build(
             model_override=data.model_override,
             user_id=user.user_id,
             background_task_registry=getattr(request.app.state, "background_task_registry", None),
-        ),
-        kind="knowledge.build.docs",
-        course_id=normalized,
-        name=f"knowledge.build.docs:{normalized}",
-    )
+        )
+        spawned_task = request.app.state.background_task_registry.spawn(
+            background_task,
+            kind="knowledge.build.docs",
+            course_id=normalized,
+            name=f"knowledge.build.docs:{normalized}",
+        )
+    except BaseException:
+        close = getattr(background_task, "close", None)
+        if callable(close):
+            close()
+        _release_docgen_build_lock_safely(
+            course_id=normalized,
+            user_id=user.user_id,
+            build_group_id=build_group_id,
+        )
+        raise
+
+    add_done_callback = getattr(spawned_task, "add_done_callback", None)
+    if callable(add_done_callback):
+        def _release_if_cancelled_before_cleanup(finished_task) -> None:
+            if not finished_task.cancelled():
+                return
+            _release_docgen_build_lock_safely(
+                course_id=normalized,
+                user_id=user.user_id,
+                build_group_id=build_group_id,
+            )
+
+        add_done_callback(_release_if_cancelled_before_cleanup)
     _capture_course_build_event(
         "knowledge_build_started",
         course_id=normalized,

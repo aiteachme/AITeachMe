@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from sqlalchemy.pool import StaticPool
+from sqlmodel import Session, SQLModel, create_engine
 
 import app.shared.infra.knowledge.build_store as build_store
+from app.models import Course, User
 from app.shared.infra.storage import build_course_storage_scope
 
 
@@ -575,6 +579,25 @@ def test_local_build_lock_lifecycle_and_stale_recovery(monkeypatch: pytest.Monke
     assert build_store.acquire_knowledge_build_lock("course_runtime00001", lock, course_scope=scope) is False
     assert build_store.is_knowledge_build_locked("course_runtime00001", course_scope=scope) is True
     assert build_store.read_knowledge_build_lock("course_runtime00001", course_scope=scope) == lock
+    assert build_store.release_knowledge_build_lock(
+        "course_runtime00001",
+        build_group_id="older-owner",
+        course_scope=scope,
+    ) is False
+    assert build_store.renew_knowledge_build_lock(
+        "course_runtime00001",
+        build_group_id="older-owner",
+        course_scope=scope,
+    ) is False
+    assert build_store.renew_knowledge_build_lock(
+        "course_runtime00001",
+        build_group_id="group-1",
+        course_scope=scope,
+    ) is True
+    assert build_store.read_knowledge_build_lock(
+        "course_runtime00001",
+        course_scope=scope,
+    ).heartbeat_at is not None
 
     lock_path = build_store._local_build_lock_path(scope)
     lock_path.write_text("not-json", encoding="utf-8")
@@ -582,10 +605,158 @@ def test_local_build_lock_lifecycle_and_stale_recovery(monkeypatch: pytest.Monke
 
     stale = lock.model_copy(update={"requested_at": datetime.now(timezone.utc) - build_store.STALE_BUILD_LOCK_TTL - timedelta(seconds=1)})
     lock_path.write_text(stale.model_dump_json(), encoding="utf-8")
-    assert build_store.acquire_knowledge_build_lock("course_runtime00001", lock, course_scope=scope) is True
+    replacement = lock.model_copy(update={"build_group_id": "group-2"})
+    assert build_store.acquire_knowledge_build_lock("course_runtime00001", replacement, course_scope=scope) is True
 
-    build_store.release_knowledge_build_lock("course_runtime00001", course_scope=scope)
+    assert build_store.release_knowledge_build_lock(
+        "course_runtime00001",
+        build_group_id="group-1",
+        course_scope=scope,
+    ) is False
+    assert build_store.read_knowledge_build_lock("course_runtime00001", course_scope=scope) == replacement
+    assert build_store.release_knowledge_build_lock(
+        "course_runtime00001",
+        build_group_id="group-2",
+        course_scope=scope,
+    ) is True
     assert build_store.is_knowledge_build_locked("course_runtime00001", course_scope=scope) is False
+
+
+def test_local_build_cancellation_blocks_takeover_until_owner_release(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    scope = _scope()
+    monkeypatch.setattr(build_store, "is_cloud_mode", lambda: False)
+    monkeypatch.setattr(build_store, "get_runtime_data_dir", lambda: tmp_path)
+    first = build_store.KnowledgeBuildLock(
+        requested_at=datetime.now(timezone.utc),
+        build_group_id="group-a",
+    )
+    second = first.model_copy(update={"build_group_id": "group-b"})
+
+    assert build_store.acquire_knowledge_build_lock("course_runtime00001", first, course_scope=scope) is True
+    assert build_store.request_knowledge_build_cancellation(
+        "course_runtime00001",
+        build_group_id="other-owner",
+        course_scope=scope,
+    ) is False
+    assert build_store.request_knowledge_build_cancellation(
+        "course_runtime00001",
+        build_group_id="group-a",
+        course_scope=scope,
+    ) is True
+
+    cancelled_lock = build_store.read_knowledge_build_lock(
+        "course_runtime00001",
+        course_scope=scope,
+    )
+    assert cancelled_lock is not None
+    assert cancelled_lock.cancel_requested_at is not None
+    assert build_store.renew_knowledge_build_lock(
+        "course_runtime00001",
+        build_group_id="group-a",
+        course_scope=scope,
+    ) is False
+    assert build_store.is_knowledge_build_lock_owner(
+        "course_runtime00001",
+        build_group_id="group-a",
+        course_scope=scope,
+    ) is False
+    assert build_store.acquire_knowledge_build_lock("course_runtime00001", second, course_scope=scope) is False
+    assert build_store.release_knowledge_build_lock(
+        "course_runtime00001",
+        build_group_id="other-owner",
+        course_scope=scope,
+    ) is False
+    assert build_store.release_knowledge_build_lock(
+        "course_runtime00001",
+        build_group_id="group-a",
+        course_scope=scope,
+    ) is True
+    assert build_store.acquire_knowledge_build_lock("course_runtime00001", second, course_scope=scope) is True
+
+
+def test_cloud_build_lock_takeover_is_owner_safe(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.shared.infra.database as database
+
+    now = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    SQLModel.metadata.create_all(engine, tables=[User.__table__, Course.__table__])
+    with Session(engine, expire_on_commit=False) as session:
+        session.add(Course(id="course-cloud-lock", user_id="user-a", name="Cloud lock"))
+        session.commit()
+
+    @contextmanager
+    def fake_managed_session():
+        with Session(engine, expire_on_commit=False) as session:
+            try:
+                yield session
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
+
+    monkeypatch.setattr(database, "managed_session", fake_managed_session)
+    monkeypatch.setattr(build_store, "is_cloud_mode", lambda: True)
+    monkeypatch.setattr(build_store, "utcnow", lambda: now)
+    first = build_store.KnowledgeBuildLock(
+        requested_at=now,
+        build_group_id="group-a",
+    )
+    second = first.model_copy(update={"build_group_id": "group-b"})
+
+    assert build_store.acquire_knowledge_build_lock("course-cloud-lock", first) is True
+    assert build_store.acquire_knowledge_build_lock("course-cloud-lock", second) is False
+    with Session(engine, expire_on_commit=False) as session:
+        course = session.get(Course, "course-cloud-lock")
+        assert course is not None
+        course.build_lock_at = now - build_store.STALE_BUILD_LOCK_TTL - timedelta(seconds=1)
+        session.add(course)
+        session.commit()
+
+    assert build_store.acquire_knowledge_build_lock("course-cloud-lock", second) is True
+    assert build_store.release_knowledge_build_lock(
+        "course-cloud-lock",
+        build_group_id="group-a",
+    ) is False
+    assert build_store.renew_knowledge_build_lock(
+        "course-cloud-lock",
+        build_group_id="group-a",
+    ) is False
+    assert build_store.renew_knowledge_build_lock(
+        "course-cloud-lock",
+        build_group_id="group-b",
+    ) is True
+    assert build_store.read_knowledge_build_lock("course-cloud-lock").build_group_id == "group-b"
+    assert build_store.request_knowledge_build_cancellation(
+        "course-cloud-lock",
+        build_group_id="group-a",
+    ) is False
+    assert build_store.request_knowledge_build_cancellation(
+        "course-cloud-lock",
+        build_group_id="group-b",
+    ) is True
+    assert build_store.acquire_knowledge_build_lock(
+        "course-cloud-lock",
+        first.model_copy(update={"build_group_id": "group-c"}),
+    ) is False
+    assert build_store.renew_knowledge_build_lock(
+        "course-cloud-lock",
+        build_group_id="group-b",
+    ) is False
+    assert build_store.is_knowledge_build_lock_owner(
+        "course-cloud-lock",
+        build_group_id="group-b",
+    ) is False
+    assert build_store.release_knowledge_build_lock(
+        "course-cloud-lock",
+        build_group_id="group-b",
+    ) is True
 
 
 def test_manifest_and_artifact_cleanup_respect_scope(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:

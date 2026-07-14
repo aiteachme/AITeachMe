@@ -54,9 +54,11 @@ from app.shared.infra.knowledge.build_store import (
     acquire_knowledge_build_lock,
     build_aggregate_knowledge_build_status,
     clear_docgen_staging,
+    is_knowledge_build_lock_owner,
     read_knowledge_build_lock,
     read_knowledge_build_runtime,
     read_knowledge_manifest,
+    release_knowledge_build_lock,
     sanitize_knowledge_build_error_message,
     update_knowledge_build_lane_status,
 )
@@ -82,6 +84,7 @@ from app.shared.infra.course import (
 from app.shared.infra.tools.builtin.markdown_processing import normalize_markdown_rendering, normalize_mermaid_blocks
 from app.utils.presenters import require_id
 from app.utils.time import utcnow
+from app.workflows.digest.common.build_lifecycle import maintain_knowledge_build_lock_lease
 from app.workflows.digest.common.contracts import normalize_digest_confirmed_plan_payload
 from app.workflows.digest.common.file_status import is_markdown_ready_for_digest
 from app.workflows.digest.common.metrics import build_token_summary
@@ -96,6 +99,28 @@ from app.workflows.digest.planner import (
 )
 
 logger = structlog.get_logger()
+
+
+def _still_owns_build_lock(
+    *,
+    course_id: str,
+    build_group_id: str,
+    course_scope: CourseStorageScope,
+) -> bool:
+    try:
+        return is_knowledge_build_lock_owner(
+            course_id,
+            build_group_id=build_group_id,
+            course_scope=course_scope,
+        )
+    except Exception as exc:
+        logger.warning(
+            "knowledge_build_lock_owner_check_failed",
+            course_id=course_id,
+            build_group_id=build_group_id,
+            error=str(exc),
+        )
+        return False
 
 
 def _clean_prompt(prompt: str | None) -> str | None:
@@ -774,20 +799,6 @@ def trigger_docgen_build(
     数据交给 API 层。
     """
 
-    conflict = inspect_course_build_precheck(session, course=course)
-    vector_status = resolve_course_build_vector_status(
-        session,
-        course=course,
-        embedding_resolution=embedding_resolution,
-        prechecked_conflict=conflict,
-    )
-    force_full_rebuild = bool(
-        conflict is not None
-        and conflict.requires_full_rebuild
-        and vector_status.mode != "disabled"
-    )
-    if force_full_rebuild:
-        clear_chunk_vector_metadata(session, course_id=course.id)
     planner_session_id = None
     digest_mode = None
     planner_plan = None
@@ -864,59 +875,88 @@ def trigger_docgen_build(
     course_scope = build_course_storage_scope(user_id=course.user_id, course_id=course.id)
     if not acquire_knowledge_build_lock(course.id, build_lock, course_scope=course_scope):
         raise CourseBuildLockConflictError(course.id)
-    _clear_docgen_staging_safely(course.id, course_scope=course_scope)
-    update_knowledge_build_lane_status(
-        course.id,
-        lane="docgen",
-        course_scope=course_scope,
-        requested_at=requested_at,
-        build_group_id=build_group_id,
-        status="accepted",
-        stage="build_accepted",
-        error_message=None,
-        draft_available=False,
-        source_file_ids=accepted_file_ids,
-        prompt=cleaned_prompt,
-        staged_chapter_count=0,
-        published_doc_count=0,
-        planner_session_id=planner_session_id,
-        confirmed_plan_id=confirmed_plan_id,
-        digest_mode=digest_mode,
-        model_override=model_override,
-        plan=planner_plan,
-        chapter_progress=chapter_progress,
-        recent_events=recent_events,
-        current_stage_description=(
-            "方案已确认，当前没有本地资料，将优先执行联网研究。"
-            if search_only_mode
-            else ("方案已确认，正在排队启动构建。" if confirmed_plan_id else None)
-        ),
-    )
-    logger.info(
-        "knowledge_build_requested",
-        course_id=course.id,
-        requested_at=requested_at.isoformat(),
-        file_count=len(accepted_file_ids),
-        force_full_rebuild=force_full_rebuild,
-        vector_mode=vector_status.mode,
-        planner_session_id=planner_session_id,
-        confirmed_plan_id=confirmed_plan_id,
-        search_only_mode=search_only_mode,
-        build_group_id=build_group_id,
-        model_override=model_override,
-    )
-    build_data = DocGenBuildData(
-        accepted_file_ids=accepted_file_ids,
-        ready_file_count=ready_file_count,
-        prompt=cleaned_prompt,
-        requested_at=requested_at,
-        vector_status=vector_status,
-        planner_session_id=planner_session_id,
-        confirmed_plan_id=confirmed_plan_id,
-        digest_mode=digest_mode,
-        model_override=model_override,
-    )
-    return build_data, accepted_file_ids, build_group_id
+    try:
+        conflict = inspect_course_build_precheck(session, course=course)
+        vector_status = resolve_course_build_vector_status(
+            session,
+            course=course,
+            embedding_resolution=embedding_resolution,
+            prechecked_conflict=conflict,
+        )
+        force_full_rebuild = bool(
+            conflict is not None
+            and conflict.requires_full_rebuild
+            and vector_status.mode != "disabled"
+        )
+        if force_full_rebuild:
+            clear_chunk_vector_metadata(session, course_id=course.id)
+        build_data = DocGenBuildData(
+            accepted_file_ids=accepted_file_ids,
+            ready_file_count=ready_file_count,
+            prompt=cleaned_prompt,
+            requested_at=requested_at,
+            vector_status=vector_status,
+            planner_session_id=planner_session_id,
+            confirmed_plan_id=confirmed_plan_id,
+            digest_mode=digest_mode,
+            model_override=model_override,
+        )
+        _clear_docgen_staging_safely(course.id, course_scope=course_scope)
+        update_knowledge_build_lane_status(
+            course.id,
+            lane="docgen",
+            course_scope=course_scope,
+            requested_at=requested_at,
+            build_group_id=build_group_id,
+            status="accepted",
+            stage="build_accepted",
+            error_message=None,
+            draft_available=False,
+            source_file_ids=accepted_file_ids,
+            prompt=cleaned_prompt,
+            staged_chapter_count=0,
+            published_doc_count=0,
+            planner_session_id=planner_session_id,
+            confirmed_plan_id=confirmed_plan_id,
+            digest_mode=digest_mode,
+            model_override=model_override,
+            plan=planner_plan,
+            chapter_progress=chapter_progress,
+            recent_events=recent_events,
+            current_stage_description=(
+                "方案已确认，当前没有本地资料，将优先执行联网研究。"
+                if search_only_mode
+                else ("方案已确认，正在排队启动构建。" if confirmed_plan_id else None)
+            ),
+        )
+        logger.info(
+            "knowledge_build_requested",
+            course_id=course.id,
+            requested_at=requested_at.isoformat(),
+            file_count=len(accepted_file_ids),
+            force_full_rebuild=force_full_rebuild,
+            vector_mode=vector_status.mode,
+            planner_session_id=planner_session_id,
+            confirmed_plan_id=confirmed_plan_id,
+            search_only_mode=search_only_mode,
+            build_group_id=build_group_id,
+            model_override=model_override,
+        )
+        return build_data, accepted_file_ids, build_group_id
+    except BaseException:
+        try:
+            release_knowledge_build_lock(
+                course.id,
+                build_group_id=build_group_id,
+                course_scope=course_scope,
+            )
+        except Exception:
+            logger.exception(
+                "knowledge_build_lock_release_after_prepare_failure_failed",
+                course_id=course.id,
+                build_group_id=build_group_id,
+            )
+        raise
 
 
 async def run_docgen_background(
@@ -942,7 +982,6 @@ async def run_docgen_background(
     """
 
     from app.workflows.digest import run_docgen_workflow
-    from app.shared.infra.knowledge.build_store import release_knowledge_build_lock
     from app.workflows.digest.kg_doc_sync.lib.prefetch import cancel_docgen_kg_prefetch
     build_session_id = _new_build_session_id()
     confirmed_plan_payload = None
@@ -951,6 +990,7 @@ async def run_docgen_background(
     sync_graph_after_docgen = bool(get_settings().knowledge_graph.sync_after_docgen)
     docgen_published = False
     course_scope: CourseStorageScope | None = None
+    build_lock_heartbeat: asyncio.Task[None] | None = None
     lifecycle_started_at = perf_counter()
     lifecycle_outputs: dict[str, object] = {
         "status": "running",
@@ -1058,12 +1098,42 @@ async def run_docgen_background(
             "build_session_id": build_session_id,
             "build_group_id": build_group_id,
         }
-        release_knowledge_build_lock(course_id)
+        release_knowledge_build_lock(course_id, build_group_id=build_group_id)
         _finish_lifecycle_trace()
         return
 
     course_scope = build_course_storage_scope(user_id=user_id, course_id=course_id)
+    owner_task = asyncio.current_task()
+    if owner_task is not None:
+        build_lock_heartbeat = asyncio.create_task(
+            maintain_knowledge_build_lock_lease(
+                course_id=course_id,
+                build_group_id=build_group_id,
+                course_scope=course_scope,
+                owner_task=owner_task,
+            ),
+            name=f"knowledge.build.lock:{course_id}:{build_group_id}",
+        )
     try:
+        if build_lock_heartbeat is not None:
+            await asyncio.sleep(0)
+        if not _still_owns_build_lock(
+            course_id=course_id,
+            build_group_id=build_group_id,
+            course_scope=course_scope,
+        ):
+            logger.error(
+                "knowledge_build_aborted_before_start_after_lock_loss",
+                course_id=course_id,
+                build_group_id=build_group_id,
+            )
+            lifecycle_outputs = {
+                "status": "cancelled",
+                "stage": "lock_ownership_lost",
+                "build_session_id": build_session_id,
+                "build_group_id": build_group_id,
+            }
+            return
         plan, confirmed_plan_payload = _load_confirmed_plan_payload(
             course_id=course_id,
             user_id=user_id,
@@ -1140,6 +1210,23 @@ async def run_docgen_background(
         )
         if result.failed:
             cancel_docgen_kg_prefetch(course_id=course_id, build_session_id=build_session_id)
+            if not _still_owns_build_lock(
+                course_id=course_id,
+                build_group_id=build_group_id,
+                course_scope=course_scope,
+            ):
+                logger.error(
+                    "knowledge_build_failure_ignored_after_lock_loss",
+                    course_id=course_id,
+                    build_group_id=build_group_id,
+                )
+                lifecycle_outputs = {
+                    "status": "cancelled",
+                    "stage": "lock_ownership_lost",
+                    "build_session_id": build_session_id,
+                    "build_group_id": build_group_id,
+                }
+                return
             if sync_graph_after_docgen:
                 _write_graph_status(
                     course_id,
@@ -1181,6 +1268,23 @@ async def run_docgen_background(
             }
             return
         final_docgen_state = result.require_value()
+        if not _still_owns_build_lock(
+            course_id=course_id,
+            build_group_id=build_group_id,
+            course_scope=course_scope,
+        ):
+            logger.error(
+                "knowledge_build_completion_ignored_after_lock_loss",
+                course_id=course_id,
+                build_group_id=build_group_id,
+            )
+            lifecycle_outputs = {
+                "status": "cancelled",
+                "stage": "lock_ownership_lost",
+                "build_session_id": build_session_id,
+                "build_group_id": build_group_id,
+            }
+            return
         _write_docgen_status(
             course_id,
             requested_at=requested_at,
@@ -1233,6 +1337,23 @@ async def run_docgen_background(
         }
     except asyncio.CancelledError:
         cancel_docgen_kg_prefetch(course_id=course_id, build_session_id=build_session_id)
+        if not _still_owns_build_lock(
+            course_id=course_id,
+            build_group_id=build_group_id,
+            course_scope=course_scope,
+        ):
+            logger.warning(
+                "knowledge_build_cancel_cleanup_skipped_after_lock_loss",
+                course_id=course_id,
+                build_group_id=build_group_id,
+            )
+            lifecycle_outputs = {
+                "status": "cancelled",
+                "stage": "lock_ownership_lost",
+                "build_session_id": build_session_id,
+                "build_group_id": build_group_id,
+            }
+            raise
         if sync_graph_after_docgen and not docgen_published:
             _write_graph_status(
                 course_id,
@@ -1276,6 +1397,25 @@ async def run_docgen_background(
         raise
     except Exception as exc:
         cancel_docgen_kg_prefetch(course_id=course_id, build_session_id=build_session_id)
+        if not _still_owns_build_lock(
+            course_id=course_id,
+            build_group_id=build_group_id,
+            course_scope=course_scope,
+        ):
+            logger.error(
+                "knowledge_build_crash_cleanup_skipped_after_lock_loss",
+                course_id=course_id,
+                build_group_id=build_group_id,
+                error_type=type(exc).__name__,
+            )
+            lifecycle_outputs = {
+                "status": "failed",
+                "stage": "lock_ownership_lost",
+                "build_session_id": build_session_id,
+                "build_group_id": build_group_id,
+                "error_type": type(exc).__name__,
+            }
+            return
         if sync_graph_after_docgen and not docgen_published:
             _write_graph_status(
                 course_id,
@@ -1321,8 +1461,18 @@ async def run_docgen_background(
         return
     finally:
         _finish_lifecycle_trace()
+        if build_lock_heartbeat is not None:
+            build_lock_heartbeat.cancel()
+            try:
+                await build_lock_heartbeat
+            except asyncio.CancelledError:
+                pass
         if course_scope is not None:
-            release_knowledge_build_lock(course_id, course_scope=course_scope)
+            release_knowledge_build_lock(
+                course_id,
+                build_group_id=build_group_id,
+                course_scope=course_scope,
+            )
 
 
 def get_docgen_result(

@@ -10,6 +10,7 @@ from app.shared.infra.storage import build_course_storage_scope
 from app.shared.infra.tools.builtin.markdown_processing import build_draft_excerpt
 from app.shared.infra.knowledge.build_store import (
     append_knowledge_build_recent_event,
+    is_knowledge_build_lock_owner,
     update_knowledge_build_status,
     update_knowledge_build_merge_preview,
     upsert_knowledge_build_chapter_progress,
@@ -143,9 +144,37 @@ def build_publish_document_node(*, context: WorkflowContext):
         user_prompt = state.get("user_prompt")
         requested_at = state["requested_at"]
         standalone = True
+        build_group_id = str(state.get("build_group_id") or "").strip()
+
+        def _build_lock_error(*, phase: str) -> str | None:
+            try:
+                owns_build_lock = is_knowledge_build_lock_owner(
+                    course_id,
+                    build_group_id=build_group_id,
+                    course_scope=course_scope,
+                )
+            except Exception as exc:
+                node_logger.error(
+                    "docgen_publish_lock_check_failed",
+                    build_group_id=build_group_id,
+                    phase=phase,
+                    error=str(exc),
+                )
+                return "knowledge_build_lock_owner_check_failed"
+            if owns_build_lock:
+                return None
+            node_logger.error(
+                "docgen_publish_lock_ownership_lost",
+                build_group_id=build_group_id,
+                phase=phase,
+            )
+            return "knowledge_build_lock_ownership_lost"
 
         if not chapter_metadatas:
             return {"error": "当前没有可用于最终发布的章节内容。"}
+        owner_error = _build_lock_error(phase="before_staging")
+        if owner_error:
+            return {"error": owner_error}
 
         update_knowledge_build_status(
             course_id,
@@ -175,6 +204,9 @@ def build_publish_document_node(*, context: WorkflowContext):
 
         doc_ids: list[int] = []
         if standalone:
+            owner_error = _build_lock_error(phase="before_live_publish")
+            if owner_error:
+                return {"error": owner_error}
             doc_ids = publish_staged_knowledge_docs(
                 course_id=course_id,
                 chapter_metadatas=chapter_metadatas,

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timezone
+from threading import Event
 from types import SimpleNamespace
 
 import pytest
@@ -21,7 +24,10 @@ from app.shared.infra.exceptions import (
     NoReadyFilesForDocGenError,
 )
 from app.shared.infra.storage import build_course_storage_scope
+from app.workflows.digest.common import build_lifecycle as common_build_lifecycle
+from app.workflows.digest.common import cleanup as common_cleanup
 from app.workflows.digest.docgen.lib import build_lifecycle
+from app.workflows.digest.docgen.nodes import publish_document as publish_document_module
 
 
 COURSE_ID = "course_docgen000000"
@@ -248,6 +254,494 @@ def test_trigger_docgen_build_rejects_missing_or_busy_confirmed_plan(
             embedding_resolution=None,
             confirmed_plan_id="plan-1",
         )
+
+
+def test_trigger_docgen_build_does_not_mutate_vectors_before_lock(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    course = _seed_course_and_files(session)
+    events: list[str] = []
+    monkeypatch.setattr(build_lifecycle, "get_confirmed_build_plan", lambda *args, **kwargs: _confirmed_plan())
+    monkeypatch.setattr(build_lifecycle, "_new_build_session_id", lambda: "build-group-conflict")
+    monkeypatch.setattr(
+        build_lifecycle,
+        "acquire_knowledge_build_lock",
+        lambda *args, **kwargs: events.append("acquire") or False,
+    )
+    monkeypatch.setattr(
+        build_lifecycle,
+        "inspect_course_build_precheck",
+        lambda *args, **kwargs: events.append("inspect") or None,
+    )
+    monkeypatch.setattr(
+        build_lifecycle,
+        "resolve_course_build_vector_status",
+        lambda *args, **kwargs: events.append("resolve") or CourseVectorStatusResponse(mode="disabled"),
+    )
+    monkeypatch.setattr(
+        build_lifecycle,
+        "clear_chunk_vector_metadata",
+        lambda *args, **kwargs: events.append("clear"),
+    )
+
+    with pytest.raises(CourseBuildLockConflictError):
+        build_lifecycle.trigger_docgen_build(
+            session,
+            course=course,
+            user_id=USER_ID,
+            file_ids=None,
+            prompt=None,
+            embedding_resolution=None,
+            confirmed_plan_id="plan-1",
+        )
+
+    assert events == ["acquire"]
+
+
+def test_trigger_docgen_build_releases_lock_when_status_initialization_fails(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    course = _seed_course_and_files(session)
+    released: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        build_lifecycle,
+        "inspect_course_build_precheck",
+        lambda *args, **kwargs: SimpleNamespace(requires_full_rebuild=False),
+    )
+    monkeypatch.setattr(
+        build_lifecycle,
+        "resolve_course_build_vector_status",
+        lambda *args, **kwargs: CourseVectorStatusResponse(mode="disabled"),
+    )
+    monkeypatch.setattr(build_lifecycle, "get_confirmed_build_plan", lambda *args, **kwargs: _confirmed_plan())
+    monkeypatch.setattr(build_lifecycle, "_new_build_session_id", lambda: "build-group-release")
+    monkeypatch.setattr(build_lifecycle, "_clear_docgen_staging_safely", lambda *args, **kwargs: None)
+    monkeypatch.setattr(build_lifecycle, "acquire_knowledge_build_lock", lambda *args, **kwargs: True)
+    monkeypatch.setattr(
+        build_lifecycle,
+        "update_knowledge_build_lane_status",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("status write failed")),
+    )
+    monkeypatch.setattr(
+        build_lifecycle,
+        "release_knowledge_build_lock",
+        lambda course_id, *, build_group_id, **_kwargs: released.append((course_id, build_group_id)) or True,
+    )
+
+    with pytest.raises(RuntimeError, match="status write failed"):
+        build_lifecycle.trigger_docgen_build(
+            session,
+            course=course,
+            user_id=USER_ID,
+            file_ids=["file-ready"],
+            prompt=None,
+            embedding_resolution=None,
+            confirmed_plan_id="plan-1",
+        )
+
+    assert released == [(COURSE_ID, "build-group-release")]
+
+
+class _NoopNodeLogger:
+    def bind(self, **_kwargs):
+        return self
+
+    def info(self, *_args, **_kwargs) -> None:
+        return None
+
+    def error(self, *_args, **_kwargs) -> None:
+        return None
+
+
+def _publish_state() -> dict[str, object]:
+    return {
+        "course_id": COURSE_ID,
+        "user_id": USER_ID,
+        "build_group_id": "group-publish",
+        "requested_at": datetime.now(timezone.utc),
+        "chapter_metadatas": [
+            {
+                "chapter_index": 1,
+                "title": "矩阵",
+                "markdown": "# 矩阵\n\n正文",
+            }
+        ],
+    }
+
+
+def test_publish_document_rejects_lost_owner_before_shared_writes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr(
+        publish_document_module,
+        "is_knowledge_build_lock_owner",
+        lambda *args, **kwargs: False,
+    )
+    monkeypatch.setattr(
+        publish_document_module,
+        "update_knowledge_build_status",
+        lambda *args, **kwargs: calls.append("status"),
+    )
+
+    async def fake_stage(**_kwargs):
+        calls.append("stage")
+        return SimpleNamespace(merged_markdown="", built_paths=[])
+
+    monkeypatch.setattr(publish_document_module, "stage_knowledge_docs", fake_stage)
+    monkeypatch.setattr(
+        publish_document_module,
+        "publish_staged_knowledge_docs",
+        lambda **_kwargs: calls.append("publish") or [],
+    )
+    node = publish_document_module.build_publish_document_node(
+        context=SimpleNamespace(get_logger=lambda: _NoopNodeLogger())
+    )
+
+    result = asyncio.run(node(_publish_state()))
+
+    assert result["error"] == "knowledge_build_lock_ownership_lost"
+    assert calls == []
+
+
+def test_publish_document_rechecks_owner_after_staging(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    owner_results = iter([True, False])
+    monkeypatch.setattr(
+        publish_document_module,
+        "is_knowledge_build_lock_owner",
+        lambda *args, **kwargs: next(owner_results),
+    )
+    monkeypatch.setattr(
+        publish_document_module,
+        "update_knowledge_build_status",
+        lambda *args, **kwargs: calls.append("status"),
+    )
+
+    async def fake_stage(**_kwargs):
+        calls.append("stage")
+        return SimpleNamespace(merged_markdown="# 矩阵", built_paths=[(1, "矩阵")])
+
+    monkeypatch.setattr(publish_document_module, "stage_knowledge_docs", fake_stage)
+    monkeypatch.setattr(
+        publish_document_module,
+        "publish_staged_knowledge_docs",
+        lambda **_kwargs: calls.append("publish") or [],
+    )
+    node = publish_document_module.build_publish_document_node(
+        context=SimpleNamespace(get_logger=lambda: _NoopNodeLogger())
+    )
+
+    result = asyncio.run(node(_publish_state()))
+
+    assert result["error"] == "knowledge_build_lock_ownership_lost"
+    assert calls == ["status", "stage"]
+
+
+def test_build_lock_heartbeat_cancels_owner_before_lease_ttl(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _OwnerTask:
+        cancelled = False
+
+        def cancel(self) -> None:
+            self.cancelled = True
+
+    owner_task = _OwnerTask()
+    monotonic_values = iter([0.0, 11.0])
+
+    async def fake_to_thread(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(common_build_lifecycle, "monotonic", lambda: next(monotonic_values))
+    monkeypatch.setattr(common_build_lifecycle.asyncio, "to_thread", fake_to_thread)
+    monkeypatch.setattr(common_build_lifecycle, "BUILD_LOCK_RENEW_DEADLINE_SECONDS", 10.0)
+    monkeypatch.setattr(
+        common_build_lifecycle,
+        "renew_knowledge_build_lock",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("database unavailable")),
+    )
+
+    asyncio.run(
+        common_build_lifecycle.maintain_knowledge_build_lock_lease(
+            course_id=COURSE_ID,
+            build_group_id="group-heartbeat",
+            course_scope=build_course_storage_scope(user_id=USER_ID, course_id=COURSE_ID),
+            owner_task=owner_task,  # type: ignore[arg-type]
+        )
+    )
+
+    assert owner_task.cancelled is True
+    assert (
+        common_build_lifecycle.BUILD_LOCK_RENEW_DEADLINE_SECONDS
+        < common_build_lifecycle.STALE_BUILD_LOCK_TTL.total_seconds()
+    )
+
+
+def test_build_lock_heartbeat_observes_persisted_cancellation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _OwnerTask:
+        cancelled = False
+
+        def cancel(self) -> None:
+            self.cancelled = True
+
+    owner_task = _OwnerTask()
+    cancellation_writes: list[str] = []
+    now = datetime.now(timezone.utc)
+
+    async def fake_to_thread(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(common_build_lifecycle.asyncio, "to_thread", fake_to_thread)
+    monkeypatch.setattr(common_build_lifecycle, "renew_knowledge_build_lock", lambda *args, **kwargs: False)
+    monkeypatch.setattr(
+        common_build_lifecycle,
+        "read_knowledge_build_lock",
+        lambda *args, **kwargs: build_store.KnowledgeBuildLock(
+            requested_at=now,
+            build_group_id="group-cancelled",
+            cancel_requested_at=now,
+        ),
+    )
+    monkeypatch.setattr(
+        common_build_lifecycle,
+        "mark_knowledge_build_runtime_cancelled",
+        lambda _course_id, *, build_group_id, **_kwargs: cancellation_writes.append(build_group_id),
+    )
+
+    asyncio.run(
+        common_build_lifecycle.maintain_knowledge_build_lock_lease(
+            course_id=COURSE_ID,
+            build_group_id="group-cancelled",
+            course_scope=build_course_storage_scope(user_id=USER_ID, course_id=COURSE_ID),
+            owner_task=owner_task,  # type: ignore[arg-type]
+        )
+    )
+
+    assert cancellation_writes == ["group-cancelled"]
+    assert owner_task.cancelled is True
+
+
+def test_cancel_knowledge_build_persists_request_before_cancelling_local_tasks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime.now(timezone.utc)
+    course = Course(id=COURSE_ID, user_id=USER_ID, name="Linear Algebra")
+    runtime = build_store.KnowledgeBuildRuntimeEnvelope(
+        docgen_runtime=build_store.KnowledgeBuildRuntimeStatus(
+            requested_at=now,
+            build_group_id="group-cancel",
+            status="running",
+            stage="generating_chapters",
+        )
+    )
+    events: list[str] = []
+
+    class _Registry:
+        async def cancel_matching(self, *, kind: str, course_id: str) -> int:
+            events.append(f"cancel:{kind}:{course_id}")
+            return 1
+
+    monkeypatch.setattr(common_build_lifecycle, "read_knowledge_build_runtime", lambda *args, **kwargs: runtime)
+    monkeypatch.setattr(
+        common_build_lifecycle,
+        "read_knowledge_build_lock",
+        lambda *args, **kwargs: build_store.KnowledgeBuildLock(
+            requested_at=now,
+            build_group_id="group-cancel",
+        ),
+    )
+    monkeypatch.setattr(
+        common_build_lifecycle,
+        "request_knowledge_build_cancellation",
+        lambda *args, **kwargs: events.append("persist-cancel") or True,
+    )
+    monkeypatch.setattr(
+        common_build_lifecycle,
+        "mark_knowledge_build_runtime_cancelled",
+        lambda *args, **kwargs: events.append("write-cancelled-runtime"),
+    )
+
+    result = asyncio.run(
+        common_build_lifecycle.cancel_knowledge_build(
+            object(),  # type: ignore[arg-type]
+            course=course,
+            user_id=USER_ID,
+            background_task_registry=_Registry(),
+        )
+    )
+
+    assert events[:2] == ["persist-cancel", "write-cancelled-runtime"]
+    assert set(events[2:]) == {
+        f"cancel:knowledge.build.docs:{COURSE_ID}",
+        f"cancel:knowledge.build.graph:{COURSE_ID}",
+    }
+    assert result.cancelled_task_count == 2
+
+
+def test_cancel_knowledge_build_does_not_interrupt_maintenance_lock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    course = Course(id=COURSE_ID, user_id=USER_ID, name="Linear Algebra")
+    now = datetime.now(timezone.utc)
+    cancellation_requests: list[str] = []
+    monkeypatch.setattr(common_build_lifecycle, "read_knowledge_build_runtime", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        common_build_lifecycle,
+        "read_knowledge_build_lock",
+        lambda *args, **kwargs: build_store.KnowledgeBuildLock(
+            requested_at=now,
+            build_group_id="knowledge-clear:owner",
+        ),
+    )
+    monkeypatch.setattr(
+        common_build_lifecycle,
+        "request_knowledge_build_cancellation",
+        lambda *args, **kwargs: cancellation_requests.append("cancel") or True,
+    )
+
+    result = asyncio.run(
+        common_build_lifecycle.cancel_knowledge_build(
+            object(),  # type: ignore[arg-type]
+            course=course,
+            user_id=USER_ID,
+        )
+    )
+
+    assert result.cancelled_task_count == 0
+    assert cancellation_requests == []
+
+
+def test_clear_course_knowledge_rejects_active_build_lock(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seed_course_and_files(session)
+    monkeypatch.setattr(common_cleanup, "acquire_knowledge_build_lock", lambda *args, **kwargs: False)
+
+    with pytest.raises(CourseBuildLockConflictError):
+        common_cleanup.clear_course_knowledge(session, course_id=COURSE_ID)
+
+
+def test_clear_course_knowledge_holds_maintenance_lock_through_artifact_cleanup(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seed_course_and_files(session)
+    events: list[str] = []
+    monkeypatch.setattr(
+        common_cleanup,
+        "acquire_knowledge_build_lock",
+        lambda *args, **kwargs: events.append("acquire") or True,
+    )
+
+    @contextmanager
+    def fake_lease(**_kwargs):
+        events.append("heartbeat-start")
+        try:
+            yield SimpleNamespace(lost=False)
+        finally:
+            events.append("heartbeat-stop")
+
+    monkeypatch.setattr(
+        common_cleanup,
+        "maintain_synchronous_knowledge_build_lock_lease",
+        fake_lease,
+    )
+    monkeypatch.setattr(
+        common_cleanup,
+        "clear_knowledge_runtime_artifacts",
+        lambda *args, **kwargs: events.append("clear-runtime"),
+    )
+    monkeypatch.setattr(
+        common_cleanup,
+        "release_knowledge_build_lock",
+        lambda *args, **kwargs: events.append("release") or True,
+    )
+
+    common_cleanup.clear_course_knowledge(session, course_id=COURSE_ID)
+
+    assert events == [
+        "acquire",
+        "heartbeat-start",
+        "clear-runtime",
+        "heartbeat-stop",
+        "release",
+    ]
+
+
+def test_synchronous_maintenance_lease_guard_renews_until_exit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    renewed_twice = Event()
+    renewals: list[str] = []
+
+    def fake_renew(_course_id: str, *, build_group_id: str, **_kwargs) -> bool:
+        renewals.append(build_group_id)
+        if len(renewals) >= 2:
+            renewed_twice.set()
+        return True
+
+    monkeypatch.setattr(common_build_lifecycle, "renew_knowledge_build_lock", fake_renew)
+    monkeypatch.setattr(common_build_lifecycle, "BUILD_LOCK_RENEW_INTERVAL_SECONDS", 0.01)
+
+    with common_build_lifecycle.maintain_synchronous_knowledge_build_lock_lease(
+        course_id=COURSE_ID,
+        build_group_id="knowledge-clear:test",
+        course_scope=build_course_storage_scope(user_id=USER_ID, course_id=COURSE_ID),
+    ) as lease:
+        assert renewed_twice.wait(timeout=1.0)
+        assert lease.lost is False
+
+    assert renewals[:2] == ["knowledge-clear:test", "knowledge-clear:test"]
+
+
+def test_clear_course_knowledge_stops_when_maintenance_lease_is_lost(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seed_course_and_files(session)
+    events: list[str] = []
+    monkeypatch.setattr(
+        common_cleanup,
+        "acquire_knowledge_build_lock",
+        lambda *args, **kwargs: events.append("acquire") or True,
+    )
+
+    @contextmanager
+    def lost_lease(**_kwargs):
+        events.append("heartbeat-start")
+        try:
+            yield SimpleNamespace(lost=True)
+        finally:
+            events.append("heartbeat-stop")
+
+    monkeypatch.setattr(
+        common_cleanup,
+        "maintain_synchronous_knowledge_build_lock_lease",
+        lost_lease,
+    )
+    monkeypatch.setattr(
+        common_cleanup,
+        "clear_knowledge_runtime_artifacts",
+        lambda *args, **kwargs: events.append("clear-runtime"),
+    )
+    monkeypatch.setattr(
+        common_cleanup,
+        "release_knowledge_build_lock",
+        lambda *args, **kwargs: events.append("release") or True,
+    )
+
+    with pytest.raises(CourseBuildLockConflictError):
+        common_cleanup.clear_course_knowledge(session, course_id=COURSE_ID)
+
+    assert events == ["acquire", "heartbeat-start", "heartbeat-stop", "release"]
 
 
 def test_runtime_preview_metrics_and_build_runtime_result(monkeypatch: pytest.MonkeyPatch) -> None:
