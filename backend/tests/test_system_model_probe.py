@@ -149,3 +149,46 @@ async def test_settings_model_probe_reports_missing_fallback_endpoint(monkeypatc
     assert result.endpoint_role == "fallback"
     assert result.api_mode == "chat_completions"
     assert "备用模型网关未配置" in result.message
+
+
+@pytest.mark.anyio
+async def test_settings_model_probe_reports_primary_allowlist_failure_without_fallback_noise(monkeypatch) -> None:
+    monkeypatch.setenv("LLM_API_KEY", "primary-key")
+    monkeypatch.setenv("LLM_BASE_URL", "https://primary-gateway.example.com")
+    monkeypatch.setenv("LLM_FALLBACK_API_KEY", "fallback-key")
+    monkeypatch.setenv("LLM_FALLBACK_BASE_URL", "https://fallback-gateway.example.com/v1")
+    set_system_settings_override({
+        "models": {
+            "reason": "qwen-flash",
+            "primary": "gpt-5.4-mini",
+            "light": "gpt-5.4-mini",
+        },
+        "llm": {"primary_model_allowlist": ["gpt-5.4-mini"]},
+    })
+
+    result = await system_settings.test_settings_model_connection(
+        ModelProbeRequest(model_slot="reason", endpoint_role="primary")
+    )
+
+    assert result.ok is False
+    assert result.model_slot == "reason"
+    assert result.endpoint_role == "primary"
+    assert "主网关白名单" in result.message
+    assert "请改用“备用网关”" in result.message
+    assert "备用模型网关未配置" not in result.message
+    assert "LLM_FALLBACK" not in result.message
+
+
+def test_settings_model_probe_failure_message_does_not_expose_upstream_details() -> None:
+    message = system_settings._model_probe_failure_message(
+        label="推理模型",
+        payload=ModelProbeRequest(model_slot="reason", endpoint_role="primary"),
+        error=RuntimeError(
+            "401 from https://gateway.example.com/v1: invalid api key sk-secret-value"
+        ),
+    )
+
+    assert "测试失败" in message
+    assert "后端日志已记录错误类型" in message
+    assert "gateway.example.com" not in message
+    assert "sk-secret-value" not in message

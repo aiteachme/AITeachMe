@@ -37,7 +37,7 @@ from app.shared.infra.env_support import (
     get_env_source,
     set_runtime_env_overrides,
 )
-from app.shared.infra.exceptions import AITeachMeError
+from app.shared.infra.exceptions import AITeachMeError, LLMCallError
 from app.shared.infra.llm_support.common import (
     LLMRuntimeSnapshot,
     build_completion_context,
@@ -623,6 +623,28 @@ def _model_probe_missing_message(endpoint_role: ModelProbeEndpointRole) -> str:
     return "主模型网关未配置。请先配置 LLM_BASE_URL 和 LLM_API_KEY。"
 
 
+def _model_probe_failure_message(
+    *,
+    label: str,
+    payload: ModelProbeRequest,
+    error: Exception,
+) -> str:
+    raw_message = str(error).strip()
+    if (
+        payload.endpoint_role == "primary"
+        and isinstance(error, LLMCallError)
+        and "primary_model_allowlist" in raw_message
+    ):
+        return (
+            f"{label}未加入主网关白名单，主网关测试已跳过。"
+            "请改用“备用网关”测试该模型，或把该模型加入主网关白名单。"
+        )
+    return (
+        f"{label}测试失败。请检查所选模型、网关地址、API Key 和接口模式；"
+        "后端日志已记录错误类型。"
+    )
+
+
 async def test_settings_model_connection(payload: ModelProbeRequest) -> ModelProbeResult:
     """Run a small settings-page LLM probe against one explicit endpoint route."""
 
@@ -685,7 +707,7 @@ async def test_settings_model_connection(payload: ModelProbeRequest) -> ModelPro
             endpoint_role=payload.endpoint_role,
             model=model,
             provider=provider,
-            error=str(exc),
+            error_type=exc.__class__.__name__,
         )
         return ModelProbeResult(
             ok=False,
@@ -695,7 +717,7 @@ async def test_settings_model_connection(payload: ModelProbeRequest) -> ModelPro
             provider=provider,
             api_mode=requested_api_mode,
             elapsed_ms=elapsed_ms,
-            message=f"{label}测试失败：{str(exc)[:240]}",
+            message=_model_probe_failure_message(label=label, payload=payload, error=exc),
         )
 
 

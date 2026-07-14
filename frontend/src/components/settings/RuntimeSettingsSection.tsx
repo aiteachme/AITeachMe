@@ -33,7 +33,7 @@ interface ModelProbeResult {
   endpoint_role: ModelProbeEndpointRole;
   model?: string | null;
   provider?: string | null;
-  api_mode: "auto" | "chat_completions";
+  api_mode: "auto" | "chat_completions" | "responses";
   elapsed_ms: number;
   message: string;
 }
@@ -68,9 +68,11 @@ function ModelProbeBadge({ state }: { state: ProbeState | undefined }) {
   const ok = state.status === "success";
   const Icon = ok ? CheckCircle2 : XCircle;
   return (
-    <span className={ok ? "inline-flex items-center gap-1 text-[12px] font-medium text-emerald-600 dark:text-emerald-400" : "inline-flex items-center gap-1 text-[12px] font-medium text-rose-600 dark:text-rose-400"}>
-      <Icon className="h-3.5 w-3.5" />
-      {state.message || (ok ? "通过" : "失败")}
+    <span className={ok ? "inline-flex min-w-0 items-center gap-1 text-[12px] font-medium text-emerald-600 dark:text-emerald-400" : "inline-flex min-w-0 items-start gap-1 text-[12px] font-medium text-rose-600 dark:text-rose-400"}>
+      <Icon className={ok ? "h-3.5 w-3.5 shrink-0" : "mt-0.5 h-3.5 w-3.5 shrink-0"} />
+      <span className={ok ? "truncate" : "whitespace-normal break-words leading-5"}>
+        {state.message || (ok ? "通过" : "失败")}
+      </span>
     </span>
   );
 }
@@ -91,12 +93,12 @@ function ModelProbeInlineControls({
         const state = probeStates[key];
         const isTesting = state?.status === "testing";
         return (
-          <div key={endpointRole} className="flex min-h-7 items-center gap-2">
+          <div key={endpointRole} className="flex min-h-7 min-w-0 items-start gap-2">
             <button
               type="button"
               onClick={() => onRunProbe(slot, endpointRole)}
               disabled={isTesting}
-              className="inline-flex h-7 items-center justify-center rounded-md border border-zinc-200 bg-white px-2.5 text-[12px] font-medium text-zinc-600 transition-colors hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+              className="inline-flex h-7 shrink-0 items-center justify-center rounded-md border border-zinc-200 bg-white px-2.5 text-[12px] font-medium text-zinc-600 transition-colors hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-100"
             >
               {endpointRole === "primary" ? "主网关" : "备用网关"}
             </button>
