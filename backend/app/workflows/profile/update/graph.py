@@ -11,6 +11,7 @@ from typing import Any
 from langgraph.graph import END, StateGraph
 from sqlmodel import Session
 
+from app.shared.infra.database import get_session
 from app.shared.infra.workflow import workflow_tracer
 from app.shared.infra.workflow.context import WorkflowContext
 from app.shared.infra.workflow.graph_export import WorkflowGraphExport
@@ -274,7 +275,11 @@ async def run_profile_update_workflow(
     trigger: str = "exam_graded",
     session: Session | None = None,
 ) -> WorkflowResult[ProfileUpdateState]:
-    """Run the exam-driven Profile update with one LangSmith root trace."""
+    """Run one atomic, user-serialized Profile update.
+
+    When ``session`` is provided, its caller owns commit/rollback and therefore
+    also owns the lifetime of the Profile transaction lock acquired here.
+    """
 
     context = WorkflowContext(
         workflow_name=PROFILE_UPDATE_WORKFLOW_NAME,
@@ -294,12 +299,34 @@ async def run_profile_update_workflow(
         user_id=user_id,
         top_n=top_n,
     )
-    return await run_state_graph(
-        workflow_name=PROFILE_UPDATE_WORKFLOW_NAME,
-        graph_builder=lambda: build_profile_update_graph(context=context, session=session),
-        initial_state=initial_state,
-        context=context,
-    )
+    async def _run(workflow_session: Session) -> WorkflowResult[ProfileUpdateState]:
+        return await run_state_graph(
+            workflow_name=PROFILE_UPDATE_WORKFLOW_NAME,
+            graph_builder=lambda: build_profile_update_graph(
+                context=context,
+                session=workflow_session,
+            ),
+            initial_state=initial_state,
+            context=context,
+        )
+
+    if session is not None:
+        return await _run(session)
+
+    workflow_session = get_session()
+    try:
+        result = await _run(workflow_session)
+        final_state = result.value if isinstance(result.value, dict) else {}
+        if result.failed or final_state.get("error"):
+            workflow_session.rollback()
+        else:
+            workflow_session.commit()
+        return result
+    except BaseException:
+        workflow_session.rollback()
+        raise
+    finally:
+        workflow_session.close()
 
 
 WORKFLOW_EXPORTS = (

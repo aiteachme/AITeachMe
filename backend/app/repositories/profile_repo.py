@@ -32,14 +32,23 @@ def _apply_state_target_filter(
     return stmt
 
 
-def upsert_knowledge_state(
+def compare_and_set_knowledge_state(
     session: Session,
     state: UserKnowledgeState,
     *,
+    expected_state_version: int | None,
     auto_commit: bool = True,
-) -> UserKnowledgeState:
+) -> UserKnowledgeState | None:
+    """Persist a mastery state only when its previously read version still matches."""
+
     now = utcnow()
     target_ref_id = _validate_target_ref(knowledge_unit_id=state.knowledge_unit_id)
+    expected_next_version = 1 if expected_state_version is None else expected_state_version + 1
+    if state.state_version != expected_next_version:
+        raise ValueError(
+            "UserKnowledgeState state_version must advance exactly once "
+            f"({state.state_version} != {expected_next_version})."
+        )
     insert_values = {
         "user_id": state.user_id,
         "course_id": state.course_id,
@@ -65,7 +74,7 @@ def upsert_knowledge_state(
         "updated_at": now,
     }
 
-    set_values = {
+    update_values = {
         key: value
         for key, value in insert_values.items()
         if key not in {"user_id", "course_id", "knowledge_unit_id"}
@@ -74,30 +83,42 @@ def upsert_knowledge_state(
     conflict_columns = ["user_id", "course_id", "knowledge_unit_id"]
     conflict_where = "knowledge_unit_id IS NOT NULL"
 
-    if is_postgres():
-        from sqlalchemy.dialects.postgresql import insert as pg_insert
+    if expected_state_version is None:
+        if is_postgres():
+            from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-        stmt = pg_insert(UserKnowledgeState).values(**insert_values)
-        stmt = stmt.on_conflict_do_update(
+            stmt = pg_insert(UserKnowledgeState).values(**insert_values)
+        else:
+            from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
+            stmt = sqlite_insert(UserKnowledgeState).values(**insert_values)
+        stmt = stmt.on_conflict_do_nothing(
             index_elements=conflict_columns,
             index_where=sa.text(conflict_where),
-            set_=set_values,
         )
     else:
-        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-
-        stmt = sqlite_insert(UserKnowledgeState).values(**insert_values)
-        stmt = stmt.on_conflict_do_update(
-            index_elements=conflict_columns,
-            index_where=sa.text(conflict_where),
-            set_=set_values,
+        stmt = (
+            sa.update(UserKnowledgeState)
+            .where(
+                UserKnowledgeState.user_id == state.user_id,
+                UserKnowledgeState.course_id == state.course_id,
+                UserKnowledgeState.knowledge_unit_id == state.knowledge_unit_id,
+                UserKnowledgeState.state_version == expected_state_version,
+            )
+            .values(**update_values)
+            .execution_options(synchronize_session=False)
         )
 
-    session.exec(stmt)
+    result = session.exec(stmt)
+    if int(getattr(result, "rowcount", 0) or 0) != 1:
+        session.expire_all()
+        return None
+
     if auto_commit:
         session.commit()
     else:
         session.flush()
+    session.expire_all()
     persisted = get_knowledge_state(
         session,
         user_id=state.user_id,
@@ -105,7 +126,7 @@ def upsert_knowledge_state(
         knowledge_unit_id=target_ref_id,
     )
     if persisted is None:
-        raise ValueError("UserKnowledgeState upsert failed.")
+        raise ValueError("UserKnowledgeState compare-and-set failed after a successful write.")
     return persisted
 
 
