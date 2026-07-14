@@ -401,6 +401,40 @@ export async function runTrackedApiFetch<T>(
   }
 }
 
+export async function runAnonymousApiFetch<T>(
+  url: string,
+  init: RequestInit,
+  consume: (response: Response) => Promise<T>,
+  disconnectReason = "anonymous_fetch_disconnect",
+): Promise<T> {
+  if (backendOffline) {
+    throw createBackendOfflineError();
+  }
+
+  const headers = new Headers(init.headers);
+  headers.delete("Authorization");
+  headers.delete("Cookie");
+  headers.delete("X-Device-Key");
+  const trackedSignal = createTrackedAbortSignal(init.signal ?? null);
+  try {
+    const response = await fetch(buildApiUrl(url), {
+      ...init,
+      credentials: "omit",
+      headers,
+      referrerPolicy: "no-referrer",
+      signal: trackedSignal.signal,
+    });
+    return await consume(response);
+  } catch (error) {
+    if (isBackendDisconnectError(error)) {
+      markBackendOffline(disconnectReason);
+    }
+    throw error;
+  } finally {
+    trackedSignal.cleanup();
+  }
+}
+
 function extractErrorMessage(payload: unknown, fallback = "请求失败，请重试。"): string {
   if (typeof payload === "string" && payload.trim()) {
     return sanitizeErrorText(payload, fallback);
@@ -435,6 +469,27 @@ async function parseErrorResponse(response: Response): Promise<string> {
   } catch {
     return extractErrorMessage(rawText, `请求失败（${response.status}）`);
   }
+}
+
+export async function anonymousApiClient<T>(url: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers);
+  if (!headers.has("Accept")) {
+    headers.set("Accept", "application/json");
+  }
+  return runAnonymousApiFetch(
+    url,
+    {
+      ...init,
+      headers,
+    },
+    async (response) => {
+      if (!response.ok) {
+        throw new Error(await parseErrorResponse(response));
+      }
+      return response.json() as Promise<T>;
+    },
+    "anonymous_api_disconnect",
+  );
 }
 
 export interface SseTokenPayload {

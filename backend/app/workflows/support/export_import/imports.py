@@ -28,6 +28,7 @@ from app.shared.infra.course import (
 from app.shared.infra.llm_support import get_llm_concurrency_limit
 from app.shared.infra.observability.trace import langsmith_trace, llm_trace_scope
 from app.shared.infra.storage import (
+    CourseStorageScope,
     build_file_storage_segment,
     build_course_storage_scope,
     get_content_store,
@@ -56,6 +57,9 @@ from app.workflows.support.export_import.limits import (
 logger = structlog.get_logger()
 
 _DOCGEN_COVER_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+_SHARE_ASSET_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+_SHARE_ASSET_ROOT = "share_assets"
+MAX_IMPORTED_SHARE_ASSET_BYTES = 16 * 1024 * 1024
 _IMPORT_EMBEDDING_BATCH_SIZE = 1
 _IMPORT_EMBEDDING_MAX_CONCURRENCY = 1
 _IMPORT_EMBEDDING_FOREGROUND_SLOT_RESERVE = 2
@@ -104,8 +108,14 @@ def import_course(
     file_path: Path,
     options: ImportOptions | None = None,
     user_id: str = "local",
+    commit: bool = True,
 ) -> ImportResultData:
-    """Import one course from an ``.atmx`` archive."""
+    """Import one course from an ``.atmx`` archive.
+
+    ``commit=False`` leaves the imported rows in the caller's transaction so
+    an outer use case can atomically persist related records. The caller must
+    clean the imported course storage if that outer transaction later fails.
+    """
 
     options = options or ImportOptions()
 
@@ -185,10 +195,16 @@ def import_course(
                 course_id=new_course_id,
                 id_map=id_map,
             )
-            session.commit()
+            if commit:
+                session.commit()
+            else:
+                session.flush()
         except Exception:
             session.rollback()
-            _cleanup_import_artifacts(new_course_id, user_id=user_id)
+            cleanup_imported_course_artifacts(
+                new_course_id,
+                user_id=user_id,
+            )
             raise
 
         if options.rebuild_embeddings:
@@ -531,16 +547,70 @@ def _unpack_files(
                 key = f"{course_scope.namespace}/assets/docgen/{item.name}"
                 run_store_sync(cs.write_bytes, key, item.read_bytes())
 
+    _restore_share_assets(
+        extract_dir,
+        course_scope=course_scope,
+        content_store=cs,
+    )
 
-def _cleanup_import_artifacts(course_id: str, *, user_id: str) -> None:
-    """Best-effort cleanup when import fails after files have been written."""
+
+def _restore_share_assets(
+    extract_dir: Path,
+    *,
+    course_scope: CourseStorageScope,
+    content_store: Any,
+) -> None:
+    """Restore only bounded, signature-verified passive image assets."""
+
+    asset_root = (extract_dir / _SHARE_ASSET_ROOT).resolve()
+    if not asset_root.exists():
+        return
+
+    for candidate in sorted(asset_root.rglob("*")):
+        if not candidate.is_file():
+            continue
+        if candidate.is_symlink():
+            raise InvalidImportPackageError("分享资产包含不安全的符号链接。")
+
+        resolved = candidate.resolve()
+        try:
+            relative = resolved.relative_to(asset_root)
+        except ValueError as exc:
+            raise InvalidImportPackageError("分享资产路径超出允许目录。") from exc
+
+        suffix = resolved.suffix.lower()
+        if suffix not in _SHARE_ASSET_IMAGE_EXTENSIONS:
+            continue
+        if resolved.stat().st_size > MAX_IMPORTED_SHARE_ASSET_BYTES:
+            raise InvalidImportPackageError("单个分享图片资产不能超过 16 MiB。")
+
+        data = resolved.read_bytes()
+        if not _share_asset_magic_matches(suffix, data):
+            continue
+        key = f"{course_scope.namespace}/assets/{relative.as_posix()}"
+        run_store_sync(content_store.write_bytes, key, data)
+
+
+def _share_asset_magic_matches(suffix: str, data: bytes) -> bool:
+    if suffix == ".png":
+        return data.startswith(b"\x89PNG\r\n\x1a\n")
+    if suffix in {".jpg", ".jpeg"}:
+        return data.startswith(b"\xff\xd8\xff")
+    if suffix == ".gif":
+        return data.startswith((b"GIF87a", b"GIF89a"))
+    if suffix == ".webp":
+        return len(data) >= 12 and data.startswith(b"RIFF") and data[8:12] == b"WEBP"
+    return False
+
+
+def cleanup_imported_course_artifacts(course_id: str, *, user_id: str) -> None:
+    """Best-effort storage cleanup after an import transaction fails."""
 
     cs = get_content_store()
     try:
         run_store_sync(
             cs.delete_prefix,
             build_course_storage_scope(user_id=user_id, course_id=course_id).course_prefix(),
-            default=0,
         )
     except Exception as exc:  # pragma: no cover - best-effort cleanup
         logger.warning(
@@ -786,6 +856,7 @@ def _run_async(coro):
 
 
 __all__ = [
+    "cleanup_imported_course_artifacts",
     "import_course",
     "rebuild_imported_embeddings_background",
     "spawn_imported_embedding_rebuild_background",

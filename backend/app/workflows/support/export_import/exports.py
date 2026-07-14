@@ -1084,7 +1084,7 @@ def _pack_referenced_share_assets(
     knowledge_documents: list[dict[str, Any]],
 ) -> None:
     packed: set[str] = set()
-    for asset_path in _extract_referenced_asset_paths(knowledge_documents):
+    for asset_path in extract_referenced_asset_paths(knowledge_documents):
         if asset_path in packed:
             continue
         data = run_store_sync(cs.read_bytes, f"{namespace}/assets/{asset_path}", default=None)
@@ -1095,7 +1095,11 @@ def _pack_referenced_share_assets(
         packed.add(asset_path)
 
 
-def _extract_referenced_asset_paths(knowledge_documents: list[dict[str, Any]]) -> list[str]:
+def extract_referenced_asset_paths(
+    knowledge_documents: list[dict[str, Any]],
+    *,
+    local_only: bool = False,
+) -> list[str]:
     found: set[str] = set()
     for record in knowledge_documents:
         if not isinstance(record, dict):
@@ -1104,28 +1108,45 @@ def _extract_referenced_asset_paths(knowledge_documents: list[dict[str, Any]]) -
             text = str(record.get(field_name) or "")
             if not text:
                 continue
-            for reference in _iter_potential_asset_references(text):
-                normalized = _normalize_referenced_asset_path(reference)
+            for reference in _iter_potential_asset_references(
+                text,
+                structured_only=local_only,
+            ):
+                normalized = _normalize_referenced_asset_path(
+                    reference,
+                    local_only=local_only,
+                )
                 if normalized:
                     found.add(normalized)
     return sorted(found)
 
 
-def _iter_potential_asset_references(text: str):
-    patterns = (
+def _iter_potential_asset_references(
+    text: str,
+    *,
+    structured_only: bool = False,
+):
+    structured_patterns = (
         r"!\[[^\]]*]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)",
         r"\[[^\]]+]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)",
         r"(?:src|href)=['\"]([^'\"]+)['\"]",
+    )
+    fallback_patterns = (
         r"(/api/v1/courses/[^)\s\"'<>]+/files/assets/[^)\s\"'<>]+)",
         r"((?:\.\./|\./)?assets/[^)\s\"'<>]+)",
         r"(/courses/[^)\s\"'<>]+/knowledge-docs/(?:interactive|html-figure)[^)\s\"'<>]*)",
     )
+    patterns = structured_patterns if structured_only else structured_patterns + fallback_patterns
     for pattern in patterns:
         for match in re.finditer(pattern, text):
             yield match.group(1)
 
 
-def _normalize_referenced_asset_path(reference: str) -> str | None:
+def _normalize_referenced_asset_path(
+    reference: str,
+    *,
+    local_only: bool = False,
+) -> str | None:
     raw = unquote(str(reference or "")).replace("\\", "/").strip().strip("'\"")
     if not raw or raw.lower().startswith("data:") or raw.lower().startswith("javascript:"):
         return None
@@ -1135,13 +1156,36 @@ def _normalize_referenced_asset_path(reference: str) -> str | None:
         parsed = None
 
     if parsed is not None:
+        if local_only and (parsed.scheme or parsed.netloc):
+            return None
+        path = parsed.path or raw.split("?", 1)[0]
+        if local_only and _contains_dot_path_segment(path):
+            return None
         for asset in parse_qs(parsed.query).get("asset", []):
-            normalized = _normalize_asset_path(asset)
+            if local_only and not re.search(
+                r"/knowledge-docs/(?:interactive|html-figure)(?:/|$)",
+                path,
+            ):
+                continue
+            normalized = _normalize_asset_path(
+                asset,
+                reject_dot_segments=local_only,
+            )
             if normalized:
                 return normalized
-        path = parsed.path or raw.split("?", 1)[0]
     else:
         path = raw.split("?", 1)[0]
+
+    if local_only:
+        if path.startswith("assets/"):
+            candidate = path.removeprefix("assets/")
+        elif path.startswith("/assets/"):
+            candidate = path.removeprefix("/assets/")
+        elif path.startswith("/api/v1/courses/") and "/files/assets/" in path:
+            candidate = path.split("/files/assets/", 1)[1]
+        else:
+            return None
+        return _normalize_asset_path(candidate, reject_dot_segments=True)
 
     for marker in ("/files/assets/", "/assets/", "assets/"):
         if marker in path:
@@ -1149,8 +1193,19 @@ def _normalize_referenced_asset_path(reference: str) -> str | None:
     return None
 
 
-def _normalize_asset_path(path: str) -> str | None:
+def _contains_dot_path_segment(path: str) -> bool:
+    normalized = unquote(str(path or "")).replace("\\", "/")
+    return any(part in {".", ".."} for part in normalized.split("/"))
+
+
+def _normalize_asset_path(
+    path: str,
+    *,
+    reject_dot_segments: bool = False,
+) -> str | None:
     raw = unquote(str(path or "")).replace("\\", "/").split("#", 1)[0].split("?", 1)[0].lstrip("/")
+    if reject_dot_segments and _contains_dot_path_segment(raw):
+        return None
     normalized = posixpath.normpath(raw)
     if (
         not normalized
@@ -1161,6 +1216,8 @@ def _normalize_asset_path(path: str) -> str | None:
     ):
         return None
     return normalized
+
+
 # ===================================================================
 # Internal: Manifest
 # ===================================================================

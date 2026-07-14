@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import sqlalchemy as sa
+import pytest
 from sqlmodel import Session, select
 
 import app.shared.infra.database.core as db_core
@@ -298,6 +299,72 @@ def test_additive_schema_updates_backfill_parse_signatures_and_indexes(tmp_path:
     assert rows["file-3"] == "default"
     assert "ix_raw_file_user_hash_size_type" in indexes
     assert "uq_raw_file_user_hash_size_type_signature_active" in indexes
+
+
+def test_course_share_additive_index_deduplicates_active_rows_once(tmp_path: Path) -> None:
+    engine = _file_sqlite_engine(tmp_path, "course-share-index.db")
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                """
+                CREATE TABLE course_share (
+                    id TEXT PRIMARY KEY,
+                    source_course_id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL,
+                    revoked_at DATETIME NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            sa.text(
+                """
+                INSERT INTO course_share
+                    (id, source_course_id, status, created_at, updated_at, revoked_at)
+                VALUES
+                    ('share-old', 'course-a', 'active', '2026-01-01', '2026-01-01', NULL),
+                    ('share-new', 'course-a', 'active', '2026-01-02', '2026-01-02', NULL),
+                    ('share-other', 'course-b', 'active', '2026-01-01', '2026-01-01', NULL)
+                """
+            )
+        )
+
+    db_core._deduplicate_sqlite_active_course_shares(engine)
+    db_core._apply_sqlite_additive_index_updates(engine)
+    db_core._deduplicate_sqlite_active_course_shares(engine)
+
+    with engine.connect() as connection:
+        rows = {
+            row.id: (row.status, row.revoked_at)
+            for row in connection.execute(
+                sa.text("SELECT id, status, revoked_at FROM course_share")
+            ).mappings()
+        }
+        indexes = {
+            index["name"]: index
+            for index in sa.inspect(connection).get_indexes("course_share")
+        }
+
+    assert rows["share-old"][0] == "revoked"
+    assert rows["share-old"][1] is not None
+    assert rows["share-new"][0] == "active"
+    assert rows["share-other"][0] == "active"
+    assert indexes["uq_course_share_active_source_course"]["unique"] == 1
+
+    with pytest.raises(sa.exc.IntegrityError):
+        with engine.begin() as connection:
+            connection.execute(
+                sa.text(
+                    """
+                    INSERT INTO course_share
+                        (id, source_course_id, status, created_at, updated_at, revoked_at)
+                    VALUES
+                        ('share-conflict', 'course-a', 'active', '2026-01-03', '2026-01-03', NULL)
+                    """
+                )
+            )
 
 
 def test_vector_table_helpers_and_pool_config(monkeypatch, tmp_path: Path) -> None:

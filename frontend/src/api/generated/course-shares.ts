@@ -68,13 +68,28 @@ export type createCourseShareApiApiV1CoursesCourseIdSharesPostResponse400 = {
   status: 400
 }
 
+export type createCourseShareApiApiV1CoursesCourseIdSharesPostResponse401 = {
+  data: ErrorResponse
+  status: 401
+}
+
 export type createCourseShareApiApiV1CoursesCourseIdSharesPostResponse404 = {
   data: ErrorResponse
   status: 404
 }
 
+export type createCourseShareApiApiV1CoursesCourseIdSharesPostResponse409 = {
+  data: ErrorResponse
+  status: 409
+}
+
+export type createCourseShareApiApiV1CoursesCourseIdSharesPostResponse413 = {
+  data: ErrorResponse
+  status: 413
+}
+
 export type createCourseShareApiApiV1CoursesCourseIdSharesPostResponse422 = {
-  data: HTTPValidationError
+  data: ErrorResponse
   status: 422
 }
 
@@ -86,7 +101,7 @@ export type createCourseShareApiApiV1CoursesCourseIdSharesPostResponse500 = {
 export type createCourseShareApiApiV1CoursesCourseIdSharesPostResponseSuccess = (createCourseShareApiApiV1CoursesCourseIdSharesPostResponse200) & {
   headers: Headers;
 };
-export type createCourseShareApiApiV1CoursesCourseIdSharesPostResponseError = (createCourseShareApiApiV1CoursesCourseIdSharesPostResponse400 | createCourseShareApiApiV1CoursesCourseIdSharesPostResponse404 | createCourseShareApiApiV1CoursesCourseIdSharesPostResponse422 | createCourseShareApiApiV1CoursesCourseIdSharesPostResponse500) & {
+export type createCourseShareApiApiV1CoursesCourseIdSharesPostResponseError = (createCourseShareApiApiV1CoursesCourseIdSharesPostResponse400 | createCourseShareApiApiV1CoursesCourseIdSharesPostResponse401 | createCourseShareApiApiV1CoursesCourseIdSharesPostResponse404 | createCourseShareApiApiV1CoursesCourseIdSharesPostResponse409 | createCourseShareApiApiV1CoursesCourseIdSharesPostResponse413 | createCourseShareApiApiV1CoursesCourseIdSharesPostResponse422 | createCourseShareApiApiV1CoursesCourseIdSharesPostResponse500) & {
   headers: Headers;
 };
 
@@ -118,7 +133,7 @@ export const createCourseShareApiApiV1CoursesCourseIdSharesPost = async (courseI
 
 
 
-export const getCreateCourseShareApiApiV1CoursesCourseIdSharesPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+export const getCreateCourseShareApiApiV1CoursesCourseIdSharesPostMutationOptions = <TError = ErrorResponse,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCourseShareApiApiV1CoursesCourseIdSharesPost>>, TError,{courseId: string;data?: CourseShareCreateRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
 ): UseMutationOptions<Awaited<ReturnType<typeof createCourseShareApiApiV1CoursesCourseIdSharesPost>>, TError,{courseId: string;data?: CourseShareCreateRequest}, TContext> => {
 
@@ -147,12 +162,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type CreateCourseShareApiApiV1CoursesCourseIdSharesPostMutationResult = NonNullable<Awaited<ReturnType<typeof createCourseShareApiApiV1CoursesCourseIdSharesPost>>>
     export type CreateCourseShareApiApiV1CoursesCourseIdSharesPostMutationBody = CourseShareCreateRequest | undefined
-    export type CreateCourseShareApiApiV1CoursesCourseIdSharesPostMutationError = ErrorResponse | HTTPValidationError
+    export type CreateCourseShareApiApiV1CoursesCourseIdSharesPostMutationError = ErrorResponse
 
     /**
  * @summary 创建课程分享链接
  */
-export const useCreateCourseShareApiApiV1CoursesCourseIdSharesPost = <TError = ErrorResponse | HTTPValidationError,
+export const useCreateCourseShareApiApiV1CoursesCourseIdSharesPost = <TError = ErrorResponse,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCourseShareApiApiV1CoursesCourseIdSharesPost>>, TError,{courseId: string;data?: CourseShareCreateRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
  , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof createCourseShareApiApiV1CoursesCourseIdSharesPost>>,
@@ -170,6 +185,11 @@ export const useCreateCourseShareApiApiV1CoursesCourseIdSharesPost = <TError = E
 export type listCourseSharesApiApiV1CoursesCourseIdSharesGetResponse400 = {
   data: ErrorResponse
   status: 400
+}
+
+export type listCourseSharesApiApiV1CoursesCourseIdSharesGetResponse401 = {
+  data: ErrorResponse
+  status: 401
 }
 
 export type listCourseSharesApiApiV1CoursesCourseIdSharesGetResponse404 = {
@@ -190,7 +210,7 @@ export type listCourseSharesApiApiV1CoursesCourseIdSharesGetResponse500 = {
 export type listCourseSharesApiApiV1CoursesCourseIdSharesGetResponseSuccess = (listCourseSharesApiApiV1CoursesCourseIdSharesGetResponse200) & {
   headers: Headers;
 };
-export type listCourseSharesApiApiV1CoursesCourseIdSharesGetResponseError = (listCourseSharesApiApiV1CoursesCourseIdSharesGetResponse400 | listCourseSharesApiApiV1CoursesCourseIdSharesGetResponse404 | listCourseSharesApiApiV1CoursesCourseIdSharesGetResponse422 | listCourseSharesApiApiV1CoursesCourseIdSharesGetResponse500) & {
+export type listCourseSharesApiApiV1CoursesCourseIdSharesGetResponseError = (listCourseSharesApiApiV1CoursesCourseIdSharesGetResponse400 | listCourseSharesApiApiV1CoursesCourseIdSharesGetResponse401 | listCourseSharesApiApiV1CoursesCourseIdSharesGetResponse404 | listCourseSharesApiApiV1CoursesCourseIdSharesGetResponse422 | listCourseSharesApiApiV1CoursesCourseIdSharesGetResponse500) & {
   headers: Headers;
 };
 
@@ -306,6 +326,11 @@ export type revokeCourseShareApiApiV1CoursesCourseIdSharesShareIdDeleteResponse4
   status: 400
 }
 
+export type revokeCourseShareApiApiV1CoursesCourseIdSharesShareIdDeleteResponse401 = {
+  data: ErrorResponse
+  status: 401
+}
+
 export type revokeCourseShareApiApiV1CoursesCourseIdSharesShareIdDeleteResponse404 = {
   data: ErrorResponse
   status: 404
@@ -324,7 +349,7 @@ export type revokeCourseShareApiApiV1CoursesCourseIdSharesShareIdDeleteResponse5
 export type revokeCourseShareApiApiV1CoursesCourseIdSharesShareIdDeleteResponseSuccess = (revokeCourseShareApiApiV1CoursesCourseIdSharesShareIdDeleteResponse200) & {
   headers: Headers;
 };
-export type revokeCourseShareApiApiV1CoursesCourseIdSharesShareIdDeleteResponseError = (revokeCourseShareApiApiV1CoursesCourseIdSharesShareIdDeleteResponse400 | revokeCourseShareApiApiV1CoursesCourseIdSharesShareIdDeleteResponse404 | revokeCourseShareApiApiV1CoursesCourseIdSharesShareIdDeleteResponse422 | revokeCourseShareApiApiV1CoursesCourseIdSharesShareIdDeleteResponse500) & {
+export type revokeCourseShareApiApiV1CoursesCourseIdSharesShareIdDeleteResponseError = (revokeCourseShareApiApiV1CoursesCourseIdSharesShareIdDeleteResponse400 | revokeCourseShareApiApiV1CoursesCourseIdSharesShareIdDeleteResponse401 | revokeCourseShareApiApiV1CoursesCourseIdSharesShareIdDeleteResponse404 | revokeCourseShareApiApiV1CoursesCourseIdSharesShareIdDeleteResponse422 | revokeCourseShareApiApiV1CoursesCourseIdSharesShareIdDeleteResponse500) & {
   headers: Headers;
 };
 

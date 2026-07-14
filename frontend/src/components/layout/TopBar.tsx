@@ -1,6 +1,6 @@
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { BarChart3, Github, Loader2, LogIn, LogOut, User } from "lucide-react";
 import { apiClient, getApiErrorMessage } from "../../api/client";
 import { listCoursesApiApiV1CoursesListPost } from "../../api/generated/courses";
@@ -51,6 +51,23 @@ interface LearningActivityPanelProps {
   latestActivity: LearningActivityEvent | null;
   isLoading: boolean;
   isError: boolean;
+}
+
+function getSafeInternalReturnTo(value: string | null): string | null {
+  const normalized = value?.trim() ?? "";
+  if (!normalized.startsWith("/") || normalized.startsWith("//") || normalized.includes("\\")) {
+    return null;
+  }
+  try {
+    const base = "https://aiteachme.local";
+    const parsed = new URL(normalized, base);
+    if (parsed.origin !== base) {
+      return null;
+    }
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return null;
+  }
 }
 
 function getDisplayName(user: RuntimeUser | null): string {
@@ -151,6 +168,8 @@ function LearningActivityPanel({
 
 export function TopBar({ className }: TopBarProps) {
   const queryClient = useQueryClient();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [authUser, setAuthUser] = useState<RuntimeUser | null>(null);
   const [authEnabled, setAuthEnabled] = useState<boolean | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
@@ -176,6 +195,8 @@ export function TopBar({ className }: TopBarProps) {
 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
+  const authEntryRequestRef = useRef("");
+  const authReturnToRef = useRef<string | null>(null);
 
   const isLoggedIn = Boolean(authUser?.is_authenticated);
   const canUseAuth = authEnabled === true;
@@ -323,6 +344,7 @@ export function TopBar({ className }: TopBarProps) {
 
   const closeAuthModal = () => {
     if (isAuthSubmitting || isSendCodeSubmitting) return;
+    authReturnToRef.current = null;
     setIsAuthModalOpen(false);
     setAuthError(null);
     setAuthPassword("");
@@ -338,9 +360,51 @@ export function TopBar({ className }: TopBarProps) {
       closeMenus();
       return;
     }
+    authReturnToRef.current = null;
     closeMenus();
     openAuthModal(mode);
   };
+
+  useEffect(() => {
+    if (authEnabled === null) {
+      return;
+    }
+    const searchParams = new URLSearchParams(location.search);
+    if (searchParams.get("auth") !== "login") {
+      authEntryRequestRef.current = "";
+      return;
+    }
+    const requestKey = `${location.pathname}${location.search}`;
+    if (authEntryRequestRef.current === requestKey) {
+      return;
+    }
+    authEntryRequestRef.current = requestKey;
+    authReturnToRef.current = getSafeInternalReturnTo(searchParams.get("returnTo"));
+
+    if (authEnabled) {
+      setAuthMode("login");
+      setAuthError(null);
+      setAuthPassword("");
+      setAuthVerificationCode("");
+      setSendCodeCooldownS(0);
+      setCodeExpiresInS(null);
+      setSendCodeInfo(null);
+      setCodeSentToEmail(null);
+      setIsAuthModalOpen(true);
+    }
+
+    searchParams.delete("auth");
+    searchParams.delete("returnTo");
+    const nextSearch = searchParams.toString();
+    navigate(
+      {
+        pathname: location.pathname,
+        search: nextSearch ? `?${nextSearch}` : "",
+        hash: location.hash,
+      },
+      { replace: true },
+    );
+  }, [authEnabled, location.hash, location.pathname, location.search, navigate]);
 
   const handleLogout = async () => {
     try {
@@ -467,6 +531,11 @@ export function TopBar({ className }: TopBarProps) {
       setSendCodeInfo(null);
       setCodeSentToEmail(null);
       closeMenus();
+      const returnTo = authReturnToRef.current;
+      authReturnToRef.current = null;
+      if (returnTo) {
+        navigate(returnTo, { replace: true });
+      }
     } catch (error) {
       setAuthError(
         getApiErrorMessage(

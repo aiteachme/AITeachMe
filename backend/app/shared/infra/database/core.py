@@ -64,6 +64,7 @@ from app.models.raw_file import RawFile, CourseFileLink
 from app.models.chat import Highlight
 from app.models.course import Course
 from app.models.course_share import CourseShare
+from app.models.course_share_import import CourseShareImport
 from app.models.system import SystemRuntimeSettings
 from app.models.user import User
 
@@ -75,6 +76,7 @@ _SCHEMA_MODELS = (
     EmailConfirmation,
     Course,
     CourseShare,
+    CourseShareImport,
     RawFile,
     CourseFileLink,
     RetrievalChunk,
@@ -182,6 +184,14 @@ _SQLITE_ADDITIVE_COLUMNS = {
     ),
 }
 _SQLITE_ADDITIVE_INDEXES = {
+    "course_share": (
+        (
+            "uq_course_share_active_source_course",
+            ("source_course_id",),
+            True,
+            "status = 'active'",
+        ),
+    ),
     "raw_file": (
         (
             "ix_raw_file_user_hash_size_type",
@@ -1107,6 +1117,48 @@ def _backfill_sqlite_library_chat_sessions(engine: sa.Engine) -> None:
             )
 
 
+def _deduplicate_sqlite_active_course_shares(engine: sa.Engine) -> None:
+    """Keep the newest active share per course before adding its unique index."""
+
+    inspector = sa.inspect(engine)
+    if "course_share" not in set(inspector.get_table_names()):
+        return
+    index_name = "uq_course_share_active_source_course"
+    if index_name in {str(index.get("name") or "") for index in inspector.get_indexes("course_share")}:
+        return
+
+    with engine.begin() as connection:
+        result = connection.execute(
+            sa.text(
+                """
+                UPDATE course_share
+                SET
+                    status = 'revoked',
+                    revoked_at = COALESCE(revoked_at, CURRENT_TIMESTAMP),
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE status = 'active'
+                AND EXISTS (
+                    SELECT 1
+                    FROM course_share AS newer
+                    WHERE newer.source_course_id = course_share.source_course_id
+                    AND newer.status = 'active'
+                    AND (
+                        newer.created_at > course_share.created_at
+                        OR (
+                            newer.created_at = course_share.created_at
+                            AND newer.id > course_share.id
+                        )
+                    )
+                )
+                """
+            )
+        )
+    logger.info(
+        "sqlite_duplicate_active_course_shares_revoked",
+        revoked_count=max(0, int(result.rowcount or 0)),
+    )
+
+
 def _apply_sqlite_additive_index_updates(engine: sa.Engine) -> None:
     inspector = sa.inspect(engine)
     existing_tables = set(inspector.get_table_names())
@@ -1168,6 +1220,7 @@ def _ensure_local_sqlite_schema(engine: sa.Engine) -> sa.Engine:
     _apply_sqlite_additive_schema_updates(engine)
     _backfill_sqlite_raw_file_parse_signatures(engine)
     _backfill_sqlite_library_chat_sessions(engine)
+    _deduplicate_sqlite_active_course_shares(engine)
     _apply_sqlite_additive_index_updates(engine)
     drift = _inspect_sqlite_schema_drift(engine)
     if drift is None:

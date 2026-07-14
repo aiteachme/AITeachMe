@@ -4,19 +4,10 @@ import { Check, Copy, ExternalLink, Link2, Loader2, RotateCcw, Share2 } from "lu
 
 import { apiClient, getApiErrorMessage } from "../../api/client";
 import type { ApiResponse } from "../../api/types";
-import type { CourseShareData, ExportOptions } from "../../api/generated/model";
+import type { CourseShareData } from "../../api/generated/model";
 import { Button } from "../ui/Button";
 import { useToast } from "../ui/Toast";
 import { CourseOperationModal } from "./CourseOperationModal";
-
-const BASE_SHARE_OPTIONS: Required<ExportOptions> = {
-  include_raw_files: false,
-  include_raw_markdowns: true,
-  include_knowledge_docs: true,
-  include_chat_history: false,
-  include_exam_history: false,
-  include_profile: false,
-};
 
 function getAppBasePath(): string {
   const base = (import.meta.env.BASE_URL || "").trim();
@@ -51,7 +42,6 @@ interface CourseShareModalProps {
 }
 
 export function CourseShareModal({ courseId, onClose }: CourseShareModalProps) {
-  const [includeExam, setIncludeExam] = useState(false);
   const [copied, setCopied] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -75,16 +65,11 @@ export function CourseShareModal({ courseId, onClose }: CourseShareModalProps) {
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const exportOptions = {
-        ...BASE_SHARE_OPTIONS,
-        include_exam_history: includeExam,
-      };
       const response = await apiClient<ApiResponse<CourseShareData>>({
         method: "POST",
         url: `/api/v1/courses/${encodeURIComponent(courseId)}/shares`,
         data: {
           expires_in_days: 30,
-          export_options: exportOptions,
         },
       });
       if (!response.data) throw new Error("分享链接创建失败");
@@ -105,7 +90,7 @@ export function CourseShareModal({ courseId, onClose }: CourseShareModalProps) {
       }
       toast({
         title: "分享链接已创建",
-        description: copiedUrl ? "链接已复制，别人打开后可直接浏览课程。" : "链接已生成，别人打开后可直接浏览课程。",
+        description: copiedUrl ? "链接已复制，别人打开后可浏览已发布课程内容。" : "链接已生成，别人打开后可浏览已发布课程内容。",
         variant: "success",
       });
     },
@@ -145,7 +130,7 @@ export function CourseShareModal({ courseId, onClose }: CourseShareModalProps) {
   return (
     <CourseOperationModal
       title="分享课程"
-      description="生成一个可打开浏览的课程链接；保存到自己的课程需要登录。"
+      description="生成只读课程快照链接；仅分享已发布内容，不包含学习画像、对话和作答记录。"
       icon={Share2}
       tone="slate"
       onClose={onClose}
@@ -227,7 +212,7 @@ export function CourseShareModal({ courseId, onClose }: CourseShareModalProps) {
               </Button>
             </div>
             <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">
-              {formatDateTime(activeShare.expires_at)} 前有效 · 已保存 {activeShare.import_count ?? 0} 次 · 不包含对话记录和学习画像。
+              {formatDateTime(activeShare.expires_at)} 前有效 · 已保存 {activeShare.import_count ?? 0} 次 · 仅包含已发布课程内容，不含学习画像、对话和作答记录。
             </p>
           </section>
         ) : (
@@ -249,31 +234,12 @@ export function CourseShareModal({ courseId, onClose }: CourseShareModalProps) {
               </span>
             </div>
 
-            <label className="group flex cursor-pointer items-start gap-3 rounded-md px-2.5 py-3 transition hover:bg-slate-50 dark:hover:bg-slate-900/60">
-              <input
-                type="checkbox"
-                checked={includeExam}
-                onChange={(event) => setIncludeExam(event.target.checked)}
-                className="peer sr-only"
-              />
-              <span
-                aria-hidden="true"
-                className={[
-                  "mt-1 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition",
-                  includeExam
-                    ? "border-slate-950 bg-slate-950 text-white dark:border-slate-100 dark:bg-slate-100 dark:text-slate-950"
-                    : "border-slate-300 bg-white text-transparent group-hover:border-slate-400 dark:border-slate-700 dark:bg-slate-950 dark:group-hover:border-slate-500",
-                ].join(" ")}
-              >
-                <Check className="h-3 w-3" />
-              </span>
-              <span className="min-w-0">
-                <span className="block text-sm font-semibold text-slate-950 dark:text-slate-50">包含训练题库</span>
-                <span className="mt-1 block text-xs leading-5 text-slate-500 dark:text-slate-400">
-                  只分享题目，不分享作答记录。
-                </span>
-              </span>
-            </label>
+            <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-800 dark:bg-slate-900/60">
+              <p className="text-sm font-semibold text-slate-950 dark:text-slate-50">分享范围</p>
+              <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                分享已发布的课程知识内容及其引用资源，不包含学习画像、对话和作答记录。
+              </p>
+            </div>
           </section>
         )}
 

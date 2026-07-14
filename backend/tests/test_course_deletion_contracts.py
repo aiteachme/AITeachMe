@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Coroutine
 from datetime import timedelta
+from threading import get_ident
 from typing import Any
 
 import pytest
@@ -54,6 +55,10 @@ async def test_delete_course_cancels_tasks_and_revokes_active_shares(monkeypatch
     SQLModel.metadata.create_all(engine)
     registry = _FakeBackgroundRegistry()
     cancel_build_calls: list[str] = []
+    snapshot_cleanup_calls: list[list[str]] = []
+    deletion_thread_ids: list[int] = []
+    event_loop_thread_id = get_ident()
+    original_delete_course_with_all_content = course_deletion.delete_course_with_all_content
 
     async def fake_cancel_knowledge_build(
         session: Session,
@@ -68,6 +73,20 @@ async def test_delete_course_cancels_tasks_and_revokes_active_shares(monkeypatch
     monkeypatch.setattr(
         "app.workflows.digest.common.build_lifecycle.cancel_knowledge_build",
         fake_cancel_knowledge_build,
+    )
+    monkeypatch.setattr(
+        "app.workflows.support.courses.lib.deletion._delete_course_share_snapshots_best_effort",
+        lambda storage_keys: snapshot_cleanup_calls.append(storage_keys),
+    )
+
+    def observed_delete_course_with_all_content(*args: Any, **kwargs: Any) -> dict[str, int]:
+        deletion_thread_ids.append(get_ident())
+        return original_delete_course_with_all_content(*args, **kwargs)
+
+    monkeypatch.setattr(
+        course_deletion,
+        "delete_course_with_all_content",
+        observed_delete_course_with_all_content,
     )
 
     with Session(engine, expire_on_commit=False) as session:
@@ -108,5 +127,8 @@ async def test_delete_course_cancels_tasks_and_revokes_active_shares(monkeypatch
         assert share is not None
         assert share.status == "revoked"
         assert share.revoked_at is not None
+        assert snapshot_cleanup_calls == [["shared/course_snapshots/share_delete.atmx"]]
         assert cancel_build_calls == [TEST_COURSE_ID]
         assert {"kind": None, "course_id": TEST_COURSE_ID} in registry.cancel_calls
+        assert deletion_thread_ids
+        assert deletion_thread_ids[0] != event_loop_thread_id

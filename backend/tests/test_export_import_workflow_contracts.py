@@ -23,12 +23,14 @@ from app.models import (
 )
 from app.schemas.export_import import ExportOptions, ImportOptions
 from app.shared.infra.exceptions import InvalidImportPackageError
+from app.workflows.support import course_shares as course_shares_module
 from app.workflows.support.export_import import exports as export_module
 from app.workflows.support.export_import import imports as import_module
 
 
 COURSE_ID = "course_math00000000"
 IMPORTED_COURSE_ID = "course_imported1234"
+_VALID_PNG_BYTES = b"\x89PNG\r\n\x1a\nverified-image"
 
 
 class _FakeStore:
@@ -184,6 +186,58 @@ def test_export_preview_and_archive_include_selected_course_graph(
         package_path.unlink(missing_ok=True)
 
 
+def test_share_snapshot_strips_private_data_from_real_export(
+    session: Session,
+    export_import_store: _FakeStore,
+) -> None:
+    del export_import_store
+    _seed_course_graph(session)
+    course = session.get(Course, COURSE_ID)
+    assert course is not None
+    options = ExportOptions(
+        include_raw_files=False,
+        include_raw_markdowns=False,
+        include_knowledge_docs=True,
+        include_chat_history=False,
+        include_exam_history=False,
+        include_profile=False,
+    )
+    package_path = export_module.export_course(session, course_id=COURSE_ID, options=options)
+    snapshot_path: Path | None = None
+
+    try:
+        snapshot_path, _stats = course_shares_module._build_share_snapshot(
+            package_path,
+            course=course,
+            options=options,
+        )
+        with zipfile.ZipFile(snapshot_path, "r") as archive:
+            names = set(archive.namelist())
+            unpacked = b"\n".join(archive.read(name) for name in names)
+            manifest = json.loads(archive.read("manifest.json").decode("utf-8"))
+
+        assert names == {
+            "manifest.json",
+            "db/course.json",
+            "db/knowledge_document.json",
+            "db/knowledge_unit.json",
+            "db/knowledge_edge.json",
+        }
+        assert manifest["extensions"]["share_snapshot_schema"] == "aiteachme.course-share.v1"
+        for private_marker in (
+            b"Review fundamentals",
+            b"embedding",
+            b"file-old",
+            b"session-1",
+            b"user-1",
+        ):
+            assert private_marker not in unpacked
+    finally:
+        package_path.unlink(missing_ok=True)
+        if snapshot_path is not None:
+            snapshot_path.unlink(missing_ok=True)
+
+
 def test_import_course_remaps_ids_and_restores_docgen_assets(
     session: Session,
     export_import_store: _FakeStore,
@@ -201,6 +255,11 @@ def test_import_course_remaps_ids_and_restores_docgen_assets(
             include_profile=False,
         ),
     )
+    with zipfile.ZipFile(package_path, "a", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("share_assets/docgen/figure.png", _VALID_PNG_BYTES)
+        zf.writestr("share_assets/docgen/active.html", "<script>alert(1)</script>")
+        zf.writestr("share_assets/docgen/vector.svg", "<svg><script>alert(1)</script></svg>")
+        zf.writestr("share_assets/docgen/fake.png", b"<html>not an image</html>")
 
     engine = create_engine(
         "sqlite://",
@@ -233,7 +292,61 @@ def test_import_course_remaps_ids_and_restores_docgen_assets(
         assert len(imported_units) == 2
         assert len(imported_edges) == 1
         assert any(key.endswith("/assets/docgen/cover.png") for key in export_import_store.writes)
+        shared_asset_key = f"users/user-2/courses/{IMPORTED_COURSE_ID}/assets/docgen/figure.png"
+        assert export_import_store.writes[shared_asset_key] == _VALID_PNG_BYTES
+        assert not any(key.endswith(("active.html", "vector.svg", "fake.png")) for key in export_import_store.writes)
     finally:
+        package_path.unlink(missing_ok=True)
+
+
+def test_import_course_can_defer_commit_and_cleanup_storage(
+    session: Session,
+    export_import_store: _FakeStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seed_course_graph(session)
+    package_path = export_module.export_course(
+        session,
+        course_id=COURSE_ID,
+        options=ExportOptions(
+            include_raw_markdowns=False,
+            include_knowledge_docs=True,
+            include_chat_history=False,
+            include_exam_history=False,
+            include_profile=False,
+        ),
+    )
+    target_engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    SQLModel.metadata.create_all(target_engine)
+    monkeypatch.setattr(import_module, "_create_unique_course_id", lambda session: IMPORTED_COURSE_ID)
+
+    try:
+        with Session(target_engine, expire_on_commit=False) as target_session:
+            result = import_module.import_course(
+                target_session,
+                file_path=package_path,
+                options=ImportOptions(new_course_name="Deferred Algebra", rebuild_embeddings=False),
+                user_id="user-2",
+                commit=False,
+            )
+            assert result.course_id == IMPORTED_COURSE_ID
+            assert target_session.get(Course, IMPORTED_COURSE_ID) is not None
+
+            target_session.rollback()
+            assert target_session.get(Course, IMPORTED_COURSE_ID) is None
+
+        import_module.cleanup_imported_course_artifacts(
+            IMPORTED_COURSE_ID,
+            user_id="user-2",
+        )
+        imported_prefix = f"users/user-2/courses/{IMPORTED_COURSE_ID}/"
+        assert not any(key.startswith(imported_prefix) for key in export_import_store.writes)
+    finally:
+        target_engine.dispose()
         package_path.unlink(missing_ok=True)
 
 
@@ -505,6 +618,57 @@ def test_import_archive_validation_rejects_bad_shapes_and_paths(tmp_path: Path) 
     (bad_manifest_dir / "manifest.json").write_text('{"format_version":"999","course":{"course_id":"x","name":"x"}}', encoding="utf-8")
     with pytest.raises(ValueError, match="Unsupported format version"):
         export_module._read_manifest(bad_manifest_dir)
+
+
+def test_restore_share_assets_requires_safe_type_magic_and_size(
+    tmp_path: Path,
+    export_import_store: _FakeStore,
+) -> None:
+    share_root = tmp_path / "share_assets" / "nested"
+    share_root.mkdir(parents=True)
+    valid_assets = {
+        "image.png": _VALID_PNG_BYTES,
+        "photo.jpg": b"\xff\xd8\xff\xe0jpeg",
+        "photo.jpeg": b"\xff\xd8\xff\xe1jpeg",
+        "animation.gif": b"GIF89aimage",
+        "diagram.webp": b"RIFF\x04\x00\x00\x00WEBPimage",
+    }
+    for filename, data in valid_assets.items():
+        (share_root / filename).write_bytes(data)
+    (share_root / "active.html").write_text("<script>alert(1)</script>", encoding="utf-8")
+    (share_root / "vector.svg").write_text("<svg><script>alert(1)</script></svg>", encoding="utf-8")
+    (share_root / "fake.png").write_bytes(b"<html>not an image</html>")
+
+    course_scope = import_module.build_course_storage_scope(
+        user_id="user-2",
+        course_id=IMPORTED_COURSE_ID,
+    )
+    import_module._restore_share_assets(
+        tmp_path,
+        course_scope=course_scope,
+        content_store=export_import_store,
+    )
+
+    expected_keys = {
+        f"{course_scope.namespace}/assets/nested/{filename}"
+        for filename in valid_assets
+    }
+    assert set(export_import_store.writes) == expected_keys
+    assert all(export_import_store.writes[key] == valid_assets[key.rsplit("/", 1)[-1]] for key in expected_keys)
+
+    large_root = tmp_path / "large" / "share_assets"
+    large_root.mkdir(parents=True)
+    large_image = large_root / "too-large.png"
+    with large_image.open("wb") as file:
+        file.write(_VALID_PNG_BYTES)
+        file.truncate(import_module.MAX_IMPORTED_SHARE_ASSET_BYTES + 1)
+
+    with pytest.raises(InvalidImportPackageError, match="16 MiB"):
+        import_module._restore_share_assets(
+            tmp_path / "large",
+            course_scope=course_scope,
+            content_store=export_import_store,
+        )
 
 
 def test_import_lookup_and_background_rebuild_scheduling(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Body, Depends, Path as PathParam, Request, Response
 from sqlmodel import Session
+from starlette.concurrency import run_in_threadpool
 
 from app.api.deps import CurrentUserContext, get_current_user_context, get_db, normalize_course_id
 from app.api.openapi import build_error_responses
@@ -31,19 +32,45 @@ from app.workflows.support.export_import import spawn_imported_embedding_rebuild
 
 router = APIRouter(prefix="/api/v1", tags=["course-shares"])
 
+PUBLIC_SHARE_RESPONSE_HEADERS = {
+    "Cache-Control": "private, no-store, max-age=0",
+    "Pragma": "no-cache",
+    "Expires": "0",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Cross-Origin-Resource-Policy": "same-origin",
+    "Content-Security-Policy": "default-src 'none'; base-uri 'none'; frame-ancestors 'none'; sandbox",
+}
+
+
+def _require_registered_user(user: CurrentUserContext) -> None:
+    if user.is_authenticated:
+        return
+    raise AITeachMeError(
+        detail="请先登录或注册后再管理课程分享。",
+        status_code=401,
+        error_code="AUTH_REQUIRED",
+    )
+
+
+def _set_public_share_headers(response: Response) -> None:
+    response.headers.update(PUBLIC_SHARE_RESPONSE_HEADERS)
+
 
 @router.post(
     "/courses/{course_id}/shares",
     response_model=ApiResponse[CourseShareData],
     summary="创建课程分享链接",
-    responses=build_error_responses([400, 404, 500]),
+    responses=build_error_responses([400, 401, 404, 409, 413, 422, 500]),
 )
-async def create_course_share_api(
+def create_course_share_api(
     course_id: str = PathParam(...),
     body: CourseShareCreateRequest = Body(default=CourseShareCreateRequest()),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[CourseShareData]:
+    _require_registered_user(user)
     normalized = normalize_course_id(course_id)
     course = get_course_record(session, normalized, owner_user_id=user.user_id)
     return ok_response(
@@ -61,13 +88,14 @@ async def create_course_share_api(
     "/courses/{course_id}/shares",
     response_model=ApiResponse[list[CourseShareData]],
     summary="列出课程分享链接",
-    responses=build_error_responses([400, 404, 500]),
+    responses=build_error_responses([400, 401, 404, 500]),
 )
-async def list_course_shares_api(
+def list_course_shares_api(
     course_id: str = PathParam(...),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[list[CourseShareData]]:
+    _require_registered_user(user)
     normalized = normalize_course_id(course_id)
     get_course_record(session, normalized, owner_user_id=user.user_id)
     return ok_response(list_course_shares(session, owner_user_id=user.user_id, course_id=normalized))
@@ -77,14 +105,15 @@ async def list_course_shares_api(
     "/courses/{course_id}/shares/{share_id}",
     response_model=ApiResponse[CourseShareData],
     summary="撤销课程分享链接",
-    responses=build_error_responses([400, 404, 500]),
+    responses=build_error_responses([400, 401, 404, 500]),
 )
-async def revoke_course_share_api(
+def revoke_course_share_api(
     course_id: str = PathParam(...),
     share_id: str = PathParam(...),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[CourseShareData]:
+    _require_registered_user(user)
     normalized = normalize_course_id(course_id)
     get_course_record(session, normalized, owner_user_id=user.user_id)
     return ok_response(
@@ -103,10 +132,12 @@ async def revoke_course_share_api(
     summary="查看课程分享预览",
     responses=build_error_responses([404, 410, 500]),
 )
-async def preview_course_share_api(
+def preview_course_share_api(
     token: str,
+    response: Response,
     session: Session = Depends(get_db),
 ) -> ApiResponse[CourseSharePreviewData]:
+    _set_public_share_headers(response)
     return ok_response(preview_course_share(session, token=token))
 
 
@@ -116,11 +147,13 @@ async def preview_course_share_api(
     summary="查看课程分享知识文档",
     responses=build_error_responses([404, 410, 500]),
 )
-async def read_course_share_document_api(
+def read_course_share_document_api(
     token: str,
     doc_id: str,
+    response: Response,
     session: Session = Depends(get_db),
 ) -> ApiResponse[CourseShareDocumentContent]:
+    _set_public_share_headers(response)
     return ok_response(read_course_share_document(session, token=token, doc_id=doc_id))
 
 
@@ -129,13 +162,20 @@ async def read_course_share_document_api(
     summary="读取课程分享快照资产",
     responses=build_error_responses([404, 410, 500]),
 )
-async def read_course_share_asset_api(
+def read_course_share_asset_api(
     token: str,
     asset_path: str,
     session: Session = Depends(get_db),
 ) -> Response:
     data, media_type = read_course_share_asset(session, token=token, asset_path=asset_path)
-    return Response(content=data, media_type=media_type)
+    return Response(
+        content=data,
+        media_type=media_type,
+        headers={
+            **PUBLIC_SHARE_RESPONSE_HEADERS,
+            "Content-Disposition": "inline",
+        },
+    )
 
 
 @router.post(
@@ -146,11 +186,13 @@ async def read_course_share_asset_api(
 )
 async def import_course_share_api(
     request: Request,
+    response: Response,
     token: str,
     body: CourseShareImportRequest = Body(default=CourseShareImportRequest()),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[ImportResultData]:
+    _set_public_share_headers(response)
     if not user.is_authenticated:
         raise AITeachMeError(
             detail="请先登录或注册后再保存课程到自己的账号。",
@@ -158,7 +200,8 @@ async def import_course_share_api(
             error_code="AUTH_REQUIRED",
         )
 
-    result = import_course_share(
+    result = await run_in_threadpool(
+        import_course_share,
         session,
         token=token,
         user_id=user.user_id,

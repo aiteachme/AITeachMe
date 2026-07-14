@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   AlertCircle,
   ArrowRight,
@@ -28,7 +28,7 @@ import {
   Trophy,
 } from "lucide-react";
 
-import { apiClient, getApiErrorMessage, hasStoredAccessToken } from "../api/client";
+import { anonymousApiClient, apiClient, getApiErrorMessage, hasStoredAccessToken } from "../api/client";
 import type { ApiResponse } from "../api/types";
 import type { CourseShareDocumentContent, CourseShareDocumentPreview, CourseSharePreviewData, ImportResultData } from "../api/generated/model";
 import { CourseSharePillTitle } from "../components/course/CoursePagePillTitle";
@@ -886,6 +886,7 @@ export function CourseSharePage() {
   const params = useParams<{ token: string }>();
   const token = params.token ?? "";
   const shareAssetBaseUrl = token ? `/api/v1/course-shares/${encodeURIComponent(token)}/assets` : "";
+  const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -898,13 +899,35 @@ export function CourseSharePage() {
   const [collapsedTocIds, setCollapsedTocIds] = useState<Set<string>>(() => new Set());
   const [savePromptFeature, setSavePromptFeature] = useState<string | null>(null);
 
+  useEffect(() => {
+    const existingMeta = document.head.querySelector<HTMLMetaElement>('meta[name="referrer"]');
+    const previousContent = existingMeta?.content;
+    const meta = existingMeta ?? document.createElement("meta");
+    if (!existingMeta) {
+      meta.name = "referrer";
+      document.head.appendChild(meta);
+    }
+    meta.content = "no-referrer";
+    return () => {
+      if (existingMeta) {
+        existingMeta.content = previousContent ?? "";
+      } else {
+        meta.remove();
+      }
+    };
+  }, []);
+
   const previewQuery = useQuery({
     queryKey: ["course-share-preview", token],
-    queryFn: async (): Promise<CourseSharePreviewData> => {
-      const response = await apiClient<ApiResponse<CourseSharePreviewData>>({
-        method: "GET",
-        url: `/api/v1/course-shares/${encodeURIComponent(token)}`,
-      });
+    queryFn: async ({ signal }): Promise<CourseSharePreviewData> => {
+      const response = await anonymousApiClient<ApiResponse<CourseSharePreviewData>>(
+        `/api/v1/course-shares/${encodeURIComponent(token)}`,
+        {
+          method: "GET",
+          cache: "no-store",
+          signal,
+        },
+      );
       if (!response.data) throw new Error("分享链接不存在");
       return response.data;
     },
@@ -929,11 +952,15 @@ export function CourseSharePage() {
 
   const documentQuery = useQuery({
     queryKey: ["course-share-document", token, selectedDocId],
-    queryFn: async (): Promise<CourseShareDocumentContent> => {
-      const response = await apiClient<ApiResponse<CourseShareDocumentContent>>({
-        method: "GET",
-        url: `/api/v1/course-shares/${encodeURIComponent(token)}/documents/${encodeURIComponent(selectedDocId)}`,
-      });
+    queryFn: async ({ signal }): Promise<CourseShareDocumentContent> => {
+      const response = await anonymousApiClient<ApiResponse<CourseShareDocumentContent>>(
+        `/api/v1/course-shares/${encodeURIComponent(token)}/documents/${encodeURIComponent(selectedDocId)}`,
+        {
+          method: "GET",
+          cache: "no-store",
+          signal,
+        },
+      );
       if (!response.data) throw new Error("文档不存在");
       return response.data;
     },
@@ -980,6 +1007,28 @@ export function CourseSharePage() {
     });
     setIsMobileTocOpen(false);
   }, [setSearchParams]);
+
+  const selectDocument = useCallback((docId: string) => {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.delete("view");
+      next.set("doc", docId);
+      return next;
+    });
+    setIsMobileTocOpen(false);
+  }, [setSearchParams]);
+
+  const openLogin = useCallback(() => {
+    const returnTo = `${location.pathname}${location.search}${location.hash}`;
+    const authParams = new URLSearchParams({
+      auth: "login",
+      returnTo,
+    });
+    navigate({
+      pathname: "/",
+      search: `?${authParams.toString()}`,
+    });
+  }, [location.hash, location.pathname, location.search, navigate]);
 
   const toggleTocCollapse = useCallback((id: string) => {
     setCollapsedTocIds((prev) => {
@@ -1144,6 +1193,15 @@ export function CourseSharePage() {
     : preview?.status === "revoked"
       ? "创建者已经撤销这个分享链接。"
       : "这个分享链接当前不可用。";
+  const handleSave = () => {
+    if (saveRequiresLogin) {
+      openLogin();
+      return;
+    }
+    if (preview?.can_import) {
+      importMutation.mutate();
+    }
+  };
 
   if (previewQuery.isLoading) {
     return (
@@ -1186,31 +1244,52 @@ export function CourseSharePage() {
         courseName={preview.course_name}
         activeView={activeShareView}
         isSaving={importMutation.isPending}
-        canSave={canSaveWithCurrentSession}
-        importError={importError || (saveRequiresLogin ? saveLoginMessage : "")}
+        canSave={Boolean(preview?.can_import)}
+        importError={importError}
         saveLabel={saveRequiresLogin ? "登录后保存" : "保存到我的课程"}
         saveDescription={saveRequiresLogin ? "公开预览可直接浏览" : "导入后继续训练和编辑"}
-        onSave={() => importMutation.mutate()}
+        onSave={handleSave}
         onViewChange={changeShareView}
-        className="z-40 shrink-0 bg-white/92 backdrop-blur-md transition-all duration-300 ease-in-out max-md:pl-20 dark:bg-slate-900/92"
+        className="z-40 shrink-0 bg-white/92 backdrop-blur-md transition-all duration-300 ease-in-out dark:bg-slate-900/92"
+        innerClassName="max-md:left-3"
       />
 
       {saveRequiresLogin && !importError ? (
-        <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+        <div className="flex flex-wrap items-center justify-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
           <span className="inline-flex items-center gap-2">
             <LogIn className="h-4 w-4" />
             公开内容可直接浏览；登录或注册后可以保存到自己的课程继续训练。
           </span>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={openLogin}
+            className="h-11 rounded-lg border-amber-300 bg-white px-3 text-xs font-semibold text-amber-800 hover:bg-amber-100 dark:border-amber-500/40 dark:bg-slate-950 dark:text-amber-200 dark:hover:bg-amber-500/10"
+          >
+            登录 / 注册
+          </Button>
         </div>
       ) : null}
 
       {importError ? (
-        <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+        <div className="flex flex-wrap items-center justify-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
           {requiresLogin ? (
-            <span className="inline-flex items-center gap-2">
-              <LogIn className="h-4 w-4" />
-              {saveLoginMessage}
-            </span>
+            <>
+              <span className="inline-flex items-center gap-2">
+                <LogIn className="h-4 w-4" />
+                {saveLoginMessage}
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={openLogin}
+                className="h-11 rounded-lg border-amber-300 bg-white px-3 text-xs font-semibold text-amber-800 hover:bg-amber-100 dark:border-amber-500/40 dark:bg-slate-950 dark:text-amber-200 dark:hover:bg-amber-500/10"
+              >
+                登录 / 注册
+              </Button>
+            </>
           ) : importError}
         </div>
       ) : null}
@@ -1240,16 +1319,22 @@ export function CourseSharePage() {
               保存课程
             </Button>
           ) : saveRequiresLogin ? (
-            <span className="text-xs font-medium text-indigo-700 dark:text-indigo-200">
-              登录或注册后可保存课程。
-            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={openLogin}
+              className="h-11 rounded-lg border-indigo-200 bg-white px-3 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 dark:border-indigo-500/30 dark:bg-slate-950 dark:text-indigo-200 dark:hover:bg-indigo-500/10"
+            >
+              登录 / 注册
+            </Button>
           ) : null}
         </div>
       ) : null}
 
       <div className="relative z-10 flex min-h-0 flex-1 w-full bg-white dark:bg-slate-900">
         {isKnowledgeView && tocTree.length > 0 ? (
-          <div className="fixed left-[4.75rem] top-[calc(4.75rem+env(safe-area-inset-top))] z-[79] flex items-center gap-2 lg:hidden">
+          <div className="fixed left-3 top-[calc(4.75rem+env(safe-area-inset-top))] z-[79] flex items-center gap-2 lg:hidden">
             <button
               type="button"
               onClick={() => setIsMobileTocOpen(true)}
@@ -1351,6 +1436,28 @@ export function CourseSharePage() {
                 >
                   <div className="relative flex min-w-0 items-start">
                     <article className="min-w-0 flex-1 px-2 py-2 md:px-4">
+                      {documents.length > 1 ? (
+                        <div className="mb-4 flex flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-950/70 sm:flex-row sm:items-center">
+                          <label
+                            htmlFor="course-share-document-select"
+                            className="shrink-0 text-xs font-semibold text-slate-600 dark:text-slate-300"
+                          >
+                            课程文档
+                          </label>
+                          <select
+                            id="course-share-document-select"
+                            value={selectedDocId}
+                            onChange={(event) => selectDocument(event.target.value)}
+                            className="h-11 min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                          >
+                            {documents.map((doc, index) => (
+                              <option key={doc.doc_id} value={doc.doc_id}>
+                                {index + 1}. {doc.title}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      ) : null}
                       {documentQuery.isLoading ? (
                         <div className="flex h-48 items-center justify-center text-sm text-slate-500 dark:text-slate-400">
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />

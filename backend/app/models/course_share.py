@@ -15,6 +15,15 @@ class CourseShare(SQLModel, table=True):
     """一个可撤销、可过期的课程分享快照。"""
 
     __tablename__ = "course_share"
+    __table_args__ = (
+        sa.Index(
+            "uq_course_share_active_source_course",
+            "source_course_id",
+            unique=True,
+            sqlite_where=sa.text("status = 'active'"),
+            postgresql_where=sa.text("status = 'active'"),
+        ),
+    )
 
     id: str = Field(primary_key=True)
     owner_user_id: str = Field(default="local", foreign_key="user.id", index=True)

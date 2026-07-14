@@ -16,7 +16,7 @@ from typing import Any, AsyncGenerator
 import uuid
 
 import structlog
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -31,6 +31,7 @@ from app.shared.infra.logger import (
     bind_logging_context,
     clear_logging_context,
     configure_logging,
+    redact_course_share_tokens,
 )
 from app.shared.infra.runtime import get_runtime_data_dir
 from app.shared.infra.runtime import (
@@ -432,7 +433,28 @@ def _build_app_metadata() -> dict[str, object]:
     }
 
 
+_COURSE_SHARE_SECURITY_HEADERS = {
+    "Cache-Control": "private, no-store, max-age=0",
+    "Pragma": "no-cache",
+    "Expires": "0",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Cross-Origin-Resource-Policy": "same-origin",
+    "Content-Security-Policy": (
+        "default-src 'none'; base-uri 'none'; "
+        "frame-ancestors 'none'; sandbox"
+    ),
+}
+
+
+def _apply_course_share_security_headers(request: Request, response: Response) -> None:
+    if request.url.path.startswith("/api/v1/course-shares/"):
+        response.headers.update(_COURSE_SHARE_SECURITY_HEADERS)
+
+
 def _register_middlewares(app: FastAPI) -> None:
+
     @app.middleware("http")
     async def request_logging_middleware(request: Request, call_next):
         clear_logging_context()
@@ -440,10 +462,11 @@ def _register_middlewares(app: FastAPI) -> None:
         request_id = (request.headers.get("x-request-id") or "").strip() or uuid.uuid4().hex
         request.state.request_id = request_id
         client_ip = request.client.host if request.client is not None else None
+        log_path = redact_course_share_tokens(request.url.path)
         bind_logging_context(
             request_id=request_id,
             method=request.method,
-            path=request.url.path,
+            path=log_path,
             client_ip=client_ip,
         )
 
@@ -453,6 +476,7 @@ def _register_middlewares(app: FastAPI) -> None:
             response = await call_next(request)
             elapsed_ms = int((perf_counter() - started_at) * 1000)
             response.headers.setdefault("x-request-id", request_id)
+            _apply_course_share_security_headers(request, response)
 
             if request.url.path == "/api/health":
                 access_logger.debug(
@@ -471,7 +495,7 @@ def _register_middlewares(app: FastAPI) -> None:
         except Exception:
             elapsed_ms = int((perf_counter() - started_at) * 1000)
             access_logger.exception("request_failed", elapsed_ms=elapsed_ms)
-            return JSONResponse(
+            response = JSONResponse(
                 status_code=500,
                 headers={"x-request-id": request_id},
                 content={
@@ -481,6 +505,8 @@ def _register_middlewares(app: FastAPI) -> None:
                     "data": None,
                 },
             )
+            _apply_course_share_security_headers(request, response)
+            return response
         finally:
             clear_logging_context()
 
@@ -517,8 +543,7 @@ def _register_exception_handlers(app: FastAPI) -> None:
         request: Request,
         exc: KernelAITeachMeError | InfraAITeachMeError,
     ) -> JSONResponse:
-        del request
-        return JSONResponse(
+        response = JSONResponse(
             status_code=exc.status_code,
             content={
                 "code": exc.status_code,
@@ -527,11 +552,13 @@ def _register_exception_handlers(app: FastAPI) -> None:
                 "data": exc.data,
             },
         )
+        _apply_course_share_security_headers(request, response)
+        return response
 
     @app.exception_handler(Exception)
     async def unhandled_error_handler(request: Request, exc: Exception) -> JSONResponse:
-        logger.exception("unhandled_error", path=request.url.path)
-        return JSONResponse(
+        logger.exception("unhandled_error", path=redact_course_share_tokens(request.url.path))
+        response = JSONResponse(
             status_code=500,
             content={
                 "code": 500,
@@ -540,6 +567,8 @@ def _register_exception_handlers(app: FastAPI) -> None:
                 "data": None,
             },
         )
+        _apply_course_share_security_headers(request, response)
+        return response
 
 
 def _register_routers(app: FastAPI) -> None:

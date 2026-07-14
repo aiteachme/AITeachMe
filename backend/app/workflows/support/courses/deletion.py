@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from sqlmodel import Session
@@ -52,14 +53,16 @@ async def delete_course_record(
         background_task_registry=background_task_registry,
     )
     deleted_counts = (
-        delete_course_with_all_content(
+        await asyncio.to_thread(
+            delete_course_with_all_content,
             session,
             course=course,
             background_task_registry=background_task_registry,
             counts=detail_counts,
         )
         if force
-        else _delete_empty_course(
+        else await asyncio.to_thread(
+            _delete_empty_course,
             session,
             course,
             background_task_registry=background_task_registry,

@@ -24,7 +24,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import { getApiErrorMessage, runTrackedApiFetch } from "../../api/client";
+import { getApiErrorMessage, runAnonymousApiFetch, runTrackedApiFetch } from "../../api/client";
 import { parseInteractivePreviewHref, patchHtmlForIframe, type InteractiveHtmlPreview } from "../../lib/interactiveHtml";
 import { cn } from "../../lib/utils";
 import { MermaidBlock } from "./MermaidBlock";
@@ -2167,7 +2167,13 @@ function renderGitConflictLines(codeText: string): ReactNode[] {
 }
 
 function isAbsoluteAssetUrl(value: string): boolean {
-  return /^(https?:)?\/\//i.test(value) || value.startsWith("/") || value.startsWith("data:");
+  const normalized = value.trim();
+  return /^[a-z][a-z0-9+.-]*:/i.test(normalized) || normalized.startsWith("//") || normalized.startsWith("/");
+}
+
+function isSafeRelativeAssetPath(value: string): boolean {
+  const segments = value.replace(/\\/g, "/").split("/").filter(Boolean);
+  return segments.length > 0 && segments.every((segment) => segment !== "." && segment !== "..");
 }
 
 function encodePathSegments(path: string): string {
@@ -2180,7 +2186,7 @@ function encodePathSegments(path: string): string {
 
 function extractCourseAssetPath(src: string): string | null {
   const normalizedRaw = src.replace(/\\/g, "/").trim();
-  if (!normalizedRaw || /^(https?:)?\/\//i.test(normalizedRaw) || normalizedRaw.startsWith("data:")) {
+  if (!normalizedRaw || /^[a-z][a-z0-9+.-]*:/i.test(normalizedRaw) || normalizedRaw.startsWith("//")) {
     return null;
   }
   try {
@@ -2219,13 +2225,23 @@ function resolveMarkdownImageSrc(
   }
 
   const assetPath = extractCourseAssetPath(src);
-  if (assetCourse) {
+  if (publicMode && assetPath && !isSafeRelativeAssetPath(assetPath)) {
+    return undefined;
+  }
+  if (publicMode && !assetBaseUrl) {
+    return undefined;
+  }
+  if (assetCourse && !publicMode) {
     if (assetPath) {
       return `/api/v1/courses/${encodeURIComponent(assetCourse)}/files/assets/${encodePathSegments(assetPath)}`;
     }
   }
   if (assetBaseUrl && assetPath) {
     return `${assetBaseUrl.replace(/\/$/, "")}/${encodePathSegments(assetPath)}`;
+  }
+
+  if (publicMode && isAbsoluteAssetUrl(src)) {
+    return undefined;
   }
 
   if (!assetBaseUrl || isAbsoluteAssetUrl(src)) {
@@ -2238,7 +2254,7 @@ function resolveMarkdownImageSrc(
   const filename = pathParts[pathParts.length - 1];
 
   if (!filename) {
-    return src;
+    return publicMode ? undefined : src;
   }
 
   const looksLikeAssetPath =
@@ -2249,16 +2265,36 @@ function resolveMarkdownImageSrc(
     normalized.startsWith("../");
 
   if (!looksLikeAssetPath) {
-    return src;
+    return publicMode ? undefined : src;
   }
 
   const publicAssetPath = normalized
     .replace(/^(\.\/)+/, "")
     .replace(/^(\.\.\/)+assets\//, "")
     .replace(/^assets\//, "");
+  if (publicMode && !isSafeRelativeAssetPath(publicAssetPath)) {
+    return undefined;
+  }
   const resolvedPath = publicMode ? publicAssetPath : filename;
 
   return `${assetBaseUrl.replace(/\/$/, "")}/${encodePathSegments(resolvedPath)}`;
+}
+
+function resolvePublicMarkdownAssetHref(
+  href: string | undefined,
+  assetBaseUrl: string | undefined,
+): string | undefined {
+  if (!href || !assetBaseUrl) {
+    return href;
+  }
+  const assetPath = extractCourseAssetPath(href);
+  if (!assetPath) {
+    return href;
+  }
+  if (!isSafeRelativeAssetPath(assetPath)) {
+    return undefined;
+  }
+  return `${assetBaseUrl.replace(/\/$/, "")}/${encodePathSegments(assetPath)}`;
 }
 
 function toPublicInteractivePreview(
@@ -2311,43 +2347,56 @@ function MarkdownImage({
   alt,
   styles,
   onOpenPreview,
+  publicMode = false,
 }: {
   src: string | undefined;
   alt: string | undefined;
   styles: ViewerStyles;
   onOpenPreview: (preview: ImagePreviewState) => void;
+  publicMode?: boolean;
 }) {
   const [blobSrc, setBlobSrc] = useState("");
   const isCover = isDocgenCoverAsset(src);
-  const displaySrc = blobSrc || src || "";
+  const isPublicShareAsset =
+    publicMode && typeof src === "string" && src.startsWith("/api/v1/course-shares/");
+  const displaySrc = blobSrc || (publicMode ? "" : src || "");
 
   useEffect(() => {
-    if (!shouldFetchAuthorizedAsset(src)) {
+    if (publicMode && !isPublicShareAsset) {
       setBlobSrc("");
       return;
     }
-    const token = getBearerToken();
-    if (!token) {
+    if (!isPublicShareAsset && !shouldFetchAuthorizedAsset(src)) {
+      setBlobSrc("");
+      return;
+    }
+    if (!isPublicShareAsset && !getBearerToken()) {
       setBlobSrc("");
       return;
     }
 
     const controller = new AbortController();
     let objectUrl = "";
-    runTrackedApiFetch(
-      src,
-      {
-        method: "GET",
-        signal: controller.signal,
-      },
-      async (response) => {
-        if (!response.ok) {
-          throw new Error(`asset fetch failed: ${response.status}`);
-        }
-        return response.blob();
-      },
-      "markdown_asset_disconnect",
-    )
+    const consumeAsset = async (response: Response) => {
+      if (!response.ok) {
+        throw new Error(`asset fetch failed: ${response.status}`);
+      }
+      return response.blob();
+    };
+    const request = isPublicShareAsset
+      ? runAnonymousApiFetch(
+          src,
+          { method: "GET", signal: controller.signal, cache: "no-store" },
+          consumeAsset,
+          "public_markdown_asset_disconnect",
+        )
+      : runTrackedApiFetch(
+          src,
+          { method: "GET", signal: controller.signal },
+          consumeAsset,
+          "markdown_asset_disconnect",
+        );
+    request
       .then((blob) => {
         if (controller.signal.aborted) {
           return;
@@ -2367,7 +2416,7 @@ function MarkdownImage({
         URL.revokeObjectURL(objectUrl);
       }
     };
-  }, [src]);
+  }, [isPublicShareAsset, publicMode, src]);
 
   return (
     <figure className={styles.imageShell}>
@@ -2386,7 +2435,7 @@ function MarkdownImage({
         )}
       >
         <img
-          src={displaySrc}
+          src={displaySrc || undefined}
           alt={alt ?? ""}
           className={cn(
             styles.image,
@@ -2394,6 +2443,7 @@ function MarkdownImage({
           )}
           loading="lazy"
           decoding="async"
+          referrerPolicy={publicMode ? "no-referrer" : undefined}
         />
         {displaySrc ? (
           <span className="pointer-events-none absolute right-3 top-3 inline-flex h-8 items-center gap-1.5 rounded-full border border-white/70 bg-slate-950/70 px-2.5 text-xs font-medium text-white opacity-0 shadow-sm backdrop-blur transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
@@ -2404,6 +2454,71 @@ function MarkdownImage({
       </button>
       {alt ? <figcaption className={styles.imageCaption}>{alt}</figcaption> : null}
     </figure>
+  );
+}
+
+function PublicMarkdownAssetLink({
+  href,
+  className,
+  children,
+}: {
+  href: string;
+  className: string;
+  children: ReactNode;
+}) {
+  const [blobHref, setBlobHref] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let objectUrl = "";
+    runAnonymousApiFetch(
+      href,
+      { method: "GET", signal: controller.signal, cache: "no-store" },
+      async (response) => {
+        if (!response.ok) {
+          throw new Error(`asset fetch failed: ${response.status}`);
+        }
+        return response.blob();
+      },
+      "public_markdown_link_asset_disconnect",
+    )
+      .then((blob) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+        objectUrl = URL.createObjectURL(blob);
+        setBlobHref(objectUrl);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setBlobHref("");
+        }
+      });
+
+    return () => {
+      controller.abort();
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [href]);
+
+  return (
+    <a
+      href={blobHref || undefined}
+      className={className}
+      target="_blank"
+      rel="noopener noreferrer"
+      referrerPolicy="no-referrer"
+      aria-disabled={!blobHref}
+      onClick={(event) => {
+        if (!blobHref) {
+          event.preventDefault();
+        }
+      }}
+    >
+      {children}
+    </a>
   );
 }
 
@@ -2543,18 +2658,24 @@ function InteractiveHtmlEmbed({
         setLoadingLabel("正在加载交互页...");
       }
 
+      const consumeAsset = async (response: Response) => {
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        return response.text();
+      };
+      if (publicMode) {
+        return runAnonymousApiFetch(
+          resolvedPreview.assetUrl,
+          { method: "GET", signal: controller.signal, cache: "no-store" },
+          consumeAsset,
+          "public_interactive_asset_disconnect",
+        );
+      }
       return runTrackedApiFetch(
         resolvedPreview.assetUrl,
-        {
-          method: "GET",
-          signal: controller.signal,
-        },
-        async (response) => {
-          if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-          }
-          return response.text();
-        },
+        { method: "GET", signal: controller.signal },
+        consumeAsset,
         "interactive_asset_disconnect",
       );
     };
@@ -2725,6 +2846,7 @@ function InteractiveHtmlEmbed({
               srcDoc={patchedHtml}
               sandbox=""
               loading="lazy"
+              referrerPolicy="no-referrer"
               className="h-[min(620px,72vh)] min-h-[360px] w-full border border-slate-200 bg-white dark:border-slate-800"
             />
           ) : (
@@ -2862,6 +2984,7 @@ function InteractiveHtmlEmbed({
             srcDoc={patchedHtml}
             sandbox={publicMode ? "" : "allow-scripts"}
             loading="lazy"
+            referrerPolicy={publicMode ? "no-referrer" : undefined}
             className="h-[min(620px,76vh)] min-h-[420px] w-full rounded-lg border border-slate-200 bg-white dark:border-slate-800"
           />
         ) : (
@@ -2874,6 +2997,7 @@ function InteractiveHtmlEmbed({
             href={activePreview.previewUrl}
             target="_blank"
             rel="noopener noreferrer"
+            referrerPolicy="no-referrer"
             className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline dark:text-indigo-300 dark:hover:text-indigo-200 sm:hidden"
           >
             <ExternalLink className="h-3.5 w-3.5" />
@@ -3053,11 +3177,11 @@ export function MarkdownViewer({
 
   const rehypePlugins = useMemo(
     () => [
-      allowRawHtml && variant === "document" && hasRawHtmlContent ? rehypeRaw : noopMarkdownPlugin,
+      !publicMode && allowRawHtml && variant === "document" && hasRawHtmlContent ? rehypeRaw : noopMarkdownPlugin,
       hasMathContent ? [rehypeKatex, { throwOnError: false, strict: false, errorColor: "#1F2329", output: "html" }] : noopMarkdownPlugin,
       shouldHighlightCode ? rehypeHighlight : noopMarkdownPlugin,
     ] as any[],
-    [allowRawHtml, hasMathContent, hasRawHtmlContent, shouldHighlightCode, variant],
+    [allowRawHtml, hasMathContent, hasRawHtmlContent, publicMode, shouldHighlightCode, variant],
   );
 
   const components = useMemo(() => {
@@ -3232,7 +3356,7 @@ export function MarkdownViewer({
         const normalizedCodeText = codeText.trim().replace(/^(maymaid|mermaind|mermaide)\b/i, "mermaid");
         const looksLikeMermaid = /^(mermaid|mindmap|flowchart|graph|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|journey|timeline|gitGraph)\b/i.test(normalizedCodeText);
 
-        if (MERMAID_LANGUAGE_ALIASES.has(language) || (!language && looksLikeMermaid)) {
+        if (!publicMode && (MERMAID_LANGUAGE_ALIASES.has(language) || (!language && looksLikeMermaid))) {
           const mermaidChart = normalizedCodeText.replace(/^mermaid\s*/i, "").trimStart() || codeText;
           return <MermaidBlock chart={mermaidChart} variant={variant === "planner" ? "default" : variant} />;
         }
@@ -3277,8 +3401,30 @@ export function MarkdownViewer({
           }
           return <span className={styles.link}>{children}</span>;
         }
+        const resolvedHref = publicMode
+          ? resolvePublicMarkdownAssetHref(href, assetBaseUrl)
+          : href;
+        if (
+          publicMode &&
+          resolvedHref?.startsWith("/api/v1/course-shares/")
+        ) {
+          return (
+            <PublicMarkdownAssetLink
+              href={resolvedHref}
+              className={styles.link}
+            >
+              {children}
+            </PublicMarkdownAssetLink>
+          );
+        }
         return (
-          <a href={href} className={styles.link} target="_blank" rel="noopener noreferrer">
+          <a
+            href={resolvedHref}
+            className={styles.link}
+            target="_blank"
+            rel="noopener noreferrer"
+            referrerPolicy={publicMode ? "no-referrer" : undefined}
+          >
             {children}
           </a>
         );
@@ -3299,6 +3445,7 @@ export function MarkdownViewer({
             alt={alt}
             styles={styles}
             onOpenPreview={setImagePreview}
+            publicMode={publicMode}
           />
         );
       },
@@ -3371,6 +3518,7 @@ export function MarkdownViewer({
                   href={imagePreview.src}
                   target="_blank"
                   rel="noopener noreferrer"
+                  referrerPolicy={publicMode ? "no-referrer" : undefined}
                   className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-300 transition hover:bg-white/10 hover:text-white"
                   aria-label="在新窗口打开图片"
                   title="新窗口打开"
@@ -3400,6 +3548,7 @@ export function MarkdownViewer({
                     maxHeight: imagePreviewZoom === 1 ? "100%" : "none",
                   }}
                   decoding="async"
+                  referrerPolicy={publicMode ? "no-referrer" : undefined}
                 />
               </div>
             </div>
