@@ -23,6 +23,28 @@ from app.workflows.examine.exam_grade.prompts import (
 _MULTI_CHOICE_SPLIT_RE = re.compile(r"[\s,，;；/、|]+")
 _OBJECTIVE_TYPES = {"single_choice", "multiple_choice", "multi_choice", "true_false"}
 _SUBJECTIVE_TYPES = {"fill_blank", "short_answer"}
+_OBJECTIVE_CORRECT_CLAIM_MARKERS = (
+    "这是正确的",
+    "是正确的",
+    "答案正确",
+    "回答正确",
+    "作答正确",
+    "选择正确",
+    "完全匹配正确",
+    "判定正确",
+    "your answer is correct",
+    "this is correct",
+    "you are correct",
+)
+_OBJECTIVE_INCORRECT_MARKERS = (
+    "不正确",
+    "不是正确",
+    "并不正确",
+    "并非正确",
+    "未判为正确",
+    "incorrect",
+    "not correct",
+)
 
 
 class ObjectiveFeedbackPayload(BaseModel):
@@ -116,6 +138,16 @@ def _build_feedback_unavailable_text(*, item: ExamPaperItem, is_correct: bool) -
     return f"本题已按标准答案判定为{verdict}，但 AI 解析暂时没有生成，请稍后重试。"
 
 
+def _objective_feedback_claims_correct(feedback_text: str) -> bool:
+    normalized = _normalize_text(feedback_text)
+    if not normalized:
+        return False
+    text_without_negative_claims = normalized
+    for marker in _OBJECTIVE_INCORRECT_MARKERS:
+        text_without_negative_claims = text_without_negative_claims.replace(marker, "")
+    return any(marker in text_without_negative_claims for marker in _OBJECTIVE_CORRECT_CLAIM_MARKERS)
+
+
 def _grade_objective_correctness(item: ExamPaperItem) -> bool:
     question_type = (item.question_type or "").strip().lower()
     expected = _normalize_text(item.answer_snapshot)
@@ -169,6 +201,11 @@ async def _generate_objective_feedback(course_name: str, item: ExamPaperItem, *,
             response_model=ObjectiveFeedbackPayload,
         )
         assert isinstance(result, ObjectiveFeedbackPayload)
+        if not is_correct and _objective_feedback_claims_correct(result.feedback_text):
+            return (
+                _build_default_feedback(item=item, is_correct=False),
+                "unknown",
+            )
         return result.feedback_text, result.error_cause_label
     except Exception:
         return (

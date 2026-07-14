@@ -21,6 +21,7 @@ from app.models.knowledge_unit import KnowledgeUnit
 from app.schemas.exams import ExamGenerateRequest, ExamSubmitRequest, PaperPreview
 from app.shared.infra.exceptions import AITeachMeError
 from app.utils.time import utcnow
+from app.workflows.examine.exam_grade.lib import grader
 from app.workflows.examine.exam_grade.lib.grader import ExamItemGradeDecision
 from app.workflows.examine.question_build import prompts as question_prompts
 from app.workflows.examine.question_build.lib import generator
@@ -1897,6 +1898,63 @@ async def test_submit_exam_endpoint_captures_submit_and_grade_events(
     assert "submitted_false_choice_sentinel" not in str(graded_properties)
 
 
+@pytest.mark.anyio
+async def test_objective_feedback_conflict_uses_rule_based_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_feedback_completion(*_args, **_kwargs):
+        return grader.ObjectiveFeedbackPayload(
+            feedback_text="你的答案是选项B，这是正确的，完全匹配正确输出。",
+            error_cause_label="careless_mistake",
+        )
+
+    monkeypatch.setattr(grader, "acompletion_with_fallback", fake_feedback_completion)
+
+    item = ExamPaperItem(
+        exam_paper_id=1,
+        question_template_id=1,
+        item_order=1,
+        stem_snapshot="下面代码会输出什么？",
+        options_snapshot_json=json.dumps(["12 14", "12 10 14", "10 14", "无输出"], ensure_ascii=False),
+        answer_snapshot="A",
+        explanation_snapshot="标准答案是 A。",
+        difficulty="medium",
+        question_type="single_choice",
+        score=1.0,
+        answer_content="B",
+    )
+
+    decisions = await grader.grade_exam_items_with_workflow(
+        course_name="Python 列表入门",
+        items=[item],
+    )
+
+    assert len(decisions) == 1
+    decision = decisions[0]
+    assert decision.is_correct is False
+    assert decision.score_obtained == 0.0
+    assert decision.error_cause_label == "unknown"
+    assert "本题判定错误" in decision.feedback_text
+    assert "这是正确的" not in decision.feedback_text
+
+
+@pytest.mark.parametrize(
+    "feedback_text",
+    [
+        "你的答案不是正确的，正确答案是 A。",
+        "Your answer is not correct; the correct answer is A.",
+    ],
+)
+def test_objective_feedback_conflict_detection_respects_negation(feedback_text: str) -> None:
+    assert grader._objective_feedback_claims_correct(feedback_text) is False
+
+
+def test_objective_feedback_conflict_detection_keeps_separate_positive_claim() -> None:
+    feedback_text = "选项 A 并不正确；你的答案是选项 B，这是正确的。"
+
+    assert grader._objective_feedback_claims_correct(feedback_text) is True
+
+
 def test_exam_question_draft_normalizes_choice_and_unit_refs() -> None:
     draft = generator.ExamQuestionDraft.model_validate(
         {
@@ -2002,6 +2060,59 @@ def test_exam_question_draft_normalizes_duplicate_explanation_markers() -> None:
         "1. 1. 代码块内容保持原样\n"
         "```"
     )
+
+
+def test_exam_question_draft_rejects_choice_explanation_answer_mismatch() -> None:
+    with pytest.raises(ValidationError, match="choice explanation must match correct_indices"):
+        generator.ExamQuestionDraft.model_validate(
+            {
+                "item_order": 1,
+                "question_type": "single_choice",
+                "difficulty": "medium",
+                "stem": "下面代码会输出什么？\n```python\nprint([10, 12, 14][1])\n```",
+                "options": ["10", "12", "14", "无输出"],
+                "correct_indices": [0],
+                "option_judgements": [True, False, False, False],
+                "explanation": "列表索引从 0 开始，正确选项应该是选项2/index [1]，也就是输出 12。",
+                "knowledge_unit_id": 1,
+            }
+        )
+
+
+def test_exam_question_draft_allows_explaining_why_another_option_is_wrong() -> None:
+    draft = generator.ExamQuestionDraft.model_validate(
+        {
+            "item_order": 1,
+            "question_type": "single_choice",
+            "difficulty": "medium",
+            "stem": "下面代码会输出什么？\n```python\nprint([10, 12, 14][0])\n```",
+            "options": ["10", "12", "14", "无输出"],
+            "correct_indices": [0],
+            "option_judgements": [True, False, False, False],
+            "explanation": "正确答案是 A。选项2的错误在于把列表索引 [1] 当成了首个元素。",
+            "knowledge_unit_id": 1,
+        }
+    )
+
+    assert draft.correct_indices == [0]
+
+
+def test_exam_question_draft_does_not_treat_bare_answer_label_as_correct() -> None:
+    draft = generator.ExamQuestionDraft.model_validate(
+        {
+            "item_order": 1,
+            "question_type": "single_choice",
+            "difficulty": "medium",
+            "stem": "下列哪一项满足定义？",
+            "options": ["条件不足", "满足全部条件", "仅满足部分条件", "与定义无关"],
+            "correct_indices": [1],
+            "option_judgements": [False, True, False, False],
+            "explanation": "答案 A 错误，因为条件不足；B 满足定义中的全部条件。",
+            "knowledge_unit_id": 1,
+        }
+    )
+
+    assert draft.correct_indices == [1]
 
 
 def test_exam_question_draft_rejects_invalid_shapes() -> None:
