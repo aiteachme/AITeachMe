@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-07-06T02:49:44.683605",
-  "total_commits_analyzed": 2017,
+  "generated_at": "2026-07-13T02:26:30.879544",
+  "total_commits_analyzed": 2020,
   "stats": [
     {
       "date": "2026-03-11",
@@ -16137,6 +16137,30 @@
       "code_lines": 235616,
       "other_lines": 43074,
       "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-07-06",
+      "commit": "23436eb",
+      "total_lines": 278690,
+      "code_lines": 235616,
+      "other_lines": 43074,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-07-06",
+      "commit": "87f3c0d",
+      "total_lines": 278690,
+      "code_lines": 235616,
+      "other_lines": 43074,
+      "message": "chore: release v0.1.4"
+    },
+    {
+      "date": "2026-07-06",
+      "commit": "80a1f3c",
+      "total_lines": 278995,
+      "code_lines": 235852,
+      "other_lines": 43143,
+      "message": "feat: 增加飞书交流群与全局反馈入口"
     }
   ]
 }
