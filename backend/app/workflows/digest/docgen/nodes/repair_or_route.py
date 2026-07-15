@@ -87,6 +87,7 @@ def build_repair_or_route_node(*, context: WorkflowContext):
         update_knowledge_build_status(
             state["course_id"],
             requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
             status="running",
             stage="repairing_or_routing",
             digest_mode=state.get("digest_mode") or None,
@@ -118,6 +119,7 @@ def build_repair_or_route_node(*, context: WorkflowContext):
         update_knowledge_build_status(
             state["course_id"],
             requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
             status="running",
             stage="repair_routed",
             digest_mode=state.get("digest_mode") or None,
@@ -126,6 +128,7 @@ def build_repair_or_route_node(*, context: WorkflowContext):
         append_knowledge_build_recent_event(
             state["course_id"],
             requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
             event={
                 "stage": "repair_routed",
                 "summary": f"复核回流动作已处理，实际修补 {changed_count} 项，保留 warning {len(unresolved)} 条。",
@@ -164,6 +167,7 @@ def build_repair_or_route_node(*, context: WorkflowContext):
             append_knowledge_build_recent_event(
                 state["course_id"],
                 requested_at=state["requested_at"],
+                build_group_id=state.get("build_group_id") or None,
                 event={
                     "stage": "kg_prefetch_refreshed_after_repair",
                     "summary": (

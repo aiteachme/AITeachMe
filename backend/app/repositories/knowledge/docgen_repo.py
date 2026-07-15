@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from sqlalchemy.orm import load_only
 from sqlmodel import Session, select
 
 from app.models.knowledge_doc import KnowledgeDoc
@@ -52,6 +53,41 @@ def get_current_published_docs(session: Session, course_id: str) -> list[Knowled
             KnowledgeDoc.course_id == course_id,
             KnowledgeDoc.is_current.is_(True),
             KnowledgeDoc.status == "published",
+        )
+        .order_by(KnowledgeDoc.order_index, KnowledgeDoc.chapter_index, KnowledgeDoc.id)
+    )
+    return list(session.exec(statement).all())
+
+
+def get_current_published_doc_refs(session: Session, course_id: str) -> list[KnowledgeDoc]:
+    """Return only fields needed to identify the current publication.
+
+    Publication polling must not hydrate the large Markdown text columns merely
+    to decide whether a client's publication id is still current.
+    """
+
+    statement = (
+        select(KnowledgeDoc)
+        .where(
+            KnowledgeDoc.course_id == course_id,
+            KnowledgeDoc.is_current.is_(True),
+            KnowledgeDoc.status == "published",
+        )
+        .options(
+            load_only(
+                KnowledgeDoc.id,
+                KnowledgeDoc.version,
+                KnowledgeDoc.version_no,
+                KnowledgeDoc.chapter_index,
+                KnowledgeDoc.order_index,
+                KnowledgeDoc.title,
+                KnowledgeDoc.document_role,
+                KnowledgeDoc.package_key,
+                KnowledgeDoc.markdown_path,
+                KnowledgeDoc.published_at,
+                KnowledgeDoc.created_at,
+                KnowledgeDoc.updated_at,
+            )
         )
         .order_by(KnowledgeDoc.order_index, KnowledgeDoc.chapter_index, KnowledgeDoc.id)
     )

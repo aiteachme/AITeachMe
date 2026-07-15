@@ -14,6 +14,8 @@ from app.workflows.digest.kg_doc_sync.lib.models import (
 
 class DocsSyncState(TypedDict, total=False):
     course_id: str
+    build_group_id: str
+    build_lock_phase: str
     markdown: str
     course_context: str
     structured_context: dict[str, object]

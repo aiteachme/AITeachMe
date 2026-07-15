@@ -13,6 +13,9 @@ __all__ = [
     "create_parse_file_initial_state",
     "get_langgraph_dev_fast_parse_graph",
     "recover_stalled_enhancements",
+    "recover_stalled_ingest_once",
+    "recover_stalled_parses",
+    "run_ingest_recovery_loop",
     "run_parse_file_workflow",
 ]
 
@@ -24,6 +27,9 @@ _ATTR_TO_MODULE = {
     "create_parse_file_initial_state": "app.workflows.ingest.parsing.graph",
     "get_langgraph_dev_fast_parse_graph": "app.workflows.ingest.parsing.graph",
     "recover_stalled_enhancements": "app.workflows.ingest.parsing.lib.recovery",
+    "recover_stalled_ingest_once": "app.workflows.ingest.parsing.lib.recovery",
+    "recover_stalled_parses": "app.workflows.ingest.parsing.lib.recovery",
+    "run_ingest_recovery_loop": "app.workflows.ingest.parsing.lib.recovery",
     "run_parse_file_workflow": "app.workflows.ingest.parsing.graph",
 }
 

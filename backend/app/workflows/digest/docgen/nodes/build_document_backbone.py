@@ -87,6 +87,7 @@ def build_document_backbone_node(*, context: WorkflowContext):
         update_knowledge_build_status(
             state["course_id"],
             requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
             status="running",
             stage="building_document_backbone",
             digest_mode=state.get("digest_mode") or None,
@@ -121,6 +122,7 @@ def build_document_backbone_node(*, context: WorkflowContext):
         update_knowledge_build_status(
             state["course_id"],
             requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
             status="running",
             stage="preparing_chapter_execution_briefs",
             digest_mode=state.get("digest_mode") or None,
@@ -140,6 +142,7 @@ def build_document_backbone_node(*, context: WorkflowContext):
         append_knowledge_build_recent_event(
             state["course_id"],
             requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
             event={
                 "stage": "document_backbone_ready",
                 "summary": f"整本文档知识骨架已生成：术语 {len(document_backbone.canonical_glossary)} 个，主张 {len(document_backbone.canonical_claim_pool)} 条。",

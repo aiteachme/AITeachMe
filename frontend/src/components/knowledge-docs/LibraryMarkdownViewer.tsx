@@ -14,6 +14,7 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import rehypeRaw from "rehype-raw";
 import type { Components } from "react-markdown";
+import { rehypeMarkdownSanitize } from "../../lib/markdownSanitize";
 import { preprocessMarkdownForRender } from "../ui/MarkdownViewer";
 
 interface LibraryMarkdownViewerProps {
@@ -120,6 +121,7 @@ export function LibraryMarkdownViewer({ content, assetBaseUrl }: LibraryMarkdown
     const plugins = [
       rehypeRaw,
       rehypeExtractInlineMath,
+      rehypeMarkdownSanitize,
       rehypeKatex,
       ...(assetBaseUrl ? [rehypeRewriteAssetUrls(assetBaseUrl)] : []),
     ];

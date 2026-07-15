@@ -62,6 +62,7 @@ def build_confirm_and_seed_backbone_node(*, context: WorkflowContext):
         update_knowledge_build_status(
             state["course_id"],
             requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
             status="running",
             stage="backbone_seed_ready",
             digest_mode=state.get("digest_mode") or None,
@@ -73,6 +74,7 @@ def build_confirm_and_seed_backbone_node(*, context: WorkflowContext):
         append_knowledge_build_recent_event(
             state["course_id"],
             requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
             event={
                 "stage": "backbone_seed_ready",
                 "summary": f"DocGen 骨架 seed 已确认，共 {len(task_seeds)} 章，开始构建知识骨架。",

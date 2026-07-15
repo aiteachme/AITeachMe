@@ -2,7 +2,7 @@
  * useBuildEventStream — connect to the build SSE endpoint and
  * stream live snapshot updates into React state.
  *
- * Uses native EventSource (GET + cookies). Falls back gracefully
+ * Uses authenticated fetch streaming (GET + headers + cookies). Falls back gracefully
  * when the SSE connection fails or the build is not active.
  *
  * The SSE `snapshot` event carries the full KnowledgeBuildRuntimeResponse
@@ -12,10 +12,10 @@
 import { startTransition, useCallback, useEffect, useRef, useState } from "react";
 import type { KnowledgeBuildRuntimeResponse } from "../lib/knowledgeBuildRuntime";
 import {
-  buildApiUrl,
-  registerBackendEventSource,
+  openAuthenticatedSse,
   reportBackendConnectionIssue,
 } from "../api/client";
+import { useApiAuthGeneration } from "./useApiAuthGeneration";
 
 interface UseBuildEventStreamOptions {
   courseId: string;
@@ -84,6 +84,7 @@ export function useBuildEventStream({
   enabled,
   onDone,
 }: UseBuildEventStreamOptions) {
+  const apiAuthGeneration = useApiAuthGeneration();
   const [snapshot, setSnapshot] = useState<KnowledgeBuildRuntimeResponse | null>(null);
   const [connected, setConnected] = useState(false);
   const [previewStreams, setPreviewStreams] = useState<Record<number, BuildPreviewStreamState>>({});
@@ -171,14 +172,16 @@ export function useBuildEventStream({
       return;
     }
 
-    const url = buildApiUrl(`/api/v1/courses/${encodeURIComponent(courseId)}/knowledge/build/stream`);
+    setSnapshot(null);
     previewStreamsRef.current = {};
     clearPreviewFlushTimer();
     setPreviewStreams({});
     setBuildEvents([]);
     setGraphDeltas([]);
-    const es = new EventSource(url, { withCredentials: true });
-    const unregisterEventSource = registerBackendEventSource(es);
+    const es = openAuthenticatedSse(
+      `/api/v1/courses/${encodeURIComponent(courseId)}/knowledge/build/stream`,
+      { disconnectReason: "knowledge_build_stream_error" },
+    );
 
     es.onopen = () => {
       setConnected(true);
@@ -188,9 +191,9 @@ export function useBuildEventStream({
       setConnected(true);
     });
 
-    es.addEventListener("snapshot", (e: MessageEvent) => {
+    es.addEventListener("snapshot", (event: Event) => {
       try {
-        const data = JSON.parse(e.data) as KnowledgeBuildRuntimeResponse;
+        const data = JSON.parse((event as MessageEvent<string>).data) as KnowledgeBuildRuntimeResponse;
         setSnapshot(data);
         mergeSnapshotPreviewStreams(data);
         setConnected(true);
@@ -199,9 +202,9 @@ export function useBuildEventStream({
       }
     });
 
-    es.addEventListener("preview_delta", (e: MessageEvent) => {
+    es.addEventListener("preview_delta", (event: Event) => {
       try {
-        const data = JSON.parse(e.data) as BuildPreviewDeltaEvent;
+        const data = JSON.parse((event as MessageEvent<string>).data) as BuildPreviewDeltaEvent;
         const chapterIndex = Number(data.chapter_index ?? 0);
         const deltaText = data.text ?? "";
         if (!chapterIndex || !deltaText) return;
@@ -237,9 +240,9 @@ export function useBuildEventStream({
       }
     });
 
-    es.addEventListener("build_event", (e: MessageEvent) => {
+    es.addEventListener("build_event", (event: Event) => {
       try {
-        const data = JSON.parse(e.data) as BuildStreamRecentEvent;
+        const data = JSON.parse((event as MessageEvent<string>).data) as BuildStreamRecentEvent;
         if (!data.summary && !data.stage) return;
         setBuildEvents((prev) => [data, ...prev].slice(0, 50));
         setConnected(true);
@@ -248,9 +251,9 @@ export function useBuildEventStream({
       }
     });
 
-    es.addEventListener("graph_delta", (e: MessageEvent) => {
+    es.addEventListener("graph_delta", (event: Event) => {
       try {
-        const data = JSON.parse(e.data) as BuildStreamGraphDeltaEvent;
+        const data = JSON.parse((event as MessageEvent<string>).data) as BuildStreamGraphDeltaEvent;
         setGraphDeltas((prev) => [data, ...prev].slice(0, 24));
         setConnected(true);
       } catch {
@@ -258,15 +261,14 @@ export function useBuildEventStream({
       }
     });
 
-    es.addEventListener("done", (e: MessageEvent) => {
+    es.addEventListener("done", (event: Event) => {
       flushPreviewStreams();
       try {
-        const data = JSON.parse(e.data);
+        const data = JSON.parse((event as MessageEvent<string>).data);
         onDoneRef.current?.(data.status ?? "completed");
       } catch {
         onDoneRef.current?.("completed");
       }
-      unregisterEventSource();
       es.close();
       setConnected(false);
     });
@@ -277,12 +279,11 @@ export function useBuildEventStream({
     };
 
     return () => {
-      unregisterEventSource();
       es.close();
       clearPreviewFlushTimer();
       setConnected(false);
     };
-  }, [courseId, enabled, clearPreviewFlushTimer, flushPreviewStreams, schedulePreviewFlush, mergeSnapshotPreviewStreams]);
+  }, [apiAuthGeneration, courseId, enabled, clearPreviewFlushTimer, flushPreviewStreams, schedulePreviewFlush, mergeSnapshotPreviewStreams]);
 
   return { snapshot, connected, previewStreams, buildEvents, graphDeltas };
 }

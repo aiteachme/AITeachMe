@@ -17,7 +17,7 @@ from langsmith import tracing_context
 from pydantic import ValidationError
 from sqlmodel import Session, select
 
-from app.models import ChatSession, RawFile, RetrievalChunk, Course
+from app.models import ChatSession, Course, KnowledgeDocument, RawFile, RetrievalChunk
 from app.repositories.knowledge import knowledge_repo
 from app.schemas.export_import import ImportOptions, ImportResultData
 from app.shared.infra.embedding import aembed_texts
@@ -44,6 +44,7 @@ from app.workflows.digest.docgen.lib.published_manifest import ensure_published_
 from app.shared.infra.llm_support.common import build_completion_contexts
 from app.workflows.support.export_import.exports import (
     TABLE_REGISTRY,
+    _DOCGEN_COVER_MARKDOWN_RE,
     _create_unique_course_id,
     _import_table,
     _read_manifest,
@@ -537,6 +538,7 @@ def _unpack_files(
                 run_store_sync(cs.write_bytes, f"{asset_prefix}{relative}", asset_file.read_bytes())
 
     src_knowledge = extract_dir / "knowledge"
+    restored_cover_name = ""
     if src_knowledge.exists():
         # Published chapter markdown is imported from KnowledgeDocument rows; only
         # non-DB docgen assets need to be restored.
@@ -546,6 +548,42 @@ def _unpack_files(
             if item.stem == "cover" and item.suffix.lower() in _DOCGEN_COVER_IMAGE_EXTENSIONS:
                 key = f"{course_scope.namespace}/assets/docgen/{item.name}"
                 run_store_sync(cs.write_bytes, key, item.read_bytes())
+                restored_cover_name = item.name
+                break
+
+    if not restored_cover_name:
+        return
+
+    first_published_doc = session.exec(
+        select(KnowledgeDocument)
+        .where(
+            KnowledgeDocument.course_id == new_course_id,
+            KnowledgeDocument.is_current.is_(True),
+            KnowledgeDocument.status == "published",
+        )
+        .order_by(
+            KnowledgeDocument.order_index,
+            KnowledgeDocument.chapter_index,
+            KnowledgeDocument.id,
+        )
+    ).first()
+    if first_published_doc is None:
+        return
+
+    cover_markdown = f"![](../assets/docgen/{restored_cover_name})"
+
+    def restore_cover_reference(markdown: str | None) -> str:
+        body = str(markdown or "").strip()
+        if _DOCGEN_COVER_MARKDOWN_RE.search(body):
+            return _DOCGEN_COVER_MARKDOWN_RE.sub(cover_markdown, body)
+        return f"{cover_markdown}\n\n{body}".strip()
+
+    effective_markdown = (
+        str(first_published_doc.markdown_content or "").strip()
+        or str(first_published_doc.content_markdown or "").strip()
+    )
+    first_published_doc.markdown_content = restore_cover_reference(effective_markdown)
+    session.add(first_published_doc)
 
     _restore_share_assets(
         extract_dir,

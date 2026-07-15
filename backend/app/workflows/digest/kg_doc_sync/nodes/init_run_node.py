@@ -6,10 +6,13 @@ from time import perf_counter
 
 import structlog
 
-from app.shared.infra.database import managed_session
 from app.workflows.digest.kg_doc_sync.lib.incremental_sync import initialize_knowledge_graph_sync_run
 from app.workflows.digest.kg_doc_sync.lib.models import KnowledgeSyncRunContext
-from app.workflows.digest.kg_doc_sync.nodes.node_state import with_node_error, with_node_metrics
+from app.workflows.digest.kg_doc_sync.nodes.node_state import (
+    managed_build_owner_transaction,
+    with_node_error,
+    with_node_metrics,
+)
 from app.workflows.digest.kg_doc_sync.state import DocsSyncState
 
 logger = structlog.get_logger()
@@ -31,7 +34,7 @@ def init_run_node(state: DocsSyncState) -> DocsSyncState:
 
     started_at = perf_counter()
     try:
-        with managed_session() as session:
+        with managed_build_owner_transaction(state) as session:
             run_context = initialize_knowledge_graph_sync_run(
                 session,
                 course_id=state["course_id"],

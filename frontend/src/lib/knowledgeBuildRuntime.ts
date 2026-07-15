@@ -40,6 +40,17 @@ export interface KnowledgeBuildRuntimeResponse {
   graph_metrics?: KnowledgeGraphBuildMetricsResponse | null;
 }
 
+export function hasKnowledgeBuildDraftFallback(
+  runtime: KnowledgeBuildRuntimeResponse | null | undefined,
+): boolean {
+  const draftExcerpt = runtime?.docgen_preview?.draft_excerpt?.trim() ?? "";
+  if (!draftExcerpt) return false;
+  if (runtime?.docs_ready !== true) return true;
+
+  const docgenStatus = runtime.docgen?.status?.trim() ?? "";
+  return docgenStatus === "accepted" || docgenStatus === "running" || docgenStatus === "publishing";
+}
+
 export interface KnowledgeGraphBuildData {
   course_id?: string;
   status?: string;

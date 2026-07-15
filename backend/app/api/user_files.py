@@ -23,8 +23,8 @@ from app.shared.infra.storage import get_content_store
 from app.workflows.ingest.intake import (
     delete_user_files,
     list_user_files,
-    run_parse_files_background,
     save_uploaded_files_and_request_parse,
+    spawn_parse_files_background,
 )
 
 router = APIRouter(prefix="/api/v1/files", tags=["files"])
@@ -115,17 +115,10 @@ async def upload_user_files(
         parse_request_metadata=parse_request_metadata,
     )
     if parse_file_ids:
-        registry_course = f"files:{user.user_id}"
-        request.app.state.background_task_registry.spawn(
-            run_parse_files_background(
-                user_id=user.user_id,
-                file_ids=parse_file_ids,
-                background_task_registry=request.app.state.background_task_registry,
-            ),
-            kind="files.parse",
-            course_id=registry_course,
-            name=f"files.parse:{registry_course}",
-            dedupe_key=f"files.parse:{registry_course}:{':'.join(sorted(parse_file_ids))}",
+        spawn_parse_files_background(
+            getattr(request.app.state, "background_task_registry", None),
+            user_id=user.user_id,
+            file_ids=parse_file_ids,
         )
     return ok_response(data)
 

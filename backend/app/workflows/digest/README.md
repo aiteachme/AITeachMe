@@ -67,7 +67,7 @@ digest/
 | `chapters_enhanced` | DocGen seed/task 阶段 | 最终章节合同 |
 | `dispatch_table` | DocGen `assemble_chapter_tasks` | 每章使用哪些资料和证据 |
 | `preliminary_kg` | DocGen `assemble_chapter_tasks` | 写作期参考，不落库 |
-| `docgen_kg_draft` | DocGen `prepare_knowledge_graph` | 发布前可见图谱骨架、KG fast-finalize 输入 |
+| `docgen_kg_draft` | DocGen `prepare_knowledge_graph` | 发布后 KG fast-finalize 输入；发布前不可查询 |
 | `KnowledgeDoc` | DocGen `publish_document` | KG 正式抽取输入 |
 | `KnowledgeUnit` | KG `persist` | Examine 出题、Profile 掌握度 |
 
@@ -88,15 +88,14 @@ merge_review -> sync_locked_titles
   -> 确定最终章节 metadata 和 H1
 prepare_knowledge_graph
   -> 等待或刷新预抽取，生成 docgen_kg_draft
-  -> 质量门通过时发布前早写 KnowledgeUnit / 可解析 KnowledgeEdge
-  -> 如果 KnowledgeDoc 发布前失败，回滚本轮早写候选
+  -> 质量门只标记草稿是否可供发布后 fast-finalize
 publish_document
   -> 写 KnowledgeDoc 和 manifest
 sync_knowledge_graph
-  -> 复用 quality-ready docgen_kg_draft 或 hash 命中的 sidecar，补齐 source_ref / 废弃收口
+  -> 文档发布后复用 quality-ready docgen_kg_draft 或 hash 命中的 sidecar，统一写入图谱表并补齐 source_ref / 废弃收口
 ```
 
-`docgen_kg_draft` 的质量门会检查章节覆盖、边端点唯一性、关系方向、可考核/画像节点、诊断型节点和结构关系。发布前早写只负责让图谱骨架马上可见，不写 `KnowledgeGraphSourceRef`，也不执行废弃旧实体；这些仍由发布后的 `kg_doc_sync` 权威固化完成。
+`docgen_kg_draft` 的质量门会检查章节覆盖、边端点唯一性、关系方向、可考核/画像节点、诊断型节点和结构关系。草稿在发布前只保留在工作流状态和 manifest 输入中，不写 `KnowledgeUnit`、`KnowledgeEdge` 或 `KnowledgeGraphSourceRef`；这些统一由发布后的 `kg_doc_sync` 权威固化。
 
 ## `diagnose` 的定位
 
@@ -128,8 +127,8 @@ Planner 生成 diagnose
 ## 边界
 
 - Planner 不写正文、不写 KG、不写 Profile。
-- DocGen 写知识文档；只有 `prepare_knowledge_graph` 在质量门通过时发布前早写一版可查询图谱骨架。
-- KG Doc Sync 只从已发布知识文档和发布前已审计候选正式固化图谱。
+- DocGen 写知识文档并准备 KG 草稿，但不在 KnowledgeDoc 发布前写 query-visible 图谱实体。
+- KG Doc Sync 只在知识文档发布后，从已发布文档和已审计草稿正式固化图谱。
 - Profile 来自考试后的真实表现，`diagnose` 只是生成前的轻量问卷。
 
 ## 修改检查

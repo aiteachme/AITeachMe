@@ -202,10 +202,13 @@ def test_knowledge_build_spawns_background_docgen_with_accepted_files(monkeypatc
     spawned: list[dict[str, object]] = []
     run_kwargs: dict[str, object] = {}
     captured: list[tuple[str, str, dict[str, object]]] = []
+    callbacks: list[object] = []
+    released: list[tuple[str, str, str]] = []
 
     class Registry:
         def spawn(self, task, **kwargs):
             spawned.append({"task": task, **kwargs})
+            return SimpleNamespace(add_done_callback=lambda callback: callbacks.append(callback))
 
     request = _request(request_id="req-build", registry=Registry())
     build_data = DocGenBuildData(
@@ -231,6 +234,13 @@ def test_knowledge_build_spawns_background_docgen_with_accepted_files(monkeypatc
     monkeypatch.setattr(api, "get_course_record", lambda _session, course_id, owner_user_id: _course(course_id))
     monkeypatch.setattr(api, "trigger_docgen_build", fake_trigger_docgen_build)
     monkeypatch.setattr(api, "run_docgen_background", fake_run_docgen_background)
+    monkeypatch.setattr(
+        api,
+        "_release_docgen_build_lock_safely",
+        lambda **kwargs: released.append(
+            (kwargs["course_id"], kwargs["user_id"], kwargs["build_group_id"])
+        ),
+    )
     monkeypatch.setattr(api, "capture_course_build_event_later", _capture_course_build_event_inline)
     monkeypatch.setattr(
         posthog_analytics,
@@ -257,7 +267,7 @@ def test_knowledge_build_spawns_background_docgen_with_accepted_files(monkeypatc
             "task": "docgen-task",
             "kind": "knowledge.build.docs",
             "course_id": COURSE_ID,
-            "name": f"knowledge.build.docs:{COURSE_ID}",
+            "name": f"knowledge.build.docs:{COURSE_ID}:group-1",
         }
     ]
     assert run_kwargs["course_id"] == COURSE_ID
@@ -265,6 +275,9 @@ def test_knowledge_build_spawns_background_docgen_with_accepted_files(monkeypatc
     assert run_kwargs["file_ids"] == ["file-a"]
     assert run_kwargs["build_group_id"] == "group-1"
     assert run_kwargs["background_task_registry"] is request.app.state.background_task_registry
+    assert len(callbacks) == 1
+    callbacks[0](SimpleNamespace(cancelled=lambda: True))
+    assert released == [(COURSE_ID, USER_ID, "group-1")]
     assert [event for event, _distinct_id, _properties in captured] == [
         "knowledge_build_submitted",
         "knowledge_build_started",
@@ -305,6 +318,8 @@ def test_knowledge_docs_offloads_blocking_docgen_read(monkeypatch) -> None:
             request=_request(),
             response=SimpleNamespace(),
             course_id=COURSE_ID,
+            include_markdown=True,
+            include_draft=True,
         )
     )
 
@@ -316,9 +331,63 @@ def test_knowledge_docs_offloads_blocking_docgen_read(monkeypatch) -> None:
             "kwargs": {
                 "course_id": COURSE_ID,
                 "course_scope": course_scope,
+                "include_markdown": True,
+                "include_draft": True,
             },
         }
     ]
+
+
+def test_knowledge_build_releases_lock_when_registry_spawn_fails(monkeypatch) -> None:
+    released: list[tuple[str, str, str]] = []
+
+    class FailingRegistry:
+        @staticmethod
+        def spawn(task, **_kwargs):
+            raise RuntimeError("registry unavailable")
+
+    request = _request(request_id="req-spawn-failure", registry=FailingRegistry())
+    build_data = DocGenBuildData(
+        accepted_file_ids=["file-a"],
+        prompt="learn matrices",
+        ready_file_count=1,
+        requested_at=datetime(2026, 5, 13, tzinfo=timezone.utc),
+        planner_session_id="planner-1",
+        confirmed_plan_id="plan-1",
+        digest_mode="sprint",
+    )
+
+    async def fake_run_docgen_background(**_kwargs):
+        return None
+
+    monkeypatch.setattr(api, "get_course_record", lambda _session, course_id, owner_user_id: _course(course_id))
+    monkeypatch.setattr(
+        api,
+        "trigger_docgen_build",
+        lambda _session, **_kwargs: (build_data, ["file-a"], "group-spawn-failure"),
+    )
+    monkeypatch.setattr(api, "run_docgen_background", fake_run_docgen_background)
+    monkeypatch.setattr(api, "capture_course_build_event_later", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        api,
+        "_release_docgen_build_lock_safely",
+        lambda **kwargs: released.append(
+            (kwargs["course_id"], kwargs["user_id"], kwargs["build_group_id"])
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="registry unavailable"):
+        asyncio.run(
+            api.knowledge_build(
+                request=request,
+                course_id=COURSE_ID,
+                body=DocGenBuildRequest(file_ids=["file-a"], confirmed_plan_id="plan-1"),
+                user=_user(),
+                session=object(),
+            )
+        )
+
+    assert released == [(COURSE_ID, USER_ID, "group-spawn-failure")]
 
 
 def test_build_planner_create_and_confirm_capture_backend_analytics(monkeypatch) -> None:

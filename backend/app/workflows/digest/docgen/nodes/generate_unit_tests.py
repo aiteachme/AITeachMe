@@ -82,6 +82,7 @@ def build_generate_unit_tests_node(*, context: WorkflowContext):
         update_knowledge_build_status(
             state["course_id"],
             requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
             status="running",
             stage="generating_unit_tests",
             digest_mode=digest_mode,
@@ -94,6 +95,7 @@ def build_generate_unit_tests_node(*, context: WorkflowContext):
             upsert_knowledge_build_chapter_progress(
                 state["course_id"],
                 requested_at=state["requested_at"],
+                build_group_id=state.get("build_group_id") or None,
                 chapter_progress={"chapter_index": draft.chapter_index, "title": draft.title, "status": "testing"},
             )
             try:
@@ -114,6 +116,7 @@ def build_generate_unit_tests_node(*, context: WorkflowContext):
                 upsert_knowledge_build_chapter_progress(
                     state["course_id"],
                     requested_at=state["requested_at"],
+                    build_group_id=state.get("build_group_id") or None,
                     chapter_progress={
                         "chapter_index": draft.chapter_index,
                         "title": draft.title,
@@ -124,6 +127,7 @@ def build_generate_unit_tests_node(*, context: WorkflowContext):
                 upsert_knowledge_build_chapter_preview(
                     state["course_id"],
                     requested_at=state["requested_at"],
+                    build_group_id=state.get("build_group_id") or None,
                     chapter_preview={
                         "chapter_index": draft.chapter_index,
                         "title": draft.title,
@@ -137,6 +141,7 @@ def build_generate_unit_tests_node(*, context: WorkflowContext):
                 append_knowledge_build_recent_event(
                     state["course_id"],
                     requested_at=state["requested_at"],
+                    build_group_id=state.get("build_group_id") or None,
                     event={
                         "stage": "chapter_unit_test_skipped",
                         "chapter_index": draft.chapter_index,
@@ -186,6 +191,7 @@ def build_generate_unit_tests_node(*, context: WorkflowContext):
             upsert_knowledge_build_chapter_preview(
                 state["course_id"],
                 requested_at=state["requested_at"],
+                build_group_id=state.get("build_group_id") or None,
                 chapter_preview={
                     "chapter_index": updated.chapter_index,
                     "title": updated.title,
@@ -199,6 +205,7 @@ def build_generate_unit_tests_node(*, context: WorkflowContext):
             append_knowledge_build_recent_event(
                 state["course_id"],
                 requested_at=state["requested_at"],
+                build_group_id=state.get("build_group_id") or None,
                 event={
                     "stage": "chapter_unit_test_ready",
                     "chapter_index": updated.chapter_index,

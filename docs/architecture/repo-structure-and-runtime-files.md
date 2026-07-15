@@ -190,7 +190,12 @@ backend/data/<course>/
 | `knowledge_markdowns/_build/manifest.json` | 构建中间 manifest |
 | `knowledge_markdowns/.build.lock` | 构建锁 |
 | `knowledge_markdowns/docgen_manifest.json` | 发布 manifest |
-| `knowledge_markdowns/versions/vXXXX/` | 历史版本 |
+| `knowledge_markdowns/versions/vXXXX/<publish-token-hash>/` | 按发布令牌隔离的不可变历史版本 |
+| `assets/docgen/cover.<build-fingerprint>.<ext>` | 构建隔离的不可变封面；当前发布记录对应 versioned manifest 的 `cover_artifact` 决定当前封面 |
+
+当前 `KnowledgeDoc` 数据库行是知识文档的权威发布指针；根目录下的章节、
+合并文档和 manifest 是提交后的派生投影。投影缺失或版本落后时，运行时
+会从数据库当前行及其版本归档恢复，不能仅凭根目录 manifest 判断是否已发布。
 
 演示课程主源：
 

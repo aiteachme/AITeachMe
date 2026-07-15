@@ -5,6 +5,10 @@ from __future__ import annotations
 from app.shared.infra.env_support import get_env
 
 
+def _env_value(name: str) -> str | None:
+    return (get_env(name) or "").strip() or None
+
+
 def get_storage_backend() -> str:
     explicit = (get_env("STORAGE_BACKEND", "auto") or "auto").strip().lower() or "auto"
     if explicit in {"local", "s3"}:
@@ -29,7 +33,7 @@ def resolve_s3_credential_mode() -> str:
     value = (get_env("S3_CREDENTIAL_MODE", "auto") or "auto").strip().lower()
     if value in {"static", "dogecloud_tmp_token"}:
         return value
-    if get_env("DOGECLOUD_API_ACCESS_KEY") and get_env("DOGECLOUD_API_SECRET_KEY"):
+    if _env_value("DOGECLOUD_API_ACCESS_KEY") and _env_value("DOGECLOUD_API_SECRET_KEY"):
         return "dogecloud_tmp_token"
     return "static"
 
@@ -39,28 +43,28 @@ def s3_uses_dogecloud_tmp_token() -> bool:
 
 
 def resolve_dogecloud_api_access_key() -> str | None:
-    value = get_env("DOGECLOUD_API_ACCESS_KEY")
+    value = _env_value("DOGECLOUD_API_ACCESS_KEY")
     if value:
         return value
     if s3_uses_dogecloud_tmp_token():
-        return get_env("S3_ACCESS_KEY")
+        return _env_value("S3_ACCESS_KEY")
     return None
 
 
 def resolve_dogecloud_api_secret_key() -> str | None:
-    value = get_env("DOGECLOUD_API_SECRET_KEY")
+    value = _env_value("DOGECLOUD_API_SECRET_KEY")
     if value:
         return value
     if s3_uses_dogecloud_tmp_token():
-        return get_env("S3_SECRET_KEY")
+        return _env_value("S3_SECRET_KEY")
     return None
 
 
 def resolve_dogecloud_space_name() -> str | None:
-    value = get_env("DOGECLOUD_SPACE_NAME")
+    value = _env_value("DOGECLOUD_SPACE_NAME")
     if value:
         return value
-    return get_env("S3_BUCKET")
+    return _env_value("S3_BUCKET")
 
 
 __all__ = [

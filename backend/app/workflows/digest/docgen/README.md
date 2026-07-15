@@ -211,13 +211,13 @@ user_profile.prompt_addendum
 
 输入：`chapter_metadatas`, `title_review_report`, `reviewed_chapter_drafts`, `document_backbone`, `preliminary_kg`, `kg_refinement_items`, `build_session_id`
 
-动作：在最终标题同步后、发布前等待或刷新 KG prefetch；生成 `docgen_kg_draft`；质量门通过时提前写入可查询 `KnowledgeUnit` 和端点唯一、方向合法的候选 `KnowledgeEdge`。
+动作：在最终标题同步后、发布前等待或刷新 KG prefetch，并生成 `docgen_kg_draft`。质量门只决定该草稿能否在文档发布后被 fast-finalize 复用，不在此节点写图谱表。
 
 输出：`docgen_kg_draft`, `kg_prefetch_metrics`, `kg_prefetch_ready`, `kg_draft_early_persist_metrics`
 
-质量门会检查章节覆盖、边端点唯一性、关系方向、可考核/画像节点、诊断型节点和结构关系。这里不写 `KnowledgeGraphSourceRef`，不废弃旧节点/旧边；正式补抽、source_ref 和废弃收口仍由发布后的 `kg_doc_sync` 完成。
+质量门会检查章节覆盖、边端点唯一性、关系方向、可考核/画像节点、诊断型节点和结构关系。`kg_draft_early_persist_metrics` 为兼容既有状态结构保留，当前构建固定记录 `deferred_until_document_publish` 且发布前计数为 0。
 
-如果后续 `publish_document` 在 KnowledgeDoc 发布前失败，`rollback_knowledge_graph` 会删除本轮新建候选节点/边，并恢复本轮更新过的旧节点/边；已发布文档后的图谱同步失败不会走这条回滚路径。
+`KnowledgeUnit`、`KnowledgeEdge`、`KnowledgeGraphSourceRef`、补抽和废弃收口统一由 KnowledgeDoc 发布后的 `sync_knowledge_graph` 完成。因此进程在发布前退出时不会留下本轮 query-visible KG 半成品；`rollback_knowledge_graph` 仅保留旧版 early-persist 状态的兼容清理。
 
 ## 18. `publish_document`
 

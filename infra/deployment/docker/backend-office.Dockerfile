@@ -48,5 +48,5 @@ USER 10001:10001
 # 默认部署端口统一为 9020；Render 等平台仍可通过 PORT 覆盖。
 EXPOSE 9020
 
-# 单副本可以使用默认命令；正式多副本仍建议单独 Job 跑 bootstrap，Web 只跑 uvicorn。
+# 默认命令会校验完整云端配置；正式多副本仍建议单独 Job 跑 bootstrap，Web 只跑 uvicorn。
 CMD ["sh", "-c", "python scripts/start_cloud_app.py --host 0.0.0.0 --port ${PORT:-9020}"]

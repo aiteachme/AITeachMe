@@ -98,12 +98,12 @@ workflows/ingest/
 
 ### 恢复
 
-服务启动后会扫描：
+服务启动后会持续扫描并通过数据库条件更新领取尚未启动的恢复任务，避免多实例重复派发：
 
-- `fast_parsed`
-- `enhancing`
+- Phase 1 在后台任务派发失败时会回写 `retry_pending`，随后重新派发；
+- 超时的 `fast_parsed` 会先原子领取为 `enhancing`，再派发 Phase 2。
 
-并重新派发增强任务。
+已经进入 `processing` 或 `enhancing` 的任务不会被超时接管。当前尚无贯穿数据库与对象存储写入的 attempt fencing token，贸然接管可能让恢复后的旧 worker 覆盖新结果；这类中断任务应保持可观测并由后续带 fencing 的恢复机制处理。
 
 ## 5. MinerU 规则
 

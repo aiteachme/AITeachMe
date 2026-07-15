@@ -19,7 +19,7 @@ Browser
 - `infra/deployment/nginx/default.conf.template`：容器运行时模板，通过 `AITEACHME_API_UPSTREAM` 指向后端内网服务。
 - `infra/deployment/nginx/default.conf`：本地 Compose 或手动 Nginx 默认配置。
 - `frontend/public/_headers`：Cloudflare Pages 静态资源缓存配置。
-- `.github/workflows/deploy.yml`：保留可选 Cloudflare Pages deploy hook，并部署 Sealos 前端/后端；非敏感部署常量可直接维护在 workflow，真实凭证必须放 GitHub Secrets。
+- `.github/workflows/deploy.yml`：可把已验证 SHA 构建出的前端产物直接上传到 Cloudflare Pages，并部署 Sealos 前端/后端；非敏感部署常量可直接维护在 workflow，真实凭证必须放 GitHub Secrets。
 
 ## Sealos App 配置
 

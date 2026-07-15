@@ -222,6 +222,7 @@ def build_chapter_execution_briefs_node(*, context: WorkflowContext):
                 append_knowledge_build_recent_event(
                     state["course_id"],
                     requested_at=state["requested_at"],
+                    build_group_id=state.get("build_group_id") or None,
                     event={
                         "stage": "chapter_execution_brief_failed",
                         "chapter_index": task_seed.chapter_index,
@@ -244,6 +245,7 @@ def build_chapter_execution_briefs_node(*, context: WorkflowContext):
             append_knowledge_build_recent_event(
                 state["course_id"],
                 requested_at=state["requested_at"],
+                build_group_id=state.get("build_group_id") or None,
                 event={
                     "stage": "chapter_execution_brief_ready",
                     "chapter_index": task_seed.chapter_index,
@@ -288,6 +290,7 @@ def build_chapter_execution_briefs_node(*, context: WorkflowContext):
             append_knowledge_build_recent_event(
                 state["course_id"],
                 requested_at=state["requested_at"],
+                build_group_id=state.get("build_group_id") or None,
                 event={
                     "stage": "kg_prefetch_started_from_chapter_briefs",
                     "summary": "章节 brief 已生成，知识图谱早期抽取已同步启动。",

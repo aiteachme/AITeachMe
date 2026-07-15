@@ -1,14 +1,20 @@
 import asyncio
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import TypedDict
 
 import pytest
 from langgraph.graph import END, StateGraph
 
+from app.models import Course
+from app.shared.infra.exceptions import CourseBuildLockConflictError
+from app.shared.infra.storage import build_course_storage_scope
 from app.shared.infra.workflow.context import WorkflowContext
 from app.shared.infra.workflow import runtime as workflow_runtime
 from app.workflows.digest.kg_doc_sync.lib import builds as kg_builds
+
+MANUAL_GRAPH_COURSE_ID = "course_test00000000"
 
 
 class TinyState(TypedDict, total=False):
@@ -21,6 +27,19 @@ class _FakeTraceRun:
         self.outputs = outputs
 
 
+def _patch_manual_graph_trigger_inputs(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(kg_builds, "read_knowledge_build_runtime", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        kg_builds,
+        "load_knowledge_doc_sync_input",
+        lambda *args, **kwargs: SimpleNamespace(
+            markdown="# Knowledge",
+            source="published",
+            structured_context={"doc_version_no": 1, "chapters": []},
+        ),
+    )
+
+
 def _build_tiny_graph() -> StateGraph:
     graph = StateGraph(TinyState)
 
@@ -31,6 +50,88 @@ def _build_tiny_graph() -> StateGraph:
     graph.set_entry_point("inc")
     graph.add_edge("inc", END)
     return graph
+
+
+def test_manual_graph_trigger_requires_course_build_lock(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_manual_graph_trigger_inputs(monkeypatch)
+    monkeypatch.setattr(kg_builds, "acquire_knowledge_build_lock", lambda *args, **kwargs: False)
+    monkeypatch.setattr(
+        kg_builds,
+        "_write_graph_status",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("status must follow lock acquisition")),
+    )
+
+    with pytest.raises(CourseBuildLockConflictError):
+        kg_builds.trigger_graph_docs_sync_manual_build(
+            object(),  # type: ignore[arg-type]
+            course=Course(id=MANUAL_GRAPH_COURSE_ID, user_id="user_test", name="Test"),
+        )
+
+
+def test_manual_graph_trigger_releases_lock_when_spawn_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_manual_graph_trigger_inputs(monkeypatch)
+    released: list[tuple[str, str]] = []
+    spawned: list[dict[str, object]] = []
+
+    class _FailingRegistry:
+        @staticmethod
+        def spawn(_coro, **kwargs):
+            spawned.append(kwargs)
+            raise RuntimeError("registry unavailable")
+
+    monkeypatch.setattr(kg_builds, "acquire_knowledge_build_lock", lambda *args, **kwargs: True)
+    monkeypatch.setattr(kg_builds, "_write_graph_status", lambda *args, **kwargs: None)
+    monkeypatch.setattr(kg_builds, "capture_llm_runtime_snapshot", lambda: None)
+    monkeypatch.setattr(
+        kg_builds,
+        "release_knowledge_build_lock",
+        lambda course_id, *, build_group_id, **_kwargs: released.append((course_id, build_group_id)) or True,
+    )
+
+    with pytest.raises(RuntimeError, match="registry unavailable"):
+        kg_builds.trigger_graph_docs_sync_manual_build(
+            object(),  # type: ignore[arg-type]
+            course=Course(id=MANUAL_GRAPH_COURSE_ID, user_id="user_test", name="Test"),
+            background_task_registry=_FailingRegistry(),
+        )
+
+    assert len(released) == 1
+    assert released[0][0] == MANUAL_GRAPH_COURSE_ID
+    assert spawned[0]["name"] == f"knowledge.build.graph:{MANUAL_GRAPH_COURSE_ID}:{released[0][1]}"
+
+
+@pytest.mark.anyio
+async def test_manual_graph_owner_lifecycle_releases_lock(monkeypatch: pytest.MonkeyPatch) -> None:
+    released: list[tuple[str, str]] = []
+    scope = build_course_storage_scope(user_id="user_test", course_id=MANUAL_GRAPH_COURSE_ID)
+
+    async def fake_heartbeat(**_kwargs) -> None:
+        await asyncio.Future()
+
+    async def fake_run_graph_docs_sync_build(**_kwargs) -> str:
+        return "failed"
+
+    monkeypatch.setattr(kg_builds, "maintain_knowledge_build_lock_lease", fake_heartbeat)
+    monkeypatch.setattr(kg_builds, "_still_owns_knowledge_build_lock", lambda **_kwargs: True)
+    monkeypatch.setattr(kg_builds, "_run_graph_docs_sync_build", fake_run_graph_docs_sync_build)
+    monkeypatch.setattr(
+        kg_builds,
+        "release_knowledge_build_lock",
+        lambda course_id, *, build_group_id, **_kwargs: released.append((course_id, build_group_id)) or True,
+    )
+
+    await kg_builds.run_graph_docs_sync_manual_build(
+        course_id=MANUAL_GRAPH_COURSE_ID,
+        requested_at=datetime.now(timezone.utc),
+        build_group_id="group_test",
+        build_session_id="session_test",
+        file_ids=[],
+        prompt=None,
+        course_scope=scope,
+        manage_build_lock=True,
+    )
+
+    assert released == [(MANUAL_GRAPH_COURSE_ID, "group_test")]
 
 
 @pytest.mark.anyio

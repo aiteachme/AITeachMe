@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
+from threading import Event, Thread
+from types import SimpleNamespace
 
 import pytest
+from sqlalchemy.pool import StaticPool
+from sqlmodel import Session, SQLModel, create_engine
 
 import app.shared.infra.knowledge.build_store as build_store
+from app.models import Course, User
 from app.shared.infra.storage import build_course_storage_scope
 
 
@@ -234,6 +240,7 @@ def test_aggregate_status_prefers_blocking_lane_and_preserves_metrics() -> None:
 def test_runtime_store_updates_docgen_graph_and_preview_lanes(monkeypatch: pytest.MonkeyPatch) -> None:
     store = _JsonStore()
     scope = _scope()
+    requested_at = datetime.now(timezone.utc)
     published_events: list[tuple[str, str, dict[str, object]]] = []
     monkeypatch.setattr(build_store, "get_content_store", lambda: store)
     monkeypatch.setattr(build_store, "publish_workflow_stream_event", lambda course_id, event, data: published_events.append((course_id, event, data)))
@@ -242,7 +249,7 @@ def test_runtime_store_updates_docgen_graph_and_preview_lanes(monkeypatch: pytes
         "course_runtime00001",
         lane="docgen",
         course_scope=scope,
-        requested_at=datetime.now(timezone.utc),
+        requested_at=requested_at,
         build_group_id="group-1",
         status="running",
         stage="generating_chapters",
@@ -261,27 +268,37 @@ def test_runtime_store_updates_docgen_graph_and_preview_lanes(monkeypatch: pytes
     progress = build_store.upsert_knowledge_build_chapter_progress(
         "course_runtime00001",
         course_scope=scope,
+        requested_at=requested_at,
+        build_group_id="group-1",
         chapter_progress={"chapter_index": 1, "title": "A", "status": "generated", "source_count": 2},
     )
     preview = build_store.upsert_knowledge_build_chapter_preview(
         "course_runtime00001",
         course_scope=scope,
+        requested_at=requested_at,
+        build_group_id="group-1",
         chapter_preview={"chapter_index": 1, "title": "A", "excerpt": "hello", "latest_headings": ["h"]},
     )
     ignored_preview = build_store.upsert_knowledge_build_chapter_preview(
         "course_runtime00001",
         course_scope=scope,
+        requested_at=requested_at,
+        build_group_id="group-1",
         chapter_preview={"chapter_index": 0, "title": "ignored"},
     )
     event_status = build_store.append_knowledge_build_recent_event(
         "course_runtime00001",
         course_scope=scope,
+        requested_at=requested_at,
+        build_group_id="group-1",
         event={"stage": "generating_chapters", "summary": "generated chapter", "domains": ["math", "math"]},
         limit=3,
     )
     merge = build_store.update_knowledge_build_merge_preview(
         "course_runtime00001",
         course_scope=scope,
+        requested_at=requested_at,
+        build_group_id="group-1",
         merge_preview={"latest_chapter_titles": ["A", "A", "B"], "draft_excerpt": "draft"},
     )
 
@@ -305,6 +322,150 @@ def test_runtime_store_updates_docgen_graph_and_preview_lanes(monkeypatch: pytes
     assert scope.build_runtime_key() in store.payloads
     assert scope.build_status_key() in store.payloads
     assert ("course_runtime00001", "build_event", event_status.recent_events[0]) in published_events
+
+
+@pytest.mark.parametrize(
+    ("requested_at_offset", "caller_group_id", "terminal"),
+    [
+        (timedelta(seconds=-1), "group-current", False),
+        (timedelta(0), "group-stale", False),
+        (timedelta(0), "group-current", True),
+    ],
+)
+def test_runtime_leaf_updates_reject_stale_or_terminal_generation(
+    monkeypatch: pytest.MonkeyPatch,
+    requested_at_offset: timedelta,
+    caller_group_id: str,
+    terminal: bool,
+) -> None:
+    store = _JsonStore()
+    scope = _scope()
+    requested_at = datetime.now(timezone.utc)
+    published_events: list[tuple[str, str, dict[str, object]]] = []
+    monkeypatch.setattr(build_store, "get_content_store", lambda: store)
+    monkeypatch.setattr(build_store, "_capture_docgen_terminal_analytics_event", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        build_store,
+        "publish_workflow_stream_event",
+        lambda course_id, event, data: published_events.append((course_id, event, data)),
+    )
+
+    current = build_store.update_knowledge_build_lane_status(
+        "course_runtime00001",
+        lane="docgen",
+        course_scope=scope,
+        requested_at=requested_at,
+        build_group_id="group-current",
+        status="running",
+        stage="generating_chapters",
+    )
+    if terminal:
+        current = build_store.update_knowledge_build_lane_status(
+            "course_runtime00001",
+            lane="docgen",
+            course_scope=scope,
+            requested_at=requested_at,
+            build_group_id="group-current",
+            status="completed",
+            stage="completed",
+        )
+    before = build_store.read_knowledge_build_runtime(
+        "course_runtime00001",
+        course_scope=scope,
+    )
+    assert before is not None
+    published_events.clear()
+
+    generation = {
+        "requested_at": requested_at + requested_at_offset,
+        "build_group_id": caller_group_id,
+        "course_scope": scope,
+    }
+    results = [
+        build_store.upsert_knowledge_build_chapter_progress(
+            "course_runtime00001",
+            chapter_progress={"chapter_index": 1, "status": "generated"},
+            **generation,
+        ),
+        build_store.upsert_knowledge_build_chapter_preview(
+            "course_runtime00001",
+            chapter_preview={"chapter_index": 1, "excerpt": "stale"},
+            **generation,
+        ),
+        build_store.append_knowledge_build_recent_event(
+            "course_runtime00001",
+            event={"stage": "stale", "summary": "stale"},
+            **generation,
+        ),
+        build_store.update_knowledge_build_merge_preview(
+            "course_runtime00001",
+            merge_preview={"draft_excerpt": "stale"},
+            **generation,
+        ),
+    ]
+
+    after = build_store.read_knowledge_build_runtime(
+        "course_runtime00001",
+        course_scope=scope,
+    )
+    assert results == [current, current, current, current]
+    assert after == before
+    assert published_events == []
+
+
+def test_runtime_lane_rejects_stale_owner_and_terminal_regression(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = _JsonStore()
+    scope = _scope()
+    requested_at = datetime.now(timezone.utc)
+    monkeypatch.setattr(build_store, "get_content_store", lambda: store)
+    monkeypatch.setattr(build_store, "_capture_docgen_terminal_analytics_event", lambda **_kwargs: None)
+
+    terminal = build_store.update_knowledge_build_lane_status(
+        "course_runtime00001",
+        lane="docgen",
+        course_scope=scope,
+        requested_at=requested_at,
+        build_group_id="group-current",
+        status="cancelled",
+        stage="cancelled",
+    )
+    stale = build_store.update_knowledge_build_lane_status(
+        "course_runtime00001",
+        lane="docgen",
+        course_scope=scope,
+        requested_at=requested_at - timedelta(seconds=1),
+        build_group_id="group-stale",
+        status="running",
+        stage="publishing",
+    )
+    wrong_owner = build_store.update_knowledge_build_lane_status(
+        "course_runtime00001",
+        lane="docgen",
+        course_scope=scope,
+        requested_at=requested_at,
+        build_group_id="group-other",
+        status="running",
+        stage="publishing",
+    )
+    regression = build_store.update_knowledge_build_lane_status(
+        "course_runtime00001",
+        lane="docgen",
+        course_scope=scope,
+        requested_at=requested_at,
+        build_group_id="group-current",
+        status="running",
+        stage="publishing",
+    )
+
+    assert terminal.status == "cancelled"
+    assert stale == terminal
+    assert wrong_owner == terminal
+    assert regression == terminal
+    persisted = build_store.read_knowledge_build_runtime("course_runtime00001", course_scope=scope)
+    assert persisted is not None
+    assert persisted.docgen_runtime == terminal
 
 
 @pytest.mark.parametrize(
@@ -590,6 +751,25 @@ def test_local_build_lock_lifecycle_and_stale_recovery(monkeypatch: pytest.Monke
     assert build_store.acquire_knowledge_build_lock("course_runtime00001", lock, course_scope=scope) is False
     assert build_store.is_knowledge_build_locked("course_runtime00001", course_scope=scope) is True
     assert build_store.read_knowledge_build_lock("course_runtime00001", course_scope=scope) == lock
+    assert build_store.release_knowledge_build_lock(
+        "course_runtime00001",
+        build_group_id="older-owner",
+        course_scope=scope,
+    ) is False
+    assert build_store.renew_knowledge_build_lock(
+        "course_runtime00001",
+        build_group_id="older-owner",
+        course_scope=scope,
+    ) is False
+    assert build_store.renew_knowledge_build_lock(
+        "course_runtime00001",
+        build_group_id="group-1",
+        course_scope=scope,
+    ) is True
+    assert build_store.read_knowledge_build_lock(
+        "course_runtime00001",
+        course_scope=scope,
+    ).heartbeat_at is not None
 
     lock_path = build_store._local_build_lock_path(scope)
     lock_path.write_text("not-json", encoding="utf-8")
@@ -597,10 +777,467 @@ def test_local_build_lock_lifecycle_and_stale_recovery(monkeypatch: pytest.Monke
 
     stale = lock.model_copy(update={"requested_at": datetime.now(timezone.utc) - build_store.STALE_BUILD_LOCK_TTL - timedelta(seconds=1)})
     lock_path.write_text(stale.model_dump_json(), encoding="utf-8")
-    assert build_store.acquire_knowledge_build_lock("course_runtime00001", lock, course_scope=scope) is True
+    replacement = lock.model_copy(update={"build_group_id": "group-2"})
+    assert build_store.acquire_knowledge_build_lock("course_runtime00001", replacement, course_scope=scope) is True
 
-    build_store.release_knowledge_build_lock("course_runtime00001", course_scope=scope)
+    assert build_store.release_knowledge_build_lock(
+        "course_runtime00001",
+        build_group_id="group-1",
+        course_scope=scope,
+    ) is False
+    assert build_store.read_knowledge_build_lock("course_runtime00001", course_scope=scope) == replacement
+    assert build_store.release_knowledge_build_lock(
+        "course_runtime00001",
+        build_group_id="group-2",
+        course_scope=scope,
+    ) is True
     assert build_store.is_knowledge_build_locked("course_runtime00001", course_scope=scope) is False
+
+
+def test_local_build_cancellation_blocks_takeover_until_owner_release(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    scope = _scope()
+    monkeypatch.setattr(build_store, "is_cloud_mode", lambda: False)
+    monkeypatch.setattr(build_store, "get_runtime_data_dir", lambda: tmp_path)
+    first = build_store.KnowledgeBuildLock(
+        requested_at=datetime.now(timezone.utc),
+        build_group_id="group-a",
+    )
+    second = first.model_copy(update={"build_group_id": "group-b"})
+
+    assert build_store.acquire_knowledge_build_lock("course_runtime00001", first, course_scope=scope) is True
+    assert build_store.request_knowledge_build_cancellation(
+        "course_runtime00001",
+        build_group_id="other-owner",
+        course_scope=scope,
+    ) is False
+    assert build_store.request_knowledge_build_cancellation(
+        "course_runtime00001",
+        build_group_id="group-a",
+        course_scope=scope,
+    ) is True
+
+    cancelled_lock = build_store.read_knowledge_build_lock(
+        "course_runtime00001",
+        course_scope=scope,
+    )
+    assert cancelled_lock is not None
+    assert cancelled_lock.cancel_requested_at is not None
+    assert build_store.renew_knowledge_build_lock(
+        "course_runtime00001",
+        build_group_id="group-a",
+        course_scope=scope,
+    ) is False
+    assert build_store.is_knowledge_build_lock_owner(
+        "course_runtime00001",
+        build_group_id="group-a",
+        course_scope=scope,
+    ) is False
+    assert build_store.acquire_knowledge_build_lock("course_runtime00001", second, course_scope=scope) is False
+    assert build_store.release_knowledge_build_lock(
+        "course_runtime00001",
+        build_group_id="other-owner",
+        course_scope=scope,
+    ) is False
+    assert build_store.release_knowledge_build_lock(
+        "course_runtime00001",
+        build_group_id="group-a",
+        course_scope=scope,
+    ) is True
+    assert build_store.acquire_knowledge_build_lock("course_runtime00001", second, course_scope=scope) is True
+
+
+def test_local_publish_claim_serializes_cancellation_and_finish(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    scope = _scope()
+    monkeypatch.setattr(build_store, "is_cloud_mode", lambda: False)
+    monkeypatch.setattr(build_store, "get_runtime_data_dir", lambda: tmp_path)
+    lock = build_store.KnowledgeBuildLock(
+        requested_at=datetime.now(timezone.utc),
+        build_group_id="group-publish",
+    )
+
+    assert build_store.acquire_knowledge_build_lock("course_runtime00001", lock, course_scope=scope) is True
+    token = build_store.claim_knowledge_build_publish(
+        "course_runtime00001",
+        build_group_id="group-publish",
+        course_scope=scope,
+    )
+    assert token
+    assert build_store.request_knowledge_build_cancellation(
+        "course_runtime00001",
+        build_group_id="group-publish",
+        course_scope=scope,
+    ) is False
+    assert build_store.finish_knowledge_build_publish(
+        "course_runtime00001",
+        build_group_id="other-owner",
+        publish_token=token,
+        course_scope=scope,
+    ) is False
+    assert build_store.finish_knowledge_build_publish(
+        "course_runtime00001",
+        build_group_id="group-publish",
+        publish_token="wrong-token",
+        course_scope=scope,
+    ) is False
+    assert build_store.finish_knowledge_build_publish(
+        "course_runtime00001",
+        build_group_id="group-publish",
+        publish_token=token,
+        course_scope=scope,
+    ) is True
+    assert build_store.request_knowledge_build_cancellation(
+        "course_runtime00001",
+        build_group_id="group-publish",
+        course_scope=scope,
+    ) is True
+    published = build_store._read_build_lock_path(build_store._local_build_lock_path(scope))
+    assert published is not None
+    assert published.phase == "published"
+    assert published.publish_completed_at is not None
+    assert published.cancel_requested_at is not None
+
+
+def test_local_publish_claim_rejects_cancelled_and_stale_owners(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    scope = _scope()
+    monkeypatch.setattr(build_store, "is_cloud_mode", lambda: False)
+    monkeypatch.setattr(build_store, "get_runtime_data_dir", lambda: tmp_path)
+    lock = build_store.KnowledgeBuildLock(
+        requested_at=datetime.now(timezone.utc),
+        build_group_id="group-publish",
+    )
+    assert build_store.acquire_knowledge_build_lock("course_runtime00001", lock, course_scope=scope) is True
+    assert build_store.request_knowledge_build_cancellation(
+        "course_runtime00001",
+        build_group_id="group-publish",
+        course_scope=scope,
+    ) is True
+    assert build_store.claim_knowledge_build_publish(
+        "course_runtime00001",
+        build_group_id="group-publish",
+        course_scope=scope,
+    ) is None
+
+    stale = lock.model_copy(
+        update={
+            "requested_at": datetime.now(timezone.utc) - build_store.STALE_BUILD_LOCK_TTL - timedelta(seconds=1),
+        }
+    )
+    build_store._local_build_lock_path(scope).write_text(stale.model_dump_json(), encoding="utf-8")
+    assert build_store.claim_knowledge_build_publish(
+        "course_runtime00001",
+        build_group_id="group-publish",
+        course_scope=scope,
+    ) is None
+
+
+def test_local_owner_transaction_holds_cancel_fence_until_commit(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    import app.shared.infra.database as database
+
+    scope = _scope()
+    monkeypatch.setattr(build_store, "is_cloud_mode", lambda: False)
+    monkeypatch.setattr(build_store, "get_runtime_data_dir", lambda: tmp_path)
+    lock = build_store.KnowledgeBuildLock(
+        requested_at=datetime.now(timezone.utc),
+        build_group_id="group-fenced",
+    )
+    assert build_store.acquire_knowledge_build_lock("course_runtime00001", lock, course_scope=scope)
+
+    transaction_entered = Event()
+    release_transaction = Event()
+    cancel_started = Event()
+    cancel_finished = Event()
+    cancellation_results: list[bool] = []
+
+    @contextmanager
+    def fake_managed_session():
+        yield object()
+
+    monkeypatch.setattr(database, "managed_session", fake_managed_session)
+
+    def worker() -> None:
+        with build_store.managed_knowledge_build_owner_transaction(
+            "course_runtime00001",
+            build_group_id="group-fenced",
+            allowed_phases=("active",),
+            course_scope=scope,
+        ):
+            transaction_entered.set()
+            assert release_transaction.wait(timeout=2.0)
+
+    def cancel() -> None:
+        cancel_started.set()
+        cancellation_results.append(
+            build_store.request_knowledge_build_cancellation(
+                "course_runtime00001",
+                build_group_id="group-fenced",
+                course_scope=scope,
+            )
+        )
+        cancel_finished.set()
+
+    worker_thread = Thread(target=worker)
+    cancel_thread = Thread(target=cancel)
+    worker_thread.start()
+    assert transaction_entered.wait(timeout=2.0)
+    cancel_thread.start()
+    assert cancel_started.wait(timeout=2.0)
+    assert not cancel_finished.wait(timeout=0.1)
+
+    release_transaction.set()
+    worker_thread.join(timeout=2.0)
+    cancel_thread.join(timeout=2.0)
+
+    assert not worker_thread.is_alive()
+    assert not cancel_thread.is_alive()
+    assert cancellation_results == [True]
+
+
+def test_local_publish_transaction_finishes_phase_after_database_commit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.shared.infra.database as database
+
+    events: list[str] = []
+
+    @contextmanager
+    def fake_managed_session():
+        events.append("session_enter")
+        yield object()
+        events.append("database_commit")
+
+    monkeypatch.setattr(database, "managed_session", fake_managed_session)
+    monkeypatch.setattr(build_store, "is_cloud_mode", lambda: False)
+    monkeypatch.setattr(
+        build_store,
+        "lock_knowledge_build_owner_for_update",
+        lambda *args, **kwargs: events.append("owner_validated") or True,
+    )
+    monkeypatch.setattr(
+        build_store,
+        "finish_knowledge_build_publish",
+        lambda *args, **kwargs: events.append("phase_published") or True,
+    )
+
+    with build_store.managed_knowledge_build_owner_transaction(
+        "course_runtime00001",
+        build_group_id="group-publish",
+        publish_token="publish-token",
+        allowed_phases=("publishing_claimed",),
+        finish_publish=True,
+    ):
+        events.append("transaction_body")
+
+    assert events == [
+        "session_enter",
+        "owner_validated",
+        "transaction_body",
+        "database_commit",
+        "phase_published",
+    ]
+
+
+def test_cloud_owner_transaction_refreshes_lease_without_rewriting_holder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    initial_now = datetime(2026, 7, 14, 8, 0, tzinfo=timezone.utc)
+    renewed_now = initial_now + timedelta(minutes=1)
+    lock = build_store.KnowledgeBuildLock(
+        requested_at=initial_now,
+        heartbeat_at=initial_now,
+        build_group_id="group-cloud-fence",
+    )
+    raw_holder = lock.model_dump_json()
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    SQLModel.metadata.create_all(engine, tables=[User.__table__, Course.__table__])
+    with Session(engine, expire_on_commit=False) as session:
+        session.add(User(id="user-cloud-fence", username="cloud-fence"))
+        session.add(
+            Course(
+                id="course-cloud-fence",
+                user_id="user-cloud-fence",
+                name="Cloud fence",
+                build_lock_holder=raw_holder,
+                build_lock_at=initial_now,
+            )
+        )
+        session.commit()
+
+    monkeypatch.setattr(build_store, "is_cloud_mode", lambda: True)
+    monkeypatch.setattr(build_store, "utcnow", lambda: renewed_now)
+    with Session(engine, expire_on_commit=False) as session:
+        assert build_store.lock_knowledge_build_owner_for_update(
+            session,
+            "course-cloud-fence",
+            build_group_id="group-cloud-fence",
+            allowed_phases=("active",),
+        )
+        course = session.get(Course, "course-cloud-fence")
+        assert course is not None
+        assert course.build_lock_holder == raw_holder
+        assert course.build_lock_at == renewed_now.replace(tzinfo=None)
+
+
+def test_cloud_build_lock_takeover_is_owner_safe(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.shared.infra.database as database
+
+    now = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    SQLModel.metadata.create_all(engine, tables=[User.__table__, Course.__table__])
+    with Session(engine, expire_on_commit=False) as session:
+        session.add(Course(id="course-cloud-lock", user_id="user-a", name="Cloud lock"))
+        session.commit()
+
+    @contextmanager
+    def fake_managed_session():
+        with Session(engine, expire_on_commit=False) as session:
+            try:
+                yield session
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
+
+    monkeypatch.setattr(database, "managed_session", fake_managed_session)
+    monkeypatch.setattr(build_store, "is_cloud_mode", lambda: True)
+    monkeypatch.setattr(build_store, "utcnow", lambda: now)
+    first = build_store.KnowledgeBuildLock(
+        requested_at=now,
+        build_group_id="group-a",
+    )
+    second = first.model_copy(update={"build_group_id": "group-b"})
+
+    assert build_store.acquire_knowledge_build_lock("course-cloud-lock", first) is True
+    assert build_store.acquire_knowledge_build_lock("course-cloud-lock", second) is False
+    with Session(engine, expire_on_commit=False) as session:
+        course = session.get(Course, "course-cloud-lock")
+        assert course is not None
+        course.build_lock_at = now - build_store.STALE_BUILD_LOCK_TTL - timedelta(seconds=1)
+        session.add(course)
+        session.commit()
+
+    assert build_store.acquire_knowledge_build_lock("course-cloud-lock", second) is True
+    assert build_store.release_knowledge_build_lock(
+        "course-cloud-lock",
+        build_group_id="group-a",
+    ) is False
+    assert build_store.renew_knowledge_build_lock(
+        "course-cloud-lock",
+        build_group_id="group-a",
+    ) is False
+    assert build_store.renew_knowledge_build_lock(
+        "course-cloud-lock",
+        build_group_id="group-b",
+    ) is True
+    assert build_store.read_knowledge_build_lock("course-cloud-lock").build_group_id == "group-b"
+    publish_token = build_store.claim_knowledge_build_publish(
+        "course-cloud-lock",
+        build_group_id="group-b",
+    )
+    assert publish_token
+    assert build_store.request_knowledge_build_cancellation(
+        "course-cloud-lock",
+        build_group_id="group-b",
+    ) is False
+    assert build_store.finish_knowledge_build_publish(
+        "course-cloud-lock",
+        build_group_id="group-b",
+        publish_token="wrong-token",
+    ) is False
+    assert build_store.finish_knowledge_build_publish(
+        "course-cloud-lock",
+        build_group_id="group-b",
+        publish_token=publish_token,
+    ) is True
+    assert build_store.request_knowledge_build_cancellation(
+        "course-cloud-lock",
+        build_group_id="group-a",
+    ) is False
+    assert build_store.request_knowledge_build_cancellation(
+        "course-cloud-lock",
+        build_group_id="group-b",
+    ) is True
+    assert build_store.acquire_knowledge_build_lock(
+        "course-cloud-lock",
+        first.model_copy(update={"build_group_id": "group-c"}),
+    ) is False
+    assert build_store.renew_knowledge_build_lock(
+        "course-cloud-lock",
+        build_group_id="group-b",
+    ) is False
+    assert build_store.is_knowledge_build_lock_owner(
+        "course-cloud-lock",
+        build_group_id="group-b",
+    ) is False
+    assert build_store.release_knowledge_build_lock(
+        "course-cloud-lock",
+        build_group_id="group-b",
+    ) is True
+
+
+def test_cloud_build_lock_release_retries_after_concurrent_heartbeat(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.shared.infra.database as database
+
+    now = datetime(2026, 7, 14, tzinfo=timezone.utc)
+    initial = build_store.KnowledgeBuildLock(
+        requested_at=now,
+        heartbeat_at=now,
+        build_group_id="group-release",
+    )
+    renewed = initial.model_copy(update={"heartbeat_at": now + timedelta(seconds=1)})
+    holders = [initial.model_dump_json(), renewed.model_dump_json()]
+    attempts: list[int] = []
+
+    class _ReleaseSession:
+        def __init__(self, attempt: int) -> None:
+            self.attempt = attempt
+            self.call_count = 0
+
+        def exec(self, _statement):
+            self.call_count += 1
+            if self.call_count == 1:
+                return SimpleNamespace(
+                    first=lambda: SimpleNamespace(
+                        build_lock_holder=holders[self.attempt],
+                        build_lock_at=now,
+                    )
+                )
+            return SimpleNamespace(rowcount=0 if self.attempt == 0 else 1)
+
+    @contextmanager
+    def fake_managed_session():
+        attempt = len(attempts)
+        attempts.append(attempt)
+        yield _ReleaseSession(attempt)
+
+    monkeypatch.setattr(database, "managed_session", fake_managed_session)
+
+    assert build_store._cloud_release_build_lock(
+        "course-cloud-lock",
+        build_group_id="group-release",
+    ) is True
+    assert attempts == [0, 1]
 
 
 def test_manifest_and_artifact_cleanup_respect_scope(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:

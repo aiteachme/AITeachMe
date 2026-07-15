@@ -225,6 +225,7 @@ def build_load_context_node(*, context: WorkflowContext):
         update_knowledge_build_status(
             state["course_id"],
             requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
             status="running",
             stage="planner_confirmed",
             planner_session_id=state.get("planner_session_id") or None,
@@ -261,6 +262,7 @@ def build_load_context_node(*, context: WorkflowContext):
         append_knowledge_build_recent_event(
             state["course_id"],
             requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
             event={
                 "stage": "planner_confirmed",
                 "summary": (

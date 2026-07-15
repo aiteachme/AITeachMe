@@ -36,10 +36,9 @@ import type {
   ExamPaperItemResponse,
 } from "../api/generated/model";
 import {
-  buildApiUrl,
   getApiErrorMessage,
+  openAuthenticatedSse,
   orvalApiClient,
-  registerBackendEventSource,
   reportBackendConnectionIssue,
 } from "../api/client";
 import { Button } from "../components/ui/Button";
@@ -76,6 +75,7 @@ import {
   formatQuestionTypeLabel,
 } from "../components/exams/examDisplay";
 import { gradeQuestionTemplateAnswer, isAiGradedQuestionType } from "../components/exams/questionTemplateGrading";
+import { useApiAuthGeneration } from "../hooks/useApiAuthGeneration";
 import {
   parseExamGenerationSnapshot,
   patchExamHistoryQueryData,
@@ -910,6 +910,7 @@ function getMasteryDrillStatusBadge(
 }
 
 export function ExamsPage() {
+  const apiAuthGeneration = useApiAuthGeneration();
   const { courseId } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -1191,11 +1192,10 @@ export function ExamsPage() {
     };
 
     const streams = generatingPaperIds.map((paperId) => {
-      const stream = new EventSource(
-        buildApiUrl(`/api/v1/courses/${encodeURIComponent(courseId)}/exams/${paperId}/stream`),
-        { withCredentials: true },
+      const stream = openAuthenticatedSse(
+        `/api/v1/courses/${encodeURIComponent(courseId)}/exams/${paperId}/stream`,
+        { disconnectReason: "exam_stream_error" },
       );
-      const unregisterEventSource = registerBackendEventSource(stream);
       const handleSnapshot = (event: Event) => {
         applySnapshot(event);
       };
@@ -1203,7 +1203,6 @@ export function ExamsPage() {
         applySnapshot(event);
         refreshHistory();
         void queryClient.invalidateQueries({ queryKey: ["exam-question-templates", courseId] });
-        unregisterEventSource();
         stream.close();
       };
 
@@ -1214,18 +1213,17 @@ export function ExamsPage() {
         refreshHistory();
       };
 
-      return { stream, handleSnapshot, handleDone, unregisterEventSource };
+      return { stream, handleSnapshot, handleDone };
     });
 
     return () => {
-      streams.forEach(({ stream, handleSnapshot, handleDone, unregisterEventSource }) => {
-        unregisterEventSource();
+      streams.forEach(({ stream, handleSnapshot, handleDone }) => {
         stream.removeEventListener("snapshot", handleSnapshot);
         stream.removeEventListener("done", handleDone);
         stream.close();
       });
     };
-  }, [generatingPaperIdsKey, queryClient, courseId, historyQueryKey]);
+  }, [apiAuthGeneration, generatingPaperIdsKey, queryClient, courseId, historyQueryKey]);
 
   const activeHistoryItems = useMemo(
     () => displayHistoryItems.filter((item) => item.status !== "graded"),

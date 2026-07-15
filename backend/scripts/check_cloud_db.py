@@ -1,8 +1,7 @@
-"""Validate the Render/PostgreSQL database after migration preparation."""
+"""Validate cloud database and object storage after migration preparation."""
 
 from __future__ import annotations
 
-import os
 import sys
 import uuid
 from pathlib import Path
@@ -18,7 +17,7 @@ from app.shared.infra.database import (  # noqa: E402
     validate_postgres_runtime_schema,
 )
 from app.shared.infra.database.core import _SCHEMA_TABLES  # noqa: E402
-from app.shared.infra.runtime import is_cloud_mode  # noqa: E402
+from app.shared.infra.runtime import collect_cloud_runtime_config_errors  # noqa: E402
 from app.shared.infra.storage import get_artifact_store, run_store_sync  # noqa: E402
 from app.shared.infra.storage.config import storage_is_s3  # noqa: E402
 from app.shared.infra.search.llamaindex_index import prepare_postgres_store  # noqa: E402
@@ -229,7 +228,7 @@ def _collect_deep_schema_errors(connection: sa.Connection) -> list[str]:
 
 def _collect_storage_errors() -> list[str]:
     if not storage_is_s3():
-        return []
+        return ["object storage validation requires STORAGE_BACKEND=s3"]
 
     errors: list[str] = []
     test_key = f"__healthcheck/predeploy/{uuid.uuid4().hex}.txt"
@@ -253,8 +252,11 @@ def _collect_storage_errors() -> list[str]:
 
 
 def main() -> int:
-    if not is_cloud_mode():
-        print("check_cloud_db requires APP_MODE=cloud.", file=sys.stderr)
+    config_errors = collect_cloud_runtime_config_errors()
+    if config_errors:
+        print("cloud runtime configuration is invalid:", file=sys.stderr)
+        for error in config_errors:
+            print(f"- {error}", file=sys.stderr)
         return 2
 
     errors = validate_postgres_runtime_schema()
@@ -280,5 +282,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    os.environ.setdefault("APP_MODE", "cloud")
     raise SystemExit(main())

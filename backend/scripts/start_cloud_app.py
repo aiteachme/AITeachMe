@@ -1,4 +1,4 @@
-"""Start the cloud app after ensuring the current database is ready.
+"""Start the cloud app after validating and preparing every cloud dependency.
 
 Render free instances do not support a separate pre-deploy command, so this
 script can be used as the service start command. From the repo root with a
@@ -10,8 +10,8 @@ Inside the Docker image:
 
     python scripts/start_cloud_app.py --host 0.0.0.0 --port $PORT
 
-When APP_MODE=cloud, it bootstraps the database first, then launches uvicorn.
-Without APP_MODE=cloud it only launches uvicorn in the resolved local mode.
+This is a cloud-only entrypoint. It refuses to start unless the process is
+explicitly configured for PostgreSQL, S3 storage, and cloud authentication.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from app.shared.infra.runtime import is_cloud_mode  # noqa: E402
+from app.shared.infra.runtime import collect_cloud_runtime_config_errors  # noqa: E402
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
@@ -47,18 +47,24 @@ def _run_bootstrap(*, reset_db: bool) -> None:
 def main(argv: list[str] | None = None) -> int:
     args = _build_arg_parser().parse_args(argv)
 
-    if is_cloud_mode():
-        try:
-            _run_bootstrap(
-                reset_db=bool(args.reset_db),
-            )
-        except subprocess.CalledProcessError as exc:
-            print(
-                "cloud database bootstrap command failed; app startup aborted "
-                f"(exit={exc.returncode})",
-                file=sys.stderr,
-            )
-            return exc.returncode or 1
+    config_errors = collect_cloud_runtime_config_errors()
+    if config_errors:
+        print("cloud startup configuration is invalid:", file=sys.stderr)
+        for error in config_errors:
+            print(f"- {error}", file=sys.stderr)
+        return 2
+
+    try:
+        _run_bootstrap(
+            reset_db=bool(args.reset_db),
+        )
+    except subprocess.CalledProcessError as exc:
+        print(
+            "cloud database bootstrap command failed; app startup aborted "
+            f"(exit={exc.returncode})",
+            file=sys.stderr,
+        )
+        return exc.returncode or 1
 
     uvicorn_cmd = [
         sys.executable,
