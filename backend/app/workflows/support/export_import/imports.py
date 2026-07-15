@@ -40,6 +40,7 @@ from app.shared.infra.exceptions import (
 from app.workflows.digest.docgen.lib.published_manifest import ensure_published_knowledge_manifest
 from app.workflows.support.export_import.exports import (
     TABLE_REGISTRY,
+    _DOCGEN_COVER_MARKDOWN_RE,
     _create_unique_course_id,
     _import_table,
     _read_manifest,
@@ -535,17 +536,17 @@ def _unpack_files(
 
     cover_markdown = f"![](../assets/docgen/{restored_cover_name})"
 
-    def prepend_cover(markdown: str | None) -> str:
+    def restore_cover_reference(markdown: str | None) -> str:
         body = str(markdown or "").strip()
-        if cover_markdown in body:
-            return body
+        if _DOCGEN_COVER_MARKDOWN_RE.search(body):
+            return _DOCGEN_COVER_MARKDOWN_RE.sub(cover_markdown, body)
         return f"{cover_markdown}\n\n{body}".strip()
 
     effective_markdown = (
         str(first_published_doc.markdown_content or "").strip()
         or str(first_published_doc.content_markdown or "").strip()
     )
-    first_published_doc.markdown_content = prepend_cover(effective_markdown)
+    first_published_doc.markdown_content = restore_cover_reference(effective_markdown)
     session.add(first_published_doc)
 
 

@@ -52,9 +52,22 @@ def collect_cloud_runtime_config_errors() -> list[str]:
                 if not _env_value(name):
                     errors.append(f"{name} must be configured for static S3 storage")
         elif credential_mode == "dogecloud_tmp_token":
-            for name in ("DOGECLOUD_API_ACCESS_KEY", "DOGECLOUD_API_SECRET_KEY"):
-                if not _env_value(name):
-                    errors.append(f"{name} must be configured for DogeCloud S3 storage")
+            if not (
+                _env_value("DOGECLOUD_API_ACCESS_KEY")
+                or _env_value("S3_ACCESS_KEY")
+            ):
+                errors.append(
+                    "DOGECLOUD_API_ACCESS_KEY or S3_ACCESS_KEY must be configured "
+                    "for DogeCloud S3 storage"
+                )
+            if not (
+                _env_value("DOGECLOUD_API_SECRET_KEY")
+                or _env_value("S3_SECRET_KEY")
+            ):
+                errors.append(
+                    "DOGECLOUD_API_SECRET_KEY or S3_SECRET_KEY must be configured "
+                    "for DogeCloud S3 storage"
+                )
             if not (_env_value("DOGECLOUD_SPACE_NAME") or _env_value("S3_BUCKET")):
                 errors.append(
                     "DOGECLOUD_SPACE_NAME or S3_BUCKET must be configured for DogeCloud S3 storage"

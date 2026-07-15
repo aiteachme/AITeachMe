@@ -40,6 +40,10 @@ from app.workflows.digest.docgen.lib.published_manifest import resolve_published
 
 _MARKDOWN_PARSER = MarkdownIt("commonmark")
 _HEADING_SLUG_RE = re.compile(r"[^A-Za-z0-9_\u4e00-\u9fff]+")
+_KU_HEADING_ATTR_RE = re.compile(r"\s*\{#ku_[A-Za-z0-9_-]+\}")
+_KU_HEADING_COMMENT_RE = re.compile(
+    r"\s*<!--\s*ATM_KU:\s*ku_[A-Za-z0-9_-]+\s*-->"
+)
 _MANIFEST_READ_ATTEMPTS = 3
 _PUBLICATION_CACHE_SIZE = 8
 _PUBLICATION_CACHE_LOCK = Lock()
@@ -130,13 +134,20 @@ def _heading_text(token: Token) -> str:
     def flatten(tokens: Sequence[Token]) -> str:
         parts: list[str] = []
         for child in tokens:
+            # mdast images have no textual children, so MarkdownViewer's
+            # extractMarkdownAstText intentionally excludes their alt text.
+            if child.type == "image":
+                continue
             if child.children:
                 parts.append(flatten(child.children))
-            elif child.type in {"text", "code_inline", "html_inline", "image"}:
+            elif child.type in {"text", "code_inline", "html_inline"}:
                 parts.append(str(child.content or ""))
         return "".join(parts)
 
-    return flatten(token.children or []).strip()
+    text = flatten(token.children or [])
+    text = _KU_HEADING_ATTR_RE.sub("", text)
+    text = _KU_HEADING_COMMENT_RE.sub("", text)
+    return text.strip()
 
 
 def _heading_id(text: str, counts: dict[str, int]) -> str:

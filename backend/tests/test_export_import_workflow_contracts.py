@@ -372,6 +372,91 @@ def test_export_skips_legacy_storage_cover_without_current_doc_reference(
         package_path.unlink(missing_ok=True)
 
 
+def test_import_rewrites_legacy_docgen_cover_reference(
+    session: Session,
+    export_import_store: _FakeStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session.add(
+        Course(
+            id=LEGACY_DOCS_COURSE_ID,
+            user_id="user-1",
+            name="Legacy Docs",
+        )
+    )
+    session.add(
+        KnowledgeDocument(
+            course_id=LEGACY_DOCS_COURSE_ID,
+            chapter_index=1,
+            title="Legacy Chapter",
+            markdown_content=(
+                f"![](../assets/docgen/{PUBLISHED_COVER_FILENAME})\n\n"
+                "# Legacy Chapter"
+            ),
+            markdown_path=(
+                f"users/user-1/courses/{LEGACY_DOCS_COURSE_ID}/"
+                "knowledge_markdowns/chapter_01.md"
+            ),
+            is_current=True,
+            status="published",
+        )
+    )
+    session.commit()
+
+    package_path = export_module.export_course(
+        session,
+        course_id=LEGACY_DOCS_COURSE_ID,
+        options=ExportOptions(
+            include_raw_markdowns=False,
+            include_knowledge_docs=True,
+            include_chat_history=False,
+            include_exam_history=False,
+            include_profile=False,
+        ),
+    )
+    target_engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    SQLModel.metadata.create_all(target_engine)
+    monkeypatch.setattr(
+        import_module,
+        "_create_unique_course_id",
+        lambda _session: IMPORTED_COURSE_ID,
+    )
+
+    try:
+        with zipfile.ZipFile(package_path, "r") as exported:
+            assert exported.read("knowledge/cover.png") == b"cover-bytes"
+
+        with Session(target_engine, expire_on_commit=False) as target_session:
+            import_module.import_course(
+                target_session,
+                file_path=package_path,
+                options=ImportOptions(
+                    new_course_name="Imported Legacy Docs",
+                    rebuild_embeddings=False,
+                ),
+                user_id="user-2",
+            )
+            imported_doc = target_session.exec(
+                select(KnowledgeDocument).where(
+                    KnowledgeDocument.course_id == IMPORTED_COURSE_ID,
+                    KnowledgeDocument.is_current.is_(True),
+                    KnowledgeDocument.status == "published",
+                )
+            ).one()
+
+        assert PUBLISHED_COVER_FILENAME not in imported_doc.markdown_content
+        assert imported_doc.markdown_content.count(
+            "![](../assets/docgen/cover.png)"
+        ) == 1
+        assert imported_doc.markdown_content.endswith("# Legacy Chapter")
+    finally:
+        package_path.unlink(missing_ok=True)
+
+
 def test_import_course_remaps_ids_and_restores_docgen_assets(
     session: Session,
     export_import_store: _FakeStore,

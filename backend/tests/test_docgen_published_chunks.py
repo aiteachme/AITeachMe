@@ -73,6 +73,34 @@ def test_published_heading_ids_match_frontend_global_slug_contract() -> None:
     assert [heading.chunk_index for heading in headings] == [0, 0, 0, 1, 1]
 
 
+def test_published_headings_match_frontend_display_cleanup_contract() -> None:
+    markdown = (
+        "# 第一章 {#ku_chapter_one}\n\n"
+        "## 图 ![不会进入 ID](asset.png) 标题 <!-- ATM_KU: ku_image -->\n\n"
+        "# 第二章 <!-- ATM_KU: ku_chapter_two -->\n\n"
+        "## API_2 ![ALT](asset.png) / α 与 中文！ {#ku_topic}\n"
+    )
+
+    chunks = published_chunks._split_published_markdown(
+        markdown,
+        chapters=_snapshot("v0004-display-cleanup").chapters,
+    )
+    headings = [heading for chunk in chunks for heading in chunk.headings]
+
+    assert [heading.text for heading in headings] == [
+        "第一章",
+        "图  标题",
+        "第二章",
+        "API_2  / α 与 中文！",
+    ]
+    assert [heading.id for heading in headings] == [
+        "第一章",
+        "图-标题",
+        "第二章",
+        "api_2-与-中文",
+    ]
+
+
 def test_chunk_request_rejects_publication_switch_during_markdown_read(monkeypatch) -> None:
     old_snapshot = _snapshot("v0004-old")
     new_snapshot = _snapshot("v0005-new", version_no=5)

@@ -15,6 +15,7 @@ import {
   openAuthenticatedSse,
   reportBackendConnectionIssue,
 } from "../api/client";
+import { useApiAuthGeneration } from "./useApiAuthGeneration";
 
 interface UseBuildEventStreamOptions {
   courseId: string;
@@ -83,6 +84,7 @@ export function useBuildEventStream({
   enabled,
   onDone,
 }: UseBuildEventStreamOptions) {
+  const apiAuthGeneration = useApiAuthGeneration();
   const [snapshot, setSnapshot] = useState<KnowledgeBuildRuntimeResponse | null>(null);
   const [connected, setConnected] = useState(false);
   const [previewStreams, setPreviewStreams] = useState<Record<number, BuildPreviewStreamState>>({});
@@ -170,6 +172,7 @@ export function useBuildEventStream({
       return;
     }
 
+    setSnapshot(null);
     previewStreamsRef.current = {};
     clearPreviewFlushTimer();
     setPreviewStreams({});
@@ -280,7 +283,7 @@ export function useBuildEventStream({
       clearPreviewFlushTimer();
       setConnected(false);
     };
-  }, [courseId, enabled, clearPreviewFlushTimer, flushPreviewStreams, schedulePreviewFlush, mergeSnapshotPreviewStreams]);
+  }, [apiAuthGeneration, courseId, enabled, clearPreviewFlushTimer, flushPreviewStreams, schedulePreviewFlush, mergeSnapshotPreviewStreams]);
 
   return { snapshot, connected, previewStreams, buildEvents, graphDeltas };
 }

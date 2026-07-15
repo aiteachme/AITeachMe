@@ -75,6 +75,7 @@ import {
   formatQuestionTypeLabel,
 } from "../components/exams/examDisplay";
 import { gradeQuestionTemplateAnswer, isAiGradedQuestionType } from "../components/exams/questionTemplateGrading";
+import { useApiAuthGeneration } from "../hooks/useApiAuthGeneration";
 import {
   parseExamGenerationSnapshot,
   patchExamHistoryQueryData,
@@ -909,6 +910,7 @@ function getMasteryDrillStatusBadge(
 }
 
 export function ExamsPage() {
+  const apiAuthGeneration = useApiAuthGeneration();
   const { courseId } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -1221,7 +1223,7 @@ export function ExamsPage() {
         stream.close();
       });
     };
-  }, [generatingPaperIdsKey, queryClient, courseId, historyQueryKey]);
+  }, [apiAuthGeneration, generatingPaperIdsKey, queryClient, courseId, historyQueryKey]);
 
   const activeHistoryItems = useMemo(
     () => displayHistoryItems.filter((item) => item.status !== "graded"),

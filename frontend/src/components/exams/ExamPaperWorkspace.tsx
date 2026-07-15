@@ -29,6 +29,7 @@ import {
 import { Button } from "../ui/Button";
 import { useToast } from "../ui/Toast";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
+import { useApiAuthGeneration } from "../../hooks/useApiAuthGeneration";
 import { ExamPaperSheet } from "./ExamPaperSheet";
 import { ExamMasteryDrillSession } from "./ExamMasteryDrillSession";
 import { ExamQuestionAnalysisSheet } from "./ExamQuestionAnalysisSheet";
@@ -128,6 +129,7 @@ interface ExamPaperWorkspaceProps {
 }
 
 export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWorkspaceProps) {
+  const apiAuthGeneration = useApiAuthGeneration();
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
@@ -380,7 +382,7 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
       stream.removeEventListener("snapshot", handleSnapshot);
       stream.close();
     };
-  }, [paper?.status, paperId, queryClient, courseId, toast]);
+  }, [apiAuthGeneration, paper?.status, paperId, queryClient, courseId, toast]);
 
   useEffect(() => {
     if (!paper?.items) return;

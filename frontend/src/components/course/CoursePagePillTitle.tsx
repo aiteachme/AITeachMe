@@ -18,6 +18,7 @@ import {
   buildKnowledgeBuildRuntimeQueryKey,
   buildRuntimeFailureBackoffMs,
   fetchKnowledgeBuildRuntime,
+  hasKnowledgeBuildDraftFallback,
 } from "../../lib/knowledgeBuildRuntime";
 import {
   getExamHistoryApiV1CoursesCourseIdExamsHistoryGetQueryKey,
@@ -96,7 +97,11 @@ export function CoursePagePillTitle({
     const handleScroll = (event: Event) => {
       const target = event.target;
       if (!(target instanceof HTMLElement)) return;
-      if (target !== scrollRoot && !target.classList.contains("doc-scroll-container")) return;
+      if (
+        target !== scrollRoot &&
+        !target.classList.contains("course-page-scroll-container") &&
+        !target.classList.contains("doc-scroll-container")
+      ) return;
 
       const currentScrollTop = target.scrollTop;
       const previousScrollTop = previousScrollTops.get(target);
@@ -163,12 +168,16 @@ export function CoursePagePillTitle({
 
   // 1. Query Document Build Status
   const docMarkdownQuery = useQuery({
-    queryKey: ["docgen-content", courseId, null],
+    queryKey: ["docgen-content", courseId, null, "metadata"],
     queryFn: async (): Promise<DocGenGetResponse> => {
       if (!courseId) throw new Error("缺少课程 ID");
       const response = await apiClient<ApiResponse<DocGenGetResponse>>({
         method: "POST",
         url: `/api/v1/courses/${courseId}/knowledge/docs`,
+        params: {
+          include_markdown: false,
+          include_draft: false,
+        },
       });
       if (!response.data) throw new Error("加载知识文档状态失败");
       return response.data;
@@ -243,9 +252,10 @@ export function CoursePagePillTitle({
   }, [isBuilding, isBuilt, runtimeQuery.data?.training_unlocked]);
 
   const hasDraftDoc = useMemo(() => {
-    const data = docMarkdownQuery.data as (DocGenGetResponse & { draft_markdown?: string | null }) | undefined;
-    return Boolean(String(data?.draft_markdown ?? "").trim());
-  }, [docMarkdownQuery.data]);
+    return Boolean(
+      docMarkdownQuery.data?.build?.draft_available || hasKnowledgeBuildDraftFallback(runtimeQuery.data),
+    );
+  }, [docMarkdownQuery.data?.build?.draft_available, runtimeQuery.data]);
 
   const hasRuntimeBuildStarted = useMemo(() => {
     return Boolean(runtimeQuery.data?.build_group_id) || runtimeStatuses.some((status) => Boolean(status && status !== "idle"));

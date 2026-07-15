@@ -12,6 +12,7 @@ import {
   buildKnowledgeBuildRuntimeQueryKey,
   buildRuntimeFailureBackoffMs,
   fetchKnowledgeBuildRuntime,
+  hasKnowledgeBuildDraftFallback,
 } from "../../../lib/knowledgeBuildRuntime";
 import { formatDigestModeLabel } from "../../../lib/digestMode";
 import type {
@@ -188,6 +189,7 @@ export interface DocMarkdownState {
   hasNextChunk: boolean;
   isLoadingNextChunk: boolean;
   publicationError: unknown;
+  draftError: unknown;
   loadNextChunk: () => Promise<boolean>;
   ensureHeadingLoaded: (headingId: string) => Promise<boolean>;
   ensureAllChunksLoaded: () => Promise<string>;
@@ -325,7 +327,9 @@ export function useDocMarkdown(): DocMarkdownState {
   const graphStatus = (runtimeQuery.data?.graph_status ?? runtimeQuery.data?.graph?.status ?? null)?.trim() || null;
   const graphUnhealthy = Boolean(runtimeQuery.data?.graph_unhealthy);
   const trainingUnlocked = Boolean(runtimeQuery.data?.training_unlocked);
-  const draftAvailable = Boolean(docMarkdownQuery.data?.build?.draft_available);
+  const draftAvailable = Boolean(
+    docMarkdownQuery.data?.build?.draft_available || hasKnowledgeBuildDraftFallback(runtimeQuery.data),
+  );
 
   const draftMarkdownQuery = useQuery<DocGenGetResponse>({
     queryKey: ["docgen-draft-content", courseId, buildMeta?.requested_at ?? ""],
@@ -359,7 +363,10 @@ export function useDocMarkdown(): DocMarkdownState {
     setPublicationError(null);
   }, []);
 
-  const ensureChunkIndexLoaded = useCallback(async (targetChunkIndex: number): Promise<boolean> => {
+  const ensureChunkIndexLoaded = useCallback(async (
+    targetChunkIndex: number,
+    throwOnError = false,
+  ): Promise<boolean> => {
     if (!courseId) return false;
 
     while (true) {
@@ -380,7 +387,8 @@ export function useDocMarkdown(): DocMarkdownState {
         ) {
           try {
             await existingRequest.promise;
-          } catch {
+          } catch (error) {
+            if (throwOnError) throw error;
             return false;
           }
           continue;
@@ -447,7 +455,8 @@ export function useDocMarkdown(): DocMarkdownState {
       chunkLoadInFlightRef.current = { publicationId, generation, promise: requestPromise };
       try {
         await requestPromise;
-      } catch {
+      } catch (error) {
+        if (throwOnError) throw error;
         return false;
       }
     }
@@ -465,7 +474,7 @@ export function useDocMarkdown(): DocMarkdownState {
     const manifest = publicationManifestRef.current;
     const heading = manifest?.headings.find((item) => item.id === normalizedId);
     if (!heading) return false;
-    return ensureChunkIndexLoaded(heading.chunk_index);
+    return ensureChunkIndexLoaded(heading.chunk_index, true);
   }, [docViewMode, ensureChunkIndexLoaded]);
 
   const ensureAllChunksLoaded = useCallback(async (): Promise<string> => {
@@ -480,7 +489,7 @@ export function useDocMarkdown(): DocMarkdownState {
       }
       const publicationId = manifest.publication_id;
       const totalChunks = manifest.chunks.length;
-      const loaded = await ensureChunkIndexLoaded(totalChunks - 1);
+      const loaded = await ensureChunkIndexLoaded(totalChunks - 1, true);
       const currentManifest = publicationManifestRef.current;
       if (
         !loaded &&
@@ -875,6 +884,7 @@ export function useDocMarkdown(): DocMarkdownState {
     hasNextChunk,
     isLoadingNextChunk,
     publicationError: publicationManifestQuery.error ?? publicationError,
+    draftError: draftAvailable ? draftMarkdownQuery.error : null,
     loadNextChunk,
     ensureHeadingLoaded,
     ensureAllChunksLoaded,

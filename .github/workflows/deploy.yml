@@ -193,7 +193,10 @@ jobs:
         needs.classify_changes.outputs.deploy_backend != 'true' ||
         (
           needs.deploy-backend.result == 'success' &&
-          needs.deploy-backend.outputs.deployed == 'true'
+          (
+            needs.deploy-backend.outputs.enabled != 'true' ||
+            needs.deploy-backend.outputs.deployed == 'true'
+          )
         )
       )
     env:
@@ -261,7 +264,7 @@ jobs:
       - classify_changes
       - deploy-backend
     # The frontend proxy smoke exercises /api traffic, so wait for the backend
-    # only when this release actually changes the backend.
+    # only when its Sealos deployment is enabled for this release.
     if: >-
       always() &&
       needs.verify-latest.outputs.should_deploy == 'true' &&
@@ -270,7 +273,10 @@ jobs:
         needs.classify_changes.outputs.deploy_backend != 'true' ||
         (
           needs.deploy-backend.result == 'success' &&
-          needs.deploy-backend.outputs.deployed == 'true'
+          (
+            needs.deploy-backend.outputs.enabled != 'true' ||
+            needs.deploy-backend.outputs.deployed == 'true'
+          )
         )
       )
     permissions:
@@ -279,7 +285,7 @@ jobs:
     env:
       SEALOS_KUBECONFIG_B64: ${{ secrets.SEALOS_KUBECONFIG_B64 }}
       SOURCE_SHA: ${{ needs.verify-latest.outputs.source_sha }}
-      STRICT_API_SMOKE: ${{ needs.classify_changes.outputs.deploy_backend == 'true' }}
+      STRICT_API_SMOKE: ${{ needs.classify_changes.outputs.deploy_backend == 'true' && needs.deploy-backend.outputs.enabled == 'true' }}
       ALIYUN_ACR_USERNAME: ${{ secrets.ALIYUN_ACR_USERNAME }}
       ALIYUN_ACR_PASSWORD: ${{ secrets.ALIYUN_ACR_PASSWORD }}
 
@@ -599,7 +605,7 @@ jobs:
 
       - name: Smoke test Sealos frontend proxy in cluster
         id: smoke_frontend_proxy
-        if: steps.optin.outputs.enabled == 'true'
+        if: steps.optin.outputs.enabled == 'true' && env.STRICT_API_SMOKE == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -700,6 +706,7 @@ jobs:
       - classify_changes
     if: always() && needs.verify-latest.outputs.should_deploy == 'true' && needs.classify_changes.outputs.deploy_backend == 'true'
     outputs:
+      enabled: ${{ steps.optin.outputs.enabled }}
       deployed: ${{ steps.result.outputs.deployed }}
     permissions:
       contents: read

@@ -2392,6 +2392,7 @@ export function KnowledgeDocsPage() {
     hasNextChunk,
     isLoadingNextChunk,
     publicationError,
+    draftError,
     loadNextChunk,
     ensureHeadingLoaded,
     ensureAllChunksLoaded,
@@ -2407,7 +2408,9 @@ export function KnowledgeDocsPage() {
     isRequestedBuildReady,
     isWaitingForRequestedBuild,
   });
-  const documentLoadError = docMarkdownQuery.error ?? publicationError;
+  const documentLoadError = docMarkdownQuery.error ?? publicationError ?? (
+    !hasRenderedMarkdown && !isBuildActive ? draftError : null
+  );
   const hasSavedReadingPosition = useMemo(() => {
     const saved = readKnowledgeDocsReadingPosition(courseId);
     return Boolean(courseId && saved && (saved.scrollTop > 0 || Boolean(saved.headingId)));
@@ -2465,6 +2468,7 @@ export function KnowledgeDocsPage() {
   const [isReadingPositionRestoring, setIsReadingPositionRestoring] = useState(false);
   const [isTocScrollbarVisible, setIsTocScrollbarVisible] = useState(false);
   const [tocScrollThumbStyle, setTocScrollThumbStyle] = useState<TocScrollThumbStyle>({ top: 0, height: 0 });
+  const [pendingSelectionJumpVersion, setPendingSelectionJumpVersion] = useState(0);
 
   const [isGraphDrawerOpen, setIsGraphDrawerOpen] = useState(false);
   const graphDrawerRef = useRef<HTMLDivElement>(null);
@@ -2551,6 +2555,7 @@ export function KnowledgeDocsPage() {
   const activeHeadingRef = useRef(activeHeading);
   const lastAutoCommentHighlightHeadingRef = useRef(activeHeading);
   const pendingSelectionJumpRef = useRef<SelectionJumpEventDetail | null>(null);
+  const pendingThreadCenterRef = useRef<{ threadId: string } | null>(null);
   const handledRouteSelectionJumpRef = useRef<number | null>(null);
   const collapsedDocHeadingIdsRef = useRef<Set<string>>(new Set());
   const collapsedDocHeadingCommitTimerRef = useRef<number | null>(null);
@@ -2561,6 +2566,21 @@ export function KnowledgeDocsPage() {
   const headingLayoutSettleCleanupRef = useRef<(() => void) | null>(null);
   const docCollapseLayoutRefreshNeededRef = useRef(false);
   const pendingHeadingCollapseScrollRef = useRef<{ id: string; top: number } | null>(null);
+
+  const cancelReadingPositionRestore = useCallback(() => {
+    readingPositionRestorePendingRef.current = false;
+    readingPositionRestoredRef.current = courseId
+      ? `${courseId}:${readingDocumentIdentity}`
+      : "";
+    setIsReadingPositionRestoring(false);
+  }, [courseId, readingDocumentIdentity]);
+
+  const cancelPendingHeadingNavigation = useCallback(() => {
+    headingNavigationRequestRef.current += 1;
+    pendingHeadingScrollRef.current = null;
+    headingLayoutSettleCleanupRef.current?.();
+    headingLayoutSettleCleanupRef.current = null;
+  }, []);
 
   const setScrollContainerRef = useCallback((node: HTMLDivElement | null) => {
     scrollRef.current = node;
@@ -3376,7 +3396,7 @@ export function KnowledgeDocsPage() {
     const saved = readKnowledgeDocsReadingPosition(courseId);
     if (!saved) return;
     if (saved.headingId) {
-      void ensureHeadingLoaded(saved.headingId);
+      void ensureHeadingLoaded(saved.headingId).catch(() => undefined);
     } else if (saved.scrollTop > 0) {
       void ensureAllChunksLoaded().catch(() => undefined);
     }
@@ -3439,6 +3459,9 @@ export function KnowledgeDocsPage() {
     };
 
     const restorePosition = (): boolean => {
+      if (!readingPositionRestorePendingRef.current) {
+        return true;
+      }
       const container = scrollRef.current;
       if (!container || pendingSelectionJumpRef.current) {
         return finishRestore();
@@ -3749,6 +3772,12 @@ export function KnowledgeDocsPage() {
   }, []);
 
   const scrollToHeading = useCallback((id: string, options: { retryingAfterExpand?: boolean } = {}) => {
+    cancelReadingPositionRestore();
+    pendingThreadCenterRef.current = null;
+    if (pendingSelectionJumpRef.current) {
+      pendingSelectionJumpRef.current = null;
+      setPendingSelectionJumpVersion((version) => version + 1);
+    }
     const requestId = headingNavigationRequestRef.current + 1;
     headingNavigationRequestRef.current = requestId;
     pendingHeadingScrollRef.current = null;
@@ -3878,8 +3907,18 @@ export function KnowledgeDocsPage() {
         const pending = pendingHeadingScrollRef.current;
         if (pending?.requestId === requestId) pending.tryScroll();
       });
+    }).catch((error) => {
+      if (headingNavigationRequestRef.current !== requestId) return;
+      if (pendingHeadingScrollRef.current?.requestId === requestId) {
+        pendingHeadingScrollRef.current = null;
+      }
+      toast({
+        title: "章节加载失败",
+        description: getApiErrorMessage(error, "加载目标章节失败，请稍后重试。"),
+        variant: "error",
+      });
     });
-  }, [effectiveDocViewMode, ensureHeadingLoaded, expandCollapsedDocHeadingSections, flashHeading]);
+  }, [cancelReadingPositionRestore, effectiveDocViewMode, ensureHeadingLoaded, expandCollapsedDocHeadingSections, flashHeading, toast]);
 
   useLayoutEffect(() => {
     pendingHeadingScrollRef.current?.tryScroll();
@@ -5314,7 +5353,22 @@ export function KnowledgeDocsPage() {
     });
   }, [courseId, knowledgeCards, toast]);
 
-  const centerThreadInViewport = useCallback((threadId: string) => {
+  const centerThreadInViewport = useCallback((
+    threadId: string,
+    loadMissingTarget = true,
+    clearPendingIfMissing = false,
+    pendingRequest: { threadId: string } | null = null,
+  ) => {
+    if (loadMissingTarget) {
+      cancelReadingPositionRestore();
+      cancelPendingHeadingNavigation();
+      pendingThreadCenterRef.current = null;
+      if (pendingSelectionJumpRef.current) {
+        pendingSelectionJumpRef.current = null;
+        setPendingSelectionJumpVersion((version) => version + 1);
+      }
+    }
+
     const container = scrollRef.current;
     if (!container) return;
 
@@ -5324,8 +5378,64 @@ export function KnowledgeDocsPage() {
     const highlight = selectionHighlights.find((item) => item.threadId === threadId);
     const headingRoot = contentAreaRef.current;
     const heading = findHeadingById(headingRoot ?? container, thread.anchorId);
-    const selectionHeading = findSelectionHeadingInDocument(headingRoot ?? container, thread.anchorId, thread.selectedText);
+    const isUnloadedPublicationHeading = Boolean(
+      effectiveDocViewMode === "live" &&
+      thread.anchorId &&
+      !heading &&
+      publicationHeadings.some((item) => item.id === thread.anchorId),
+    );
+    const selectionHeading = isUnloadedPublicationHeading
+      ? null
+      : findSelectionHeadingInDocument(headingRoot ?? container, thread.anchorId, thread.selectedText);
     const fallbackHeading = selectionHeading ?? heading;
+
+    if (!fallbackHeading) {
+      if (!loadMissingTarget) {
+        if (clearPendingIfMissing && pendingThreadCenterRef.current === pendingRequest) {
+          pendingThreadCenterRef.current = null;
+        }
+        return;
+      }
+      const request = { threadId };
+      pendingThreadCenterRef.current = request;
+      const loadTarget = async () => {
+        const headingLoaded = thread.anchorId
+          ? await ensureHeadingLoaded(thread.anchorId)
+          : false;
+        return headingLoaded || Boolean(thread.selectedText && await ensureAllChunksLoaded());
+      };
+      void loadTarget().then((loaded) => {
+        if (pendingThreadCenterRef.current !== request) return;
+        if (!loaded) {
+          pendingThreadCenterRef.current = null;
+          toast({
+            title: "暂时无法定位到原文",
+            description: "评论对应章节不属于当前文档版本，请重新选择原文。",
+            variant: "warning",
+          });
+          return;
+        }
+        window.requestAnimationFrame(() => {
+          window.requestAnimationFrame(() => {
+            if (pendingThreadCenterRef.current === request) {
+              centerThreadInViewport(threadId, false, true, request);
+            }
+          });
+        });
+      }).catch((error) => {
+        if (pendingThreadCenterRef.current !== request) return;
+        pendingThreadCenterRef.current = null;
+        toast({
+          title: "原文加载失败",
+          description: getApiErrorMessage(error, "加载评论对应章节失败，请稍后重试。"),
+          variant: "error",
+        });
+      });
+      return;
+    }
+    if (pendingThreadCenterRef.current === pendingRequest) {
+      pendingThreadCenterRef.current = null;
+    }
 
     if (selectionHeading && expandCollapsedDocHeadingSections(selectionHeading, { includeSelf: true })) {
       window.requestAnimationFrame(() => {
@@ -5391,7 +5501,27 @@ export function KnowledgeDocsPage() {
       flashHeading(fallbackHeading);
     }
     setActiveHeading(targetHeadingId);
-  }, [buildSelectionSegmentsFromText, commentThreadById, expandCollapsedDocHeadingSections, flashHeading, selectionHighlights]);
+  }, [
+    buildSelectionSegmentsFromText,
+    cancelPendingHeadingNavigation,
+    cancelReadingPositionRestore,
+    commentThreadById,
+    ensureAllChunksLoaded,
+    ensureHeadingLoaded,
+    effectiveDocViewMode,
+    expandCollapsedDocHeadingSections,
+    flashHeading,
+    publicationHeadings,
+    selectionHighlights,
+    toast,
+  ]);
+
+  useLayoutEffect(() => {
+    const pendingRequest = pendingThreadCenterRef.current;
+    if (pendingRequest) {
+      centerThreadInViewport(pendingRequest.threadId, false, false, pendingRequest);
+    }
+  }, [loadedChunkCount, renderedMarkdown]);
 
   const jumpToSelectionLocation = useCallback((detail: SelectionJumpEventDetail): boolean => {
     if (detail.courseId && !routeIdsEqual(detail.courseId, courseId)) {
@@ -5410,6 +5540,15 @@ export function KnowledgeDocsPage() {
     }
 
     const heading = findHeadingById(contentRoot, anchorId);
+    const isUnloadedPublicationHeading = Boolean(
+      effectiveDocViewMode === "live" &&
+      anchorId &&
+      !heading &&
+      publicationHeadings.some((item) => item.id === anchorId),
+    );
+    if (isUnloadedPublicationHeading) {
+      return false;
+    }
     const selectionHeading = findSelectionHeadingInDocument(contentRoot, anchorId, selectedText);
     const fallbackHeading = selectionHeading ?? heading;
     const sessionId = detail.sessionId?.trim() ?? "";
@@ -5458,23 +5597,58 @@ export function KnowledgeDocsPage() {
     }
 
     return false;
-  }, [addSelectionHighlight, buildSelectionSegmentsFromText, expandCollapsedDocHeadingSections, flashHeading, hasRenderedMarkdown, scrollToHeading, courseId]);
+  }, [
+    addSelectionHighlight,
+    buildSelectionSegmentsFromText,
+    courseId,
+    effectiveDocViewMode,
+    expandCollapsedDocHeadingSections,
+    flashHeading,
+    hasRenderedMarkdown,
+    publicationHeadings,
+    scrollToHeading,
+  ]);
+
+  const requestSelectionJump = useCallback((detail: SelectionJumpEventDetail): boolean => {
+    cancelReadingPositionRestore();
+    cancelPendingHeadingNavigation();
+    pendingThreadCenterRef.current = null;
+    const handled = jumpToSelectionLocation(detail);
+    pendingSelectionJumpRef.current = handled ? null : detail;
+    setPendingSelectionJumpVersion((version) => version + 1);
+    return handled;
+  }, [cancelPendingHeadingNavigation, cancelReadingPositionRestore, jumpToSelectionLocation]);
 
   const resolveGraphSourceHeadingId = useCallback((ref: KnowledgeGraphSourceRefNavigationTarget): string => {
     const contentRoot = contentAreaRef.current;
-    if (!contentRoot) return "";
+    const manifestHeadings = effectiveDocViewMode === "live" ? publicationHeadings : [];
 
     const directAnchor = ref.anchor?.trim() ?? "";
-    if (directAnchor && findHeadingById(contentRoot, directAnchor)) {
+    if (
+      directAnchor &&
+      (Boolean(contentRoot && findHeadingById(contentRoot, directAnchor)) || manifestHeadings.some((heading) => heading.id === directAnchor))
+    ) {
       return directAnchor;
     }
 
-    const headings = Array.from(contentRoot.querySelectorAll<HTMLElement>("[data-heading-id]"));
+    const headings = contentRoot
+      ? Array.from(contentRoot.querySelectorAll<HTMLElement>("[data-heading-id]"))
+      : [];
     const chapterIndex = Number(ref.chapter_index ?? 0);
     if (Number.isFinite(chapterIndex) && chapterIndex > 0) {
       const numberedHeading = headings.find((heading) => headingMajorNumber(heading) === chapterIndex);
       if (numberedHeading) {
         return numberedHeading.getAttribute("data-heading-id") ?? "";
+      }
+
+      const manifestHeadingLevels = manifestHeadings
+        .map((heading) => heading.level)
+        .filter((level) => Number.isFinite(level) && level > 0);
+      const manifestShallowestLevel = manifestHeadingLevels.length > 0 ? Math.min(...manifestHeadingLevels) : 1;
+      const manifestTopLevelHeadings = manifestHeadings.filter((heading) => heading.level === manifestShallowestLevel);
+      const manifestOrdinalHeading = manifestTopLevelHeadings[chapterIndex - 1];
+      if (manifestOrdinalHeading) {
+        return manifestOrdinalHeading.id;
       }
 
       const headingLevels = headings
@@ -5495,6 +5669,11 @@ export function KnowledgeDocsPage() {
         return exactTitle.getAttribute("data-heading-id") ?? "";
       }
 
+      const exactManifestTitle = manifestHeadings.find((heading) => normalizeGraphSourceTitle(heading.text) === sourceTitle);
+      if (exactManifestTitle) {
+        return exactManifestTitle.id;
+      }
+
       const closeTitle = headings.find((heading) => {
         const headingText = headingTextForSourceMatch(heading);
         return Boolean(headingText) && (headingText.includes(sourceTitle) || sourceTitle.includes(headingText));
@@ -5502,10 +5681,18 @@ export function KnowledgeDocsPage() {
       if (closeTitle) {
         return closeTitle.getAttribute("data-heading-id") ?? "";
       }
+
+      const closeManifestTitle = manifestHeadings.find((heading) => {
+        const headingText = normalizeGraphSourceTitle(heading.text);
+        return Boolean(headingText) && (headingText.includes(sourceTitle) || sourceTitle.includes(headingText));
+      });
+      if (closeManifestTitle) {
+        return closeManifestTitle.id;
+      }
     }
 
     const quoteText = ref.quote_text?.trim() ?? "";
-    const quoteHeading = quoteText ? findSelectionHeadingInDocument(contentRoot, "", quoteText) : null;
+    const quoteHeading = quoteText && contentRoot ? findSelectionHeadingInDocument(contentRoot, "", quoteText) : null;
     if (quoteHeading) {
       return quoteHeading.getAttribute("data-heading-id") ?? "";
     }
@@ -5520,7 +5707,7 @@ export function KnowledgeDocsPage() {
         return headingByQuote.getAttribute("data-heading-id") ?? "";
       }
 
-      const sectionByQuote = Array.from(contentRoot.querySelectorAll<HTMLElement>("[data-heading-section-id]")).find((section) =>
+      const sectionByQuote = Array.from(contentRoot?.querySelectorAll<HTMLElement>("[data-heading-section-id]") ?? []).find((section) =>
         normalizeGraphSourceTitle(collectNodeText([section])).includes(normalizedQuote),
       );
       const sectionHeading = sectionByQuote ? findDirectSectionHeading(sectionByQuote) : null;
@@ -5530,35 +5717,17 @@ export function KnowledgeDocsPage() {
     }
 
     return "";
-  }, []);
+  }, [effectiveDocViewMode, publicationHeadings]);
 
   const handleGraphSourceRefClick = useCallback((ref: KnowledgeGraphSourceRefNavigationTarget) => {
     const anchorId = resolveGraphSourceHeadingId(ref);
     const quoteText = ref.quote_text?.trim() ?? "";
-    let handled = false;
-
-    if (anchorId) {
-      handled = jumpToSelectionLocation({
+    if (anchorId || quoteText) {
+      requestSelectionJump({
         courseId,
         anchorId,
         selectedText: quoteText || null,
       });
-    }
-
-    if (!handled && quoteText) {
-      handled = jumpToSelectionLocation({
-        courseId,
-        anchorId: "",
-        selectedText: quoteText,
-      });
-    }
-
-    if (!handled && anchorId) {
-      scrollToHeading(anchorId);
-      handled = true;
-    }
-
-    if (handled) {
       closeGraphPanel();
       return;
     }
@@ -5568,7 +5737,7 @@ export function KnowledgeDocsPage() {
       description: "这条图谱来源没有可匹配的章节或引用片段。",
       variant: "warning",
     });
-  }, [closeGraphPanel, courseId, jumpToSelectionLocation, resolveGraphSourceHeadingId, scrollToHeading, toast]);
+  }, [closeGraphPanel, courseId, requestSelectionJump, resolveGraphSourceHeadingId, toast]);
 
   useEffect(() => {
     const handleSelectionJump = (event: Event) => {
@@ -5576,13 +5745,12 @@ export function KnowledgeDocsPage() {
       if (!detail) {
         return;
       }
-      const handled = jumpToSelectionLocation(detail);
-      pendingSelectionJumpRef.current = handled ? null : detail;
+      requestSelectionJump(detail);
     };
 
     window.addEventListener(SELECTION_JUMP_EVENT, handleSelectionJump);
     return () => window.removeEventListener(SELECTION_JUMP_EVENT, handleSelectionJump);
-  }, [jumpToSelectionLocation]);
+  }, [requestSelectionJump]);
 
   useEffect(() => {
     const state = location.state as KnowledgeDocsLocationState | null;
@@ -5595,9 +5763,8 @@ export function KnowledgeDocsPage() {
       return;
     }
     handledRouteSelectionJumpRef.current = marker;
-    const handled = jumpToSelectionLocation(detail);
-    pendingSelectionJumpRef.current = handled ? null : detail;
-  }, [jumpToSelectionLocation, location.state]);
+    requestSelectionJump(detail);
+  }, [location.state, requestSelectionJump]);
 
   useEffect(() => {
     const pending = pendingSelectionJumpRef.current;
@@ -5607,16 +5774,22 @@ export function KnowledgeDocsPage() {
     let cancelled = false;
     let firstRafId: number | null = null;
     let secondRafId: number | null = null;
+    const clearPendingJump = () => {
+      if (pendingSelectionJumpRef.current === pending) {
+        pendingSelectionJumpRef.current = null;
+      }
+    };
 
     const resolvePendingJump = async () => {
       try {
         const ready = pending.anchorId
-          ? await ensureHeadingLoaded(pending.anchorId)
+          ? await ensureHeadingLoaded(pending.anchorId) || Boolean(pending.selectedText && await ensureAllChunksLoaded())
           : pending.selectedText
             ? Boolean(await ensureAllChunksLoaded())
             : true;
-        if (cancelled) return;
+        if (cancelled || pendingSelectionJumpRef.current !== pending) return;
         if (!ready) {
+          clearPendingJump();
           toast({
             title: "暂时无法定位到原文",
             description: "目标章节不属于当前文档版本，请从目录重新选择。",
@@ -5628,9 +5801,10 @@ export function KnowledgeDocsPage() {
           secondRafId = window.requestAnimationFrame(() => {
             if (cancelled || pendingSelectionJumpRef.current !== pending) return;
             if (jumpToSelectionLocation(pending)) {
-              pendingSelectionJumpRef.current = null;
+              clearPendingJump();
               return;
             }
+            clearPendingJump();
             toast({
               title: "暂时无法定位到原文",
               description: "章节已加载，但原引用片段可能已在新版文档中调整。",
@@ -5639,7 +5813,8 @@ export function KnowledgeDocsPage() {
           });
         });
       } catch (error) {
-        if (cancelled) return;
+        if (cancelled || pendingSelectionJumpRef.current !== pending) return;
+        clearPendingJump();
         toast({
           title: "原文加载失败",
           description: getApiErrorMessage(error, "加载目标章节失败，请稍后重试。"),
@@ -5654,7 +5829,7 @@ export function KnowledgeDocsPage() {
       if (firstRafId !== null) window.cancelAnimationFrame(firstRafId);
       if (secondRafId !== null) window.cancelAnimationFrame(secondRafId);
     };
-  }, [ensureAllChunksLoaded, ensureHeadingLoaded, hasRenderedMarkdown, jumpToSelectionLocation, toast]);
+  }, [ensureAllChunksLoaded, ensureHeadingLoaded, hasRenderedMarkdown, jumpToSelectionLocation, pendingSelectionJumpVersion, toast]);
 
   const highlightTopByThreadId = useMemo(() => {
     const next = new Map<string, number>();
@@ -6943,7 +7118,11 @@ export function KnowledgeDocsPage() {
   const docColumnMaxWidthClass = pageWideMode ? "max-w-none" : showDesktopCommentPanel ? "max-w-[920px]" : "max-w-[980px]";
   const showFloatingActions = Boolean(courseId && !isBuildActive && !showDocLoadingState && !showDocGeneratingState && !isAssistantOpen && !isGraphDrawerOpen);
 
-  if ((!hasRenderedMarkdown || isGraphSyncActive) && (isBuildActive || isWaitingForRequestedBuild || showDocGeneratingState)) {
+  if (
+    (!hasRenderedMarkdown || isGraphSyncActive) &&
+    (hasRenderedMarkdown || !documentLoadError) &&
+    (isBuildActive || isWaitingForRequestedBuild || showDocGeneratingState)
+  ) {
     return (
       <div className="relative flex h-full min-h-0 flex-1 w-full flex-col overflow-hidden bg-white dark:bg-slate-950">
         <CoursePagePillTitle

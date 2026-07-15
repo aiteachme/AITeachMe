@@ -46,6 +46,7 @@ const BACKEND_RECOVERY_POLL_INTERVAL_MS = 1_500;
 const BACKEND_RECOVERY_POLL_MAX_INTERVAL_MS = 10_000;
 export const BACKEND_OFFLINE_EVENT = "aiteachme:backend-offline";
 export const BACKEND_ONLINE_EVENT = "aiteachme:backend-online";
+export const API_AUTH_CHANGED_EVENT = "aiteachme:api-auth-changed";
 
 const instance = axios.create({
   baseURL: API_BASE_URL,
@@ -87,6 +88,7 @@ type AbortSignalLike = {
 
 const activeRequestControllers = new Set<AbortController>();
 const activeSseSubscriptions = new Set<{ close: () => void }>();
+let apiAuthGeneration = 0;
 let backendOffline = false;
 let recoveryProbeTimer: number | null = null;
 let recoveryProbeAttempt = 0;
@@ -202,11 +204,28 @@ function createApiFetchHeaders(headers?: HeadersInit): Headers {
   return nextHeaders;
 }
 
-export function abortActiveApiRequests(): void {
+function closeActiveSseSubscriptions(): void {
   for (const subscription of Array.from(activeSseSubscriptions)) {
     subscription.close();
   }
+}
+
+export function abortActiveApiRequests(): void {
+  closeActiveSseSubscriptions();
   abortTrackedApiRequests();
+}
+
+export function getApiAuthGeneration(): number {
+  return apiAuthGeneration;
+}
+
+/** Rotate mounted SSE subscriptions after the authentication identity changes. */
+export function notifyApiAuthChanged(): void {
+  closeActiveSseSubscriptions();
+  apiAuthGeneration += 1;
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(API_AUTH_CHANGED_EVENT));
+  }
 }
 
 function abortTrackedApiRequests(): void {

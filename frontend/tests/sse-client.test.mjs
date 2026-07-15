@@ -34,12 +34,16 @@ globalThis.localStorage = {
 };
 
 const {
+  API_AUTH_CHANGED_EVENT,
   BACKEND_OFFLINE_EVENT,
   abortActiveApiRequests,
+  getApiAuthGeneration,
   isBackendOffline,
   markBackendOnline,
+  notifyApiAuthChanged,
   openAuthenticatedSse,
   reportBackendConnectionIssue,
+  runTrackedApiFetch,
 } = await import("../src/api/client.ts");
 
 const encoder = new TextEncoder();
@@ -234,4 +238,108 @@ test("explicit abort permanently closes active SSE subscriptions", async (t) => 
   assert.equal(stream.readyState, 2);
   await delay(320);
   assert.equal(streamRequests, 1);
+});
+
+test("logout closes SSE without reconnecting and login rotates it with the new token", async (t) => {
+  abortActiveApiRequests();
+  markBackendOnline();
+  storage.clear();
+  storage.set("token", "old-access-token");
+
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (input, init = {}) => {
+    const headers = new Headers(init.headers);
+    requests.push({
+      url: String(input),
+      authorization: headers.get("Authorization"),
+      signal: init.signal,
+    });
+    if (!headers.has("Authorization")) {
+      return new Response(JSON.stringify({ detail: "Unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return pendingSseResponse(init.signal);
+  };
+
+  const streamUrl = "/api/v1/courses/course-auth/knowledge/build/stream";
+  let currentStream = openAuthenticatedSse(streamUrl);
+  const rebuildStream = () => {
+    currentStream = openAuthenticatedSse(streamUrl);
+  };
+  browserWindow.addEventListener(API_AUTH_CHANGED_EVENT, rebuildStream);
+  t.after(() => {
+    browserWindow.removeEventListener(API_AUTH_CHANGED_EVENT, rebuildStream);
+    currentStream.close();
+    abortActiveApiRequests();
+    markBackendOnline();
+    globalThis.fetch = originalFetch;
+  });
+
+  await withTimeout((async () => {
+    while (requests.length < 1) await delay(5);
+  })());
+  const oldIdentityStream = currentStream;
+  const initialGeneration = getApiAuthGeneration();
+
+  storage.delete("token");
+  abortActiveApiRequests();
+
+  assert.equal(oldIdentityStream.readyState, 2, "logout must synchronously close the old identity stream");
+  assert.equal(requests[0].signal.aborted, true);
+  assert.equal(getApiAuthGeneration(), initialGeneration);
+  await delay(20);
+  assert.equal(requests.length, 1, "logout must not start an anonymous replacement stream");
+
+  storage.set("token", "new-access-token");
+  notifyApiAuthChanged();
+
+  assert.equal(getApiAuthGeneration(), initialGeneration + 1);
+  await withTimeout((async () => {
+    while (requests.length < 2) await delay(5);
+  })());
+  assert.equal(requests[1].url, requests[0].url);
+  assert.equal(requests[1].authorization, "Bearer new-access-token");
+  await delay(20);
+  assert.equal(requests.length, 2, "one auth generation must create only one replacement stream");
+  assert.equal(requests.every((request) => !request.url.includes("access-token")), true);
+});
+
+test("auth notification does not abort ordinary tracked API requests", async (t) => {
+  abortActiveApiRequests();
+  markBackendOnline();
+  storage.clear();
+  storage.set("token", "new-access-token");
+
+  const originalFetch = globalThis.fetch;
+  let requestSignal;
+  let resolveFetch;
+  globalThis.fetch = async (_input, init = {}) => {
+    requestSignal = init.signal;
+    return new Promise((resolve) => {
+      resolveFetch = resolve;
+    });
+  };
+  t.after(() => {
+    abortActiveApiRequests();
+    markBackendOnline();
+    globalThis.fetch = originalFetch;
+  });
+
+  const request = runTrackedApiFetch(
+    "/api/v1/courses/course-auth/runtime",
+    { method: "GET" },
+    async (response) => response.text(),
+  );
+  await withTimeout((async () => {
+    while (!requestSignal || !resolveFetch) await delay(5);
+  })());
+
+  notifyApiAuthChanged();
+  assert.equal(requestSignal.aborted, false);
+
+  resolveFetch(new Response("ok", { status: 200 }));
+  assert.equal(await withTimeout(request), "ok");
 });

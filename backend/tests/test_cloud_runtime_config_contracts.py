@@ -7,6 +7,7 @@ import pytest
 
 from app import main as app_main
 from app.shared.infra.runtime import cloud_config, mode
+from app.shared.infra.storage import config as storage_config
 from scripts import check_cloud_db, start_cloud_app
 
 
@@ -101,6 +102,32 @@ def test_cloud_runtime_config_accepts_dogecloud_credentials(
     assert cloud_config.collect_cloud_runtime_config_errors() == []
 
 
+def test_cloud_runtime_config_accepts_dogecloud_legacy_s3_credential_aliases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    values = _valid_cloud_env()
+    values.update(
+        {
+            "S3_CREDENTIAL_MODE": "dogecloud_tmp_token",
+            "S3_BUCKET": "course-assets",
+            "DOGECLOUD_API_ACCESS_KEY": "   ",
+            "DOGECLOUD_API_SECRET_KEY": "\t",
+        }
+    )
+    values.pop("S3_ENDPOINT")
+    _patch_cloud_env(monkeypatch, values)
+    monkeypatch.setattr(
+        storage_config,
+        "get_env",
+        lambda name, default=None: values.get(name, default),
+    )
+
+    assert cloud_config.collect_cloud_runtime_config_errors() == []
+    assert storage_config.resolve_dogecloud_api_access_key() == "access-key"
+    assert storage_config.resolve_dogecloud_api_secret_key() == "secret-key"
+    assert storage_config.resolve_dogecloud_space_name() == "course-assets"
+
+
 def test_cloud_entrypoint_stops_before_bootstrap_when_config_is_invalid(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -173,7 +200,13 @@ def test_deploy_workflow_serializes_and_reconciles_current_successful_main() -> 
     assert "deploy_frontend=true" in workflow
     assert 'reason="${RELEASE_MODE:-normal}-full-release"' in workflow
     assert "needs.classify_changes.outputs.deploy_backend != 'true'" in workflow
+    assert "needs.deploy-backend.outputs.enabled != 'true'" in workflow
     assert "needs.deploy-backend.outputs.deployed == 'true'" in workflow
+    assert "enabled: ${{ steps.optin.outputs.enabled }}" in workflow
+    assert (
+        "if: steps.optin.outputs.enabled == 'true' && "
+        "env.STRICT_API_SMOKE == 'true'"
+    ) in workflow
     assert 'echo "deployed=true"' in workflow
     assert "cloudflare/wrangler-action@v3" in workflow
     assert "--commit-hash=${{ env.SOURCE_SHA }}" in workflow

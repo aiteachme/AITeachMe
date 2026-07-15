@@ -2,7 +2,7 @@ import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { BarChart3, Github, Loader2, LogIn, LogOut, MessageSquareText, User } from "lucide-react";
-import { abortActiveApiRequests, apiClient, getApiErrorMessage } from "../../api/client";
+import { abortActiveApiRequests, apiClient, getApiErrorMessage, notifyApiAuthChanged } from "../../api/client";
 import { listCoursesApiApiV1CoursesListPost } from "../../api/generated/courses";
 import { examHistoryApiV1CoursesCourseIdExamsHistoryGet } from "../../api/generated/exams";
 import { listChatApiApiV1CoursesCourseIdChatsListPost } from "../../api/generated/chats";
@@ -262,7 +262,11 @@ export function TopBar({ className }: TopBarProps) {
       const currentUser = authSessionQuery.data?.current_user ?? null;
       setAuthEnabled(Boolean(authSessionQuery.data?.auth_enabled));
       if (!currentUser?.is_authenticated) {
+        const hadAccessToken = Boolean(localStorage.getItem("token"));
         localStorage.removeItem("token");
+        if (hadAccessToken) {
+          abortActiveApiRequests();
+        }
       }
       setAuthUser(currentUser);
       syncAnalyticsUserIdentity({
@@ -457,6 +461,7 @@ export function TopBar({ className }: TopBarProps) {
       if (token) {
         localStorage.setItem("token", token);
       }
+      notifyApiAuthChanged();
       const currentUser = response.data.current_user ?? null;
       queryClient.setQueryData(AUTH_SESSION_QUERY_KEY, response.data);
       syncAnalyticsUserIdentity({
