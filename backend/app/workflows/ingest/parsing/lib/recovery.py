@@ -3,7 +3,7 @@
 Active parse/enhancement workers are intentionally not reclaimed without an
 attempt-level fencing token. Recovery is limited to work that has not started:
 Phase 1 rows explicitly returned to ``retry_pending`` after spawn failure, and
-stale ``fast_parsed`` rows atomically claimed before Phase 2 is spawned.
+stale ``fast_parsed`` or queued Phase 2 rows atomically claimed before spawn.
 """
 
 from __future__ import annotations
@@ -146,7 +146,11 @@ async def recover_stalled_enhancements(
 ) -> int:
     """Atomically dispatch stale Phase 2 work that has not started yet."""
 
-    from app.workflows.ingest.parsing.lib.lifecycle import dispatch_enhancement_for_file
+    from app.workflows.ingest.parsing.lib.lifecycle import (
+        ENHANCEMENT_QUEUED_STEPS,
+        dispatch_enhancement_for_file,
+        requeue_stalled_enhancement_dispatch,
+    )
 
     cutoff = (now or utcnow()) - STALLED_INGEST_TTL
     try:
@@ -156,12 +160,21 @@ async def recover_stalled_enhancements(
                     str(raw_file.user_id or "").strip(),
                     str(raw_file.id or "").strip(),
                     str(raw_file.origin_course_id or "").strip(),
+                    str(raw_file.ingest_status or "").strip(),
+                    str(raw_file.current_step or "").strip(),
+                    raw_file.updated_at,
                 )
                 for raw_file in session.exec(
                     select(RawFile)
                     .where(
                         RawFile.status == TaskStatus.COMPLETED.value,
-                        RawFile.ingest_status == IngestStatus.FAST_PARSED.value,
+                        sa.or_(
+                            RawFile.ingest_status == IngestStatus.FAST_PARSED.value,
+                            sa.and_(
+                                RawFile.ingest_status == IngestStatus.ENHANCING.value,
+                                RawFile.current_step.in_(ENHANCEMENT_QUEUED_STEPS),  # type: ignore[union-attr]
+                            ),
+                        ),
                         RawFile.updated_at <= cutoff,
                     )
                     .order_by(RawFile.updated_at.asc())  # type: ignore[union-attr]
@@ -172,8 +185,15 @@ async def recover_stalled_enhancements(
         return 0
 
     dispatched = 0
-    for user_id, file_id, course_id in candidates:
+    for user_id, file_id, course_id, ingest_status, current_step, updated_at in candidates:
         if not user_id or not file_id:
+            continue
+        if ingest_status == IngestStatus.ENHANCING.value and not requeue_stalled_enhancement_dispatch(
+            user_id=user_id,
+            file_id=file_id,
+            claimed_step=current_step,
+            claimed_at=updated_at,
+        ):
             continue
         if dispatch_enhancement_for_file(
             user_id=user_id,

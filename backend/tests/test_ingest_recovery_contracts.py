@@ -49,6 +49,7 @@ def _raw_file(
     status: str,
     ingest_status: str,
     updated_at,
+    current_step: str | None = None,
 ) -> RawFile:
     return RawFile(
         id=file_id,
@@ -58,6 +59,7 @@ def _raw_file(
         file_path=f"raw/{file_id}.pdf",
         status=status,
         ingest_status=ingest_status,
+        current_step=current_step,
         updated_at=updated_at,
     )
 
@@ -320,7 +322,7 @@ def test_registry_requeues_phase_one_only_after_confirmed_cancellation(
         assert raw_file.error_message == "parse_worker_cancelled"
 
 
-def test_phase_two_recovery_claims_fast_parsed_but_never_active_enhancing(
+def test_phase_two_recovery_claims_stale_fast_parsed_and_queued_but_not_running(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     engine = _install_database(monkeypatch)
@@ -336,10 +338,25 @@ def test_phase_two_recovery_claims_fast_parsed_but_never_active_enhancing(
                     updated_at=stale_at,
                 ),
                 _raw_file(
+                    "file-queued-enhancing",
+                    status=TaskStatus.COMPLETED.value,
+                    ingest_status=IngestStatus.ENHANCING.value,
+                    updated_at=stale_at,
+                    current_step="ingest.enhance.queued",
+                ),
+                _raw_file(
+                    "file-recovery-queued-enhancing",
+                    status=TaskStatus.COMPLETED.value,
+                    ingest_status=IngestStatus.ENHANCING.value,
+                    updated_at=stale_at,
+                    current_step="ingest.enhance.recovery_queued",
+                ),
+                _raw_file(
                     "file-active-enhancing",
                     status=TaskStatus.COMPLETED.value,
                     ingest_status=IngestStatus.ENHANCING.value,
                     updated_at=stale_at,
+                    current_step="ingest.enhance.running",
                 ),
                 _raw_file(
                     "file-fresh-fast-parsed",
@@ -358,23 +375,165 @@ def test_phase_two_recovery_claims_fast_parsed_but_never_active_enhancing(
     registry = _RecordingRegistry()
     assert asyncio.run(
         recovery.recover_stalled_enhancements(task_registry=registry, now=now)
-    ) == 1
-    assert len(registry.spawned) == 1
+    ) == 3
+    assert len(registry.spawned) == 3
     assert asyncio.run(
         recovery.recover_stalled_enhancements(task_registry=registry, now=now)
     ) == 0
 
     with Session(engine, expire_on_commit=False) as session:
         claimed = session.get(RawFile, "file-fast-parsed")
+        queued = session.get(RawFile, "file-queued-enhancing")
+        recovery_queued = session.get(RawFile, "file-recovery-queued-enhancing")
         active = session.get(RawFile, "file-active-enhancing")
         fresh = session.get(RawFile, "file-fresh-fast-parsed")
-        assert claimed is not None and active is not None and fresh is not None
+        assert claimed is not None
+        assert queued is not None
+        assert recovery_queued is not None
+        assert active is not None
+        assert fresh is not None
         assert (claimed.ingest_status, claimed.current_step) == (
             IngestStatus.ENHANCING.value,
             "ingest.enhance.recovery_queued",
         )
-        assert active.ingest_status == IngestStatus.ENHANCING.value
+        assert (queued.ingest_status, queued.current_step) == (
+            IngestStatus.ENHANCING.value,
+            "ingest.enhance.recovery_queued",
+        )
+        assert (recovery_queued.ingest_status, recovery_queued.current_step) == (
+            IngestStatus.ENHANCING.value,
+            "ingest.enhance.recovery_queued",
+        )
+        assert (active.ingest_status, active.current_step) == (
+            IngestStatus.ENHANCING.value,
+            "ingest.enhance.running",
+        )
         assert fresh.ingest_status == IngestStatus.FAST_PARSED.value
+
+
+def test_phase_two_recovery_fences_late_worker_from_reclaimed_queue(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = _install_database(monkeypatch)
+    stale_at = utcnow() - recovery.STALLED_INGEST_TTL - timedelta(seconds=1)
+    with Session(engine, expire_on_commit=False) as session:
+        raw_file = _raw_file(
+            "file-stale-recovery-worker",
+            status=TaskStatus.COMPLETED.value,
+            ingest_status=IngestStatus.ENHANCING.value,
+            updated_at=stale_at,
+            current_step="ingest.enhance.recovery_queued",
+        )
+        session.add(raw_file)
+        session.commit()
+        old_claimed_at = raw_file.updated_at
+
+    assert lifecycle.requeue_stalled_enhancement_dispatch(
+        user_id="user-a",
+        file_id="file-stale-recovery-worker",
+        claimed_step="ingest.enhance.recovery_queued",
+        claimed_at=old_claimed_at,
+    )
+    registry = _RecordingRegistry()
+    assert lifecycle.dispatch_enhancement_for_file(
+        user_id="user-a",
+        file_id="file-stale-recovery-worker",
+        background_task_registry=registry,
+        recovery=True,
+    )
+
+    assert not lifecycle._mark_enhancement_running(
+        user_id="user-a",
+        file_id="file-stale-recovery-worker",
+        claimed_step="ingest.enhance.recovery_queued",
+        claimed_at=old_claimed_at,
+    )
+    assert not lifecycle._requeue_enhancement_dispatch(
+        user_id="user-a",
+        file_id="file-stale-recovery-worker",
+        claimed_step="ingest.enhance.recovery_queued",
+        claimed_at=old_claimed_at,
+        reason="late_worker_cleanup",
+    )
+
+    with Session(engine, expire_on_commit=False) as session:
+        raw_file = session.get(RawFile, "file-stale-recovery-worker")
+        assert raw_file is not None
+        assert (raw_file.ingest_status, raw_file.current_step, raw_file.error_message) == (
+            IngestStatus.ENHANCING.value,
+            "ingest.enhance.recovery_queued",
+            None,
+        )
+
+
+def test_phase_two_recovery_replaces_stale_task_still_queued_in_registry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = _install_database(monkeypatch)
+    file_id = "file-stale-registry-queue"
+    with Session(engine, expire_on_commit=False) as session:
+        session.add(
+            _raw_file(
+                file_id,
+                status=TaskStatus.COMPLETED.value,
+                ingest_status=IngestStatus.FAST_PARSED.value,
+                updated_at=utcnow(),
+            )
+        )
+        session.commit()
+
+    class _SingleEnhanceRegistry(BackgroundTaskRegistry):
+        def spawn(self, coro, **kwargs):
+            return super().spawn(coro, max_concurrency=1, **kwargs)
+
+    async def scenario() -> None:
+        blocker_started = asyncio.Event()
+        release_blocker = asyncio.Event()
+        recovered_started = asyncio.Event()
+
+        async def blocker() -> None:
+            blocker_started.set()
+            await release_blocker.wait()
+
+        async def fake_enhance(**_kwargs) -> None:
+            recovered_started.set()
+
+        monkeypatch.setattr(enhance, "_run_deep_enhance_background", fake_enhance)
+        registry = _SingleEnhanceRegistry()
+        registry.spawn(
+            blocker(),
+            kind="ingest.enhance",
+            course_id="course-a",
+            dedupe_key="ingest.enhance:blocker",
+        )
+        await asyncio.wait_for(blocker_started.wait(), timeout=1.0)
+        assert lifecycle.dispatch_enhancement_for_file(
+            user_id="user-a",
+            file_id=file_id,
+            course_id="course-a",
+            background_task_registry=registry,
+        )
+
+        try:
+            recovered = await recovery.recover_stalled_enhancements(
+                task_registry=registry,
+                now=utcnow() + recovery.STALLED_INGEST_TTL + timedelta(seconds=1),
+            )
+            assert recovered == 1
+            await asyncio.wait_for(recovered_started.wait(), timeout=1.0)
+        finally:
+            release_blocker.set()
+            await registry.shutdown(cancel_timeout_s=1.0)
+
+    asyncio.run(scenario())
+
+    with Session(engine, expire_on_commit=False) as session:
+        raw_file = session.get(RawFile, file_id)
+        assert raw_file is not None
+        assert (raw_file.ingest_status, raw_file.current_step) == (
+            IngestStatus.ENHANCING.value,
+            "ingest.enhance.running",
+        )
 
 
 @pytest.mark.parametrize("is_recovery", [False, True])
