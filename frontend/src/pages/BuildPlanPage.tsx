@@ -3648,7 +3648,7 @@ export function BuildPlanPage() {
         <div className="relative z-10 flex min-h-0 w-full flex-1 flex-col">
           <CoursePagePillTitle icon={Sparkles} label="方案规划" href={courseId ? buildCoursePath(courseId, "nav") : undefined} />
 
-        <div className="course-page-scroll-container min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-6 md:px-8 md:pt-8 lg:px-16">
+        <div className="course-page-scroll-container min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-[5.5rem] md:px-8 md:pt-24 lg:px-16">
           <div className="mx-auto max-w-3xl space-y-5">
             {shouldShowPlannerEmptyState ? (
               <div className="flex min-h-[calc(100dvh-18rem)] items-center justify-center py-12">

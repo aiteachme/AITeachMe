@@ -7131,7 +7131,7 @@ export function KnowledgeDocsPage() {
           className="shrink-0 bg-white/92 backdrop-blur-md dark:bg-slate-900/92"
           href={courseId ? buildCoursePath(courseId, "nav") : undefined}
         />
-        <div className="relative flex-1 min-h-0 w-full overflow-hidden">
+        <div className="relative flex-1 min-h-0 w-full overflow-hidden pt-16">
           <BuildView
             className="h-full"
             isFetching={docMarkdownQuery.isFetching}
@@ -7160,7 +7160,7 @@ export function KnowledgeDocsPage() {
           className="shrink-0 bg-white/92 backdrop-blur-md dark:bg-slate-900/92"
           href={courseId ? buildCoursePath(courseId, "nav") : undefined}
         />
-        <div className="relative flex-1 min-h-0 w-full flex items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
+        <div className="relative flex-1 min-h-0 w-full flex items-center justify-center overflow-hidden bg-white px-4 pt-16 dark:bg-slate-950">
           {hasSavedReadingPosition ? <DocReadingPositionRestoreState /> : <DocLoadingState />}
         </div>
       </div>
@@ -7176,7 +7176,7 @@ export function KnowledgeDocsPage() {
           className="shrink-0 bg-white/92 backdrop-blur-md dark:bg-slate-900/92"
           href={courseId ? buildCoursePath(courseId, "nav") : undefined}
         />
-        <div className="relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
+        <div className="relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden bg-white px-4 pt-16 dark:bg-slate-950">
           <DocLoadErrorState
             message={getApiErrorMessage(documentLoadError, "获取知识文档失败，请稍后重试。")}
             onRetry={() => {
@@ -7197,7 +7197,7 @@ export function KnowledgeDocsPage() {
           className="shrink-0 bg-white/92 backdrop-blur-md dark:bg-slate-900/92"
           href={courseId ? buildCoursePath(courseId, "nav") : undefined}
         />
-        <div className="relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
+        <div className="relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden bg-white px-4 pt-16 dark:bg-slate-950">
           <DocLoadErrorState
             message={buildStatusText}
             onRetry={() => {
@@ -7218,7 +7218,7 @@ export function KnowledgeDocsPage() {
           className="shrink-0 bg-white/92 backdrop-blur-md dark:bg-slate-900/92"
           href={courseId ? buildCoursePath(courseId, "nav") : undefined}
         />
-        <div className="relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden bg-white px-4 dark:bg-slate-950">
+        <div className="relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden bg-white px-4 pt-16 dark:bg-slate-950">
           <DocEmptyState />
         </div>
       </div>
@@ -7381,7 +7381,7 @@ export function KnowledgeDocsPage() {
 
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
         {!isCompactComment && viewPrefs.showCommentPanel && isCommentCollapsed && !shouldHideCommentPanelForAssistant && (
-          <aside className="absolute right-4 top-4 z-20 hidden lg:flex">
+          <aside className="absolute right-4 top-20 z-20 hidden lg:flex">
             <button
               onClick={() => setIsCommentCollapsed(false)}
               className="rounded-xl border border-slate-200 bg-white/95 px-2 py-2.5 text-slate-600 shadow-sm transition-colors hover:bg-white hover:text-slate-900 dark:border-slate-800 dark:bg-slate-950/92 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-100"
@@ -7398,7 +7398,7 @@ export function KnowledgeDocsPage() {
           onMouseUp={handleTextSelect}
         >
           <div
-            className="min-h-full px-4 pb-8 pt-4 md:px-6 lg:px-8"
+            className="min-h-full px-4 pb-8 pt-20 md:px-6 lg:px-8"
             style={desktopCommentScrollMinHeight > 0 ? { minHeight: desktopCommentScrollMinHeight } : undefined}
           >
             <div

@@ -58,9 +58,9 @@ function courseNavTooltipFromTarget(text: string, target: HTMLElement): CourseNa
 
 export const ENABLE_PERSISTENT_COURSE_NAV = true;
 export const SHOW_COURSE_OVERVIEW_NAV_ENTRY = false;
-const COURSE_NAV_TOP_REVEAL_PX = 24;
-const COURSE_NAV_HIDE_DELTA_PX = 12;
-const COURSE_NAV_SHOW_DELTA_PX = 6;
+const COURSE_NAV_TOP_REVEAL_PX = 64;
+const COURSE_NAV_HIDE_DELTA_PX = 28;
+const COURSE_NAV_SHOW_DELTA_PX = 12;
 
 export function CoursePagePillTitle({
   icon: Icon,
@@ -92,7 +92,6 @@ export function CoursePagePillTitle({
     let activeScrollTarget: HTMLElement | null = null;
     let accumulatedDelta = 0;
     let activeDirection = 0;
-    let ignoreDirectionUntil = 0;
 
     const handleScroll = (event: Event) => {
       const target = event.target;
@@ -122,12 +121,6 @@ export function CoursePagePillTitle({
         return;
       }
 
-      if (performance.now() < ignoreDirectionUntil) {
-        accumulatedDelta = 0;
-        activeDirection = 0;
-        return;
-      }
-
       const delta = currentScrollTop - previousScrollTop;
       if (Math.abs(delta) < 1) return;
 
@@ -137,11 +130,9 @@ export function CoursePagePillTitle({
 
       if (accumulatedDelta >= COURSE_NAV_HIDE_DELTA_PX) {
         accumulatedDelta = 0;
-        ignoreDirectionUntil = performance.now() + 240;
         setIsScrollHidden(true);
       } else if (accumulatedDelta <= -COURSE_NAV_SHOW_DELTA_PX) {
         accumulatedDelta = 0;
-        ignoreDirectionUntil = performance.now() + 240;
         setIsScrollHidden(false);
       }
     };
@@ -154,15 +145,21 @@ export function CoursePagePillTitle({
     if (isScrollHidden) setTooltip(null);
   }, [isScrollHidden]);
 
+  const isFloatingLayoutNav = placement === "layout";
   const shellClassName = cn(
-    "sticky top-0 z-30 grid w-full shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center border-b bg-[#fafafa]/92 px-4 backdrop-blur-md transition-[height,transform,opacity,border-color] duration-200 ease-out motion-reduce:transition-none dark:bg-[#0b0f19]/92",
-    isScrollHidden
-      ? "pointer-events-none h-0 -translate-y-3 overflow-hidden border-transparent opacity-0"
-      : "h-16 translate-y-0 overflow-visible border-slate-200/70 opacity-100 dark:border-slate-800/60",
+    isFloatingLayoutNav
+      ? "pointer-events-none absolute inset-x-0 top-0 z-40 grid h-16 w-full grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center px-4 transition-[transform,opacity] transform-gpu motion-reduce:transition-none"
+      : "sticky top-0 z-30 grid h-16 w-full shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center border-b border-slate-200/70 bg-[#fafafa]/92 px-4 backdrop-blur-md dark:border-slate-800/60 dark:bg-[#0b0f19]/92",
+    isFloatingLayoutNav && (
+      isScrollHidden
+        ? "-translate-y-full opacity-0 duration-[130ms] ease-in"
+        : "translate-y-0 opacity-100 duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)]"
+    ),
     className,
   );
   const navClassName = cn(
-    "flex max-w-full items-center gap-1 overflow-x-auto rounded-[10px] border border-slate-200/80 bg-white/95 p-1 shadow-[0_2px_12px_rgba(15,23,42,0.05)] scrollbar-none dark:border-slate-800/80 dark:bg-slate-900/95",
+    "flex max-w-full items-center gap-1 overflow-x-auto rounded-[10px] border border-slate-200/80 bg-white/95 p-1 shadow-[0_8px_24px_-14px_rgba(15,23,42,0.28)] backdrop-blur-md scrollbar-none dark:border-slate-800/80 dark:bg-slate-900/95 dark:shadow-[0_10px_28px_-16px_rgba(0,0,0,0.7)]",
+    isFloatingLayoutNav && !isScrollHidden ? "pointer-events-auto" : isFloatingLayoutNav ? "pointer-events-none" : undefined,
     innerClassName,
   );
 
@@ -454,7 +451,7 @@ export function CoursePagePillTitle({
           );
         })}
       </nav>
-      <div className="flex justify-end pr-1">
+      <div className={cn("flex justify-end pr-1", isFloatingLayoutNav && !isScrollHidden ? "pointer-events-auto" : isFloatingLayoutNav ? "pointer-events-none" : undefined)}>
         <TopBar />
       </div>
       {tooltip && typeof document !== "undefined"

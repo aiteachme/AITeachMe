@@ -125,6 +125,8 @@ export function Layout() {
     !isExamFocusPage,
   );
   const shouldShowTopBar = !isExamFocusPage && !isAssistantPage && !hasCoursePageTopNavigation;
+  const shouldInsetMainForCourseTopNav =
+    shouldShowCourseTopNav && (routeSegment === "exams" || routeSegment === "profile");
   const routeOutlet = <Outlet key={pathname} />;
   const contentContainerClassName = shouldShowTopBar
     ? cn(
@@ -177,7 +179,10 @@ export function Layout() {
 
             <main
               ref={mainScrollRef}
-              className="relative flex min-h-0 w-full flex-1 flex-col overflow-x-hidden overflow-y-auto bg-transparent [scrollbar-gutter:stable]"
+              className={cn(
+                "relative flex min-h-0 w-full flex-1 flex-col overflow-x-hidden overflow-y-auto bg-transparent [scrollbar-gutter:stable]",
+                shouldInsetMainForCourseTopNav && "pt-16",
+              )}
             >
               {isFullBleed || pathname === "/" || isAssistantPage ? (
                 <div
