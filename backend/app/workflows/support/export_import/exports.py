@@ -1225,6 +1225,8 @@ def _normalize_referenced_asset_path(
         if local_only and (parsed.scheme or parsed.netloc):
             return None
         path = parsed.path or raw.split("?", 1)[0]
+        if local_only and path.startswith("../assets/"):
+            path = path.removeprefix("../")
         if local_only and _contains_dot_path_segment(path):
             return None
         for asset in parse_qs(parsed.query).get("asset", []):

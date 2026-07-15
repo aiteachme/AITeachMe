@@ -942,6 +942,46 @@ def test_import_archive_validation_rejects_bad_shapes_and_paths(tmp_path: Path) 
         export_module._read_manifest(bad_manifest_dir)
 
 
+def test_public_share_asset_extraction_accepts_docgen_relative_prefix() -> None:
+    documents = [
+        {
+            "markdown_content": (
+                "![](../assets/docgen/cover.png)\n"
+                "![](../../assets/private.png)\n"
+                "![](../assets/docgen/../private.png)"
+            )
+        }
+    ]
+
+    assert export_module.extract_referenced_asset_paths(
+        documents,
+        local_only=True,
+    ) == ["docgen/cover.png"]
+
+
+def test_unpack_files_restores_share_assets_without_cover(
+    session: Session,
+    tmp_path: Path,
+    export_import_store: _FakeStore,
+) -> None:
+    share_asset = tmp_path / "share_assets" / "docgen" / "figure.png"
+    share_asset.parent.mkdir(parents=True)
+    share_asset.write_bytes(_VALID_PNG_BYTES)
+
+    import_module._unpack_files(
+        session,
+        tmp_path,
+        IMPORTED_COURSE_ID,
+        user_id="user-2",
+        file_id_map={},
+    )
+
+    expected_key = (
+        f"users/user-2/courses/{IMPORTED_COURSE_ID}/assets/docgen/figure.png"
+    )
+    assert export_import_store.writes[expected_key] == _VALID_PNG_BYTES
+
+
 def test_restore_share_assets_requires_safe_type_magic_and_size(
     tmp_path: Path,
     export_import_store: _FakeStore,

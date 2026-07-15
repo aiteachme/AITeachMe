@@ -537,6 +537,12 @@ def _unpack_files(
                 relative = asset_file.relative_to(asset_dir).as_posix()
                 run_store_sync(cs.write_bytes, f"{asset_prefix}{relative}", asset_file.read_bytes())
 
+    _restore_share_assets(
+        extract_dir,
+        course_scope=course_scope,
+        content_store=cs,
+    )
+
     src_knowledge = extract_dir / "knowledge"
     restored_cover_name = ""
     if src_knowledge.exists():
@@ -584,12 +590,6 @@ def _unpack_files(
     )
     first_published_doc.markdown_content = restore_cover_reference(effective_markdown)
     session.add(first_published_doc)
-
-    _restore_share_assets(
-        extract_dir,
-        course_scope=course_scope,
-        content_store=cs,
-    )
 
 
 def _restore_share_assets(
