@@ -93,7 +93,10 @@ export function KnowledgeInteractivePage() {
           </div>
         </header>
 
-        <main className="flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
+        <main
+          className="relative flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950"
+          style={{ contain: "layout size paint", isolation: "isolate" }}
+        >
           {loading ? (
             <div className="flex h-[calc(100dvh-7.5rem)] min-h-[520px] items-center justify-center text-sm text-slate-500 dark:text-slate-400">正在加载{pageLabel}…</div>
           ) : error ? (
@@ -106,7 +109,8 @@ export function KnowledgeInteractivePage() {
               title={title}
               srcDoc={patchedHtml}
               sandbox={preview?.kind === "figure" ? "" : "allow-scripts allow-forms allow-popups"}
-              className="h-[calc(100dvh-7.5rem)] min-h-[520px] w-full border-0 bg-white"
+              scrolling="auto"
+              className="block h-[calc(100dvh-7.5rem)] min-h-[520px] w-full border-0 bg-white"
             />
           )}
         </main>

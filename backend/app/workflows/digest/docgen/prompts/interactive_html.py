@@ -15,6 +15,18 @@ _INTERACTION_MODE_LABELS = {
     "concept_mapper": "概念关系映射",
 }
 
+_RETRY_SIMPLIFY_INSTRUCTION_ZH = (
+    "本次重试以快速生成、通过检查为硬性目标：大幅删减容易出错的代码和复杂交互逻辑；"
+    "可以删除多余参数、按钮、动画、存储和高级控件，只保留一个简单、完整、能正确运行的演示。"
+)
+
+_RETRY_SIMPLIFY_INSTRUCTION_EN = (
+    "For this retry, prioritize fast generation and passing validation. "
+    "Aggressively simplify error-prone code and complex interaction logic; "
+    "remove extra parameters, buttons, animations, storage, and advanced controls if needed. "
+    "Keep only a simple, complete, correct demonstration."
+)
+
 _OPENMAIC_OUTLINE_SYSTEM = """
 # Interactive Mode Outline Generator
 
@@ -717,6 +729,7 @@ def build_interactive_html_messages(
 你是 AITeachMe 的教学微实验设计器。
 输出一个完整、自包含、可直接运行的 HTML5 微实验；只输出 HTML。
 边界：单文件，CSS/JS 内联；无外部资源、联网、存储、import；可在 sandbox iframe 和新标签页运行。
+硬性验收：必须包含 `<!DOCTYPE html>`、`<html>`、`<head>`、`<body>`、移动端 viewport meta，并闭合 `</html>`；禁止 `fetch`、`XMLHttpRequest`、`WebSocket` 和 `javascript:` URL。
 质量：围绕一个关键点设计可操作变量或状态；SVG、Canvas 或真实 DOM 产生可见变化；形成“操作 -> 视觉反馈 -> 观察提示”闭环。
 控件 1-3 个，带中文 label、当前值和重置；移动端 320px 不溢出、不重叠。
 界面形态贴合知识内容，可用坐标画布、实验台、步骤轨道、双栏对照、仪表盘、时间轴、关系地图或题目场景。
@@ -724,7 +737,9 @@ def build_interactive_html_messages(
 
     retry_section = ""
     if retry_feedback:
-        retry_section = "\n\n上一次生成未达标，请针对这些问题重做，不要只是微调样式：\n" + "\n".join(
+        retry_section = "\n\n上一次生成未达标，请重做，不要只是微调样式。\n"
+        retry_section += _RETRY_SIMPLIFY_INSTRUCTION_ZH
+        retry_section += "\n失败问题：\n" + "\n".join(
             f"- {item}" for item in retry_feedback if item
         )
 
@@ -883,7 +898,9 @@ def build_widget_interactive_html_messages(
     key_points = outline_data.get("keyPoints") or []
     retry_section = ""
     if retry_feedback:
-        retry_section = "\n\n## Previous Attempt Feedback\nRegenerate from scratch and fix these issues:\n" + "\n".join(
+        retry_section = "\n\n## Previous Attempt Feedback\n"
+        retry_section += _RETRY_SIMPLIFY_INSTRUCTION_EN
+        retry_section += "\n\nRegenerate from scratch and fix these issues:\n" + "\n".join(
             f"- {item}" for item in retry_feedback if item
         )
 
@@ -899,6 +916,12 @@ def build_widget_interactive_html_messages(
 ## Widget Outline JSON
 
 {_json_text(outline_data)}
+
+## Hard HTML Acceptance Rules
+
+- Return one complete HTML5 document with `<!DOCTYPE html>`, `<html>`, `<head>`, `<body>`, mobile viewport meta, and closing `</html>`.
+- Do not use `fetch`, `XMLHttpRequest`, `WebSocket`, or `javascript:` URLs.
+- Prefer self-contained CSS/JS. If a CDN is necessary, only use: `unpkg.com`, `cdn.jsdelivr.net`, `cdnjs.cloudflare.com`.
 """.strip()
 
     if widget_type == "diagram":
@@ -1078,6 +1101,7 @@ def build_selection_interactive_html_messages(
 你是 AITeachMe 的划选知识微实验设计器。
 把划选文本转化为一个可嵌入文档的单文件 HTML 微实验；只输出完整 HTML。
 边界：CSS/JS 内联；无外部资源、联网、存储、import；可在 sandbox iframe 和新标签页运行。
+硬性验收：必须包含 `<!DOCTYPE html>`、`<html>`、`<head>`、`<body>`、移动端 viewport meta，并闭合 `</html>`；禁止 `fetch`、`XMLHttpRequest`、`WebSocket` 和 `javascript:` URL。
 质量：围绕划选文本设计一个可操作状态，状态变化带来可见变化和观察提示。
 优先使用 SVG、Canvas 或真实 DOM 可视化；控件有中文 label、当前值、重置逻辑。
 320px 宽度下不横向滚动，控制区、图形和文本不重叠；界面形态跟内容匹配。
@@ -1085,7 +1109,9 @@ def build_selection_interactive_html_messages(
 
     retry_section = ""
     if retry_feedback:
-        retry_section = "\n\n上一次生成未达标，请针对这些问题重做，不要只是微调样式：\n" + "\n".join(
+        retry_section = "\n\n上一次生成未达标，请重做，不要只是微调样式。\n"
+        retry_section += _RETRY_SIMPLIFY_INSTRUCTION_ZH
+        retry_section += "\n失败问题：\n" + "\n".join(
             f"- {item}" for item in retry_feedback if item
         )
 

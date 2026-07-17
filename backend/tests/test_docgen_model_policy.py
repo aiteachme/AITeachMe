@@ -39,6 +39,17 @@ def test_docgen_intent_core_uses_extended_overall_timeout() -> None:
     assert metadata["docgen_overall_timeout_s"] == 180
 
 
+def test_docgen_interactive_html_sets_generation_timeouts_without_forcing_api_mode() -> None:
+    kwargs = docgen_completion_kwargs(DocGenModelStep.INTERACTIVE_HTML, digest_mode="systematic")
+    metadata = get_docgen_model_policy(DocGenModelStep.INTERACTIVE_HTML).metadata()
+
+    assert "api_mode" not in kwargs
+    assert kwargs["timeout"] == 210
+    assert kwargs["overall_timeout_s"] == 460
+    assert metadata["docgen_timeout_s"] == 210
+    assert metadata["docgen_overall_timeout_s"] == 460
+
+
 def test_docgen_model_policy_metadata_includes_timeout() -> None:
     metadata = get_docgen_model_policy(DocGenModelStep.TITLE_LOCK).metadata()
 

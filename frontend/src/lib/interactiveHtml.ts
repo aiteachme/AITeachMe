@@ -312,28 +312,165 @@ const INTERACTIVE_3D_SYNTAX_GUARD_SHIM = `<script data-aiteachme-iframe-3d-synta
   }
 })();
 </script>`;
+const ENABLE_INTERACTIVE_3D_IFRAME_SHIMS = false;
+
+function findHeadOpenMatch(html: string): RegExpExecArray | null {
+  const bodyMatch = /<body\b/i.exec(html);
+  const searchEnd = bodyMatch?.index ?? Math.min(html.length, 12000);
+  return /<head(?:\s[^>]*)?>/i.exec(html.slice(0, searchEnd));
+}
+
+function findLastClosingHeadIndex(html: string): number {
+  const bodyMatch = /<body\b/i.exec(html);
+  const searchEnd = bodyMatch?.index ?? Math.min(html.length, 12000);
+  const prefix = html.slice(0, searchEnd);
+  const pattern = /<\/head\s*>/gi;
+  let lastIndex = -1;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(prefix)) !== null) {
+    lastIndex = match.index;
+  }
+  return lastIndex;
+}
+
+function findLastClosingBodyIndex(html: string): number {
+  const pattern = /<\/body\s*>/gi;
+  let lastIndex = -1;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(html)) !== null) {
+    lastIndex = match.index;
+  }
+  return lastIndex;
+}
 
 export function patchHtmlForIframe(html: string): string {
   const iframeCss = `<style data-aiteachme-iframe-patch>
-  html, body {
-    width: 100%;
-    min-height: 100%;
-    margin: 0;
-    padding: 0;
-    overflow-x: hidden;
-    overflow-y: auto;
+  html {
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    scrollbar-gutter: stable;
   }
   body {
-    min-height: 100vh;
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: auto !important;
+    box-sizing: border-box !important;
+    overscroll-behavior: contain;
+  }
+  body > :where(#app, .app, main, .main, .layout, .container, .wrapper) {
+    max-width: 100% !important;
+    max-height: 100% !important;
+    min-height: 0 !important;
+  }
+  body > :where(#app, .app) {
+    height: 100% !important;
+    overflow: hidden auto !important;
+  }
+  body > :where(#app, .app) :where(canvas, svg) {
+    max-height: 100% !important;
+  }
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+  script, style, template {
+    display: none !important;
+  }
+  body > * {
+    max-width: 100%;
+  }
+  img, svg, canvas, video {
+    max-width: 100%;
   }
 </style>`;
-  const injection = `\n${ERROR_CAPTURE_SHIM}\n${STORAGE_SHIM}\n${INTERACTIVE_3D_SYNTAX_GUARD_SHIM}\n${INTERACTIVE_3D_WATCHDOG_SHIM}\n${iframeCss}`;
+  const layoutGuardScript = `<script data-aiteachme-iframe-layout-guard>
+(function () {
+  function setImportant(target, property, value) {
+    try {
+      target.style.setProperty(property, value, 'important');
+    } catch (e) {}
+  }
+  function applyFrameLayout() {
+    try {
+      var root = document.documentElement;
+      if (root) {
+        setImportant(root, 'width', '100%');
+        setImportant(root, 'height', '100%');
+        setImportant(root, 'min-height', '0');
+        setImportant(root, 'max-width', '100%');
+        setImportant(root, 'margin', '0');
+        setImportant(root, 'padding', '0');
+        setImportant(root, 'overflow', 'hidden');
+        setImportant(root, 'scrollbar-gutter', 'stable');
+      }
+      if (document.body) {
+        setImportant(document.body, 'width', '100%');
+        setImportant(document.body, 'height', '100%');
+        setImportant(document.body, 'min-height', '0');
+        setImportant(document.body, 'max-width', '100%');
+        setImportant(document.body, 'margin', '0');
+        setImportant(document.body, 'padding', '0');
+        setImportant(document.body, 'overflow', 'auto');
+        setImportant(document.body, 'box-sizing', 'border-box');
+        setImportant(document.body, 'overscroll-behavior', 'contain');
+        var roots = document.body.querySelectorAll(':scope > #app, :scope > .app');
+        for (var i = 0; i < roots.length; i += 1) {
+          setImportant(roots[i], 'height', '100%');
+          setImportant(roots[i], 'max-height', '100%');
+          setImportant(roots[i], 'min-height', '0');
+          setImportant(roots[i], 'overflow', 'hidden auto');
+        }
+      }
+    } catch (e) {}
+  }
+  applyFrameLayout();
+  window.addEventListener('DOMContentLoaded', applyFrameLayout);
+  window.addEventListener('load', applyFrameLayout);
+  window.addEventListener('resize', applyFrameLayout);
+  window.setTimeout(applyFrameLayout, 60);
+  window.setTimeout(applyFrameLayout, 240);
+  window.setTimeout(applyFrameLayout, 900);
+})();
+</script>`;
+  // The 3D shims are kept for when visualization3d is re-enabled. While that
+  // widget type is disabled, injecting those guards can corrupt pages that
+  // contain HTML snippets inside JavaScript strings.
+  const threeDInjection = ENABLE_INTERACTIVE_3D_IFRAME_SHIMS
+    ? `\n${INTERACTIVE_3D_SYNTAX_GUARD_SHIM}\n${INTERACTIVE_3D_WATCHDOG_SHIM}`
+    : "";
+  const earlyInjection = `\n${ERROR_CAPTURE_SHIM}\n${STORAGE_SHIM}${threeDInjection}`;
+  const lateCss = `\n${iframeCss}`;
+  const appendLayoutGuard = (patchedHtml: string) => {
+    const closingBodyIndex = findLastClosingBodyIndex(patchedHtml);
+    if (closingBodyIndex >= 0) {
+      return patchedHtml.slice(0, closingBodyIndex) + `\n${layoutGuardScript}\n` + patchedHtml.slice(closingBodyIndex);
+    }
+    return `${patchedHtml}\n${layoutGuardScript}`;
+  };
 
-  const headWithAttrs = html.match(/<head(?:\s[^>]*)?>/i);
+  const headWithAttrs = findHeadOpenMatch(html);
   if (headWithAttrs?.index !== undefined) {
     const insertPos = headWithAttrs.index + headWithAttrs[0].length;
-    return html.slice(0, insertPos) + injection + html.slice(insertPos);
+    const closingHeadIndex = findLastClosingHeadIndex(html);
+    if (closingHeadIndex >= insertPos) {
+      return appendLayoutGuard(
+        html.slice(0, insertPos) +
+          earlyInjection +
+          html.slice(insertPos, closingHeadIndex) +
+          lateCss +
+          html.slice(closingHeadIndex),
+      );
+    }
+    return appendLayoutGuard(html.slice(0, insertPos) + earlyInjection + lateCss + html.slice(insertPos));
   }
 
-  return injection + html;
+  return appendLayoutGuard(earlyInjection + lateCss + html);
 }

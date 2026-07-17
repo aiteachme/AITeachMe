@@ -199,14 +199,22 @@ function patchLibraryInteractivePreviewHtml(html: string, scale: number): string
   const patched = patchHtmlForIframe(html);
   const safeScale = Math.max(0.45, Math.min(1, Number.isFinite(scale) ? scale : 0.72));
   const fitCss = `<style data-aiteachme-library-fit-preview>
-  html, body {
-    overflow: auto !important;
+  html {
+    overflow: hidden !important;
     width: 100% !important;
-    min-width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
   }
   body {
+    overflow: auto !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    min-width: 100% !important;
     box-sizing: border-box;
     zoom: ${safeScale} !important;
+    transform-origin: top left;
+    overscroll-behavior: contain;
   }
 </style>`;
   const fitScript = `<script data-aiteachme-library-fit-script>
@@ -214,14 +222,19 @@ function patchLibraryInteractivePreviewHtml(html: string, scale: number): string
   var scale = ${JSON.stringify(safeScale)};
   function applyFit() {
     try {
-      document.documentElement.style.setProperty('overflow', 'auto', 'important');
+      document.documentElement.style.setProperty('overflow', 'hidden', 'important');
       document.documentElement.style.setProperty('width', '100%', 'important');
+      document.documentElement.style.setProperty('height', '100%', 'important');
+      document.documentElement.style.setProperty('min-height', '0', 'important');
       document.documentElement.style.setProperty('min-width', '100%', 'important');
       document.body.style.setProperty('overflow', 'auto', 'important');
       document.body.style.setProperty('box-sizing', 'border-box', 'important');
       document.body.style.setProperty('zoom', String(scale), 'important');
       document.body.style.setProperty('width', '100%', 'important');
+      document.body.style.setProperty('height', '100%', 'important');
+      document.body.style.setProperty('min-height', '0', 'important');
       document.body.style.setProperty('min-width', '100%', 'important');
+      document.body.style.setProperty('overscroll-behavior', 'contain', 'important');
     } catch (e) {}
   }
   applyFit();
@@ -2613,6 +2626,7 @@ export function LibraryFilePage() {
                             ? "h-[min(560px,52vh)] min-h-[340px]"
                             : "h-[min(720px,72vh)] min-h-[460px]",
                       )}
+                      style={{ contain: "layout size paint", isolation: "isolate" }}
                     >
                       <iframe
                         ref={interactivePreviewFrameRef}
@@ -2621,7 +2635,7 @@ export function LibraryFilePage() {
                         sandbox="allow-scripts allow-forms allow-popups"
                         scrolling="auto"
                         onLoad={updateInteractivePreviewScale}
-                        className="h-full w-full border-0 bg-white"
+                        className="absolute inset-0 block h-full w-full border-0 bg-white"
                       />
                     </div>
                   </div>

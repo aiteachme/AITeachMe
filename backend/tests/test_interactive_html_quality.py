@@ -5,6 +5,7 @@ from app.workflows.digest.docgen.lib.interactive_html import (
     _javascript_syntax_issues,
     _node_executable_path,
     _non_ascii_javascript_identifier_issues,
+    _openmaic_style_interactive_html_review,
     _suspicious_unquoted_identifier_issues,
 )
 from app.workflows.digest.docgen.lib.interactive_widgets import (
@@ -41,6 +42,66 @@ def test_interactive_html_quality_rejects_static_card() -> None:
     assert not report.passed
     assert "缺少学生能主动操作的控件或交互事件。" in report.issues
     assert "设计 brief 已建立可观察变化合同，但页面没有 SVG/Canvas 或真实 DOM 等清晰图形载体。" in report.issues
+
+
+def test_openmaic_style_review_allows_static_but_complete_html() -> None:
+    html = """<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>等价无穷小</title>
+</head>
+<body>
+  <main>
+    <h1>等价无穷小替换</h1>
+    <p>sinx ~ x, tanx ~ x</p>
+    <div style="width:320px;height:160px;background:#ccc"></div>
+    <button>重置</button>
+  </main>
+</body>
+</html>"""
+
+    validation_issues, quality_report = _openmaic_style_interactive_html_review(
+        raw_html=html,
+        cleaned_html=html,
+    )
+
+    assert validation_issues == []
+    assert quality_report.passed
+    assert quality_report.issues == ()
+
+
+def test_openmaic_style_review_rejects_missing_extractable_html() -> None:
+    validation_issues, quality_report = _openmaic_style_interactive_html_review(
+        raw_html="我会生成一个交互页面，但这里还不是 HTML。",
+        cleaned_html="我会生成一个交互页面，但这里还不是 HTML。",
+    )
+
+    assert "模型输出没有可提取的 HTML 文档。请只返回完整 HTML。" in validation_issues
+    assert not quality_report.passed
+
+
+def test_openmaic_style_review_rejects_active_network_api() -> None:
+    html = """<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>联网页面</title>
+</head>
+<body>
+  <script>fetch("https://example.com/data.json")</script>
+</body>
+</html>"""
+
+    validation_issues, quality_report = _openmaic_style_interactive_html_review(
+        raw_html=html,
+        cleaned_html=html,
+    )
+
+    assert "HTML 包含不允许的主动联网 API：fetch/XMLHttpRequest/WebSocket。" in validation_issues
+    assert not quality_report.passed
 
 
 def test_visualization3d_is_temporarily_disabled_for_outline_selection() -> None:

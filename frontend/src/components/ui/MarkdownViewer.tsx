@@ -1,4 +1,4 @@
-import { Children, isValidElement, useCallback, useEffect, useMemo, useRef, useState, type ComponentPropsWithoutRef, type FormEvent, type ReactNode } from "react";
+import { Children, isValidElement, useCallback, useEffect, useMemo, useRef, useState, type ComponentPropsWithoutRef, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -95,6 +95,23 @@ const INTERACTIVE_LOADING_STEPS = [
   "正在校验 HTML 结构与资源边界",
   "正在加载沙箱预览",
 ];
+const staticFigureViewportStyle: CSSProperties = {
+  height: "min(620px, 72vh)",
+  maxHeight: "min(620px, 72vh)",
+  minHeight: 360,
+  contain: "layout size paint",
+  isolation: "isolate",
+};
+const interactiveViewportStyle: CSSProperties = {
+  height: "min(680px, 76vh)",
+  maxHeight: "min(680px, 76vh)",
+  minHeight: 460,
+  contain: "layout size paint",
+  isolation: "isolate",
+};
+const sandboxFrameStyle: CSSProperties = {
+  contain: "layout paint",
+};
 const DUPLICATE_ORDERED_LIST_MARKER_RE = /^(\s{0,3}(?:>\s*)*)\d+[\.)\u3001\uff09]\s+(?=\d+[\.)\u3001\uff09]\s+)/;
 
 function noopMarkdownPlugin() {
@@ -2705,13 +2722,21 @@ function InteractiveHtmlEmbed({
               </button>
             </div>
           ) : patchedHtml ? (
-            <iframe
-              title={preview.title || "静态图示"}
-              srcDoc={patchedHtml}
-              sandbox=""
-              loading="lazy"
-              className="h-[min(620px,72vh)] min-h-[360px] w-full border border-slate-200 bg-white dark:border-slate-800"
-            />
+            <div
+              data-doc-sandbox-viewport="figure"
+              className="relative w-full shrink-0 overflow-hidden border border-slate-200 bg-white dark:border-slate-800"
+              style={staticFigureViewportStyle}
+            >
+              <iframe
+                title={preview.title || "静态图示"}
+                srcDoc={patchedHtml}
+                sandbox=""
+                loading="lazy"
+                scrolling="auto"
+                style={sandboxFrameStyle}
+                className="absolute inset-0 block h-full w-full border-0 bg-white"
+              />
+            </div>
           ) : (
             <div className="flex min-h-[260px] items-center justify-center border border-dashed border-slate-200 bg-white text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
               正在准备图示
@@ -2964,13 +2989,21 @@ function InteractiveHtmlEmbed({
                 </button>
               )}
             </div>
-            <iframe
-              title={preview.title || "交互演示"}
-              srcDoc={patchedHtml}
-              sandbox="allow-scripts allow-forms allow-popups"
-              loading="lazy"
-              className="h-[min(680px,76vh)] min-h-[460px] w-full border-0 bg-white"
-            />
+            <div
+              data-doc-sandbox-viewport="interactive"
+              className="relative w-full shrink-0 overflow-hidden bg-white"
+              style={interactiveViewportStyle}
+            >
+              <iframe
+                title={preview.title || "交互演示"}
+                srcDoc={patchedHtml}
+                sandbox="allow-scripts allow-forms allow-popups"
+                loading="lazy"
+                scrolling="auto"
+                style={sandboxFrameStyle}
+                className="absolute inset-0 block h-full w-full border-0 bg-white"
+              />
+            </div>
           </div>
         ) : !isAutoPending ? (
           <div className="flex min-h-[260px] items-center justify-center rounded-lg border border-dashed border-slate-200 bg-white text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">

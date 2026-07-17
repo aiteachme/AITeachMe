@@ -50,6 +50,10 @@ logger = structlog.get_logger(__name__)
 InteractiveMode = Literal["parameter_explorer", "process_stepper", "concept_mapper"]
 
 _ANY_HEADING_RE = re.compile(r"^(?P<marks>#{1,6})\s+(?P<title>.+?)\s*$", re.MULTILINE)
+_HTML_DOCUMENT_SIGNAL_RE = re.compile(r"<!doctype\s+html|<html\b|```(?:html)?", re.IGNORECASE)
+_REMOTE_URL_HOST_RE = re.compile(r"https?://(?P<host>[A-Za-z0-9.-]+)(?::\d+)?(?:[/?#]|$)", re.IGNORECASE)
+_ACTIVE_NETWORK_API_RE = re.compile(r"\b(fetch|XMLHttpRequest|WebSocket)\s*\(", re.IGNORECASE)
+_JAVASCRIPT_URL_RE = re.compile(r"\b(?:href|src|xlink:href)\s*=\s*(['\"])\s*javascript:", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -284,6 +288,109 @@ def _interactive_generation_passed(result: _GeneratedInteractiveHtml) -> bool:
     return not result.validation_issues and result.quality_report.passed
 
 
+def _structure_without_script_style(html: str) -> str:
+    return re.sub(
+        r"<(?P<tag>script|style)\b[^>]*>.*?</(?P=tag)>",
+        lambda match: f"<{match.group('tag')}></{match.group('tag')}>",
+        str(html or ""),
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+
+def _iter_remote_resource_hosts(html: str) -> list[str]:
+    hosts: list[str] = []
+    for match in _REMOTE_URL_HOST_RE.finditer(str(html or "")):
+        host = match.group("host").casefold()
+        if host and host not in hosts:
+            hosts.append(host)
+    return hosts
+
+
+def _openmaic_style_validation_issues(
+    *,
+    raw_html: str,
+    cleaned_html: str,
+    allowed_resource_hosts: set[str] | None = None,
+    widget_type: str = "",
+) -> list[str]:
+    """Loose OpenMAIC-style acceptance gate.
+
+    The stricter local quality gate is intentionally kept below in
+    `_strict_interactive_html_review`, but the active generation path now only
+    rejects outputs that cannot be treated as an HTML document or violate basic
+    sandbox/network constraints. Failed loose checks still feed retry feedback
+    back to the model.
+    """
+
+    raw_text = str(raw_html or "").strip()
+    cleaned_text = str(cleaned_html or "").strip()
+    issues: list[str] = []
+
+    extracted = extract_html_document(raw_text)
+    if not raw_text or not extracted or not _HTML_DOCUMENT_SIGNAL_RE.search(raw_text):
+        issues.append("模型输出没有可提取的 HTML 文档。请只返回完整 HTML。")
+
+    raw_document = extracted or raw_text
+    raw_structure = _structure_without_script_style(raw_document)
+    for tag in ("script", "style"):
+        open_count = len(re.findall(rf"<{tag}\b", raw_document, re.IGNORECASE))
+        close_count = len(re.findall(rf"</{tag}\s*>", raw_document, re.IGNORECASE))
+        if close_count < open_count:
+            issues.append(f"模型输出的原始 HTML 存在未闭合的 <{tag}>，可能被截断。")
+
+    cleaned_structure = _structure_without_script_style(cleaned_text).casefold()
+    if "<html" not in cleaned_structure or "</html>" not in cleaned_structure:
+        issues.append("HTML 文档缺少完整的 <html> 结构。")
+    if "<head" not in cleaned_structure or "</head>" not in cleaned_structure:
+        issues.append("HTML 文档缺少完整的 <head> 结构。")
+    if "<body" not in cleaned_structure or "</body>" not in cleaned_structure:
+        issues.append("HTML 文档缺少完整的 <body> 结构。")
+    if not re.search(r"<meta[^>]+name\s*=\s*['\"]viewport['\"]", cleaned_text, re.IGNORECASE):
+        issues.append("HTML 文档缺少移动端 viewport meta。")
+
+    if _ACTIVE_NETWORK_API_RE.search(cleaned_text):
+        issues.append("HTML 包含不允许的主动联网 API：fetch/XMLHttpRequest/WebSocket。")
+    if _JAVASCRIPT_URL_RE.search(cleaned_text):
+        issues.append("HTML 包含不安全的 javascript: URL。")
+
+    allowed_hosts = {
+        host.casefold()
+        for host in (allowed_resource_hosts or INTERACTIVE_ALLOWED_RESOURCE_HOSTS)
+        if str(host).strip()
+    }
+    disallowed_hosts = [
+        host
+        for host in _iter_remote_resource_hosts(cleaned_text)
+        if allowed_hosts and host not in allowed_hosts
+    ]
+    if disallowed_hosts:
+        issues.append("HTML 包含未允许的远程资源域名：" + "、".join(disallowed_hosts) + "。")
+
+    if widget_type == "visualization3d":
+        issues.extend(_javascript_syntax_issues(cleaned_text, require_checker=True))
+
+    return list(dict.fromkeys(issues))
+
+
+def _openmaic_style_interactive_html_review(
+    *,
+    raw_html: str,
+    cleaned_html: str,
+    allowed_resource_hosts: set[str] | None = None,
+    widget_type: str = "",
+) -> tuple[list[str], InteractiveHtmlQualityReport]:
+    validation_issues = _openmaic_style_validation_issues(
+        raw_html=raw_html,
+        cleaned_html=cleaned_html,
+        allowed_resource_hosts=allowed_resource_hosts,
+        widget_type=widget_type,
+    )
+    return validation_issues, InteractiveHtmlQualityReport(
+        passed=not validation_issues,
+        issues=(),
+    )
+
+
 def _script_blocks_for_syntax_check(html: str) -> list[tuple[str, str]]:
     blocks: list[tuple[str, str]] = []
     for match in re.finditer(
@@ -470,6 +577,54 @@ def _visualization3d_runtime_contract_issues(html: str, widget_type: str) -> lis
     return list(dict.fromkeys(issues))
 
 
+def _strict_interactive_html_review(
+    *,
+    raw_html: str,
+    cleaned_html: str,
+    title: str,
+    context: str,
+    design_brief: InteractionDesignBrief,
+    resources_allowed: bool,
+    allowed_resource_hosts: set[str] | None,
+    widget_type: str,
+) -> tuple[list[str], InteractiveHtmlQualityReport]:
+    """Former strict gate retained for future quality-hardening.
+
+    This used to be the active generation gate. It is intentionally not deleted:
+    once generation quality is more stable, we can re-enable strict checks or
+    run them as advisory telemetry without changing the rest of the pipeline.
+    """
+
+    completeness_issues = _generated_html_completeness_issues(raw_html)
+    validation_issues = [
+        *completeness_issues,
+        *validate_single_file_html(
+            cleaned_html,
+            allow_external_resources=resources_allowed,
+            allowed_resource_hosts=allowed_resource_hosts if resources_allowed else None,
+        ),
+        *_visualization3d_runtime_contract_issues(cleaned_html, widget_type),
+        *_javascript_syntax_issues(
+            cleaned_html,
+            require_checker=widget_type == "visualization3d",
+        ),
+        *_non_ascii_javascript_identifier_issues(cleaned_html, widget_type),
+        *_suspicious_unquoted_identifier_issues(cleaned_html, widget_type),
+    ]
+    validation_issues = list(dict.fromkeys(validation_issues))
+    quality_report = (
+        InteractiveHtmlQualityReport(passed=False, issues=tuple(completeness_issues))
+        if completeness_issues
+        else assess_interactive_html_quality(
+            cleaned_html,
+            title=title,
+            context=context,
+            design_brief=design_brief.as_prompt_text(),
+        )
+    )
+    return validation_issues, quality_report
+
+
 async def _generate_interactive_html_with_retry(
     *,
     title: str,
@@ -522,46 +677,17 @@ async def _generate_interactive_html_with_retry(
 
             (html,) = await run_llm_tasks([None], _run_interactive_html, max_concurrent=1)
             raw_html = str(html)
-            completeness_issues = _generated_html_completeness_issues(raw_html)
             cleaned_html = _sanitize_generated_html(
                 raw_html,
                 title=title,
                 allow_external_resources=resources_allowed,
             )
-            validation_issues = [
-                *completeness_issues,
-                *validate_single_file_html(
-                    cleaned_html,
-                    allow_external_resources=resources_allowed,
-                    allowed_resource_hosts=allowed_resource_hosts if resources_allowed else None,
-                ),
-                *_visualization3d_runtime_contract_issues(
-                    cleaned_html,
-                    str(base_metadata.get("widget_type") or ""),
-                ),
-                *_javascript_syntax_issues(
-                    cleaned_html,
-                    require_checker=str(base_metadata.get("widget_type") or "") == "visualization3d",
-                ),
-                *_non_ascii_javascript_identifier_issues(
-                    cleaned_html,
-                    str(base_metadata.get("widget_type") or ""),
-                ),
-                *_suspicious_unquoted_identifier_issues(
-                    cleaned_html,
-                    str(base_metadata.get("widget_type") or ""),
-                ),
-            ]
-            validation_issues = list(dict.fromkeys(validation_issues))
-            quality_report = (
-                InteractiveHtmlQualityReport(passed=False, issues=tuple(completeness_issues))
-                if completeness_issues
-                else assess_interactive_html_quality(
-                    cleaned_html,
-                    title=title,
-                    context=context,
-                    design_brief=design_brief.as_prompt_text(),
-                )
+            widget_type = str(base_metadata.get("widget_type") or "")
+            validation_issues, quality_report = _openmaic_style_interactive_html_review(
+                raw_html=raw_html,
+                cleaned_html=cleaned_html,
+                allowed_resource_hosts=allowed_resource_hosts if resources_allowed else None,
+                widget_type=widget_type,
             )
             last_result = _GeneratedInteractiveHtml(
                 html=cleaned_html,
