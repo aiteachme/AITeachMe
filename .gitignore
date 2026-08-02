@@ -70,6 +70,7 @@ settings.private.yaml
 /frontend/.npm-cache*/
 /.tmp-*/
 /.tmp-*.exe
+.codex-tmp/
 pytest-tmp/
 __pycache__/
 *.py[cod]
