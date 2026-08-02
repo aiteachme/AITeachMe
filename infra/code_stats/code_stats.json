@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-07-13T02:26:30.879544",
-  "total_commits_analyzed": 2020,
+  "generated_at": "2026-07-27T02:34:19.855914",
+  "total_commits_analyzed": 2035,
   "stats": [
     {
       "date": "2026-03-11",
@@ -16161,6 +16161,126 @@
       "code_lines": 235852,
       "other_lines": 43143,
       "message": "feat: 增加飞书交流群与全局反馈入口"
+    },
+    {
+      "date": "2026-07-13",
+      "commit": "2589ab1",
+      "total_lines": 278995,
+      "code_lines": 235852,
+      "other_lines": 43143,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-07-14",
+      "commit": "900f56c",
+      "total_lines": 279594,
+      "code_lines": 236388,
+      "other_lines": 43206,
+      "message": "fix: 加固 Markdown 渲染与认证 SSE"
+    },
+    {
+      "date": "2026-07-14",
+      "commit": "6e00989",
+      "total_lines": 279930,
+      "code_lines": 236666,
+      "other_lines": 43264,
+      "message": "fix: 确保反馈送达并限制接口输入规模"
+    },
+    {
+      "date": "2026-07-14",
+      "commit": "9be6847",
+      "total_lines": 280468,
+      "code_lines": 237097,
+      "other_lines": 43371,
+      "message": "fix: 防止用户画像并发更新覆盖"
+    },
+    {
+      "date": "2026-07-14",
+      "commit": "0e8a443",
+      "total_lines": 282279,
+      "code_lines": 238722,
+      "other_lines": 43557,
+      "message": "fix: 为知识构建增加所有权租约"
+    },
+    {
+      "date": "2026-07-14",
+      "commit": "e57e3b0",
+      "total_lines": 282568,
+      "code_lines": 238956,
+      "other_lines": 43612,
+      "message": "fix: 拒绝非法云端配置并收紧发布门禁"
+    },
+    {
+      "date": "2026-07-14",
+      "commit": "060fef3",
+      "total_lines": 283455,
+      "code_lines": 239748,
+      "other_lines": 43707,
+      "message": "fix: 原子派发并安全恢复摄取任务"
+    },
+    {
+      "date": "2026-07-15",
+      "commit": "213dfd8",
+      "total_lines": 288356,
+      "code_lines": 244098,
+      "other_lines": 44258,
+      "message": "fix: 强化知识文档发布的原子性与并发隔离"
+    },
+    {
+      "date": "2026-07-15",
+      "commit": "20f771d",
+      "total_lines": 290624,
+      "code_lines": 245959,
+      "other_lines": 44665,
+      "message": "feat: 优化知识文档渐进加载与阅读交互"
+    },
+    {
+      "date": "2026-07-15",
+      "commit": "499fefc",
+      "total_lines": 291062,
+      "code_lines": 246364,
+      "other_lines": 44698,
+      "message": "fix: 修复知识文档交互与运行时边界"
+    },
+    {
+      "date": "2026-07-15",
+      "commit": "accc5e1",
+      "total_lines": 291286,
+      "code_lines": 246568,
+      "other_lines": 44718,
+      "message": "fix: 恢复超时的摄取增强排队任务"
+    },
+    {
+      "date": "2026-07-15",
+      "commit": "c9b0468",
+      "total_lines": 291288,
+      "code_lines": 246571,
+      "other_lines": 44717,
+      "message": "fix: 优化课程顶部导航滚动显隐"
+    },
+    {
+      "date": "2026-07-15",
+      "commit": "0b31d86",
+      "total_lines": 291288,
+      "code_lines": 246571,
+      "other_lines": 44717,
+      "message": "Merge remote-tracking branch 'origin/main'"
+    },
+    {
+      "date": "2026-07-16",
+      "commit": "7037cc4",
+      "total_lines": 291288,
+      "code_lines": 246571,
+      "other_lines": 44717,
+      "message": "chore: release v0.1.5"
+    },
+    {
+      "date": "2026-07-20",
+      "commit": "26b6aa2",
+      "total_lines": 291288,
+      "code_lines": 246571,
+      "other_lines": 44717,
+      "message": "chore: update code statistics [skip ci]"
     }
   ]
 }
