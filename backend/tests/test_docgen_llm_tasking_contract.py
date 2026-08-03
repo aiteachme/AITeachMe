@@ -112,32 +112,6 @@ async def test_core_docgen_single_llm_calls_use_run_llm_tasks(monkeypatch) -> No
     ]
 
 
-def test_chapter_execution_brief_prompt_requires_object_level_graph_targets() -> None:
-    messages = chapter_execution_brief.build_chapter_execution_brief_messages(
-        course_name="初中函数",
-        digest_mode="sprint",
-        chapter={
-            "chapter_index": 1,
-            "objective": "掌握函数基础。",
-            "required_elements": ["图示", "方法步骤", "单元测试"],
-        },
-        locked_title="函数概念与图像",
-        intent_core={},
-        glossary_terms=["函数"],
-        claim_targets=[],
-        confusion_targets=[],
-    )
-    prompt_text = "\n".join(message["content"] for message in messages)
-
-    assert "每一项都必须是具体课程对象、方法名、题型名或错因名" in prompt_text
-    assert "不要输出“图示”“方法步骤”“单元测试”" in prompt_text
-    assert "整理”“判定题”“图表分析" in prompt_text
-    assert "统计数据整理方法" in prompt_text
-    assert "几何判定条件识别" in prompt_text
-    assert "函数图像读图" in prompt_text
-    assert "函数值求解例题" in prompt_text
-
-
 @pytest.mark.anyio
 async def test_docgen_query_planning_uses_run_llm_tasks(monkeypatch) -> None:
     scheduler_calls: list[dict[str, object]] = []

@@ -681,33 +681,23 @@ def test_committed_manifest_rejects_mixed_valid_and_malformed_versioned_paths() 
     assert manifest.docgen_manifest_key is None
 
 
-def test_confirmed_plan_payload_keeps_course_name_from_plan_json() -> None:
-    plan = ConfirmedBuildPlan(
-        id="plan_a",
-        course_id="course_a",
-        user_prompt="学习计算机网络",
-        plan_json={"course_name": "计算机网络与安全基础"},
-    )
+def test_confirmed_plan_payload_prefers_plan_course_name_then_fallback() -> None:
+    cases = [
+        ({"course_name": "计算机网络与安全基础"}, "兜底主题", "计算机网络与安全基础"),
+        ({}, "计算机网络", "计算机网络"),
+    ]
 
-    payload = build_lifecycle._build_confirmed_plan_payload(
-        plan,
-        fallback_course_name="兜底主题",
-    )
+    for index, (plan_json, fallback_course_name, expected) in enumerate(cases):
+        plan = ConfirmedBuildPlan(
+            id=f"plan_{index}",
+            course_id=f"course_{index}",
+            user_prompt="学习计算机网络",
+            plan_json=plan_json,
+        )
 
-    assert payload["course_name"] == "计算机网络与安全基础"
+        payload = build_lifecycle._build_confirmed_plan_payload(
+            plan,
+            fallback_course_name=fallback_course_name,
+        )
 
-
-def test_confirmed_plan_payload_uses_fallback_course_name() -> None:
-    plan = ConfirmedBuildPlan(
-        id="plan_b",
-        course_id="course_b",
-        user_prompt="学习计算机网络",
-        plan_json={},
-    )
-
-    payload = build_lifecycle._build_confirmed_plan_payload(
-        plan,
-        fallback_course_name="计算机网络",
-    )
-
-    assert payload["course_name"] == "计算机网络"
+        assert payload["course_name"] == expected

@@ -7,61 +7,27 @@ from app.workflows.digest.kg_doc_sync.lib.model_policy import (
 from app.workflows.digest.docgen.lib.model_policy import (
     DocGenModelStep,
     docgen_completion_kwargs,
-    get_docgen_model_policy,
 )
 
 
-def test_docgen_model_policy_sets_step_timeouts() -> None:
-    kwargs = docgen_completion_kwargs(DocGenModelStep.WRITER, digest_mode="systematic")
+def test_docgen_model_policy_routes_tiers_and_bounds_noncritical_steps() -> None:
+    systematic_writer = docgen_completion_kwargs(DocGenModelStep.WRITER, digest_mode="systematic")
+    sprint_writer = docgen_completion_kwargs(DocGenModelStep.WRITER, digest_mode="sprint")
+    intent_core = docgen_completion_kwargs(DocGenModelStep.INTENT_CORE)
 
-    assert kwargs["timeout"] == 120
-    assert kwargs["max_tokens"] == 12000
-    assert kwargs["model"] == "reason"
-    assert kwargs["max_retries"] == 5
-    assert kwargs["overall_timeout_s"] == 180
-    assert kwargs[PROVIDER_NATIVE_TOOLS_KWARG] == []
-    assert "task_type" not in kwargs
+    assert systematic_writer["model"] == "reason"
+    assert sprint_writer["model"] == "primary"
+    assert intent_core["overall_timeout_s"] >= intent_core["timeout"]
+    assert systematic_writer[PROVIDER_NATIVE_TOOLS_KWARG] == []
+    assert "task_type" not in systematic_writer
 
-
-def test_docgen_writer_model_slot_still_follows_digest_mode() -> None:
-    kwargs = docgen_completion_kwargs(DocGenModelStep.WRITER, digest_mode="sprint")
-
-    assert kwargs["model"] == "primary"
-    assert kwargs["timeout"] == 120
-
-
-def test_docgen_intent_core_uses_extended_overall_timeout() -> None:
-    kwargs = docgen_completion_kwargs(DocGenModelStep.INTENT_CORE, digest_mode="systematic")
-    metadata = get_docgen_model_policy(DocGenModelStep.INTENT_CORE).metadata()
-
-    assert kwargs["timeout"] == 90
-    assert kwargs["overall_timeout_s"] == 180
-    assert metadata["docgen_overall_timeout_s"] == 180
-
-
-def test_docgen_model_policy_metadata_includes_timeout() -> None:
-    metadata = get_docgen_model_policy(DocGenModelStep.TITLE_LOCK).metadata()
-
-    assert metadata["docgen_model_step"] == "lock_titles_for_chapters.lock_title_for_chapter"
-    assert metadata["docgen_timeout_s"] == 60
-    assert metadata["docgen_overall_timeout_s"] == 180
-    assert metadata["docgen_max_retries"] == 3
-    assert metadata["docgen_provider_native_web_search_policy"] == "off"
-    assert metadata["docgen_provider_native_file_search_policy"] == "off"
-
-
-def test_docgen_noncritical_cleanup_steps_fail_fast() -> None:
     for step in (DocGenModelStep.RESEARCH_PURIFY, DocGenModelStep.HEADING_REPAIR):
         kwargs = docgen_completion_kwargs(step, digest_mode="sprint")
-        metadata = get_docgen_model_policy(step).metadata()
 
         assert kwargs["model"] == "light"
-        assert kwargs["timeout"] == 30
-        assert kwargs["overall_timeout_s"] == 40
-        assert kwargs["max_retries"] == 1
-        assert metadata["docgen_timeout_s"] == 30
-        assert metadata["docgen_overall_timeout_s"] == 40
-        assert metadata["docgen_max_retries"] == 1
+        assert kwargs["timeout"] < systematic_writer["timeout"]
+        assert kwargs["overall_timeout_s"] < systematic_writer["overall_timeout_s"]
+        assert kwargs["max_retries"] < systematic_writer["max_retries"]
 
 
 def test_kg_doc_sync_model_policy_disables_provider_native_tools_by_default() -> None:

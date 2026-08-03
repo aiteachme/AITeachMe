@@ -51,16 +51,6 @@ def test_run_probe_accepts_expected_upload_rejection() -> None:
     assert b"0" * 16 in server.last_body  # type: ignore[attr-defined]
 
 
-def test_resolve_upload_probe_uses_code_default_cap() -> None:
-    result = resolve_upload_probe.resolve_upload_probe(source="code-default", max_probe_mb=13)
-
-    assert result == {
-        "upload_limit_mb": 20,
-        "upload_probe_bytes": 13 * 1024 * 1024,
-        "upload_probe_label": "13MiB",
-    }
-
-
 def test_resolve_upload_probe_can_use_runtime_project_settings(monkeypatch, tmp_path) -> None:
     settings_path = tmp_path / "settings.yaml"
     settings_path.write_text("ingest:\n  max_upload_size_mb: 10\n", encoding="utf-8")

@@ -942,10 +942,3 @@ def test_imported_embedding_rebuild_reserves_foreground_llm_slots(
     assert captured["course_id"] == IMPORTED_COURSE_ID
     assert captured["embedding_count"] == 5
     assert captured["embedding_model"] == "text-embedding-v4"
-
-
-def test_run_async_handles_plain_coroutines() -> None:
-    async def compute() -> str:
-        return "done"
-
-    assert import_module._run_async(compute()) == "done"

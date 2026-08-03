@@ -15,7 +15,6 @@ from app.workflows.digest.docgen.lib.figure_spec import (
     render_figure_spec_html,
 )
 from app.workflows.digest.docgen.lib.models import ChapterDraft
-from app.workflows.digest.docgen.prompts.static_html_figure import build_static_html_figure_selection_messages
 
 
 class _FakeContentStore:
@@ -40,25 +39,37 @@ def _figure_selection(*indexes: int) -> object:
     )
 
 
-def test_static_figure_selection_prompt_makes_llm_decide_trigger() -> None:
-    messages = build_static_html_figure_selection_messages(
-        chapter_title="函数图像",
-        digest_mode="systematic",
-        max_assets=1,
-        candidates=[
-            {
-                "index": 1,
-                "title": "函数图像与斜率",
-                "context": "斜率、截距和图像位置需要一起观察。",
-            }
-        ],
+def _install_generation_fakes(monkeypatch, *, store: _FakeContentStore, completion) -> None:
+    monkeypatch.setattr(static_figures, "get_content_store", lambda: store)
+    monkeypatch.setattr(
+        static_figures,
+        "resolve_course_storage_scope",
+        lambda _course_id: SimpleNamespace(namespace="users/test/courses/course_abc123abc123"),
     )
-    text = "\n".join(message["content"] for message in messages)
+    monkeypatch.setattr(static_figures, "acompletion_with_fallback", completion)
 
-    assert "本阶段只判断" in text
-    assert "一个都不选" in text
-    assert "不要按学科关键词" in text
-    assert '{"selected":[]}' in text
+
+def _generate_assets(
+    *,
+    markdown: str,
+    chapter_index: int,
+    title: str,
+    max_assets: int = 1,
+    used_visual_signatures: set[str] | None = None,
+):
+    return asyncio.run(
+        static_figures.generate_static_html_figure_assets(
+            draft=ChapterDraft(chapter_index=chapter_index, title=title, markdown=markdown),
+            traced_context=TracedExecutionContext(
+                course_id="course_abc123abc123",
+                build_session_id=f"build_{chapter_index}",
+            ),
+            digest_mode="systematic",
+            markdown=markdown,
+            max_assets=max_assets,
+            used_visual_signatures=used_visual_signatures,
+        )
+    )
 
 
 def test_rendered_figure_is_single_file_static_html() -> None:
@@ -67,12 +78,13 @@ def test_rendered_figure_is_single_file_static_html() -> None:
         title="力的三角形法则",
         summary="把力 F2 平移到力 F1 的端点。",
         elements=[
-            FigureElement(kind="point", id="O", label="O", x=18, y=72),
+            FigureElement(kind="point", id="O", label="原点 O", x=18, y=72),
             FigureElement(kind="point", id="A", label="A", x=46, y=72),
             FigureElement(kind="point", id="B", label="B", x=72, y=42),
             FigureElement(kind="vector", from_id="O", to_id="A", label="F1"),
             FigureElement(kind="vector", from_id="A", to_id="B", label="F2"),
             FigureElement(kind="vector", from_id="O", to_id="B", label="FR"),
+            FigureElement(kind="relation", label="合力关系", x=56, y=64),
         ],
         annotations=["力三角形法则"],
         emphasis=["首尾相接找合力"],
@@ -80,6 +92,7 @@ def test_rendered_figure_is_single_file_static_html() -> None:
     )
 
     html = render_figure_spec_html(spec, title="力的三角形法则")
+    report = assess_static_figure_layout(spec)
 
     assert "<!DOCTYPE html>" in html
     assert "<svg" in html
@@ -88,6 +101,11 @@ def test_rendered_figure_is_single_file_static_html() -> None:
     assert "记忆：" not in html
     assert "对应正文" not in html
     assert "atm-caption" not in html
+    assert "原点 O" in html
+    assert "合力关系" in html
+    assert is_renderable_static_figure(spec)
+    assert report["ok"] is True
+    assert report["issues"] == []
     assert validate_single_file_html(html) == []
 
 
@@ -183,7 +201,7 @@ def test_problem_diagram_renderer_does_not_apply_semantic_blacklist() -> None:
     assert "text_only_relation_diagram" not in report["issues"]
 
 
-def test_empty_concept_map_does_not_invent_default_nodes() -> None:
+def test_empty_specs_do_not_invent_default_or_fallback_diagrams() -> None:
     spec = FigureSpec(type="concept_map", title="空概念图")
 
     html = render_figure_spec_html(spec, title="空概念图")
@@ -195,65 +213,53 @@ def test_empty_concept_map_does_not_invent_default_nodes() -> None:
     assert "核心概念" not in html
     assert "条件" not in html
     assert "结论" not in html
-
-
-def test_static_figure_layout_accepts_clear_vector_diagram() -> None:
-    spec = FigureSpec(
-        type="problem_diagram",
-        title="力的三角形法则",
-        elements=[
-            FigureElement(kind="point", id="O", label="O", x=18, y=72),
-            FigureElement(kind="point", id="A", label="A", x=46, y=72),
-            FigureElement(kind="point", id="B", label="B", x=72, y=42),
-            FigureElement(kind="vector", from_id="O", to_id="A", label="F1"),
-            FigureElement(kind="vector", from_id="A", to_id="B", label="F2"),
-            FigureElement(kind="vector", from_id="O", to_id="B", label="FR"),
-        ],
-        source_refs=["把力 F2 平移到力 F1 的端点"],
+    normalized, normalize_report = normalize_figure_spec(
+        FigureSpec(type="problem_diagram", title="空图"),
+        fallback_title="空图",
+        context="这一段没有足够图形条件。",
     )
 
-    report = assess_static_figure_layout(spec)
-
-    assert report["ok"] is True
-    assert report["issues"] == []
-
-
-def test_static_figure_layout_rejects_overlapped_label_cluster() -> None:
-    spec = FigureSpec(
-        type="problem_diagram",
-        title="变量位置图示",
-        elements=[
-            FigureElement(kind="shape", shape_type="rectangle", label="p_a", x=50, y=50, rx=4, ry=4),
-            FigureElement(kind="shape", shape_type="rectangle", label="p_b", x=51, y=50, rx=4, ry=4),
-            FigureElement(kind="shape", shape_type="rectangle", label="sum", x=52, y=50, rx=4, ry=4),
-            FigureElement(kind="label", text="执行顺序", x=50, y=54),
-            FigureElement(kind="callout", text="语句顺序", x=51, y=54),
-        ],
-        source_refs=["变量在程序中的位置关系"],
-    )
-
-    report = assess_static_figure_layout(spec)
-
-    assert report["ok"] is False
-    assert "label_overlap" in report["issues"]
+    assert normalized.elements == []
+    assert not is_renderable_problem_diagram(normalized)
+    assert "fallback_elements_used" not in normalize_report["warnings"]
 
 
-def test_static_figure_layout_rejects_decorative_node_piles() -> None:
-    spec = FigureSpec(
-        type="problem_diagram",
-        title="孤立节点",
-        elements=[
-            FigureElement(kind="shape", shape_type="rectangle", label="输入", x=25, y=45, rx=8, ry=7),
-            FigureElement(kind="shape", shape_type="rectangle", label="处理", x=50, y=45, rx=8, ry=7),
-            FigureElement(kind="shape", shape_type="rectangle", label="输出", x=75, y=45, rx=8, ry=7),
-        ],
-        source_refs=["输入、处理、输出三个词被列出"],
-    )
+def test_static_figure_layout_rejects_overlaps_and_decorative_node_piles() -> None:
+    cases = [
+        (
+            FigureSpec(
+                type="problem_diagram",
+                title="变量位置图示",
+                elements=[
+                    FigureElement(kind="shape", shape_type="rectangle", label="p_a", x=50, y=50, rx=4, ry=4),
+                    FigureElement(kind="shape", shape_type="rectangle", label="p_b", x=51, y=50, rx=4, ry=4),
+                    FigureElement(kind="shape", shape_type="rectangle", label="sum", x=52, y=50, rx=4, ry=4),
+                    FigureElement(kind="label", text="执行顺序", x=50, y=54),
+                    FigureElement(kind="callout", text="语句顺序", x=51, y=54),
+                ],
+                source_refs=["变量在程序中的位置关系"],
+            ),
+            "label_overlap",
+        ),
+        (
+            FigureSpec(
+                type="problem_diagram",
+                title="孤立节点",
+                elements=[
+                    FigureElement(kind="shape", shape_type="rectangle", label="输入", x=25, y=45, rx=8, ry=7),
+                    FigureElement(kind="shape", shape_type="rectangle", label="处理", x=50, y=45, rx=8, ry=7),
+                    FigureElement(kind="shape", shape_type="rectangle", label="输出", x=75, y=45, rx=8, ry=7),
+                ],
+                source_refs=["输入、处理、输出三个词被列出"],
+            ),
+            "text_only_relation_diagram",
+        ),
+    ]
 
-    report = assess_static_figure_layout(spec)
-
-    assert report["ok"] is False
-    assert "text_only_relation_diagram" in report["issues"]
+    for spec, expected_issue in cases:
+        report = assess_static_figure_layout(spec)
+        assert report["ok"] is False
+        assert expected_issue in report["issues"]
 
 
 def test_generic_shape_primitives_render_as_single_svg_figure() -> None:
@@ -307,69 +313,6 @@ def test_model_supplied_coordinate_primitives_render_without_subject_template() 
     assert "切线" in html
     assert "<table" not in html.lower()
     assert validate_single_file_html(html) == []
-
-
-def test_shape_labels_are_rendered_inside_visual_nodes() -> None:
-    spec = FigureSpec(
-        type="problem_diagram",
-        title="状态更新",
-        elements=[
-            FigureElement(kind="shape", shape_type="rectangle", label="a=3", x=28, y=48, rx=8, ry=7),
-            FigureElement(kind="shape", shape_type="rectangle", label="sum", x=72, y=48, rx=8, ry=7),
-            FigureElement(kind="vector", label="赋值", x=38, y=48, x2=62, y2=48),
-        ],
-        source_refs=["执行 sum=a+b 后更新变量状态"],
-    )
-
-    html = render_figure_spec_html(spec, title="状态更新")
-
-    assert '<text x="196.5" y="158.1" text-anchor="middle"' in html
-    assert '<text x="423.5" y="158.1" text-anchor="middle"' in html
-
-
-def test_rendered_figure_preserves_chinese_labels() -> None:
-    spec = FigureSpec(
-        type="problem_diagram",
-        title="审题推导路径",
-        elements=[
-            FigureElement(kind="shape", id="read", shape_type="rectangle", label="读题"),
-            FigureElement(kind="shape", id="known", shape_type="rectangle", label="条件"),
-            FigureElement(kind="shape", id="goal", shape_type="rectangle", label="目标"),
-            FigureElement(kind="vector", from_id="read", to_id="known", label="提取"),
-            FigureElement(kind="vector", from_id="known", to_id="goal", label="转化"),
-        ],
-        source_refs=["先标出已知条件，再写出目标"],
-    )
-
-    html = render_figure_spec_html(spec, title="审题推导路径")
-
-    assert "审题推导路径" in html
-    assert "读题" in html
-    assert "条件" in html
-    assert "目标" in html
-    assert "提取" in html
-    assert "转化" in html
-    assert "??" not in html
-
-
-def test_problem_diagram_renders_relation_annotations_from_model() -> None:
-    spec = FigureSpec(
-        type="problem_diagram",
-        title="指针关系",
-        elements=[
-            FigureElement(kind="shape", shape_type="rectangle", label="sum", x=36, y=48, rx=8, ry=7),
-            FigureElement(kind="shape", shape_type="rectangle", label="p", x=70, y=48, rx=8, ry=7),
-            FigureElement(kind="vector", label="&sum", x=48, y=48, x2=60, y2=48),
-            FigureElement(kind="relation", label="*p=sum", x=56, y=64),
-        ],
-        source_refs=["p 保存 sum 的地址，*p 读到的是 sum 当前的值"],
-    )
-
-    report = assess_static_figure_layout(spec)
-    html = render_figure_spec_html(spec, title="指针关系")
-
-    assert report["ok"] is True
-    assert "*p=sum" in html
 
 
 def test_vectors_can_connect_shape_ids_without_zero_length_arrow() -> None:
@@ -464,18 +407,6 @@ def test_normalize_figure_spec_replaces_untraceable_source_refs() -> None:
     assert report["source_ref_replacements"] == 1
 
 
-def test_static_figure_normalization_does_not_fallback_to_fake_diagram() -> None:
-    normalized, report = normalize_figure_spec(
-        FigureSpec(type="problem_diagram", title="空图"),
-        fallback_title="空图",
-        context="这一段没有足够图形条件。",
-    )
-
-    assert normalized.elements == []
-    assert not is_renderable_problem_diagram(normalized)
-    assert "fallback_elements_used" not in report["warnings"]
-
-
 def test_fallback_problem_diagram_does_not_guess_subject_templates() -> None:
     contexts = [
         "一次函数 y=2x+1 的图像是一条直线，斜率决定上升或下降，截距是与 y 轴的交点。",
@@ -519,32 +450,16 @@ def test_static_figure_generation_uses_llm_spec_for_program_context(monkeypatch)
             ],
         )
 
-    monkeypatch.setattr(static_figures, "get_content_store", lambda: store)
-    monkeypatch.setattr(
-        static_figures,
-        "resolve_course_storage_scope",
-        lambda _course_id: SimpleNamespace(namespace="users/test/courses/course_abc123abc123"),
+    _install_generation_fakes(monkeypatch, store=store, completion=fake_acompletion)
+    markdown = (
+        "## 程序中的变量位置\n\n"
+        "C 语言中 int a=3, b=5, sum; 执行 sum=a+b 后，"
+        "变量区中的 a、b、sum 位置和赋值顺序需要区分。"
     )
-    monkeypatch.setattr(static_figures, "acompletion_with_fallback", fake_acompletion)
-
-    draft = ChapterDraft(
+    assets = _generate_assets(
+        markdown=markdown,
         chapter_index=1,
         title="C 语言变量",
-        markdown=(
-            "## 程序中的变量位置\n\n"
-            "C 语言中 int a=3, b=5, sum; 执行 sum=a+b 后，"
-            "变量区中的 a、b、sum 位置和赋值顺序需要区分。"
-        ),
-    )
-
-    assets = asyncio.run(
-        static_figures.generate_static_html_figure_assets(
-            draft=draft,
-            traced_context=TracedExecutionContext(course_id="course_abc123abc123", build_session_id="build_1"),
-            digest_mode="systematic",
-            markdown=draft.markdown,
-            max_assets=1,
-        )
     )
 
     assert calls["count"] == 1
@@ -582,35 +497,19 @@ def test_static_figure_generation_asks_llm_when_signal_is_not_keyword_matched(mo
             ],
         )
 
-    monkeypatch.setattr(static_figures, "get_content_store", lambda: store)
-    monkeypatch.setattr(
-        static_figures,
-        "resolve_course_storage_scope",
-        lambda _course_id: SimpleNamespace(namespace="users/test/courses/course_abc123abc123"),
+    _install_generation_fakes(monkeypatch, store=store, completion=fake_acompletion)
+    markdown = (
+        "## 审题策略\n\n"
+        "- 第一步，先用一句话复述题目要问什么，并圈出已知条件。\n"
+        "- 第二步，把条件整理成可直接使用的符号、等式或限制。\n"
+        "- 第三步，写出目标量和需要验证的中间量，再选择最短的解法。\n"
+        "在例题中，先标出已知条件，再写出目标，再选择方法；"
+        "如果中途发现条件没有用上，需要回到题干重新检查。"
     )
-    monkeypatch.setattr(static_figures, "acompletion_with_fallback", fake_acompletion)
-
-    draft = ChapterDraft(
+    assets = _generate_assets(
+        markdown=markdown,
         chapter_index=2,
         title="审题策略",
-        markdown=(
-            "## 审题策略\n\n"
-            "- 第一步，先用一句话复述题目要问什么，并圈出已知条件。\n"
-            "- 第二步，把条件整理成可直接使用的符号、等式或限制。\n"
-            "- 第三步，写出目标量和需要验证的中间量，再选择最短的解法。\n"
-            "在例题中，先标出已知条件，再写出目标，再选择方法；"
-            "如果中途发现条件没有用上，需要回到题干重新检查。"
-        ),
-    )
-
-    assets = asyncio.run(
-        static_figures.generate_static_html_figure_assets(
-            draft=draft,
-            traced_context=TracedExecutionContext(course_id="course_abc123abc123", build_session_id="build_2"),
-            digest_mode="systematic",
-            markdown=draft.markdown,
-            max_assets=1,
-        )
     )
 
     assert calls["count"] == 1
@@ -633,23 +532,13 @@ def test_static_figure_generation_skips_when_llm_declines_trigger(monkeypatch) -
             elements=[FigureElement(kind="axis", x=12, y=72, x2=92, y2=72)],
         )
 
-    monkeypatch.setattr(static_figures, "get_content_store", lambda: store)
-    monkeypatch.setattr(
-        static_figures,
-        "resolve_course_storage_scope",
-        lambda _course_id: SimpleNamespace(namespace="users/test/courses/course_abc123abc123"),
-    )
-    monkeypatch.setattr(static_figures, "acompletion_with_fallback", fake_acompletion)
+    _install_generation_fakes(monkeypatch, store=store, completion=fake_acompletion)
 
     markdown = "## 普通说明\n\n这一段只是在复述学习目标和文字说明。"
-    assets = asyncio.run(
-        static_figures.generate_static_html_figure_assets(
-            draft=ChapterDraft(chapter_index=8, title="普通说明", markdown=markdown),
-            traced_context=TracedExecutionContext(course_id="course_abc123abc123", build_session_id="build_8"),
-            digest_mode="systematic",
-            markdown=markdown,
-            max_assets=1,
-        )
+    assets = _generate_assets(
+        markdown=markdown,
+        chapter_index=8,
+        title="普通说明",
     )
 
     assert assets == []
@@ -681,23 +570,13 @@ def test_static_figure_generation_skips_non_static_visual_intent(monkeypatch) ->
             elements=[FigureElement(kind="axis", x=12, y=72, x2=92, y2=72)],
         )
 
-    monkeypatch.setattr(static_figures, "get_content_store", lambda: store)
-    monkeypatch.setattr(
-        static_figures,
-        "resolve_course_storage_scope",
-        lambda _course_id: SimpleNamespace(namespace="users/test/courses/course_abc123abc123"),
-    )
-    monkeypatch.setattr(static_figures, "acompletion_with_fallback", fake_acompletion)
+    _install_generation_fakes(monkeypatch, store=store, completion=fake_acompletion)
 
     markdown = "## 参数实验\n\n这段内容更适合拖动参数观察曲线连续变化。"
-    assets = asyncio.run(
-        static_figures.generate_static_html_figure_assets(
-            draft=ChapterDraft(chapter_index=9, title="参数实验", markdown=markdown),
-            traced_context=TracedExecutionContext(course_id="course_abc123abc123", build_session_id="build_9"),
-            digest_mode="systematic",
-            markdown=markdown,
-            max_assets=1,
-        )
+    assets = _generate_assets(
+        markdown=markdown,
+        chapter_index=9,
+        title="参数实验",
     )
 
     assert assets == []
@@ -753,23 +632,13 @@ def test_static_figure_generation_skips_text_only_process_step_specs(monkeypatch
             ],
         )
 
-    monkeypatch.setattr(static_figures, "get_content_store", lambda: store)
-    monkeypatch.setattr(
-        static_figures,
-        "resolve_course_storage_scope",
-        lambda _course_id: SimpleNamespace(namespace="users/test/courses/course_abc123abc123"),
-    )
-    monkeypatch.setattr(static_figures, "acompletion_with_fallback", fake_acompletion)
+    _install_generation_fakes(monkeypatch, store=store, completion=fake_acompletion)
 
     markdown = "## 审题路径\n\n这个流程可以看成“读题 -> 条件 -> 目标 -> 方法”的路径。"
-    assets = asyncio.run(
-        static_figures.generate_static_html_figure_assets(
-            draft=ChapterDraft(chapter_index=6, title="审题路径", markdown=markdown),
-            traced_context=TracedExecutionContext(course_id="course_abc123abc123", build_session_id="build_6"),
-            digest_mode="systematic",
-            markdown=markdown,
-            max_assets=1,
-        )
+    assets = _generate_assets(
+        markdown=markdown,
+        chapter_index=6,
+        title="审题路径",
     )
 
     assert assets == []
@@ -798,13 +667,7 @@ def test_static_figure_generation_skips_duplicate_visual_specs(monkeypatch) -> N
             ],
         )
 
-    monkeypatch.setattr(static_figures, "get_content_store", lambda: store)
-    monkeypatch.setattr(
-        static_figures,
-        "resolve_course_storage_scope",
-        lambda _course_id: SimpleNamespace(namespace="users/test/courses/course_abc123abc123"),
-    )
-    monkeypatch.setattr(static_figures, "acompletion_with_fallback", fake_acompletion)
+    _install_generation_fakes(monkeypatch, store=store, completion=fake_acompletion)
 
     markdown = (
         "## 条件推导路径\n\n"
@@ -820,16 +683,11 @@ def test_static_figure_generation_skips_duplicate_visual_specs(monkeypatch) -> N
         "如果每一步都只背答案，就看不到条件到结论之间的转换方向。"
         "课堂上还会要求学生把每个箭头旁边写出对应依据，避免跳步。"
     )
-    draft = ChapterDraft(chapter_index=5, title="推导路径", markdown=markdown)
-
-    assets = asyncio.run(
-        static_figures.generate_static_html_figure_assets(
-            draft=draft,
-            traced_context=TracedExecutionContext(course_id="course_abc123abc123", build_session_id="build_5"),
-            digest_mode="systematic",
-            markdown=draft.markdown,
-            max_assets=2,
-        )
+    assets = _generate_assets(
+        markdown=markdown,
+        chapter_index=5,
+        title="推导路径",
+        max_assets=2,
     )
 
     assert calls["count"] == 2
@@ -857,13 +715,7 @@ def test_static_figure_generation_reuses_visual_signatures_across_chapters(monke
             ],
         )
 
-    monkeypatch.setattr(static_figures, "get_content_store", lambda: store)
-    monkeypatch.setattr(
-        static_figures,
-        "resolve_course_storage_scope",
-        lambda _course_id: SimpleNamespace(namespace="users/test/courses/course_abc123abc123"),
-    )
-    monkeypatch.setattr(static_figures, "acompletion_with_fallback", fake_acompletion)
+    _install_generation_fakes(monkeypatch, store=store, completion=fake_acompletion)
     shared_signatures: set[str] = set()
     markdown = (
         "## 条件推导路径\n\n"
@@ -871,25 +723,17 @@ def test_static_figure_generation_reuses_visual_signatures_across_chapters(monke
         "题目要求把 A -> B -> C 的推导路径画清楚。"
     )
 
-    first_assets = asyncio.run(
-        static_figures.generate_static_html_figure_assets(
-            draft=ChapterDraft(chapter_index=1, title="第一章", markdown=markdown),
-            traced_context=TracedExecutionContext(course_id="course_abc123abc123", build_session_id="build_shared"),
-            digest_mode="systematic",
-            markdown=markdown,
-            max_assets=1,
-            used_visual_signatures=shared_signatures,
-        )
+    first_assets = _generate_assets(
+        markdown=markdown,
+        chapter_index=1,
+        title="第一章",
+        used_visual_signatures=shared_signatures,
     )
-    second_assets = asyncio.run(
-        static_figures.generate_static_html_figure_assets(
-            draft=ChapterDraft(chapter_index=2, title="第二章", markdown=markdown),
-            traced_context=TracedExecutionContext(course_id="course_abc123abc123", build_session_id="build_shared"),
-            digest_mode="systematic",
-            markdown=markdown,
-            max_assets=1,
-            used_visual_signatures=shared_signatures,
-        )
+    second_assets = _generate_assets(
+        markdown=markdown,
+        chapter_index=2,
+        title="第二章",
+        used_visual_signatures=shared_signatures,
     )
 
     assert len(first_assets) == 1
@@ -912,32 +756,16 @@ def test_static_figure_generation_skips_nonvisual_llm_spec(monkeypatch) -> None:
             elements=[],
         )
 
-    monkeypatch.setattr(static_figures, "get_content_store", lambda: store)
-    monkeypatch.setattr(
-        static_figures,
-        "resolve_course_storage_scope",
-        lambda _course_id: SimpleNamespace(namespace="users/test/courses/course_abc123abc123"),
+    _install_generation_fakes(monkeypatch, store=store, completion=fake_acompletion)
+    markdown = (
+        "## 程序中的变量位置\n\n"
+        "C 语言中 int a=3, b=5, sum; 执行 sum=a+b 后，"
+        "变量区中的 a、b、sum 位置和赋值顺序需要区分。"
     )
-    monkeypatch.setattr(static_figures, "acompletion_with_fallback", fake_acompletion)
-
-    draft = ChapterDraft(
+    assets = _generate_assets(
+        markdown=markdown,
         chapter_index=3,
         title="C 语言变量",
-        markdown=(
-            "## 程序中的变量位置\n\n"
-            "C 语言中 int a=3, b=5, sum; 执行 sum=a+b 后，"
-            "变量区中的 a、b、sum 位置和赋值顺序需要区分。"
-        ),
-    )
-
-    assets = asyncio.run(
-        static_figures.generate_static_html_figure_assets(
-            draft=draft,
-            traced_context=TracedExecutionContext(course_id="course_abc123abc123", build_session_id="build_3"),
-            digest_mode="systematic",
-            markdown=draft.markdown,
-            max_assets=1,
-        )
     )
 
     assert assets == []
@@ -950,32 +778,16 @@ def test_static_figure_generation_does_not_fallback_after_model_error(monkeypatc
     async def failing_acompletion(*_args, **_kwargs):
         raise RuntimeError("model unavailable")
 
-    monkeypatch.setattr(static_figures, "get_content_store", lambda: store)
-    monkeypatch.setattr(
-        static_figures,
-        "resolve_course_storage_scope",
-        lambda _course_id: SimpleNamespace(namespace="users/test/courses/course_abc123abc123"),
+    _install_generation_fakes(monkeypatch, store=store, completion=failing_acompletion)
+    markdown = (
+        "## 程序中的变量位置\n\n"
+        "C 语言中 int a=3, b=5, sum; 执行 sum=a+b 后，"
+        "变量区中的 a、b、sum 位置和赋值顺序需要区分。"
     )
-    monkeypatch.setattr(static_figures, "acompletion_with_fallback", failing_acompletion)
-
-    draft = ChapterDraft(
+    assets = _generate_assets(
+        markdown=markdown,
         chapter_index=4,
         title="C 语言变量",
-        markdown=(
-            "## 程序中的变量位置\n\n"
-            "C 语言中 int a=3, b=5, sum; 执行 sum=a+b 后，"
-            "变量区中的 a、b、sum 位置和赋值顺序需要区分。"
-        ),
-    )
-
-    assets = asyncio.run(
-        static_figures.generate_static_html_figure_assets(
-            draft=draft,
-            traced_context=TracedExecutionContext(course_id="course_abc123abc123", build_session_id="build_4"),
-            digest_mode="systematic",
-            markdown=draft.markdown,
-            max_assets=1,
-        )
     )
 
     assert assets == []

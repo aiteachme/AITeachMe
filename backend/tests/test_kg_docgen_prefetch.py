@@ -11,11 +11,6 @@ from app.shared.infra.observability import trace as trace_module
 from app.workflows.digest.kg_doc_sync.lib import prefetch
 from app.workflows.digest.kg_doc_sync.lib.models import SectionExtractionRecord
 
-
-def anyio_backend() -> str:
-    return "asyncio"
-
-
 @pytest.mark.parametrize(
     ("configured", "global_limit", "expected"),
     [

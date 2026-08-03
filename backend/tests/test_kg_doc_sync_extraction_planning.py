@@ -688,7 +688,7 @@ def test_chunk_extraction_drops_edges_with_unreturned_endpoints() -> None:
     assert finalized.edges[0].target_candidate_id == "method"
 
 
-def test_prepare_llm_chunk_content_removes_callout_markers_but_keeps_body() -> None:
+def test_prepare_llm_chunk_content_removes_callout_markers_without_truncating_body() -> None:
     prepared = _prepare_llm_chunk_content(
         "# 数据标准化\n\n"
         "> [!WARNING]\n"
@@ -702,12 +702,9 @@ def test_prepare_llm_chunk_content_removes_callout_markers_but_keeps_body() -> N
     assert "[!TIP]" not in prepared
     assert "易错点" in prepared
     assert "快速抓手" in prepared
-
-
-def test_prepare_llm_chunk_content_does_not_trim_normal_long_sections() -> None:
     long_body = "函数连续性判定需要同时比较左极限、右极限和函数值。\n" * 700
 
-    prepared = _prepare_llm_chunk_content(long_body)
+    long_prepared = _prepare_llm_chunk_content(long_body)
 
-    assert prepared == long_body.strip()
-    assert "中间内容已压缩" not in prepared
+    assert long_prepared == long_body.strip()
+    assert "中间内容已压缩" not in long_prepared

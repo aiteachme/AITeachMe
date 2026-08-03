@@ -6,152 +6,70 @@ from app.workflows.digest.docgen.lib.asset_requests import build_asset_request_b
 from app.workflows.digest.docgen.lib.title_lock import (
     _resolve_locked_title,
     lock_title_for_chapter,
-    prefer_confirmed_catalog_title,
 )
 from app.workflows.digest.docgen.lib.publish import _prepare_chapter_markdown, build_merged_markdown
 from app.workflows.digest.docgen.nodes.sync_locked_titles import _locked_title
-from app.workflows.digest.docgen.prompts.title_lock import build_title_lock_messages
 
 
-def test_title_lock_accepts_objective_anchored_specific_title() -> None:
-    resolved, warning = _resolve_locked_title(
-        "洛必达法则的使用边界",
-        confirmed_title="极限计算",
-    )
+def test_title_lock_preserves_specific_titles_and_rejects_unusable_shapes() -> None:
+    cases = [
+        ("objective anchored", "洛必达法则的使用边界", "极限计算", "洛必达法则的使用边界", False),
+        ("semantic title", "换元失败时先看条件", "极限计算", "换元失败时先看条件", False),
+        ("specific expansion", "函数连续性与间断点判定", "连续性", "函数连续性与间断点判定", False),
+        ("mechanical enumeration", "罗尔定理、拉格朗日中值定理与柯西中值定理", "中值定理", "中值定理", True),
+        ("short confirmed title", "函数连续性与间断点判断", "连续", "函数连续性与间断点判断", False),
+        ("numeric title", "2", "极限计算", "极限计算", True),
+        ("placeholder title", "本章内容", "极限计算", "极限计算", True),
+    ]
 
-    assert resolved == "洛必达法则的使用边界"
-    assert warning is None
+    for case_name, candidate, confirmed, expected, expects_warning in cases:
+        resolved, warning = _resolve_locked_title(candidate, confirmed_title=confirmed)
 
-
-def test_title_lock_does_not_keyword_match_semantic_titles() -> None:
-    resolved, warning = _resolve_locked_title(
-        "换元失败时先看条件",
-        confirmed_title="极限计算",
-    )
-
-    assert resolved == "换元失败时先看条件"
-    assert warning is None
+        assert resolved == expected, case_name
+        assert (warning is not None) is expects_warning, case_name
 
 
-def test_title_lock_keeps_informative_specific_expansion() -> None:
-    assert not prefer_confirmed_catalog_title(
-        confirmed_title="连续性",
-        candidate_title="函数连续性与间断点判定",
-    )
+def test_sync_locked_title_selects_the_semantically_safe_source() -> None:
+    cases = [
+        (1, "函数、极限与常用运算", "函数与极限", "函数、极限与常用运算", "函数与极限", "confirmed_plan_title"),
+        (5, "导数应", "导数应用", "导数应", "导数应用", "confirmed_plan_title"),
+        (
+            4,
+            "导数的定义、几何意义与求导法则",
+            "导数的定义、几何意义与求导法则",
+            "导数基础",
+            "导数基础",
+            "locked_compact_title",
+        ),
+    ]
 
-    resolved, warning = _resolve_locked_title(
-        "函数连续性与间断点判定",
-        confirmed_title="连续性",
-    )
+    for chapter_index, draft_title, confirmed_title, enhanced_title, expected_title, expected_source in cases:
+        title, source = _locked_title(
+            chapter={
+                "chapter_index": chapter_index,
+                "title": draft_title,
+                "resolved_title": draft_title,
+            },
+            chapter_index=chapter_index,
+            locked_title={
+                "chapter_index": chapter_index,
+                "confirmed_title": confirmed_title,
+                "enhanced_title": enhanced_title,
+            },
+        )
 
-    assert resolved == "函数连续性与间断点判定"
-    assert warning is None
-
-
-def test_title_lock_prefers_catalog_title_for_mechanical_enumeration() -> None:
-    resolved, warning = _resolve_locked_title(
-        "罗尔定理、拉格朗日中值定理与柯西中值定理",
-        confirmed_title="中值定理",
-    )
-
-    assert resolved == "中值定理"
-    assert warning is not None
-
-
-def test_title_lock_keeps_specific_title_over_too_short_confirmed_title() -> None:
-    resolved, warning = _resolve_locked_title(
-        "函数连续性与间断点判断",
-        confirmed_title="连续",
-    )
-
-    assert resolved == "函数连续性与间断点判断"
-    assert warning is None
+        assert (title, source) == (expected_title, expected_source), draft_title
 
 
-def test_title_lock_falls_back_for_unusable_title_shape() -> None:
-    resolved, warning = _resolve_locked_title(
-        "2",
-        confirmed_title="极限计算",
-    )
-
-    assert resolved == "极限计算"
-    assert warning is not None
-
-
-def test_title_lock_falls_back_for_generic_placeholder_title() -> None:
-    resolved, warning = _resolve_locked_title(
-        "本章内容",
-        confirmed_title="极限计算",
-    )
-
-    assert resolved == "极限计算"
-    assert warning is not None
-
-
-def test_sync_locked_title_prefers_confirmed_catalog_title_over_long_draft_title() -> None:
-    title, source = _locked_title(
-        chapter={
-            "chapter_index": 1,
-            "title": "函数、极限与常用运算",
-            "resolved_title": "函数、极限与常用运算",
-        },
-        chapter_index=1,
-        locked_title={
-            "chapter_index": 1,
-            "confirmed_title": "函数与极限",
-            "enhanced_title": "函数、极限与常用运算",
-        },
-    )
-
-    assert title == "函数与极限"
-    assert source == "confirmed_plan_title"
-
-
-def test_sync_locked_title_never_shortens_confirmed_application_title() -> None:
-    title, source = _locked_title(
-        chapter={
-            "chapter_index": 5,
-            "title": "导数应",
-            "resolved_title": "导数应",
-        },
-        chapter_index=5,
-        locked_title={
-            "chapter_index": 5,
-            "confirmed_title": "导数应用",
-            "enhanced_title": "导数应",
-        },
-    )
-
-    assert title == "导数应用"
-    assert source == "confirmed_plan_title"
-
-
-def test_sync_locked_title_allows_compact_locked_title_for_enumerated_confirmed_title() -> None:
-    title, source = _locked_title(
-        chapter={
-            "chapter_index": 4,
-            "title": "导数的定义、几何意义与求导法则",
-            "resolved_title": "导数的定义、几何意义与求导法则",
-        },
-        chapter_index=4,
-        locked_title={
-            "chapter_index": 4,
-            "confirmed_title": "导数的定义、几何意义与求导法则",
-            "enhanced_title": "导数基础",
-        },
-    )
-
-    assert title == "导数基础"
-    assert source == "locked_compact_title"
-
-
-def test_publish_markdown_uses_locked_title_over_existing_h1() -> None:
+def test_publish_markdown_uses_locked_title_and_demotes_extra_h1() -> None:
     markdown = _prepare_chapter_markdown(
-        "# 导数应\n\n导数应用的核心是用导数分析函数。",
+        "# 导数应\n\n导数应用的核心是用导数分析函数。\n\n# 保存用户姓名\n\nname = \"小明\"",
         title="导数应用",
     )
 
     assert markdown.splitlines()[0] == "# 导数应用"
+    assert "\n# 保存用户姓名" not in markdown
+    assert "\n## 保存用户姓名" in markdown
 
 
 def test_publish_markdown_strips_internal_asset_requests() -> None:
@@ -166,17 +84,6 @@ def test_publish_markdown_strips_internal_asset_requests() -> None:
     assert "ATM_DOCGEN_ASSET_REQUEST" not in markdown
     assert "atm-docgen-internal-asset-request" not in markdown
     assert "正文。" in markdown
-
-
-def test_publish_markdown_demotes_extra_h1_inside_chapter() -> None:
-    markdown = _prepare_chapter_markdown(
-        "# 变量与数据类型\n\n## 变量赋值\n\n正文。\n\n# 保存用户姓名\n\nname = \"小明\"",
-        title="变量与数据类型",
-    )
-
-    assert markdown.splitlines()[0] == "# 变量与数据类型"
-    assert "\n# 保存用户姓名" not in markdown
-    assert "\n## 保存用户姓名" in markdown
 
 
 def test_merged_markdown_keeps_application_title_suffix() -> None:

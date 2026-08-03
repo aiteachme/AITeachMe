@@ -156,28 +156,22 @@ def test_normalize_closes_display_math_before_markdown_and_callout() -> None:
     assert "GitHub callout 未使用 blockquote 语法。" not in find_markdown_rendering_issues(fixed)
 
 
-def test_normalize_supports_practice_callout_blocks() -> None:
-    raw = "[!PRACTICE]\n1. **任务**：判断条件是否满足。\n2. **答案**：满足。"
-
-    fixed = normalize_markdown_rendering(raw)
-    summary = summarize_markdown_presentation(fixed)
-
-    assert fixed.startswith("> [!PRACTICE]\n>\n> 1. **任务**")
-    assert "GitHub callout 未使用 blockquote 语法。" not in find_markdown_rendering_issues(fixed)
-    assert summary["callout_count"] == 1
-
-
-def test_normalize_supports_question_callout_blocks_without_flattening() -> None:
-    raw = "[!QUESTION]\n**题目**：判断函数是否单调。\n- A. 是\n- B. 否"
+def test_normalize_supports_practice_and_question_callout_blocks() -> None:
+    raw = (
+        "[!PRACTICE]\n1. **任务**：判断条件是否满足。\n2. **答案**：满足。\n\n"
+        "[!QUESTION]\n**题目**：判断函数是否单调。\n- A. 是\n- B. 否"
+    )
 
     fixed = normalize_markdown_rendering(raw)
     normalized = normalize_educational_callouts(fixed)
-    summary = summarize_markdown_presentation(normalized)
+    summary = summarize_markdown_presentation(fixed)
 
-    assert normalized.startswith("> [!QUESTION]\n>\n> **题目**：判断函数是否单调。")
+    assert fixed.startswith("> [!PRACTICE]\n>\n> 1. **任务**")
+    assert normalized.startswith("**练习**\n\n1. **任务**")
+    assert "> [!QUESTION]\n>\n> **题目**：判断函数是否单调。" in normalized
     assert "> - A. 是" in normalized
     assert "GitHub callout 未使用 blockquote 语法。" not in find_markdown_rendering_issues(normalized)
-    assert summary["callout_count"] == 1
+    assert summary["callout_count"] == 2
 
 
 def test_normalize_splits_callout_learning_fields_into_paragraphs() -> None:
@@ -257,49 +251,6 @@ def test_normalize_drops_orphan_display_math_before_markdown_blocks() -> None:
     assert "display math 疑似吞入 Markdown 正文。" not in issues
 
 
-def test_generated_chapter_math_and_table_snippets_normalize_cleanly() -> None:
-    chapter_02_snippet = "\n".join(
-        [
-            "### 综合应用：构造直角三角形求解",
-            "",
-            "$$",
-            r"|PA| = \sqrt{|PC|^2 - r^2} = \sqrt{25 - 9} = \sqrt{16} = 4",
-            "$$",
-            "",
-            "---",
-            "",
-            "$$",
-            "## 高频考点总结与易错边界",
-            "| 考点类别 | 高频题型 | 易错边界 | 推荐策略 |",
-            "| --- | --- | --- | --- |",
-            r"| 弦长计算 | 已知直线与圆，求弦长 | 忘记 $d \leq r$ | 几何法优先：$ |AB|=2\sqrt{r^2-d^2} $ |",
-            "```mermaid",
-            "flowchart LR",
-            "A[图形与几何] --> B[圆]",
-            "```",
-        ]
-    )
-    chapter_04_snippet = "\n".join(
-        [
-            "$$",
-            r"|A \cup B| = |A| + |B| - |A \cap B|",
-            "$$",
-            "",
-            "$$",
-            "## 常见应用问题类型",
-            "| 类型 | 策略 |",
-            "| --- | --- |",
-            "| 集合计数 | 先画图再代数化 |",
-        ]
-    )
-
-    for raw in (chapter_02_snippet, chapter_04_snippet):
-        fixed = normalize_markdown_rendering(raw)
-        issues = find_markdown_rendering_issues(fixed)
-        assert "display math 分隔符数量不成对。" not in issues
-        assert "display math 疑似吞入 Markdown 正文。" not in issues
-
-
 def test_normalize_escapes_inline_math_that_swallows_markdown() -> None:
     raw = "$- **十进制 -> 二进制**：`1110111` ### 高级题型$"
 
@@ -339,16 +290,17 @@ def test_normalize_restores_overescaped_long_inline_math() -> None:
     assert "内联公式疑似吞入 Markdown 正文。" not in find_markdown_rendering_issues(fixed)
 
 
-def test_normalize_mermaid_quotes_flowchart_labels_with_comparison_symbols() -> None:
+def test_normalize_mermaid_repairs_labels_plain_lines_and_class_lists() -> None:
     raw = "\n".join(
         [
             "```mermaid",
-            "flowchart LR",
+            "flowchart LR PC: 0xFFFF0 → 0x00000",
             "A[导数应用] --> B1[一阶导数正负]",
             "B1 --> B2[递增: f'(x) > 0]",
             "B1 -->|f'(x) < 0| B3[递减]",
+            "G[练习]",
             "classDef core fill:#f9f,stroke:#333,stroke-width:1px;",
-            "class A,B1 core",
+            "class A, B1, G core",
             "```",
         ]
     )
@@ -358,44 +310,9 @@ def test_normalize_mermaid_quotes_flowchart_labels_with_comparison_symbols() -> 
     assert 'A["导数应用"] --> B1["一阶导数正负"]' in fixed
     assert 'B1 --> B2["递增: f\'(x) 大于 0"]' in fixed
     assert "B1 -->|f'(x) 小于 0| B3[\"递减\"]" in fixed
-    assert "classDef core fill:#f9f,stroke:#333,stroke-width:1px;" in fixed
-
-
-def test_normalize_mermaid_wraps_plain_flowchart_lines_with_hex_values() -> None:
-    raw = "\n".join(
-        [
-            "```mermaid",
-            "flowchart TB PC: 0xFFFF0 → 0x00000",
-            "A[入口] --> B[执行]",
-            "```",
-        ]
-    )
-
-    fixed = normalize_mermaid_blocks(raw)
-
-    assert "flowchart TB" in fixed
     assert '["PC: 0xFFFF0 → 0x00000"]' in fixed
-    assert 'A["入口"] --> B["执行"]' in fixed
-
-
-def test_normalize_mermaid_compacts_class_node_lists() -> None:
-    raw = "\n".join(
-        [
-            "```mermaid",
-            "flowchart TB",
-            "C[概念] --> D[方法]",
-            "G[练习]",
-            "classDef method fill:#eef,stroke:#88f;",
-            "class C, D, G method",
-            "```",
-        ]
-    )
-
-    fixed = normalize_mermaid_blocks(raw)
-
-    assert "class C,D,G method" in fixed
-    assert "class C, D, G method" not in fixed
-    assert "classDef method fill:#eef,stroke:#88f;" in fixed
+    assert "class A,B1,G core" in fixed
+    assert "classDef core fill:#f9f,stroke:#333,stroke-width:1px;" in fixed
 
 
 def test_normalize_ignores_dollars_inside_inline_code() -> None:
@@ -498,6 +415,8 @@ def test_public_markdown_hides_source_debug_and_post_reading_note() -> None:
             "## 参考资料与延伸阅读",
             "",
             "- 计算机基础.pdf (docgen_source_slice)",
+            "",
+            "<!-- [MERMAID: DOS 命令的整体知识脉络图] -->",
         ]
     )
 
@@ -508,42 +427,19 @@ def test_public_markdown_hides_source_debug_and_post_reading_note() -> None:
     assert "来源切片" not in fixed
     assert "参考资料与延伸阅读" not in fixed
     assert "计算机基础.pdf" not in fixed
+    assert "MERMAID:" not in fixed
+    assert "<!--" not in fixed
     assert "## 典型例题" in fixed
     assert "`PROMPT $P$G`" in fixed
 
 
-def test_public_markdown_hides_legacy_mermaid_placeholder() -> None:
-    raw = "# 函数\n\n<!-- [MERMAID: 函数的整体知识脉络图] -->\n\n正文。"
-
-    fixed = sanitize_public_markdown(raw)
-
-    assert "MERMAID:" not in fixed
-    assert "<!--" not in fixed
-    assert "正文。" in fixed
-
-
-def test_normalize_keeps_github_callout_marker_as_separate_quote_paragraph() -> None:
+def test_normalize_separates_github_callout_markers_and_adjacent_blocks() -> None:
     raw = "\n".join(
         [
             "> [!IMPORTANT]",
             "> 从方程到函数的转化，本质是从点态求解转向整体建模。",
             "",
             "> [!WARNING] 不要把无实数根误判为无解。",
-        ]
-    )
-
-    fixed = normalize_markdown_rendering(raw)
-
-    assert "> [!IMPORTANT]\n>\n> 从方程到函数的转化" in fixed
-    assert "> [!WARNING]\n>\n> 不要把无实数根误判为无解。" in fixed
-
-
-def test_normalize_splits_adjacent_quoted_callouts_without_blank_line() -> None:
-    raw = "\n".join(
-        [
-            "> [!WARNING]",
-            ">",
-            "> ⚠️ 易错边界：忽视字母的取值范围。",
             "> 例如，十位数字不能为 0。",
             "> [!NOTE]",
             ">",
@@ -553,6 +449,8 @@ def test_normalize_splits_adjacent_quoted_callouts_without_blank_line() -> None:
 
     fixed = normalize_markdown_rendering(raw)
 
+    assert "> [!IMPORTANT]\n>\n> 从方程到函数的转化" in fixed
+    assert "> [!WARNING]\n>\n> 不要把无实数根误判为无解。" in fixed
     assert "> 例如，十位数字不能为 0。\n\n> [!NOTE]" in fixed
     assert "> [!NOTE]\n>\n> 🔗 本章定位：这是代数思维的起点。" in fixed
 
@@ -675,42 +573,7 @@ def test_textbook_headings_do_not_skip_from_h1_to_h3() -> None:
     assert "\n#### 学习目标与核心概念" not in fixed
 
 
-def test_textbook_headings_demote_generic_learning_function_titles() -> None:
-    raw = "\n".join(
-        [
-            "# 有理数基础",
-            "",
-            "## 学习目标",
-            "会做计算。",
-            "",
-            "## 核心概念",
-            "数轴、绝对值。",
-            "",
-            "## 易错点",
-            "符号错误。",
-            "",
-            "## 单元测试",
-            "1. 计算。",
-        ]
-    )
-
-    fixed = normalize_textbook_headings(
-        raw,
-        digest_mode="sprint",
-        fallback_title="有理数基础",
-        focus_items=[],
-    )
-
-    assert "**本章目标**" in fixed
-    assert "**知识点速览**" in fixed
-    assert "**易错点**" in fixed
-    assert "## 学习目标" not in fixed
-    assert "## 核心概念" not in fixed
-    assert "## 易错点" not in fixed
-    assert "## 单元测试" in fixed
-
-
-def test_textbook_heading_focus_drops_trailing_action_clause() -> None:
+def test_textbook_heading_focus_drops_action_clauses_but_preserves_math() -> None:
     assert (
         clean_heading_focus(
             "建立极限的基本语言与常见题型入口，先会识别题目属于哪类极限问题。",
@@ -719,9 +582,6 @@ def test_textbook_heading_focus_drops_trailing_action_clause() -> None:
         == "建立极限的基本语言与常见题型入口"
     )
     assert clean_heading_focus("理解多元函数、偏导数、全微分、方向导数等基础概念") == "理解多元函数、偏导数、全微分"
-
-
-def test_textbook_heading_focus_preserves_inline_math_symbols() -> None:
     assert clean_heading_focus("$dy=f'(x)dx$ 的使用条件", max_chars=80) == "$dy=f'(x)dx$ 的使用条件"
 
 
@@ -773,6 +633,12 @@ def test_textbook_heading_normalization_demotes_ai_scaffold_titles() -> None:
             "## 学习目标与核心概念",
             "理解连续定义。",
             "",
+            "## 核心概念",
+            "左极限、右极限和函数值。",
+            "",
+            "## 易错点",
+            "忽略定义域。",
+            "",
             "## 典型例题回顾",
             "题1. 判断连续性。",
             "",
@@ -807,6 +673,8 @@ def test_textbook_heading_normalization_demotes_ai_scaffold_titles() -> None:
     )
 
     assert "\n**本章目标与知识点**" in fixed
+    assert "\n**知识点速览**" in fixed
+    assert "\n**易错点**" in fixed
     assert "\n**例题回顾**" in fixed
     assert "\n**高频规则**" in fixed
     assert "\n**练习**" in fixed
@@ -821,6 +689,8 @@ def test_textbook_heading_normalization_demotes_ai_scaffold_titles() -> None:
     assert "## 学习大纲" not in fixed
     assert "## 典型方法与例题" not in fixed
     assert "## 章末小结" not in fixed
+    assert "## 核心概念" not in fixed
+    assert "## 易错点" not in fixed
 
 
 def test_textbook_heading_normalization_drops_repeated_visible_titles() -> None:
@@ -984,7 +854,10 @@ def test_single_file_html_validator_reports_sidecar_risks() -> None:
     html = (
         "<html><head><style>@import \"https://example.com/x.css\";"
         ".hero{background-image:url(https://example.com/a.png)}</style></head>"
-        "<body><script src=\"https://example.com/x.js\"></script><script>localStorage.getItem('x')</script></body></html>"
+        "<body><script src=\"https://example.com/x.js\"></script><script>localStorage.getItem('x')</script>"
+        "<iframe src=\"https://example.com/embed\"></iframe>"
+        "<object data=\"//cdn.example.com/diagram.svg\"></object>"
+        "<img srcset=\"local.png 1x, https://example.com/remote.png 2x\" alt=\"\" /></body></html>"
     )
 
     issues = validate_single_file_html(html)
@@ -994,49 +867,10 @@ def test_single_file_html_validator_reports_sidecar_risks() -> None:
     assert "HTML sidecar 包含外部样式 import。" in issues
     assert "HTML sidecar 包含远程样式资源。" in issues
     assert "HTML sidecar 包含不允许的联网或持久化 API。" in issues
-
-
-def test_single_file_html_validator_rejects_remote_resource_attributes() -> None:
-    html = """<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>demo</title>
-</head>
-<body>
-  <iframe src="https://example.com/embed"></iframe>
-  <object data="//cdn.example.com/diagram.svg"></object>
-  <video poster="https://example.com/poster.png"></video>
-  <img srcset="local.png 1x, https://example.com/remote.png 2x" alt="" />
-</body>
-</html>"""
-
-    issues = validate_single_file_html(html)
-
     assert "HTML sidecar 包含远程资源 URL。" in issues
 
 
-def test_single_file_html_validator_ignores_script_resource_string_literals() -> None:
-    html = """<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>demo</title>
-</head>
-<body>
-  <script>
-    const sample = '<iframe src="https://example.com/embed"></iframe>';
-    const link = '<object data="//cdn.example.com/diagram.svg"></object>';
-  </script>
-</body>
-</html>"""
-
-    assert validate_single_file_html(html) == []
-
-
-def test_single_file_html_validator_ignores_script_and_style_literals() -> None:
+def test_single_file_html_validator_ignores_markup_inside_literals_and_header_tags() -> None:
     html = """<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -1046,22 +880,11 @@ def test_single_file_html_validator_ignores_script_and_style_literals() -> None:
   <style>.note::before{content:"<head> text";}</style>
 </head>
 <body>
-  <script>const sample = "<head><body></body></head>";</script>
-</body>
-</html>"""
-
-    assert validate_single_file_html(html) == []
-
-
-def test_single_file_html_validator_does_not_count_header_as_head() -> None:
-    html = """<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>demo</title>
-</head>
-<body>
+  <script>
+    const sample = '<iframe src="https://example.com/embed"></iframe>';
+    const link = '<object data="//cdn.example.com/diagram.svg"></object>';
+    const shell = "<head><body></body></head>";
+  </script>
   <header><h1>函数图像交互演示</h1></header>
   <main><section>正文</section></main>
 </body>

@@ -249,8 +249,8 @@ async def test_auto_graph_sync_prewarms_exam_only_for_first_revision(monkeypatch
 
 
 @pytest.mark.anyio
-async def test_auto_graph_sync_skips_exam_prewarm_after_initial_revision(monkeypatch) -> None:
-    spawned: list[dict[str, object]] = []
+async def test_auto_graph_sync_skips_exam_prewarm_outside_first_completed_revision(monkeypatch) -> None:
+    spawned: list[dict[str, object]]
 
     class FakeBackgroundRegistry:
         def spawn(self, coro, **kwargs):
@@ -258,58 +258,33 @@ async def test_auto_graph_sync_skips_exam_prewarm_after_initial_revision(monkeyp
             spawned.append(kwargs)
             return object()
 
-    async def fake_run_graph_docs_sync_build(**kwargs):
-        assert kwargs["early_units_callback"] is None
-        return "completed"
+    for version_no, build_status in ((2, "completed"), (1, "partial_failed")):
+        spawned = []
 
-    monkeypatch.setattr(kg_builds, "_run_graph_docs_sync_build", fake_run_graph_docs_sync_build)
-    monkeypatch.setattr(kg_builds, "_current_doc_version_no", lambda *args, **kwargs: 2)
+        async def fake_run_graph_docs_sync_build(**kwargs):
+            assert kwargs["early_units_callback"] is None
+            return build_status
 
-    status = await kg_builds.run_graph_docs_sync_auto_build(
-        course_id="course_test",
-        requested_at=datetime.now(timezone.utc),
-        build_group_id="group_1",
-        build_session_id="session_1",
-        file_ids=[],
-        prompt=None,
-        docgen_state={},
-        background_task_registry=FakeBackgroundRegistry(),
-    )
+        monkeypatch.setattr(kg_builds, "_run_graph_docs_sync_build", fake_run_graph_docs_sync_build)
+        monkeypatch.setattr(
+            kg_builds,
+            "_current_doc_version_no",
+            lambda *args, version_no=version_no, **kwargs: version_no,
+        )
 
-    assert status == "completed"
-    assert spawned == []
+        status = await kg_builds.run_graph_docs_sync_auto_build(
+            course_id="course_test",
+            requested_at=datetime.now(timezone.utc),
+            build_group_id="group_1",
+            build_session_id="session_1",
+            file_ids=[],
+            prompt=None,
+            docgen_state={},
+            background_task_registry=FakeBackgroundRegistry(),
+        )
 
-
-@pytest.mark.anyio
-async def test_auto_graph_sync_skips_exam_prewarm_when_not_completed(monkeypatch) -> None:
-    spawned: list[dict[str, object]] = []
-
-    class FakeBackgroundRegistry:
-        def spawn(self, coro, **kwargs):
-            coro.close()
-            spawned.append(kwargs)
-            return object()
-
-    async def fake_run_graph_docs_sync_build(**kwargs):
-        assert kwargs["early_units_callback"] is None
-        return "partial_failed"
-
-    monkeypatch.setattr(kg_builds, "_run_graph_docs_sync_build", fake_run_graph_docs_sync_build)
-    monkeypatch.setattr(kg_builds, "_current_doc_version_no", lambda *args, **kwargs: 1)
-
-    status = await kg_builds.run_graph_docs_sync_auto_build(
-        course_id="course_test",
-        requested_at=datetime.now(timezone.utc),
-        build_group_id="group_1",
-        build_session_id="session_1",
-        file_ids=[],
-        prompt=None,
-        docgen_state={},
-        background_task_registry=FakeBackgroundRegistry(),
-    )
-
-    assert status == "partial_failed"
-    assert spawned == []
+        assert status == build_status
+        assert spawned == []
 
 
 @pytest.mark.anyio

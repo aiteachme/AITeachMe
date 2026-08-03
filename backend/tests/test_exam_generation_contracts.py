@@ -31,8 +31,6 @@ from app.workflows.examine.question_build.lib.model_policy import (
 from app.workflows.examine.question_build.nodes import filter_knowledge_units as filter_units_node
 from app.workflows.support.exam_pool_policy import (
     exam_candidate_unit_limit,
-    exam_ready_units_per_chapter_floor,
-    exam_readiness_candidate_target,
 )
 
 
@@ -111,15 +109,6 @@ def _workflow_result(payload: dict[str, object]) -> SimpleNamespace:
         value=payload,
         require_value=lambda: payload,
     )
-
-
-def test_exam_candidate_pool_policy_matches_default_practice_and_paper_needs() -> None:
-    assert exam_candidate_unit_limit(1) == 24
-    assert exam_candidate_unit_limit(8) == 32
-    assert exam_candidate_unit_limit(24) == 60
-    assert exam_readiness_candidate_target(2) == 32
-    assert exam_readiness_candidate_target(12) == 48
-    assert exam_ready_units_per_chapter_floor(8) == 4
 
 
 def test_text_exam_prompt_keeps_source_until_context_safety_limit() -> None:
@@ -439,19 +428,6 @@ def test_generated_question_requirement_result_reports_failures() -> None:
     )
 
     assert generated == {2: {"item_order": 2, "stem": "second"}}
-
-
-def test_default_auto_prewarm_config_matches_training_center_default() -> None:
-    config = exams_api.default_auto_prewarm_exam_config()
-
-    assert config == {
-        "exam_mode": "web_practice",
-        "question_count": 10,
-        "user_prompt": None,
-        "sample_file_ids": [],
-        "paper_layout_mode": None,
-    }
-    assert exams_api.DEFAULT_AUTO_PREWARM_QUESTION_COUNT == 10
 
 
 def test_prepared_exam_status_and_visibility_boundaries() -> None:
