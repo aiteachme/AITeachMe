@@ -1595,7 +1595,12 @@ def _settings_snapshot_hash(payload: dict[str, object]) -> str:
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
-def _upsert_settings_snapshot(engine: sa.Engine, settings) -> None:
+def _upsert_settings_snapshot(
+    engine: sa.Engine,
+    settings,
+    *,
+    clear_runtime_overrides: bool = False,
+) -> None:
     payload = _settings_snapshot_payload(settings)
     now = datetime.now(timezone.utc)
     settings_hash = _settings_snapshot_hash(payload)
@@ -1605,6 +1610,8 @@ def _upsert_settings_snapshot(engine: sa.Engine, settings) -> None:
         row = session.get(SystemRuntimeSettings, "runtime")
         if row is None:
             row = SystemRuntimeSettings(id="runtime", settings_json={}, created_at=now)
+        if clear_runtime_overrides:
+            row.settings_json = {}
         row.settings_source = settings_source
         row.settings_hash = settings_hash
         row.effective_settings_json = payload
@@ -1613,7 +1620,7 @@ def _upsert_settings_snapshot(engine: sa.Engine, settings) -> None:
         session.commit()
 
 
-def _refresh_system_settings_override(engine: sa.Engine) -> None:
+def _load_local_runtime_settings_override(engine: sa.Engine) -> None:
     with Session(engine, expire_on_commit=False) as session:
         row = session.get(SystemRuntimeSettings, "runtime")
         payload = row.settings_json if row is not None and isinstance(row.settings_json, dict) else {}
@@ -1625,30 +1632,31 @@ def _refresh_system_settings_override(engine: sa.Engine) -> None:
 def init_db() -> None:
     """Initialize the database schema and runtime helpers."""
 
-    settings = get_settings()
-
     if is_cloud_mode():
-        _init_postgres_db(settings)
+        set_runtime_env_overrides({})
+        clear_system_settings_override()
+        _init_postgres_db(get_settings())
     else:
-        _init_local_sqlite_db(settings)
+        _init_local_sqlite_db()
 
 
-def _init_local_sqlite_db(settings) -> None:
-    """本地 SQLite 初始化（原有逻辑）。"""
+def _init_local_sqlite_db() -> None:
+    """Initialize the local SQLite schema and runtime settings."""
 
     engine = _ensure_local_sqlite_schema(get_engine())
 
     SQLModel.metadata.create_all(engine, tables=_SCHEMA_TABLES)
-    _refresh_system_settings_override(engine)
+    _load_local_runtime_settings_override(engine)
     _ensure_default_local_user(engine)
     _ensure_builtin_question_types(engine)
-    _upsert_settings_snapshot(engine, get_settings())
+    settings = get_settings()
+    _upsert_settings_snapshot(engine, settings)
 
     logger.info(
         "database_initialized",
         mode="local",
-        embedding_model=get_settings().normalized_embedding_model,
-        embedding_dim=get_settings().embedding_dim,
+        embedding_model=settings.normalized_embedding_model,
+        embedding_dim=settings.embedding_dim,
         table_count=len(_SCHEMA_TABLES),
     )
 
@@ -1663,14 +1671,13 @@ def _init_postgres_db(settings) -> None:
 
     engine = get_engine()
     assert_postgres_runtime_schema_ready(engine=engine, settings=settings)
-    _refresh_system_settings_override(engine)
-    _upsert_settings_snapshot(engine, get_settings())
+    _upsert_settings_snapshot(engine, settings, clear_runtime_overrides=True)
 
-    dim = get_settings().embedding_dim
+    dim = settings.embedding_dim
     logger.info(
         "database_initialized",
         mode="cloud",
-        embedding_model=get_settings().normalized_embedding_model,
+        embedding_model=settings.normalized_embedding_model,
         embedding_dim=dim,
         table_count=len(_SCHEMA_TABLES),
     )

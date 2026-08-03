@@ -7,7 +7,6 @@ from copy import deepcopy
 from typing import Any
 
 from app.shared.infra.llm_support.defaults import DEFAULT_LLM_CONCURRENCY_LIMIT
-from app.shared.infra.llm_support.model_catalog import PRIMARY_GATEWAY_MODEL_ALLOWLIST
 
 from .support import get_llm_provider_model_defaults, resolve_runtime_llm_provider
 
@@ -24,10 +23,18 @@ DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
         "text_to_speech": None,
         "video_generation": None,
     },
+    "fallback_models": {
+        "light": None,
+        "primary": None,
+        "reason": None,
+    },
     "llm": {
         "api_mode": "auto",
-        "reasoning_effort": None,
-        "primary_model_allowlist": list(PRIMARY_GATEWAY_MODEL_ALLOWLIST),
+        "reasoning_efforts": {
+            "light": None,
+            "primary": None,
+            "reason": None,
+        },
         "native_web_search": "auto",
         "native_web_search_external_access": True,
         "native_file_search": "off",

@@ -23,59 +23,7 @@ def reset_settings_after_test():
 
 
 @pytest.mark.anyio
-async def test_embedding_api_base_is_passed_through_without_rewriting(monkeypatch) -> None:
-    captured: dict[str, object] = {}
-    monkeypatch.setenv("LLM_API_KEY", "primary-key")
-    monkeypatch.setenv("LLM_BASE_URL", "https://gateway.example.com")
-    monkeypatch.delenv("LLM_PROVIDER", raising=False)
-    set_system_settings_override({
-        "models": {"embedding": "text-embedding-v4"},
-        "llm": {"primary_model_allowlist": ["text-embedding-v4"]},
-    })
-
-    async def fake_call_embedding(
-        model: str,
-        batch: list[str],
-        api_base: str,
-        api_key: str | None,
-        provider: str | None = None,
-        api_version: str | None = None,
-        provider_timeout_s: int | None = None,
-        overall_timeout_s: int | None = None,
-    ) -> list[list[float]]:
-        captured.update(
-            {
-                "model": model,
-                "batch": batch,
-                "api_base": api_base,
-                "api_key": api_key,
-                "provider": provider,
-                "api_version": api_version,
-                "provider_timeout_s": provider_timeout_s,
-                "overall_timeout_s": overall_timeout_s,
-            }
-        )
-        return [[0.1, 0.2, 0.3]]
-
-    monkeypatch.setattr(embedding_api, "_call_embedding", fake_call_embedding)
-
-    vectors = await embedding_api.aembed_texts(["hello"], batch_size=1)
-
-    assert vectors == [[0.1, 0.2, 0.3]]
-    assert captured == {
-        "model": "text-embedding-v4",
-        "batch": ["hello"],
-        "api_base": "https://gateway.example.com",
-        "api_key": "primary-key",
-        "provider": "openai_compatible",
-        "api_version": None,
-        "provider_timeout_s": 120,
-        "overall_timeout_s": 122,
-    }
-
-
-@pytest.mark.anyio
-async def test_embedding_model_outside_primary_allowlist_uses_fallback_endpoint(monkeypatch) -> None:
+async def test_embedding_uses_primary_endpoint_without_rewriting_base(monkeypatch) -> None:
     captured: dict[str, object] = {}
     monkeypatch.setenv("LLM_API_KEY", "primary-key")
     monkeypatch.setenv("LLM_BASE_URL", "https://primary.example.com")
@@ -84,7 +32,6 @@ async def test_embedding_model_outside_primary_allowlist_uses_fallback_endpoint(
     monkeypatch.delenv("LLM_PROVIDER", raising=False)
     set_system_settings_override({
         "models": {"embedding": "text-embedding-v4"},
-        "llm": {"primary_model_allowlist": ["gpt-5.5"]},
     })
 
     async def fake_call_embedding(
@@ -119,8 +66,8 @@ async def test_embedding_model_outside_primary_allowlist_uses_fallback_endpoint(
     assert captured == {
         "model": "text-embedding-v4",
         "batch": ["hello"],
-        "api_base": "https://fallback.example.com/v1",
-        "api_key": "fallback-key",
+        "api_base": "https://primary.example.com",
+        "api_key": "primary-key",
         "provider": "openai_compatible",
         "api_version": None,
         "provider_timeout_s": 120,
@@ -137,7 +84,6 @@ async def test_embedding_batches_respect_explicit_concurrency_window(monkeypatch
     monkeypatch.delenv("LLM_PROVIDER", raising=False)
     set_system_settings_override({
         "models": {"embedding": "text-embedding-v4"},
-        "llm": {"primary_model_allowlist": ["text-embedding-v4"]},
     })
 
     class FakeTraceRun:

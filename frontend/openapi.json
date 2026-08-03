@@ -272,13 +272,68 @@
         }
       }
     },
+    "/api/v1/system/settings/model-capabilities/reasoning": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "读取模型推理强度能力",
+        "description": "按代码能力目录解析模型支持的 reasoning effort，不请求外部模型网关。",
+        "operationId": "get_system_model_reasoning_capabilities_api_v1_system_settings_model_capabilities_reasoning_get",
+        "parameters": [
+          {
+            "name": "model",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "title": "Model"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ModelReasoningCapabilitiesResult_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "业务校验未通过。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/system/settings/model-probe": {
       "post": {
         "tags": [
           "system"
         ],
         "summary": "测试设置页模型连通性",
-        "description": "按 reason / primary / light 槽位测试主模型网关或备用模型网关。主网关按当前主模型路由测试，备用网关强制 Chat Completions 并快速失败。",
+        "description": "按 reason / primary / light 槽位测试主模型网关或备用模型网关，并复用真实运行时的模型与接口路由。",
         "operationId": "probe_system_settings_model_api_v1_system_settings_model_probe_post",
         "requestBody": {
           "content": {
@@ -9073,6 +9128,40 @@
           "message": "ok"
         }
       },
+      "ApiResponse_ModelReasoningCapabilitiesResult_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelReasoningCapabilitiesResult"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[ModelReasoningCapabilitiesResult]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
       "ApiResponse_PaginatedData_ChatMessageItem__": {
         "properties": {
           "code": {
@@ -17496,6 +17585,37 @@
         "title": "ModelProbeResult",
         "description": "设置页模型连通性测试结果。"
       },
+      "ModelReasoningCapabilitiesResult": {
+        "properties": {
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "description": "完成首尾空白清理后的模型名。"
+          },
+          "reasoning_efforts": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoning Efforts",
+            "description": "支持的 reasoning effort；空列表表示已知不支持，null 表示模型能力未知。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model",
+          "reasoning_efforts"
+        ],
+        "title": "ModelReasoningCapabilitiesResult",
+        "description": "已知模型的 reasoning effort 能力。"
+      },
       "NodeRevisionItem": {
         "properties": {
           "title": {
@@ -18852,6 +18972,18 @@
             "title": "Ui Order",
             "description": "设置页内的稳定排序值。",
             "default": 0
+          },
+          "ui_parent_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ui Parent Key",
+            "description": "可选的同一行父设置键。"
           },
           "description": {
             "type": "string",

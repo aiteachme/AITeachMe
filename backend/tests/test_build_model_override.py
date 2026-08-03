@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 from app.models.build_planner import ConfirmedBuildPlan
+from app.shared.infra.llm_support.common import (
+    build_completion_context,
+    use_llm_runtime_snapshot,
+)
 from app.shared.infra.llm_support.model_choices import (
     build_runtime_model_override_snapshot,
     normalize_runtime_model_override,
 )
+from app.shared.infra.llm_support.routing import TaskType
 from app.workflows.digest.docgen.lib.build_lifecycle import _build_confirmed_plan_payload
 
 
@@ -59,11 +64,20 @@ def test_gemini_override_routes_only_to_fallback_endpoint(monkeypatch) -> None:
     assert snapshot.settings.models.reason == "gemini-3.1-flash-lite"
     assert snapshot.settings.models.primary == "gemini-3.1-flash-lite"
     assert snapshot.settings.models.light == "gemini-3.1-flash-lite"
+    assert snapshot.settings.fallback_models.model_dump() == {
+        "light": "gemini-3.1-flash-lite",
+        "primary": "gemini-3.1-flash-lite",
+        "reason": "gemini-3.1-flash-lite",
+    }
     assert len(snapshot.primary_endpoints) == 1
     assert snapshot.primary_endpoints[0].role == "fallback"
     assert snapshot.primary_endpoints[0].api_key == "fallback-key"
     assert snapshot.primary_endpoints[0].base_url == "https://generativelanguage.googleapis.com/v1beta"
     assert snapshot.fallback_endpoints == ()
+    with use_llm_runtime_snapshot(snapshot):
+        context = build_completion_context(task_type=TaskType.CHAT, model="light")
+    assert context.endpoint_role == "fallback"
+    assert context.model == "gemini-3.1-flash-lite"
 
 
 def test_non_primary_override_never_reuses_primary_endpoint_when_fallback_missing(monkeypatch) -> None:
@@ -76,7 +90,6 @@ def test_non_primary_override_never_reuses_primary_endpoint_when_fallback_missin
     snapshot = build_runtime_model_override_snapshot("gemini-3.1-flash-lite")
 
     assert snapshot is not None
-    assert snapshot.api_keys == ()
     assert len(snapshot.primary_endpoints) == 1
     assert snapshot.primary_endpoints[0].role == "fallback"
     assert snapshot.primary_endpoints[0].api_key is None
@@ -84,6 +97,6 @@ def test_non_primary_override_never_reuses_primary_endpoint_when_fallback_missin
     assert snapshot.fallback_endpoints == ()
 
 
-def test_legacy_runtime_model_overrides_are_not_accepted() -> None:
+def test_unknown_runtime_model_overrides_are_not_accepted() -> None:
     assert normalize_runtime_model_override("deepseek-v4-flash") is None
     assert normalize_runtime_model_override("qwen-flash") is None

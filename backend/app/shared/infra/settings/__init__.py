@@ -9,6 +9,7 @@ from .defaults import (
 )
 from .settings import (
     DocgenSettings,
+    FallbackModelsSettings,
     IngestSettings,
     InteractSettings,
     KnowledgeGraphSettings,
@@ -18,6 +19,7 @@ from .settings import (
     ObservabilitySettings,
     PlannerSettings,
     RagSettings,
+    ReasoningEffortsSettings,
     Settings,
     clear_system_settings_override,
     get_settings,
@@ -44,6 +46,7 @@ __all__ = [
     "PROJECT_SETTINGS_SOURCE_LABEL",
     "upgrade_legacy_settings_payload",
     "DocgenSettings",
+    "FallbackModelsSettings",
     "IngestSettings",
     "InteractSettings",
     "KnowledgeGraphSettings",
@@ -53,6 +56,7 @@ __all__ = [
     "ObservabilitySettings",
     "PlannerSettings",
     "RagSettings",
+    "ReasoningEffortsSettings",
     "Settings",
     "clear_system_settings_override",
     "get_settings",

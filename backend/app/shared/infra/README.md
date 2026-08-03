@@ -80,7 +80,7 @@ from app.shared.infra.search import web_search, search_knowledge
 - Provider-native tools 只通过 LLM helper 的 `provider_native_tools` kwarg 进入 Responses adapter；Chat Completions 和项目函数工具请求会丢弃该 hint，避免把 provider-specific 参数误传到普通网关。
 - `file_search` 需要外部 provider vector store，不能默认替代本地课程索引；`auto` 只在课程工具链且本地 RAG 证据不足时补充，`force` 才表示显式强制发送。
 - 全局 `settings.llm.native_*` 只提供默认能力开关；具体 workflow step 是否允许、继承或强制 provider-native tools，应由对应 `model_policy.py` 通过 `ProviderNativeToolPolicy` 声明。
-- 文本/流式普通输出会由 adapter 统一决定 `responses` 或 `chat_completions`；结构化输出和项目函数工具固定走 Chat Completions。
+- 文本/流式普通输出会由 adapter 统一决定 `responses` 或 `chat_completions`：`auto` 模式只对 `model_catalog.RESPONSES_API_MODELS` 中的文本模型优先使用 Responses，名单外默认走 Chat Completions；结构化输出和项目函数工具固定走 Chat Completions。
 - LangSmith LLM span 会记录 requested / initial / final API mode、route reason 和 provider-native tool types，用于判断是否发生 Responses 到 Chat 的自动回退。
 
 ## workflow / observability 公开接口
@@ -194,6 +194,10 @@ await acompletion_with_fallback(messages, model="light")
 ```
 
 这些逻辑名直接对应运行时 settings 的 `models.reason / primary / light`。也可以传具体模型名。`task_type` 仅作为底层兜底超时/重试画像和粗粒度观测分类保留，不应作为业务代码选择模型、采样参数或请求预算的主要方式。
+
+备用网关继续使用相同的逻辑槽位；`fallback_models.reason / primary / light` 可分别覆盖备用模型，字段为 `null` 时继承对应的 `models.*`。备用 provider 不再隐式替换为代码内置的 provider 默认模型。
+
+三层文本模型的推理强度分别由 `llm.reasoning_efforts.reason / primary / light` 控制，`null` 表示使用模型默认值，`extract` 逻辑槽位继承 `light`。设置页根据 `llm_support.model_catalog` 中已知模型能力动态显示合法选项；未知兼容网关模型可通过 YAML 显式配置。备用网关沿用同一逻辑槽位的推理强度，并按其实际模型能力过滤已知的不兼容值。
 
 ### LLM 全局并发
 

@@ -10,13 +10,13 @@ from typing import Any, Literal
 from app.shared.infra.llm_support.common import CompletionContext
 from app.shared.infra.llm_support.model_catalog import (
     ModelAPIModeHint,
+    ReasoningEffort,
     classify_known_model_api_mode,
-    is_primary_gateway_model,
     model_name_candidates,
+    reasoning_efforts_for_model,
 )
 from app.shared.infra.settings.support import normalize_llm_provider_name
 
-from .litellm_loader import load_litellm
 from .native_tools import (
     PROVIDER_NATIVE_TOOLS_KWARG,
     has_provider_native_tool_requests,
@@ -27,17 +27,6 @@ from .native_tools import (
 ResolvedAPIMode = Literal["chat_completions", "responses"]
 
 _OPENAI_REASONING_MODEL_PATTERN = re.compile(r"^(?:gpt-5(?:$|[.-])|o\d(?:$|[.-]))")
-_REASONING_MODEL_NAME_MARKERS = (
-    "reasoner",
-    "reasoning",
-    "thinking",
-    "deepseek-r1",
-    "qwen3",
-    "qwq",
-    "gpt-oss",
-    "glm-5",
-    "grok-4",
-)
 _HTML_GATEWAY_ERROR_MARKERS = (
     "<!doctype html",
     "<html",
@@ -89,19 +78,14 @@ def resolve_provider_call(
     has_allowed_native_tools = _has_allowed_provider_native_tools(context, clean_kwargs)
     model_for_routing = clean_kwargs.get("model") or context.model
     model_api_mode = classify_model_api_mode(model_for_routing)
-    should_auto_route_to_responses = (
-        model_api_mode == "responses"
-        or _should_auto_route_model_to_responses(context, clean_kwargs)
-    )
     has_basic_message_shape = _has_basic_responses_message_shape(clean_kwargs.get("messages"))
     has_chat_only_output_shape = _has_chat_only_output_shape(clean_kwargs)
     should_use_responses = (
-        (requested_mode == "responses" and model_api_mode != "chat_completions")
+        requested_mode == "responses"
         or (
             requested_mode == "auto"
             and supports_auto_responses
-            and model_api_mode != "chat_completions"
-            and (should_auto_route_to_responses or has_allowed_native_tools)
+            and (model_api_mode == "responses" or has_allowed_native_tools)
             and has_basic_message_shape
             and not has_chat_only_output_shape
         )
@@ -113,8 +97,6 @@ def resolve_provider_call(
             route_reason = "auto_provider_native_tools"
         elif model_api_mode == "responses":
             route_reason = "auto_model_catalog_responses"
-        else:
-            route_reason = "auto_reasoning_model"
         return ProviderCall(
             api_mode="responses",
             kwargs=to_responses_kwargs(
@@ -136,10 +118,6 @@ def resolve_provider_call(
         route_reason = "chat_only_output_shape"
     elif not has_basic_message_shape:
         route_reason = "chat_only_message_shape"
-    elif model_api_mode == "chat_completions" and requested_mode == "responses":
-        route_reason = "model_catalog_chat_completions_overrides_requested_responses"
-    elif model_api_mode == "chat_completions":
-        route_reason = "auto_model_catalog_chat_completions"
     elif not supports_auto_responses:
         route_reason = "auto_no_responses_support"
     elif native_tool_types and not has_allowed_native_tools:
@@ -183,7 +161,7 @@ def to_chat_kwargs(
 
     chat_kwargs = dict(call_kwargs)
     chat_kwargs.pop(PROVIDER_NATIVE_TOOLS_KWARG, None)
-    effort = chat_kwargs.pop("reasoning_effort", None) or context.settings.llm.reasoning_effort
+    effort = _resolve_reasoning_effort(context, chat_kwargs)
     if (
         effort
         and _is_official_openai_call(context, chat_kwargs)
@@ -232,7 +210,7 @@ def to_responses_kwargs(
         responses_kwargs.pop("max_tokens", None)
         responses_kwargs.pop("max_completion_tokens", None)
 
-    effort = responses_kwargs.pop("reasoning_effort", None) or context.settings.llm.reasoning_effort
+    effort = _resolve_reasoning_effort(context, responses_kwargs)
     if effort:
         reasoning = responses_kwargs.get("reasoning")
         if isinstance(reasoning, Mapping):
@@ -246,6 +224,30 @@ def to_responses_kwargs(
         else:
             responses_kwargs["tools"] = native_tools
     return responses_kwargs
+
+
+def _resolve_reasoning_effort(
+    context: CompletionContext,
+    call_kwargs: dict[str, Any],
+) -> ReasoningEffort | str | None:
+    """Resolve an explicit call override or the configured effort for this model tier."""
+
+    explicit_effort = call_kwargs.pop("reasoning_effort", None)
+    if explicit_effort:
+        return str(explicit_effort)
+
+    configured_effort = context.settings.llm.reasoning_efforts.for_selector(
+        context.model_selector,
+    )
+    if configured_effort is None:
+        return None
+
+    supported_efforts = reasoning_efforts_for_model(
+        call_kwargs.get("model") or context.model,
+    )
+    if supported_efforts is not None and configured_effort not in supported_efforts:
+        return None
+    return configured_effort
 
 
 def extract_response_text(response: Any) -> str:
@@ -356,27 +358,18 @@ def _pop_adapter_kwargs(
     if requested is None:
         if context.endpoint_role == "fallback":
             requested = "auto"
-        elif is_primary_gateway_model(context.model):
-            requested = "responses"
         else:
             requested = context.settings.llm.api_mode
     requested_text = str(requested or "auto").strip().lower()
     if requested_text not in {"auto", "chat_completions", "responses"}:
         requested_text = "auto"
-    if context.endpoint_role == "primary" and is_primary_gateway_model(context.model):
-        requested_text = "responses"
     return requested_text, clean_kwargs
 
 
 def classify_model_api_mode(model: Any) -> ModelAPIModeHint | None:
     """Return an exact model-level API mode hint for auto routing."""
 
-    known_mode = classify_known_model_api_mode(model)
-    if known_mode is not None:
-        return known_mode
-    if _is_openai_reasoning_model(model):
-        return "responses"
-    return None
+    return classify_known_model_api_mode(model)
 
 
 def _is_official_openai_call(
@@ -424,16 +417,6 @@ def _has_allowed_provider_native_tools(
     )
 
 
-def _should_auto_route_model_to_responses(
-    context: CompletionContext,
-    call_kwargs: Mapping[str, Any],
-) -> bool:
-    model = call_kwargs.get("model")
-    if _litellm_supports_reasoning_model(model, call_kwargs.get("custom_llm_provider")):
-        return True
-    return _has_reasoning_model_name(model)
-
-
 def _canonical_model_name(model: Any) -> str:
     candidates = model_name_candidates(model)
     value = candidates[-1] if candidates else ""
@@ -443,36 +426,6 @@ def _canonical_model_name(model: Any) -> str:
 def _is_openai_reasoning_model(model: Any) -> bool:
     value = _canonical_model_name(model)
     return bool(_OPENAI_REASONING_MODEL_PATTERN.match(value))
-
-
-def _litellm_supports_reasoning_model(model: Any, custom_llm_provider: Any) -> bool:
-    candidates = model_name_candidates(model)
-    if not candidates:
-        return False
-    provider_text = str(custom_llm_provider or "").strip() or None
-    provider_candidates = tuple(dict.fromkeys((provider_text, None)))
-    try:
-        litellm = load_litellm()
-    except Exception:
-        return False
-    supports_reasoning = getattr(litellm, "supports_reasoning", None)
-    if not callable(supports_reasoning):
-        return False
-    for candidate in candidates:
-        for provider in provider_candidates:
-            try:
-                if supports_reasoning(model=candidate, custom_llm_provider=provider):
-                    return True
-            except Exception:
-                continue
-    return False
-
-
-def _has_reasoning_model_name(model: Any) -> bool:
-    value = _canonical_model_name(model)
-    if _OPENAI_REASONING_MODEL_PATTERN.match(value):
-        return True
-    return any(marker in value for marker in _REASONING_MODEL_NAME_MARKERS)
 
 
 def _has_basic_responses_message_shape(messages: Any) -> bool:

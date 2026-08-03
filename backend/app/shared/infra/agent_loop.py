@@ -629,10 +629,6 @@ def _streaming_assistant_msg_to_dict(iteration: StreamingToolIteration) -> dict:
     return msg
 
 
-def _tool_stream_override_kwargs(tools: list[dict]) -> dict[str, Any]:
-    return _tool_stream_override_kwargs_with_choice(tools)
-
-
 def _tool_stream_override_kwargs_with_choice(
     tools: list[dict],
     tool_choice: str | dict[str, Any] | None = None,

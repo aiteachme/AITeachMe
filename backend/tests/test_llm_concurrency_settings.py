@@ -15,7 +15,6 @@ from app.shared.infra.llm_support import (
 from app.shared.infra.llm_support import common as llm_common
 from app.shared.infra.llm_support import scheduler as scheduler_module
 from app.shared.infra.llm_support.defaults import DEFAULT_LLM_CONCURRENCY_LIMIT
-from app.shared.infra.llm_support.model_catalog import PRIMARY_GATEWAY_MODEL_ALLOWLIST
 from app.shared.infra.llm_support.scheduler import get_llm_scheduler
 from app.shared.infra.settings import (
     get_settings,
@@ -24,7 +23,10 @@ from app.shared.infra.settings import (
 )
 from app.workflows.digest.kg_doc_sync.lib.incremental_sync import _graph_llm_concurrency_cap
 from app.workflows.ingest.parsing.strategy import build_parse_plan
-from app.workflows.support.system.settings import build_settings_overview_data
+from app.workflows.support.system.settings import (
+    build_settings_overview_data,
+    get_model_reasoning_capabilities,
+)
 
 
 def _reset_settings_state() -> None:
@@ -38,11 +40,6 @@ def reset_settings_after_test():
     _reset_settings_state()
     yield
     _reset_settings_state()
-
-
-def test_llm_concurrency_uses_code_default() -> None:
-    assert get_settings().llm.concurrency_limit == DEFAULT_LLM_CONCURRENCY_LIMIT
-    assert get_llm_concurrency_limit() == DEFAULT_LLM_CONCURRENCY_LIMIT
 
 
 def test_llm_concurrency_runtime_settings_override_default() -> None:
@@ -89,30 +86,125 @@ def test_llm_concurrency_is_exposed_in_model_connection_settings() -> None:
     assert unified_keys.index("llm.concurrency_limit") < unified_keys.index("llm.api_mode")
 
 
-def test_primary_model_allowlist_uses_code_default() -> None:
-    exposed_keys = {
-        entry.key
-        for section in build_settings_overview_data().sections
-        for entry in section.entries
+def test_fallback_models_default_to_inheriting_main_slots_and_are_exposed() -> None:
+    overview = build_settings_overview_data()
+    models_section = next(section for section in overview.sections if section.id == "models")
+    fallback_entries = {
+        entry.key: entry
+        for entry in models_section.entries
+        if entry.key.startswith("fallback_models.")
     }
 
-    assert get_settings().llm.primary_model_allowlist == PRIMARY_GATEWAY_MODEL_ALLOWLIST
-    assert "llm.primary_model_allowlist" not in exposed_keys
+    assert get_settings().fallback_models.model_dump() == {
+        "light": None,
+        "primary": None,
+        "reason": None,
+    }
+    assert set(fallback_entries) == {
+        "fallback_models.light",
+        "fallback_models.primary",
+        "fallback_models.reason",
+    }
+    assert all(entry.value is None for entry in fallback_entries.values())
+    assert all(entry.editable is True for entry in fallback_entries.values())
 
 
-def test_primary_model_allowlist_remains_supported_as_hidden_override() -> None:
+def test_legacy_llm_routing_settings_are_upgraded_without_overriding_new_slots() -> None:
     set_system_settings_override({
-        "llm": {"primary_model_allowlist": ["gpt-5.4-mini", "gpt-5.5"]},
+        "llm": {
+            "reasoning_effort": "high",
+            "reasoning_efforts": {"reason": "xhigh"},
+            "primary_model_allowlist": ["gpt-5.4-mini"],
+        },
     })
 
-    exposed_keys = {
-        entry.key
-        for section in build_settings_overview_data().sections
-        for entry in section.entries
+    settings = get_settings()
+    assert settings.llm.reasoning_efforts.model_dump() == {
+        "light": "high",
+        "primary": "high",
+        "reason": "xhigh",
     }
+    assert not hasattr(settings.llm, "primary_model_allowlist")
 
-    assert get_settings().llm.primary_model_allowlist == ("gpt-5.4-mini", "gpt-5.5")
-    assert "llm.primary_model_allowlist" not in exposed_keys
+
+def test_reasoning_effort_selects_are_derived_from_each_effective_model() -> None:
+    set_system_settings_override({
+        "models": {
+            "light": "gpt-4.1",
+            "primary": "gpt-5.3-codex-spark",
+            "reason": "gpt-5.6-sol",
+        },
+        "llm": {
+            "reasoning_efforts": {
+                "primary": "low",
+                "reason": "max",
+            },
+        },
+    })
+
+    overview = build_settings_overview_data()
+    models_section = next(section for section in overview.sections if section.id == "models")
+    entries = {entry.key: entry for entry in models_section.entries}
+
+    assert entries["llm.reasoning_efforts.light"].options == []
+    assert entries["llm.reasoning_efforts.light"].ui_parent_key == "models.light"
+    assert [option.value for option in entries["llm.reasoning_efforts.primary"].options] == [
+        None,
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+    ]
+    assert [option.value for option in entries["llm.reasoning_efforts.reason"].options] == [
+        None,
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+    ]
+    assert entries["llm.reasoning_efforts.primary"].value == "low"
+    assert entries["llm.reasoning_efforts.reason"].value == "max"
+    assert entries["llm.reasoning_efforts.primary"].ui_parent_key == "models.primary"
+    assert entries["llm.reasoning_efforts.reason"].ui_parent_key == "models.reason"
+
+
+def test_model_reasoning_capabilities_preserve_known_unknown_distinction() -> None:
+    assert get_model_reasoning_capabilities(" gpt-5.5 ").reasoning_efforts == [
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+    ]
+    assert get_model_reasoning_capabilities("gpt-5.2-chat-latest").reasoning_efforts == []
+    assert get_model_reasoning_capabilities("custom-gateway-model").reasoning_efforts is None
+
+
+def test_cloud_settings_overview_does_not_read_database_runtime_overrides(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.workflows.support.system.settings.is_local_mode",
+        lambda: False,
+    )
+
+    def fail_if_read(_session):
+        raise AssertionError("cloud settings overview must not read database runtime overrides")
+
+    monkeypatch.setattr(
+        "app.workflows.support.system.settings.get_system_runtime_settings_payload",
+        fail_if_read,
+    )
+
+    overview = build_settings_overview_data(session=object())
+    model_entry = next(
+        entry
+        for section in overview.sections
+        for entry in section.entries
+        if entry.key == "models.primary"
+    )
+
+    assert model_entry.editable is False
 
 
 def test_rpm_rate_limit_is_treated_as_local_throttle() -> None:

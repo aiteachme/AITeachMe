@@ -27,9 +27,11 @@ import type {
   ApiResponseBool,
   ApiResponseInitData,
   ApiResponseModelProbeResult,
+  ApiResponseModelReasoningCapabilitiesResult,
   ApiResponseSettingsOverviewData,
   ErrorResponse,
   FeedbackRequest,
+  GetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetParams,
   HTTPValidationError,
   InitRequest,
   ModelProbeRequest,
@@ -591,7 +593,139 @@ export const useUpdateSystemSettingsApiV1SystemSettingsPatch = <TError = ErrorRe
       > => {
       return useMutation(getUpdateSystemSettingsApiV1SystemSettingsPatchMutationOptions(options), queryClient);
     }
-    export type probeSystemSettingsModelApiV1SystemSettingsModelProbePostResponse200 = {
+    export type getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetResponse200 = {
+  data: ApiResponseModelReasoningCapabilitiesResult
+  status: 200
+}
+
+export type getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetResponse422 = {
+  data: ErrorResponse
+  status: 422
+}
+
+export type getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetResponseSuccess = (getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetResponse200) & {
+  headers: Headers;
+};
+export type getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetResponseError = (getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetResponse422 | getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetResponse500) & {
+  headers: Headers;
+};
+
+export type getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetResponse = (getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetResponseSuccess | getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetResponseError)
+
+export const getGetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetUrl = (params: GetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/system/settings/model-capabilities/reasoning?${stringifiedParams}` : `/api/v1/system/settings/model-capabilities/reasoning`
+}
+
+/**
+ * 按代码能力目录解析模型支持的 reasoning effort，不请求外部模型网关。
+ * @summary 读取模型推理强度能力
+ */
+export const getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet = async (params: GetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetParams, options?: RequestInit): Promise<getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetResponse> => {
+
+  return orvalApiClient<getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetResponse>(getGetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetQueryKey = (params?: GetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetParams,) => {
+    return [
+    `/api/v1/system/settings/model-capabilities/reasoning`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetQueryOptions = <TData = Awaited<ReturnType<typeof getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet>>, TError = ErrorResponse>(params: GetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet>>> = ({ signal }) => getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetQueryResult = NonNullable<Awaited<ReturnType<typeof getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet>>>
+export type GetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetQueryError = ErrorResponse
+
+
+export function useGetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet<TData = Awaited<ReturnType<typeof getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet>>, TError = ErrorResponse>(
+ params: GetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet>>,
+          TError,
+          Awaited<ReturnType<typeof getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet<TData = Awaited<ReturnType<typeof getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet>>, TError = ErrorResponse>(
+ params: GetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet>>,
+          TError,
+          Awaited<ReturnType<typeof getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet<TData = Awaited<ReturnType<typeof getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet>>, TError = ErrorResponse>(
+ params: GetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary 读取模型推理强度能力
+ */
+
+export function useGetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet<TData = Awaited<ReturnType<typeof getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet>>, TError = ErrorResponse>(
+ params: GetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetQueryOptions(params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+export type probeSystemSettingsModelApiV1SystemSettingsModelProbePostResponse200 = {
   data: ApiResponseModelProbeResult
   status: 200
 }
@@ -624,7 +758,7 @@ export const getProbeSystemSettingsModelApiV1SystemSettingsModelProbePostUrl = (
 }
 
 /**
- * 按 reason / primary / light 槽位测试主模型网关或备用模型网关。主网关按当前主模型路由测试，备用网关强制 Chat Completions 并快速失败。
+ * 按 reason / primary / light 槽位测试主模型网关或备用模型网关，并复用真实运行时的模型与接口路由。
  * @summary 测试设置页模型连通性
  */
 export const probeSystemSettingsModelApiV1SystemSettingsModelProbePost = async (modelProbeRequest: ModelProbeRequest, options?: RequestInit): Promise<probeSystemSettingsModelApiV1SystemSettingsModelProbePostResponse> => {

@@ -346,7 +346,35 @@ def test_settings_snapshot_and_override_refresh(monkeypatch, tmp_path: Path) -> 
         session.add(row)
         session.commit()
 
-    db_core._refresh_system_settings_override(engine)
+    db_core._load_local_runtime_settings_override(engine)
 
     assert captured["env"] == {"LLM_API_KEY": "secret"}
     assert captured["settings"] == {"models": {"primary": "override"}}
+
+
+def test_cloud_settings_snapshot_clears_runtime_overrides(monkeypatch, tmp_path: Path) -> None:
+    engine = _file_sqlite_engine(tmp_path, "cloud-settings.db")
+    SQLModel = db_core.SQLModel
+    SQLModel.metadata.create_all(engine, tables=[SystemRuntimeSettings.__table__])
+    settings = SimpleNamespace(
+        model_dump=lambda mode: {"models": {"primary": "yaml-model"}},
+    )
+
+    monkeypatch.setattr(db_core, "describe_project_settings_source", lambda: "settings.private.yaml")
+    with Session(engine) as session:
+        session.add(
+            SystemRuntimeSettings(
+                id="runtime",
+                settings_json={"models": {"primary": "stale-db-model"}},
+            )
+        )
+        session.commit()
+
+    db_core._upsert_settings_snapshot(engine, settings, clear_runtime_overrides=True)
+
+    with Session(engine) as session:
+        row = session.get(SystemRuntimeSettings, "runtime")
+        assert row is not None
+        assert row.settings_json == {}
+        assert row.effective_settings_json == {"models": {"primary": "yaml-model"}}
+        assert row.settings_source == "settings.private.yaml"

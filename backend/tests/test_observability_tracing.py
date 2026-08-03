@@ -219,60 +219,61 @@ def test_expected_cancellation_scope_is_forwarded_and_does_not_swallow(monkeypat
     assert trace_runs[2].error == repr(ordinary_cancellation)
 
 
-def test_langsmith_capture_text_defaults_to_redacted_outside_local(monkeypatch) -> None:
+def test_langsmith_capture_text_follows_cloud_defaults_and_explicit_overrides(monkeypatch) -> None:
     monkeypatch.setattr(trace_module, "is_local_mode", lambda: False)
-    monkeypatch.delenv("LANGSMITH_TRACING", raising=False)
-    monkeypatch.delenv("LANGSMITH_API_KEY", raising=False)
-    monkeypatch.delenv("LANGSMITH_CAPTURE_INPUTS", raising=False)
-    monkeypatch.delenv("LANGSMITH_CAPTURE_OUTPUTS", raising=False)
+    cases = [
+        ({}, False, False, "[redacted]", "[redacted]"),
+        (
+            {"LANGSMITH_TRACING": "true", "LANGSMITH_API_KEY": "test-key"},
+            True,
+            True,
+            "student answer",
+            "private explanation",
+        ),
+        (
+            {
+                "LANGSMITH_TRACING": "true",
+                "LANGSMITH_API_KEY": "test-key",
+                "LANGSMITH_CAPTURE_INPUTS": "false",
+                "LANGSMITH_CAPTURE_OUTPUTS": "false",
+            },
+            False,
+            False,
+            "[redacted]",
+            "[redacted]",
+        ),
+        (
+            {
+                "LANGSMITH_TRACING": "true",
+                "LANGSMITH_API_KEY": "test-key",
+                "LANGSMITH_CAPTURE_OUTPUTS": "false",
+            },
+            True,
+            False,
+            "student answer",
+            "[redacted]",
+        ),
+    ]
 
-    assert not trace_module.langsmith_capture_inputs_enabled()
-    assert not trace_module.langsmith_capture_outputs_enabled()
-    assert trace_module.sanitize_langsmith_input({"content": "student answer"}) == {
-        "content": "[redacted]"
-    }
-    assert trace_module.sanitize_langsmith_output({"content": "private explanation"}) == {
-        "content": "[redacted]"
-    }
+    for env, capture_inputs, capture_outputs, expected_input, expected_output in cases:
+        for name in (
+            "LANGSMITH_TRACING",
+            "LANGSMITH_API_KEY",
+            "LANGSMITH_CAPTURE_INPUTS",
+            "LANGSMITH_CAPTURE_OUTPUTS",
+        ):
+            monkeypatch.delenv(name, raising=False)
+        for name, value in env.items():
+            monkeypatch.setenv(name, value)
 
-
-def test_langsmith_capture_text_defaults_to_enabled_when_langsmith_configured(monkeypatch) -> None:
-    monkeypatch.setattr(trace_module, "is_local_mode", lambda: False)
-    monkeypatch.setenv("LANGSMITH_TRACING", "true")
-    monkeypatch.setenv("LANGSMITH_API_KEY", "test-key")
-    monkeypatch.delenv("LANGSMITH_CAPTURE_INPUTS", raising=False)
-    monkeypatch.delenv("LANGSMITH_CAPTURE_OUTPUTS", raising=False)
-
-    assert trace_module.langsmith_capture_inputs_enabled()
-    assert trace_module.langsmith_capture_outputs_enabled()
-    assert trace_module.sanitize_langsmith_input({"content": "student answer"}) == {
-        "content": "student answer"
-    }
-    assert trace_module.sanitize_langsmith_output({"content": "private explanation"}) == {
-        "content": "private explanation"
-    }
-
-
-def test_langsmith_capture_text_can_be_disabled_when_langsmith_configured(monkeypatch) -> None:
-    monkeypatch.setattr(trace_module, "is_local_mode", lambda: False)
-    monkeypatch.setenv("LANGSMITH_TRACING", "true")
-    monkeypatch.setenv("LANGSMITH_API_KEY", "test-key")
-    monkeypatch.setenv("LANGSMITH_CAPTURE_INPUTS", "false")
-    monkeypatch.setenv("LANGSMITH_CAPTURE_OUTPUTS", "false")
-
-    assert not trace_module.langsmith_capture_inputs_enabled()
-    assert not trace_module.langsmith_capture_outputs_enabled()
-
-
-def test_langsmith_capture_specific_env_overrides_default_capture(monkeypatch) -> None:
-    monkeypatch.setattr(trace_module, "is_local_mode", lambda: False)
-    monkeypatch.setenv("LANGSMITH_TRACING", "true")
-    monkeypatch.setenv("LANGSMITH_API_KEY", "test-key")
-    monkeypatch.setenv("LANGSMITH_CAPTURE_OUTPUTS", "false")
-    monkeypatch.delenv("LANGSMITH_CAPTURE_INPUTS", raising=False)
-
-    assert trace_module.langsmith_capture_inputs_enabled()
-    assert not trace_module.langsmith_capture_outputs_enabled()
+        assert trace_module.langsmith_capture_inputs_enabled() is capture_inputs
+        assert trace_module.langsmith_capture_outputs_enabled() is capture_outputs
+        assert trace_module.sanitize_langsmith_input({"content": "student answer"}) == {
+            "content": expected_input
+        }
+        assert trace_module.sanitize_langsmith_output({"content": "private explanation"}) == {
+            "content": expected_output
+        }
 
 
 def test_llm_trace_kwargs_record_api_mode_and_provider_native_tools(monkeypatch) -> None:

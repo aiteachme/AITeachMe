@@ -7,9 +7,10 @@ from copy import deepcopy
 from functools import lru_cache
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.shared.infra.llm_support.defaults import MAX_LLM_CONCURRENCY_LIMIT
+from app.shared.infra.llm_support.model_catalog import ReasoningEffort
 
 from .defaults import merge_default_settings, merge_settings_values
 from .support import (
@@ -63,10 +64,35 @@ class ModelsSettings(_SettingsModel):
         return self.light
 
 
+class FallbackModelsSettings(_SettingsModel):
+    """Optional text-model overrides used only by the fallback gateway."""
+
+    light: str | None = None
+    primary: str | None = None
+    reason: str | None = None
+
+
+class ReasoningEffortsSettings(_SettingsModel):
+    """Optional reasoning effort for each text-model tier."""
+
+    light: ReasoningEffort | None = None
+    primary: ReasoningEffort | None = None
+    reason: ReasoningEffort | None = None
+
+    def for_selector(self, selector: str) -> ReasoningEffort | None:
+        normalized = str(selector or "").strip().lower()
+        if normalized in {"light", "extract"}:
+            return self.light
+        if normalized == "reason":
+            return self.reason
+        if normalized == "primary":
+            return self.primary
+        return None
+
+
 class LLMSettings(_SettingsModel):
     api_mode: Literal["auto", "chat_completions", "responses"] = "auto"
-    reasoning_effort: Literal["none", "minimal", "low", "medium", "high", "xhigh"] | None = None
-    primary_model_allowlist: tuple[str, ...] = ()
+    reasoning_efforts: ReasoningEffortsSettings = Field(default_factory=ReasoningEffortsSettings)
     native_web_search: Literal["off", "auto", "force"] = "auto"
     native_web_search_external_access: bool = True
     native_file_search: Literal["off", "auto", "force"] = "off"
@@ -74,28 +100,6 @@ class LLMSettings(_SettingsModel):
     native_file_search_max_results: int = Field(default=5, ge=1, le=50)
     concurrency_limit: int = Field(ge=1, le=MAX_LLM_CONCURRENCY_LIMIT)
     enforce_request_timeout: bool
-
-    @field_validator("primary_model_allowlist", mode="before")
-    @classmethod
-    def _normalize_primary_model_allowlist(cls, value: Any) -> tuple[str, ...]:
-        if value in (None, ""):
-            return ()
-        if isinstance(value, str):
-            raw_items = value.split(",")
-        elif isinstance(value, (list, tuple, set)):
-            raw_items = value
-        else:
-            raw_items = (value,)
-
-        items: list[str] = []
-        seen: set[str] = set()
-        for item in raw_items:
-            normalized = str(item or "").strip()
-            if not normalized or normalized in seen:
-                continue
-            seen.add(normalized)
-            items.append(normalized)
-        return tuple(items)
 
 
 class InteractSettings(_SettingsModel):
@@ -154,6 +158,7 @@ class Settings(_SettingsModel):
     """
 
     models: ModelsSettings
+    fallback_models: FallbackModelsSettings
     llm: LLMSettings
     interact: InteractSettings
     planner: PlannerSettings
@@ -338,6 +343,7 @@ def get_settings() -> Settings:
 
 __all__ = [
     "DocgenSettings",
+    "FallbackModelsSettings",
     "IngestSettings",
     "InteractSettings",
     "KnowledgeGraphSettings",
@@ -346,6 +352,7 @@ __all__ = [
     "ObservabilitySettings",
     "PlannerSettings",
     "RagSettings",
+    "ReasoningEffortsSettings",
     "Settings",
     "clear_system_settings_override",
     "get_settings",
