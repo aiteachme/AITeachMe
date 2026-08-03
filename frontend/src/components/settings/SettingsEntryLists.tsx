@@ -79,7 +79,9 @@ export const ReadonlySettingsRow = memo(function ReadonlySettingsRow({
   entry: SettingEntry;
   inlineEntry?: SettingEntry;
 }) {
-  const visibleInlineEntry = entryOptions(inlineEntry).length ? inlineEntry : undefined;
+  const visibleInlineEntry = inlineEntry && (
+    entryOptions(inlineEntry).length || hasInlineValue(inlineEntry.value)
+  ) ? inlineEntry : undefined;
   return (
     <div className={SETTINGS_STYLES.list.readonlyItem}>
       <FieldLabelBlock
@@ -160,9 +162,14 @@ function reasoningOptions(efforts: string[] | null | undefined) {
   ];
 }
 
+function hasInlineValue(value: unknown): value is Exclude<SettingPrimitive, null> {
+  return isPrimitive(value) && value !== null && (typeof value !== "string" || value.trim().length > 0);
+}
+
 function useLiveInlineEntry(
   entry: SettingEntry | undefined,
   parentValue: string,
+  value: SettingPrimitive | undefined,
 ): SettingEntry | undefined {
   const modelKey = parentValue.trim().toLowerCase();
   const previousModelKeyRef = useRef(modelKey);
@@ -231,9 +238,9 @@ function useLiveInlineEntry(
   }, [entry?.key, modelKey]);
 
   return useMemo(() => {
-    if (!entry || !options.length) return undefined;
+    if (!entry || (!options.length && !hasInlineValue(value))) return undefined;
     return entry.options === options ? entry : { ...entry, options };
-  }, [entry, options]);
+  }, [entry, options, value]);
 }
 
 function InlineSettingControl({
@@ -246,12 +253,21 @@ function InlineSettingControl({
   onChange?: (key: string, value: SettingPrimitive) => void;
 }) {
   const options = entryOptions(entry);
-  if (!options?.length) return null;
-
-  const controlId = `settings-${entry.key.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`;
   const rawValue = value === undefined && isPrimitive(entry.value) ? entry.value : value;
   const resolvedValue = typeof rawValue === "string" ? rawValue : null;
   const selectedLabel = options.find((option) => option.value === resolvedValue)?.label;
+
+  if (!options.length) {
+    if (!hasInlineValue(resolvedValue)) return null;
+    return (
+      <ReadonlyValue className="flex min-h-11 items-center gap-2 whitespace-nowrap">
+        <span className="text-[12px] text-zinc-400 dark:text-slate-500">推理强度</span>
+        <span className="min-w-0 truncate">{resolvedValue}</span>
+      </ReadonlyValue>
+    );
+  }
+
+  const controlId = `settings-${entry.key.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`;
 
   if (!entry.editable || !onChange) {
     return (
@@ -310,6 +326,7 @@ export const EditableSettingsRow = memo(function EditableSettingsRow({
   const liveInlineEntry = useLiveInlineEntry(
     inlineEntry,
     localValue.trim() || inlineFallbackValue || "",
+    inlineValue,
   );
   const inlineEntryKey = inlineEntry?.key;
 

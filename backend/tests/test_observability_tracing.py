@@ -288,6 +288,7 @@ def test_llm_trace_kwargs_record_api_mode_and_provider_native_tools(monkeypatch)
         messages=[{"role": "user", "content": "hello"}],
         call_kwargs={
             "model": "gpt-5.5",
+            "reasoning": {"effort": "high"},
             "tools": [
                 {"type": "web_search"},
                 {"type": "file_search", "vector_store_ids": ["vs_test"]},
@@ -297,6 +298,8 @@ def test_llm_trace_kwargs_record_api_mode_and_provider_native_tools(monkeypatch)
 
     metadata = kwargs["extra_metadata"]
     assert metadata["llm_initial_api_mode"] == "responses"
+    assert metadata["ls_invocation_params"]["reasoning"] == {"effort": "high"}
+    assert metadata["ls_reasoning_effort"] == "high"
     assert metadata["llm_tool_types"] == ["web_search", "file_search"]
     assert metadata["llm_provider_native_tool_types"] == ["web_search", "file_search"]
 

@@ -1200,7 +1200,11 @@ def test_langsmith_trace_metadata_records_actual_model_route():
         model_name="gpt-5.5",
         mode="text_chat_completions",
         messages=[{"role": "user", "content": "hello"}],
-        call_kwargs={"model": "gpt-5.5", "messages": [{"role": "user", "content": "hello"}]},
+        call_kwargs={
+            "model": "gpt-5.5",
+            "messages": [{"role": "user", "content": "hello"}],
+            "reasoning_effort": "low",
+        },
         endpoint_role="fallback",
         model_selector="light",
     )
@@ -1208,6 +1212,8 @@ def test_langsmith_trace_metadata_records_actual_model_route():
     metadata = trace_kwargs["extra_metadata"]
     assert trace_kwargs["inputs"]["model"] == "gpt-5.5"
     assert metadata["ls_model_name"] == "gpt-5.5"
+    assert metadata["ls_invocation_params"]["reasoning_effort"] == "low"
+    assert metadata["ls_reasoning_effort"] == "low"
     assert metadata["llm_endpoint_role"] == "fallback"
     assert metadata["llm_model_selector"] == "light"
 

@@ -200,6 +200,7 @@ def _langsmith_invocation_params(call_kwargs: Mapping[str, Any]) -> dict[str, An
         "stream",
         "tool_choice",
         "response_format",
+        "reasoning_effort",
         "reasoning",
     ):
         value = call_kwargs.get(key)
@@ -210,6 +211,20 @@ def _langsmith_invocation_params(call_kwargs: Mapping[str, Any]) -> dict[str, An
             continue
         if key in {"temperature", "top_p", "presence_penalty", "frequency_penalty"}:
             invocation_params[key] = float(value)
+            continue
+        if key == "reasoning_effort":
+            invocation_params[key] = str(value)
+            continue
+        if key == "reasoning" and isinstance(value, Mapping):
+            sanitized_reasoning = _sanitize_langsmith_value(
+                value,
+                capture_text=capture_inputs,
+                field_name=key,
+            )
+            effort = value.get("effort")
+            if effort not in (None, ""):
+                sanitized_reasoning["effort"] = str(effort)
+            invocation_params[key] = sanitized_reasoning
             continue
         if isinstance(value, bool):
             invocation_params[key] = value
@@ -343,6 +358,12 @@ def _langsmith_llm_metadata(
             metadata["ls_max_tokens"] = invocation_params["max_output_tokens"]
         if "stop" in invocation_params:
             metadata["ls_stop"] = invocation_params["stop"]
+        reasoning_effort = invocation_params.get("reasoning_effort")
+        reasoning = invocation_params.get("reasoning")
+        if reasoning_effort is None and isinstance(reasoning, Mapping):
+            reasoning_effort = reasoning.get("effort")
+        if reasoning_effort not in (None, ""):
+            metadata["ls_reasoning_effort"] = reasoning_effort
     if attempt is not None:
         metadata["attempt"] = attempt
     return metadata
