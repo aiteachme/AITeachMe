@@ -1,4 +1,7 @@
-import { memo, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+
+import { apiClient } from "../../api/client";
+import type { ModelReasoningCapabilitiesResult } from "../../api/generated/model/modelReasoningCapabilitiesResult";
 
 import {
   BundledSecretValue,
@@ -21,7 +24,7 @@ import {
   SECRET_DISPLAY_MASK,
   SECRET_PRESERVE_VALUE,
 } from "./settingsHelpers";
-import type { DraftRecord, SettingEntry, SettingPrimitive } from "./settingsTypes";
+import type { ApiEnvelope, DraftRecord, SettingEntry, SettingPrimitive } from "./settingsTypes";
 
 function displayDraftValue(value: SettingPrimitive, isSavedSecretDraft: boolean): string {
   if (isSavedSecretDraft) return SECRET_DISPLAY_MASK;
@@ -71,9 +74,12 @@ interface ReadonlySettingsListProps {
 
 export const ReadonlySettingsRow = memo(function ReadonlySettingsRow({
   entry,
+  inlineEntry,
 }: {
   entry: SettingEntry;
+  inlineEntry?: SettingEntry;
 }) {
+  const visibleInlineEntry = entryOptions(inlineEntry).length ? inlineEntry : undefined;
   return (
     <div className={SETTINGS_STYLES.list.readonlyItem}>
       <FieldLabelBlock
@@ -82,11 +88,16 @@ export const ReadonlySettingsRow = memo(function ReadonlySettingsRow({
         helper={renderEntryHelper(entry.key)}
       />
       <div className={SETTINGS_STYLES.list.readonlyControl}>
-        {isBundledSecretEntry(entry) ? (
-          <BundledSecretValue />
-        ) : (
-          <ReadonlyValue>{displayValue(entry)}</ReadonlyValue>
-        )}
+        <div className={visibleInlineEntry ? SETTINGS_STYLES.list.pairedControls : undefined}>
+          <div>
+            {isBundledSecretEntry(entry) ? (
+              <BundledSecretValue />
+            ) : (
+              <ReadonlyValue>{displayValue(entry)}</ReadonlyValue>
+            )}
+          </div>
+          {visibleInlineEntry ? <InlineSettingControl entry={visibleInlineEntry} /> : null}
+        </div>
       </div>
     </div>
   );
@@ -123,6 +134,150 @@ interface EditableSettingsRowProps {
   value: SettingPrimitive;
   onChange: (key: string, value: SettingPrimitive) => void;
   afterControl?: ReactNode;
+  commitTextOnChange?: boolean;
+  inlineFallbackValue?: string;
+  inlineEntry?: SettingEntry;
+  inlineValue?: SettingPrimitive;
+  onInlineChange?: (key: string, value: SettingPrimitive) => void;
+}
+
+const REASONING_CAPABILITY_DEBOUNCE_MS = 120;
+const reasoningOptionsCache = new Map<
+  string,
+  Array<{ value: string | null; label: string }>
+>();
+
+function entryOptions(entry: SettingEntry | undefined) {
+  if (!entry) return [];
+  return entry.options?.length ? entry.options : SETTING_SELECT_OPTIONS[entry.key] ?? [];
+}
+
+function reasoningOptions(efforts: string[] | null | undefined) {
+  if (!efforts?.length) return [];
+  return [
+    { value: null, label: "模型默认" },
+    ...efforts.map((effort) => ({ value: effort, label: effort })),
+  ];
+}
+
+function useLiveInlineEntry(
+  entry: SettingEntry | undefined,
+  parentValue: string,
+): SettingEntry | undefined {
+  const modelKey = parentValue.trim().toLowerCase();
+  const previousModelKeyRef = useRef(modelKey);
+  const previousServerOptionsRef = useRef(entry?.options);
+  const [options, setOptions] = useState(() => entryOptions(entry));
+
+  useEffect(() => {
+    if (previousServerOptionsRef.current === entry?.options) {
+      return;
+    }
+    previousServerOptionsRef.current = entry?.options;
+    const nextOptions = entryOptions(entry);
+    setOptions(nextOptions);
+    if (modelKey) {
+      reasoningOptionsCache.set(modelKey, nextOptions);
+    }
+  }, [entry?.options, modelKey]);
+
+  useEffect(() => {
+    if (!entry || !entry.key.startsWith("llm.reasoning_efforts.")) {
+      setOptions(entryOptions(entry));
+      return;
+    }
+    if (previousModelKeyRef.current === modelKey) {
+      return;
+    }
+    previousModelKeyRef.current = modelKey;
+
+    if (!modelKey) {
+      setOptions([]);
+      return;
+    }
+
+    const cachedOptions = reasoningOptionsCache.get(modelKey);
+    if (cachedOptions) {
+      setOptions(cachedOptions);
+      return;
+    }
+
+    setOptions([]);
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await apiClient<ApiEnvelope<ModelReasoningCapabilitiesResult>>({
+          url: "/api/v1/system/settings/model-capabilities/reasoning",
+          method: "GET",
+          params: { model: modelKey },
+          signal: controller.signal,
+        });
+        const nextOptions = reasoningOptions(response.data.reasoning_efforts);
+        reasoningOptionsCache.set(modelKey, nextOptions);
+        if (!controller.signal.aborted) {
+          setOptions(nextOptions);
+        }
+      } catch {
+        if (!controller.signal.aborted) {
+          setOptions([]);
+        }
+      }
+    }, REASONING_CAPABILITY_DEBOUNCE_MS);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [entry?.key, modelKey]);
+
+  return useMemo(() => {
+    if (!entry || !options.length) return undefined;
+    return entry.options === options ? entry : { ...entry, options };
+  }, [entry, options]);
+}
+
+function InlineSettingControl({
+  entry,
+  value,
+  onChange,
+}: {
+  entry: SettingEntry;
+  value?: SettingPrimitive;
+  onChange?: (key: string, value: SettingPrimitive) => void;
+}) {
+  const options = entryOptions(entry);
+  if (!options?.length) return null;
+
+  const controlId = `settings-${entry.key.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`;
+  const rawValue = value === undefined && isPrimitive(entry.value) ? entry.value : value;
+  const resolvedValue = typeof rawValue === "string" ? rawValue : null;
+  const selectedLabel = options.find((option) => option.value === resolvedValue)?.label;
+
+  if (!entry.editable || !onChange) {
+    return (
+      <ReadonlyValue
+        className="flex min-h-11 items-center gap-2 whitespace-nowrap"
+      >
+        <span className="text-[12px] text-zinc-400 dark:text-slate-500">推理强度</span>
+        <span className="min-w-0 truncate">{selectedLabel ?? displayValue(entry)}</span>
+      </ReadonlyValue>
+    );
+  }
+
+  return (
+    <div className={SETTINGS_STYLES.list.inlineControl} title={entry.description}>
+      <label htmlFor={controlId} className="sr-only">
+        {entry.label}
+      </label>
+      <SelectInput
+        id={controlId}
+        value={resolvedValue}
+        onChange={(next) => onChange(entry.key, next)}
+        options={options}
+        prefixLabel="推理强度"
+      />
+    </div>
+  );
 }
 
 export const EditableSettingsRow = memo(function EditableSettingsRow({
@@ -130,6 +285,11 @@ export const EditableSettingsRow = memo(function EditableSettingsRow({
   value,
   onChange,
   afterControl,
+  commitTextOnChange = false,
+  inlineFallbackValue,
+  inlineEntry,
+  inlineValue,
+  onInlineChange,
 }: EditableSettingsRowProps) {
   const selectOptions = useMemo(
     () => entry.options?.length ? entry.options : SETTING_SELECT_OPTIONS[entry.key],
@@ -147,6 +307,11 @@ export const EditableSettingsRow = memo(function EditableSettingsRow({
   );
   const [isReplacingSavedSecret, setIsReplacingSavedSecret] = useState(false);
   const isShowingSavedSecretMask = Boolean(isSavedSecretDraft && !isReplacingSavedSecret);
+  const liveInlineEntry = useLiveInlineEntry(
+    inlineEntry,
+    localValue.trim() || inlineFallbackValue || "",
+  );
+  const inlineEntryKey = inlineEntry?.key;
 
   useEffect(() => {
     const nextValue = displayDraftValue(value, isSavedSecretDraft);
@@ -155,6 +320,23 @@ export const EditableSettingsRow = memo(function EditableSettingsRow({
       setIsReplacingSavedSecret(false);
     }
   }, [isSavedSecretDraft, value]);
+
+  useEffect(() => {
+    if (
+      !liveInlineEntry ||
+      !onInlineChange ||
+      inlineValue === null ||
+      inlineValue === undefined
+    ) {
+      return;
+    }
+    const isStillSupported = entryOptions(liveInlineEntry).some(
+      (option) => option.value === inlineValue,
+    );
+    if (!isStillSupported) {
+      onInlineChange(liveInlineEntry.key, null);
+    }
+  }, [inlineValue, liveInlineEntry, onInlineChange]);
 
   const handleBooleanToggle = useCallback(() => {
     if (typeof value === "boolean") {
@@ -165,6 +347,17 @@ export const EditableSettingsRow = memo(function EditableSettingsRow({
   const handleValueChange = useCallback((next: string) => {
     if (!isSecretInput) {
       setLocalValue((prev) => (prev === next ? prev : next));
+      if (commitTextOnChange) {
+        onChange(entry.key, parseInputValue(next, value));
+        if (
+          inlineEntryKey &&
+          onInlineChange &&
+          inlineValue !== null &&
+          inlineValue !== undefined
+        ) {
+          onInlineChange(inlineEntryKey, null);
+        }
+      }
       return;
     }
 
@@ -183,10 +376,14 @@ export const EditableSettingsRow = memo(function EditableSettingsRow({
     onChange(entry.key, parseInputValue(nextSecret, isSavedSecretDraft ? null : value));
   }, [
     entry.key,
+    commitTextOnChange,
     isSavedSecretDraft,
     isSecretInput,
     isReplacingSavedSecret,
+    inlineEntryKey,
+    inlineValue,
     onChange,
+    onInlineChange,
     value,
   ]);
 
@@ -276,49 +473,60 @@ export const EditableSettingsRow = memo(function EditableSettingsRow({
       />
 
       <div className={SETTINGS_STYLES.list.controlWrap}>
-        {selectOptions ? (
-          <SelectInput
-            id={controlId}
-            value={value === null ? null : localValue}
-            onChange={handleSelectChange}
-            options={selectOptions}
-          />
-        ) : resolvedInputType === "password" ? (
-          <SecretInput
-            id={controlId}
-            value={localValue}
-            onChange={handleValueChange}
-            onFocus={handleSecretFocus}
-            onBlur={commitLocalValue}
-            placeholder={
-              isConfiguredSecret
-                ? "输入新值可替换"
-                : entry.default_value === null || entry.default_value === undefined
-                  ? "请输入 Token"
-                  : String(entry.default_value)
-            }
-            revealValue={isShowingSavedSecretMask ? secretRevealValue : undefined}
-            selectOnFocus={isShowingSavedSecretMask}
-            showToggle={
-              (isShowingSavedSecretMask && secretRevealValue !== null) ||
-              (!isShowingSavedSecretMask && localValue.length > 0)
-            }
-            statusText={secretStatusText}
-          />
-        ) : (
-          <TextInput
-            id={controlId}
-            value={localValue}
-            onChange={handleValueChange}
-            onBlur={commitLocalValue}
-            placeholder={
-              entry.default_value === null || entry.default_value === undefined
-                ? "留空"
-                : String(entry.default_value)
-            }
-            type={resolvedInputType}
-          />
-        )}
+        <div className={liveInlineEntry ? SETTINGS_STYLES.list.pairedControls : undefined}>
+          <div>
+            {selectOptions ? (
+              <SelectInput
+                id={controlId}
+                value={value === null ? null : localValue}
+                onChange={handleSelectChange}
+                options={selectOptions}
+              />
+            ) : resolvedInputType === "password" ? (
+              <SecretInput
+                id={controlId}
+                value={localValue}
+                onChange={handleValueChange}
+                onFocus={handleSecretFocus}
+                onBlur={commitLocalValue}
+                placeholder={
+                  isConfiguredSecret
+                    ? "输入新值可替换"
+                    : entry.default_value === null || entry.default_value === undefined
+                      ? "请输入 Token"
+                      : String(entry.default_value)
+                }
+                revealValue={isShowingSavedSecretMask ? secretRevealValue : undefined}
+                selectOnFocus={isShowingSavedSecretMask}
+                showToggle={
+                  (isShowingSavedSecretMask && secretRevealValue !== null) ||
+                  (!isShowingSavedSecretMask && localValue.length > 0)
+                }
+                statusText={secretStatusText}
+              />
+            ) : (
+              <TextInput
+                id={controlId}
+                value={localValue}
+                onChange={handleValueChange}
+                onBlur={commitLocalValue}
+                placeholder={
+                  entry.default_value === null || entry.default_value === undefined
+                    ? "留空"
+                    : String(entry.default_value)
+                }
+                type={resolvedInputType}
+              />
+            )}
+          </div>
+          {liveInlineEntry ? (
+            <InlineSettingControl
+              entry={liveInlineEntry}
+              value={inlineValue}
+              onChange={onInlineChange}
+            />
+          ) : null}
+        </div>
         {afterControl ? <div className="mt-3">{afterControl}</div> : null}
       </div>
     </div>
@@ -327,7 +535,12 @@ export const EditableSettingsRow = memo(function EditableSettingsRow({
   prev.entry === next.entry &&
   prev.value === next.value &&
   prev.onChange === next.onChange &&
-  prev.afterControl === next.afterControl
+  prev.afterControl === next.afterControl &&
+  prev.commitTextOnChange === next.commitTextOnChange &&
+  prev.inlineFallbackValue === next.inlineFallbackValue &&
+  prev.inlineEntry === next.inlineEntry &&
+  prev.inlineValue === next.inlineValue &&
+  prev.onInlineChange === next.onInlineChange
 ));
 
 export function EditableSettingsList({

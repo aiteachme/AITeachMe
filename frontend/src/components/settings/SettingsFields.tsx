@@ -254,9 +254,16 @@ interface SelectInputProps {
   value: string | null;
   onChange: (value: string | null) => void;
   options: { value: string | null; label: string }[];
+  prefixLabel?: string;
 }
 
-export function SelectInput({ id, value, onChange, options }: SelectInputProps) {
+export function SelectInput({
+  id,
+  value,
+  onChange,
+  options,
+  prefixLabel,
+}: SelectInputProps) {
   const generatedId = useId();
   const triggerId = id ?? `settings-select-${generatedId}`;
   const listboxId = `${triggerId}-listbox`;
@@ -426,8 +433,15 @@ export function SelectInput({ id, value, onChange, options }: SelectInputProps) 
           open ? SETTINGS_STYLES.field.selectTriggerOpen : undefined,
         )}
       >
-        <span className={SETTINGS_STYLES.field.selectValue}>
-          {selectedOption?.label ?? value}
+        <span className="flex min-w-0 items-center gap-2">
+          {prefixLabel ? (
+            <span className="shrink-0 text-[12px] text-zinc-400 dark:text-slate-500">
+              {prefixLabel}
+            </span>
+          ) : null}
+          <span className={SETTINGS_STYLES.field.selectValue}>
+            {selectedOption?.label ?? value}
+          </span>
         </span>
         <ChevronDown
           className={cn(
