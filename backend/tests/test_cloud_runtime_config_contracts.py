@@ -4,11 +4,13 @@ import asyncio
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from app import main as app_main
 from app.shared.infra.runtime import cloud_config, mode
 from app.shared.infra.storage import config as storage_config
-from scripts import check_cloud_db, start_cloud_app
+from app.shared.infra.settings import Settings
+from scripts import bootstrap_cloud_db, check_cloud_db, start_cloud_app
 
 
 def _valid_cloud_env() -> dict[str, str]:
@@ -54,6 +56,26 @@ def test_cloud_runtime_config_accepts_complete_static_s3(
     _patch_cloud_env(monkeypatch, _valid_cloud_env())
 
     assert cloud_config.collect_cloud_runtime_config_errors() == []
+
+
+def test_cloud_runtime_config_reports_settings_schema_mismatch_without_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with pytest.raises(ValidationError) as caught:
+        Settings.model_validate(
+            {"fallback_models": {"removed_field": "must-not-appear-in-errors"}}
+        )
+
+    def raise_validation_error():
+        raise caught.value
+
+    _patch_cloud_env(monkeypatch, _valid_cloud_env())
+    monkeypatch.setattr(cloud_config, "get_project_settings", raise_validation_error)
+
+    errors = cloud_config.collect_cloud_runtime_config_errors()
+
+    assert any("fallback_models.removed_field" in error for error in errors)
+    assert all("must-not-appear-in-errors" not in error for error in errors)
 
 
 @pytest.mark.parametrize(
@@ -143,6 +165,26 @@ def test_cloud_entrypoint_stops_before_bootstrap_when_config_is_invalid(
     )
 
     assert start_cloud_app.main([]) == 2
+
+
+def test_cloud_database_bootstrap_stops_before_inspection_on_settings_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(bootstrap_cloud_db, "is_cloud_mode", lambda: True)
+    monkeypatch.setattr(
+        bootstrap_cloud_db,
+        "collect_project_settings_config_errors",
+        lambda: ["project settings schema mismatch at fallback_models"],
+    )
+    monkeypatch.setattr(
+        bootstrap_cloud_db,
+        "_inspect_database_state",
+        lambda: pytest.fail("database inspection must not run for invalid settings"),
+    )
+
+    assert bootstrap_cloud_db.main([]) == 2
+    assert "stopped before database inspection" in capsys.readouterr().err
 
 
 def test_cloud_lifespan_rejects_invalid_config_before_database_init(

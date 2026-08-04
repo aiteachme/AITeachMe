@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from pydantic import ValidationError
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
 
 from app.shared.infra.env_support import get_env
+from app.shared.infra.settings import get_project_settings
 
 _MIN_AUTH_TOKEN_SECRET_LENGTH = 32
 _TRUE_VALUES = {"1", "true", "yes", "on"}
@@ -15,10 +17,36 @@ def _env_value(name: str) -> str:
     return (get_env(name) or "").strip()
 
 
+def collect_project_settings_config_errors() -> list[str]:
+    """Return project-settings schema errors without echoing configured values."""
+
+    try:
+        get_project_settings()
+    except ValidationError as exc:
+        errors: list[str] = []
+        for detail in exc.errors(
+            include_url=False,
+            include_context=False,
+            include_input=False,
+        ):
+            location = ".".join(str(item) for item in detail.get("loc", ())) or "<root>"
+            message = str(detail.get("msg") or "invalid value")
+            errors.append(
+                "project settings schema mismatch at "
+                f"{location}: {message}; deploy a backend image compatible "
+                "with the mounted PROJECT_SETTINGS_PATH"
+            )
+        return errors or [
+            "project settings are incompatible with this backend build; "
+            "deploy a matching backend image and PROJECT_SETTINGS_PATH"
+        ]
+    return []
+
+
 def collect_cloud_runtime_config_errors() -> list[str]:
     """Return every cloud startup configuration error without exposing secrets."""
 
-    errors: list[str] = []
+    errors = collect_project_settings_config_errors()
 
     if _env_value("APP_MODE").lower() != "cloud":
         errors.append("APP_MODE must be explicitly set to cloud")
@@ -90,4 +118,7 @@ def collect_cloud_runtime_config_errors() -> list[str]:
     return errors
 
 
-__all__ = ["collect_cloud_runtime_config_errors"]
+__all__ = [
+    "collect_cloud_runtime_config_errors",
+    "collect_project_settings_config_errors",
+]
