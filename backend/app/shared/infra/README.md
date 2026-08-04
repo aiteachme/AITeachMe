@@ -195,6 +195,8 @@ await acompletion_with_fallback(messages, model="light")
 
 这些逻辑名直接对应运行时 settings 的 `models.reason / primary / light`。也可以传具体模型名。`task_type` 仅作为底层兜底超时/重试画像和粗粒度观测分类保留，不应作为业务代码选择模型、采样参数或请求预算的主要方式。
 
+前端的“自动 / 深度推理 / 均衡 / 快速”是一次请求的模型策略：`settings` 保留 workflow 原有分层，另外三种分别把本次 workflow 的 `reason / primary / light` 全部映射到设置中的同名槽位。映射同时覆盖备用网关模型和 reasoning effort，因此切换实际模型只需要修改设置页或 YAML，不需要改前端源码。
+
 备用网关继续使用相同的逻辑槽位；`fallback_models.reason / primary / light` 可分别覆盖备用模型，字段为 `null` 时继承对应的 `models.*`。备用 provider 不再隐式替换为代码内置的 provider 默认模型。
 
 三层文本模型的推理强度分别由 `llm.reasoning_efforts.reason / primary / light` 控制，`null` 表示使用模型默认值，`extract` 逻辑槽位继承 `light`。设置页根据 `llm_support.model_catalog` 中已知模型能力动态显示合法选项；未知兼容网关模型可通过 YAML 显式配置。备用网关沿用同一逻辑槽位的推理强度，并按其实际模型能力过滤已知的不兼容值。

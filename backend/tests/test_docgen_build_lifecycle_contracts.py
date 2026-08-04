@@ -145,7 +145,7 @@ def _confirmed_plan(*, status: str = "confirmed") -> ConfirmedBuildPlan:
                     "required_elements": ["基变换"],
                 },
             ],
-            "model_override": "gpt-5.4-mini",
+            "model_override": "primary",
         },
     )
 
@@ -215,7 +215,7 @@ def test_file_selection_and_trigger_docgen_build_write_runtime_contracts(
     assert build_data.ready_file_count == 1
     assert build_data.prompt == "按矩阵和线性映射生成知识文档"
     assert build_data.digest_mode == "systematic"
-    assert build_data.model_override == "gpt-5.4-mini"
+    assert build_data.model_override == "primary"
     assert locks[0].source_file_ids == ["file-ready"]
     assert statuses[0]["status"] == "accepted"
     assert statuses[0]["planner_session_id"] == "planner-1"

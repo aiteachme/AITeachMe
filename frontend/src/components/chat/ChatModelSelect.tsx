@@ -16,9 +16,9 @@ import { cn } from "../../lib/utils";
 
 export const CHAT_MODEL_OPTIONS = [
   "settings",
-  "gpt-5.5",
-  "gpt-5.4-mini",
-  "gemini-3.1-flash-lite",
+  "reason",
+  "primary",
+  "light",
 ] as const;
 
 export type ChatModelChoice = (typeof CHAT_MODEL_OPTIONS)[number];
@@ -42,16 +42,16 @@ const CHAT_MODEL_META: Record<ChatModelChoice, {
   buildEstimate: ChatModelBuildEstimate;
 }> = {
   settings: {
-    optionLabel: "默认",
-    triggerLabel: "默认",
-    menuLabel: "默认",
-    caption: "使用设置页的主文本模型",
-    title: "使用设置页中配置的主文本模型",
+    optionLabel: "自动",
+    triggerLabel: "自动",
+    menuLabel: "自动",
+    caption: "按设置页的模型分层自动选择",
+    title: "保留各工作流的模型分层策略",
     buildEstimate: {
       shortLabel: "6-15分钟",
     },
   },
-  "gpt-5.5": {
+  reason: {
     optionLabel: "深度推理",
     triggerLabel: "深度推理",
     menuLabel: "深度推理",
@@ -61,7 +61,7 @@ const CHAT_MODEL_META: Record<ChatModelChoice, {
       shortLabel: "15-25分钟",
     },
   },
-  "gpt-5.4-mini": {
+  primary: {
     optionLabel: "均衡",
     triggerLabel: "均衡",
     menuLabel: "均衡",
@@ -71,7 +71,7 @@ const CHAT_MODEL_META: Record<ChatModelChoice, {
       shortLabel: "6-15分钟",
     },
   },
-  "gemini-3.1-flash-lite": {
+  light: {
     optionLabel: "快速",
     triggerLabel: "快速",
     menuLabel: "快速",
