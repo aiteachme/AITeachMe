@@ -144,10 +144,10 @@ interface EditableSettingsRowProps {
 }
 
 const REASONING_CAPABILITY_DEBOUNCE_MS = 120;
-const reasoningOptionsCache = new Map<
-  string,
-  Array<{ value: string | null; label: string }>
->();
+type ReasoningOption = { value: string | null; label: string };
+type ReasoningCapability = { known: boolean; options: ReasoningOption[] };
+
+const reasoningOptionsCache = new Map<string, ReasoningCapability>();
 
 function entryOptions(entry: SettingEntry | undefined) {
   if (!entry) return [];
@@ -170,11 +170,16 @@ function useLiveInlineEntry(
   entry: SettingEntry | undefined,
   parentValue: string,
   value: SettingPrimitive | undefined,
-): SettingEntry | undefined {
+): { entry: SettingEntry | undefined; capabilityKnown: boolean } {
   const modelKey = parentValue.trim().toLowerCase();
   const previousModelKeyRef = useRef(modelKey);
   const previousServerOptionsRef = useRef(entry?.options);
-  const [options, setOptions] = useState(() => entryOptions(entry));
+  const [capability, setCapability] = useState<ReasoningCapability>(() => {
+    const cached = modelKey ? reasoningOptionsCache.get(modelKey) : undefined;
+    if (cached) return cached;
+    const options = entryOptions(entry);
+    return { known: options.length > 0, options };
+  });
 
   useEffect(() => {
     if (previousServerOptionsRef.current === entry?.options) {
@@ -182,15 +187,18 @@ function useLiveInlineEntry(
     }
     previousServerOptionsRef.current = entry?.options;
     const nextOptions = entryOptions(entry);
-    setOptions(nextOptions);
-    if (modelKey) {
-      reasoningOptionsCache.set(modelKey, nextOptions);
+    const cached = modelKey ? reasoningOptionsCache.get(modelKey) : undefined;
+    const nextCapability = cached ?? { known: nextOptions.length > 0, options: nextOptions };
+    setCapability(nextCapability);
+    if (modelKey && nextCapability.known) {
+      reasoningOptionsCache.set(modelKey, nextCapability);
     }
   }, [entry?.options, modelKey]);
 
   useEffect(() => {
     if (!entry || !entry.key.startsWith("llm.reasoning_efforts.")) {
-      setOptions(entryOptions(entry));
+      const options = entryOptions(entry);
+      setCapability({ known: options.length > 0, options });
       return;
     }
     if (previousModelKeyRef.current === modelKey) {
@@ -199,17 +207,17 @@ function useLiveInlineEntry(
     previousModelKeyRef.current = modelKey;
 
     if (!modelKey) {
-      setOptions([]);
+      setCapability({ known: false, options: [] });
       return;
     }
 
-    const cachedOptions = reasoningOptionsCache.get(modelKey);
-    if (cachedOptions) {
-      setOptions(cachedOptions);
+    const cachedCapability = reasoningOptionsCache.get(modelKey);
+    if (cachedCapability) {
+      setCapability(cachedCapability);
       return;
     }
 
-    setOptions([]);
+    setCapability({ known: false, options: [] });
     const controller = new AbortController();
     const timer = window.setTimeout(async () => {
       try {
@@ -220,13 +228,17 @@ function useLiveInlineEntry(
           signal: controller.signal,
         });
         const nextOptions = reasoningOptions(response.data.reasoning_efforts);
-        reasoningOptionsCache.set(modelKey, nextOptions);
+        const nextCapability = {
+          known: response.data.reasoning_efforts !== null,
+          options: nextOptions,
+        };
+        reasoningOptionsCache.set(modelKey, nextCapability);
         if (!controller.signal.aborted) {
-          setOptions(nextOptions);
+          setCapability(nextCapability);
         }
       } catch {
         if (!controller.signal.aborted) {
-          setOptions([]);
+          setCapability({ known: false, options: [] });
         }
       }
     }, REASONING_CAPABILITY_DEBOUNCE_MS);
@@ -238,9 +250,16 @@ function useLiveInlineEntry(
   }, [entry?.key, modelKey]);
 
   return useMemo(() => {
-    if (!entry || (!options.length && !hasInlineValue(value))) return undefined;
-    return entry.options === options ? entry : { ...entry, options };
-  }, [entry, options, value]);
+    if (!entry || (!capability.options.length && !hasInlineValue(value))) {
+      return { entry: undefined, capabilityKnown: capability.known };
+    }
+    return {
+      entry: entry.options === capability.options
+        ? entry
+        : { ...entry, options: capability.options },
+      capabilityKnown: capability.known,
+    };
+  }, [capability, entry, value]);
 }
 
 function InlineSettingControl({
@@ -323,7 +342,10 @@ export const EditableSettingsRow = memo(function EditableSettingsRow({
   );
   const [isReplacingSavedSecret, setIsReplacingSavedSecret] = useState(false);
   const isShowingSavedSecretMask = Boolean(isSavedSecretDraft && !isReplacingSavedSecret);
-  const liveInlineEntry = useLiveInlineEntry(
+  const {
+    entry: liveInlineEntry,
+    capabilityKnown: liveInlineCapabilityKnown,
+  } = useLiveInlineEntry(
     inlineEntry,
     localValue.trim() || inlineFallbackValue || "",
     inlineValue,
@@ -341,6 +363,7 @@ export const EditableSettingsRow = memo(function EditableSettingsRow({
   useEffect(() => {
     if (
       !liveInlineEntry ||
+      !liveInlineCapabilityKnown ||
       !onInlineChange ||
       inlineValue === null ||
       inlineValue === undefined
@@ -353,7 +376,7 @@ export const EditableSettingsRow = memo(function EditableSettingsRow({
     if (!isStillSupported) {
       onInlineChange(liveInlineEntry.key, null);
     }
-  }, [inlineValue, liveInlineEntry, onInlineChange]);
+  }, [inlineValue, liveInlineCapabilityKnown, liveInlineEntry, onInlineChange]);
 
   const handleBooleanToggle = useCallback(() => {
     if (typeof value === "boolean") {

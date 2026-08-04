@@ -170,6 +170,24 @@ def test_reasoning_effort_selects_are_derived_from_each_effective_model() -> Non
     assert entries["llm.reasoning_efforts.reason"].ui_parent_key == "models.reason"
 
 
+def test_known_non_reasoning_model_clears_stale_overview_effort() -> None:
+    set_system_settings_override({
+        "models": {"primary": "gpt-5.2-chat-latest"},
+        "llm": {"reasoning_efforts": {"primary": "high"}},
+    })
+
+    overview = build_settings_overview_data()
+    models_section = next(section for section in overview.sections if section.id == "models")
+    entry = next(
+        entry
+        for entry in models_section.entries
+        if entry.key == "llm.reasoning_efforts.primary"
+    )
+
+    assert entry.options == []
+    assert entry.value is None
+
+
 def test_model_reasoning_capabilities_preserve_known_unknown_distinction() -> None:
     assert get_model_reasoning_capabilities(" gpt-5.5 ").reasoning_efforts == [
         "none",

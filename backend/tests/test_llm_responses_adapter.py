@@ -204,6 +204,33 @@ def test_auto_uses_responses_for_openai_compatible_reasoning_gateway(monkeypatch
     assert call.route_reason == "auto_model_catalog_responses"
 
 
+def test_compatible_chat_preserves_configured_effort_for_unknown_model(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "test-key")
+    monkeypatch.setenv("LLM_BASE_URL", "https://gateway.example.com/v1")
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+    set_system_settings_override({
+        "models": {"primary": "custom-gateway-model"},
+        "llm": {
+            "api_mode": "auto",
+            "reasoning_efforts": {"primary": "high"},
+        },
+    })
+    context = build_completion_context(task_type=TaskType.CHAT, model="primary")
+
+    call = resolve_provider_call(
+        context=context,
+        call_kwargs={
+            "model": "custom-gateway-model",
+            "messages": [{"role": "user", "content": "hello"}],
+            "api_base": "https://gateway.example.com/v1",
+            "custom_llm_provider": "openai",
+        },
+    )
+
+    assert call.api_mode == "chat_completions"
+    assert call.kwargs["reasoning_effort"] == "high"
+
+
 def test_explicit_chat_mode_overrides_responses_model_catalog(monkeypatch):
     monkeypatch.setenv("LLM_API_KEY", "test-key")
     monkeypatch.setenv("LLM_BASE_URL", "https://gateway.example.com/v1")

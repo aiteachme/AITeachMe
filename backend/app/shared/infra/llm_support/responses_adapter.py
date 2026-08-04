@@ -162,11 +162,7 @@ def to_chat_kwargs(
     chat_kwargs = dict(call_kwargs)
     chat_kwargs.pop(PROVIDER_NATIVE_TOOLS_KWARG, None)
     effort = _resolve_reasoning_effort(context, chat_kwargs)
-    if (
-        effort
-        and _is_official_openai_call(context, chat_kwargs)
-        and _is_openai_reasoning_model(chat_kwargs.get("model"))
-    ):
+    if effort and _supports_chat_reasoning_effort(context, chat_kwargs):
         chat_kwargs["reasoning_effort"] = effort
     if "max_tokens" not in chat_kwargs and "max_output_tokens" in chat_kwargs:
         chat_kwargs["max_tokens"] = chat_kwargs.pop("max_output_tokens")
@@ -399,6 +395,28 @@ def _supports_auto_responses_call(
     if provider != "openai_compatible":
         return False
     return call_kwargs.get("custom_llm_provider") == "openai"
+
+
+def _supports_chat_reasoning_effort(
+    context: CompletionContext,
+    call_kwargs: Mapping[str, Any],
+) -> bool:
+    """Return whether this OpenAI-protocol Chat call may accept reasoning_effort."""
+
+    if not _supports_auto_responses_call(context, call_kwargs):
+        return False
+
+    model = call_kwargs.get("model") or context.model
+    supported_efforts = reasoning_efforts_for_model(model)
+    if supported_efforts is not None:
+        return bool(supported_efforts)
+
+    # Official OpenAI calls remain conservative for unknown aliases. Compatible
+    # gateways may expose custom reasoning-model names that the local catalog
+    # cannot know, so preserve an explicitly configured effort for those calls.
+    if _is_official_openai_call(context, call_kwargs):
+        return _is_openai_reasoning_model(model)
+    return True
 
 
 def _has_allowed_provider_native_tools(

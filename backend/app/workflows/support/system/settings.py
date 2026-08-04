@@ -426,10 +426,14 @@ def _build_catalog_entry(
                 entry.reasoning_model_slot,
             )
             supported_efforts = reasoning_efforts_for_model(model)
-            if supported_efforts:
+            if supported_efforts is not None:
                 options = (
-                    (None, "模型默认"),
-                    *((effort, effort) for effort in supported_efforts),
+                    (
+                        (None, "模型默认"),
+                        *((effort, effort) for effort in supported_efforts),
+                    )
+                    if supported_efforts
+                    else ()
                 )
                 if value not in supported_efforts:
                     value = None
