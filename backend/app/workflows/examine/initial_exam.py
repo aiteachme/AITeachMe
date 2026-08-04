@@ -12,6 +12,10 @@ from app.models import Course
 from app.repositories import initial_exam_repo
 from app.repositories import exams_repo
 from app.shared.infra.database import managed_session
+from app.shared.infra.llm_support.model_choices import (
+    normalize_runtime_model_override,
+    use_runtime_model_override,
+)
 from app.utils.time import utcnow
 
 logger = structlog.get_logger(__name__)
@@ -28,6 +32,7 @@ def ensure_course_initial_exam_job(
     course_id: str,
     user_id: str | None = None,
     build_session_id: str = "",
+    model_override: str | None = None,
 ) -> bool:
     """Persist the one-per-course marker and return whether it is runnable."""
 
@@ -43,6 +48,7 @@ def ensure_course_initial_exam_job(
             course_id=course_id,
             user_id=owner_user_id,
             build_session_id=build_session_id,
+            model_override=normalize_runtime_model_override(model_override) or "",
             auto_commit=True,
         )
         return job.status in {"pending", "retry_wait", "processing"}
@@ -75,6 +81,7 @@ async def run_course_initial_exam_job(
     course_id: str,
     user_id: str | None = None,
     build_session_id: str = "",
+    model_override: str | None = None,
 ) -> None:
     """Claim and complete the course's single automatic-exam job."""
 
@@ -82,6 +89,7 @@ async def run_course_initial_exam_job(
         course_id=course_id,
         user_id=user_id,
         build_session_id=build_session_id,
+        model_override=model_override,
     ):
         return
 
@@ -90,6 +98,8 @@ async def run_course_initial_exam_job(
         if course is None:
             return
         owner_user_id = user_id or course.user_id
+        job = initial_exam_repo.get_course_initial_exam_job(session, course_id=course_id)
+        resolved_model_override = normalize_runtime_model_override(job.model_override if job is not None else None)
     claim_token = uuid.uuid4().hex
     claimed_at = utcnow()
     with managed_session() as session:
@@ -112,17 +122,18 @@ async def run_course_initial_exam_job(
         from app.api.exams import _run_initial_exam_from_published_docs_background
         from app.workflows.examine.prewarm import trigger_default_exam_prewarm_for_course
 
-        result = await trigger_default_exam_prewarm_for_course(
-            course_id=course_id,
-            user_id=owner_user_id,
-            wait_for_units_timeout_s=0.0,
-        )
-        paper_id = result.exam_paper_id
-        if result.reason == "no_active_knowledge_units":
-            paper_id = await _run_initial_exam_from_published_docs_background(
+        with use_runtime_model_override(resolved_model_override):
+            result = await trigger_default_exam_prewarm_for_course(
                 course_id=course_id,
                 user_id=owner_user_id,
+                wait_for_units_timeout_s=0.0,
             )
+            paper_id = result.exam_paper_id
+            if result.reason == "no_active_knowledge_units":
+                paper_id = await _run_initial_exam_from_published_docs_background(
+                    course_id=course_id,
+                    user_id=owner_user_id,
+                )
 
         with managed_session() as session:
             paper = exams_repo.get_exam_paper_by_id(session, int(paper_id or 0)) if paper_id else None
@@ -226,17 +237,20 @@ def schedule_course_initial_exam_job(
     course_id: str,
     user_id: str | None = None,
     build_session_id: str = "",
+    model_override: str | None = None,
 ) -> bool:
     if not ensure_course_initial_exam_job(
         course_id=course_id,
         user_id=user_id,
         build_session_id=build_session_id,
+        model_override=model_override,
     ):
         return False
     coro = run_course_initial_exam_job(
         course_id=course_id,
         user_id=user_id,
         build_session_id=build_session_id,
+        model_override=model_override,
     )
     if background_task_registry is not None:
         background_task_registry.spawn(
@@ -254,15 +268,19 @@ def schedule_course_initial_exam_job(
 def recover_course_initial_exam_jobs_once(background_task_registry) -> int:
     with managed_session() as session:
         jobs = initial_exam_repo.list_recoverable_course_initial_exam_jobs(session, as_of=utcnow())
-        recoverable = [(job.course_id, job.user_id, job.build_session_id) for job in jobs]
+        recoverable = [
+            (job.course_id, job.user_id, job.build_session_id, job.model_override)
+            for job in jobs
+        ]
     return sum(
         1
-        for course_id, user_id, build_session_id in recoverable
+        for course_id, user_id, build_session_id, model_override in recoverable
         if schedule_course_initial_exam_job(
             background_task_registry,
             course_id=course_id,
             user_id=user_id,
             build_session_id=build_session_id,
+            model_override=model_override,
         )
     )
 

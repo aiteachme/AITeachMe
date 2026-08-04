@@ -1663,7 +1663,12 @@ async def run_docgen_background(
         }
         return
     finally:
-        if docgen_published:
+        should_schedule_initial_exam = (
+            docgen_published
+            and lifecycle_outputs.get("status") != "cancelled"
+            and lifecycle_outputs.get("stage") != "lock_ownership_lost"
+        )
+        if should_schedule_initial_exam:
             try:
                 from app.workflows.examine.initial_exam import schedule_course_initial_exam_job
 
@@ -1672,6 +1677,7 @@ async def run_docgen_background(
                     course_id=course_id,
                     user_id=user_id,
                     build_session_id=build_session_id,
+                    model_override=resolved_model_override,
                 )
             except Exception as exc:
                 logger.warning(

@@ -181,6 +181,9 @@ _SQLITE_ADDITIVE_COLUMNS = {
         ("grading_attempts", "INTEGER NOT NULL DEFAULT 0"),
         ("grading_last_error", "TEXT NOT NULL DEFAULT ''"),
     ),
+    "course_initial_exam_job": (
+        ("model_override", "TEXT NOT NULL DEFAULT ''"),
+    ),
     "raw_file": (
         ("parse_request_signature", "TEXT NOT NULL DEFAULT 'default'"),
     ),
@@ -1014,7 +1017,8 @@ def _backfill_new_sqlite_course_initial_exam_table(engine: sa.Engine) -> None:
             sa.text(
                 """
                 INSERT INTO course_initial_exam_job (
-                    course_id, user_id, status, build_session_id, exam_paper_id,
+                    course_id, user_id, status, build_session_id, model_override,
+                    exam_paper_id,
                     attempt_count, next_attempt_at, claim_token, lease_expires_at,
                     last_error_code, started_at, completed_at, created_at, updated_at
                 )
@@ -1022,6 +1026,7 @@ def _backfill_new_sqlite_course_initial_exam_table(engine: sa.Engine) -> None:
                     course.id,
                     course.user_id,
                     'completed',
+                    '',
                     '',
                     (
                         SELECT exam_paper.id

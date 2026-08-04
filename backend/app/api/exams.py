@@ -701,6 +701,9 @@ def _is_active_prewarm_exam_candidate(paper: ExamPaper | None) -> bool:
         return False
     if paper.status not in {"ready", "generating"}:
         return False
+    if paper.status == "generating":
+        updated_at = ensure_utc_datetime(paper.updated_at)
+        return updated_at is not None and updated_at > utcnow() - EXAM_GENERATION_STALE_AFTER
     expires_at = ensure_utc_datetime(paper.expires_at)
     return expires_at is None or expires_at > utcnow()
 
@@ -2283,6 +2286,8 @@ async def _run_initial_exam_from_published_docs_background(
         )
         if _is_active_prewarm_exam_candidate(existing):
             return int(existing.id or 0) or None
+        if existing is not None and existing.status == "generating":
+            exams_repo.delete_exam_paper_cascade(session, paper_id=int(existing.id or 0))
 
         document_ids = [int(doc.id or 0) for doc in docs if doc.id is not None]
         document_version = max((int(doc.version_no or doc.version or 0) for doc in docs), default=0)
@@ -4273,7 +4278,6 @@ async def generate_exam(
             sample_file_ids=body.sample_file_ids,
             paper_layout_mode=paper_layout_mode,
         )
-    served_from_prepared = paper is not None
     if paper is not None:
         paper_id = int(paper.id or 0)
 
@@ -5080,6 +5084,14 @@ async def record_mastery_drill_attempt(
             item=item,
             answer=answer,
         )
+    except asyncio.CancelledError:
+        exams_repo.fail_mastery_drill_attempt(
+            session,
+            attempt_id=attempt_id,
+            claim_token=claim_token,
+            error_code="MASTERY_DRILL_ATTEMPT_CANCELLED",
+        )
+        raise
     except Exception as exc:
         error_code = exc.error_code if isinstance(exc, AITeachMeError) else "MASTERY_DRILL_ATTEMPT_GRADE_FAILED"
         exams_repo.fail_mastery_drill_attempt(

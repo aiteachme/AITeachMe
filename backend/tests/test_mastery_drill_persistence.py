@@ -520,6 +520,55 @@ async def test_mastery_drill_attempt_runs_and_cleans_up_lease_heartbeat(
 
 
 @pytest.mark.anyio
+async def test_mastery_drill_attempt_cancellation_releases_claim(
+    session: Session,
+    user: CurrentUserContext,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    template, _unit = _seed_course_and_template(session)
+    monkeypatch.setattr(exams_api, "_capture_exam_event", lambda *_args, **_kwargs: None)
+    heartbeat_started = asyncio.Event()
+
+    async def fake_heartbeat(**_kwargs):
+        heartbeat_started.set()
+        await asyncio.Event().wait()
+
+    async def blocking_grade(**_kwargs):
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(exams_api, "_renew_mastery_drill_attempt_lease_loop", fake_heartbeat)
+    monkeypatch.setattr(exams_api, "_grade_exam_paper_item_answer", blocking_grade)
+    started = await _start(session, user, template)
+    request_task = asyncio.create_task(
+        exams_api.record_mastery_drill_attempt(
+            course_id=COURSE_ID,
+            exam_paper_id=int(started.data.id),
+            body=MasteryDrillAttemptRequest(
+                exam_paper_item_id=int(started.data.items[0].id),
+                answer="A",
+                attempt_key="cancelled-attempt",
+            ),
+            user=user,
+            session=session,
+        )
+    )
+    await heartbeat_started.wait()
+    request_task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await request_task
+
+    session.expire_all()
+    attempt = session.exec(
+        select(MasteryDrillAttempt).where(MasteryDrillAttempt.attempt_key == "cancelled-attempt")
+    ).one()
+    assert attempt.status == "failed"
+    assert attempt.claim_token == ""
+    assert attempt.lease_expires_at is None
+    assert attempt.error_code == "MASTERY_DRILL_ATTEMPT_CANCELLED"
+
+
+@pytest.mark.anyio
 async def test_mastery_drill_completion_preserves_partial_first_attempt_score(
     session: Session,
     user: CurrentUserContext,

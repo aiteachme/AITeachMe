@@ -27,7 +27,6 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -71,7 +70,6 @@ fun MasteryDrillScreen(
             MasteryDrillHeader(
                 state = state,
                 onBack = onBack,
-                onRestart = viewModel::restart,
             )
         }
 
@@ -119,7 +117,6 @@ fun MasteryDrillScreen(
 private fun MasteryDrillHeader(
     state: MasteryDrillUiState,
     onBack: () -> Unit,
-    onRestart: () -> Unit,
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -137,14 +134,6 @@ private fun MasteryDrillHeader(
             ) {
                 IconButton(onClick = onBack, modifier = Modifier.size(40.dp)) {
                     Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回")
-                }
-                OutlinedButton(
-                    onClick = onRestart,
-                    enabled = state.selectedTemplates.isNotEmpty() && !state.isLoading,
-                ) {
-                    Icon(Icons.Outlined.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("重新抽题")
                 }
             }
 
@@ -496,7 +485,7 @@ private fun DrillCompletedCard(
             Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = Color(0xFF146C43), modifier = Modifier.size(44.dp))
             Text("$totalCount 题全部通过", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Text(
-                "本轮回炉 $wrongAttemptCount 次；结果只保留在当前闯关会话，不生成试卷历史。",
+                "本轮回炉 $wrongAttemptCount 次；作答结果已保存到训练历史。",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

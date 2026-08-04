@@ -124,6 +124,26 @@ def test_sqlite_exam_grading_columns_and_recovery_index_are_added(tmp_path: Path
     assert "ix_exam_paper_grading_recovery" in index_names
 
 
+def test_sqlite_initial_exam_model_override_column_is_added(tmp_path: Path) -> None:
+    engine = _file_sqlite_engine(tmp_path, "initial-exam-model-upgrade.db")
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                "CREATE TABLE course_initial_exam_job "
+                "(id INTEGER PRIMARY KEY, course_id TEXT NOT NULL)"
+            )
+        )
+
+    db_core._apply_sqlite_additive_schema_updates(engine)
+
+    columns = {
+        str(column["name"]): column
+        for column in sa.inspect(engine).get_columns("course_initial_exam_job")
+    }
+    assert columns["model_override"]["nullable"] is False
+    assert columns["model_override"]["default"] == "''"
+
+
 def test_sqlite_question_link_migration_normalizes_legacy_refs(tmp_path: Path) -> None:
     engine = _file_sqlite_engine(tmp_path, "question-links.db")
     with engine.begin() as connection:

@@ -53,7 +53,6 @@ def build_sync_knowledge_graph_node(*, context: WorkflowContext):
             llm_snapshot=llm_snapshot,
             docgen_state=dict(state),
             course_scope=course_scope,
-            background_task_registry=None,
         )
         runtime = read_knowledge_build_runtime(course_id, course_scope=course_scope)
         graph_metrics: dict[str, object] = {}

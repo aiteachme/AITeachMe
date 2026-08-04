@@ -40,6 +40,8 @@
 - `question_type_registry`：题型注册表。
 - `question_template`：题目模板。
 - `exam_paper`、`exam_paper_item`：试卷与试卷题目。
+- `course_initial_exam_job`：每门课程一次的可恢复首次诊断考卷任务，并持久化构建时选择的模型层级。
+- `mastery_drill_session`、`mastery_drill_attempt`：可恢复的闯关会话与逐次作答历史。
 - `question_knowledge_unit_link`：题目模板或试卷题目与 `knowledge_unit` 的加权覆盖关系，供出题、判题和掌握度回写使用。
 - `exam_study_guide_cache`：试卷判分后生成的学习指南缓存，避免重复生成并支持异步返回。
 - `user_knowledge_state`：用户对某个 `knowledge_unit` 的掌握度状态。

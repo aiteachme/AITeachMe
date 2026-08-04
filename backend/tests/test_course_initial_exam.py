@@ -19,6 +19,7 @@ from app.models import (
     QuestionKnowledgeUnitLink,
 )
 from app.repositories import exams_repo
+from app.utils.time import utcnow
 from app.workflows.examine import initial_exam as initial_exam_service
 from app.workflows.examine import prewarm as prewarm_service
 from app.workflows.examine.question_build.lib import generator as question_generator
@@ -67,6 +68,12 @@ async def test_initial_exam_job_runs_once_and_remains_completed_after_paper_dele
     managed_session: Session,
 ) -> None:
     trigger_count = 0
+    applied_model_overrides: list[str | None] = []
+
+    @contextmanager
+    def fake_model_override(value: str | None):
+        applied_model_overrides.append(value)
+        yield None
 
     async def fake_trigger(**_kwargs) -> prewarm_service.ExamPrewarmTriggerResult:
         nonlocal trigger_count
@@ -93,16 +100,19 @@ async def test_initial_exam_job_runs_once_and_remains_completed_after_paper_dele
         )
 
     monkeypatch.setattr(prewarm_service, "trigger_default_exam_prewarm_for_course", fake_trigger)
+    monkeypatch.setattr(initial_exam_service, "use_runtime_model_override", fake_model_override)
 
     await initial_exam_service.run_course_initial_exam_job(
         course_id=COURSE_ID,
         user_id=USER_ID,
         build_session_id="first-build",
+        model_override="light",
     )
     await initial_exam_service.run_course_initial_exam_job(
         course_id=COURSE_ID,
         user_id=USER_ID,
         build_session_id="later-build",
+        model_override="reason",
     )
 
     managed_session.expire_all()
@@ -112,7 +122,9 @@ async def test_initial_exam_job_runs_once_and_remains_completed_after_paper_dele
     assert trigger_count == 1
     assert job.status == "completed"
     assert job.build_session_id == "first-build"
+    assert job.model_override == "light"
     assert job.exam_paper_id is not None
+    assert applied_model_overrides == ["light"]
 
     assert exams_repo.delete_exam_paper_cascade(managed_session, paper_id=int(job.exam_paper_id))
     managed_session.expire_all()
@@ -129,6 +141,42 @@ async def test_initial_exam_job_runs_once_and_remains_completed_after_paper_dele
     )
     assert trigger_count == 1
     assert managed_session.exec(select(ExamPaper)).all() == []
+
+
+def test_initial_exam_recovery_preserves_model_override(
+    monkeypatch: pytest.MonkeyPatch,
+    managed_session: Session,
+) -> None:
+    managed_session.add(
+        CourseInitialExamJob(
+            course_id=COURSE_ID,
+            user_id=USER_ID,
+            status="pending",
+            build_session_id="recover-build",
+            model_override="reason",
+            next_attempt_at=utcnow() - timedelta(seconds=1),
+        )
+    )
+    managed_session.commit()
+    scheduled: list[dict[str, object]] = []
+
+    def fake_schedule(_registry, **kwargs) -> bool:
+        scheduled.append(dict(kwargs))
+        return True
+
+    monkeypatch.setattr(initial_exam_service, "schedule_course_initial_exam_job", fake_schedule)
+
+    recovered = initial_exam_service.recover_course_initial_exam_jobs_once(object())
+
+    assert recovered == 1
+    assert scheduled == [
+        {
+            "course_id": COURSE_ID,
+            "user_id": USER_ID,
+            "build_session_id": "recover-build",
+            "model_override": "reason",
+        }
+    ]
 
 
 @pytest.mark.anyio
@@ -198,6 +246,27 @@ async def test_initial_exam_can_be_generated_from_published_docs_without_knowled
     )
     managed_session.commit()
 
+    stale_paper = ExamPaper(
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        exam_mode="web_practice",
+        status="generating",
+        visibility="visible",
+        generation_origin="prewarm",
+        total_items=10,
+        updated_at=utcnow() - exams_api.EXAM_GENERATION_STALE_AFTER - timedelta(seconds=1),
+    )
+    managed_session.add(stale_paper)
+    managed_session.commit()
+    managed_session.refresh(stale_paper)
+    stale_paper_id = int(stale_paper.id or 0)
+    deleted_paper_ids: list[int] = []
+    delete_exam_paper_cascade = exams_repo.delete_exam_paper_cascade
+
+    def track_delete_exam_paper_cascade(session: Session, *, paper_id: int) -> bool:
+        deleted_paper_ids.append(paper_id)
+        return delete_exam_paper_cascade(session, paper_id=paper_id)
+
     async def fake_generate_exam_from_text(**kwargs) -> list[ExamQuestionDraft]:
         assert kwargs["num_questions"] == 10
         assert "course source is ready" in kwargs["knowledge_text"]
@@ -214,6 +283,12 @@ async def test_initial_exam_can_be_generated_from_published_docs_without_knowled
         ]
 
     monkeypatch.setattr(question_generator, "generate_exam_from_text", fake_generate_exam_from_text)
+    monkeypatch.setattr(
+        exams_api,
+        "_find_default_auto_prewarm_candidate",
+        lambda *_args, **_kwargs: stale_paper,
+    )
+    monkeypatch.setattr(exams_repo, "delete_exam_paper_cascade", track_delete_exam_paper_cascade)
     monkeypatch.setattr(exams_api, "_publish_exam_event", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(exams_api, "_capture_exam_generated_event", lambda *_args, **_kwargs: None)
 
@@ -228,5 +303,6 @@ async def test_initial_exam_can_be_generated_from_published_docs_without_knowled
     assert paper.status == "ready"
     assert paper.generation_origin == "prewarm"
     assert paper.total_items == 10
+    assert deleted_paper_ids == [stale_paper_id]
     assert len(managed_session.exec(select(ExamPaperItem)).all()) == 10
     assert managed_session.exec(select(QuestionKnowledgeUnitLink)).all() == []

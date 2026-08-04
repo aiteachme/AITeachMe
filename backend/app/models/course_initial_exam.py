@@ -16,6 +16,10 @@ class CourseInitialExamJob(SQLModel, table=True):
     __tablename__ = "course_initial_exam_job"
     __table_args__ = (
         UniqueConstraint("course_id", name="uq_course_initial_exam_job_course"),
+        sa.CheckConstraint(
+            "model_override IN ('', 'light', 'primary', 'reason')",
+            name="ck_course_initial_exam_job_model_override",
+        ),
         sa.Index("ix_course_initial_exam_job_recovery", "status", "next_attempt_at"),
     )
 
@@ -24,6 +28,10 @@ class CourseInitialExamJob(SQLModel, table=True):
     user_id: str = Field(default="local", index=True)
     status: str = Field(default="pending", index=True)
     build_session_id: str = Field(default="")
+    model_override: str = Field(
+        default="",
+        sa_column=sa.Column(sa.String(), nullable=False, server_default=""),
+    )
     exam_paper_id: int | None = Field(
         default=None,
         sa_column=sa.Column(
