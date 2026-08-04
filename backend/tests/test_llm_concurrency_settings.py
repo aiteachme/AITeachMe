@@ -287,12 +287,12 @@ async def test_llm_limiter_uses_live_runtime_limit() -> None:
     second_inside = asyncio.Event()
 
     async def first_call() -> None:
-        async with limiter:
+        async with limiter.slot():
             first_inside.set()
             await release_first.wait()
 
     async def second_call() -> None:
-        async with limiter:
+        async with limiter.slot():
             second_inside.set()
 
     first_task = asyncio.create_task(first_call())
@@ -333,12 +333,12 @@ async def test_llm_limiter_traces_wait_for_concurrency_slot(monkeypatch) -> None
     second_inside = asyncio.Event()
 
     async def first_call() -> None:
-        async with limiter:
+        async with limiter.slot():
             first_inside.set()
             await release_first.wait()
 
     async def second_call() -> None:
-        async with limiter:
+        async with limiter.slot():
             second_inside.set()
 
     first_task = asyncio.create_task(first_call())
@@ -374,7 +374,7 @@ async def test_llm_limiter_releases_slot_when_holder_is_cancelled() -> None:
     never_release = asyncio.Event()
 
     async def holder() -> None:
-        async with limiter:
+        async with limiter.slot():
             first_inside.set()
             await never_release.wait()
 
@@ -385,7 +385,49 @@ async def test_llm_limiter_releases_slot_when_holder_is_cancelled() -> None:
         await holder_task
 
     async def next_call() -> bool:
-        async with limiter:
+        async with limiter.slot():
+            return True
+
+    assert await asyncio.wait_for(next_call(), timeout=1)
+
+
+@pytest.mark.anyio
+async def test_llm_limiter_lease_can_be_released_from_another_task() -> None:
+    set_system_settings_override({"llm": {"concurrency_limit": 1}})
+    limiter = get_llm_concurrency_limiter()
+    lease = limiter.slot()
+
+    await asyncio.create_task(lease.__aenter__())
+    assert limiter._active == 1
+
+    await lease.__aexit__(None, None, None)
+    assert limiter._active == 0
+
+    async def next_call() -> bool:
+        async with limiter.slot():
+            return True
+
+    assert await asyncio.wait_for(next_call(), timeout=1)
+
+
+@pytest.mark.anyio
+async def test_llm_limiter_releases_cross_task_closed_stream() -> None:
+    set_system_settings_override({"llm": {"concurrency_limit": 1}})
+    limiter = get_llm_concurrency_limiter()
+
+    async def limited_stream():
+        async with limiter.slot():
+            yield "first"
+
+    stream = limited_stream()
+    assert await asyncio.create_task(anext(stream)) == "first"
+    assert limiter._active == 1
+
+    await stream.aclose()
+    assert limiter._active == 0
+
+    async def next_call() -> bool:
+        async with limiter.slot():
             return True
 
     assert await asyncio.wait_for(next_call(), timeout=1)
@@ -404,7 +446,7 @@ async def test_llm_limiter_temporarily_reduces_after_concurrency_rate_limit() ->
 
     async def worker() -> None:
         nonlocal active, max_active
-        async with limiter:
+        async with limiter.slot():
             active += 1
             max_active = max(max_active, active)
             if active == 2:
@@ -438,11 +480,15 @@ async def test_retry_backoff_does_not_hold_limiter_slot(monkeypatch) -> None:
     monkeypatch.setattr(llm_common.asyncio, "sleep", fake_sleep)
 
     async def retrying_call() -> None:
-        async with limiter:
-            await llm_common.sleep_before_retry(1, error=RuntimeError("retryable"))
+        async with limiter.slot() as lease:
+            await llm_common.sleep_before_retry(
+                1,
+                error=RuntimeError("retryable"),
+                lease=lease,
+            )
 
     async def second_call() -> None:
-        async with limiter:
+        async with limiter.slot():
             second_inside.set()
 
     retry_task = asyncio.create_task(retrying_call())
@@ -472,12 +518,16 @@ async def test_retry_backoff_reacquires_slot_before_returning(monkeypatch) -> No
     monkeypatch.setattr(llm_common.asyncio, "sleep", fake_sleep)
 
     async def retrying_call() -> None:
-        async with limiter:
-            await llm_common.sleep_before_retry(1, error=RuntimeError("retryable"))
+        async with limiter.slot() as lease:
+            await llm_common.sleep_before_retry(
+                1,
+                error=RuntimeError("retryable"),
+                lease=lease,
+            )
             retry_returned.set()
 
     async def blocker_call() -> None:
-        async with limiter:
+        async with limiter.slot():
             blocker_inside.set()
             await blocker_can_finish.wait()
 
@@ -510,8 +560,12 @@ async def test_retry_backoff_cancelled_while_sleeping_leaves_slot_available(monk
     monkeypatch.setattr(llm_common.asyncio, "sleep", fake_sleep)
 
     async def retrying_call() -> None:
-        async with limiter:
-            await llm_common.sleep_before_retry(1, error=RuntimeError("retryable"))
+        async with limiter.slot() as lease:
+            await llm_common.sleep_before_retry(
+                1,
+                error=RuntimeError("retryable"),
+                lease=lease,
+            )
 
     retry_task = asyncio.create_task(retrying_call())
     await asyncio.wait_for(sleep_started.wait(), timeout=1)
@@ -520,7 +574,7 @@ async def test_retry_backoff_cancelled_while_sleeping_leaves_slot_available(monk
         await retry_task
 
     async def next_call() -> bool:
-        async with limiter:
+        async with limiter.slot():
             return True
 
     assert await asyncio.wait_for(next_call(), timeout=1)
@@ -545,19 +599,23 @@ async def test_retry_backoff_nested_limiter_releases_only_current_slot(monkeypat
     monkeypatch.setattr(llm_common.asyncio, "sleep", fake_sleep)
 
     async def retrying_call() -> None:
-        async with limiter:
-            async with limiter:
-                await llm_common.sleep_before_retry(1, error=RuntimeError("retryable"))
+        async with limiter.slot():
+            async with limiter.slot() as inner_lease:
+                await llm_common.sleep_before_retry(
+                    1,
+                    error=RuntimeError("retryable"),
+                    lease=inner_lease,
+                )
                 retry_returned.set()
                 await retry_can_finish.wait()
 
     async def blocker_call() -> None:
-        async with limiter:
+        async with limiter.slot():
             blocker_inside.set()
             await blocker_can_finish.wait()
 
     async def third_call() -> None:
-        async with limiter:
+        async with limiter.slot():
             third_inside.set()
 
     retry_task = asyncio.create_task(retrying_call())
@@ -602,7 +660,7 @@ async def test_retry_backoff_child_task_does_not_release_parent_slot(monkeypatch
         await llm_common.sleep_before_retry(1, error=RuntimeError("retryable"))
 
     async def parent_call() -> None:
-        async with limiter:
+        async with limiter.slot():
             parent_inside.set()
             child_task = asyncio.create_task(child_retry())
             await asyncio.wait_for(sleep_started.wait(), timeout=1)
@@ -611,7 +669,7 @@ async def test_retry_backoff_child_task_does_not_release_parent_slot(monkeypatch
             await parent_can_finish.wait()
 
     async def second_call() -> None:
-        async with limiter:
+        async with limiter.slot():
             second_inside.set()
 
     parent_task = asyncio.create_task(parent_call())
@@ -638,13 +696,13 @@ async def test_llm_limiter_is_process_wide_across_event_loops() -> None:
     thread_done = threading.Event()
 
     async def holder() -> None:
-        async with limiter:
+        async with limiter.slot():
             holder_inside.set()
             await release_holder.wait()
 
     def run_in_thread() -> None:
         async def attempt() -> None:
-            async with limiter:
+            async with limiter.slot():
                 thread_entered.set()
 
         asyncio.run(attempt())

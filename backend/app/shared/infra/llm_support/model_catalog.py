@@ -16,6 +16,8 @@ ReasoningEffort = Literal[
 ]
 
 # Text-generation models that should prefer the Responses API in ``auto`` mode.
+# This catalog selects the API shape only; streaming callers always request a
+# real upstream stream independently of the selected model name.
 # Models not listed here use Chat Completions unless the caller explicitly
 # requests Responses. Specialized audio, Realtime, image, and video models use
 # their dedicated project integrations instead of this text adapter.

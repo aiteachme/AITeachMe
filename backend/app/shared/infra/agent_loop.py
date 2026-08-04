@@ -393,7 +393,7 @@ async def _stream_one_tool_iteration(
     tracked_model = contexts[0].model
     last_error: Exception | None = None
 
-    async with get_llm_concurrency_limiter():
+    async with get_llm_concurrency_limiter().slot():
         for attempt_number, context in enumerate(contexts, start=1):
             prepared = prepare_completion_attempt(
                 context=context,

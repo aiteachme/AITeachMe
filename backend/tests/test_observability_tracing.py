@@ -141,7 +141,7 @@ def test_traceable_with_context_defaults_to_traceable_io(monkeypatch) -> None:
     assert process_outputs({"content": "private explanation"}) == {"content": "private explanation"}
 
 
-def test_expected_cancellation_scope_is_forwarded_and_does_not_swallow(monkeypatch) -> None:
+def test_expected_trace_exceptions_are_forwarded_and_not_swallowed(monkeypatch) -> None:
     trace_calls: list[dict[str, Any]] = []
     trace_runs: list[Any] = []
 
@@ -193,12 +193,21 @@ def test_expected_cancellation_scope_is_forwarded_and_does_not_swallow(monkeypat
         with trace_module.langsmith_trace(name="after", run_type="chain"):
             raise ordinary_cancellation
 
+    with pytest.raises(GeneratorExit):
+        with trace_module.langsmith_trace(
+            name="stream closed",
+            run_type="llm",
+            expected_exceptions=(GeneratorExit,),
+        ):
+            raise GeneratorExit()
+
     assert exc_info.value is cancellation
     assert ordinary_exc_info.value is ordinary_cancellation
     assert [call.get("exceptions_to_handle") for call in trace_calls] == [
         None,
         (asyncio.CancelledError,),
         None,
+        (GeneratorExit,),
     ]
     assert trace_runs[1].outputs == {
         "trace_outcome": "cancelled_expected",
@@ -217,6 +226,7 @@ def test_expected_cancellation_scope_is_forwarded_and_does_not_swallow(monkeypat
     ]
     assert trace_runs[2].outputs == {}
     assert trace_runs[2].error == repr(ordinary_cancellation)
+    assert trace_runs[3].error is None
 
 
 def test_langsmith_capture_text_follows_cloud_defaults_and_explicit_overrides(monkeypatch) -> None:

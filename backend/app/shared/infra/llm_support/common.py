@@ -7,7 +7,6 @@ import re
 import secrets
 import threading
 import time
-import weakref
 from collections.abc import AsyncGenerator, Awaitable, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -137,8 +136,67 @@ class _LimiterWaiter:
     future: asyncio.Future[None]
 
 
+class LLMConcurrencyLease:
+    """One independently owned limiter slot that can be closed from any task."""
+
+    def __init__(self, limiter: "LLMConcurrencyLimiter") -> None:
+        self._limiter = limiter
+        self._state_lock = threading.Lock()
+        self._entered = False
+        self._acquired = False
+        self._closed = False
+
+    async def __aenter__(self) -> "LLMConcurrencyLease":
+        with self._state_lock:
+            if self._entered:
+                raise RuntimeError("LLM concurrency lease cannot be entered more than once")
+            self._entered = True
+
+        await self._limiter._acquire()
+        release_immediately = False
+        with self._state_lock:
+            if self._closed:
+                release_immediately = True
+            else:
+                self._acquired = True
+        if release_immediately:
+            self._limiter._release()
+            raise RuntimeError("LLM concurrency lease was closed while acquiring")
+        return self
+
+    async def __aexit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        should_release = False
+        with self._state_lock:
+            self._closed = True
+            if self._acquired:
+                self._acquired = False
+                should_release = True
+        if should_release:
+            self._limiter._release()
+
+    async def sleep_without_holding_slot(self, delay_s: float) -> None:
+        """Suspend this lease during retry backoff, then reacquire it."""
+
+        with self._state_lock:
+            if not self._acquired or self._closed:
+                raise RuntimeError("LLM concurrency lease must be active during retry backoff")
+            self._acquired = False
+        self._limiter._release()
+
+        await asyncio.sleep(delay_s)
+        await self._limiter._acquire()
+        release_immediately = False
+        with self._state_lock:
+            if self._closed:
+                release_immediately = True
+            else:
+                self._acquired = True
+        if release_immediately:
+            self._limiter._release()
+
+
 class LLMConcurrencyLimiter:
-    """Async context manager enforcing the live global LLM concurrency limit."""
+    """Process-wide limiter that creates independently owned call leases."""
 
     _RATE_LIMIT_COOLDOWN_S = 60.0
 
@@ -146,13 +204,15 @@ class LLMConcurrencyLimiter:
         self._lock = threading.Lock()
         self._active = 0
         self._waiters: list[_LimiterWaiter] = []
-        self._holders: weakref.WeakKeyDictionary[asyncio.Task[Any], int] = (
-            weakref.WeakKeyDictionary()
-        )
         self._rate_limit_cap: int | None = None
         self._rate_limit_until = 0.0
 
-    async def __aenter__(self) -> "LLMConcurrencyLimiter":
+    def slot(self) -> LLMConcurrencyLease:
+        """Create one single-use lease for an upstream call lifecycle."""
+
+        return LLMConcurrencyLease(self)
+
+    async def _acquire(self) -> None:
         loop = asyncio.get_running_loop()
         wait_started_at = 0.0
         wait_trace_cm: Any | None = None
@@ -166,7 +226,6 @@ class LLMConcurrencyLimiter:
                 effective_limit = self._effective_limit_locked()
                 if self._active < effective_limit:
                     self._active += 1
-                    self._record_current_holder_locked()
                     acquired = True
                     if wait_trace_cm is not None:
                         acquired_snapshot = self._trace_snapshot_locked(
@@ -191,7 +250,7 @@ class LLMConcurrencyLimiter:
                         outcome="acquired",
                         snapshot=acquired_snapshot,
                     )
-                return self
+                return
             if wait_trace_snapshot is not None:
                 wait_started_at = time.monotonic()
                 wait_trace_cm, wait_trace_run = self._open_wait_trace(wait_trace_snapshot)
@@ -284,24 +343,6 @@ class LLMConcurrencyLimiter:
                 **trace_log_fields(),
             )
 
-    def _record_current_holder_locked(self) -> None:
-        task = asyncio.current_task()
-        if task is not None:
-            self._holders[task] = self._holders.get(task, 0) + 1
-
-    def _drop_current_holder_locked(self) -> bool:
-        task = asyncio.current_task()
-        if task is None:
-            return False
-        depth = self._holders.get(task, 0)
-        if depth <= 0:
-            return False
-        if depth == 1:
-            self._holders.pop(task, None)
-        else:
-            self._holders[task] = depth - 1
-        return True
-
     def _effective_limit_locked(self) -> int:
         configured = get_llm_concurrency_limit()
         if self._rate_limit_cap is None or time.monotonic() >= self._rate_limit_until:
@@ -346,28 +387,6 @@ class LLMConcurrencyLimiter:
                 waiter.loop.call_soon_threadsafe(_wake_limiter_waiter, waiter.future)
             except RuntimeError:
                 continue
-
-    async def __aexit__(self, exc_type: object, exc: object, traceback: object) -> None:
-        with self._lock:
-            should_release = self._drop_current_holder_locked()
-        if not should_release:
-            return
-        self._release()
-
-    def _release_current_task_slot(self) -> bool:
-        with self._lock:
-            should_release = self._drop_current_holder_locked()
-        if not should_release:
-            return False
-        self._release()
-        return True
-
-    async def sleep_without_holding_slot(self, delay_s: float) -> None:
-        released = self._release_current_task_slot()
-        await asyncio.sleep(delay_s)
-        if released:
-            await self.__aenter__()
-
 
 def _wake_limiter_waiter(future: asyncio.Future[None]) -> None:
     if not future.done():
@@ -1253,15 +1272,19 @@ def log_attempt_failed(
         get_llm_concurrency_limiter().note_rate_limit()
 
 
-async def sleep_before_retry(attempt: int, *, error: Exception | None = None) -> None:
+async def sleep_before_retry(
+    attempt: int,
+    *,
+    error: Exception | None = None,
+    lease: LLMConcurrencyLease | None = None,
+) -> None:
     """Apply the current linear retry backoff."""
 
     delay_s = min(30, attempt * 8) if is_concurrency_rate_limit_error(error) else attempt * 2
-    limiter = _LLM_LIMITER
-    if limiter is None:
+    if lease is None:
         await asyncio.sleep(delay_s)
         return
-    await limiter.sleep_without_holding_slot(delay_s)
+    await lease.sleep_without_holding_slot(delay_s)
 
 
 def track_call(

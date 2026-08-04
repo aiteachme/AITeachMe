@@ -59,7 +59,7 @@ async def main() -> None:
             llm_kwargs["api_base"] = llm_base_url
         if llm_api_key is not None:
             llm_kwargs["api_key"] = llm_api_key
-        async with get_llm_concurrency_limiter():
+        async with get_llm_concurrency_limiter().slot():
             response = await litellm.acompletion(**llm_kwargs)
         elapsed = time.monotonic() - start
 
@@ -92,7 +92,7 @@ async def main() -> None:
                 embedding_kwargs["api_base"] = llm_base_url
             if llm_api_key is not None:
                 embedding_kwargs["api_key"] = llm_api_key
-            async with get_llm_concurrency_limiter():
+            async with get_llm_concurrency_limiter().slot():
                 response = await litellm.aembedding(**embedding_kwargs)
             elapsed = time.monotonic() - start
 

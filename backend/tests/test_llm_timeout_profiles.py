@@ -197,11 +197,11 @@ async def test_stream_completion_overall_timeout_closes_inner_stream_on_outer_cl
 
 
 @pytest.mark.anyio
-async def test_stream_overall_timeout_keeps_limiter_acquire_and_release_in_one_task():
+async def test_stream_overall_timeout_releases_limiter_lease():
     limiter = LLMConcurrencyLimiter()
 
     async def limited_stream():
-        async with limiter:
+        async with limiter.slot():
             yield "first"
             await asyncio.sleep(0)
             yield "second"
@@ -213,4 +213,3 @@ async def test_stream_overall_timeout_keeps_limiter_acquire_and_release_in_one_t
 
     assert chunks == ["first", "second"]
     assert limiter._active == 0
-    assert not limiter._holders

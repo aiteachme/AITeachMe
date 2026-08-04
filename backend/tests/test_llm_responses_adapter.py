@@ -776,6 +776,7 @@ async def test_stream_completion_reads_responses_deltas_in_auto(monkeypatch):
     from app.shared.infra.llm_support import stream as stream_module
 
     calls: list[dict] = []
+    registrations: list[dict] = []
 
     class FakeResponsesStream:
         def __init__(self) -> None:
@@ -794,6 +795,14 @@ async def test_stream_completion_reads_responses_deltas_in_auto(monkeypatch):
                 raise StopAsyncIteration from exc
 
     class FakeLiteLLM:
+        model_cost: dict[str, dict] = {}
+        utils = SimpleNamespace(
+            supports_native_streaming=lambda **_kwargs: False,
+        )
+
+        def register_model(self, model_cost: dict) -> None:
+            registrations.append(model_cost)
+
         async def aresponses(self, **kwargs):
             calls.append(kwargs)
             return FakeResponsesStream()
@@ -802,11 +811,11 @@ async def test_stream_completion_reads_responses_deltas_in_auto(monkeypatch):
             raise AssertionError("Chat Completions should not be used")
 
     monkeypatch.setenv("LLM_API_KEY", "test-key")
-    monkeypatch.setenv("LLM_PROVIDER", "openai")
-    monkeypatch.delenv("LLM_BASE_URL", raising=False)
+    monkeypatch.setenv("LLM_BASE_URL", "https://gateway.example.com/v1")
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
     monkeypatch.setattr(stream_module, "load_litellm", lambda: FakeLiteLLM())
     set_system_settings_override({
-        "models": {"primary": "gpt-5.2"},
+        "models": {"primary": "gpt-5.3-codex-spark"},
         "llm": {"api_mode": "auto", "reasoning_efforts": {"primary": "low"}},
     })
 
@@ -821,10 +830,17 @@ async def test_stream_completion_reads_responses_deltas_in_auto(monkeypatch):
     ]
 
     assert "".join(chunks) == "hello"
-    assert calls[0]["model"] == "gpt-5.2"
+    assert calls[0]["model"] == "gpt-5.3-codex-spark"
     assert calls[0]["stream"] is True
     assert calls[0]["max_output_tokens"] == 32
     assert calls[0]["reasoning"] == {"effort": "low"}
+    assert registrations == [{
+        "openai/gpt-5.3-codex-spark": {
+            "litellm_provider": "openai",
+            "mode": "responses",
+            "supports_native_streaming": True,
+        }
+    }]
 
 
 @pytest.mark.anyio

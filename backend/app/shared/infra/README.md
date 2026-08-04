@@ -81,7 +81,8 @@ from app.shared.infra.search import web_search, search_knowledge
 - `file_search` 需要外部 provider vector store，不能默认替代本地课程索引；`auto` 只在课程工具链且本地 RAG 证据不足时补充，`force` 才表示显式强制发送。
 - 全局 `settings.llm.native_*` 只提供默认能力开关；具体 workflow step 是否允许、继承或强制 provider-native tools，应由对应 `model_policy.py` 通过 `ProviderNativeToolPolicy` 声明。
 - 文本/流式普通输出会由 adapter 统一决定 `responses` 或 `chat_completions`：`auto` 模式只对 `model_catalog.RESPONSES_API_MODELS` 中的文本模型优先使用 Responses，名单外默认走 Chat Completions；结构化输出和项目函数工具固定走 Chat Completions。
-- LangSmith LLM span 会记录 requested / initial / final API mode、route reason 和 provider-native tool types，用于判断是否发生 Responses 到 Chat 的自动回退。
+- `acompletion_stream()` 始终向上游请求真实流式输出。自定义 OpenAI-compatible Responses 网关不采用 LiteLLM 对未知模型名生成的伪流式；`RESPONSES_API_MODELS` 只决定接口形态，不再维护第二份流式模型名单。
+- LangSmith LLM span 会记录 requested / initial / final API mode、route reason、原生 Responses 流式状态和 provider-native tool types，用于判断是否发生 Responses 到 Chat 的自动回退。
 
 ## workflow / observability 公开接口
 
@@ -205,6 +206,8 @@ await acompletion_with_fallback(messages, model="light")
 
 所有文本、结构化、流式、tool call、文生图、embedding 和 rerank 调用都共享 `app.shared.infra.llm_support` 内的进程级 limiter。
 运行时上限只由 `settings.llm.concurrency_limit` 控制，默认 `12`。workflow 内部可以继续设置本链路自己的 fan-out 上限，但实际发给上游的请求数仍会被全局 limiter 压住。
+
+每次上游调用必须通过 `async with get_llm_concurrency_limiter().slot()` 获取独立 lease。lease 跟随调用生命周期而不是 `asyncio.Task` 记账，因此流在另一个 Task 中关闭时也能准确归还槽位；重试等待只临时释放并重新获取当前 lease。
 
 ### LLM 兜底 profile 与业务 model policy
 
