@@ -6,11 +6,13 @@ from app.shared.infra.exceptions import LLMTimeoutError
 from app.shared.infra.llm_support import stream as stream_module
 from app.shared.infra.llm_support import text as text_module
 from app.shared.infra.llm_support.common import (
+    LLMConcurrencyLimiter,
     apply_provider_extra_headers,
     build_completion_context,
     build_completion_kwargs,
     context_request_timeout_s,
     effective_max_retries,
+    iter_with_overall_timeout,
 )
 from app.shared.infra.llm_support.routing import TaskType, get_task_profile
 
@@ -192,3 +194,23 @@ async def test_stream_completion_overall_timeout_closes_inner_stream_on_outer_cl
     await stream.aclose()
 
     assert closed
+
+
+@pytest.mark.anyio
+async def test_stream_overall_timeout_keeps_limiter_acquire_and_release_in_one_task():
+    limiter = LLMConcurrencyLimiter()
+
+    async def limited_stream():
+        async with limiter:
+            yield "first"
+            await asyncio.sleep(0)
+            yield "second"
+
+    chunks = [
+        chunk
+        async for chunk in iter_with_overall_timeout(limited_stream(), timeout_s=1)
+    ]
+
+    assert chunks == ["first", "second"]
+    assert limiter._active == 0
+    assert not limiter._holders

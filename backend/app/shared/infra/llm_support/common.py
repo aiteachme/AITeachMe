@@ -978,15 +978,9 @@ async def iter_with_overall_timeout(
                 yield chunk
             return
 
-        deadline = time.monotonic() + timeout_s
-        while True:
-            remaining_s = deadline - time.monotonic()
-            if remaining_s <= 0:
-                raise asyncio.TimeoutError
-            try:
-                yield await asyncio.wait_for(stream.__anext__(), timeout=remaining_s)
-            except StopAsyncIteration:
-                break
+        async with asyncio.timeout(timeout_s):
+            async for chunk in stream:
+                yield chunk
     except asyncio.TimeoutError as exc:
         raise LLMTimeoutError(timeout_s=int(timeout_s)) from exc
     finally:
