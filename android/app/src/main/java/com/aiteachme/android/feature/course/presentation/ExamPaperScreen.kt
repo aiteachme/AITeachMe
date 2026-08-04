@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.aiteachme.android.core.network.dto.ExamPaperDetailResponse
 import com.aiteachme.android.core.network.dto.ExamPaperItemResponse
+import com.aiteachme.android.core.network.dto.ExamProfileSyncResponse
 import com.aiteachme.android.core.network.dto.ExamStudyGuideFocusUnit
 import com.aiteachme.android.core.network.dto.ExamStudyGuideResponse
 import com.aiteachme.android.core.ui.MarkdownText
@@ -109,6 +110,25 @@ fun ExamPaperScreen(
             return@LazyColumn
         }
 
+        if (paper.isGraded() && paper.profileSync?.status?.lowercase() != "completed") {
+            item {
+                ExamProfileSyncBanner(
+                    profileSync = paper.profileSync,
+                    isRetrying = state.isRetryingProfileSync,
+                    onRetry = { viewModel.retryProfileSync(courseId) },
+                )
+            }
+        }
+
+        if (paper.status.lowercase() == "grading_failed") {
+            item {
+                ExamPaperFeedback(
+                    error = "自动判卷多次失败，原答卷已锁定保存。点击“重新批改”可启动一轮新的判卷。",
+                    info = null,
+                )
+            }
+        }
+
         item {
             ExamStageTabs(
                 stage = state.stage,
@@ -139,7 +159,7 @@ fun ExamPaperScreen(
                     ExamQuestionCard(
                         item = item,
                         answer = state.answers[item.id].orEmpty(),
-                        readOnly = paper.isGraded(),
+                        readOnly = paper.isGraded() || paper.status.lowercase() == "grading_failed",
                         showAnalysis = false,
                         onAnswerChange = { viewModel.updateAnswer(item.id, it) },
                     )
@@ -154,7 +174,13 @@ fun ExamPaperScreen(
                             CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                             Spacer(modifier = Modifier.width(8.dp))
                         }
-                        Text(if (state.isSubmitting) "正在批改" else "提交并批改")
+                        Text(
+                            when {
+                                state.isSubmitting -> "正在批改"
+                                paper.status.lowercase() == "grading_failed" -> "重新批改"
+                                else -> "提交并批改"
+                            }
+                        )
                     }
                 }
             }
@@ -185,6 +211,69 @@ fun ExamPaperScreen(
                     else -> item {
                         ExamPaperEmpty("复习页需要先完成批改。")
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExamProfileSyncBanner(
+    profileSync: ExamProfileSyncResponse?,
+    isRetrying: Boolean,
+    onRetry: () -> Unit,
+) {
+    val status = profileSync?.status?.lowercase() ?: "not_tracked"
+    val isActive = status in setOf("pending", "processing")
+    val canRetry = profileSync?.canRetry == true || status in setOf("retry_wait", "failed", "not_tracked")
+    val title = when (status) {
+        "pending", "processing" -> "成绩已保存，正在同步学习画像"
+        "retry_wait" -> "画像同步暂时失败，系统将自动重试"
+        "failed" -> "画像同步失败"
+        else -> "这份旧试卷尚未同步学习画像"
+    }
+    val containerColor = when (status) {
+        "failed" -> MaterialTheme.colorScheme.errorContainer
+        "retry_wait", "not_tracked" -> MaterialTheme.colorScheme.tertiaryContainer
+        else -> MaterialTheme.colorScheme.secondaryContainer
+    }
+    val contentColor = when (status) {
+        "failed" -> MaterialTheme.colorScheme.onErrorContainer
+        "retry_wait", "not_tracked" -> MaterialTheme.colorScheme.onTertiaryContainer
+        else -> MaterialTheme.colorScheme.onSecondaryContainer
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = containerColor,
+        contentColor = contentColor,
+        shape = RoundedCornerShape(18.dp),
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (isActive) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                } else {
+                    Icon(Icons.Outlined.WarningAmber, contentDescription = null, modifier = Modifier.size(20.dp))
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    profileSync?.lastErrorCode?.takeIf { it.isNotBlank() }?.let { errorCode ->
+                        Text(
+                            "错误代码：$errorCode",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = contentColor.copy(alpha = 0.75f),
+                        )
+                    }
+                }
+            }
+            if (canRetry) {
+                Button(onClick = onRetry, enabled = !isRetrying, modifier = Modifier.fillMaxWidth()) {
+                    if (isRetrying) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
+                    Text(if (isRetrying) "正在重试" else "立即重试")
                 }
             }
         }
@@ -346,6 +435,7 @@ private fun ExamQuestionCard(
     onAnswerChange: (String) -> Unit,
 ) {
     val isChoice = item.isChoice()
+    val isSupported = isSupportedExamQuestionType(item.questionType)
     val options = item.choiceOptions()
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -378,7 +468,21 @@ private fun ExamQuestionCard(
                 textSizeSp = MaterialTheme.typography.bodyMedium.fontSize.value,
             )
 
-            if (isChoice) {
+            if (!isSupported) {
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        Icon(Icons.Outlined.WarningAmber, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Text("当前版本不支持题型「${item.questionType.ifBlank { "未指定" }}」，无法作答或提交。")
+                    }
+                }
+            } else if (isChoice) {
                 ChoiceAnswerGroup(
                     item = item,
                     options = options,
@@ -642,7 +746,9 @@ private fun ExamPaperDetailResponse.title(): String {
 }
 
 private fun ExamPaperDetailResponse.canSubmit(): Boolean {
-    return status.lowercase() in setOf("ready", "generated") && items.isNotEmpty()
+    return status.lowercase() in setOf("ready", "generated", "grading_failed") &&
+        items.isNotEmpty() &&
+        items.all { item -> isSupportedExamQuestionType(item.questionType) }
 }
 
 private fun ExamPaperDetailResponse.isGraded(): Boolean {
@@ -654,11 +760,11 @@ private fun String.isGeneratingStatus(): Boolean {
 }
 
 private fun ExamPaperItemResponse.isChoice(): Boolean {
-    return questionType in setOf("single_choice", "multiple_choice", "multi_choice", "true_false")
+    return normalizeExamQuestionType(questionType) in setOf("single_choice", "multiple_choice", "true_false")
 }
 
 private fun ExamPaperItemResponse.isMultipleChoice(): Boolean {
-    return questionType in setOf("multiple_choice", "multi_choice")
+    return normalizeExamQuestionType(questionType) == "multiple_choice"
 }
 
 private fun ExamPaperItemResponse.choiceOptions(): List<String> {
@@ -700,8 +806,7 @@ private fun questionTypeLabel(type: String): String {
         "fill_blank" -> "填空题"
         "true_false" -> "判断题"
         "short_answer" -> "简答题"
-        "essay" -> "问答题"
-        else -> type.ifBlank { "题型生成中" }
+        else -> type.ifBlank { "未指定题型" }
     }
 }
 
@@ -723,6 +828,8 @@ private fun examStatusLabel(status: String): String {
         "accepted", "pending", "queued", "running", "generating", "preparing" -> "生成中"
         "ready", "generated" -> "可作答"
         "submitted" -> "已提交"
+        "grading" -> "批改中"
+        "grading_failed" -> "判卷失败"
         "graded", "completed" -> "已批改"
         "failed" -> "生成失败"
         else -> status.ifBlank { "未知状态" }

@@ -6,6 +6,8 @@
  */
 import type { ExamPaperDetailResponseSelectionContext } from './examPaperDetailResponseSelectionContext.ts';
 import type { ExamPaperItemResponse } from './examPaperItemResponse.ts';
+import type { ExamProfileSyncResponse } from './examProfileSyncResponse.ts';
+import type { MasteryDrillSessionResponse } from './masteryDrillSessionResponse.ts';
 import type { PaperPreview } from './paperPreview.ts';
 
 export interface ExamPaperDetailResponse {
@@ -21,6 +23,8 @@ export interface ExamPaperDetailResponse {
   graded_at?: string | null;
   created_at: string;
   selection_context?: ExamPaperDetailResponseSelectionContext;
+  profile_sync?: ExamProfileSyncResponse | null;
+  mastery_drill?: MasteryDrillSessionResponse | null;
   paper_preview?: PaperPreview;
   items?: ExamPaperItemResponse[];
 }

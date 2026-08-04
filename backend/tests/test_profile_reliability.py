@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Iterator
+from contextlib import contextmanager
+from datetime import timedelta
 from types import SimpleNamespace
 
 import pytest
 import sqlalchemy as sa
+from fastapi import BackgroundTasks
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine
@@ -14,12 +18,13 @@ from app.api import exams as exams_api
 from app.api import profile as profile_api
 from app.api.deps import CurrentUserContext
 import app.models  # noqa: F401 - register SQLModel tables
-from app.repositories import profile_repo
+from app.repositories import exams_repo, profile_repo
 from app.shared.infra.workflow.result import ok_result
 from app.models import (
     Course,
     ExamPaper,
     ExamPaperItem,
+    ExamProfileSync,
     QuestionKnowledgeUnitLink,
     QuestionTemplate,
     User,
@@ -33,6 +38,8 @@ from app.workflows.profile.common.lib import locking as profile_locking
 from app.workflows.profile.common.lib.mastery import update_mastery_from_exam
 from app.workflows.profile.common.nodes import context as profile_context_nodes
 from app.workflows.profile.update import graph as profile_update_graph
+from app.workflows.profile import sync as profile_sync_service
+from app.workflows.support.courses.lib import deletion as course_deletion
 
 
 COURSE_ID = "course_profrel00000"
@@ -54,6 +61,22 @@ def session() -> Iterator[Session]:
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"
+
+
+@pytest.fixture
+def managed_profile_sync_session(monkeypatch: pytest.MonkeyPatch, session: Session) -> Session:
+    @contextmanager
+    def _managed_session() -> Iterator[Session]:
+        try:
+            session.expire_all()
+            yield session
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+
+    monkeypatch.setattr(profile_sync_service, "managed_session", _managed_session)
+    return session
 
 
 def _seed_user_course(session: Session) -> None:
@@ -453,6 +476,7 @@ async def test_profile_update_external_session_leaves_lock_transaction_to_caller
 @pytest.mark.anyio
 async def test_grade_exam_records_profile_update_failure_without_blocking(
     session: Session,
+    managed_profile_sync_session: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _seed_user_course(session)
@@ -504,25 +528,35 @@ async def test_grade_exam_records_profile_update_failure_without_blocking(
         )
 
     monkeypatch.setattr(exams_api, "run_exam_grade_workflow", fake_run_exam_grade_workflow)
-    monkeypatch.setattr(exams_api, "run_profile_update_workflow", fake_profile_update_workflow)
+    monkeypatch.setattr(profile_sync_service, "run_profile_update_workflow", fake_profile_update_workflow)
 
     response = await exams_api._grade_exam(session, paper)
-    session.refresh(paper)
-    profile_update = json.loads(paper.selection_context_json)["profile_update"]
+    assert response.profile_sync is not None
+    assert response.profile_sync.status == "pending"
+    await profile_sync_service.run_exam_profile_sync_background(
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        paper_id=int(paper.id or 0),
+    )
+    session.expire_all()
+    profile_sync = session.exec(
+        sa.select(ExamProfileSync).where(ExamProfileSync.exam_paper_id == int(paper.id or 0))
+    ).scalar_one()
 
     assert response.status == "completed"
     assert response.mastery_consumed is False
-    assert profile_update["status"] == "failed"
-    assert profile_update["attempt_count"] == 1
-    assert profile_update["states_updated"] == 0
-    assert profile_update["review_task_count"] == 0
-    assert profile_update["last_error_code"] == "update_mastery_failed"
-    assert "secret-provider-token" not in json.dumps(profile_update)
+    assert profile_sync.status == "retry_wait"
+    assert profile_sync.attempt_count == 1
+    assert profile_sync.states_updated == 0
+    assert profile_sync.review_task_count == 0
+    assert profile_sync.last_error_code == "update_mastery_failed"
+    assert "secret-provider-token" not in json.dumps(profile_sync.model_dump(), default=str)
 
 
 @pytest.mark.anyio
 async def test_grade_exam_records_profile_update_exception_without_blocking(
     session: Session,
+    managed_profile_sync_session: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _seed_user_course(session)
@@ -570,18 +604,396 @@ async def test_grade_exam_records_profile_update_exception_without_blocking(
         raise RuntimeError("secret-provider-token")
 
     monkeypatch.setattr(exams_api, "run_exam_grade_workflow", fake_run_exam_grade_workflow)
-    monkeypatch.setattr(exams_api, "run_profile_update_workflow", fake_profile_update_workflow)
+    monkeypatch.setattr(profile_sync_service, "run_profile_update_workflow", fake_profile_update_workflow)
 
     response = await exams_api._grade_exam(session, paper)
-    session.refresh(paper)
-    profile_update = json.loads(paper.selection_context_json)["profile_update"]
+    await profile_sync_service.run_exam_profile_sync_background(
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        paper_id=int(paper.id or 0),
+    )
+    session.expire_all()
+    profile_sync = session.exec(
+        sa.select(ExamProfileSync).where(ExamProfileSync.exam_paper_id == int(paper.id or 0))
+    ).scalar_one()
 
     assert response.status == "completed"
     assert response.mastery_consumed is False
-    assert profile_update["status"] == "failed"
-    assert profile_update["attempt_count"] == 1
-    assert profile_update["last_error_code"] == "RuntimeError"
-    assert "secret-provider-token" not in json.dumps(profile_update)
+    assert profile_sync.status == "retry_wait"
+    assert profile_sync.attempt_count == 1
+    assert profile_sync.last_error_code == "RuntimeError"
+    assert "secret-provider-token" not in json.dumps(profile_sync.model_dump(), default=str)
+
+
+@pytest.mark.anyio
+async def test_exam_profile_sync_stops_automatic_retry_after_max_attempts(
+    session: Session,
+    managed_profile_sync_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    paper, _item, _unit = _seed_graded_paper(session)
+    paper_id = int(paper.id or 0)
+    task = exams_repo.ensure_exam_profile_sync(session, paper=paper, auto_commit=True)
+    task.attempt_count = profile_sync_service.PROFILE_SYNC_MAX_ATTEMPTS - 1
+    session.add(task)
+    session.commit()
+
+    async def fake_profile_update_workflow(**_kwargs):
+        raise RuntimeError("provider-secret-must-not-leak")
+
+    monkeypatch.setattr(profile_sync_service, "run_profile_update_workflow", fake_profile_update_workflow)
+    await profile_sync_service.run_exam_profile_sync_background(
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        paper_id=paper_id,
+    )
+    session.expire_all()
+    task = exams_repo.get_exam_profile_sync(session, paper_id=paper_id) or task
+
+    assert task.status == "failed"
+    assert task.attempt_count == profile_sync_service.PROFILE_SYNC_MAX_ATTEMPTS
+    assert task.next_attempt_at is None
+    assert task.last_error_code == "RuntimeError"
+    assert "provider-secret" not in json.dumps(task.model_dump(), default=str)
+
+
+def test_exam_profile_sync_claim_lease_and_fencing(session: Session) -> None:
+    paper, _item, _unit = _seed_graded_paper(session)
+    paper_id = int(paper.id or 0)
+    task = exams_repo.ensure_exam_profile_sync(
+        session,
+        paper=paper,
+        next_attempt_at=utcnow(),
+        auto_commit=True,
+    )
+    now = utcnow()
+
+    assert exams_repo.claim_exam_profile_sync(
+        session,
+        paper_id=paper_id,
+        claim_token="first-worker",
+        claimed_at=now,
+        lease_expires_at=now + timedelta(minutes=10),
+    )
+    renewed_until = now + timedelta(minutes=20)
+    assert exams_repo.renew_exam_profile_sync_lease(
+        session,
+        paper_id=paper_id,
+        claim_token="first-worker",
+        lease_expires_at=renewed_until,
+    )
+    assert not exams_repo.claim_exam_profile_sync(
+        session,
+        paper_id=paper_id,
+        claim_token="second-worker",
+        claimed_at=now,
+        lease_expires_at=now + timedelta(minutes=10),
+    )
+
+    session.expire_all()
+    task = exams_repo.get_exam_profile_sync(session, paper_id=paper_id) or task
+    task.lease_expires_at = now - timedelta(seconds=1)
+    session.add(task)
+    session.commit()
+
+    assert exams_repo.claim_exam_profile_sync(
+        session,
+        paper_id=paper_id,
+        claim_token="second-worker",
+        claimed_at=now,
+        lease_expires_at=now + timedelta(minutes=10),
+    )
+    assert not exams_repo.finalize_exam_profile_sync(
+        session,
+        paper_id=paper_id,
+        claim_token="first-worker",
+        states_updated=99,
+        review_task_count=99,
+        completed_at=now,
+    )
+    assert exams_repo.finalize_exam_profile_sync(
+        session,
+        paper_id=paper_id,
+        claim_token="second-worker",
+        states_updated=1,
+        review_task_count=2,
+        completed_at=now,
+    )
+    session.commit()
+    session.expire_all()
+    task = exams_repo.get_exam_profile_sync(session, paper_id=paper_id) or task
+
+    assert task.status == "completed"
+    assert task.attempt_count == 2
+    assert task.states_updated == 1
+    assert task.review_task_count == 2
+
+
+@pytest.mark.anyio
+async def test_exam_profile_sync_runs_and_cleans_up_lease_heartbeat(
+    session: Session,
+    managed_profile_sync_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    paper, _item, _unit = _seed_graded_paper(session)
+    paper_id = int(paper.id or 0)
+    exams_repo.ensure_exam_profile_sync(session, paper=paper, auto_commit=True)
+    heartbeat_started = asyncio.Event()
+    heartbeat_cancelled = asyncio.Event()
+
+    async def fake_heartbeat(**_kwargs):
+        heartbeat_started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            heartbeat_cancelled.set()
+            raise
+
+    async def fake_profile_update_workflow(**_kwargs):
+        await heartbeat_started.wait()
+        return ok_result(
+            {
+                "error": None,
+                "mastery_result": {"states_updated": 0},
+                "review_task_ids": [],
+            }
+        )
+
+    monkeypatch.setattr(profile_sync_service, "_renew_exam_profile_sync_lease_loop", fake_heartbeat)
+    monkeypatch.setattr(profile_sync_service, "run_profile_update_workflow", fake_profile_update_workflow)
+
+    await profile_sync_service.run_exam_profile_sync_background(
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        paper_id=paper_id,
+    )
+    session.expire_all()
+    task = exams_repo.get_exam_profile_sync(session, paper_id=paper_id)
+
+    assert task is not None and task.status == "completed"
+    assert heartbeat_started.is_set()
+    assert heartbeat_cancelled.is_set()
+
+
+@pytest.mark.anyio
+async def test_exam_profile_sync_commits_profile_writes_with_completion(
+    session: Session,
+    managed_profile_sync_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    paper, _item, unit = _seed_graded_paper(session)
+    paper_id = int(paper.id or 0)
+    exams_repo.ensure_exam_profile_sync(session, paper=paper, auto_commit=True)
+
+    async def fake_profile_update_workflow(**kwargs):
+        workflow_session = kwargs["session"]
+        workflow_session.add(
+            UserKnowledgeState(
+                user_id=USER_ID,
+                course_id=COURSE_ID,
+                knowledge_unit_id=int(unit.id or 0),
+                total_attempts=1,
+                correct_attempts=1,
+                source_exam_paper_id=paper_id,
+            )
+        )
+        return ok_result(
+            {
+                "error": None,
+                "mastery_result": {"states_updated": 1},
+                "review_task_ids": [11, 12],
+            }
+        )
+
+    monkeypatch.setattr(profile_sync_service, "run_profile_update_workflow", fake_profile_update_workflow)
+
+    await profile_sync_service.run_exam_profile_sync_background(
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        paper_id=paper_id,
+    )
+    session.expire_all()
+    task = exams_repo.get_exam_profile_sync(session, paper_id=paper_id)
+    state = profile_repo.get_knowledge_state(
+        session,
+        user_id=USER_ID,
+        course_id=COURSE_ID,
+        knowledge_unit_id=int(unit.id or 0),
+    )
+
+    assert task is not None and task.status == "completed"
+    assert task.states_updated == 1
+    assert task.review_task_count == 2
+    assert state is not None and state.total_attempts == 1
+
+
+@pytest.mark.anyio
+async def test_exam_profile_sync_rolls_back_profile_writes_when_completion_fence_is_lost(
+    session: Session,
+    managed_profile_sync_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    paper, _item, unit = _seed_graded_paper(session)
+    paper_id = int(paper.id or 0)
+    exams_repo.ensure_exam_profile_sync(session, paper=paper, auto_commit=True)
+
+    async def fake_profile_update_workflow(**kwargs):
+        kwargs["session"].add(
+            UserKnowledgeState(
+                user_id=USER_ID,
+                course_id=COURSE_ID,
+                knowledge_unit_id=int(unit.id or 0),
+                total_attempts=1,
+                correct_attempts=1,
+                source_exam_paper_id=paper_id,
+            )
+        )
+        return ok_result(
+            {
+                "error": None,
+                "mastery_result": {"states_updated": 1},
+                "review_task_ids": [],
+            }
+        )
+
+    monkeypatch.setattr(profile_sync_service, "run_profile_update_workflow", fake_profile_update_workflow)
+    monkeypatch.setattr(exams_repo, "finalize_exam_profile_sync", lambda *_args, **_kwargs: False)
+
+    await profile_sync_service.run_exam_profile_sync_background(
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        paper_id=paper_id,
+    )
+    session.expire_all()
+    task = exams_repo.get_exam_profile_sync(session, paper_id=paper_id)
+    state = profile_repo.get_knowledge_state(
+        session,
+        user_id=USER_ID,
+        course_id=COURSE_ID,
+        knowledge_unit_id=int(unit.id or 0),
+    )
+
+    assert task is not None and task.status == "retry_wait"
+    assert task.last_error_code == "profile_sync_claim_lost"
+    assert state is None
+
+
+@pytest.mark.anyio
+async def test_retry_exam_profile_sync_resets_failed_task_and_schedules_worker(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    paper, _item, _unit = _seed_graded_paper(session)
+    paper_id = int(paper.id or 0)
+    task = exams_repo.ensure_exam_profile_sync(
+        session,
+        paper=paper,
+        status="failed",
+        auto_commit=True,
+    )
+    task.attempt_count = profile_sync_service.PROFILE_SYNC_MAX_ATTEMPTS
+    task.last_error_code = "update_mastery_failed"
+    session.add(task)
+    session.commit()
+
+    class Registry:
+        def __init__(self) -> None:
+            self.names: list[str] = []
+
+        def spawn(self, coro, **kwargs):
+            self.names.append(str(kwargs.get("name") or ""))
+            coro.close()
+            return SimpleNamespace()
+
+    registry = Registry()
+    response = await exams_api.retry_exam_profile_sync(
+        request=SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(background_task_registry=registry))),
+        background_tasks=BackgroundTasks(),
+        course_id=COURSE_ID,
+        exam_paper_id=paper_id,
+        user=CurrentUserContext(user_id=USER_ID, email=None, is_local=True),
+        session=session,
+    )
+    session.expire_all()
+    task = exams_repo.get_exam_profile_sync(session, paper_id=paper_id) or task
+
+    assert response.data is not None
+    assert response.data.status == "pending"
+    assert response.data.manual_retry_count == 1
+    assert task.status == "pending"
+    assert task.attempt_count == profile_sync_service.PROFILE_SYNC_MAX_ATTEMPTS
+    assert task.last_error_code == ""
+    assert len(registry.names) == 1
+
+
+def test_exam_profile_sync_recovery_schedules_due_and_expired_tasks(
+    session: Session,
+    managed_profile_sync_session: Session,
+) -> None:
+    _seed_user_course(session)
+    now = utcnow()
+    tasks: list[ExamProfileSync] = []
+    for index, (status, next_attempt_at, lease_expires_at) in enumerate(
+        [
+            ("pending", now - timedelta(seconds=1), None),
+            ("retry_wait", now + timedelta(hours=1), None),
+            ("processing", None, now - timedelta(seconds=1)),
+        ],
+        start=1,
+    ):
+        paper = ExamPaper(
+            course_id=COURSE_ID,
+            user_id=USER_ID,
+            exam_mode="web_practice",
+            status="graded",
+            total_items=0,
+        )
+        session.add(paper)
+        session.commit()
+        session.refresh(paper)
+        task = ExamProfileSync(
+            exam_paper_id=int(paper.id or 0),
+            course_id=COURSE_ID,
+            user_id=USER_ID,
+            status=status,
+            next_attempt_at=next_attempt_at,
+            claim_token=f"worker-{index}" if status == "processing" else "",
+            lease_expires_at=lease_expires_at,
+        )
+        session.add(task)
+        session.commit()
+        tasks.append(task)
+
+    class Registry:
+        def __init__(self) -> None:
+            self.names: list[str] = []
+
+        def spawn(self, coro, **kwargs):
+            self.names.append(str(kwargs.get("name") or ""))
+            coro.close()
+            return SimpleNamespace()
+
+    registry = Registry()
+    scheduled = profile_sync_service.recover_exam_profile_sync_tasks_once(registry)
+
+    assert scheduled == 2
+    assert {name.rsplit(":", 1)[-1] for name in registry.names} == {
+        str(tasks[0].exam_paper_id),
+        str(tasks[2].exam_paper_id),
+    }
+
+
+def test_course_exam_cleanup_deletes_profile_sync_before_paper(session: Session) -> None:
+    paper, _item, _unit = _seed_graded_paper(session)
+    paper_id = int(paper.id or 0)
+    exams_repo.ensure_exam_profile_sync(session, paper=paper, auto_commit=True)
+
+    course_deletion._delete_exam_records(session, course_id=COURSE_ID)
+    session.commit()
+    session.expire_all()
+
+    assert exams_repo.get_exam_profile_sync(session, paper_id=paper_id) is None
+    assert exams_repo.get_exam_paper_by_id(session, paper_id) is None
 
 
 def test_complete_review_uses_shared_lock_before_profile_business_operations(

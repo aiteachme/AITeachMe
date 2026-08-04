@@ -395,27 +395,64 @@ def update_mastery_from_exam(
     links_by_item_id = exams_repo.list_links_for_exam_items(session, [int(item.id or 0) for item in items])
 
     node_attempts: dict[int, list[_WeightedAttempt]] = {}
+    item_by_id = {int(item.id or 0): item for item in items}
+    drill_attempts = (
+        exams_repo.list_mastery_drill_attempts_by_paper(session, paper_id=exam_paper_id)
+        if exam_paper.exam_mode == "mastery_drill"
+        else []
+    )
 
-    for item in items:
-        if item.is_correct is None:
-            continue
-        answered_at = item.answered_at or item.updated_at or item.created_at
-        knowledge_unit_links = _normalize_knowledge_unit_links(links_by_item_id.get(int(item.id or 0), []))
-        for node_id, normalized_weight in knowledge_unit_links:
-            node_attempts.setdefault(node_id, []).append(
-                _WeightedAttempt(
-                    is_correct=item.is_correct,
-                    difficulty=item.difficulty,
-                    answered_at=answered_at,
-                    score_ratio=_score_ratio(item.score_obtained, item.score_max, item.is_correct),
-                    coverage_weight=normalized_weight,
-                    question_type=item.question_type,
-                    time_spent_seconds=item.time_spent_seconds,
-                    hint_used=item.hint_used,
-                    confidence_self_report=item.confidence_self_report,
-                    error_cause_label=item.error_cause_label,
-                )
+    if drill_attempts:
+        for attempt in drill_attempts:
+            if attempt.status != "graded" or attempt.is_correct is None:
+                continue
+            item = item_by_id.get(int(attempt.exam_paper_item_id or 0))
+            if item is None:
+                continue
+            answered_at = attempt.answered_at or attempt.updated_at or attempt.created_at
+            knowledge_unit_links = _normalize_knowledge_unit_links(
+                links_by_item_id.get(int(item.id or 0), [])
             )
+            for node_id, normalized_weight in knowledge_unit_links:
+                node_attempts.setdefault(node_id, []).append(
+                    _WeightedAttempt(
+                        is_correct=attempt.is_correct,
+                        difficulty=item.difficulty,
+                        answered_at=answered_at,
+                        score_ratio=_score_ratio(
+                            attempt.score_obtained,
+                            attempt.score_max,
+                            attempt.is_correct,
+                        ),
+                        coverage_weight=normalized_weight,
+                        question_type=item.question_type,
+                        time_spent_seconds=attempt.time_spent_seconds,
+                        hint_used=attempt.hint_used,
+                        confidence_self_report=attempt.confidence_self_report,
+                        error_cause_label=attempt.error_cause_label,
+                    )
+                )
+    else:
+        for item in items:
+            if item.is_correct is None:
+                continue
+            answered_at = item.answered_at or item.updated_at or item.created_at
+            knowledge_unit_links = _normalize_knowledge_unit_links(links_by_item_id.get(int(item.id or 0), []))
+            for node_id, normalized_weight in knowledge_unit_links:
+                node_attempts.setdefault(node_id, []).append(
+                    _WeightedAttempt(
+                        is_correct=item.is_correct,
+                        difficulty=item.difficulty,
+                        answered_at=answered_at,
+                        score_ratio=_score_ratio(item.score_obtained, item.score_max, item.is_correct),
+                        coverage_weight=normalized_weight,
+                        question_type=item.question_type,
+                        time_spent_seconds=item.time_spent_seconds,
+                        hint_used=item.hint_used,
+                        confidence_self_report=item.confidence_self_report,
+                        error_cause_label=item.error_cause_label,
+                    )
+                )
 
     now = utcnow()
     updated_state_ids: list[int] = []

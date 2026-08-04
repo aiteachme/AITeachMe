@@ -71,7 +71,23 @@ type GradeJob = {
   states_updated: number;
   tasks_created: number;
   mastery_consumed: boolean;
+  profile_sync?: Record<string, unknown>;
 };
+
+function completedProfileSync(paper: InternalPaper): Record<string, unknown> {
+  return {
+    exam_paper_id: paper.id,
+    status: "completed",
+    attempt_count: 1,
+    manual_retry_count: 0,
+    next_attempt_at: null,
+    last_error_code: null,
+    states_updated: 3,
+    review_task_count: 2,
+    can_retry: false,
+    updated_at: paper.graded_at ?? nowIso(),
+  };
+}
 
 const QUESTION_BANK: Record<QuestionType, QuestionTemplateSeed[]> = {
   single_choice: [
@@ -476,6 +492,7 @@ function toPublicPaper(paper: InternalPaper): Record<string, unknown> {
       paper_layout_mode: paper.exam_mode === "paper_exam" ? "auto" : "practice_scroll",
       paper_layout: buildMockPaperLayout(paper),
     },
+    profile_sync: paper.status === "graded" ? completedProfileSync(paper) : null,
     paper_preview: buildPaperPreview(paper),
     items: paper.items.map((item) => ({
       id: item.id,
@@ -947,6 +964,15 @@ export const examHandlers = [
     return HttpResponse.json({ code: 0, data: { deleted: true, exam_paper_id: paperId } });
   }),
 
+  http.post("/api/v1/courses/:course/exams/:examPaperId/profile-sync/retry", ({ params }) => {
+    const paperId = Number(params.examPaperId);
+    const paper = papers.get(paperId);
+    if (!paper || paper.status !== "graded") {
+      return HttpResponse.json({ code: 409, message: "paper not graded", data: null }, { status: 409 });
+    }
+    return HttpResponse.json({ code: 0, data: completedProfileSync(paper) });
+  }),
+
   http.post("/api/v1/courses/:course/exams/:examPaperId/delete", ({ params }) => {
     const paperId = Number(params.examPaperId);
     if (!papers.has(paperId)) {
@@ -1004,6 +1030,7 @@ export const examHandlers = [
         states_updated: 3,
         tasks_created: 2,
         mastery_consumed: true,
+        profile_sync: completedProfileSync(paper),
       },
     });
   }),
@@ -1043,6 +1070,7 @@ export const examHandlers = [
       states_updated: 3,
       tasks_created: 2,
       mastery_consumed: true,
+      profile_sync: completedProfileSync(paper),
     };
     gradeJobs.set(job.id, job);
 

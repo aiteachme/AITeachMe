@@ -208,6 +208,7 @@ class ExamPaperStatus(str, Enum):
     IN_PROGRESS = "in_progress"
     SUBMITTED = "submitted"
     GRADING = "grading"
+    GRADING_FAILED = "grading_failed"
     GRADED = "graded"
     ARCHIVED = "archived"
 
@@ -217,7 +218,8 @@ EXAM_PAPER_STATUS_TRANSITIONS: dict[ExamPaperStatus, list[ExamPaperStatus]] = {
     ExamPaperStatus.READY: [ExamPaperStatus.IN_PROGRESS],
     ExamPaperStatus.IN_PROGRESS: [ExamPaperStatus.SUBMITTED],
     ExamPaperStatus.SUBMITTED: [ExamPaperStatus.GRADING],
-    ExamPaperStatus.GRADING: [ExamPaperStatus.GRADED],
+    ExamPaperStatus.GRADING: [ExamPaperStatus.GRADING_FAILED, ExamPaperStatus.GRADED],
+    ExamPaperStatus.GRADING_FAILED: [ExamPaperStatus.SUBMITTED],
     ExamPaperStatus.GRADED: [ExamPaperStatus.ARCHIVED],
     ExamPaperStatus.ARCHIVED: [],
 }

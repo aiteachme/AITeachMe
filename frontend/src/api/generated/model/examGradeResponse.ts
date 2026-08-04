@@ -4,6 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
+import type { ExamProfileSyncResponse } from './examProfileSyncResponse.ts';
 
 export interface ExamGradeResponse {
   id: number;
@@ -16,4 +17,5 @@ export interface ExamGradeResponse {
   states_updated: number;
   tasks_created: number;
   mastery_consumed: boolean;
+  profile_sync?: ExamProfileSyncResponse | null;
 }

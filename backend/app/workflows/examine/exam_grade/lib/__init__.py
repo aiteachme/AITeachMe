@@ -2,7 +2,6 @@
 
 from app.workflows.examine.exam_grade.lib.grader import (
     ExamItemGradeDecision,
-    ObjectiveFeedbackPayload,
     SubjectiveGradePayload,
     grade_exam_items_with_workflow,
 )
@@ -13,7 +12,6 @@ from app.workflows.examine.exam_grade.lib.study_guide import (
 
 __all__ = [
     "ExamItemGradeDecision",
-    "ObjectiveFeedbackPayload",
     "SubjectiveGradePayload",
     "ExamStudyGuidePayload",
     "grade_exam_items_with_workflow",

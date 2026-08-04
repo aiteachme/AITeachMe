@@ -1,5 +1,6 @@
 import { LONG_RUNNING_API_TIMEOUT_MS, orvalApiClient } from "../../api/client";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
+import { normalizeQuestionTypeKey, requireSupportedQuestionType } from "./questionTypes";
 
 export interface QuestionTemplateGradeResult {
   question_template_id: number;
@@ -14,14 +15,18 @@ export interface QuestionTemplateGradeResult {
 }
 
 export function isAiGradedQuestionType(questionType?: string | null): boolean {
-  return ["fill_blank", "short_answer"].includes(String(questionType ?? "").trim().toLowerCase());
+  return ["fill_blank", "short_answer"].includes(normalizeQuestionTypeKey(questionType));
 }
 
 export async function gradeQuestionTemplateAnswer(
   courseId: string,
   questionTemplateId: number,
   answer: string,
+  questionType?: string | null,
 ): Promise<QuestionTemplateGradeResult> {
+  if (questionType !== undefined) {
+    requireSupportedQuestionType(questionType);
+  }
   const response = await orvalApiClient<{ data?: { code?: number; message?: string; data?: QuestionTemplateGradeResult } }>(
     `/api/v1/courses/${courseId}/exams/question-templates/${questionTemplateId}/grade`,
     {

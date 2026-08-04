@@ -15,6 +15,7 @@ from typing import Literal, TypeVar
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.models.knowledge_unit import KnowledgeUnit
+from app.shared.kernel.question_types import QuestionTypeLiteral
 from app.shared.infra.exceptions import LLMTimeoutError
 from app.shared.infra.llm_support import acompletion_with_fallback, run_llm_tasks
 from app.workflows.examine.question_build.lib.model_policy import (
@@ -30,13 +31,6 @@ from app.workflows.examine.question_build.prompts import (
     build_text_exam_messages,
 )
 
-QuestionTypeLiteral = Literal[
-    "single_choice",
-    "multiple_choice",
-    "true_false",
-    "fill_blank",
-    "short_answer",
-]
 DifficultyLiteral = Literal["easy", "medium", "hard"]
 T = TypeVar("T")
 

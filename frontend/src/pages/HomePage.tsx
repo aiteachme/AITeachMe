@@ -12,8 +12,6 @@ import {
   ChevronDown,
   ClipboardList,
   Code2,
-  Calculator,
-  ChartScatter,
   FileCode,
   FileImage,
   FolderOpen,
@@ -270,42 +268,55 @@ function formatFileSize(bytes?: number | null): string {
   return `${value >= 10 || unitIndex === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`;
 }
 
-const DEMO_COURSE_ACCENTS = [
-  {
-    shell: "border-indigo-100 bg-gradient-to-br from-white via-white to-indigo-50/70 hover:border-indigo-300 hover:shadow-indigo-200/40 dark:border-indigo-500/20 dark:from-slate-950 dark:via-slate-950 dark:to-indigo-950/30 dark:hover:border-indigo-400/40",
-    icon: "border-indigo-100 bg-indigo-50 text-indigo-600 dark:border-indigo-400/20 dark:bg-indigo-400/10 dark:text-indigo-300",
-    strip: "from-indigo-500 via-sky-400 to-violet-400",
-  },
-  {
-    shell: "border-cyan-100 bg-gradient-to-br from-white via-white to-cyan-50/70 hover:border-cyan-300 hover:shadow-cyan-200/40 dark:border-cyan-500/20 dark:from-slate-950 dark:via-slate-950 dark:to-cyan-950/25 dark:hover:border-cyan-400/40",
-    icon: "border-cyan-100 bg-cyan-50 text-cyan-700 dark:border-cyan-400/20 dark:bg-cyan-400/10 dark:text-cyan-300",
-    strip: "from-cyan-500 via-emerald-400 to-sky-400",
-  },
-  {
-    shell: "border-violet-100 bg-gradient-to-br from-white via-white to-violet-50/70 hover:border-violet-300 hover:shadow-violet-200/40 dark:border-violet-500/20 dark:from-slate-950 dark:via-slate-950 dark:to-violet-950/30 dark:hover:border-violet-400/40",
-    icon: "border-violet-100 bg-violet-50 text-violet-600 dark:border-violet-400/20 dark:bg-violet-400/10 dark:text-violet-300",
-    strip: "from-violet-500 via-fuchsia-400 to-indigo-400",
-  },
-] as const;
+const CARD_THEME_INDIGO = {
+  shell: "border-indigo-100 bg-gradient-to-br from-white via-white to-indigo-50/40 hover:border-indigo-300 hover:shadow-[0_20px_40px_rgba(99,102,241,0.12)] dark:border-indigo-500/20 dark:from-slate-950 dark:via-slate-950 dark:to-indigo-950/20 dark:hover:border-indigo-400/40 dark:hover:shadow-[0_20px_40px_rgba(99,102,241,0.22)]",
+  icon: "border-indigo-100 bg-indigo-50/85 text-indigo-600 dark:border-indigo-400/20 dark:bg-indigo-400/10 dark:text-indigo-300",
+  strip: "from-indigo-500 via-sky-400 to-violet-400",
+  tagColor: "text-indigo-600 dark:text-indigo-400 bg-indigo-50/60 dark:bg-indigo-950/40",
+  label: "计算机科学"
+};
 
-function getDemoCourseTheme(courseName: string, index: number) {
-  const accent = DEMO_COURSE_ACCENTS[index % DEMO_COURSE_ACCENTS.length];
-  if (/Python|C语言|编程|程序|代码/i.test(courseName)) {
-    return { ...accent, icon: Code2 };
+const CARD_THEME_CYAN = {
+  shell: "border-cyan-100 bg-gradient-to-br from-white via-white to-cyan-50/40 hover:border-cyan-300 hover:shadow-[0_20px_40px_rgba(6,182,212,0.12)] dark:border-cyan-500/20 dark:from-slate-950 dark:via-slate-950 dark:to-cyan-950/15 dark:hover:border-cyan-400/40 dark:hover:shadow-[0_20px_40px_rgba(6,182,212,0.22)]",
+  icon: "border-cyan-100 bg-cyan-50/85 text-cyan-700 dark:border-cyan-400/20 dark:bg-cyan-400/10 dark:text-cyan-300",
+  strip: "from-cyan-500 via-emerald-400 to-sky-400",
+  tagColor: "text-cyan-700 dark:text-cyan-400 bg-cyan-50/60 dark:bg-cyan-950/40",
+  label: "数理科学"
+};
+
+const CARD_THEME_VIOLET = {
+  shell: "border-violet-100 bg-gradient-to-br from-white via-white to-violet-50/40 hover:border-violet-300 hover:shadow-[0_20px_40px_rgba(139,92,246,0.12)] dark:border-violet-500/20 dark:from-slate-950 dark:via-slate-950 dark:to-violet-950/20 dark:hover:border-violet-400/40 dark:hover:shadow-[0_20px_40px_rgba(139,92,246,0.22)]",
+  icon: "border-violet-100 bg-violet-50/85 text-violet-600 dark:border-violet-400/20 dark:bg-violet-400/10 dark:text-violet-300",
+  strip: "from-violet-500 via-fuchsia-400 to-indigo-400",
+  tagColor: "text-violet-600 dark:text-violet-400 bg-violet-50/60 dark:bg-violet-950/40",
+  label: "物理力学"
+};
+
+const CARD_THEME_AMBER = {
+  shell: "border-amber-100 bg-gradient-to-br from-white via-white to-amber-50/40 hover:border-amber-300 hover:shadow-[0_20px_40px_rgba(245,158,11,0.12)] dark:border-amber-500/20 dark:from-slate-950 dark:via-slate-950 dark:to-amber-950/15 dark:hover:border-amber-400/40 dark:hover:shadow-[0_20px_40px_rgba(245,158,11,0.22)]",
+  icon: "border-amber-100 bg-amber-50/85 text-amber-700 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-300",
+  strip: "from-amber-500 via-orange-400 to-yellow-400",
+  tagColor: "text-amber-700 dark:text-amber-400 bg-amber-50/60 dark:bg-amber-950/40",
+  label: "概率统计"
+};
+
+function getCardTheme(name: string) {
+  if (/Python|C语言|编程|程序|代码/i.test(name)) {
+    return { ...CARD_THEME_INDIGO, iconComponent: Code2 };
   }
-  if (/概率|统计|数理统计/.test(courseName)) {
-    return { ...DEMO_COURSE_ACCENTS[1], icon: ChartScatter };
+  if (/物理|力学|牛顿|受力/.test(name)) {
+    return { ...CARD_THEME_VIOLET, iconComponent: Atom };
   }
-  if (/物理|力学|牛顿|受力/.test(courseName)) {
-    return { ...DEMO_COURSE_ACCENTS[1], icon: Atom };
+  if (/概率|统计|数理统计/.test(name)) {
+    return { ...CARD_THEME_AMBER, iconComponent: Sigma };
   }
-  if (/线性代数|矩阵|行列式|特征值/.test(courseName)) {
-    return { ...DEMO_COURSE_ACCENTS[2], icon: Sigma };
+  if (/线性代数|矩阵|行列式|特征值/.test(name)) {
+    return { ...CARD_THEME_VIOLET, iconComponent: Sigma, label: "线性代数" };
   }
-  if (/高等数学|高数|微积分|极限|导数|积分/.test(courseName)) {
-    return { ...DEMO_COURSE_ACCENTS[0], icon: Calculator };
+  if (/数学|高数|微积分|极限|导数|积分|几何|代数/.test(name)) {
+    return { ...CARD_THEME_CYAN, iconComponent: Sigma };
   }
-  return { ...accent, icon: BookOpen };
+  return { ...CARD_THEME_INDIGO, iconComponent: BookOpen, label: "通识课程" };
 }
 
 function normalizeFileExt(filetype?: string | null): string {
@@ -677,6 +688,7 @@ export function HomePage() {
   const [entryMode, setEntryMode] = useState<"course" | "chat">("course");
   const [chatModel, setChatModel] = useGlobalChatModelChoice();
   const [recentOpen, setRecentOpen] = useState(true);
+  const [startersOpen, setStartersOpen] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [demoCourseError, setDemoCourseError] = useState<string | null>(null);
 
@@ -1120,21 +1132,22 @@ export function HomePage() {
     />
     <div
       className={cn(
-        "atm-home-surface relative flex w-full flex-col items-center overflow-x-clip p-4 pt-[clamp(5rem,7vh,6.5rem)] selection:bg-zinc-200 md:p-8 md:pt-[clamp(5.5rem,7vh,7.5rem)]",
+        "atm-home-surface relative flex w-full flex-col items-center overflow-x-clip p-4 selection:bg-zinc-200 md:p-8",
         isElectron ? "min-h-full" : "min-h-[100dvh]",
       )}
     >
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, ease: "easeOut" }}
-        className={cn(
-          "relative z-20 flex w-full max-w-[920px] flex-col items-center",
-          shouldReserveDemoCourseSection
-            ? "min-h-[clamp(560px,64dvh,680px)] justify-end pb-5 pt-5 md:min-h-[clamp(480px,62dvh,660px)] md:pb-6 md:pt-7"
-            : "min-h-[calc(100dvh-9rem)] translate-y-[8vh] justify-center md:translate-y-[11vh]",
-        )}
-      >
+      <div className="flex-1 flex flex-col justify-center items-center w-full py-6 md:py-10 relative z-20">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, ease: "easeOut" }}
+          className={cn(
+            "relative z-20 flex w-full max-w-5xl flex-col items-center",
+            shouldReserveDemoCourseSection
+              ? "justify-center"
+              : "min-h-[calc(100dvh-8rem)] translate-y-[6vh] justify-center md:translate-y-[8vh]",
+          )}
+        >
         {/* ── Logo & Title ── */}
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
@@ -1180,11 +1193,11 @@ export function HomePage() {
           className="w-full relative z-10"
         >
           <div className={cn(
-            "w-full overflow-hidden rounded-3xl border bg-white transition-all dark:bg-slate-950",
+            "w-full overflow-hidden rounded-3xl border bg-white transition-all duration-300 dark:bg-slate-950",
             hasEntryFiles
               ? "border-slate-300 shadow-[0_18px_42px_rgba(15,23,42,0.08)] dark:border-slate-700"
-              : "border-slate-200 shadow-[0_18px_42px_rgba(15,23,42,0.07)] hover:border-slate-300 dark:border-slate-800 dark:hover:border-slate-700",
-            "focus-within:border-indigo-300 focus-within:shadow-[0_20px_54px_rgba(99,102,241,0.16)] focus-within:ring-4 focus-within:ring-indigo-500/10 dark:focus-within:border-indigo-500/50 dark:focus-within:shadow-[0_20px_54px_rgba(99,102,241,0.22)]"
+              : "border-slate-200 shadow-[0_18px_42px_rgba(15,23,42,0.06)] hover:border-slate-300/80 hover:shadow-[0_20px_48px_rgba(15,23,42,0.09)] dark:border-slate-800 dark:hover:border-slate-700/80",
+            "focus-within:border-indigo-400 focus-within:shadow-[0_24px_60px_-12px_rgba(99,102,241,0.18)] focus-within:ring-4 focus-within:ring-indigo-500/5 dark:focus-within:border-indigo-500/60 dark:focus-within:shadow-[0_24px_60px_-12px_rgba(99,102,241,0.25)]"
           )}>
             <div className="flex flex-col gap-2 border-b border-slate-100 px-4 py-3 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between sm:px-5">
               <div className="inline-flex w-fit rounded-xl bg-slate-100 p-1 dark:bg-slate-900">
@@ -1202,12 +1215,19 @@ export function HomePage() {
                       disabled={isWorking}
                       aria-pressed={active}
                       className={cn(
-                        "inline-flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60",
+                        "relative inline-flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 z-10",
                         active
-                          ? "bg-white text-slate-900 shadow-sm dark:bg-slate-800 dark:text-slate-100"
+                          ? "text-slate-900 dark:text-slate-100"
                           : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200",
                       )}
                     >
+                      {active && (
+                        <motion.div
+                          layoutId="activeTab"
+                          className="absolute inset-0 -z-10 rounded-lg bg-white shadow-sm dark:bg-slate-800"
+                          transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                        />
+                      )}
                       <ModeIcon className="h-3.5 w-3.5" />
                       {item.label}
                     </button>
@@ -1219,7 +1239,7 @@ export function HomePage() {
               ref={textareaRef}
               aria-label={isCourseEntryMode ? "课程构建需求" : "自由对话输入"}
               placeholder={textareaPlaceholder}
-              className="w-full min-h-[112px] max-h-[320px] resize-none border-0 bg-transparent px-5 pb-2 pt-5 text-[15px] leading-7 text-zinc-900 focus:outline-none placeholder:text-zinc-400 dark:text-slate-100 dark:placeholder:text-slate-500 sm:min-h-[120px] sm:px-7 sm:pt-6 sm:text-[16px]"
+              className="w-full min-h-[48px] max-h-[320px] resize-none border-0 bg-transparent px-5 pb-2 pt-3 text-[15px] leading-7 text-zinc-900 focus:outline-none placeholder:text-zinc-400 dark:text-slate-100 dark:placeholder:text-slate-500 sm:min-h-[56px] sm:px-7 sm:pt-4 sm:text-[16px]"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -1237,10 +1257,10 @@ export function HomePage() {
                     return (
                       <div
                         key={file.id}
-                        className="group inline-flex max-w-full items-center gap-2 rounded-2xl border border-zinc-200/80 bg-zinc-50/90 px-3 py-2 text-[13px] text-zinc-700 transition-colors hover:border-zinc-300 hover:bg-white dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:bg-slate-800/80"
+                        className="group inline-flex max-w-full items-center gap-2 rounded-xl border border-zinc-200/70 bg-zinc-50/60 backdrop-blur-sm px-3.5 py-1.5 text-[13px] text-zinc-700 transition-all duration-200 hover:-translate-y-0.5 hover:border-zinc-300 hover:bg-white hover:shadow-sm dark:border-slate-700/60 dark:bg-slate-800/50 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:bg-slate-800"
                       >
                         <span className="shrink-0">{homeFileIcon(file)}</span>
-                        <span className="max-w-[220px] truncate font-medium text-zinc-800 dark:text-slate-200">{file.filename}</span>
+                        <span className="max-w-[200px] truncate font-medium text-zinc-800 dark:text-slate-200">{file.filename}</span>
                         <span className={cn("shrink-0", meta.tone)} title={resolveFileProcessingLabel(file)}>
                           {meta.icon}
                         </span>
@@ -1249,7 +1269,7 @@ export function HomePage() {
                           onClick={() => handleRemoveEntryFile(file.id)}
                           aria-label={`从本次新建中移除 ${file.filename}`}
                           title="从本次新建中移除"
-                          className="rounded-md p-0.5 text-zinc-400 transition-colors hover:bg-red-50 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="rounded-md p-0.5 text-zinc-400 opacity-60 transition-all hover:bg-red-50 hover:text-red-500 hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-red-950/30"
                         >
                           <X className="h-3.5 w-3.5" />
                         </button>
@@ -1350,41 +1370,78 @@ export function HomePage() {
             </div>
           </div>
 
-          <div className="mt-3 w-full px-1">
-            <div className="mb-2 flex items-center justify-center gap-2 text-[11px] font-medium text-zinc-400 dark:text-slate-500">
-              <Sparkles className="h-3.5 w-3.5 text-indigo-400" />
-              <span>{isCourseEntryMode ? hasEntryFiles ? "资料课程示例" : "课程需求示例" : "对话建课示例"}</span>
-            </div>
-            <div className="flex gap-2 overflow-x-auto pb-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {activePromptStarters.map((starter, index) => {
-                const StarterIcon = starter.icon;
-                return (
-                  <button
-                    key={starter.id}
-                    type="button"
-                    onClick={() => handlePromptStarterClick(starter.prompt)}
-                    disabled={isWorking}
-                    aria-label={`套用${starter.label}提示词示例`}
-                    title={starter.prompt}
-                    className="group relative flex min-w-[224px] flex-1 items-stretch gap-2 rounded-2xl border border-slate-200/70 bg-white/60 px-3.5 py-2.5 text-left shadow-[0_14px_32px_-30px_rgba(15,23,42,0.55)] backdrop-blur transition hover:-translate-y-0.5 hover:border-indigo-200 hover:bg-white hover:shadow-[0_18px_38px_-30px_rgba(79,70,229,0.42)] focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/15 disabled:cursor-not-allowed disabled:opacity-55 dark:border-slate-800 dark:bg-slate-950/45 dark:hover:border-indigo-500/30 dark:hover:bg-slate-950"
-                  >
-                    <span className="mt-1 h-auto w-px shrink-0 rounded-full bg-gradient-to-b from-indigo-400/70 via-sky-300/70 to-transparent transition-opacity group-hover:opacity-100 dark:from-indigo-300/60 dark:via-cyan-300/40" />
-                    <span className="min-w-0 flex-1 py-0.5">
-                      <span className="mb-1 flex items-center gap-1.5 text-[11px] font-bold text-slate-500 transition-colors group-hover:text-indigo-600 dark:text-slate-400 dark:group-hover:text-indigo-300">
-                        <StarterIcon className="h-3.5 w-3.5" />
-                        {starter.label}
-                      </span>
-                      <span className="line-clamp-2 text-[12.5px] font-medium leading-5 text-slate-600 transition-colors group-hover:text-slate-900 dark:text-slate-300 dark:group-hover:text-slate-100">
-                        {starter.prompt}
-                      </span>
-                    </span>
-                    <span className="mt-0.5 font-mono text-[10px] font-semibold text-slate-300 tabular-nums transition-colors group-hover:text-indigo-400 dark:text-slate-600 dark:group-hover:text-indigo-300">
-                      {String(index + 1).padStart(2, "0")}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+          <div className="mt-3 w-full px-1 relative">
+            {/* Section Toggle */}
+            <button
+              type="button"
+              onClick={() => setStartersOpen(!startersOpen)}
+              aria-expanded={startersOpen}
+              aria-controls="home-prompt-starters"
+              className="group flex w-full cursor-pointer items-center gap-4 py-2.5"
+            >
+              <div className="flex-1 h-[1px] bg-zinc-200 group-hover:bg-zinc-300 transition-colors dark:bg-slate-800 dark:group-hover:bg-slate-700" />
+              <span className="flex shrink-0 select-none items-center gap-2 rounded-full border border-indigo-100 bg-white px-3 py-1.5 text-[13px] font-semibold text-slate-700 shadow-sm transition-colors group-hover:border-indigo-200 group-hover:text-indigo-700 dark:border-indigo-500/20 dark:bg-slate-950 dark:text-slate-300 dark:group-hover:text-indigo-300">
+                <Sparkles className="h-4 w-4 text-indigo-500" />
+                {isCourseEntryMode ? hasEntryFiles ? "资料课程样例" : "课程需求样例" : "对话建课样例"}
+                <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[12px] text-indigo-600 dark:bg-indigo-400/10 dark:text-indigo-300">{activePromptStarters.length}</span>
+                <motion.div
+                  animate={{ rotate: startersOpen ? 180 : 0 }}
+                  transition={{ duration: 0.3, ease: "easeInOut" }}
+                >
+                  <ChevronDown className="h-4 w-4" />
+                </motion.div>
+              </span>
+              <div className="flex-1 h-[1px] bg-zinc-200 group-hover:bg-zinc-300 transition-colors dark:bg-slate-800 dark:group-hover:bg-slate-700" />
+            </button>
+
+            {/* Expandable Content */}
+            <AnimatePresence>
+              {startersOpen && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
+                  id="home-prompt-starters"
+                  className="w-full overflow-hidden"
+                >
+                  <div className="pb-1 pt-3 relative">
+                    {/* 横向滚动消隐遮罩层 */}
+                    <div className="pointer-events-none absolute right-1 bottom-1.5 top-3 z-10 w-16 bg-gradient-to-l from-[#f8fafc] via-[#f8fafc]/60 to-transparent dark:from-[#07111f] dark:via-[#07111f]/60 hidden md:block" />
+                    <div className="pointer-events-none absolute left-1 bottom-1.5 top-3 z-10 w-8 bg-gradient-to-r from-[#f8fafc] to-transparent dark:from-[#07111f] hidden md:block" />
+
+                    <div className="flex gap-2.5 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                      {activePromptStarters.map((starter) => {
+                        const StarterIcon = starter.icon;
+                        return (
+                          <button
+                            key={starter.id}
+                            type="button"
+                            onClick={() => handlePromptStarterClick(starter.prompt)}
+                            disabled={isWorking}
+                            aria-label={`套用${starter.label}提示词示例`}
+                            title={starter.prompt}
+                            className="group relative flex min-w-[200px] min-h-[100px] flex-1 cursor-pointer items-start gap-3 rounded-xl border border-slate-200/80 bg-white/80 px-3.5 py-3 text-left backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-indigo-300/60 hover:bg-white hover:shadow-[0_6px_16px_-6px_rgba(99,102,241,0.15)] focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/30 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700/60 dark:bg-slate-900/60 dark:hover:border-indigo-500/40 dark:hover:bg-slate-900 dark:hover:shadow-[0_6px_16px_-6px_rgba(99,102,241,0.25)]"
+                          >
+                            <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500 transition-colors group-hover:bg-indigo-50 group-hover:text-indigo-600 dark:bg-slate-800 dark:text-slate-400 dark:group-hover:bg-indigo-950/50 dark:group-hover:text-indigo-400">
+                              <StarterIcon className="h-3.5 w-3.5" />
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block text-[13px] font-semibold text-slate-800 dark:text-slate-200">
+                                {starter.label}
+                              </span>
+                              <span className="mt-0.5 block line-clamp-2 text-[12px] leading-[18px] text-slate-400 transition-colors group-hover:text-slate-500 dark:text-slate-500 dark:group-hover:text-slate-400">
+                                {starter.prompt}
+                              </span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </motion.div>
 
@@ -1411,7 +1468,7 @@ export function HomePage() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.5 }}
-          className="relative z-10 mt-3 w-full max-w-6xl flex flex-col items-center"
+          className="relative z-10 mt-1 md:mt-2 w-full max-w-5xl flex flex-col items-center"
         >
           {/* Section Toggle */}
           <button
@@ -1454,51 +1511,62 @@ export function HomePage() {
                     </div>
                   ) : null}
                   {courses.length > 0 && (
-                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-                      {courses.map((course, i) => {
-                        const theme = getDemoCourseTheme(course.course_name, i);
-                        const CourseIcon = theme.icon;
-                        const isImportingThisCourse =
-                          courseImportMutation.isPending
-                          && courseImportMutation.variables?.filename === course.filename;
-                        return (
-                          <motion.div
-                            key={course.filename}
-                            initial={{ opacity: 0, y: 16 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: i * 0.05, duration: 0.35, ease: "easeOut" }}
-                          >
-                            <button
-                              type="button"
-                              onClick={() => courseImportMutation.mutate({ filename: course.filename })}
-                              disabled={courseImportMutation.isPending}
-                              className={cn(
-                                "atm-deferred-card group relative flex h-full min-h-[118px] w-full overflow-hidden rounded-lg border p-4 text-left shadow-[0_12px_28px_-24px_rgba(15,23,42,0.45)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_34px_-28px_rgba(79,70,229,0.45)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 disabled:cursor-wait disabled:hover:translate-y-0 dark:shadow-black/20",
-                                theme.shell,
-                              )}
-                              title={`导入 ${course.course_name} 到左侧课程列表`}
-                              aria-label={`导入 ${course.course_name}`}
+                    <div className="relative">
+                      {/* 横向滚动消隐遮罩层 */}
+                      <div className="pointer-events-none absolute right-0 bottom-0 top-0 z-10 w-16 bg-gradient-to-l from-[#f8fafc] via-[#f8fafc]/60 to-transparent dark:from-[#07111f] dark:via-[#07111f]/60 hidden md:block" />
+                      <div className="pointer-events-none absolute left-0 bottom-0 top-0 z-10 w-8 bg-gradient-to-r from-[#f8fafc] to-transparent dark:from-[#07111f] hidden md:block" />
+                      <div className="flex gap-2.5 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                        {courses.map((course, i) => {
+                          const theme = getCardTheme(course.course_name);
+                          const CourseIcon = theme.iconComponent;
+                          const isImportingThisCourse =
+                            courseImportMutation.isPending
+                            && courseImportMutation.variables?.filename === course.filename;
+                          return (
+                            <motion.div
+                              key={course.filename}
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: i * 0.05, duration: 0.3, ease: "easeOut" }}
+                              className="min-w-[200px] flex-1"
                             >
-                              <div className={cn("pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r", theme.strip)} />
-                              <div className="min-w-0 pr-12">
-                                <h3 className="line-clamp-2 text-[15px] font-bold leading-snug tracking-normal text-slate-950 dark:text-slate-100">{course.course_name}</h3>
-                              </div>
-
-                              <div className={cn("absolute right-4 top-5 rounded-md border p-1.5", theme.icon)}>
-                                {isImportingThisCourse ? (
-                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                ) : (
-                                  <CourseIcon className="h-3.5 w-3.5" />
+                              <button
+                                type="button"
+                                onClick={() => courseImportMutation.mutate({ filename: course.filename })}
+                                disabled={courseImportMutation.isPending}
+                                className={cn(
+                                  "atm-deferred-card group relative flex h-full min-h-[100px] w-full overflow-hidden rounded-xl border p-3.5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 disabled:cursor-wait disabled:hover:translate-y-0 dark:shadow-black/20",
+                                  theme.shell,
                                 )}
-                              </div>
-
-                              <div className="absolute bottom-4 right-4 text-xs font-medium text-slate-400 transition-colors group-hover:text-slate-500 dark:text-slate-500 dark:group-hover:text-slate-400">
-                                <span>{isImportingThisCourse ? "正在加入课程列表" : "点击加入课程"}</span>
-                              </div>
-                            </button>
-                          </motion.div>
-                        );
-                      })}
+                                title={`导入 ${course.course_name} 到左侧课程列表`}
+                                aria-label={`导入 ${course.course_name}`}
+                              >
+                                <div className={cn("pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r rounded-t-xl", theme.strip)} />
+                                <div className="flex flex-col justify-between w-full h-full gap-2">
+                                  <div className="flex items-start gap-3">
+                                    <span className={cn("mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border p-1.5 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-[6deg]", theme.icon)}>
+                                      {isImportingThisCourse ? (
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                      ) : (
+                                        <CourseIcon className="h-3.5 w-3.5" />
+                                      )}
+                                    </span>
+                                    <span className="block text-[14px] font-bold text-slate-800 dark:text-slate-200 line-clamp-2 leading-snug pt-0.5">
+                                      {course.course_name}
+                                    </span>
+                                  </div>
+                                  <span className="flex items-center gap-1 self-end text-[11px] text-slate-400 transition-colors group-hover:text-indigo-600 dark:text-slate-500 dark:group-hover:text-indigo-400">
+                                    {isImportingThisCourse ? "正在加入…" : "点击加入课程"}
+                                    {!isImportingThisCourse && (
+                                      <ArrowUp className="h-2.5 w-2.5 rotate-90 transition-transform duration-200 group-hover:translate-x-0.5" />
+                                    )}
+                                  </span>
+                                </div>
+                              </button>
+                            </motion.div>
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1507,9 +1575,10 @@ export function HomePage() {
           </AnimatePresence>
         </motion.div>
       )}
+      </div>
 
       {/* Footer */}
-      <div className="mt-auto pt-12 pb-6 text-center text-sm text-slate-400 font-medium tracking-wide">
+      <div className="shrink-0 pt-8 pb-4 text-center text-sm text-slate-400 font-medium tracking-wide">
         <a 
           href="https://github.com/aiteachme/AiTeachMe" 
           target="_blank" 

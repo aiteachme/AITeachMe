@@ -28,10 +28,14 @@ from app.models.enums import (
     validate_status_transition,
 )
 from app.models.email_confirmation import EmailConfirmation
+from app.models.course_initial_exam import CourseInitialExamJob
 from app.models.exam import (
     ExamPaper,
     ExamPaperItem,
+    ExamProfileSync,
     ExamStudyGuideCache,
+    MasteryDrillAttempt,
+    MasteryDrillSession,
     QuestionKnowledgeUnitLink,
     QuestionTemplate,
     QuestionTypeRegistry,
@@ -62,7 +66,10 @@ __all__ = [
     "ExamPaper",
     "ExamPaperItem",
     "ExamPaperStatus",
+    "ExamProfileSync",
     "ExamStudyGuideCache",
+    "MasteryDrillAttempt",
+    "MasteryDrillSession",
     "IngestStatus",
     "KnowledgeDoc",
     "KnowledgeDocument",
@@ -89,6 +96,7 @@ __all__ = [
     "ReviewTaskStatus",
     "ReviewTaskType",
     "Course",
+    "CourseInitialExamJob",
     "CourseFileLink",
     "SystemRuntimeSettings",
     "TaskStatus",

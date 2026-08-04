@@ -13,7 +13,6 @@ ExamGradeModelSlot = Literal["light", "primary", "reason"]
 
 
 class ExamGradeModelStep(str, Enum):
-    OBJECTIVE_FEEDBACK = "exam_grade.objective_feedback"
     SUBJECTIVE_GRADE = "exam_grade.subjective_grade"
     STUDY_GUIDE = "exam_grade.study_guide"
 
@@ -61,15 +60,6 @@ class ExamGradeModelPolicy:
 
 
 _POLICIES: dict[ExamGradeModelStep, ExamGradeModelPolicy] = {
-    ExamGradeModelStep.OBJECTIVE_FEEDBACK: ExamGradeModelPolicy(
-        step=ExamGradeModelStep.OBJECTIVE_FEEDBACK,
-        call_type="structured",
-        model="reason",
-        max_tokens=1800,
-        timeout_s=180,
-        temperature=0.1,
-        note="客观题正确性由规则判定，但反馈包含错因归纳和解析表达，保留 reason。",
-    ),
     ExamGradeModelStep.SUBJECTIVE_GRADE: ExamGradeModelPolicy(
         step=ExamGradeModelStep.SUBJECTIVE_GRADE,
         call_type="structured",

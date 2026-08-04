@@ -101,6 +101,48 @@ def test_published_headings_match_frontend_display_cleanup_contract() -> None:
     ]
 
 
+def test_published_chunks_ignore_false_setext_headings_inside_display_math() -> None:
+    markdown = (
+        "# Chapter One\n\n"
+        "A formula must remain byte-for-byte unchanged.\n\n"
+        "$$\n"
+        "P\\left\\{a<Z<b\\right\\}\n"
+        "=\n"
+        "P\\{-1.375<Z<1.375\\}\n"
+        "$$\n\n"
+        "```text\n"
+        "\\[\n"
+        "=\\\n"
+        "```\n\n"
+        "# Chapter Two\n\n"
+        "\\[\n"
+        "x\n"
+        "=\n"
+        "y\n"
+        "\\]\n\n"
+        "Done.\n"
+    )
+    chapters = (
+        published_chunks._PublishedChapter(chapter_index=1, title="Chapter One"),
+        published_chunks._PublishedChapter(chapter_index=2, title="Chapter Two"),
+    )
+
+    masked = published_chunks._mask_display_math_for_heading_parse(markdown)
+    chunks = published_chunks._split_published_markdown(markdown, chapters=chapters)
+    headings = [heading for chunk in chunks for heading in chunk.headings]
+
+    assert len(masked) == len(markdown)
+    assert masked.count("\n") == markdown.count("\n")
+    assert [heading.text for heading in headings if heading.level == 1] == [
+        "Chapter One",
+        "Chapter Two",
+    ]
+    assert "P\\left\\{a<Z<b\\right\\}" in chunks[0].markdown
+    assert "\\[\n=\\\n```" in chunks[0].markdown
+    assert "\\[\nx\n=\ny\n\\]" in chunks[1].markdown
+    assert "".join(chunk.markdown for chunk in chunks) == markdown
+
+
 def test_chunk_request_rejects_publication_switch_during_markdown_read(monkeypatch) -> None:
     old_snapshot = _snapshot("v0004-old")
     new_snapshot = _snapshot("v0005-new", version_no=5)

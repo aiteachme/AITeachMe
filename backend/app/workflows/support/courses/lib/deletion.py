@@ -22,7 +22,10 @@ from app.models import (
     ChatSession,
     ExamPaper,
     ExamPaperItem,
+    ExamProfileSync,
     ExamStudyGuideCache,
+    MasteryDrillAttempt,
+    MasteryDrillSession,
     KnowledgeDocument,
     KnowledgeEdge,
     KnowledgeGraphSourceRef,
@@ -34,6 +37,7 @@ from app.models import (
     RawFile,
     RetrievalChunk,
     Course,
+    CourseInitialExamJob,
     CourseFileLink,
     UserKnowledgeState,
 )
@@ -84,6 +88,27 @@ def collect_course_delete_counts(session: Session, *, course_id: str) -> dict[st
         "question_template": _count_rows(session, QuestionTemplate, QuestionTemplate.course_id == course_id),
         "question_type_registry": _count_rows(session, QuestionTypeRegistry, QuestionTypeRegistry.course_id == course_id),
         "exam_paper": _count_rows(session, ExamPaper, ExamPaper.course_id == course_id),
+        "course_initial_exam_job": _count_rows(
+            session,
+            CourseInitialExamJob,
+            CourseInitialExamJob.course_id == course_id,
+        ),
+        "exam_profile_sync": _count_rows(session, ExamProfileSync, ExamProfileSync.course_id == course_id),
+        "mastery_drill_session": _count_rows(
+            session,
+            MasteryDrillSession,
+            MasteryDrillSession.course_id == course_id,
+        ),
+        "mastery_drill_attempt": _count_query(
+            session,
+            select(func.count())
+            .select_from(MasteryDrillAttempt)
+            .join(
+                MasteryDrillSession,
+                MasteryDrillAttempt.mastery_drill_session_id == MasteryDrillSession.id,
+            )
+            .where(MasteryDrillSession.course_id == course_id),
+        ),
         "exam_study_guide_cache": _count_rows(
             session,
             ExamStudyGuideCache,
@@ -218,6 +243,24 @@ def _delete_exam_records(session: Session, *, course_id: str) -> None:
     paper_item_ids = select(ExamPaperItem.id).where(ExamPaperItem.exam_paper_id.in_(paper_ids))
     template_item_ids = select(ExamPaperItem.id).where(ExamPaperItem.question_template_id.in_(template_ids))
 
+    drill_session_ids = select(MasteryDrillSession.id).where(MasteryDrillSession.exam_paper_id.in_(paper_ids))
+
+    session.exec(
+        sa.delete(MasteryDrillAttempt)
+        .where(
+            sa.or_(
+                MasteryDrillAttempt.mastery_drill_session_id.in_(drill_session_ids),
+                MasteryDrillAttempt.exam_paper_item_id.in_(template_item_ids),
+            )
+        )
+        .execution_options(synchronize_session=False)
+    )
+    session.exec(
+        sa.delete(MasteryDrillSession)
+        .where(MasteryDrillSession.exam_paper_id.in_(paper_ids))
+        .execution_options(synchronize_session=False)
+    )
+
     session.exec(
         sa.delete(QuestionKnowledgeUnitLink)
         .where(
@@ -241,6 +284,8 @@ def _delete_exam_records(session: Session, *, course_id: str) -> None:
     )
 
     _bulk_delete_by_course(session, ExamStudyGuideCache, course_id=course_id)
+    _bulk_delete_by_course(session, ExamProfileSync, course_id=course_id)
+    _bulk_delete_by_course(session, CourseInitialExamJob, course_id=course_id)
     _bulk_delete_by_course(session, ExamPaper, course_id=course_id)
     _bulk_delete_by_course(session, QuestionTemplate, course_id=course_id)
     _bulk_delete_by_course(session, QuestionTypeRegistry, course_id=course_id)

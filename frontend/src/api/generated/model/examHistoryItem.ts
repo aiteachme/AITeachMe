@@ -5,6 +5,7 @@
  * 本地优先的 AI 助教后端服务。
  */
 import type { ExamGenerationProgress } from './examGenerationProgress.ts';
+import type { MasteryDrillHistorySummary } from './masteryDrillHistorySummary.ts';
 import type { PaperPreview } from './paperPreview.ts';
 
 export interface ExamHistoryItem {
@@ -22,4 +23,5 @@ export interface ExamHistoryItem {
   graded_at?: string | null;
   generation_progress?: ExamGenerationProgress | null;
   paper_preview?: PaperPreview;
+  mastery_drill?: MasteryDrillHistorySummary | null;
 }
