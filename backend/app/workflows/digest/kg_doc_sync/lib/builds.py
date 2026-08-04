@@ -907,25 +907,22 @@ async def _trigger_default_exam_prewarm_when_units_ready(
     wait_for_units_timeout_s: float = 1800.0,
     llm_snapshot: LLMRuntimeSnapshot | None = None,
 ) -> None:
-    """本轮知识点一可见，就请求默认隐藏考卷生成。"""
+    """知识点就绪后唤醒课程级、仅一次的首次测验任务。"""
 
     try:
-        from app.workflows.examine.prewarm import trigger_default_exam_prewarm_for_course
+        from app.workflows.examine.initial_exam import run_course_initial_exam_job
 
         with use_llm_runtime_snapshot(llm_snapshot):
-            result = await trigger_default_exam_prewarm_for_course(
+            await run_course_initial_exam_job(
                 course_id=course_id,
-                min_build_revision_no=min_build_revision_no,
-                wait_for_units_timeout_s=wait_for_units_timeout_s,
-                poll_interval_s=1.0,
+                build_session_id=f"knowledge-revision-{min_build_revision_no}",
             )
         logger.info(
             "knowledge_graph_auto_exam_prewarm_result",
             course_id=course_id,
-            status=result.status,
-            reason=result.reason,
-            exam_mode=result.exam_mode,
-            num_questions=result.num_questions,
+            status="dispatched",
+            min_build_revision_no=min_build_revision_no,
+            wait_for_units_timeout_s=wait_for_units_timeout_s,
         )
     except Exception as exc:
         logger.warning(

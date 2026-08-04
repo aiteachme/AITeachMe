@@ -12,4 +12,6 @@ import type { ExamSubmitAnswerItem } from './examSubmitAnswerItem.ts';
 export interface ExamSubmitRequest {
   /** Submitted answers. */
   answers?: ExamSubmitAnswerItem[];
+  /** Stable client-generated key used to safely retry this submission. */
+  submission_key?: string | null;
 }

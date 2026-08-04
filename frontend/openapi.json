@@ -5667,6 +5667,78 @@
         }
       }
     },
+    "/api/v1/courses/{course_id}/exams/mastery-drills/active": {
+      "get": {
+        "tags": [
+          "exams"
+        ],
+        "summary": "Fetch the active mastery drill for this course",
+        "operationId": "active_mastery_drill_api_v1_courses__course_id__exams_mastery_drills_active_get",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_Union_ExamPaperDetailResponse__NoneType__"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/courses/{course_id}/exams/generate": {
       "post": {
         "tags": [
@@ -6230,6 +6302,16 @@
               }
             }
           },
+          "409": {
+            "description": "当前资源状态不允许执行该操作。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "服务内部异常。",
             "content": {
@@ -6386,6 +6468,302 @@
           },
           "404": {
             "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/courses/{course_id}/exams/mastery-drills/start": {
+      "post": {
+        "tags": [
+          "exams"
+        ],
+        "summary": "Start or resume a durable mastery drill",
+        "operationId": "start_mastery_drill_api_v1_courses__course_id__exams_mastery_drills_start_post",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MasteryDrillStartRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ExamPaperDetailResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态不允许执行该操作。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/courses/{course_id}/exams/{exam_paper_id}/mastery-drill-attempts": {
+      "post": {
+        "tags": [
+          "exams"
+        ],
+        "summary": "Persist and grade one mastery-drill attempt",
+        "operationId": "record_mastery_drill_attempt_api_v1_courses__course_id__exams__exam_paper_id__mastery_drill_attempts_post",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          },
+          {
+            "name": "exam_paper_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "title": "Exam Paper Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MasteryDrillAttemptRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_MasteryDrillAttemptResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态不允许执行该操作。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/courses/{course_id}/exams/{exam_paper_id}/mastery-drill-complete": {
+      "post": {
+        "tags": [
+          "exams"
+        ],
+        "summary": "Idempotently complete a mastery drill",
+        "operationId": "complete_mastery_drill_api_v1_courses__course_id__exams__exam_paper_id__mastery_drill_complete_post",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          },
+          {
+            "name": "exam_paper_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "title": "Exam Paper Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MasteryDrillCompleteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ExamGradeResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态不允许执行该操作。",
             "content": {
               "application/json": {
                 "schema": {
@@ -6747,12 +7125,103 @@
         }
       }
     },
+    "/api/v1/courses/{course_id}/exams/{exam_paper_id}/profile-sync/retry": {
+      "post": {
+        "tags": [
+          "exams"
+        ],
+        "summary": "Retry Profile synchronization for a graded exam",
+        "operationId": "retry_exam_profile_sync_api_v1_courses__course_id__exams__exam_paper_id__profile_sync_retry_post",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          },
+          {
+            "name": "exam_paper_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Exam Paper Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ExamProfileSyncResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态不允许执行该操作。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/courses/{course_id}/exams/{exam_paper_id}/submit": {
       "post": {
         "tags": [
           "exams"
         ],
-        "summary": "Submit answers and update KnowledgeUnit mastery",
+        "summary": "Submit answers and start grading",
         "operationId": "submit_exam_api_v1_courses__course_id__exams__exam_paper_id__submit_post",
         "parameters": [
           {
@@ -8312,6 +8781,40 @@
           "message": "ok"
         }
       },
+      "ApiResponse_ExamProfileSyncResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExamProfileSyncResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[ExamProfileSyncResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
       "ApiResponse_ExamStudyGuideResponse_": {
         "properties": {
           "code": {
@@ -9060,6 +9563,40 @@
           "message": "ok"
         }
       },
+      "ApiResponse_MasteryDrillAttemptResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MasteryDrillAttemptResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[MasteryDrillAttemptResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
       "ApiResponse_MasteryOverviewResponse_": {
         "properties": {
           "code": {
@@ -9598,6 +10135,40 @@
         },
         "type": "object",
         "title": "ApiResponse[Union[BuildPlannerSessionResponse, NoneType]]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_Union_ExamPaperDetailResponse__NoneType__": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExamPaperDetailResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[Union[ExamPaperDetailResponse, NoneType]]",
         "example": {
           "code": 0,
           "data": {},
@@ -13251,7 +13822,7 @@
           "exam_mode": {
             "type": "string",
             "title": "Exam Mode",
-            "description": "Exam mode: web_practice | paper_exam | mastery_drill."
+            "description": "Exam mode: web_practice | paper_exam. Mastery drills use their dedicated API."
           },
           "user_prompt": {
             "anyOf": [
@@ -13485,6 +14056,16 @@
           "mastery_consumed": {
             "type": "boolean",
             "title": "Mastery Consumed"
+          },
+          "profile_sync": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExamProfileSyncResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -13594,6 +14175,16 @@
           },
           "paper_preview": {
             "$ref": "#/components/schemas/PaperPreview"
+          },
+          "mastery_drill": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MasteryDrillHistorySummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -13742,6 +14333,26 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Selection Context"
+          },
+          "profile_sync": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExamProfileSyncResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mastery_drill": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MasteryDrillSessionResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "paper_preview": {
             "$ref": "#/components/schemas/PaperPreview"
@@ -13988,6 +14599,92 @@
         ],
         "title": "ExamPrewarmStatusResponse"
       },
+      "ExamProfileSyncResponse": {
+        "properties": {
+          "exam_paper_id": {
+            "type": "integer",
+            "title": "Exam Paper Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "not_tracked",
+              "pending",
+              "processing",
+              "retry_wait",
+              "completed",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "attempt_count": {
+            "type": "integer",
+            "title": "Attempt Count",
+            "default": 0
+          },
+          "manual_retry_count": {
+            "type": "integer",
+            "title": "Manual Retry Count",
+            "default": 0
+          },
+          "next_attempt_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Attempt At"
+          },
+          "last_error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error Code"
+          },
+          "states_updated": {
+            "type": "integer",
+            "title": "States Updated",
+            "default": 0
+          },
+          "review_task_count": {
+            "type": "integer",
+            "title": "Review Task Count",
+            "default": 0
+          },
+          "can_retry": {
+            "type": "boolean",
+            "title": "Can Retry",
+            "default": false
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "exam_paper_id",
+          "status"
+        ],
+        "title": "ExamProfileSyncResponse"
+      },
       "ExamStudyGuideFocusUnit": {
         "properties": {
           "knowledge_unit_id": {
@@ -14141,6 +14838,20 @@
             "type": "array",
             "title": "Answers",
             "description": "Submitted answers."
+          },
+          "submission_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submission Key",
+            "description": "Stable client-generated key used to safely retry this submission."
           }
         },
         "type": "object",
@@ -17316,6 +18027,427 @@
         "title": "LogoutRequest",
         "description": "登出请求。",
         "example": {}
+      },
+      "MasteryDrillAttemptRequest": {
+        "properties": {
+          "exam_paper_item_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Exam Paper Item Id"
+          },
+          "answer": {
+            "type": "string",
+            "maxLength": 20000,
+            "title": "Answer"
+          },
+          "attempt_key": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Attempt Key"
+          },
+          "time_spent_seconds": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 86400.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Spent Seconds"
+          },
+          "hint_used": {
+            "type": "boolean",
+            "title": "Hint Used",
+            "default": false
+          },
+          "confidence_self_report": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 5.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence Self Report"
+          }
+        },
+        "type": "object",
+        "required": [
+          "exam_paper_item_id",
+          "answer",
+          "attempt_key"
+        ],
+        "title": "MasteryDrillAttemptRequest",
+        "description": "Persist and grade one answer attempt."
+      },
+      "MasteryDrillAttemptResponse": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "mastery_drill_session_id": {
+            "type": "integer",
+            "title": "Mastery Drill Session Id"
+          },
+          "exam_paper_item_id": {
+            "type": "integer",
+            "title": "Exam Paper Item Id"
+          },
+          "question_template_id": {
+            "type": "integer",
+            "title": "Question Template Id"
+          },
+          "attempt_no": {
+            "type": "integer",
+            "title": "Attempt No"
+          },
+          "attempt_key": {
+            "type": "string",
+            "title": "Attempt Key"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "grading",
+              "graded",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "answer": {
+            "type": "string",
+            "title": "Answer"
+          },
+          "is_correct": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Correct"
+          },
+          "score_obtained": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score Obtained"
+          },
+          "score_max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score Max"
+          },
+          "feedback_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedback Text"
+          },
+          "error_cause_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Cause Label"
+          },
+          "grading_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grading Mode"
+          },
+          "time_spent_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Spent Seconds"
+          },
+          "hint_used": {
+            "type": "boolean",
+            "title": "Hint Used",
+            "default": false
+          },
+          "confidence_self_report": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence Self Report"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "answered_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answered At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "mastery_drill_session_id",
+          "exam_paper_item_id",
+          "question_template_id",
+          "attempt_no",
+          "attempt_key",
+          "status",
+          "answer",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "MasteryDrillAttemptResponse"
+      },
+      "MasteryDrillCompleteRequest": {
+        "properties": {
+          "completion_key": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Completion Key"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 604800.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "completion_key"
+        ],
+        "title": "MasteryDrillCompleteRequest",
+        "description": "Idempotently finish a drill after every item has been passed."
+      },
+      "MasteryDrillHistorySummary": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "completed",
+              "abandoned"
+            ],
+            "title": "Status"
+          },
+          "total_attempts": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total Attempts",
+            "default": 0
+          },
+          "wrong_attempts": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Wrong Attempts",
+            "default": 0
+          },
+          "attempt_accuracy": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempt Accuracy"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "MasteryDrillHistorySummary"
+      },
+      "MasteryDrillSessionResponse": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "exam_paper_id": {
+            "type": "integer",
+            "title": "Exam Paper Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "completed",
+              "abandoned"
+            ],
+            "title": "Status"
+          },
+          "config_snapshot": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Config Snapshot"
+          },
+          "total_attempts": {
+            "type": "integer",
+            "title": "Total Attempts",
+            "default": 0
+          },
+          "wrong_attempts": {
+            "type": "integer",
+            "title": "Wrong Attempts",
+            "default": 0
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "attempts": {
+            "items": {
+              "$ref": "#/components/schemas/MasteryDrillAttemptResponse"
+            },
+            "type": "array",
+            "title": "Attempts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "exam_paper_id",
+          "status",
+          "started_at"
+        ],
+        "title": "MasteryDrillSessionResponse"
+      },
+      "MasteryDrillStartRequest": {
+        "properties": {
+          "session_key": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Session Key"
+          },
+          "question_template_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "maxItems": 80,
+            "minItems": 1,
+            "title": "Question Template Ids"
+          },
+          "configured_question_count": {
+            "type": "integer",
+            "maximum": 80.0,
+            "minimum": 1.0,
+            "title": "Configured Question Count"
+          },
+          "configured_question_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Configured Question Types"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_key",
+          "question_template_ids",
+          "configured_question_count"
+        ],
+        "title": "MasteryDrillStartRequest",
+        "description": "Start a new durable drill or resume the active one for the course."
       },
       "MasteryOverviewResponse": {
         "properties": {

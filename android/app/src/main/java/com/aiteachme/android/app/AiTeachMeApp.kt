@@ -387,6 +387,9 @@ fun AiTeachMeApp() {
                     onOpenPaper = { targetCourseId, paperId ->
                         navController.navigate(AppRoute.courseExamPaper(targetCourseId, paperId))
                     },
+                    onOpenMasteryDrill = { targetCourseId ->
+                        navController.navigate(AppRoute.courseMasteryDrill(targetCourseId))
+                    },
                 )
             }
             composable(

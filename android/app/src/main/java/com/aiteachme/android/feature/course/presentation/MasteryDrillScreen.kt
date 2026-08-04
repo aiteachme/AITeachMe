@@ -155,7 +155,7 @@ private fun MasteryDrillHeader(
                     fontWeight = FontWeight.Black,
                 )
                 Text(
-                    text = "从题库模板抽题，一题一判；本流程不创建试卷记录，也不进入练习考试历史。",
+                    text = "从题库模板抽题，一题一判；每次作答都会自动保存，可跨设备恢复并进入训练历史。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -201,6 +201,7 @@ private fun DrillQuestionCard(
     onContinue: () -> Unit,
 ) {
     val feedback = state.feedback?.takeIf { it.templateId == template.id }
+    val isSupported = isSupportedExamQuestionType(template.questionType)
     val choices = template.drillChoices()
     val isMultipleChoice = template.questionType.lowercase() in setOf("multiple_choice", "multi_choice")
     val currentNumber = state.selectedTemplates.indexOfFirst { it.id == template.id }.takeIf { it >= 0 }?.plus(1) ?: 1
@@ -262,7 +263,21 @@ private fun DrillQuestionCard(
                 linkColor = MaterialTheme.colorScheme.primary,
             )
 
-            if (choices.isNotEmpty()) {
+            if (!isSupported) {
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    shape = MaterialTheme.shapes.medium,
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        Icon(Icons.Outlined.ErrorOutline, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Text("该题型尚未在当前客户端发布，已停止本题作答和判分。")
+                    }
+                }
+            } else if (choices.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     choices.forEach { choice ->
                         DrillChoiceRow(
@@ -299,7 +314,7 @@ private fun DrillQuestionCard(
                 if (feedback == null) {
                     Button(
                         onClick = onCheck,
-                        enabled = answer.trim().isNotEmpty() && !state.isCheckingAnswer,
+                        enabled = isSupported && answer.trim().isNotEmpty() && !state.isCheckingAnswer,
                     ) {
                         if (state.isCheckingAnswer) {
                             CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
@@ -307,7 +322,15 @@ private fun DrillQuestionCard(
                             Icon(Icons.Outlined.Quiz, contentDescription = null, modifier = Modifier.size(18.dp))
                         }
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(if (state.isCheckingAnswer) "AI 判题中" else "检查答案")
+                        Text(
+                            if (!state.isCheckingAnswer) {
+                                "检查答案"
+                            } else if (isAiGradedExamQuestionType(template.questionType)) {
+                                "AI 判题中"
+                            } else {
+                                "判题中"
+                            }
+                        )
                     }
                 } else {
                     FilledTonalButton(onClick = onContinue) {

@@ -9,7 +9,7 @@
  * Trigger exam generation request.
  */
 export interface ExamGenerateRequest {
-  /** Exam mode: web_practice | paper_exam | mastery_drill. */
+  /** Exam mode: web_practice | paper_exam. Mastery drills use their dedicated API. */
   exam_mode: string;
   /** Optional user requirements for exam generation. */
   user_prompt?: string | null;

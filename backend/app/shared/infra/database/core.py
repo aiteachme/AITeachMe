@@ -46,10 +46,14 @@ from app.shared.infra.course import (
 from migrations.seed_data.question_types import BUILTIN_QUESTION_TYPE_ROWS
 from app.models.chat import ChatMessage, ChatSession
 from app.models.email_confirmation import EmailConfirmation
+from app.models.course_initial_exam import CourseInitialExamJob
 from app.models.exam import (
     ExamPaper,
     ExamPaperItem,
+    ExamProfileSync,
     ExamStudyGuideCache,
+    MasteryDrillAttempt,
+    MasteryDrillSession,
     QuestionKnowledgeUnitLink,
     QuestionTemplate,
     QuestionTypeRegistry,
@@ -84,7 +88,11 @@ _SCHEMA_MODELS = (
     QuestionTypeRegistry,
     QuestionTemplate,
     ExamPaper,
+    CourseInitialExamJob,
+    ExamProfileSync,
     ExamPaperItem,
+    MasteryDrillSession,
+    MasteryDrillAttempt,
     QuestionKnowledgeUnitLink,
     ExamStudyGuideCache,
     UserKnowledgeState,
@@ -166,6 +174,12 @@ _SQLITE_ADDITIVE_COLUMNS = {
         ("prepared_at", "DATETIME NULL"),
         ("claimed_at", "DATETIME NULL"),
         ("expires_at", "DATETIME NULL"),
+        ("submission_key", "TEXT NOT NULL DEFAULT ''"),
+        ("submission_hash", "TEXT NOT NULL DEFAULT ''"),
+        ("grading_claim_token", "TEXT NOT NULL DEFAULT ''"),
+        ("grading_lease_expires_at", "DATETIME NULL"),
+        ("grading_attempts", "INTEGER NOT NULL DEFAULT 0"),
+        ("grading_last_error", "TEXT NOT NULL DEFAULT ''"),
     ),
     "raw_file": (
         ("parse_request_signature", "TEXT NOT NULL DEFAULT 'default'"),
@@ -180,6 +194,20 @@ _SQLITE_ADDITIVE_COLUMNS = {
     ),
 }
 _SQLITE_ADDITIVE_INDEXES = {
+    "exam_paper": (
+        (
+            "ix_exam_paper_grading_lease_expires_at",
+            ("grading_lease_expires_at",),
+            False,
+            "",
+        ),
+        (
+            "ix_exam_paper_grading_recovery",
+            ("status", "grading_lease_expires_at"),
+            False,
+            "",
+        ),
+    ),
     "raw_file": (
         (
             "ix_raw_file_user_hash_size_type",
@@ -959,7 +987,7 @@ def _apply_sqlite_additive_schema_updates(engine: sa.Engine) -> None:
                 )
 
 
-def _create_sqlite_missing_schema_tables(engine: sa.Engine) -> None:
+def _create_sqlite_missing_schema_tables(engine: sa.Engine) -> set[str]:
     inspector = sa.inspect(engine)
     existing_tables = set(inspector.get_table_names())
     missing_tables = [
@@ -968,13 +996,60 @@ def _create_sqlite_missing_schema_tables(engine: sa.Engine) -> None:
         if table.name not in existing_tables
     ]
     if not missing_tables:
-        return
+        return set()
     with engine.begin() as connection:
         SQLModel.metadata.create_all(connection, tables=missing_tables)
     logger.info(
         "sqlite_missing_schema_tables_created",
         tables=[table.name for table in missing_tables],
     )
+    return {table.name for table in missing_tables}
+
+
+def _backfill_new_sqlite_course_initial_exam_table(engine: sa.Engine) -> None:
+    """Protect existing local courses when the one-time marker table is introduced."""
+
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                """
+                INSERT INTO course_initial_exam_job (
+                    course_id, user_id, status, build_session_id, exam_paper_id,
+                    attempt_count, next_attempt_at, claim_token, lease_expires_at,
+                    last_error_code, started_at, completed_at, created_at, updated_at
+                )
+                SELECT
+                    course.id,
+                    course.user_id,
+                    'completed',
+                    '',
+                    (
+                        SELECT exam_paper.id
+                        FROM exam_paper
+                        WHERE exam_paper.course_id = course.id
+                          AND exam_paper.generation_origin = 'prewarm'
+                        ORDER BY exam_paper.created_at ASC, exam_paper.id ASC
+                        LIMIT 1
+                    ),
+                    0,
+                    NULL,
+                    '',
+                    NULL,
+                    'legacy_course_backfill',
+                    NULL,
+                    CURRENT_TIMESTAMP,
+                    CURRENT_TIMESTAMP,
+                    CURRENT_TIMESTAMP
+                FROM course
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM course_initial_exam_job
+                    WHERE course_initial_exam_job.course_id = course.id
+                )
+                """
+            )
+        )
+    logger.info("sqlite_course_initial_exam_jobs_backfilled")
 
 
 def _backfill_sqlite_raw_file_parse_signatures(engine: sa.Engine) -> None:
@@ -1162,8 +1237,10 @@ def _ensure_local_sqlite_schema(engine: sa.Engine) -> sa.Engine:
 
     _migrate_sqlite_course_schema(engine)
     _drop_sqlite_removed_schema(engine)
-    _create_sqlite_missing_schema_tables(engine)
+    created_tables = _create_sqlite_missing_schema_tables(engine)
     _apply_sqlite_additive_schema_updates(engine)
+    if "course_initial_exam_job" in created_tables:
+        _backfill_new_sqlite_course_initial_exam_table(engine)
     _backfill_sqlite_raw_file_parse_signatures(engine)
     _backfill_sqlite_library_chat_sessions(engine)
     _apply_sqlite_additive_index_updates(engine)

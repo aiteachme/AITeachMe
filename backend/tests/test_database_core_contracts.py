@@ -8,11 +8,69 @@ import sqlalchemy as sa
 from sqlmodel import Session, select
 
 import app.shared.infra.database.core as db_core
-from app.models import QuestionKnowledgeUnitLink, SystemRuntimeSettings
+from app.models import (
+    Course,
+    CourseInitialExamJob,
+    ExamPaper,
+    ExamProfileSync,
+    MasteryDrillAttempt,
+    MasteryDrillSession,
+    QuestionKnowledgeUnitLink,
+    SystemRuntimeSettings,
+)
 
 
 def _file_sqlite_engine(tmp_path: Path, name: str) -> sa.Engine:
     return sa.create_engine(f"sqlite:///{tmp_path / name}")
+
+
+def test_exam_profile_sync_is_part_of_runtime_schema() -> None:
+    assert ExamProfileSync in db_core._SCHEMA_MODELS
+    assert "exam_profile_sync" in {table.name for table in db_core._SCHEMA_TABLES}
+
+
+def test_course_initial_exam_job_is_part_of_runtime_schema() -> None:
+    assert CourseInitialExamJob in db_core._SCHEMA_MODELS
+    assert "course_initial_exam_job" in {table.name for table in db_core._SCHEMA_TABLES}
+
+
+def test_new_sqlite_initial_exam_table_backfills_existing_courses_once(tmp_path: Path) -> None:
+    engine = _file_sqlite_engine(tmp_path, "initial-exam-backfill.db")
+    db_core.SQLModel.metadata.create_all(
+        engine,
+        tables=[Course.__table__, ExamPaper.__table__, CourseInitialExamJob.__table__],
+    )
+    with Session(engine, expire_on_commit=False) as session:
+        session.add(Course(id="legacy-course", user_id="legacy-user", name="Legacy course"))
+        paper = ExamPaper(
+            course_id="legacy-course",
+            user_id="legacy-user",
+            exam_mode="web_practice",
+            status="ready",
+            generation_origin="prewarm",
+        )
+        session.add(paper)
+        session.commit()
+        session.refresh(paper)
+        paper_id = int(paper.id or 0)
+
+    db_core._backfill_new_sqlite_course_initial_exam_table(engine)
+    db_core._backfill_new_sqlite_course_initial_exam_table(engine)
+
+    with Session(engine) as session:
+        jobs = session.exec(select(CourseInitialExamJob)).all()
+    assert len(jobs) == 1
+    assert jobs[0].course_id == "legacy-course"
+    assert jobs[0].status == "completed"
+    assert jobs[0].exam_paper_id == paper_id
+    assert jobs[0].last_error_code == "legacy_course_backfill"
+
+
+def test_mastery_drill_tables_are_part_of_runtime_schema() -> None:
+    assert MasteryDrillSession in db_core._SCHEMA_MODELS
+    assert MasteryDrillAttempt in db_core._SCHEMA_MODELS
+    table_names = {table.name for table in db_core._SCHEMA_TABLES}
+    assert {"mastery_drill_session", "mastery_drill_attempt"} <= table_names
 
 
 def test_schema_drift_ignores_runtime_tables_and_reports_real_mismatches(tmp_path: Path) -> None:
@@ -31,6 +89,39 @@ def test_schema_drift_ignores_runtime_tables_and_reports_real_mismatches(tmp_pat
     assert "runtime_settings_json" in drift["missing_columns"]["user"]
     assert "atm_vec_course_shadow" not in drift["unexpected_tables"]
     assert "memory_entries" not in drift["unexpected_tables"]
+
+
+def test_sqlite_exam_grading_columns_and_recovery_index_are_added(tmp_path: Path) -> None:
+    engine = _file_sqlite_engine(tmp_path, "exam-grading-upgrade.db")
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                """
+                CREATE TABLE exam_paper (
+                    id INTEGER PRIMARY KEY,
+                    status TEXT NOT NULL DEFAULT 'ready',
+                    updated_at DATETIME NOT NULL
+                )
+                """
+            )
+        )
+
+    db_core._apply_sqlite_additive_schema_updates(engine)
+    db_core._apply_sqlite_additive_index_updates(engine)
+
+    inspector = sa.inspect(engine)
+    column_names = {str(column["name"]) for column in inspector.get_columns("exam_paper")}
+    index_names = {str(index["name"]) for index in inspector.get_indexes("exam_paper")}
+    assert {
+        "submission_key",
+        "submission_hash",
+        "grading_claim_token",
+        "grading_lease_expires_at",
+        "grading_attempts",
+        "grading_last_error",
+    } <= column_names
+    assert "ix_exam_paper_grading_lease_expires_at" in index_names
+    assert "ix_exam_paper_grading_recovery" in index_names
 
 
 def test_sqlite_question_link_migration_normalizes_legacy_refs(tmp_path: Path) -> None:

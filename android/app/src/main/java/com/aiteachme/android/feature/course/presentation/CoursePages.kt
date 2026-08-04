@@ -56,6 +56,7 @@ import com.aiteachme.android.core.ui.MarkdownText
 import com.aiteachme.android.feature.files.presentation.fileStatusLabel
 import com.aiteachme.android.feature.files.presentation.formatFileSize
 import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
 
 @Composable
 fun CourseBuildScreen(
@@ -436,6 +437,7 @@ fun PracticeScreen(
     onOpenQuestionTemplates: (String) -> Unit = {},
     onOpenQuestionTypes: (String) -> Unit = {},
     onOpenPaper: (String, Int) -> Unit,
+    onOpenMasteryDrill: (String) -> Unit,
     workspaceViewModel: CourseWorkspaceViewModel = viewModel(),
     practiceViewModel: PracticeViewModel = viewModel(),
 ) {
@@ -539,7 +541,13 @@ fun PracticeScreen(
                                 CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                                 Spacer(modifier = Modifier.width(8.dp))
                             }
-                            Text(if (practiceState.isSubmitting) "正在批改" else "提交并批改")
+                            Text(
+                                when {
+                                    practiceState.isSubmitting -> "正在批改"
+                                    detail.status.lowercase() == "grading_failed" -> "重新批改"
+                                    else -> "提交并批改"
+                                }
+                            )
                         }
                     }
                 }
@@ -561,7 +569,13 @@ fun PracticeScreen(
                     ExamHistoryCard(
                         item = history,
                         selected = false,
-                        onClick = { onOpenPaper(courseId, history.id) },
+                        onClick = {
+                            if (history.isActiveMasteryDrill()) {
+                                onOpenMasteryDrill(courseId)
+                            } else {
+                                onOpenPaper(courseId, history.id)
+                            }
+                        },
                     )
                 }
             }
@@ -764,7 +778,7 @@ private fun ExamQuestionCard(
     onAnswerChange: (String) -> Unit,
 ) {
     val showResult = paper.isGraded() || question.isCorrect != null
-    val canAnswer = paper.canSubmit()
+    val canAnswer = paper.status.lowercase() in setOf("ready", "generated")
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surface,
@@ -889,7 +903,13 @@ private fun ExamHistoryCard(
 }
 
 private fun ExamPaperDetailResponse.canSubmit(): Boolean {
-    return status.lowercase() in setOf("ready", "generated") && items.isNotEmpty()
+    return status.lowercase() in setOf("ready", "generated", "grading_failed") && items.isNotEmpty()
+}
+
+private fun ExamHistoryItem.isActiveMasteryDrill(): Boolean {
+    return examMode == PracticeMode.MasteryDrill.apiValue &&
+        status.lowercase() != "graded" &&
+        masteryDrill?.status?.lowercase() == "active"
 }
 
 private fun ExamPaperDetailResponse.isGraded(): Boolean {
@@ -901,6 +921,14 @@ private fun ExamPaperDetailResponse.scoreText(): String? {
 }
 
 private fun ExamHistoryItem.scoreText(): String? {
+    if (examMode == PracticeMode.MasteryDrill.apiValue) {
+        val summary = masteryDrill ?: return if (status == "graded") "已完成" else null
+        if (summary.totalAttempts <= 0 || summary.attemptAccuracy == null) {
+            return if (summary.status == "completed") "已完成" else null
+        }
+        val accuracyPercent = (summary.attemptAccuracy.coerceIn(0.0, 1.0) * 100.0).roundToInt()
+        return "$accuracyPercent% · ${summary.totalAttempts}次"
+    }
     return scoreLabel(scoreObtained, totalScore)
 }
 
@@ -961,6 +989,8 @@ private fun examStatusLabel(status: String): String {
         "accepted", "pending", "queued", "running", "generating", "preparing" -> "生成中"
         "ready", "generated" -> "可作答"
         "submitted" -> "已提交"
+        "grading" -> "批改中"
+        "grading_failed" -> "判卷失败"
         "graded", "completed" -> "已批改"
         "failed" -> "生成失败"
         else -> status.ifBlank { "未知状态" }

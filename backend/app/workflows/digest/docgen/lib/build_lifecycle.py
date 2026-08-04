@@ -1663,6 +1663,24 @@ async def run_docgen_background(
         }
         return
     finally:
+        if docgen_published:
+            try:
+                from app.workflows.examine.initial_exam import schedule_course_initial_exam_job
+
+                schedule_course_initial_exam_job(
+                    background_task_registry,
+                    course_id=course_id,
+                    user_id=user_id,
+                    build_session_id=build_session_id,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "course_initial_exam_schedule_failed_after_publish",
+                    course_id=course_id,
+                    build_session_id=build_session_id,
+                    error_type=type(exc).__name__,
+                    error=str(exc),
+                )
         _finish_lifecycle_trace()
         if build_lock_heartbeat is not None:
             build_lock_heartbeat.cancel()

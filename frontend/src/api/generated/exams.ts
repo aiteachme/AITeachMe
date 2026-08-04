@@ -29,19 +29,25 @@ import type {
   ApiResponseExamPaperDeleteResponse,
   ApiResponseExamPaperDetailResponse,
   ApiResponseExamPrewarmStatusResponse,
+  ApiResponseExamProfileSyncResponse,
   ApiResponseExamStudyGuideResponse,
   ApiResponseListQuestionTemplateAnswerHistoryItem,
   ApiResponseListQuestionTemplateItemResponse,
   ApiResponseListQuestionTypeRegistryItemResponse,
+  ApiResponseMasteryDrillAttemptResponse,
   ApiResponsePaginatedDataExamHistoryItem,
   ApiResponseQuestionTemplateGradeResponse,
   ApiResponseQuestionTemplateMarkResponse,
+  ApiResponseUnionExamPaperDetailResponseNoneType,
   ErrorResponse,
   ExamGenerateRequest,
   ExamHistoryApiV1CoursesCourseIdExamsHistoryGetParams,
   ExamPrewarmStatusApiV1CoursesCourseIdExamsPrewarmStatusGetParams,
   ExamSubmitRequest,
   HTTPValidationError,
+  MasteryDrillAttemptRequest,
+  MasteryDrillCompleteRequest,
+  MasteryDrillStartRequest,
   QuestionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetParams,
   QuestionTemplateGradeRequest,
   QuestionTemplateMarkRequest
@@ -69,6 +75,140 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
   }
   return result;
 };
+
+export type activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetResponse200 = {
+  data: ApiResponseUnionExamPaperDetailResponseNoneType
+  status: 200
+}
+
+export type activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetResponseSuccess = (activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetResponse200) & {
+  headers: Headers;
+};
+export type activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetResponseError = (activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetResponse400 | activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetResponse404 | activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetResponse422 | activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetResponse500) & {
+  headers: Headers;
+};
+
+export type activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetResponse = (activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetResponseSuccess | activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetResponseError)
+
+export const getActiveMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetUrl = (courseId: string,) => {
+
+
+
+
+  return `/api/v1/courses/${courseId}/exams/mastery-drills/active`
+}
+
+/**
+ * @summary Fetch the active mastery drill for this course
+ */
+export const activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGet = async (courseId: string, options?: RequestInit): Promise<activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetResponse> => {
+
+  return orvalApiClient<activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetResponse>(getActiveMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetUrl(courseId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getActiveMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetQueryKey = (courseId: string,) => {
+    return [
+    `/api/v1/courses/${courseId}/exams/mastery-drills/active`
+    ] as const;
+    }
+
+
+export const getActiveMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetQueryOptions = <TData = Awaited<ReturnType<typeof activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGet>>, TError = ErrorResponse | HTTPValidationError>(courseId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getActiveMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetQueryKey(courseId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGet>>> = ({ signal }) => activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGet(courseId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: courseId !== null && courseId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ActiveMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetQueryResult = NonNullable<Awaited<ReturnType<typeof activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGet>>>
+export type ActiveMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetQueryError = ErrorResponse | HTTPValidationError
+
+
+export function useActiveMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGet<TData = Awaited<ReturnType<typeof activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGet>>, TError = ErrorResponse | HTTPValidationError>(
+ courseId: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGet>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGet>>,
+          TError,
+          Awaited<ReturnType<typeof activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useActiveMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGet<TData = Awaited<ReturnType<typeof activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGet>>, TError = ErrorResponse | HTTPValidationError>(
+ courseId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGet>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGet>>,
+          TError,
+          Awaited<ReturnType<typeof activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useActiveMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGet<TData = Awaited<ReturnType<typeof activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGet>>, TError = ErrorResponse | HTTPValidationError>(
+ courseId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Fetch the active mastery drill for this course
+ */
+
+export function useActiveMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGet<TData = Awaited<ReturnType<typeof activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGet>>, TError = ErrorResponse | HTTPValidationError>(
+ courseId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getActiveMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetQueryOptions(courseId,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
 
 export type generateExamApiV1CoursesCourseIdExamsGeneratePostResponse200 = {
   data: ApiResponseExamGenerateResponse
@@ -783,6 +923,11 @@ export type gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplate
   status: 404
 }
 
+export type gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostResponse409 = {
+  data: ErrorResponse
+  status: 409
+}
+
 export type gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostResponse422 = {
   data: HTTPValidationError
   status: 422
@@ -796,7 +941,7 @@ export type gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplate
 export type gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostResponseSuccess = (gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostResponse200) & {
   headers: Headers;
 };
-export type gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostResponseError = (gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostResponse400 | gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostResponse404 | gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostResponse422 | gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostResponse500) & {
+export type gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostResponseError = (gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostResponse400 | gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostResponse404 | gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostResponse409 | gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostResponse422 | gradeQuestionTemplateAnswerApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdGradePostResponse500) & {
   headers: Headers;
 };
 
@@ -1114,7 +1259,338 @@ export function useQuestionTypesApiV1CoursesCourseIdExamsQuestionTypesGet<TData 
 
 
 
-export type examGenerationStreamApiV1CoursesCourseIdExamsExamPaperIdStreamGetResponse200 = {
+export type startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResponse200 = {
+  data: ApiResponseExamPaperDetailResponse
+  status: 200
+}
+
+export type startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResponse409 = {
+  data: ErrorResponse
+  status: 409
+}
+
+export type startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResponseSuccess = (startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResponse200) & {
+  headers: Headers;
+};
+export type startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResponseError = (startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResponse400 | startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResponse404 | startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResponse409 | startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResponse422 | startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResponse500) & {
+  headers: Headers;
+};
+
+export type startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResponse = (startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResponseSuccess | startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResponseError)
+
+export const getStartMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostUrl = (courseId: string,) => {
+
+
+
+
+  return `/api/v1/courses/${courseId}/exams/mastery-drills/start`
+}
+
+/**
+ * @summary Start or resume a durable mastery drill
+ */
+export const startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPost = async (courseId: string,
+    masteryDrillStartRequest: MasteryDrillStartRequest, options?: RequestInit): Promise<startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResponse> => {
+
+  return orvalApiClient<startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResponse>(getStartMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostUrl(courseId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(masteryDrillStartRequest)
+  }
+);}
+
+
+
+
+export const getStartMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPost>>, TError,{courseId: string;data: MasteryDrillStartRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPost>>, TError,{courseId: string;data: MasteryDrillStartRequest}, TContext> => {
+
+const mutationKey = ['startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPost'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPost>>, {courseId: string;data: MasteryDrillStartRequest}> = (props) => {
+          const {courseId,data} = props ?? {};
+
+          return  startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPost(courseId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type StartMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostMutationResult = NonNullable<Awaited<ReturnType<typeof startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPost>>>
+    export type StartMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostMutationBody = MasteryDrillStartRequest
+    export type StartMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostMutationError = ErrorResponse | HTTPValidationError
+
+    /**
+ * @summary Start or resume a durable mastery drill
+ */
+export const useStartMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPost = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPost>>, TError,{courseId: string;data: MasteryDrillStartRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPost>>,
+        TError,
+        {courseId: string;data: MasteryDrillStartRequest},
+        TContext
+      > => {
+      return useMutation(getStartMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostMutationOptions(options), queryClient);
+    }
+    export type recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostResponse200 = {
+  data: ApiResponseMasteryDrillAttemptResponse
+  status: 200
+}
+
+export type recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostResponse409 = {
+  data: ErrorResponse
+  status: 409
+}
+
+export type recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostResponseSuccess = (recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostResponse200) & {
+  headers: Headers;
+};
+export type recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostResponseError = (recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostResponse400 | recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostResponse404 | recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostResponse409 | recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostResponse422 | recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostResponse500) & {
+  headers: Headers;
+};
+
+export type recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostResponse = (recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostResponseSuccess | recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostResponseError)
+
+export const getRecordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostUrl = (courseId: string,
+    examPaperId: number,) => {
+
+
+
+
+  return `/api/v1/courses/${courseId}/exams/${examPaperId}/mastery-drill-attempts`
+}
+
+/**
+ * @summary Persist and grade one mastery-drill attempt
+ */
+export const recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPost = async (courseId: string,
+    examPaperId: number,
+    masteryDrillAttemptRequest: MasteryDrillAttemptRequest, options?: RequestInit): Promise<recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostResponse> => {
+
+  return orvalApiClient<recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostResponse>(getRecordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostUrl(courseId,examPaperId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(masteryDrillAttemptRequest)
+  }
+);}
+
+
+
+
+export const getRecordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPost>>, TError,{courseId: string;examPaperId: number;data: MasteryDrillAttemptRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPost>>, TError,{courseId: string;examPaperId: number;data: MasteryDrillAttemptRequest}, TContext> => {
+
+const mutationKey = ['recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPost'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPost>>, {courseId: string;examPaperId: number;data: MasteryDrillAttemptRequest}> = (props) => {
+          const {courseId,examPaperId,data} = props ?? {};
+
+          return  recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPost(courseId,examPaperId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RecordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostMutationResult = NonNullable<Awaited<ReturnType<typeof recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPost>>>
+    export type RecordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostMutationBody = MasteryDrillAttemptRequest
+    export type RecordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostMutationError = ErrorResponse | HTTPValidationError
+
+    /**
+ * @summary Persist and grade one mastery-drill attempt
+ */
+export const useRecordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPost = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPost>>, TError,{courseId: string;examPaperId: number;data: MasteryDrillAttemptRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPost>>,
+        TError,
+        {courseId: string;examPaperId: number;data: MasteryDrillAttemptRequest},
+        TContext
+      > => {
+      return useMutation(getRecordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostMutationOptions(options), queryClient);
+    }
+    export type completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostResponse200 = {
+  data: ApiResponseExamGradeResponse
+  status: 200
+}
+
+export type completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostResponse409 = {
+  data: ErrorResponse
+  status: 409
+}
+
+export type completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostResponseSuccess = (completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostResponse200) & {
+  headers: Headers;
+};
+export type completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostResponseError = (completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostResponse400 | completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostResponse404 | completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostResponse409 | completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostResponse422 | completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostResponse500) & {
+  headers: Headers;
+};
+
+export type completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostResponse = (completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostResponseSuccess | completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostResponseError)
+
+export const getCompleteMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostUrl = (courseId: string,
+    examPaperId: number,) => {
+
+
+
+
+  return `/api/v1/courses/${courseId}/exams/${examPaperId}/mastery-drill-complete`
+}
+
+/**
+ * @summary Idempotently complete a mastery drill
+ */
+export const completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePost = async (courseId: string,
+    examPaperId: number,
+    masteryDrillCompleteRequest: MasteryDrillCompleteRequest, options?: RequestInit): Promise<completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostResponse> => {
+
+  return orvalApiClient<completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostResponse>(getCompleteMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostUrl(courseId,examPaperId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(masteryDrillCompleteRequest)
+  }
+);}
+
+
+
+
+export const getCompleteMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePost>>, TError,{courseId: string;examPaperId: number;data: MasteryDrillCompleteRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePost>>, TError,{courseId: string;examPaperId: number;data: MasteryDrillCompleteRequest}, TContext> => {
+
+const mutationKey = ['completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePost'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePost>>, {courseId: string;examPaperId: number;data: MasteryDrillCompleteRequest}> = (props) => {
+          const {courseId,examPaperId,data} = props ?? {};
+
+          return  completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePost(courseId,examPaperId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CompleteMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostMutationResult = NonNullable<Awaited<ReturnType<typeof completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePost>>>
+    export type CompleteMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostMutationBody = MasteryDrillCompleteRequest
+    export type CompleteMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostMutationError = ErrorResponse | HTTPValidationError
+
+    /**
+ * @summary Idempotently complete a mastery drill
+ */
+export const useCompleteMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePost = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePost>>, TError,{courseId: string;examPaperId: number;data: MasteryDrillCompleteRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePost>>,
+        TError,
+        {courseId: string;examPaperId: number;data: MasteryDrillCompleteRequest},
+        TContext
+      > => {
+      return useMutation(getCompleteMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostMutationOptions(options), queryClient);
+    }
+    export type examGenerationStreamApiV1CoursesCourseIdExamsExamPaperIdStreamGetResponse200 = {
   data: unknown
   status: 200
 }
@@ -1650,7 +2126,117 @@ export function useExamStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideG
 
 
 
-export type submitExamApiV1CoursesCourseIdExamsExamPaperIdSubmitPostResponse200 = {
+export type retryExamProfileSyncApiV1CoursesCourseIdExamsExamPaperIdProfileSyncRetryPostResponse200 = {
+  data: ApiResponseExamProfileSyncResponse
+  status: 200
+}
+
+export type retryExamProfileSyncApiV1CoursesCourseIdExamsExamPaperIdProfileSyncRetryPostResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type retryExamProfileSyncApiV1CoursesCourseIdExamsExamPaperIdProfileSyncRetryPostResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type retryExamProfileSyncApiV1CoursesCourseIdExamsExamPaperIdProfileSyncRetryPostResponse409 = {
+  data: ErrorResponse
+  status: 409
+}
+
+export type retryExamProfileSyncApiV1CoursesCourseIdExamsExamPaperIdProfileSyncRetryPostResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type retryExamProfileSyncApiV1CoursesCourseIdExamsExamPaperIdProfileSyncRetryPostResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type retryExamProfileSyncApiV1CoursesCourseIdExamsExamPaperIdProfileSyncRetryPostResponseSuccess = (retryExamProfileSyncApiV1CoursesCourseIdExamsExamPaperIdProfileSyncRetryPostResponse200) & {
+  headers: Headers;
+};
+export type retryExamProfileSyncApiV1CoursesCourseIdExamsExamPaperIdProfileSyncRetryPostResponseError = (retryExamProfileSyncApiV1CoursesCourseIdExamsExamPaperIdProfileSyncRetryPostResponse400 | retryExamProfileSyncApiV1CoursesCourseIdExamsExamPaperIdProfileSyncRetryPostResponse404 | retryExamProfileSyncApiV1CoursesCourseIdExamsExamPaperIdProfileSyncRetryPostResponse409 | retryExamProfileSyncApiV1CoursesCourseIdExamsExamPaperIdProfileSyncRetryPostResponse422 | retryExamProfileSyncApiV1CoursesCourseIdExamsExamPaperIdProfileSyncRetryPostResponse500) & {
+  headers: Headers;
+};
+
+export type retryExamProfileSyncApiV1CoursesCourseIdExamsExamPaperIdProfileSyncRetryPostResponse = (retryExamProfileSyncApiV1CoursesCourseIdExamsExamPaperIdProfileSyncRetryPostResponseSuccess | retryExamProfileSyncApiV1CoursesCourseIdExamsExamPaperIdProfileSyncRetryPostResponseError)
+
+export const getRetryExamProfileSyncApiV1CoursesCourseIdExamsExamPaperIdProfileSyncRetryPostUrl = (courseId: string,
+    examPaperId: number,) => {
+
+
+
+
+  return `/api/v1/courses/${courseId}/exams/${examPaperId}/profile-sync/retry`
+}
+
+/**
+ * @summary Retry Profile synchronization for a graded exam
+ */
+export const retryExamProfileSyncApiV1CoursesCourseIdExamsExamPaperIdProfileSyncRetryPost = async (courseId: string,
+    examPaperId: number, options?: RequestInit): Promise<retryExamProfileSyncApiV1CoursesCourseIdExamsExamPaperIdProfileSyncRetryPostResponse> => {
+
+  return orvalApiClient<retryExamProfileSyncApiV1CoursesCourseIdExamsExamPaperIdProfileSyncRetryPostResponse>(getRetryExamProfileSyncApiV1CoursesCourseIdExamsExamPaperIdProfileSyncRetryPostUrl(courseId,examPaperId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getRetryExamProfileSyncApiV1CoursesCourseIdExamsExamPaperIdProfileSyncRetryPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryExamProfileSyncApiV1CoursesCourseIdExamsExamPaperIdProfileSyncRetryPost>>, TError,{courseId: string;examPaperId: number}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof retryExamProfileSyncApiV1CoursesCourseIdExamsExamPaperIdProfileSyncRetryPost>>, TError,{courseId: string;examPaperId: number}, TContext> => {
+
+const mutationKey = ['retryExamProfileSyncApiV1CoursesCourseIdExamsExamPaperIdProfileSyncRetryPost'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof retryExamProfileSyncApiV1CoursesCourseIdExamsExamPaperIdProfileSyncRetryPost>>, {courseId: string;examPaperId: number}> = (props) => {
+          const {courseId,examPaperId} = props ?? {};
+
+          return  retryExamProfileSyncApiV1CoursesCourseIdExamsExamPaperIdProfileSyncRetryPost(courseId,examPaperId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RetryExamProfileSyncApiV1CoursesCourseIdExamsExamPaperIdProfileSyncRetryPostMutationResult = NonNullable<Awaited<ReturnType<typeof retryExamProfileSyncApiV1CoursesCourseIdExamsExamPaperIdProfileSyncRetryPost>>>
+
+    export type RetryExamProfileSyncApiV1CoursesCourseIdExamsExamPaperIdProfileSyncRetryPostMutationError = ErrorResponse | HTTPValidationError
+
+    /**
+ * @summary Retry Profile synchronization for a graded exam
+ */
+export const useRetryExamProfileSyncApiV1CoursesCourseIdExamsExamPaperIdProfileSyncRetryPost = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryExamProfileSyncApiV1CoursesCourseIdExamsExamPaperIdProfileSyncRetryPost>>, TError,{courseId: string;examPaperId: number}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof retryExamProfileSyncApiV1CoursesCourseIdExamsExamPaperIdProfileSyncRetryPost>>,
+        TError,
+        {courseId: string;examPaperId: number},
+        TContext
+      > => {
+      return useMutation(getRetryExamProfileSyncApiV1CoursesCourseIdExamsExamPaperIdProfileSyncRetryPostMutationOptions(options), queryClient);
+    }
+    export type submitExamApiV1CoursesCourseIdExamsExamPaperIdSubmitPostResponse200 = {
   data: ApiResponseExamGradeResponse
   status: 200
 }
@@ -1699,7 +2285,7 @@ export const getSubmitExamApiV1CoursesCourseIdExamsExamPaperIdSubmitPostUrl = (c
 }
 
 /**
- * @summary Submit answers and update KnowledgeUnit mastery
+ * @summary Submit answers and start grading
  */
 export const submitExamApiV1CoursesCourseIdExamsExamPaperIdSubmitPost = async (courseId: string,
     examPaperId: number,
@@ -1749,7 +2335,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type SubmitExamApiV1CoursesCourseIdExamsExamPaperIdSubmitPostMutationError = ErrorResponse | HTTPValidationError
 
     /**
- * @summary Submit answers and update KnowledgeUnit mastery
+ * @summary Submit answers and start grading
  */
 export const useSubmitExamApiV1CoursesCourseIdExamsExamPaperIdSubmitPost = <TError = ErrorResponse | HTTPValidationError,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitExamApiV1CoursesCourseIdExamsExamPaperIdSubmitPost>>, TError,{courseId: string;examPaperId: number;data: ExamSubmitRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
