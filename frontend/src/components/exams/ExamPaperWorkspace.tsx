@@ -735,6 +735,10 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
     },
   });
 
+  useEffect(() => {
+    completePersistentMasteryDrill.reset();
+  }, [courseId, paperId]);
+
   const submitExam = useSubmitExamApiV1CoursesCourseIdExamsExamPaperIdSubmitPost({
     request: {
       timeout: LONG_RUNNING_API_TIMEOUT_MS,
@@ -1113,6 +1117,12 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
                       onComplete={() => {
                         completePersistentMasteryDrill.mutate();
                       }}
+                      onRetryComplete={() => {
+                        completePersistentMasteryDrill.mutate();
+                      }}
+                      completionError={completePersistentMasteryDrill.isError
+                        ? getApiErrorMessage(completePersistentMasteryDrill.error, "闯关结果保存失败，请重试。")
+                        : null}
                       onQuestionAi={openQuestionAi}
                       onQuestionMarkToggle={toggleQuestionMark}
                       markingQuestionTemplateId={markingQuestionTemplateId}
