@@ -79,6 +79,12 @@ type QuestionTemplateMarkVariables = {
   isMarked: boolean;
 };
 
+type MasteryDrillCompletionVariables = {
+  courseId: string;
+  paperId: number;
+  completionKey: string;
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -171,7 +177,7 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
   const previousProfileSyncStatusRef = useRef<string | null>(null);
   const handledGradedAtRef = useRef<string | null>(null);
   const masteryDrillAttemptKeyRef = useRef(new Map<string, string>());
-  const masteryDrillCompletionKeyRef = useRef<string | null>(null);
+  const masteryDrillCompletionKeyRef = useRef(new Map<string, string>());
   const answerStorageKey = useMemo(
     () => `aiteachme:exam-draft-answers:${courseId}:${paperId}`,
     [paperId, courseId],
@@ -183,7 +189,6 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
     handledGradedAtRef.current = null;
     isSubmitOverlayClosedManuallyRef.current = false;
     masteryDrillAttemptKeyRef.current.clear();
-    masteryDrillCompletionKeyRef.current = null;
   }, [courseId, paperId]);
 
   useEffect(() => {
@@ -700,24 +705,31 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
   }, [courseId, paperId, toast]);
 
   const completePersistentMasteryDrill = useMutation({
-    mutationFn: async () => {
-      let completionKey = masteryDrillCompletionKeyRef.current;
-      if (!completionKey) {
-        completionKey = createDrillIdempotencyKey("web-complete");
-        masteryDrillCompletionKeyRef.current = completionKey;
-      }
+    mutationFn: async ({
+      courseId: targetCourseId,
+      paperId: targetPaperId,
+      completionKey,
+    }: MasteryDrillCompletionVariables) => {
       return completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePost(
-        courseId,
-        paperId,
+        targetCourseId,
+        targetPaperId,
         { completion_key: completionKey },
       );
     },
     retry: 2,
-    onSuccess: async () => {
+    onSuccess: async (_response, variables) => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: examDetailQueryKey }),
         queryClient.invalidateQueries({
-          queryKey: getExamHistoryApiV1CoursesCourseIdExamsHistoryGetQueryKey(courseId, { page: 1, size: 24 }),
+          queryKey: getExamDetailApiV1CoursesCourseIdExamsExamPaperIdGetQueryKey(
+            variables.courseId,
+            variables.paperId,
+          ),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: getExamHistoryApiV1CoursesCourseIdExamsHistoryGetQueryKey(
+            variables.courseId,
+            { page: 1, size: 24 },
+          ),
         }),
       ]);
       toast({
@@ -735,9 +747,19 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
     },
   });
 
-  useEffect(() => {
-    completePersistentMasteryDrill.reset();
-  }, [courseId, paperId]);
+  const completePersistentMasteryDrillMutate = completePersistentMasteryDrill.mutate;
+  const completeCurrentPersistentMasteryDrill = useCallback(() => {
+    const paperIdentity = `${courseId}:${paperId}`;
+    let completionKey = masteryDrillCompletionKeyRef.current.get(paperIdentity);
+    if (!completionKey) {
+      completionKey = createDrillIdempotencyKey("web-complete");
+      masteryDrillCompletionKeyRef.current.set(paperIdentity, completionKey);
+    }
+    completePersistentMasteryDrillMutate({ courseId, paperId, completionKey });
+  }, [completePersistentMasteryDrillMutate, courseId, paperId]);
+  const completionMutationTargetsCurrentPaper =
+    completePersistentMasteryDrill.variables?.courseId === courseId
+    && completePersistentMasteryDrill.variables?.paperId === paperId;
 
   const submitExam = useSubmitExamApiV1CoursesCourseIdExamsExamPaperIdSubmitPost({
     request: {
@@ -1111,16 +1133,12 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
                       paper={paper}
                       answers={answers}
                       setAnswers={setAnswers}
-                      isCompleting={completePersistentMasteryDrill.isPending}
+                      isCompleting={completePersistentMasteryDrill.isPending && completionMutationTargetsCurrentPaper}
                       onBack={() => navigate(backHref)}
                       onGradeAnswer={gradePersistentDrillAnswer}
-                      onComplete={() => {
-                        completePersistentMasteryDrill.mutate();
-                      }}
-                      onRetryComplete={() => {
-                        completePersistentMasteryDrill.mutate();
-                      }}
-                      completionError={completePersistentMasteryDrill.isError
+                      onComplete={completeCurrentPersistentMasteryDrill}
+                      onRetryComplete={completeCurrentPersistentMasteryDrill}
+                      completionError={completePersistentMasteryDrill.isError && completionMutationTargetsCurrentPaper
                         ? getApiErrorMessage(completePersistentMasteryDrill.error, "闯关结果保存失败，请重试。")
                         : null}
                       onQuestionAi={openQuestionAi}
