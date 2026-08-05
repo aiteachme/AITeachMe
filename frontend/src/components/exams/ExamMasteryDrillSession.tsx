@@ -42,7 +42,9 @@ interface ExamMasteryDrillSessionProps {
   onComplete: (finalAnswers: Record<number, string>, summary: MasteryDrillCompletionSummary) => void;
   onBack?: () => void;
   onRestart?: () => void;
+  onRetryComplete?: () => void;
   completionDescription?: string;
+  completionError?: string | null;
   onGradeAnswer: (item: ExamPaperItemResponse, answer: string) => Promise<QuestionTemplateGradeResult>;
   onQuestionAi?: (item: ExamPaperItemResponse, isReviewStage: boolean, answerValue: string) => void;
   onQuestionMarkToggle?: (item: ExamPaperItemResponse, isMarked: boolean) => void;
@@ -119,7 +121,9 @@ export function ExamMasteryDrillSession({
   onComplete,
   onBack,
   onRestart,
+  onRetryComplete,
   completionDescription = "本轮闯关已完成，训练记录会同步到历史记录。",
+  completionError,
   onGradeAnswer,
   onQuestionAi,
   onQuestionMarkToggle,
@@ -310,10 +314,21 @@ export function ExamMasteryDrillSession({
         <Trophy className="mx-auto h-10 w-10" />
         <h2 className="mt-3 text-xl font-semibold">{orderedItems.length} 题全部答对</h2>
         <p className="mt-2 text-sm leading-6 text-emerald-800 dark:text-emerald-200">
-          {isCompleting ? "正在保存本次训练记录..." : completionDescription}
+          {isCompleting
+            ? "正在保存本次训练记录..."
+            : completionError ?? completionDescription}
         </p>
         {isCompleting ? <Loader2 className="mx-auto mt-4 h-5 w-5 animate-spin" /> : null}
-        {!isCompleting && onRestart ? (
+        {!isCompleting && completionError && onRetryComplete ? (
+          <Button
+            className="mt-5 h-10 rounded-full bg-amber-700 px-5 text-sm font-semibold text-white hover:bg-amber-600"
+            onClick={onRetryComplete}
+          >
+            <RotateCcw className="h-4 w-4" />
+            重试保存
+          </Button>
+        ) : null}
+        {!isCompleting && !completionError && onRestart ? (
           <Button
             className="mt-5 h-10 rounded-full bg-emerald-950 px-5 text-sm font-semibold text-white hover:bg-emerald-900 dark:bg-emerald-100 dark:text-emerald-950 dark:hover:bg-white"
             onClick={onRestart}

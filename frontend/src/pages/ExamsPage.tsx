@@ -2300,7 +2300,10 @@ export function MasteryDrillPage() {
       });
     },
     retry: 2,
-    onSuccess: async () => {
+    onSuccess: async (_response, variables) => {
+      if (courseId) {
+        completedSessionKeyRef.current = `${courseId}:${variables.paperId}`;
+      }
       await queryClient.invalidateQueries({
         queryKey: getExamHistoryApiV1CoursesCourseIdExamsHistoryGetQueryKey(
           courseId ?? "",
@@ -2316,7 +2319,7 @@ export function MasteryDrillPage() {
     onError: (error) => {
       toast({
         title: "闯关结果保存失败",
-        description: getApiErrorMessage(error, "答案已经逐题保存，刷新页面后可继续完成。"),
+        description: getApiErrorMessage(error, "答案已经逐题保存，可在当前页面重试。"),
         variant: "error",
       });
     },
@@ -2334,7 +2337,6 @@ export function MasteryDrillPage() {
     if (completedSessionKeyRef.current === sessionKey) {
       return;
     }
-    completedSessionKeyRef.current = sessionKey;
     const startedAtMs = startedAtMsRef.current;
     const durationMs = startedAtMs === null ? undefined : Math.max(0, Date.now() - startedAtMs);
     trackCourseAnalyticsEvent(
@@ -2362,6 +2364,19 @@ export function MasteryDrillPage() {
       completionKey,
       durationSeconds: durationMs === undefined ? undefined : Math.round(durationMs / 1000),
     });
+  };
+
+  const retryPersistentDrillComplete = () => {
+    const variables = completeDrillMutation.variables;
+    if (
+      completeDrillMutation.isPending
+      || !variables
+      || !drillPaper
+      || variables.paperId !== drillPaper.id
+    ) {
+      return;
+    }
+    completeDrillMutation.mutate(variables);
   };
 
   if (!courseId) {
@@ -2425,7 +2440,14 @@ export function MasteryDrillPage() {
             setAnswers={setAnswers}
             isCompleting={completeDrillMutation.isPending}
             onRestart={restartDrill}
+            onRetryComplete={retryPersistentDrillComplete}
             completionDescription="本轮作答过程已保存到历史记录，并会同步到学习画像。"
+            completionError={completeDrillMutation.isError
+              ? getApiErrorMessage(
+                completeDrillMutation.error,
+                "训练记录保存失败，答案已逐题保存，请重试。",
+              )
+              : null}
             onGradeAnswer={gradePersistentAnswer}
             onComplete={handlePersistentDrillComplete}
             onQuestionAi={openQuestionAi}

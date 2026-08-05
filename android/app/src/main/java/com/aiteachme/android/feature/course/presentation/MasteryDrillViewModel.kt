@@ -180,7 +180,6 @@ class MasteryDrillViewModel : ViewModel() {
                     completedIds = completedIds,
                     queue = remaining,
                     feedback = null,
-                    completedAt = if (remaining.isEmpty()) System.currentTimeMillis().toString() else it.completedAt,
                 )
             }
             if (remaining.isEmpty()) {
@@ -283,6 +282,10 @@ class MasteryDrillViewModel : ViewModel() {
         if (queue.isEmpty() && paper.masteryDrill?.status == "active") {
             currentCourseId?.let(::completeCurrentSession)
         }
+    }
+
+    fun retryCompletion() {
+        currentCourseId?.let(::completeCurrentSession)
     }
 
     private fun completeCurrentSession(courseId: String) {
