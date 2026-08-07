@@ -19,6 +19,7 @@ from sqlmodel import Session, select
 
 from app.models import ChatSession, Course, KnowledgeDocument, RawFile, RetrievalChunk
 from app.repositories.knowledge import knowledge_repo
+from app.repositories import initial_exam_repo
 from app.schemas.export_import import ImportOptions, ImportResultData
 from app.shared.infra.embedding import aembed_texts
 from app.shared.infra.course import (
@@ -39,6 +40,10 @@ from app.shared.infra.exceptions import (
     InvalidImportPackageError,
     LLMCallError,
     MissingLLMApiKeyError,
+)
+from app.shared.kernel.question_types import (
+    UnsupportedQuestionTypeError,
+    require_supported_question_type_key,
 )
 from app.workflows.digest.docgen.lib.published_manifest import ensure_published_knowledge_manifest
 from app.shared.infra.llm_support.common import build_completion_contexts
@@ -65,6 +70,26 @@ _IMPORT_EMBEDDING_BATCH_SIZE = 1
 _IMPORT_EMBEDDING_MAX_CONCURRENCY = 1
 _IMPORT_EMBEDDING_FOREGROUND_SLOT_RESERVE = 2
 _IMPORT_EMBEDDING_GLOBAL_FRACTION_DIVISOR = 3
+
+
+def _validate_imported_question_types(table_name: str, records: list[dict[str, Any]]) -> None:
+    """Reject runtime records whose question type is not implemented."""
+
+    if table_name not in {"question_template", "exam_paper_item", "question_type_registry"}:
+        return
+
+    for record in records:
+        if table_name == "question_type_registry" and not bool(record.get("is_active", True)):
+            continue
+        field_name = "type_key" if table_name == "question_type_registry" else "question_type"
+        try:
+            record[field_name] = require_supported_question_type_key(record.get(field_name))
+        except UnsupportedQuestionTypeError as exc:
+            record_id = record.get("id", "unknown")
+            question_type = exc.question_type or "<empty>"
+            raise InvalidImportPackageError(
+                f"数据表 `{table_name}` 的记录 `{record_id}` 包含不支持的题型 `{question_type}`。"
+            ) from exc
 
 
 def _import_embedding_rebuild_concurrency_limit(global_limit: int | None = None) -> int:
@@ -151,6 +176,7 @@ def import_course(
                 records = _read_table_records(db_file, spec.name)
                 if not records:
                     continue
+                _validate_imported_question_types(spec.name, records)
                 count = _import_table(
                     session,
                     spec,
@@ -195,6 +221,14 @@ def import_course(
                 session,
                 course_id=new_course_id,
                 id_map=id_map,
+            )
+            initial_exam_repo.ensure_course_initial_exam_job(
+                session,
+                course_id=new_course_id,
+                user_id=user_id,
+                status="completed",
+                last_error_code="imported_course_backfill",
+                auto_commit=False,
             )
             if commit:
                 session.commit()

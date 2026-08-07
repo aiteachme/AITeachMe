@@ -511,6 +511,7 @@ def langsmith_trace(
     node: str = "",
     extra_metadata: Mapping[str, Any] | None = None,
     extra_tags: list[str] | None = None,
+    expected_exceptions: tuple[type[BaseException], ...] | None = None,
 ) -> Iterator[Any | None]:
     """Create a LangSmith run when tracing is enabled."""
 
@@ -532,6 +533,10 @@ def langsmith_trace(
         extra_metadata=extra_metadata,
         extra_tags=extra_tags,
     )
+    handled_exceptions = tuple(expected_exceptions or ())
+    if expected_cancellation_scope:
+        handled_exceptions = (*handled_exceptions, asyncio.CancelledError)
+
     with tracing_context(
         enabled=True,
         project_name=project_name,
@@ -545,9 +550,7 @@ def langsmith_trace(
             project_name=project_name,
             metadata=metadata,
             tags=tags,
-            exceptions_to_handle=(
-                (asyncio.CancelledError,) if expected_cancellation_scope else None
-            ),
+            exceptions_to_handle=handled_exceptions or None,
         ) as run:
             try:
                 yield run

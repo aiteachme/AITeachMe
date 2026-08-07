@@ -37,7 +37,9 @@ course_export.atmx
 │   ├── question_type_registry.json
 │   ├── question_template.json
 │   ├── exam_paper.json
+│   ├── mastery_drill_session.json
 │   ├── exam_paper_item.json
+│   ├── mastery_drill_attempt.json
 │   ├── user_knowledge_state.json
 │   ├── chat_session.json
 │   └── chat_message.json
@@ -66,7 +68,9 @@ course_export.atmx
 - `question_type_registry`
 - `question_template`
 - `exam_paper`
+- `mastery_drill_session`
 - `exam_paper_item`
+- `mastery_drill_attempt`
 - `user_knowledge_state`
 - `chat_session`
 - `chat_message`
@@ -146,7 +150,9 @@ course
 -> question_type_registry
 -> question_template
 -> exam_paper
+-> mastery_drill_session
 -> exam_paper_item
+-> mastery_drill_attempt
 -> user_knowledge_state
 -> chat_session
 -> chat_message

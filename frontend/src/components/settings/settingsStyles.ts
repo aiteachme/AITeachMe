@@ -129,6 +129,8 @@ export const SETTINGS_STYLES = {
     root: "flex flex-col divide-y divide-zinc-100 dark:divide-slate-800/60",
     item: "settings-row flex flex-col gap-6 py-5 transition-colors md:flex-row md:items-start",
     controlWrap: "flex-1 min-w-0 w-full",
+    pairedControls: "grid min-w-0 grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_190px]",
+    inlineControl: "min-w-0",
     readonlyItem: "settings-row flex flex-col gap-6 py-5 md:flex-row md:items-start",
     readonlyControl: "flex-1 min-w-0 w-full",
   },

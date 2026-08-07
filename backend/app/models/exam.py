@@ -82,6 +82,15 @@ class ExamPaper(SQLModel, table=True):
     total_items: int = Field(default=0, ge=0)
     submitted_at: datetime | None = Field(default=None)
     graded_at: datetime | None = Field(default=None)
+    submission_key: str = Field(default="")
+    submission_hash: str = Field(default="")
+    grading_claim_token: str = Field(default="")
+    grading_lease_expires_at: datetime | None = Field(default=None, index=True)
+    grading_attempts: int = Field(default=0, ge=0)
+    grading_last_error: str = Field(
+        default="",
+        sa_column=sa.Column(sa.Text(), nullable=False, default=""),
+    )
     total_score: float | None = Field(default=None, ge=0.0)
     score_obtained: float | None = Field(default=None, ge=0.0)
     duration_seconds: int | None = Field(default=None, ge=0)
@@ -90,6 +99,84 @@ class ExamPaper(SQLModel, table=True):
     prepared_at: datetime | None = Field(default=None, index=True)
     claimed_at: datetime | None = Field(default=None, index=True)
     expires_at: datetime | None = Field(default=None, index=True)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
+
+
+class ExamProfileSync(SQLModel, table=True):
+    """Durable outbox job for consuming one graded exam into Profile."""
+
+    __tablename__ = "exam_profile_sync"
+    __table_args__ = (
+        UniqueConstraint("exam_paper_id", name="uq_exam_profile_sync_paper"),
+        sa.Index("ix_exam_profile_sync_recovery", "status", "next_attempt_at"),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    exam_paper_id: int = Field(foreign_key="exam_paper.id", index=True)
+    course_id: str = Field(foreign_key="course.id", index=True)
+    user_id: str = Field(default="local", index=True)
+    status: str = Field(default="pending", index=True)
+    trigger: str = Field(default="exam_graded")
+    attempt_count: int = Field(default=0, ge=0)
+    manual_retry_count: int = Field(default=0, ge=0)
+    next_attempt_at: datetime | None = Field(default_factory=utcnow, index=True)
+    claim_token: str = Field(default="")
+    lease_expires_at: datetime | None = Field(default=None, index=True)
+    last_error_code: str = Field(default="")
+    states_updated: int = Field(default=0, ge=0)
+    review_task_count: int = Field(default=0, ge=0)
+    started_at: datetime | None = Field(default=None)
+    completed_at: datetime | None = Field(default=None, index=True)
+    last_error_at: datetime | None = Field(default=None)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
+
+
+class MasteryDrillSession(SQLModel, table=True):
+    """Durable metadata for one mastery-drill learning session."""
+
+    __tablename__ = "mastery_drill_session"
+    __table_args__ = (
+        UniqueConstraint("exam_paper_id", name="uq_mastery_drill_session_paper"),
+        UniqueConstraint(
+            "course_id",
+            "user_id",
+            "session_key",
+            name="uq_mastery_drill_session_key",
+        ),
+        sa.Index(
+            "ix_mastery_drill_session_active",
+            "course_id",
+            "user_id",
+            "status",
+            "updated_at",
+        ),
+        sa.Index(
+            "uq_mastery_drill_session_course_user_active",
+            "course_id",
+            "user_id",
+            unique=True,
+            postgresql_where=sa.text("status = 'active'"),
+            sqlite_where=sa.text("status = 'active'"),
+        ),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    exam_paper_id: int = Field(foreign_key="exam_paper.id", index=True)
+    course_id: str = Field(foreign_key="course.id", index=True)
+    user_id: str = Field(default="local", index=True)
+    session_key: str
+    status: str = Field(default="active", index=True)
+    config_snapshot_json: str = Field(
+        default="{}",
+        sa_column=sa.Column(sa.Text(), nullable=False, default="{}"),
+    )
+    total_attempts: int = Field(default=0, ge=0)
+    wrong_attempts: int = Field(default=0, ge=0)
+    completion_key: str = Field(default="")
+    started_at: datetime = Field(default_factory=utcnow)
+    completed_at: datetime | None = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
 
@@ -125,6 +212,57 @@ class ExamPaperItem(SQLModel, table=True):
     feedback_text: str | None = Field(default=None, sa_column=sa.Column(sa.Text(), nullable=True))
     answered_at: datetime | None = Field(default=None)
     graded_at: datetime | None = Field(default=None)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
+
+
+class MasteryDrillAttempt(SQLModel, table=True):
+    """One immutable answer attempt inside a mastery-drill session."""
+
+    __tablename__ = "mastery_drill_attempt"
+    __table_args__ = (
+        UniqueConstraint("mastery_drill_session_id", "attempt_key", name="uq_mastery_drill_attempt_key"),
+        sa.Index(
+            "ix_mastery_drill_attempt_session_status",
+            "mastery_drill_session_id",
+            "status",
+        ),
+        sa.Index(
+            "ix_mastery_drill_attempt_item_created",
+            "exam_paper_item_id",
+            "created_at",
+        ),
+        sa.Index(
+            "uq_mastery_drill_attempt_item_grading",
+            "exam_paper_item_id",
+            unique=True,
+            postgresql_where=sa.text("status = 'grading'"),
+            sqlite_where=sa.text("status = 'grading'"),
+        ),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    mastery_drill_session_id: int = Field(foreign_key="mastery_drill_session.id", index=True)
+    exam_paper_item_id: int = Field(foreign_key="exam_paper_item.id", index=True)
+    question_template_id: int = Field(foreign_key="question_template.id", index=True)
+    attempt_no: int = Field(default=1, ge=1)
+    attempt_key: str
+    request_hash: str
+    status: str = Field(default="grading", index=True)
+    answer_content: str = Field(sa_column=sa.Column(sa.Text(), nullable=False))
+    is_correct: bool | None = Field(default=None)
+    score_obtained: float | None = Field(default=None, ge=0.0)
+    score_max: float | None = Field(default=None, ge=0.0)
+    feedback_text: str | None = Field(default=None, sa_column=sa.Column(sa.Text(), nullable=True))
+    error_cause_label: str | None = Field(default=None)
+    grading_mode: str = Field(default="")
+    time_spent_seconds: int | None = Field(default=None, ge=0)
+    hint_used: bool = Field(default=False)
+    confidence_self_report: int | None = Field(default=None, ge=1, le=5)
+    claim_token: str = Field(default="")
+    lease_expires_at: datetime | None = Field(default=None, index=True)
+    error_code: str = Field(default="")
+    answered_at: datetime | None = Field(default=None, index=True)
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
 

@@ -44,6 +44,8 @@ export interface SettingEntry {
   ui_group?: string;
   /** 设置页内的稳定排序值。 */
   ui_order?: number;
+  /** 可选的同一行父设置键。 */
+  ui_parent_key?: string | null;
   /** 说明。 */
   description?: string;
   /** Selectable values. */

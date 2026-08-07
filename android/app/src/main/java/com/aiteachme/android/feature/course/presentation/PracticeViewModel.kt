@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 enum class PracticeMode(
     val apiValue: String,
@@ -37,7 +38,7 @@ enum class PracticeMode(
     MasteryDrill(
         apiValue = "mastery_drill",
         label = "闯关测试",
-        description = "从题库模板抽题进行即时闯关，不生成单独试卷。",
+        description = "从题库模板抽题进行即时闯关，并保存跨设备学习记录。",
         defaultQuestionCount = 8,
     );
 
@@ -50,6 +51,10 @@ enum class PracticeMode(
 
         fun isGeneratedPaperMode(value: String): Boolean {
             return generatedPaperModes.any { it.apiValue == value }
+        }
+
+        fun isHistoryMode(value: String): Boolean {
+            return values().any { it.apiValue == value }
         }
     }
 }
@@ -229,21 +234,23 @@ class PracticeViewModel : ViewModel() {
         if (state.isSubmitting || state.isGenerating || paper.items.isEmpty()) {
             return
         }
+        val isGradingRetry = paper.status.lowercase() == "grading_failed"
         viewModelScope.launch {
             _uiState.update {
                 it.copy(
                     isSubmitting = true,
                     errorMessage = null,
-                    infoMessage = "正在提交并批改...",
+                    infoMessage = if (isGradingRetry) "正在重新批改已保存的答卷..." else "正在提交并批改...",
                 )
             }
             runCatching {
                 val request = ExamSubmitRequest(
+                    submissionKey = UUID.randomUUID().toString(),
                     answers = paper.items.map { item ->
                         ExamSubmitAnswerItem(
                             examPaperItemId = item.id,
                             itemOrder = item.itemOrder,
-                            answer = state.answers[item.id].orEmpty(),
+                            answer = if (isGradingRetry) item.userAnswer.orEmpty() else state.answers[item.id].orEmpty(),
                         )
                     },
                 )
@@ -252,16 +259,23 @@ class PracticeViewModel : ViewModel() {
                     examPaperId = paper.id,
                     request = request,
                 )
-                grade to examRepository.getExamDetail(courseId = courseId, examPaperId = paper.id)
+                grade to pollPaperUntilGraded(courseId = courseId, paperId = paper.id)
             }.onSuccess { (grade, detail) ->
                 _uiState.update {
                     it.copy(
                         isSubmitting = false,
                         currentPaper = detail,
                         answers = detail.answersByItemId(),
-                        lastGrade = grade,
+                        lastGrade = grade.copy(
+                            status = if (detail.status.lowercase() == "graded") "completed" else detail.status,
+                            score = detail.scoreObtained,
+                        ),
                         errorMessage = null,
-                        infoMessage = "批改完成",
+                        infoMessage = when (detail.status.lowercase()) {
+                            "graded" -> "批改完成"
+                            "grading_failed" -> "自动判卷多次失败，已停止重试。可再次手动重新批改。"
+                            else -> "答卷已提交，后台仍在批改"
+                        },
                     )
                 }
                 refreshHistory(courseId)
@@ -284,7 +298,7 @@ class PracticeViewModel : ViewModel() {
         }.onSuccess { history ->
             _uiState.update {
                 it.copy(
-                    history = history.filter { item -> PracticeMode.isGeneratedPaperMode(item.examMode) },
+                    history = history.filter { item -> PracticeMode.isHistoryMode(item.examMode) },
                     isLoadingHistory = false,
                 )
             }
@@ -305,6 +319,20 @@ class PracticeViewModel : ViewModel() {
         var detail = examRepository.getExamDetail(courseId = courseId, examPaperId = paperId)
         var attempts = 0
         while (detail.status.isGeneratingStatus() && attempts < 40) {
+            delay(1_500)
+            detail = examRepository.getExamDetail(courseId = courseId, examPaperId = paperId)
+            attempts += 1
+        }
+        return detail
+    }
+
+    private suspend fun pollPaperUntilGraded(
+        courseId: String,
+        paperId: Int,
+    ): ExamPaperDetailResponse {
+        var detail = examRepository.getExamDetail(courseId = courseId, examPaperId = paperId)
+        var attempts = 0
+        while (detail.status.lowercase() in setOf("submitted", "grading") && attempts < 120) {
             delay(1_500)
             detail = examRepository.getExamDetail(courseId = courseId, examPaperId = paperId)
             attempts += 1

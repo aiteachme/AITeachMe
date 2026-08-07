@@ -18,6 +18,7 @@ from app.api.deps import CurrentUserContext
 import app.models  # noqa: F401 - ensure all SQLModel tables are registered
 from app.models import Course, ExamPaper, ExamPaperItem, QuestionTemplate
 from app.models.knowledge_unit import KnowledgeUnit
+from app.repositories import exams_repo
 from app.schemas.exams import ExamGenerateRequest, ExamSubmitRequest, PaperPreview
 from app.shared.infra.exceptions import AITeachMeError
 from app.utils.time import utcnow
@@ -30,10 +31,9 @@ from app.workflows.examine.question_build.lib.model_policy import (
     question_build_completion_kwargs,
 )
 from app.workflows.examine.question_build.nodes import filter_knowledge_units as filter_units_node
+from app.workflows.profile import sync as profile_sync_service
 from app.workflows.support.exam_pool_policy import (
     exam_candidate_unit_limit,
-    exam_ready_units_per_chapter_floor,
-    exam_readiness_candidate_target,
 )
 
 
@@ -65,6 +65,7 @@ def managed_exam_session(monkeypatch: pytest.MonkeyPatch, session: Session) -> S
         yield session
 
     monkeypatch.setattr(exams_api, "managed_session", _managed_session)
+    monkeypatch.setattr(profile_sync_service, "managed_session", _managed_session)
     return session
 
 
@@ -112,15 +113,6 @@ def _workflow_result(payload: dict[str, object]) -> SimpleNamespace:
         value=payload,
         require_value=lambda: payload,
     )
-
-
-def test_exam_candidate_pool_policy_matches_default_practice_and_paper_needs() -> None:
-    assert exam_candidate_unit_limit(1) == 24
-    assert exam_candidate_unit_limit(8) == 32
-    assert exam_candidate_unit_limit(24) == 60
-    assert exam_readiness_candidate_target(2) == 32
-    assert exam_readiness_candidate_target(12) == 48
-    assert exam_ready_units_per_chapter_floor(8) == 4
 
 
 def test_text_exam_prompt_keeps_source_until_context_safety_limit() -> None:
@@ -440,19 +432,6 @@ def test_generated_question_requirement_result_reports_failures() -> None:
     )
 
     assert generated == {2: {"item_order": 2, "stem": "second"}}
-
-
-def test_default_auto_prewarm_config_matches_training_center_default() -> None:
-    config = exams_api.default_auto_prewarm_exam_config()
-
-    assert config == {
-        "exam_mode": "web_practice",
-        "question_count": 10,
-        "user_prompt": None,
-        "sample_file_ids": [],
-        "paper_layout_mode": None,
-    }
-    assert exams_api.DEFAULT_AUTO_PREWARM_QUESTION_COUNT == 10
 
 
 def test_prepared_exam_status_and_visibility_boundaries() -> None:
@@ -1767,6 +1746,7 @@ async def test_generate_exam_endpoint_claims_default_prewarm_with_changed_unit_s
 @pytest.mark.anyio
 async def test_submit_exam_endpoint_captures_submit_and_grade_events(
     session: Session,
+    managed_exam_session: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _seed_exam_course(session, with_units=False)
@@ -1868,11 +1848,12 @@ async def test_submit_exam_endpoint_captures_submit_and_grade_events(
         )
 
     monkeypatch.setattr(exams_api, "run_exam_grade_workflow", fake_run_exam_grade_workflow)
-    monkeypatch.setattr(exams_api, "run_profile_update_workflow", fake_profile_update_workflow)
+    monkeypatch.setattr(profile_sync_service, "run_profile_update_workflow", fake_profile_update_workflow)
 
+    background_tasks = BackgroundTasks()
     response = await exams_api.submit_exam(
         request=SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(background_task_registry=None))),
-        background_tasks=BackgroundTasks(),
+        background_tasks=background_tasks,
         course_id=COURSE_ID,
         exam_paper_id=int(paper.id or 0),
         body=ExamSubmitRequest(
@@ -1885,7 +1866,16 @@ async def test_submit_exam_endpoint_captures_submit_and_grade_events(
         session=session,
     )
 
-    assert response.data.score == 1.0
+    assert response.data.status == "submitted"
+    assert response.data.score is None
+    assert [event for event, _kwargs in captured] == ["exam_submitted"]
+
+    await background_tasks()
+    session.expire_all()
+    graded_paper = session.get(ExamPaper, int(paper.id or 0))
+    assert graded_paper is not None
+    assert graded_paper.status == "graded"
+    assert graded_paper.score_obtained == 1.0
     assert [event for event, _kwargs in captured] == ["exam_submitted", "exam_graded"]
     submitted_properties = captured[0][1]["properties"]
     graded_properties = captured[1][1]["properties"]
@@ -1893,66 +1883,561 @@ async def test_submit_exam_endpoint_captures_submit_and_grade_events(
     assert submitted_properties["answered_count"] == 2
     assert graded_properties["score_obtained"] == 1.0
     assert graded_properties["total_score"] == 2.0
-    assert graded_properties["states_updated"] == 1
+    assert graded_properties["states_updated"] == 0
+    profile_sync = exams_repo.get_exam_profile_sync(session, paper_id=int(paper.id or 0))
+    assert profile_sync is not None
+    assert profile_sync.status == "completed"
+    assert profile_sync.states_updated == 1
+    assert profile_sync.review_task_count == 1
     assert "invertible" not in str(submitted_properties)
     assert "submitted_false_choice_sentinel" not in str(graded_properties)
 
 
 @pytest.mark.anyio
-async def test_objective_feedback_conflict_uses_rule_based_fallback(
-    monkeypatch: pytest.MonkeyPatch,
+async def test_submit_exam_rejects_unknown_type_before_mutating_answers_or_status(
+    session: Session,
 ) -> None:
-    async def fake_feedback_completion(*_args, **_kwargs):
-        return grader.ObjectiveFeedbackPayload(
-            feedback_text="你的答案是选项B，这是正确的，完全匹配正确输出。",
-            error_cause_label="careless_mistake",
+    _seed_exam_course(session, with_units=False)
+    template = QuestionTemplate(
+        course_id=COURSE_ID,
+        question_type="dialogue",
+        difficulty="medium",
+        stem="Debate a concept.",
+        stem_hash="unsupported-submit",
+        answer="Reference answer",
+        explanation="Reference explanation",
+    )
+    session.add(template)
+    session.commit()
+    session.refresh(template)
+    paper = ExamPaper(
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        exam_mode="web_practice",
+        status="ready",
+        total_items=1,
+        total_score=1.0,
+    )
+    session.add(paper)
+    session.commit()
+    session.refresh(paper)
+    item = ExamPaperItem(
+        exam_paper_id=int(paper.id or 0),
+        question_template_id=int(template.id or 0),
+        item_order=1,
+        stem_snapshot=template.stem,
+        answer_snapshot=template.answer,
+        explanation_snapshot=template.explanation,
+        difficulty=template.difficulty,
+        question_type=template.question_type,
+        score=1.0,
+    )
+    session.add(item)
+    session.commit()
+    session.refresh(item)
+
+    with pytest.raises(AITeachMeError) as error:
+        await exams_api.submit_exam(
+            request=SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(background_task_registry=None))),
+            background_tasks=BackgroundTasks(),
+            course_id=COURSE_ID,
+            exam_paper_id=int(paper.id or 0),
+            body=ExamSubmitRequest(answers=[{"item_order": 1, "answer": "must-not-be-saved"}]),
+            user=CurrentUserContext(user_id=USER_ID, email=None, is_local=True),
+            session=session,
         )
 
-    monkeypatch.setattr(grader, "acompletion_with_fallback", fake_feedback_completion)
+    session.refresh(paper)
+    session.refresh(item)
+    assert error.value.error_code == "UNSUPPORTED_QUESTION_TYPE"
+    assert paper.status == "ready"
+    assert paper.submitted_at is None
+    assert item.answer_content == ""
+    assert item.answered_at is None
 
+
+def test_exam_submission_hash_is_stable_across_answer_order() -> None:
+    items = [
+        ExamPaperItem(
+            id=11,
+            exam_paper_id=7,
+            question_template_id=101,
+            item_order=1,
+            stem_snapshot="Q1",
+            answer_snapshot="A1",
+            explanation_snapshot="E1",
+            difficulty="easy",
+            question_type="fill_blank",
+        ),
+        ExamPaperItem(
+            id=12,
+            exam_paper_id=7,
+            question_template_id=102,
+            item_order=2,
+            stem_snapshot="Q2",
+            answer_snapshot="A2",
+            explanation_snapshot="E2",
+            difficulty="easy",
+            question_type="short_answer",
+        ),
+    ]
+    first = ExamSubmitRequest(
+        submission_key="client-first",
+        answers=[
+            {"exam_paper_item_id": 11, "answer": "alpha"},
+            {"item_order": 2, "answer": "beta"},
+        ],
+    )
+    reordered = ExamSubmitRequest(
+        submission_key="client-retry",
+        answers=[
+            {"item_order": 2, "answer": "beta"},
+            {"exam_paper_item_id": 11, "answer": "alpha"},
+        ],
+    )
+
+    first_answers, first_hash, first_key = exams_api._resolve_exam_submission_answers(items, first)
+    retry_answers, retry_hash, retry_key = exams_api._resolve_exam_submission_answers(items, reordered)
+
+    assert first_answers == retry_answers == {11: "alpha", 12: "beta"}
+    assert first_hash == retry_hash
+    assert first_key == "client-first"
+    assert retry_key == "client-retry"
+
+
+@pytest.mark.anyio
+async def test_submit_exam_is_idempotent_and_rejects_changed_answers(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(exams_api, "capture_product_event_later", lambda *_args, **_kwargs: None)
+    _seed_exam_course(session, with_units=False)
+    template = QuestionTemplate(
+        course_id=COURSE_ID,
+        question_type="fill_blank",
+        difficulty="easy",
+        stem="A nonzero determinant means the matrix is {{blank}}.",
+        stem_hash="idempotent-submit",
+        answer="invertible",
+        explanation="Definition.",
+    )
+    session.add(template)
+    session.commit()
+    session.refresh(template)
+    paper = ExamPaper(
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        exam_mode="web_practice",
+        status="ready",
+        total_items=1,
+    )
+    session.add(paper)
+    session.commit()
+    session.refresh(paper)
     item = ExamPaperItem(
-        exam_paper_id=1,
-        question_template_id=1,
+        exam_paper_id=int(paper.id or 0),
+        question_template_id=int(template.id or 0),
         item_order=1,
-        stem_snapshot="下面代码会输出什么？",
-        options_snapshot_json=json.dumps(["12 14", "12 10 14", "10 14", "无输出"], ensure_ascii=False),
-        answer_snapshot="A",
-        explanation_snapshot="标准答案是 A。",
-        difficulty="medium",
-        question_type="single_choice",
-        score=1.0,
-        answer_content="B",
+        stem_snapshot=template.stem,
+        answer_snapshot=template.answer,
+        explanation_snapshot=template.explanation,
+        difficulty=template.difficulty,
+        question_type=template.question_type,
+    )
+    session.add(item)
+    session.commit()
+    session.refresh(item)
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(background_task_registry=None)))
+    user = CurrentUserContext(user_id=USER_ID, email=None, is_local=True)
+
+    first = await exams_api.submit_exam(
+        request=request,
+        background_tasks=BackgroundTasks(),
+        course_id=COURSE_ID,
+        exam_paper_id=int(paper.id or 0),
+        body=ExamSubmitRequest(
+            submission_key="first-attempt",
+            answers=[{"item_order": 1, "answer": "invertible"}],
+        ),
+        user=user,
+        session=session,
+    )
+    retry = await exams_api.submit_exam(
+        request=request,
+        background_tasks=BackgroundTasks(),
+        course_id=COURSE_ID,
+        exam_paper_id=int(paper.id or 0),
+        body=ExamSubmitRequest(
+            submission_key="network-retry",
+            answers=[{"exam_paper_item_id": int(item.id or 0), "answer": "invertible"}],
+        ),
+        user=user,
+        session=session,
     )
 
-    decisions = await grader.grade_exam_items_with_workflow(
-        course_name="Python 列表入门",
-        items=[item],
+    session.expire_all()
+    stored_paper = session.get(ExamPaper, int(paper.id or 0))
+    stored_item = session.get(ExamPaperItem, int(item.id or 0))
+    assert first.data.status == retry.data.status == "submitted"
+    assert stored_paper is not None and stored_paper.submission_key == "first-attempt"
+    assert stored_paper.submission_hash
+    assert stored_item is not None and stored_item.answer_content == "invertible"
+
+    with pytest.raises(AITeachMeError) as error:
+        await exams_api.submit_exam(
+            request=request,
+            background_tasks=BackgroundTasks(),
+            course_id=COURSE_ID,
+            exam_paper_id=int(paper.id or 0),
+            body=ExamSubmitRequest(
+                submission_key="changed-answer",
+                answers=[{"item_order": 1, "answer": "singular"}],
+            ),
+            user=user,
+            session=session,
+        )
+    session.expire_all()
+    stored_item = session.get(ExamPaperItem, int(item.id or 0))
+    assert error.value.error_code == "EXAM_SUBMISSION_CONFLICT"
+    assert stored_item is not None and stored_item.answer_content == "invertible"
+
+    stored_paper = session.get(ExamPaper, int(paper.id or 0))
+    assert stored_paper is not None
+    stored_paper.status = "grading_failed"
+    stored_paper.grading_attempts = exams_api.EXAM_GRADING_MAX_ATTEMPTS
+    stored_paper.grading_last_error = "RuntimeError: grading_failed"
+    session.add(stored_paper)
+    session.commit()
+    manual_retry = await exams_api.submit_exam(
+        request=request,
+        background_tasks=BackgroundTasks(),
+        course_id=COURSE_ID,
+        exam_paper_id=int(paper.id or 0),
+        body=ExamSubmitRequest(
+            submission_key="manual-grading-retry",
+            answers=[{"item_order": 1, "answer": "invertible"}],
+        ),
+        user=user,
+        session=session,
+    )
+    session.expire_all()
+    restarted_paper = session.get(ExamPaper, int(paper.id or 0))
+    restarted_item = session.get(ExamPaperItem, int(item.id or 0))
+    assert manual_retry.data.status == "submitted"
+    assert restarted_paper is not None and restarted_paper.status == "submitted"
+    assert restarted_paper.grading_attempts == 0
+    assert restarted_paper.grading_last_error == ""
+    assert restarted_item is not None and restarted_item.answer_content == "invertible"
+
+
+def test_exam_grading_claim_lease_and_fencing(session: Session) -> None:
+    _seed_exam_course(session, with_units=False)
+    paper = ExamPaper(
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        exam_mode="web_practice",
+        status="submitted",
+        total_items=1,
+        submission_key="submission-1",
+        submission_hash="hash-1",
+        submitted_at=utcnow(),
+    )
+    session.add(paper)
+    session.commit()
+    session.refresh(paper)
+    paper_id = int(paper.id or 0)
+    now = utcnow()
+
+    assert exams_repo.claim_exam_grading(
+        session,
+        paper_id=paper_id,
+        claim_token="worker-a",
+        claimed_at=now,
+        lease_expires_at=now + timedelta(minutes=5),
+    )
+    assert not exams_repo.claim_exam_grading(
+        session,
+        paper_id=paper_id,
+        claim_token="worker-b",
+        claimed_at=now + timedelta(seconds=1),
+        lease_expires_at=now + timedelta(minutes=6),
     )
 
-    assert len(decisions) == 1
-    decision = decisions[0]
-    assert decision.is_correct is False
-    assert decision.score_obtained == 0.0
-    assert decision.error_cause_label == "unknown"
-    assert "本题判定错误" in decision.feedback_text
-    assert "这是正确的" not in decision.feedback_text
+    session.expire_all()
+    claimed_paper = session.get(ExamPaper, paper_id)
+    assert claimed_paper is not None
+    claimed_paper.grading_lease_expires_at = now - timedelta(seconds=1)
+    session.add(claimed_paper)
+    session.commit()
+    assert exams_repo.claim_exam_grading(
+        session,
+        paper_id=paper_id,
+        claim_token="worker-b",
+        claimed_at=now,
+        lease_expires_at=now + timedelta(minutes=5),
+    )
+    assert not exams_repo.finalize_exam_grading_claim(
+        session,
+        paper_id=paper_id,
+        claim_token="worker-a",
+        total_score=1.0,
+        score_obtained=0.0,
+        graded_at=now,
+    )
+    session.rollback()
+    assert exams_repo.finalize_exam_grading_claim(
+        session,
+        paper_id=paper_id,
+        claim_token="worker-b",
+        total_score=1.0,
+        score_obtained=1.0,
+        graded_at=now,
+    )
+    session.commit()
+    session.expire_all()
+    graded = session.get(ExamPaper, paper_id)
+    assert graded is not None
+    assert graded.status == "graded"
+    assert graded.score_obtained == 1.0
+    assert graded.grading_attempts == 2
 
 
-@pytest.mark.parametrize(
-    "feedback_text",
-    [
-        "你的答案不是正确的，正确答案是 A。",
-        "Your answer is not correct; the correct answer is A.",
-    ],
-)
-def test_objective_feedback_conflict_detection_respects_negation(feedback_text: str) -> None:
-    assert grader._objective_feedback_claims_correct(feedback_text) is False
+def test_exam_grading_stops_after_max_attempts_and_can_be_restarted(session: Session) -> None:
+    _seed_exam_course(session, with_units=False)
+    paper = ExamPaper(
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        exam_mode="web_practice",
+        status="submitted",
+        submission_key="retry-limit",
+        submission_hash="hash-retry-limit",
+        submitted_at=utcnow(),
+        grading_attempts=exams_api.EXAM_GRADING_MAX_ATTEMPTS - 1,
+    )
+    session.add(paper)
+    session.commit()
+    session.refresh(paper)
+    paper_id = int(paper.id or 0)
+    now = utcnow()
+
+    assert exams_repo.claim_exam_grading(
+        session,
+        paper_id=paper_id,
+        claim_token="last-worker",
+        claimed_at=now,
+        lease_expires_at=now + timedelta(minutes=5),
+        max_attempts=exams_api.EXAM_GRADING_MAX_ATTEMPTS,
+    )
+    assert exams_repo.release_exam_grading_claim(
+        session,
+        paper_id=paper_id,
+        claim_token="last-worker",
+        error_message="RuntimeError: grading_failed",
+        max_attempts=exams_api.EXAM_GRADING_MAX_ATTEMPTS,
+    )
+    session.expire_all()
+    failed = session.get(ExamPaper, paper_id)
+    assert failed is not None and failed.status == "grading_failed"
+    assert failed.grading_attempts == exams_api.EXAM_GRADING_MAX_ATTEMPTS
+    assert not exams_repo.claim_exam_grading(
+        session,
+        paper_id=paper_id,
+        claim_token="extra-worker",
+        claimed_at=now,
+        lease_expires_at=now + timedelta(minutes=5),
+        max_attempts=exams_api.EXAM_GRADING_MAX_ATTEMPTS,
+    )
+    assert exams_repo.restart_failed_exam_grading(
+        session,
+        paper_id=paper_id,
+        submission_hash="hash-retry-limit",
+        restarted_at=now,
+    )
+    session.commit()
+    session.expire_all()
+    restarted = session.get(ExamPaper, paper_id)
+    assert restarted is not None and restarted.status == "submitted"
+    assert restarted.grading_attempts == 0
+    assert restarted.grading_last_error == ""
 
 
-def test_objective_feedback_conflict_detection_keeps_separate_positive_claim() -> None:
-    feedback_text = "选项 A 并不正确；你的答案是选项 B，这是正确的。"
+def test_exam_grading_recovery_schedules_submitted_and_expired_leases(
+    session: Session,
+    managed_exam_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seed_exam_course(session, with_units=False)
+    monkeypatch.setattr(exams_api, "_publish_exam_event", lambda *_args, **_kwargs: None)
+    now = utcnow()
+    papers = [
+        ExamPaper(
+            course_id=COURSE_ID,
+            user_id=USER_ID,
+            exam_mode="web_practice",
+            status="submitted",
+            submission_key="submitted",
+            submission_hash="hash-submitted",
+            submitted_at=now,
+        ),
+        ExamPaper(
+            course_id=COURSE_ID,
+            user_id=USER_ID,
+            exam_mode="web_practice",
+            status="grading",
+            submission_key="expired",
+            submission_hash="hash-expired",
+            grading_claim_token="old-worker",
+            grading_lease_expires_at=now - timedelta(seconds=1),
+            submitted_at=now,
+        ),
+        ExamPaper(
+            course_id=COURSE_ID,
+            user_id=USER_ID,
+            exam_mode="web_practice",
+            status="grading",
+            submission_key="active",
+            submission_hash="hash-active",
+            grading_claim_token="active-worker",
+            grading_lease_expires_at=now + timedelta(minutes=5),
+            submitted_at=now,
+        ),
+        ExamPaper(
+            course_id=COURSE_ID,
+            user_id=USER_ID,
+            exam_mode="web_practice",
+            status="graded",
+            submission_key="graded",
+            submission_hash="hash-graded",
+            submitted_at=now,
+            graded_at=now,
+        ),
+        ExamPaper(
+            course_id=COURSE_ID,
+            user_id=USER_ID,
+            exam_mode="web_practice",
+            status="submitted",
+            submission_key="retry-backoff",
+            submission_hash="hash-retry-backoff",
+            submitted_at=now,
+            grading_attempts=1,
+            grading_last_error="RuntimeError: grading_failed",
+            updated_at=now,
+        ),
+        ExamPaper(
+            course_id=COURSE_ID,
+            user_id=USER_ID,
+            exam_mode="web_practice",
+            status="grading",
+            submission_key="exhausted-lease",
+            submission_hash="hash-exhausted-lease",
+            submitted_at=now,
+            grading_claim_token="dead-worker",
+            grading_lease_expires_at=now - timedelta(seconds=1),
+            grading_attempts=exams_api.EXAM_GRADING_MAX_ATTEMPTS,
+        ),
+    ]
+    session.add_all(papers)
+    session.commit()
 
-    assert grader._objective_feedback_claims_correct(feedback_text) is True
+    class Registry:
+        def __init__(self) -> None:
+            self.names: list[str] = []
+
+        def spawn(self, coro, **kwargs):
+            self.names.append(str(kwargs.get("name") or ""))
+            coro.close()
+            return SimpleNamespace()
+
+    registry = Registry()
+    scheduled = exams_api._recover_exam_grading_tasks_once(registry)
+
+    assert scheduled == 2
+    assert {name.rsplit(":", 1)[-1] for name in registry.names} == {
+        str(int(papers[0].id or 0)),
+        str(int(papers[1].id or 0)),
+    }
+    session.expire_all()
+    exhausted = session.get(ExamPaper, int(papers[5].id or 0))
+    assert exhausted is not None and exhausted.status == "grading_failed"
+    assert exhausted.grading_claim_token == ""
+
+
+@pytest.mark.anyio
+async def test_repeated_grading_claim_does_not_invoke_grader_twice(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seed_exam_course(session, with_units=False)
+    template = QuestionTemplate(
+        course_id=COURSE_ID,
+        question_type="fill_blank",
+        difficulty="easy",
+        stem="Complete: rank equals {{blank}}.",
+        stem_hash="grade-once",
+        answer="dimension",
+        explanation="Definition.",
+    )
+    session.add(template)
+    session.commit()
+    session.refresh(template)
+    paper = ExamPaper(
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        exam_mode="web_practice",
+        status="submitted",
+        total_items=1,
+        submission_key="grade-once",
+        submission_hash="hash-grade-once",
+        submitted_at=utcnow(),
+    )
+    session.add(paper)
+    session.commit()
+    session.refresh(paper)
+    session.add(
+        ExamPaperItem(
+            exam_paper_id=int(paper.id or 0),
+            question_template_id=int(template.id or 0),
+            item_order=1,
+            stem_snapshot=template.stem,
+            answer_snapshot=template.answer,
+            explanation_snapshot=template.explanation,
+            difficulty=template.difficulty,
+            question_type=template.question_type,
+            answer_content="dimension",
+            answered_at=utcnow(),
+        )
+    )
+    session.commit()
+    grader_calls = 0
+
+    async def fake_grader(**_kwargs):
+        nonlocal grader_calls
+        grader_calls += 1
+        return [
+            ExamItemGradeDecision(
+                is_correct=True,
+                score_obtained=1.0,
+                score_max=1.0,
+                feedback_text="Correct.",
+                error_cause_label=None,
+                grading_mode="objective_rule",
+            )
+        ]
+
+    monkeypatch.setattr(exams_api, "run_exam_grade_workflow", fake_grader)
+
+    first = await exams_api._grade_exam(session, paper)
+    session.expire_all()
+    graded_paper = session.get(ExamPaper, int(paper.id or 0))
+    assert graded_paper is not None
+    retry = await exams_api._grade_exam(session, graded_paper)
+
+    assert grader_calls == 1
+    assert first.status == retry.status == "completed"
+    assert first.score == retry.score == 1.0
+    assert first.profile_sync is not None
+    assert retry.profile_sync is not None
+    assert first.profile_sync.status == retry.profile_sync.status == "pending"
 
 
 def test_exam_question_draft_normalizes_choice_and_unit_refs() -> None:

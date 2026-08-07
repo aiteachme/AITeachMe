@@ -274,11 +274,42 @@ interface AiTeachMeApi {
         @Path("course_id") courseId: String,
     ): ApiResponse<List<QuestionTypeRegistryItemResponse>>
 
+    @GET("/api/v1/courses/{course_id}/exams/mastery-drills/active")
+    suspend fun getActiveMasteryDrill(
+        @Path("course_id") courseId: String,
+    ): ApiResponse<ExamPaperDetailResponse?>
+
+    @POST("/api/v1/courses/{course_id}/exams/mastery-drills/start")
+    suspend fun startMasteryDrill(
+        @Path("course_id") courseId: String,
+        @Body request: MasteryDrillStartRequest,
+    ): ApiResponse<ExamPaperDetailResponse>
+
+    @POST("/api/v1/courses/{course_id}/exams/{exam_paper_id}/mastery-drill-attempts")
+    suspend fun recordMasteryDrillAttempt(
+        @Path("course_id") courseId: String,
+        @Path("exam_paper_id") examPaperId: Int,
+        @Body request: MasteryDrillAttemptRequest,
+    ): ApiResponse<MasteryDrillAttemptResponse>
+
+    @POST("/api/v1/courses/{course_id}/exams/{exam_paper_id}/mastery-drill-complete")
+    suspend fun completeMasteryDrill(
+        @Path("course_id") courseId: String,
+        @Path("exam_paper_id") examPaperId: Int,
+        @Body request: MasteryDrillCompleteRequest,
+    ): ApiResponse<ExamGradeResponse>
+
     @GET("/api/v1/courses/{course_id}/exams/{exam_paper_id}")
     suspend fun getExamDetail(
         @Path("course_id") courseId: String,
         @Path("exam_paper_id") examPaperId: Int,
     ): ApiResponse<ExamPaperDetailResponse>
+
+    @POST("/api/v1/courses/{course_id}/exams/{exam_paper_id}/profile-sync/retry")
+    suspend fun retryExamProfileSync(
+        @Path("course_id") courseId: String,
+        @Path("exam_paper_id") examPaperId: Int,
+    ): ApiResponse<ExamProfileSyncResponse>
 
     @POST("/api/v1/courses/{course_id}/exams/{exam_paper_id}/submit")
     suspend fun submitExam(

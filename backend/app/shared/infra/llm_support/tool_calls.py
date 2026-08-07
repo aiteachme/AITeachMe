@@ -87,7 +87,7 @@ async def _acompletion_with_tools_impl(
     tracked_model = primary_context.model
     attempt_number = 0
 
-    async with get_llm_concurrency_limiter():
+    async with get_llm_concurrency_limiter().slot() as lease:
         for group_index, context_group in enumerate(completion_context_groups(contexts)):
             if (
                 group_index > 0
@@ -222,7 +222,7 @@ async def _acompletion_with_tools_impl(
                         )
 
                 if retry_round < group_max_retries:
-                    await sleep_before_retry(retry_round, error=last_error)
+                    await sleep_before_retry(retry_round, error=last_error, lease=lease)
 
     track_call(
         task_type=primary_context.task_type,

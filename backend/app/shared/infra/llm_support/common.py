@@ -7,11 +7,10 @@ import re
 import secrets
 import threading
 import time
-import weakref
 from collections.abc import AsyncGenerator, Awaitable, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Any, Iterator, Literal, NoReturn
 from urllib.parse import urlparse
 
@@ -35,7 +34,6 @@ from app.shared.infra.observability.llm_stats import LLMCallRecord, get_tracker
 from app.shared.infra.settings.support import (
     detect_llm_provider_from_base_url,
     get_llm_api_version,
-    get_llm_provider_model_defaults,
     llm_provider_requires_api_key,
     normalize_llm_provider_name,
     resolve_litellm_provider_name,
@@ -60,22 +58,6 @@ _AIHUBMIX_APP_CODE_ENV_NAMES = ("AIHUBMIX_APP_CODE", "LLM_AIHUBMIX_APP_CODE")
 _OPENAI_DEFAULT_SAMPLING_MODEL_PATTERN = re.compile(r"^(?:gpt-5(?:$|[.-])|o\d(?:$|[.-]))")
 _OPENAI_DEFAULT_SAMPLING_PARAMS = frozenset({"temperature"})
 _RESPONSES_ROUTE_MARKERS = frozenset({"responses"})
-_SETTINGS_MODEL_SELECTORS = frozenset(
-    {
-        "reason",
-        "primary",
-        "light",
-        "extract",
-        "vision",
-        "rerank",
-        "ocr",
-        "image_generation",
-        "speech_to_text",
-        "text_to_speech",
-        "video_generation",
-    }
-)
-
 EndpointRole = Literal["primary", "fallback"]
 
 
@@ -88,7 +70,6 @@ class LLMEndpoint:
     api_key: str | None
     provider: str
     api_version: str | None
-    use_default_models: bool = False
 
 
 @dataclass(frozen=True)
@@ -96,22 +77,13 @@ class LLMRuntimeSnapshot:
     """LLM-facing runtime config captured at the start of one long task."""
 
     settings: Settings
-    base_url: str | None
-    api_keys: tuple[str, ...]
-    provider: str
-    api_version: str | None
-    primary_endpoints: tuple[LLMEndpoint, ...] = ()
+    primary_endpoints: tuple[LLMEndpoint, ...]
     fallback_endpoints: tuple[LLMEndpoint, ...] = ()
 
-    def choose_api_key(self) -> str | None:
-        endpoint = self.choose_primary_endpoint()
-        return endpoint.api_key if endpoint is not None else None
-
     def choose_primary_endpoint(self) -> LLMEndpoint | None:
-        endpoints = self.primary_endpoints or _legacy_primary_endpoints(self)
-        if not endpoints:
+        if not self.primary_endpoints:
             return None
-        return secrets.choice(endpoints)
+        return secrets.choice(self.primary_endpoints)
 
     def completion_endpoints(self) -> tuple[LLMEndpoint, ...]:
         primary = self.choose_primary_endpoint()
@@ -164,8 +136,67 @@ class _LimiterWaiter:
     future: asyncio.Future[None]
 
 
+class LLMConcurrencyLease:
+    """One independently owned limiter slot that can be closed from any task."""
+
+    def __init__(self, limiter: "LLMConcurrencyLimiter") -> None:
+        self._limiter = limiter
+        self._state_lock = threading.Lock()
+        self._entered = False
+        self._acquired = False
+        self._closed = False
+
+    async def __aenter__(self) -> "LLMConcurrencyLease":
+        with self._state_lock:
+            if self._entered:
+                raise RuntimeError("LLM concurrency lease cannot be entered more than once")
+            self._entered = True
+
+        await self._limiter._acquire()
+        release_immediately = False
+        with self._state_lock:
+            if self._closed:
+                release_immediately = True
+            else:
+                self._acquired = True
+        if release_immediately:
+            self._limiter._release()
+            raise RuntimeError("LLM concurrency lease was closed while acquiring")
+        return self
+
+    async def __aexit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        should_release = False
+        with self._state_lock:
+            self._closed = True
+            if self._acquired:
+                self._acquired = False
+                should_release = True
+        if should_release:
+            self._limiter._release()
+
+    async def sleep_without_holding_slot(self, delay_s: float) -> None:
+        """Suspend this lease during retry backoff, then reacquire it."""
+
+        with self._state_lock:
+            if not self._acquired or self._closed:
+                raise RuntimeError("LLM concurrency lease must be active during retry backoff")
+            self._acquired = False
+        self._limiter._release()
+
+        await asyncio.sleep(delay_s)
+        await self._limiter._acquire()
+        release_immediately = False
+        with self._state_lock:
+            if self._closed:
+                release_immediately = True
+            else:
+                self._acquired = True
+        if release_immediately:
+            self._limiter._release()
+
+
 class LLMConcurrencyLimiter:
-    """Async context manager enforcing the live global LLM concurrency limit."""
+    """Process-wide limiter that creates independently owned call leases."""
 
     _RATE_LIMIT_COOLDOWN_S = 60.0
 
@@ -173,13 +204,15 @@ class LLMConcurrencyLimiter:
         self._lock = threading.Lock()
         self._active = 0
         self._waiters: list[_LimiterWaiter] = []
-        self._holders: weakref.WeakKeyDictionary[asyncio.Task[Any], int] = (
-            weakref.WeakKeyDictionary()
-        )
         self._rate_limit_cap: int | None = None
         self._rate_limit_until = 0.0
 
-    async def __aenter__(self) -> "LLMConcurrencyLimiter":
+    def slot(self) -> LLMConcurrencyLease:
+        """Create one single-use lease for an upstream call lifecycle."""
+
+        return LLMConcurrencyLease(self)
+
+    async def _acquire(self) -> None:
         loop = asyncio.get_running_loop()
         wait_started_at = 0.0
         wait_trace_cm: Any | None = None
@@ -193,7 +226,6 @@ class LLMConcurrencyLimiter:
                 effective_limit = self._effective_limit_locked()
                 if self._active < effective_limit:
                     self._active += 1
-                    self._record_current_holder_locked()
                     acquired = True
                     if wait_trace_cm is not None:
                         acquired_snapshot = self._trace_snapshot_locked(
@@ -218,7 +250,7 @@ class LLMConcurrencyLimiter:
                         outcome="acquired",
                         snapshot=acquired_snapshot,
                     )
-                return self
+                return
             if wait_trace_snapshot is not None:
                 wait_started_at = time.monotonic()
                 wait_trace_cm, wait_trace_run = self._open_wait_trace(wait_trace_snapshot)
@@ -311,24 +343,6 @@ class LLMConcurrencyLimiter:
                 **trace_log_fields(),
             )
 
-    def _record_current_holder_locked(self) -> None:
-        task = asyncio.current_task()
-        if task is not None:
-            self._holders[task] = self._holders.get(task, 0) + 1
-
-    def _drop_current_holder_locked(self) -> bool:
-        task = asyncio.current_task()
-        if task is None:
-            return False
-        depth = self._holders.get(task, 0)
-        if depth <= 0:
-            return False
-        if depth == 1:
-            self._holders.pop(task, None)
-        else:
-            self._holders[task] = depth - 1
-        return True
-
     def _effective_limit_locked(self) -> int:
         configured = get_llm_concurrency_limit()
         if self._rate_limit_cap is None or time.monotonic() >= self._rate_limit_until:
@@ -374,28 +388,6 @@ class LLMConcurrencyLimiter:
             except RuntimeError:
                 continue
 
-    async def __aexit__(self, exc_type: object, exc: object, traceback: object) -> None:
-        with self._lock:
-            should_release = self._drop_current_holder_locked()
-        if not should_release:
-            return
-        self._release()
-
-    def _release_current_task_slot(self) -> bool:
-        with self._lock:
-            should_release = self._drop_current_holder_locked()
-        if not should_release:
-            return False
-        self._release()
-        return True
-
-    async def sleep_without_holding_slot(self, delay_s: float) -> None:
-        released = self._release_current_task_slot()
-        await asyncio.sleep(delay_s)
-        if released:
-            await self.__aenter__()
-
-
 def _wake_limiter_waiter(future: asyncio.Future[None]) -> None:
     if not future.done():
         future.set_result(None)
@@ -422,23 +414,8 @@ def _split_env_csv(value: str | None) -> tuple[str, ...]:
     return tuple(item.strip() for item in str(value).split(",") if item and item.strip())
 
 
-def _unique_values(raw_values: tuple[str, ...]) -> tuple[str, ...]:
-    values: list[str] = []
-    seen: set[str] = set()
-    for value in raw_values:
-        if not value or value in seen:
-            continue
-        seen.add(value)
-        values.append(value)
-    return tuple(values)
-
-
 def _env_csv(name: str) -> tuple[str, ...]:
     return _split_env_csv(get_env(name))
-
-
-def _current_api_keys() -> tuple[str, ...]:
-    return _unique_values(_env_csv(_PRIMARY_API_KEY_ENV_NAME))
 
 
 def _paired_endpoint_values(
@@ -500,7 +477,6 @@ def _build_endpoint_candidates(
     api_key_env_name: str,
     explicit_provider: str | None,
     api_version: str | None,
-    use_default_models: bool,
 ) -> tuple[LLMEndpoint, ...]:
     base_urls = _env_csv(base_url_env_name)
     api_keys = _env_csv(api_key_env_name)
@@ -527,31 +503,20 @@ def _build_endpoint_candidates(
                 base_url=base_url,
             ),
             api_version=api_version,
-            use_default_models=use_default_models,
         )
         for base_url, api_key in pairs
     )
 
 
-def _legacy_primary_endpoints(snapshot: LLMRuntimeSnapshot) -> tuple[LLMEndpoint, ...]:
-    api_keys: tuple[str | None, ...] = snapshot.api_keys or (None,)
-    return tuple(
-        LLMEndpoint(
-            role="primary",
-            base_url=snapshot.base_url,
-            api_key=api_key,
-            provider=snapshot.provider,
-            api_version=snapshot.api_version,
-        )
-        for api_key in api_keys
-    )
-
-
-def _settings_with_provider_default_models(settings: Settings, provider: str | None) -> Settings:
-    models = settings.models.model_copy(
-        update=get_llm_provider_model_defaults(provider),
-        deep=True,
-    )
+def _settings_with_fallback_models(settings: Settings) -> Settings:
+    overrides = {
+        slot: normalized
+        for slot in ("light", "primary", "reason")
+        if (normalized := str(getattr(settings.fallback_models, slot) or "").strip())
+    }
+    if not overrides:
+        return settings
+    models = settings.models.model_copy(update=overrides, deep=True)
     return settings.model_copy(update={"models": models}, deep=True)
 
 
@@ -566,7 +531,6 @@ def get_llm_runtime_snapshot() -> LLMRuntimeSnapshot:
         api_key_env_name=_PRIMARY_API_KEY_ENV_NAME,
         explicit_provider=get_env(_PRIMARY_PROVIDER_ENV_NAME),
         api_version=primary_api_version,
-        use_default_models=False,
     )
     fallback_endpoints = _build_endpoint_candidates(
         role="fallback",
@@ -574,15 +538,9 @@ def get_llm_runtime_snapshot() -> LLMRuntimeSnapshot:
         api_key_env_name=_FALLBACK_API_KEY_ENV_NAME,
         explicit_provider=None,
         api_version=primary_api_version,
-        use_default_models=True,
     )
-    primary_endpoint = primary_endpoints[0]
     return LLMRuntimeSnapshot(
         settings=get_settings(),
-        base_url=primary_endpoint.base_url,
-        api_keys=_current_api_keys(),
-        provider=primary_endpoint.provider,
-        api_version=primary_endpoint.api_version,
         primary_endpoints=primary_endpoints,
         fallback_endpoints=fallback_endpoints,
     )
@@ -620,7 +578,10 @@ def build_litellm_provider_kwargs(
         return {}
     explicit_provider, _model_name = split_provider_model_name(normalized)
     snapshot = get_llm_runtime_snapshot()
-    resolved_runtime_provider = normalize_llm_provider_name(runtime_provider or snapshot.provider)
+    primary_endpoint = snapshot.primary_endpoints[0] if snapshot.primary_endpoints else None
+    resolved_runtime_provider = normalize_llm_provider_name(
+        runtime_provider or (primary_endpoint.provider if primary_endpoint is not None else None)
+    )
     routed_provider = resolved_runtime_provider
     if explicit_provider and resolved_runtime_provider != "openrouter":
         routed_provider = explicit_provider
@@ -631,7 +592,11 @@ def build_litellm_provider_kwargs(
 
     kwargs = {"custom_llm_provider": litellm_provider}
     if litellm_provider == "azure":
-        resolved_api_version = api_version if api_version is not None else snapshot.api_version
+        resolved_api_version = (
+            api_version
+            if api_version is not None
+            else (primary_endpoint.api_version if primary_endpoint is not None else None)
+        )
         if resolved_api_version:
             kwargs["api_version"] = resolved_api_version
     return kwargs
@@ -648,20 +613,6 @@ def _model_name_candidates(model: Any) -> tuple[str, ...]:
     if len(parts) >= 2 and parts[-2].lower() in _RESPONSES_ROUTE_MARKERS:
         candidates.append(parts[-1])
     return tuple(dict.fromkeys(candidates))
-
-
-def _model_matches_allowlist(model: Any, allowlist: tuple[str, ...]) -> bool:
-    if not allowlist:
-        return True
-    candidates = {candidate.lower() for candidate in _model_name_candidates(model)}
-    allowed = {str(item or "").strip().lower() for item in allowlist if str(item or "").strip()}
-    return bool(candidates & allowed)
-
-
-def _primary_model_allowed(settings: Settings, model: str, provider: str | None) -> bool:
-    if normalize_llm_provider_name(provider) != "openai_compatible":
-        return True
-    return _model_matches_allowlist(model, settings.llm.primary_model_allowlist)
 
 
 def _canonical_model_name(model: Any) -> str:
@@ -798,8 +749,8 @@ def _build_completion_context_for_endpoint(
     model: str | None,
 ) -> CompletionContext:
     settings = (
-        _settings_with_provider_default_models(snapshot.settings, endpoint.provider)
-        if endpoint.use_default_models
+        _settings_with_fallback_models(snapshot.settings)
+        if endpoint.role == "fallback"
         else snapshot.settings
     )
     if endpoint.api_key is None and llm_provider_requires_api_key(
@@ -811,12 +762,7 @@ def _build_completion_context_for_endpoint(
             base_url_configured=bool((endpoint.base_url or "").strip()),
         )
     requested_selector = normalize_model_selector(model) or "primary"
-    model_for_resolution = (
-        requested_selector
-        if (not endpoint.use_default_models or requested_selector.lower() in _SETTINGS_MODEL_SELECTORS)
-        else "primary"
-    )
-    resolved_model, model_selector = resolve_settings_model(settings, model_for_resolution)
+    resolved_model, model_selector = resolve_settings_model(settings, requested_selector)
     return CompletionContext(
         task_type=task_type,
         settings=settings,
@@ -843,41 +789,16 @@ def build_completion_contexts(
     snapshot = get_llm_runtime_snapshot()
     contexts: list[CompletionContext] = []
     missing_key_error: MissingLLMApiKeyError | None = None
-    skipped_primary_model: str | None = None
-    skipped_primary_selector: str | None = None
 
     for endpoint in snapshot.completion_endpoints():
         try:
-            endpoint_for_context = endpoint
-            model_for_context = model
-            if (
-                endpoint.role == "fallback"
-                and skipped_primary_model is not None
-                and skipped_primary_selector is not None
-            ):
-                endpoint_for_context = replace(endpoint, use_default_models=False)
-                model_for_context = skipped_primary_model
             context = _build_completion_context_for_endpoint(
                 task_type=resolved_task_type,
                 profile=profile,
                 snapshot=snapshot,
-                endpoint=endpoint_for_context,
-                model=model_for_context,
+                endpoint=endpoint,
+                model=model,
             )
-            if endpoint.role == "primary" and not _primary_model_allowed(
-                snapshot.settings,
-                context.model,
-                context.provider,
-            ):
-                skipped_primary_model = context.model
-                skipped_primary_selector = context.model_selector
-                logger.warning(
-                    "llm_primary_endpoint_skipped_model_not_allowlisted",
-                    model=context.model,
-                    model_selector=context.model_selector,
-                    allowlist_count=len(snapshot.settings.llm.primary_model_allowlist),
-                )
-                continue
             contexts.append(context)
         except MissingLLMApiKeyError as exc:
             if missing_key_error is None:
@@ -893,17 +814,14 @@ def build_completion_contexts(
         return tuple(contexts)
     if missing_key_error is not None:
         raise missing_key_error
-    if skipped_primary_model is not None:
-        raise LLMCallError(
-            reason=(
-                f"模型 `{skipped_primary_model}` 不在 llm.primary_model_allowlist 中，"
-                "因此不会发送到主模型网关；同时未找到可用备用模型网关。"
-                "请配置 LLM_FALLBACK_BASE_URL/LLM_FALLBACK_API_KEY，或把该模型加入主网关白名单。"
-            )
-        )
+    primary_endpoint = snapshot.primary_endpoints[0] if snapshot.primary_endpoints else None
     raise MissingLLMApiKeyError(
-        provider=snapshot.provider,
-        base_url_configured=bool((snapshot.base_url or "").strip()),
+        provider=primary_endpoint.provider if primary_endpoint is not None else None,
+        base_url_configured=(
+            bool((primary_endpoint.base_url or "").strip())
+            if primary_endpoint is not None
+            else False
+        ),
     )
 
 
@@ -1047,9 +965,6 @@ def pop_overall_timeout_s(call_kwargs: dict[str, Any]) -> float | None:
     """Remove and parse the optional whole-call timeout budget."""
 
     raw_timeout = call_kwargs.pop("overall_timeout_s", None)
-    legacy_timeout = call_kwargs.pop("overall_timeout", None)
-    if raw_timeout in (None, ""):
-        raw_timeout = legacy_timeout
     if raw_timeout in (None, ""):
         return None
     try:
@@ -1082,15 +997,9 @@ async def iter_with_overall_timeout(
                 yield chunk
             return
 
-        deadline = time.monotonic() + timeout_s
-        while True:
-            remaining_s = deadline - time.monotonic()
-            if remaining_s <= 0:
-                raise asyncio.TimeoutError
-            try:
-                yield await asyncio.wait_for(stream.__anext__(), timeout=remaining_s)
-            except StopAsyncIteration:
-                break
+        async with asyncio.timeout(timeout_s):
+            async for chunk in stream:
+                yield chunk
     except asyncio.TimeoutError as exc:
         raise LLMTimeoutError(timeout_s=int(timeout_s)) from exc
     finally:
@@ -1363,15 +1272,19 @@ def log_attempt_failed(
         get_llm_concurrency_limiter().note_rate_limit()
 
 
-async def sleep_before_retry(attempt: int, *, error: Exception | None = None) -> None:
+async def sleep_before_retry(
+    attempt: int,
+    *,
+    error: Exception | None = None,
+    lease: LLMConcurrencyLease | None = None,
+) -> None:
     """Apply the current linear retry backoff."""
 
     delay_s = min(30, attempt * 8) if is_concurrency_rate_limit_error(error) else attempt * 2
-    limiter = _LLM_LIMITER
-    if limiter is None:
+    if lease is None:
         await asyncio.sleep(delay_s)
         return
-    await limiter.sleep_without_holding_slot(delay_s)
+    await lease.sleep_without_holding_slot(delay_s)
 
 
 def track_call(

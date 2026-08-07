@@ -722,53 +722,30 @@ async def run_graph_docs_sync_auto_build(
     llm_snapshot: LLMRuntimeSnapshot | None = None,
     docgen_state: dict[str, object] | None = None,
     course_scope: CourseStorageScope | None = None,
-    background_task_registry: Any | None = None,
 ) -> str:
-    """Run an automatic graph sync after DocGen and return the final graph status."""
+    """Run the DocGen-owned graph sync and return its final status.
 
-    exam_prewarm_tasks: list[Any] = []
+    The enclosing DocGen lifecycle schedules the initial exam after this node
+    returns, so the automatic path has one scheduling owner. Manual graph
+    rebuilds continue to schedule only after their graph reaches ``completed``.
+    """
 
-    try:
-        graph_status = await _run_graph_docs_sync_build(
-            course_id=course_id,
-            requested_at=requested_at,
-            build_group_id=build_group_id,
-            build_session_id=build_session_id,
-            file_ids=file_ids,
-            prompt=prompt,
-            llm_snapshot=llm_snapshot,
-            docgen_state=docgen_state,
-            completed_description="知识图谱已自动同步完成。",
-            cancelled_description="自动图谱同步已停止。",
-            failure_log_event="knowledge_graph_auto_build_failed",
-            course_scope=course_scope,
-            early_units_callback=None,
-            embedded_in_parent_trace=True,
-        )
-        if graph_status != "completed":
-            for task in exam_prewarm_tasks:
-                if not task.done():
-                    task.cancel()
-            logger.info(
-                "knowledge_graph_auto_build_not_completed_after_exam_prewarm_dispatched",
-                course_id=course_id,
-                graph_status=graph_status,
-                exam_prewarm_task_count=len(exam_prewarm_tasks),
-            )
-        if graph_status == "completed":
-            _schedule_exam_prewarm_after_completed_graph(
-                course_id=course_id,
-                build_revision_no=_current_doc_version_no(course_id, course_scope=course_scope),
-                llm_snapshot=llm_snapshot,
-                background_task_registry=background_task_registry,
-                scheduled_tasks=exam_prewarm_tasks,
-            )
-        return graph_status
-    except asyncio.CancelledError:
-        for task in exam_prewarm_tasks:
-            if not task.done():
-                task.cancel()
-        raise
+    return await _run_graph_docs_sync_build(
+        course_id=course_id,
+        requested_at=requested_at,
+        build_group_id=build_group_id,
+        build_session_id=build_session_id,
+        file_ids=file_ids,
+        prompt=prompt,
+        llm_snapshot=llm_snapshot,
+        docgen_state=docgen_state,
+        completed_description="知识图谱已自动同步完成。",
+        cancelled_description="自动图谱同步已停止。",
+        failure_log_event="knowledge_graph_auto_build_failed",
+        course_scope=course_scope,
+        early_units_callback=None,
+        embedded_in_parent_trace=True,
+    )
 
 
 async def _run_graph_docs_sync_build(
@@ -907,25 +884,22 @@ async def _trigger_default_exam_prewarm_when_units_ready(
     wait_for_units_timeout_s: float = 1800.0,
     llm_snapshot: LLMRuntimeSnapshot | None = None,
 ) -> None:
-    """本轮知识点一可见，就请求默认隐藏考卷生成。"""
+    """知识点就绪后唤醒课程级、仅一次的首次测验任务。"""
 
     try:
-        from app.workflows.examine.prewarm import trigger_default_exam_prewarm_for_course
+        from app.workflows.examine.initial_exam import run_course_initial_exam_job
 
         with use_llm_runtime_snapshot(llm_snapshot):
-            result = await trigger_default_exam_prewarm_for_course(
+            await run_course_initial_exam_job(
                 course_id=course_id,
-                min_build_revision_no=min_build_revision_no,
-                wait_for_units_timeout_s=wait_for_units_timeout_s,
-                poll_interval_s=1.0,
+                build_session_id=f"knowledge-revision-{min_build_revision_no}",
             )
         logger.info(
             "knowledge_graph_auto_exam_prewarm_result",
             course_id=course_id,
-            status=result.status,
-            reason=result.reason,
-            exam_mode=result.exam_mode,
-            num_questions=result.num_questions,
+            status="dispatched",
+            min_build_revision_no=min_build_revision_no,
+            wait_for_units_timeout_s=wait_for_units_timeout_s,
         )
     except Exception as exc:
         logger.warning(

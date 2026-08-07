@@ -159,6 +159,11 @@ python scripts/bootstrap_cloud_db.py
 
 多副本时，Web 容器不要重复执行 bootstrap；只用独立 Job 跑迁移和运行时对象准备。
 
+`PROJECT_SETTINGS_PATH` 中的字段必须与当前后端镜像使用同一版 Settings schema。新增或调整
+YAML 字段时，应先发布支持该 schema 的镜像，再让新配置随该镜像启动；回滚时也要同时回滚
+配置。若日志在数据库检查前报告 `project settings schema mismatch`，先核对 Pod 镜像的
+`slim-<commit>` 与配置版本，不要重置 PostgreSQL，也不要设置 `ALLOW_CLOUD_DB_RESET`。
+
 ## GitHub Actions 部署配置
 
 `.github/workflows/deploy.yml` 直接维护 Sealos app 名、namespace、ACR registry、前端公网域名、后端内网 upstream 等非敏感部署常量，避免每次迁移仓库都重新配置 Variables。它们是部署坐标，不是授权凭证；如果维护者不希望公开具体部署拓扑，也可以自行改为 GitHub Repository Variables。

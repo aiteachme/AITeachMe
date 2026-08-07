@@ -111,36 +111,7 @@ def test_unit_test_renderer_strips_body_writer_test_and_recap_sections() -> None
     assert "小结式检查清单" not in markdown
 
 
-def test_unit_test_renderer_normalizes_type_and_difficulty_metadata() -> None:
-    unit_test = render_unit_test_markdown(
-        ChapterUnitTestSet(
-            chapter_index=1,
-            items=[
-                ChapterUnitTestItem(
-                    type="single_choice",
-                    difficulty="hard",
-                    target="函数单调性",
-                    stem="下列哪一项最能判断函数单调性？A. 定义域 B. 函数值变化方向 C. 图像颜色",
-                    options=["定义域", "函数值变化方向", "图像颜色", "函数名称"],
-                    answer="B",
-                    basis="单调性看自变量变化时函数值的变化方向。",
-                )
-            ],
-        ),
-        title="函数",
-        min_items=1,
-        fallback_targets=[],
-    )
-
-    assert "**Q01｜选择题｜挑战｜考点：函数单调性**" in unit_test
-    assert "选择题；挑战" in unit_test
-    assert unit_test.count("- A.") == 1
-    assert unit_test.count("- B.") == 1
-    assert unit_test.count("- C.") == 1
-    assert unit_test.count("- D.") == 1
-
-
-def test_unit_test_renderer_wraps_raw_latex_options_for_katex() -> None:
+def test_unit_test_renderer_normalizes_raw_and_escaped_latex_options() -> None:
     unit_test = render_unit_test_markdown(
         ChapterUnitTestSet(
             chapter_index=1,
@@ -153,24 +124,7 @@ def test_unit_test_renderer_wraps_raw_latex_options_for_katex() -> None:
                     options=[r"[0, 4]", r"[0, \sqrt{2}]", r"[-\sqrt{2}, \sqrt{2}]", "[-2, 2]"],
                     answer=r"[-\sqrt{2}, \sqrt{2}]",
                     basis=r"需要满足 0 \leq x^2 \leq 2。",
-                )
-            ],
-        ),
-        title="函数",
-        min_items=1,
-        fallback_targets=[],
-    )
-
-    assert r"$[0, \sqrt{2}]$" in unit_test
-    assert r"$[-\sqrt{2}, \sqrt{2}]$" in unit_test
-    assert r"$0 \leq x^2 \leq 2$" in unit_test
-
-
-def test_unit_test_renderer_repairs_escaped_display_math_options() -> None:
-    unit_test = render_unit_test_markdown(
-        ChapterUnitTestSet(
-            chapter_index=1,
-            items=[
+                ),
                 ChapterUnitTestItem(
                     type="single_choice",
                     difficulty="medium",
@@ -184,14 +138,17 @@ def test_unit_test_renderer_repairs_escaped_display_math_options() -> None:
                     ],
                     answer=r"C. $$\lim_{x \to x_0} f(x)=f(x_0)$$",
                     basis=r"连续要求极限存在、函数值存在，并且二者相等。",
-                )
+                ),
             ],
         ),
-        title="函数连续性",
-        min_items=1,
+        title="函数",
+        min_items=2,
         fallback_targets=[],
     )
 
+    assert r"$[0, \sqrt{2}]$" in unit_test
+    assert r"$[-\sqrt{2}, \sqrt{2}]$" in unit_test
+    assert r"$0 \leq x^2 \leq 2$" in unit_test
     assert r"\|$$" not in unit_test
     assert r"$$\lim_{x \to x_0} f(x)=f(x_0)$$" in unit_test
     assert r"$$\lim_{x \to x_0^-} f(x)=\lim_{x \to x_0^+} f(x)$$" in unit_test
@@ -232,11 +189,20 @@ def test_unit_test_renderer_keeps_decimal_steps_and_code_options_readable() -> N
     assert "> 5. 0" not in unit_test
 
 
-def test_unit_test_renderer_keeps_four_options_for_every_question_type() -> None:
+def test_unit_test_renderer_normalizes_metadata_and_keeps_four_options() -> None:
     unit_test = render_unit_test_markdown(
         ChapterUnitTestSet(
             chapter_index=1,
             items=[
+                ChapterUnitTestItem(
+                    type="single_choice",
+                    difficulty="hard",
+                    target="函数单调性",
+                    stem="下列哪一项最能判断函数单调性？",
+                    options=["定义域", "函数值变化方向", "图像颜色", "函数名称"],
+                    answer="函数值变化方向",
+                    basis="单调性看自变量变化时函数值的变化方向。",
+                ),
                 ChapterUnitTestItem(
                     type="概念判断",
                     difficulty="基础",
@@ -258,16 +224,17 @@ def test_unit_test_renderer_keeps_four_options_for_every_question_type() -> None
             ],
         ),
         title="函数",
-        min_items=2,
+        min_items=3,
         fallback_targets=[],
     )
 
-    assert "**Q01｜概念判断｜基础｜考点：函数相等判定**" in unit_test
-    assert "**Q02｜错因辨析｜进阶｜考点：复合函数定义域**" in unit_test
-    assert unit_test.count("- A.") == 2
-    assert unit_test.count("- B.") == 2
-    assert unit_test.count("- C.") == 2
-    assert unit_test.count("- D.") == 2
+    assert "**Q01｜选择题｜挑战｜考点：函数单调性**" in unit_test
+    assert "**Q02｜概念判断｜基础｜考点：函数相等判定**" in unit_test
+    assert "**Q03｜错因辨析｜进阶｜考点：复合函数定义域**" in unit_test
+    assert unit_test.count("- A.") == 3
+    assert unit_test.count("- B.") == 3
+    assert unit_test.count("- C.") == 3
+    assert unit_test.count("- D.") == 3
 
 
 def test_unit_test_renderer_keeps_generated_items_without_filling_type_diversity() -> None:
@@ -296,27 +263,6 @@ def test_unit_test_renderer_keeps_generated_items_without_filling_type_diversity
     assert "**4 题覆盖**" in unit_test
     question_types = set(re.findall(r"Q\d+｜([^｜]+)｜", unit_test))
     assert question_types == {"短答题"}
-
-
-def test_published_unit_test_normalizer_keeps_one_standard_section() -> None:
-    markdown = (
-        "# 圆与切线\n\n"
-        "## 切线判定\n\n"
-        "经过圆上一点且垂直半径的直线是切线。\n\n"
-        "## 单元测试与快速自检\n\n"
-        "旧自检内容。\n\n"
-        "## 单元测试\n\n"
-        "| 题号 | 训练点 | 题目 / 任务 | 答案与判定依据 |\n"
-        "| --- | --- | --- | --- |\n"
-        "| 1 | 切线判定 | 判断直线是否为切线。 | 经过圆上一点且垂直半径。 |\n"
-    )
-
-    normalized = normalize_published_unit_test_sections(markdown)
-
-    assert normalized.count("## 单元测试") == 1
-    assert "旧自检内容" not in normalized
-    assert "单元测试与快速自检" not in normalized
-    assert normalized.rstrip().endswith("| 1 | 切线判定 | 判断直线是否为切线。 | 经过圆上一点且垂直半径。 |")
 
 
 def test_published_unit_test_normalizer_keeps_html_unit_test_block() -> None:
@@ -363,66 +309,33 @@ def test_published_unit_test_normalizer_restores_missing_standard_heading() -> N
     assert normalized.index("## 单元测试") < normalized.index("| 题号 | 训练点 | 题目 / 任务 | 答案与判定依据 |")
 
 
-def test_published_unit_test_normalizer_removes_generic_recap_h2() -> None:
-    markdown = (
-        "# 三角形全等\n\n"
-        "## 全等证明路径\n\n"
-        "先找对应关系，再选择判定条件。\n\n"
-        "## 小结式检查清单\n\n"
-        "做题前、做题中、做题后各检查一次。\n\n"
-        "## 单元测试\n\n"
-        "| 题号 | 训练点 | 题目 / 任务 | 答案与判定依据 |\n"
-        "| --- | --- | --- | --- |\n"
-        "| 1 | 对应关系 | 写出对应顶点。 | 先看已知相等条件。 |\n"
-    )
+def test_published_unit_test_normalizer_removes_recap_sections() -> None:
+    cases = [
+        ("单元测试与快速自检", "旧自检内容。"),
+        ("小结式检查清单", "做题前、做题中、做题后各检查一次。"),
+        ("本章收口", "本章已经学完，最后回看一下。"),
+        ("本章学习回看", "你应该形成三种直观。"),
+    ]
 
-    normalized = normalize_published_unit_test_sections(markdown)
+    for recap_title, recap_body in cases:
+        markdown = (
+            "# 三角形全等\n\n"
+            "## 全等证明路径\n\n"
+            "先找对应关系，再选择判定条件。\n\n"
+            f"## {recap_title}\n\n"
+            f"{recap_body}\n\n"
+            "## 单元测试\n\n"
+            "| 题号 | 训练点 | 题目 / 任务 | 答案与判定依据 |\n"
+            "| --- | --- | --- | --- |\n"
+            "| 1 | 对应关系 | 写出对应顶点。 | 先看已知相等条件。 |\n"
+        )
 
-    assert "## 小结式检查清单" not in normalized
-    assert "做题前、做题中、做题后" not in normalized
-    assert normalized.count("## 单元测试") == 1
+        normalized = normalize_published_unit_test_sections(markdown)
 
-
-def test_published_unit_test_normalizer_removes_generic_closing_h2() -> None:
-    markdown = (
-        "# 三角形全等\n\n"
-        "## 全等证明路径\n\n"
-        "先找对应关系，再选择判定条件。\n\n"
-        "## 本章收口\n\n"
-        "本章已经学完，最后回看一下。\n\n"
-        "## 单元测试\n\n"
-        "| 题号 | 训练点 | 题目 / 任务 | 答案与判定依据 |\n"
-        "| --- | --- | --- | --- |\n"
-        "| 1 | 对应关系 | 写出对应顶点。 | 先看已知相等条件。 |\n"
-    )
-
-    normalized = normalize_published_unit_test_sections(markdown)
-
-    assert "## 本章收口" not in normalized
-    assert "最后回看一下" not in normalized
-    assert "## 全等证明路径" in normalized
-    assert normalized.count("## 单元测试") == 1
-
-
-def test_published_unit_test_normalizer_removes_named_chapter_recap_h2() -> None:
-    markdown = (
-        "# 函数概念\n\n"
-        "## 从对应关系认识函数\n\n"
-        "每个自变量最多对应一个函数值。\n\n"
-        "## 本章学习回看\n\n"
-        "你应该形成三种直观。\n\n"
-        "## 单元测试\n\n"
-        "| 题号 | 训练点 | 题目 / 任务 | 答案与判定依据 |\n"
-        "| --- | --- | --- | --- |\n"
-        "| 1 | 对应关系 | 判断是否为函数。 | 每个输入至多一个输出。 |\n"
-    )
-
-    normalized = normalize_published_unit_test_sections(markdown)
-
-    assert "## 本章学习回看" not in normalized
-    assert "三种直观" not in normalized
-    assert "## 从对应关系认识函数" in normalized
-    assert normalized.count("## 单元测试") == 1
+        assert f"## {recap_title}" not in normalized
+        assert recap_body not in normalized
+        assert "## 全等证明路径" in normalized
+        assert normalized.count("## 单元测试") == 1
 
 
 def test_published_unit_test_normalizer_promotes_h3_test_table_to_final_h2() -> None:

@@ -38,6 +38,8 @@ from app.models import (
     KnowledgeGraphSourceRef,
     KnowledgeGraphSyncRun,
     KnowledgeUnit,
+    MasteryDrillAttempt,
+    MasteryDrillSession,
     QuestionKnowledgeUnitLink,
     QuestionTypeRegistry,
     QuestionTemplate,
@@ -234,6 +236,12 @@ TABLE_REGISTRY: list[_TableSpec] = [
         optional_group="exam",
     ),
     _TableSpec(
+        "mastery_drill_session",
+        MasteryDrillSession,
+        fk_remap={"exam_paper_id": "exam_paper"},
+        optional_group="exam",
+    ),
+    _TableSpec(
         "exam_paper_item",
         ExamPaperItem,
         course_field=None,
@@ -241,6 +249,19 @@ TABLE_REGISTRY: list[_TableSpec] = [
         parent_table="exam_paper",
         fk_remap={
             "exam_paper_id": "exam_paper",
+            "question_template_id": "question_template",
+        },
+        optional_group="exam",
+    ),
+    _TableSpec(
+        "mastery_drill_attempt",
+        MasteryDrillAttempt,
+        course_field=None,
+        parent_fk="mastery_drill_session_id",
+        parent_table="mastery_drill_session",
+        fk_remap={
+            "mastery_drill_session_id": "mastery_drill_session",
+            "exam_paper_item_id": "exam_paper_item",
             "question_template_id": "question_template",
         },
         optional_group="exam",

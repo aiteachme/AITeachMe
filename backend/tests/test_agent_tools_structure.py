@@ -16,7 +16,6 @@ from app.shared.infra.agent_loop import (
     AgentLoopConfig,
     StreamingToolCall,
     _execute_one_tool,
-    _tool_stream_override_kwargs,
     _tool_stream_override_kwargs_with_choice,
     run_agent_loop_stream,
 )
@@ -727,7 +726,7 @@ def test_streaming_tool_loop_disables_parallel_tool_calls() -> None:
         }
     ]
 
-    kwargs = _tool_stream_override_kwargs(tools)
+    kwargs = _tool_stream_override_kwargs_with_choice(tools)
 
     assert kwargs["stream"] is True
     assert kwargs["tools"] is tools
@@ -807,7 +806,7 @@ async def test_streaming_tool_loop_falls_back_before_first_token(monkeypatch) ->
 
     assert chunks == ["fallback ok"]
     assert [call["api_key"] for call in calls] == ["primary-key", "fallback-key"]
-    assert calls[1]["model"] == "deepseek-chat"
+    assert calls[1]["model"] == "gpt-5.2"
 
 
 def test_streaming_tool_loop_does_not_leak_provider_native_tools(monkeypatch) -> None:

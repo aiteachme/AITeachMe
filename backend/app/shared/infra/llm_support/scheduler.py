@@ -88,7 +88,7 @@ class LLMTaskHandle(Generic[R]):
 class LLMTaskScheduler:
     """Loop-local dynamic scheduler for upper-level LLM tasks.
 
-    Actual provider calls still use ``get_llm_concurrency_limiter()``. This
+    Actual provider calls still use ``get_llm_concurrency_limiter().slot()``. This
     scheduler controls workflow fan-out and background LLM work, while the
     provider limiter remains the final guard for every single model request.
     """

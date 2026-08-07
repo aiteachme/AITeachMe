@@ -44,6 +44,8 @@ _KU_HEADING_ATTR_RE = re.compile(r"\s*\{#ku_[A-Za-z0-9_-]+\}")
 _KU_HEADING_COMMENT_RE = re.compile(
     r"\s*<!--\s*ATM_KU:\s*ku_[A-Za-z0-9_-]+\s*-->"
 )
+_FENCED_CODE_LINE_RE = re.compile(r"^[ \t]{0,3}(`{3,}|~{3,})(.*)$")
+_DISPLAY_MATH_OPEN_RE = re.compile(r"^[ ]{0,3}(\$\$|\\\[)")
 _MANIFEST_READ_ATTEMPTS = 3
 _PUBLICATION_CACHE_SIZE = 8
 _PUBLICATION_CACHE_LOCK = Lock()
@@ -166,8 +168,69 @@ def _line_offsets(markdown: str) -> list[int]:
     return offsets
 
 
+def _mask_display_math_for_heading_parse(markdown: str) -> str:
+    """Hide display-math contents while preserving every source offset.
+
+    CommonMark treats a standalone ``=`` after a formula line as a Setext H1
+    underline because it does not understand ``$$`` or ``\\[`` math fences.
+    Fenced code must be recognized first because course material can contain
+    literal math delimiters in code examples.
+    """
+
+    masked_lines: list[str] = []
+    code_fence: str | None = None
+    math_closer: str | None = None
+
+    def mask_line(line: str) -> str:
+        return "".join(character if character in "\r\n" else " " for character in line)
+
+    for line in markdown.splitlines(keepends=True):
+        stripped = line.strip()
+        code_match = _FENCED_CODE_LINE_RE.match(line)
+
+        if code_fence is not None:
+            masked_lines.append(line)
+            if code_match is not None:
+                marker, trailing = code_match.groups()
+                if (
+                    marker[0] == code_fence[0]
+                    and len(marker) >= len(code_fence)
+                    and not trailing.strip()
+                ):
+                    code_fence = None
+            continue
+
+        if math_closer is None and code_match is not None:
+            code_fence = code_match.group(1)
+            masked_lines.append(line)
+            continue
+
+        if math_closer is not None:
+            masked_lines.append(mask_line(line))
+            if math_closer == "$$" and stripped.endswith("$$"):
+                math_closer = None
+            elif math_closer == r"\]" and stripped.endswith(r"\]"):
+                math_closer = None
+            continue
+
+        math_match = _DISPLAY_MATH_OPEN_RE.match(line)
+        if math_match is None:
+            masked_lines.append(line)
+            continue
+
+        opener = math_match.group(1)
+        remainder = stripped[len(opener) :]
+        closer = "$$" if opener == "$$" else r"\]"
+        masked_lines.append(mask_line(line))
+        if closer not in remainder:
+            math_closer = closer
+
+    return "".join(masked_lines)
+
+
 def _parse_root_headings(markdown: str) -> list[_ParsedHeading]:
-    tokens = _MARKDOWN_PARSER.parse(markdown)
+    heading_source = _mask_display_math_for_heading_parse(markdown)
+    tokens = _MARKDOWN_PARSER.parse(heading_source)
     line_offsets = _line_offsets(markdown)
     counts: dict[str, int] = {}
     headings: list[_ParsedHeading] = []

@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 class ExamGenerateRequest(BaseModel):
     """Trigger exam generation request."""
 
-    exam_mode: str = Field(description="Exam mode: web_practice | paper_exam | mastery_drill.")
+    exam_mode: str = Field(description="Exam mode: web_practice | paper_exam. Mastery drills use their dedicated API.")
     user_prompt: str | None = Field(default=None, description="Optional user requirements for exam generation.")
     sample_file_ids: list[str] | None = Field(default=None, description="Optional uploaded sample-paper file IDs.")
     num_questions: int | None = Field(default=None, ge=1, le=200, description="Optional target question count.")
@@ -33,6 +33,39 @@ class ExamSubmitRequest(BaseModel):
     """Submit exam answers request."""
 
     answers: list[ExamSubmitAnswerItem] = Field(default_factory=list, description="Submitted answers.")
+    submission_key: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=128,
+        description="Stable client-generated key used to safely retry this submission.",
+    )
+
+
+class MasteryDrillStartRequest(BaseModel):
+    """Start a new durable drill or resume the active one for the course."""
+
+    session_key: str = Field(min_length=1, max_length=128)
+    question_template_ids: list[int] = Field(min_length=1, max_length=80)
+    configured_question_count: int = Field(ge=1, le=80)
+    configured_question_types: list[str] = Field(default_factory=list, max_length=20)
+
+
+class MasteryDrillAttemptRequest(BaseModel):
+    """Persist and grade one answer attempt."""
+
+    exam_paper_item_id: int = Field(ge=1)
+    answer: str = Field(max_length=20000)
+    attempt_key: str = Field(min_length=1, max_length=128)
+    time_spent_seconds: int | None = Field(default=None, ge=0, le=86400)
+    hint_used: bool = False
+    confidence_self_report: int | None = Field(default=None, ge=1, le=5)
+
+
+class MasteryDrillCompleteRequest(BaseModel):
+    """Idempotently finish a drill after every item has been passed."""
+
+    completion_key: str = Field(min_length=1, max_length=128)
+    duration_seconds: int | None = Field(default=None, ge=0, le=604800)
 
 
 class QuestionTemplateMarkRequest(BaseModel):
@@ -62,6 +95,42 @@ class QuestionTemplateGradeResponse(BaseModel):
     error_cause_label: str | None = None
     grading_mode: Literal["objective_rule", "subjective_llm", "subjective_fallback"]
     correct_answer: str
+
+
+class MasteryDrillAttemptResponse(BaseModel):
+    id: int
+    mastery_drill_session_id: int
+    exam_paper_item_id: int
+    question_template_id: int
+    attempt_no: int
+    attempt_key: str
+    status: Literal["grading", "graded", "failed"]
+    answer: str
+    is_correct: bool | None = None
+    score_obtained: float | None = None
+    score_max: float | None = None
+    feedback_text: str | None = None
+    error_cause_label: str | None = None
+    grading_mode: str | None = None
+    time_spent_seconds: int | None = None
+    hint_used: bool = False
+    confidence_self_report: int | None = None
+    error_code: str | None = None
+    answered_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class MasteryDrillSessionResponse(BaseModel):
+    id: int
+    exam_paper_id: int
+    status: Literal["active", "completed", "abandoned"]
+    config_snapshot: dict[str, Any] = Field(default_factory=dict)
+    total_attempts: int = 0
+    wrong_attempts: int = 0
+    started_at: datetime
+    completed_at: datetime | None = None
+    attempts: list[MasteryDrillAttemptResponse] = Field(default_factory=list)
 
 
 class RuntimeStatusResponse(BaseModel):
@@ -95,12 +164,33 @@ class ExamPrewarmStatusResponse(BaseModel):
     error_message: str | None = None
 
 
+class ExamProfileSyncResponse(BaseModel):
+    exam_paper_id: int
+    status: Literal[
+        "not_tracked",
+        "pending",
+        "processing",
+        "retry_wait",
+        "completed",
+        "failed",
+    ]
+    attempt_count: int = 0
+    manual_retry_count: int = 0
+    next_attempt_at: datetime | None = None
+    last_error_code: str | None = None
+    states_updated: int = 0
+    review_task_count: int = 0
+    can_retry: bool = False
+    updated_at: datetime | None = None
+
+
 class ExamGradeResponse(RuntimeStatusResponse):
     exam_paper_id: int
     score: float | None = None
     states_updated: int
     tasks_created: int
     mastery_consumed: bool
+    profile_sync: ExamProfileSyncResponse | None = None
 
 
 class ExamStudyGuideFocusUnit(BaseModel):
@@ -151,6 +241,13 @@ class ExamGenerationProgress(BaseModel):
     total_items: int = Field(default=0, ge=0)
 
 
+class MasteryDrillHistorySummary(BaseModel):
+    status: Literal["active", "completed", "abandoned"]
+    total_attempts: int = Field(default=0, ge=0)
+    wrong_attempts: int = Field(default=0, ge=0)
+    attempt_accuracy: float | None = Field(default=None, ge=0.0, le=1.0)
+
+
 class ExamHistoryItem(BaseModel):
     id: int
     course_id: str
@@ -166,6 +263,7 @@ class ExamHistoryItem(BaseModel):
     graded_at: datetime | None = None
     generation_progress: ExamGenerationProgress | None = None
     paper_preview: PaperPreview = Field(default_factory=PaperPreview)
+    mastery_drill: MasteryDrillHistorySummary | None = None
 
 
 class ExamPaperDeleteResponse(BaseModel):
@@ -283,5 +381,7 @@ class ExamPaperDetailResponse(BaseModel):
     graded_at: datetime | None = None
     created_at: datetime
     selection_context: dict[str, Any] = Field(default_factory=dict)
+    profile_sync: ExamProfileSyncResponse | None = None
+    mastery_drill: MasteryDrillSessionResponse | None = None
     paper_preview: PaperPreview = Field(default_factory=PaperPreview)
     items: list[ExamPaperItemResponse] = Field(default_factory=list)

@@ -1,4 +1,4 @@
-"""LLM-backed grading workflow for exam paper items."""
+"""Rule-based objective grading and LLM-backed subjective grading."""
 
 from __future__ import annotations
 
@@ -9,6 +9,10 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 
 from app.models import ExamPaperItem
+from app.shared.kernel.question_types import (
+    require_supported_question_type_key,
+    question_type_grading_kind,
+)
 from app.shared.infra.llm_support import acompletion_with_fallback, run_llm_tasks
 from app.shared.infra.observability.trace import traceable_with_context
 from app.workflows.examine.exam_grade.lib.model_policy import (
@@ -16,45 +20,10 @@ from app.workflows.examine.exam_grade.lib.model_policy import (
     exam_grade_completion_kwargs_with_metadata,
 )
 from app.workflows.examine.exam_grade.prompts import (
-    build_objective_feedback_messages,
     build_subjective_grade_messages,
 )
 
 _MULTI_CHOICE_SPLIT_RE = re.compile(r"[\s,，;；/、|]+")
-_OBJECTIVE_TYPES = {"single_choice", "multiple_choice", "multi_choice", "true_false"}
-_SUBJECTIVE_TYPES = {"fill_blank", "short_answer"}
-_OBJECTIVE_CORRECT_CLAIM_MARKERS = (
-    "这是正确的",
-    "是正确的",
-    "答案正确",
-    "回答正确",
-    "作答正确",
-    "选择正确",
-    "完全匹配正确",
-    "判定正确",
-    "your answer is correct",
-    "this is correct",
-    "you are correct",
-)
-_OBJECTIVE_INCORRECT_MARKERS = (
-    "不正确",
-    "不是正确",
-    "并不正确",
-    "并非正确",
-    "未判为正确",
-    "incorrect",
-    "not correct",
-)
-
-
-class ObjectiveFeedbackPayload(BaseModel):
-    feedback_text: str = Field(min_length=8, max_length=1200)
-    error_cause_label: str | None = Field(default=None, max_length=80)
-
-    @field_validator("feedback_text")
-    @classmethod
-    def _strip_feedback_text(cls, value: str) -> str:
-        return " ".join(str(value or "").split()).strip()
 
 
 class SubjectiveGradePayload(BaseModel):
@@ -103,10 +72,6 @@ def _normalize_true_false_token(value: str | None) -> str:
     return normalized
 
 
-def _is_objective_type(question_type: str) -> bool:
-    return (question_type or "").strip().lower() in _OBJECTIVE_TYPES
-
-
 def _build_default_feedback(*, item: ExamPaperItem, is_correct: bool, subjective: bool = False) -> str:
     user_answer = (item.answer_content or "").strip()
     if not user_answer:
@@ -130,88 +95,26 @@ def _build_default_feedback(*, item: ExamPaperItem, is_correct: bool, subjective
     )
 
 
-def _build_feedback_unavailable_text(*, item: ExamPaperItem, is_correct: bool) -> str:
-    verdict = "正确" if is_correct else "错误"
+def _build_objective_rule_feedback(*, item: ExamPaperItem, is_correct: bool) -> str:
+    """Use authored feedback so objective grading never waits for an LLM."""
+
     explanation = str(item.explanation_snapshot or "").strip()
     if explanation:
-        return f"本题已按标准答案判定为{verdict}。参考解析：{explanation}"
-    return f"本题已按标准答案判定为{verdict}，但 AI 解析暂时没有生成，请稍后重试。"
-
-
-def _objective_feedback_claims_correct(feedback_text: str) -> bool:
-    normalized = _normalize_text(feedback_text)
-    if not normalized:
-        return False
-    text_without_negative_claims = normalized
-    for marker in _OBJECTIVE_INCORRECT_MARKERS:
-        text_without_negative_claims = text_without_negative_claims.replace(marker, "")
-    return any(marker in text_without_negative_claims for marker in _OBJECTIVE_CORRECT_CLAIM_MARKERS)
+        return explanation
+    return _build_default_feedback(item=item, is_correct=is_correct)
 
 
 def _grade_objective_correctness(item: ExamPaperItem) -> bool:
-    question_type = (item.question_type or "").strip().lower()
+    question_type = require_supported_question_type_key(item.question_type)
     expected = _normalize_text(item.answer_snapshot)
     answer = _normalize_text(item.answer_content)
     if not expected or not answer:
         return False
-    if question_type in {"multiple_choice", "multi_choice"}:
+    if question_type == "multiple_choice":
         return _split_multi_choice_tokens(expected) == _split_multi_choice_tokens(answer)
     if question_type == "true_false":
         return _normalize_true_false_token(expected) == _normalize_true_false_token(answer)
     return answer == expected
-
-
-@traceable_with_context(
-    name="考试：客观题反馈",
-    run_type="chain",
-    metadata_factory=lambda course_name, item, is_correct: {
-        "substep": "exam.grade.objective_feedback",
-        "question_type": item.question_type,
-        "item_order": item.item_order,
-        "question_template_id": item.question_template_id,
-        "is_correct": bool(is_correct),
-    },
-    tags_factory=lambda course_name, item, is_correct: [
-        "exam-grade",
-        "objective",
-        f"question-type:{str(item.question_type or '').strip().lower() or 'unknown'}",
-        f"judgement:{'correct' if is_correct else 'incorrect'}",
-    ],
-)
-async def _generate_objective_feedback(course_name: str, item: ExamPaperItem, *, is_correct: bool) -> tuple[str, str | None]:
-    try:
-        result = await acompletion_with_fallback(
-            build_objective_feedback_messages(
-                course_name=course_name,
-                question_type=item.question_type,
-                stem=item.stem_snapshot,
-                options=_parse_options(item.options_snapshot_json),
-                correct_answer=item.answer_snapshot,
-                reference_explanation=item.explanation_snapshot,
-                user_answer=item.answer_content,
-                is_correct=is_correct,
-            ),
-            **exam_grade_completion_kwargs_with_metadata(
-                ExamGradeModelStep.OBJECTIVE_FEEDBACK,
-                extra_metadata={
-                    "substep": "exam.grade.objective_feedback",
-                    "question_type": item.question_type,
-                },
-            ),
-            response_model=ObjectiveFeedbackPayload,
-        )
-        assert isinstance(result, ObjectiveFeedbackPayload)
-        if not is_correct and _objective_feedback_claims_correct(result.feedback_text):
-            return (
-                _build_default_feedback(item=item, is_correct=False),
-                "unknown",
-            )
-        return result.feedback_text, result.error_cause_label
-    except Exception:
-        return (
-            _build_feedback_unavailable_text(item=item, is_correct=is_correct),
-            None if is_correct else "feedback_unavailable",
-        )
 
 
 @traceable_with_context(
@@ -274,21 +177,6 @@ async def _grade_subjective_item(course_name: str, item: ExamPaperItem) -> ExamI
         raise RuntimeError(f"subjective grading model failed for item_order={item.item_order}: {exc}") from exc
 
 
-def _parse_options(raw: str | None) -> list[str] | None:
-    if not raw:
-        return None
-    import json
-
-    try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(payload, list):
-        return None
-    normalized = [str(item).strip() for item in payload if str(item).strip()]
-    return normalized or None
-
-
 @traceable_with_context(
     name="考试：整卷判题",
     run_type="chain",
@@ -307,38 +195,42 @@ async def grade_exam_items_with_workflow(
     course_name: str,
     items: list[ExamPaperItem],
 ) -> list[ExamItemGradeDecision]:
-    async def _grade_item(item: ExamPaperItem) -> ExamItemGradeDecision:
-        if _is_objective_type(item.question_type):
+    grading_kinds = [question_type_grading_kind(item.question_type) for item in items]
+    decisions: list[ExamItemGradeDecision | None] = [None] * len(items)
+    subjective_items: list[tuple[int, ExamPaperItem]] = []
+
+    for index, (item, grading_kind) in enumerate(zip(items, grading_kinds, strict=True)):
+        if grading_kind == "objective":
             is_correct = _grade_objective_correctness(item)
-            feedback_text, error_cause_label = await _generate_objective_feedback(
-                course_name,
-                item,
-                is_correct=is_correct,
-            )
-            return ExamItemGradeDecision(
+            decisions[index] = ExamItemGradeDecision(
                 is_correct=is_correct,
                 score_obtained=float(item.score or 1.0) if is_correct else 0.0,
                 score_max=float(item.score or 1.0),
-                feedback_text=feedback_text,
-                error_cause_label=None if is_correct else (error_cause_label or "knowledge_gap"),
+                feedback_text=_build_objective_rule_feedback(item=item, is_correct=is_correct),
+                error_cause_label=None if is_correct else "knowledge_gap",
                 grading_mode="objective_rule",
             )
+            continue
 
-        if (item.question_type or "").strip().lower() in _SUBJECTIVE_TYPES:
-            return await _grade_subjective_item(course_name, item)
+        if grading_kind != "subjective":  # pragma: no cover - exhaustive guard
+            raise AssertionError(f"Unhandled grading kind: {grading_kind}")
+        subjective_items.append((index, item))
 
-        # Unknown question types degrade to subjective handling.
-        return await _grade_subjective_item(course_name, item)
+    if subjective_items:
+        subjective_decisions = await run_llm_tasks(
+            subjective_items,
+            lambda payload: _grade_subjective_item(course_name, payload[1]),
+        )
+        for (index, _item), decision in zip(subjective_items, subjective_decisions, strict=True):
+            decisions[index] = decision
 
-    return await run_llm_tasks(
-        items,
-        _grade_item,
-    )
+    if any(decision is None for decision in decisions):  # pragma: no cover - defensive guard
+        raise AssertionError("Exam grading did not produce a decision for every item")
+    return [decision for decision in decisions if decision is not None]
 
 
 __all__ = [
     "ExamItemGradeDecision",
-    "ObjectiveFeedbackPayload",
     "SubjectiveGradePayload",
     "grade_exam_items_with_workflow",
 ]

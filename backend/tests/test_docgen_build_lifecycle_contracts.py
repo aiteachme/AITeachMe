@@ -145,7 +145,7 @@ def _confirmed_plan(*, status: str = "confirmed") -> ConfirmedBuildPlan:
                     "required_elements": ["基变换"],
                 },
             ],
-            "model_override": "gpt-5.4-mini",
+            "model_override": "primary",
         },
     )
 
@@ -215,7 +215,7 @@ def test_file_selection_and_trigger_docgen_build_write_runtime_contracts(
     assert build_data.ready_file_count == 1
     assert build_data.prompt == "按矩阵和线性映射生成知识文档"
     assert build_data.digest_mode == "systematic"
-    assert build_data.model_override == "gpt-5.4-mini"
+    assert build_data.model_override == "primary"
     assert locks[0].source_file_ids == ["file-ready"]
     assert statuses[0]["status"] == "accepted"
     assert statuses[0]["planner_session_id"] == "planner-1"
@@ -1507,6 +1507,7 @@ def test_docgen_background_preserves_published_docs_when_downstream_graph_fails(
 ) -> None:
     import app.workflows.digest as digest_workflows
     from app.shared.infra.workflow import err_result
+    from app.workflows.examine import initial_exam as initial_exam_service
     from app.workflows.digest.kg_doc_sync.lib import prefetch as prefetch_module
 
     now = datetime.now(timezone.utc)
@@ -1515,14 +1516,22 @@ def test_docgen_background_preserves_published_docs_when_downstream_graph_fails(
     plan_statuses: list[str] = []
     staging_clears: list[str] = []
     releases: list[tuple[str, str]] = []
+    scheduling_events: list[str] = []
+    initial_exam_schedules: list[dict[str, object]] = []
 
     async def fake_heartbeat(**_kwargs) -> None:
         await asyncio.Future()
 
     async def fake_workflow(**_kwargs):
+        scheduling_events.append("graph_terminal")
         if failure_mode == "exception":
             raise RuntimeError("kg crashed after publish")
         return err_result("kg_sync_failed", "kg failed after publish")
+
+    def fake_schedule_initial_exam(*_args, **kwargs) -> bool:
+        initial_exam_schedules.append(dict(kwargs))
+        scheduling_events.append("exam_scheduled")
+        return True
 
     @contextmanager
     def fake_trace(**_kwargs):
@@ -1557,7 +1566,7 @@ def test_docgen_background_preserves_published_docs_when_downstream_graph_fails(
             {"plan": "confirmed"},
         ),
     )
-    monkeypatch.setattr(build_lifecycle, "_confirmed_plan_model_override", lambda _payload: None)
+    monkeypatch.setattr(build_lifecycle, "_confirmed_plan_model_override", lambda _payload: "light")
     monkeypatch.setattr(
         build_lifecycle,
         "_mark_confirmed_plan_status",
@@ -1585,6 +1594,11 @@ def test_docgen_background_preserves_published_docs_when_downstream_graph_fails(
     )
     monkeypatch.setattr(digest_workflows, "run_docgen_workflow", fake_workflow)
     monkeypatch.setattr(prefetch_module, "cancel_docgen_kg_prefetch", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        initial_exam_service,
+        "schedule_course_initial_exam_job",
+        fake_schedule_initial_exam,
+    )
 
     asyncio.run(
         build_lifecycle.run_docgen_background(
@@ -1604,12 +1618,22 @@ def test_docgen_background_preserves_published_docs_when_downstream_graph_fails(
     assert plan_statuses == ["building", "completed"]
     assert staging_clears == ["clear"]
     assert releases == [(COURSE_ID, "group-published")]
+    assert scheduling_events == ["graph_terminal", "exam_scheduled"]
+    assert initial_exam_schedules == [
+        {
+            "course_id": COURSE_ID,
+            "user_id": USER_ID,
+            "build_session_id": "build-session-published",
+            "model_override": "light",
+        }
+    ]
 
 
 def test_docgen_background_marks_completed_when_cancelled_publish_drain_succeeds(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import app.workflows.digest as digest_workflows
+    from app.workflows.examine import initial_exam as initial_exam_service
     from app.workflows.digest.kg_doc_sync.lib import prefetch as prefetch_module
 
     now = datetime.now(timezone.utc)
@@ -1621,6 +1645,7 @@ def test_docgen_background_marks_completed_when_cancelled_publish_drain_succeeds
     plan_statuses: list[str] = []
     staging_clears: list[str] = []
     releases: list[tuple[str, str]] = []
+    initial_exam_schedules: list[str] = []
 
     async def fake_heartbeat(**_kwargs) -> None:
         await asyncio.Future()
@@ -1704,6 +1729,11 @@ def test_docgen_background_marks_completed_when_cancelled_publish_drain_succeeds
     )
     monkeypatch.setattr(digest_workflows, "run_docgen_workflow", fake_workflow)
     monkeypatch.setattr(prefetch_module, "cancel_docgen_kg_prefetch", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        initial_exam_service,
+        "schedule_course_initial_exam_job",
+        lambda *_args, **_kwargs: initial_exam_schedules.append("scheduled") or True,
+    )
 
     async def run_scenario() -> None:
         task = asyncio.create_task(
@@ -1737,6 +1767,7 @@ def test_docgen_background_marks_completed_when_cancelled_publish_drain_succeeds
     assert plan_statuses == ["building", "completed"]
     assert staging_clears == ["clear"]
     assert releases == [(COURSE_ID, "group-publish-cancel")]
+    assert initial_exam_schedules == []
 
 
 def test_cancel_knowledge_build_does_not_interrupt_maintenance_lock(

@@ -13,12 +13,23 @@ import structlog
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, Path, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.api.deps import CurrentUserContext, get_current_user_context, get_db, normalize_course_id
 from app.api.openapi import build_error_responses
 from app.api.sse import get_sse_interval, sse_headers
-from app.models import ExamPaper, ExamPaperItem, QuestionTemplate, QuestionTypeRegistry, User, exam_mode_value
+from app.models import (
+    ExamPaper,
+    ExamPaperItem,
+    ExamProfileSync,
+    MasteryDrillAttempt,
+    MasteryDrillSession,
+    QuestionTemplate,
+    QuestionTypeRegistry,
+    User,
+    exam_mode_value,
+)
 from app.models.knowledge_unit import KnowledgeUnit
 from app.models.course import Course
 from app.repositories import exams_repo, knowledge_relation_repo
@@ -30,9 +41,11 @@ from app.schemas.exams import (
     ExamGenerationProgress,
     ExamGradeResponse,
     ExamHistoryItem,
+    MasteryDrillHistorySummary,
     ExamPaperDeleteResponse,
     ExamPaperDetailResponse,
     ExamPaperItemResponse,
+    ExamProfileSyncResponse,
     ExamPrewarmStatusResponse,
     QuestionTemplateAnswerHistoryItem,
     QuestionTemplateGradeRequest,
@@ -45,10 +58,20 @@ from app.schemas.exams import (
     ExamStudyGuideFocusUnit,
     ExamStudyGuideResponse,
     ExamSubmitRequest,
+    MasteryDrillAttemptRequest,
+    MasteryDrillAttemptResponse,
+    MasteryDrillCompleteRequest,
+    MasteryDrillSessionResponse,
+    MasteryDrillStartRequest,
 )
 from app.shared.infra.analytics.posthog import capture_product_event_later
 from app.shared.infra.exceptions import AITeachMeError
 from app.shared.infra.database import managed_session
+from app.shared.kernel.question_types import (
+    UnsupportedQuestionTypeError,
+    is_supported_question_type,
+    require_supported_question_type_key,
+)
 from app.shared.infra.workflow.live_stream import (
     format_sse_event,
     publish_workflow_stream_event,
@@ -60,7 +83,11 @@ from app.workflows.examine import (
     run_exam_study_guide_workflow,
     run_question_build_workflow,
 )
-from app.workflows.profile import run_profile_update_workflow
+from app.workflows.profile.sync import (
+    is_exam_profile_sync_recoverable_now,
+    run_exam_profile_sync_background,
+    schedule_exam_profile_sync_task,
+)
 from app.workflows.support.auth import set_guest_cookie_for_user
 from app.workflows.support.courses.learning_context import load_course_llm_context
 
@@ -77,6 +104,13 @@ EXAM_PREWARM_TTL_DAYS = 2
 DEFAULT_AUTO_PREWARM_EXAM_MODE = "web_practice"
 DEFAULT_AUTO_PREWARM_QUESTION_COUNT = 10
 EXAM_GENERATION_STALE_AFTER = timedelta(minutes=20)
+EXAM_GRADING_LEASE_DURATION = timedelta(minutes=5)
+EXAM_GRADING_HEARTBEAT_SECONDS = 60.0
+EXAM_GRADING_RECOVERY_INTERVAL_SECONDS = 30.0
+EXAM_GRADING_RETRY_MAX_SECONDS = 300.0
+EXAM_GRADING_MAX_ATTEMPTS = 3
+MASTERY_DRILL_ATTEMPT_LEASE_DURATION = timedelta(minutes=5)
+MASTERY_DRILL_ATTEMPT_HEARTBEAT_SECONDS = 60.0
 EXAM_GENERATION_STALE_MESSAGE = "生成超时，请重新生成。"
 EXAM_GENERATION_INCOMPLETE_MESSAGE = "题目生成未完成，请重新生成。"
 PAPER_LAYOUT_CONFIG_VERSION = 1
@@ -88,6 +122,172 @@ PAPER_LAYOUT_MODES = {
     "gaokao_eight_page",
 }
 _PROFILE_UPDATE_CONTEXT_KEY = "profile_update"
+
+
+def _require_supported_question_type_for_api(value: object) -> str:
+    try:
+        return require_supported_question_type_key(value)
+    except UnsupportedQuestionTypeError as exc:
+        question_type = exc.question_type or "<empty>"
+        raise AITeachMeError(
+            detail=f"当前版本不支持题型 `{question_type}`。",
+            error_code="UNSUPPORTED_QUESTION_TYPE",
+            status_code=409,
+            data={"question_type": exc.question_type},
+        ) from exc
+
+
+def _require_generic_exam_mode(mode: str) -> str:
+    if mode == "mastery_drill":
+        raise AITeachMeError(
+            detail="Mastery drills must use the dedicated start, attempt, and complete endpoints.",
+            error_code="MASTERY_DRILL_DEDICATED_ENDPOINT_REQUIRED",
+            status_code=409,
+        )
+    return mode
+
+
+def _require_supported_exam_items(items: list[ExamPaperItem]) -> None:
+    for item in items:
+        _require_supported_question_type_for_api(item.question_type)
+
+
+def _resolve_exam_submission_answers(
+    items: list[ExamPaperItem],
+    body: ExamSubmitRequest,
+) -> tuple[dict[int, str], str, str]:
+    answer_by_id = {
+        int(item.exam_paper_item_id): str(item.answer or "")
+        for item in body.answers
+        if item.exam_paper_item_id is not None
+    }
+    answer_by_order = {
+        int(item.item_order): str(item.answer or "")
+        for item in body.answers
+        if item.item_order is not None
+    }
+    resolved: dict[int, str] = {}
+    canonical_items: list[dict[str, object]] = []
+    for item in items:
+        item_id = int(item.id or 0)
+        answer = answer_by_id[item_id] if item_id in answer_by_id else answer_by_order.get(item.item_order, "")
+        resolved[item_id] = answer
+        canonical_items.append(
+            {
+                "exam_paper_item_id": item_id,
+                "item_order": int(item.item_order),
+                "answer": answer,
+            }
+        )
+    canonical_json = json.dumps(canonical_items, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    submission_hash = hashlib.sha256(canonical_json.encode("utf-8")).hexdigest()
+    submission_key = str(body.submission_key or "").strip() or submission_hash
+    return resolved, submission_hash, submission_key
+
+
+def _exam_profile_sync_response(
+    session: Session,
+    paper: ExamPaper,
+    *,
+    task: ExamProfileSync | None = None,
+) -> ExamProfileSyncResponse:
+    current = task or exams_repo.get_exam_profile_sync(session, paper_id=int(paper.id or 0))
+    if current is not None:
+        status = str(current.status or "pending")
+        if status not in {"pending", "processing", "retry_wait", "completed", "failed"}:
+            status = "failed"
+        return ExamProfileSyncResponse(
+            exam_paper_id=int(paper.id or 0),
+            status=status,
+            attempt_count=max(0, int(current.attempt_count or 0)),
+            manual_retry_count=max(0, int(current.manual_retry_count or 0)),
+            next_attempt_at=current.next_attempt_at,
+            last_error_code=str(current.last_error_code or "").strip() or None,
+            states_updated=max(0, int(current.states_updated or 0)),
+            review_task_count=max(0, int(current.review_task_count or 0)),
+            can_retry=status in {"retry_wait", "failed"},
+            updated_at=current.updated_at,
+        )
+
+    legacy = _json_dict(paper.selection_context_json).get(_PROFILE_UPDATE_CONTEXT_KEY)
+    legacy_payload = legacy if isinstance(legacy, dict) else {}
+    legacy_status = str(legacy_payload.get("status") or "")
+    status = "completed" if legacy_status == "completed" else "not_tracked"
+    return ExamProfileSyncResponse(
+        exam_paper_id=int(paper.id or 0),
+        status=status,
+        attempt_count=max(0, int(legacy_payload.get("attempt_count") or 0)),
+        last_error_code=str(legacy_payload.get("last_error_code") or "").strip() or None,
+        states_updated=max(0, int(legacy_payload.get("states_updated") or 0)),
+        review_task_count=max(0, int(legacy_payload.get("review_task_count") or 0)),
+        can_retry=legacy_status in {"failed", "running"},
+        updated_at=paper.updated_at,
+    )
+
+
+def _ensure_legacy_exam_profile_sync(session: Session, paper: ExamPaper) -> ExamProfileSync | None:
+    if paper.status != "graded":
+        return None
+    existing = exams_repo.get_exam_profile_sync(session, paper_id=int(paper.id or 0))
+    if existing is not None:
+        return existing
+    legacy = _json_dict(paper.selection_context_json).get(_PROFILE_UPDATE_CONTEXT_KEY)
+    if not isinstance(legacy, dict):
+        return None
+    legacy_status = str(legacy.get("status") or "")
+    if legacy_status == "completed":
+        return exams_repo.ensure_exam_profile_sync(
+            session,
+            paper=paper,
+            status="completed",
+            trigger="legacy_profile_update",
+            states_updated=int(legacy.get("states_updated") or 0),
+            review_task_count=int(legacy.get("review_task_count") or 0),
+            auto_commit=True,
+        )
+    if legacy_status in {"failed", "running"}:
+        return exams_repo.ensure_exam_profile_sync(
+            session,
+            paper=paper,
+            status="pending",
+            trigger="legacy_profile_recovery",
+            auto_commit=True,
+        )
+    return None
+
+
+def _exam_grade_response_from_paper(session: Session, paper: ExamPaper) -> ExamGradeResponse:
+    profile_sync = _exam_profile_sync_response(session, paper)
+    return ExamGradeResponse(
+        id=int(paper.id or 0),
+        status="completed" if paper.status == "graded" else paper.status,
+        error_message=paper.grading_last_error or None,
+        created_at=paper.created_at,
+        updated_at=paper.updated_at,
+        exam_paper_id=int(paper.id or 0),
+        score=paper.score_obtained,
+        states_updated=profile_sync.states_updated,
+        tasks_created=profile_sync.review_task_count,
+        mastery_consumed=profile_sync.status == "completed",
+        profile_sync=profile_sync,
+    )
+
+
+def _is_exam_grading_recoverable_now(paper: ExamPaper, *, as_of=None) -> bool:
+    now = ensure_utc_datetime(as_of) or utcnow()
+    if int(paper.grading_attempts or 0) >= EXAM_GRADING_MAX_ATTEMPTS:
+        return False
+    if paper.status == "grading":
+        lease_expires_at = ensure_utc_datetime(paper.grading_lease_expires_at)
+        return lease_expires_at is None or lease_expires_at <= now
+    if paper.status != "submitted":
+        return False
+    if not str(paper.grading_last_error or "").strip():
+        return True
+    attempts = max(1, int(paper.grading_attempts or 0))
+    retry_delay_seconds = min(EXAM_GRADING_RETRY_MAX_SECONDS, 15.0 * (2 ** min(attempts, 5)))
+    updated_at = ensure_utc_datetime(paper.updated_at)
+    return updated_at is None or updated_at + timedelta(seconds=retry_delay_seconds) <= now
 
 
 def _exam_stream_channel(course_id: str, paper_id: int) -> str:
@@ -227,53 +427,6 @@ def _json_dict(raw: str | None) -> dict[str, object]:
     except json.JSONDecodeError:
         return {}
     return payload if isinstance(payload, dict) else {}
-
-
-def _profile_update_error_code(error: str | None) -> str:
-    cleaned = str(error or "").strip()
-    if not cleaned:
-        return ""
-    if ":" not in cleaned:
-        return "profile_update_failed"
-    head = cleaned.split(":", 1)[0].strip()
-    normalized = re.sub(r"[^A-Za-z0-9_.-]+", "_", head).strip("._-")
-    return (normalized or "profile_update_failed")[:80]
-
-
-def _record_exam_profile_update_status(
-    session: Session,
-    paper: ExamPaper,
-    *,
-    status: str,
-    states_updated: int = 0,
-    review_task_count: int = 0,
-    last_error: str | None = None,
-    increment_attempt: bool = False,
-) -> None:
-    context = _json_dict(paper.selection_context_json)
-    current = context.get(_PROFILE_UPDATE_CONTEXT_KEY)
-    current_payload = current if isinstance(current, dict) else {}
-    try:
-        attempt_count = int(current_payload.get("attempt_count", 0) or 0)
-    except (TypeError, ValueError):
-        attempt_count = 0
-    if increment_attempt:
-        attempt_count += 1
-
-    now = utcnow()
-    context[_PROFILE_UPDATE_CONTEXT_KEY] = {
-        "status": status,
-        "attempt_count": attempt_count,
-        "updated_at": now.isoformat(),
-        "states_updated": max(0, int(states_updated or 0)),
-        "review_task_count": max(0, int(review_task_count or 0)),
-        "last_error_code": _profile_update_error_code(last_error),
-    }
-    paper.selection_context_json = json.dumps(context, ensure_ascii=False)
-    paper.updated_at = now
-    session.add(paper)
-    session.commit()
-    session.refresh(paper)
 
 
 def _hash_stem(stem: str) -> str:
@@ -548,6 +701,9 @@ def _is_active_prewarm_exam_candidate(paper: ExamPaper | None) -> bool:
         return False
     if paper.status not in {"ready", "generating"}:
         return False
+    if paper.status == "generating":
+        updated_at = ensure_utc_datetime(paper.updated_at)
+        return updated_at is not None and updated_at > utcnow() - EXAM_GENERATION_STALE_AFTER
     expires_at = ensure_utc_datetime(paper.expires_at)
     return expires_at is None or expires_at > utcnow()
 
@@ -1816,7 +1972,7 @@ def _upsert_generated_template(
     session: Session,
     *,
     course_id: str,
-    unit: KnowledgeUnit,
+    unit: KnowledgeUnit | None,
     question_type: str,
     difficulty: str,
     stem: str,
@@ -1826,10 +1982,19 @@ def _upsert_generated_template(
     knowledge_unit_refs: list[dict[str, object]] | None = None,
     rationale: str = "",
 ) -> QuestionTemplate:
+    question_type = require_supported_question_type_key(question_type)
     stem_hash = _hash_stem(stem)
-    refs = knowledge_unit_refs or [{"knowledge_unit_id": unit.id, "coverage_weight": 1.0}]
+    refs = (
+        list(knowledge_unit_refs)
+        if knowledge_unit_refs is not None
+        else ([{"knowledge_unit_id": unit.id, "coverage_weight": 1.0}] if unit is not None else [])
+    )
     selection_hints = {"rationale": rationale.strip()} if rationale.strip() else {}
-    existing = exams_repo.find_template_by_stem_hash(session, course_id, int(unit.id or 0), stem_hash)
+    existing = (
+        exams_repo.find_template_by_stem_hash(session, course_id, int(unit.id or 0), stem_hash)
+        if unit is not None
+        else None
+    )
     if existing is None:
         existing = exams_repo.find_template_by_course_stem_hash(session, course_id, stem_hash)
     if existing is not None:
@@ -2048,7 +2213,7 @@ async def _run_exam_prewarm_background(
     config_snapshot: dict[str, object],
     config_hash: str,
     paper_layout_mode: str | None = None,
-) -> None:
+) -> int | None:
     _delete_stale_hidden_exams(course_id=course_id, user_id=user_id)
     with managed_session() as session:
         paper, reserved = _reserve_exam_prewarm_paper(
@@ -2065,7 +2230,7 @@ async def _run_exam_prewarm_background(
             paper_layout_mode=paper_layout_mode,
         )
         if not reserved:
-            return
+            return int(paper.id or 0) or None
         paper_id = int(paper.id or 0)
 
     await _run_exam_generation_background(
@@ -2083,6 +2248,246 @@ async def _run_exam_prewarm_background(
         schedule_replacement=False,
         background_task_registry=None,
     )
+    return paper_id
+
+
+async def _run_initial_exam_from_published_docs_background(
+    *,
+    course_id: str,
+    user_id: str,
+) -> int | None:
+    """Generate the one default initial quiz when KnowledgeUnits are unavailable."""
+
+    from app.repositories.knowledge.docgen_repo import get_current_published_docs
+    from app.workflows.examine.question_build.lib.generator import generate_exam_from_text
+
+    default_config = default_auto_prewarm_exam_config()
+    exam_mode = exam_mode_value(str(default_config.get("exam_mode") or DEFAULT_AUTO_PREWARM_EXAM_MODE))
+    question_count = int(default_config.get("question_count") or DEFAULT_AUTO_PREWARM_QUESTION_COUNT)
+    with managed_session() as session:
+        course = _ensure_course(session, course_id, user_id)
+        docs = get_current_published_docs(session, course_id)
+        if not docs:
+            return None
+        existing = _find_default_auto_prewarm_candidate(
+            session,
+            course_id=course_id,
+            user_id=user_id,
+            exam_mode=exam_mode,
+            question_count=question_count,
+            user_prompt=None,
+            sample_file_ids=[],
+            paper_layout_mode=_normalize_paper_layout_mode(
+                None,
+                exam_mode=exam_mode,
+                question_count=question_count,
+            ),
+        )
+        if _is_active_prewarm_exam_candidate(existing):
+            return int(existing.id or 0) or None
+        if existing is not None and existing.status == "generating":
+            exams_repo.delete_exam_paper_cascade(session, paper_id=int(existing.id or 0))
+
+        document_ids = [int(doc.id or 0) for doc in docs if doc.id is not None]
+        document_version = max((int(doc.version_no or doc.version or 0) for doc in docs), default=0)
+        knowledge_text = "\n\n".join(
+            part
+            for doc in docs
+            for part in [
+                f"# {doc.title}" if str(doc.title or "").strip() else "",
+                str(doc.markdown_content or doc.content_markdown or "").strip(),
+            ]
+            if part
+        ).strip()
+        if not knowledge_text:
+            return None
+        config_snapshot = _build_exam_config_snapshot(
+            course_id=course_id,
+            user_id=user_id,
+            exam_mode=exam_mode,
+            question_count=question_count,
+            user_prompt=None,
+            sample_file_ids=[],
+            knowledge_unit_ids=[],
+            mastery_fingerprint=_exam_mastery_fingerprint(session, course_id=course_id, user_id=user_id),
+            paper_layout_mode=None,
+        )
+        config_snapshot.update(
+            {
+                "source_kind": "published_knowledge_documents",
+                "knowledge_document_ids": document_ids,
+                "knowledge_document_version": document_version,
+            }
+        )
+        config_hash = _exam_config_hash(config_snapshot)
+        paper = _create_exam_generation_paper(
+            session,
+            course_id=course_id,
+            user_id=user_id,
+            exam_mode=exam_mode,
+            question_count=question_count,
+            user_prompt=None,
+            sample_file_ids=[],
+            unit_ids=[],
+            config_snapshot=config_snapshot,
+            config_hash=config_hash,
+            paper_layout_mode=None,
+            visibility="visible",
+            generation_origin="prewarm",
+        )
+        context = _json_dict(paper.selection_context_json)
+        context.update(
+            {
+                "source": "published_knowledge_documents",
+                "knowledge_document_ids": document_ids,
+                "knowledge_document_version": document_version,
+            }
+        )
+        paper.selection_context_json = json.dumps(context, ensure_ascii=False)
+        paper.updated_at = utcnow()
+        session.add(paper)
+        session.commit()
+        session.refresh(paper)
+        paper_id = int(paper.id or 0)
+        course_name = course.name
+
+    _publish_exam_event(
+        course_id,
+        paper_id,
+        "snapshot",
+        {"exam_paper_id": paper_id, "status": "generating", "stage": "published_document_question_build"},
+    )
+    try:
+        drafts = await generate_exam_from_text(
+            course_name=course_name,
+            knowledge_text=knowledge_text,
+            num_questions=question_count,
+            difficulty="medium",
+        )
+        drafts_by_order = {int(draft.item_order): draft for draft in drafts}
+        if sorted(drafts_by_order) != list(range(1, question_count + 1)):
+            raise ValueError("Published-document exam generation returned an incomplete question set.")
+
+        with managed_session() as session:
+            paper = exams_repo.get_exam_paper_by_id(session, paper_id)
+            if paper is None or paper.course_id != course_id or paper.user_id != user_id:
+                return None
+            items: list[ExamPaperItem] = []
+            for order in range(1, question_count + 1):
+                draft = drafts_by_order[order]
+                template = _upsert_generated_template(
+                    session,
+                    course_id=course_id,
+                    unit=None,
+                    question_type=draft.question_type,
+                    difficulty=draft.difficulty,
+                    stem=draft.stem,
+                    answer=draft.correct_answer,
+                    explanation=draft.explanation,
+                    options=list(draft.options or []) or None,
+                    knowledge_unit_refs=[],
+                    rationale="Generated from the current published course documents.",
+                )
+                items.append(
+                    ExamPaperItem(
+                        exam_paper_id=paper_id,
+                        question_template_id=int(template.id or 0),
+                        item_order=order,
+                        stem_snapshot=template.stem,
+                        options_snapshot_json=template.options_json,
+                        answer_snapshot=template.answer,
+                        explanation_snapshot=template.explanation,
+                        selection_context_json=json.dumps(
+                            {"source": "published_knowledge_documents"},
+                            ensure_ascii=False,
+                        ),
+                        difficulty=template.difficulty,
+                        question_type=template.question_type,
+                        score=_score_for_question(
+                            exam_mode=exam_mode,
+                            question_type=template.question_type,
+                            difficulty=template.difficulty,
+                        ),
+                    )
+                )
+            exams_repo.create_exam_paper_items(session, items)
+            paper.total_items = len(items)
+            paper.total_score = float(sum(float(item.score or 0.0) for item in items))
+            paper.paper_preview_json = _build_final_paper_preview(
+                items,
+                existing_preview=_paper_preview_from_json(paper.paper_preview_json),
+                knowledge_unit_by_id={},
+                links_by_item_id={},
+            ).model_dump_json()
+            context = _json_dict(paper.selection_context_json)
+            context["paper_layout_mode"] = "practice_scroll"
+            context["paper_layout"] = _build_paper_layout(
+                exam_mode=exam_mode,
+                question_count=question_count,
+                paper_layout_mode="practice_scroll",
+                rows=[
+                    {
+                        "item_order": item.item_order,
+                        "question_type": item.question_type,
+                        "difficulty": item.difficulty,
+                        "score": item.score,
+                    }
+                    for item in items
+                ],
+            )
+            paper.selection_context_json = json.dumps(context, ensure_ascii=False)
+            paper = _set_exam_generation_status(session, paper, status="ready")
+            _capture_exam_generated_event(
+                session,
+                course_id=course_id,
+                user_id=user_id,
+                paper=paper,
+                requested_question_count=question_count,
+                sample_file_count=0,
+                paper_layout_mode="practice_scroll",
+            )
+            done_payload = _paper_generation_event_payload(paper, stage="ready")
+        _publish_exam_event(course_id, paper_id, "done", done_payload)
+    except asyncio.CancelledError:
+        with managed_session() as session:
+            paper = exams_repo.get_exam_paper_by_id(session, paper_id)
+            if paper is not None:
+                _set_exam_generation_status(
+                    session,
+                    paper,
+                    status="failed",
+                    error_message="Initial exam generation was cancelled.",
+                )
+        raise
+    except Exception as exc:
+        logger.warning(
+            "initial_exam_published_document_generation_failed",
+            course_id=course_id,
+            user_id=user_id,
+            paper_id=paper_id,
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+        with managed_session() as session:
+            paper = exams_repo.get_exam_paper_by_id(session, paper_id)
+            if paper is not None:
+                paper = _set_exam_generation_status(
+                    session,
+                    paper,
+                    status="failed",
+                    error_message="Initial exam generation failed.",
+                )
+                _publish_exam_event(
+                    course_id,
+                    paper_id,
+                    "done",
+                    _paper_generation_event_payload(
+                        paper,
+                        stage="failed",
+                        error_message="Initial exam generation failed.",
+                    ),
+                )
+    return paper_id
 
 
 async def _run_exam_generation_background(
@@ -2985,6 +3390,52 @@ def _question_template_answer_history_response(
     )
 
 
+async def _grade_exam_paper_item_answer(
+    *,
+    course_id: str,
+    course_name: str,
+    item: ExamPaperItem,
+    answer: str,
+) -> QuestionTemplateGradeResponse:
+    question_type = _require_supported_question_type_for_api(item.question_type)
+    grading_item = ExamPaperItem(
+        exam_paper_id=int(item.exam_paper_id or 0),
+        question_template_id=int(item.question_template_id or 0),
+        item_order=int(item.item_order or 1),
+        stem_snapshot=item.stem_snapshot,
+        options_snapshot_json=item.options_snapshot_json,
+        answer_snapshot=item.answer_snapshot,
+        explanation_snapshot=item.explanation_snapshot,
+        difficulty=item.difficulty,
+        question_type=question_type,
+        score=float(item.score or 1.0),
+        answer_content=str(answer or ""),
+    )
+    decisions = await run_exam_grade_workflow(
+        course_id=course_id,
+        course_name=course_name,
+        items=[grading_item],
+    )
+    decision = decisions[0] if decisions else None
+    if decision is None:
+        raise AITeachMeError(
+            detail="Question grading produced no decision.",
+            error_code="QUESTION_TEMPLATE_GRADE_FAILED",
+            status_code=500,
+        )
+    return QuestionTemplateGradeResponse(
+        question_template_id=int(item.question_template_id or 0),
+        question_type=question_type,
+        is_correct=decision.is_correct,
+        score_obtained=decision.score_obtained,
+        score_max=decision.score_max,
+        feedback_text=decision.feedback_text,
+        error_cause_label=decision.error_cause_label,
+        grading_mode=decision.grading_mode,
+        correct_answer=item.answer_snapshot,
+    )
+
+
 async def _grade_question_template_answer(
     *,
     course_id: str,
@@ -2992,6 +3443,7 @@ async def _grade_question_template_answer(
     template: QuestionTemplate,
     answer: str,
 ) -> QuestionTemplateGradeResponse:
+    question_type = _require_supported_question_type_for_api(template.question_type)
     item = ExamPaperItem(
         exam_paper_id=0,
         question_template_id=int(template.id or 0),
@@ -3001,32 +3453,87 @@ async def _grade_question_template_answer(
         answer_snapshot=template.answer,
         explanation_snapshot=template.explanation,
         difficulty=template.difficulty,
-        question_type=template.question_type,
+        question_type=question_type,
         score=1.0,
         answer_content=str(answer or ""),
     )
-    decisions = await run_exam_grade_workflow(
+    return await _grade_exam_paper_item_answer(
         course_id=course_id,
         course_name=course_name,
-        items=[item],
+        item=item,
+        answer=answer,
     )
-    decision = decisions[0] if decisions else None
-    if decision is None:
-        raise AITeachMeError(
-            detail="Question template grading produced no decision.",
-            error_code="QUESTION_TEMPLATE_GRADE_FAILED",
-            status_code=500,
-        )
-    return QuestionTemplateGradeResponse(
-        question_template_id=int(template.id or 0),
-        question_type=template.question_type,
-        is_correct=decision.is_correct,
-        score_obtained=decision.score_obtained,
-        score_max=decision.score_max,
-        feedback_text=decision.feedback_text,
-        error_cause_label=decision.error_cause_label,
-        grading_mode=decision.grading_mode,
-        correct_answer=template.answer,
+
+
+def _mastery_drill_attempt_response(attempt: MasteryDrillAttempt) -> MasteryDrillAttemptResponse:
+    status = str(attempt.status or "failed")
+    if status not in {"grading", "graded", "failed"}:
+        status = "failed"
+    return MasteryDrillAttemptResponse(
+        id=int(attempt.id or 0),
+        mastery_drill_session_id=int(attempt.mastery_drill_session_id or 0),
+        exam_paper_item_id=int(attempt.exam_paper_item_id or 0),
+        question_template_id=int(attempt.question_template_id or 0),
+        attempt_no=max(1, int(attempt.attempt_no or 1)),
+        attempt_key=attempt.attempt_key,
+        status=status,
+        answer=attempt.answer_content,
+        is_correct=attempt.is_correct,
+        score_obtained=attempt.score_obtained,
+        score_max=attempt.score_max,
+        feedback_text=attempt.feedback_text,
+        error_cause_label=attempt.error_cause_label,
+        grading_mode=str(attempt.grading_mode or "").strip() or None,
+        time_spent_seconds=attempt.time_spent_seconds,
+        hint_used=bool(attempt.hint_used),
+        confidence_self_report=attempt.confidence_self_report,
+        error_code=str(attempt.error_code or "").strip() or None,
+        answered_at=attempt.answered_at,
+        created_at=attempt.created_at,
+        updated_at=attempt.updated_at,
+    )
+
+
+def _mastery_drill_session_response(
+    session: Session,
+    drill: MasteryDrillSession,
+) -> MasteryDrillSessionResponse:
+    status = str(drill.status or "active")
+    if status not in {"active", "completed", "abandoned"}:
+        status = "abandoned"
+    attempts = exams_repo.list_mastery_drill_attempts(
+        session,
+        drill_session_id=int(drill.id or 0),
+    )
+    return MasteryDrillSessionResponse(
+        id=int(drill.id or 0),
+        exam_paper_id=int(drill.exam_paper_id or 0),
+        status=status,
+        config_snapshot=_json_dict(drill.config_snapshot_json),
+        total_attempts=max(0, int(drill.total_attempts or 0)),
+        wrong_attempts=max(0, int(drill.wrong_attempts or 0)),
+        started_at=drill.started_at,
+        completed_at=drill.completed_at,
+        attempts=[_mastery_drill_attempt_response(attempt) for attempt in attempts],
+    )
+
+
+def _mastery_drill_history_summary(
+    drill: MasteryDrillSession | None,
+) -> MasteryDrillHistorySummary | None:
+    if drill is None:
+        return None
+    status = str(drill.status or "active")
+    if status not in {"active", "completed", "abandoned"}:
+        status = "abandoned"
+    total_attempts = max(0, int(drill.total_attempts or 0))
+    wrong_attempts = min(total_attempts, max(0, int(drill.wrong_attempts or 0)))
+    correct_attempts = total_attempts - wrong_attempts
+    return MasteryDrillHistorySummary(
+        status=status,
+        total_attempts=total_attempts,
+        wrong_attempts=wrong_attempts,
+        attempt_accuracy=(correct_attempts / total_attempts) if total_attempts else None,
     )
 
 
@@ -3053,6 +3560,7 @@ def _question_type_response(item: QuestionTypeRegistry) -> QuestionTypeRegistryI
 
 def _paper_detail(session: Session, paper: ExamPaper) -> ExamPaperDetailResponse:
     items = exams_repo.list_items_by_paper(session, paper.id or 0)
+    drill = exams_repo.get_mastery_drill_session_by_paper(session, paper_id=int(paper.id or 0))
     links_by_item_id = _links_for_items(session, items)
     context = _json_dict(paper.selection_context_json)
     effective_status = _effective_exam_paper_status(paper, context=context)
@@ -3128,6 +3636,8 @@ def _paper_detail(session: Session, paper: ExamPaper) -> ExamPaperDetailResponse
         graded_at=paper.graded_at,
         created_at=paper.created_at,
         selection_context=context,
+        profile_sync=_exam_profile_sync_response(session, paper) if paper.status == "graded" else None,
+        mastery_drill=_mastery_drill_session_response(session, drill) if drill is not None else None,
         paper_preview=_paper_preview_for_response(
             paper,
             items,
@@ -3304,7 +3814,24 @@ async def _spawn_exam_study_guide_after_response(
     user_id: str,
     paper_id: int,
 ) -> None:
-    request.app.state.background_task_registry.spawn(
+    _schedule_exam_study_guide_task(
+        getattr(request.app.state, "background_task_registry", None),
+        course_id=course_id,
+        user_id=user_id,
+        paper_id=paper_id,
+    )
+
+
+def _schedule_exam_study_guide_task(
+    background_task_registry,
+    *,
+    course_id: str,
+    user_id: str,
+    paper_id: int,
+) -> bool:
+    if background_task_registry is None:
+        return False
+    background_task_registry.spawn(
         _run_exam_study_guide_background(
             course_id=course_id,
             user_id=user_id,
@@ -3315,15 +3842,59 @@ async def _spawn_exam_study_guide_after_response(
         name=f"exam.study_guide:{course_id}:{paper_id}",
         dedupe_key=f"exam.study_guide:{course_id}:{paper_id}",
     )
+    return True
 
 
-async def _grade_exam(session: Session, paper: ExamPaper) -> ExamGradeResponse:
+async def _grade_exam(
+    session: Session,
+    paper: ExamPaper,
+    *,
+    claim_token: str | None = None,
+) -> ExamGradeResponse:
+    paper_id = int(paper.id or 0)
+    active_claim_token = str(claim_token or "").strip()
+    if not active_claim_token:
+        active_claim_token = uuid.uuid4().hex
+        claimed_at = utcnow()
+        claimed = exams_repo.claim_exam_grading(
+            session,
+            paper_id=paper_id,
+            claim_token=active_claim_token,
+        claimed_at=claimed_at,
+        lease_expires_at=claimed_at + EXAM_GRADING_LEASE_DURATION,
+        max_attempts=EXAM_GRADING_MAX_ATTEMPTS,
+        )
+        session.expire_all()
+        paper = exams_repo.get_exam_paper_by_id(session, paper_id) or paper
+        if not claimed:
+            return _exam_grade_response_from_paper(session, paper)
+
     items = exams_repo.list_items_by_paper(session, paper.id or 0)
+    _require_supported_exam_items(items)
     course_name = _ensure_course(session, paper.course_id, paper.user_id).name
+    session.commit()
     decisions = await run_exam_grade_workflow(course_id=paper.course_id, course_name=course_name, items=items)
     total_score = 0.0
     score_obtained = 0.0
     now = utcnow()
+    for item, decision in zip(items, decisions, strict=False):
+        total_score += item.score
+        score_obtained += decision.score_obtained or 0.0
+
+    finalized = exams_repo.finalize_exam_grading_claim(
+        session,
+        paper_id=paper_id,
+        claim_token=active_claim_token,
+        total_score=total_score,
+        score_obtained=score_obtained,
+        graded_at=now,
+    )
+    if not finalized:
+        session.rollback()
+        session.expire_all()
+        current = exams_repo.get_exam_paper_by_id(session, paper_id) or paper
+        return _exam_grade_response_from_paper(session, current)
+
     for item, decision in zip(items, decisions, strict=False):
         item.is_correct = decision.is_correct
         item.score_max = decision.score_max
@@ -3332,80 +3903,297 @@ async def _grade_exam(session: Session, paper: ExamPaper) -> ExamGradeResponse:
         item.feedback_text = decision.feedback_text
         item.graded_at = now
         item.updated_at = now
-        total_score += item.score
-        score_obtained += item.score_obtained or 0.0
         session.add(item)
-
-    paper.status = "graded"
-    paper.total_score = total_score
-    paper.score_obtained = score_obtained
-    paper.graded_at = now
-    paper.updated_at = now
-    session.add(paper)
-    session.commit()
-    session.refresh(paper)
-
-    _record_exam_profile_update_status(
+    exams_repo.ensure_exam_profile_sync(
         session,
-        paper,
-        status="running",
-        increment_attempt=True,
+        paper=paper,
+        status="pending",
+        trigger="exam_graded",
+        next_attempt_at=now,
+        auto_commit=False,
     )
-    profile_state = {}
-    profile_update_error: str | None = None
+    session.commit()
+    session.expire_all()
+    paper = exams_repo.get_exam_paper_by_id(session, paper_id) or paper
+    session.refresh(paper)
+    return _exam_grade_response_from_paper(session, paper)
+
+
+async def _renew_exam_grading_lease_loop(*, paper_id: int, claim_token: str) -> None:
+    while True:
+        await asyncio.sleep(EXAM_GRADING_HEARTBEAT_SECONDS)
+        try:
+            with managed_session() as session:
+                renewed = exams_repo.renew_exam_grading_lease(
+                    session,
+                    paper_id=paper_id,
+                    claim_token=claim_token,
+                    lease_expires_at=utcnow() + EXAM_GRADING_LEASE_DURATION,
+                )
+        except Exception as exc:
+            logger.warning(
+                "exam_grading_lease_renewal_failed",
+                paper_id=paper_id,
+                error_type=type(exc).__name__,
+            )
+            continue
+        if not renewed:
+            return
+
+
+async def _renew_mastery_drill_attempt_lease_loop(*, attempt_id: int, claim_token: str) -> None:
+    while True:
+        await asyncio.sleep(MASTERY_DRILL_ATTEMPT_HEARTBEAT_SECONDS)
+        try:
+            with managed_session() as session:
+                renewed = exams_repo.renew_mastery_drill_attempt_lease(
+                    session,
+                    attempt_id=attempt_id,
+                    claim_token=claim_token,
+                    lease_expires_at=utcnow() + MASTERY_DRILL_ATTEMPT_LEASE_DURATION,
+                )
+        except Exception as exc:
+            logger.warning(
+                "mastery_drill_attempt_lease_renewal_failed",
+                attempt_id=attempt_id,
+                error_type=type(exc).__name__,
+            )
+            continue
+        if not renewed:
+            return
+
+
+async def _run_exam_grading_background(
+    *,
+    course_id: str,
+    user_id: str,
+    paper_id: int,
+    background_task_registry=None,
+) -> None:
+    claim_token = uuid.uuid4().hex
+    claimed_at = utcnow()
+    with managed_session() as session:
+        paper = exams_repo.get_exam_paper_by_id(session, paper_id)
+        if paper is None or paper.course_id != course_id or paper.user_id != user_id or _is_hidden_exam_paper(paper):
+            return
+        claimed = exams_repo.claim_exam_grading(
+            session,
+            paper_id=paper_id,
+            claim_token=claim_token,
+            claimed_at=claimed_at,
+            lease_expires_at=claimed_at + EXAM_GRADING_LEASE_DURATION,
+        )
+    if not claimed:
+        return
+
+    heartbeat = asyncio.create_task(
+        _renew_exam_grading_lease_loop(paper_id=paper_id, claim_token=claim_token),
+        name=f"exam.grading.heartbeat:{paper_id}",
+    )
     try:
-        profile_result = await run_profile_update_workflow(
-            exam_paper_id=paper.id or 0,
-            user_id=paper.user_id,
-            course_id=paper.course_id,
+        with managed_session() as session:
+            paper = exams_repo.get_exam_paper_by_id(session, paper_id)
+            if paper is None:
+                return
+            grade_response = await _grade_exam(session, paper, claim_token=claim_token)
+            session.expire_all()
+            paper = exams_repo.get_exam_paper_by_id(session, paper_id)
+            if paper is None or paper.status != "graded":
+                return
+            analytics_user = _analytics_user_context_from_db(session, user_id)
+            _capture_exam_event(
+                "exam_graded",
+                course_id=course_id,
+                user=analytics_user,
+                paper=paper,
+                insert_id_parts=["graded", str(paper.graded_at.isoformat() if paper.graded_at else utcnow().isoformat())],
+                properties={
+                    "states_updated": grade_response.states_updated,
+                    "tasks_created": grade_response.tasks_created,
+                    "mastery_consumed": grade_response.mastery_consumed,
+                },
+            )
+        _publish_exam_event(course_id, paper_id, "done", {"exam_paper_id": paper_id, "status": "graded"})
+        profile_sync_scheduled = schedule_exam_profile_sync_task(
+            background_task_registry,
+            course_id=course_id,
+            user_id=user_id,
+            paper_id=paper_id,
         )
-        if profile_result.failed:
-            profile_update_error = str(profile_result.error or "unknown profile workflow failure")
-        else:
-            profile_state = dict(profile_result.require_value() or {})
-            profile_update_error = str(profile_state.get("error") or "").strip() or None
+        if not profile_sync_scheduled:
+            await run_exam_profile_sync_background(
+                course_id=course_id,
+                user_id=user_id,
+                paper_id=paper_id,
+            )
+        _schedule_exam_study_guide_task(
+            background_task_registry,
+            course_id=course_id,
+            user_id=user_id,
+            paper_id=paper_id,
+        )
+    except asyncio.CancelledError:
+        with managed_session() as session:
+            exams_repo.release_exam_grading_claim(
+                session,
+                paper_id=paper_id,
+                claim_token=claim_token,
+                error_message="grading_worker_cancelled",
+                terminal_when_exhausted=False,
+                max_attempts=EXAM_GRADING_MAX_ATTEMPTS,
+            )
+        raise
     except Exception as exc:
-        profile_update_error = f"{type(exc).__name__}: {exc}"
-    mastery = dict(profile_state.get("mastery_result") or {})
-    review_task_ids = list(profile_state.get("review_task_ids") or [])
-    if profile_update_error:
-        logger.warning(
-            "exam_profile_update_degraded",
-            course_id=paper.course_id,
-            user_id=paper.user_id,
-            exam_paper_id=paper.id,
-            error=profile_update_error,
-            mastery_updated=bool(profile_state.get("mastery_result")),
-            review_scheduled=bool(profile_state.get("review_scheduled")),
+        logger.exception(
+            "exam_grading_background_failed",
+            course_id=course_id,
+            user_id=user_id,
+            paper_id=paper_id,
+            error=str(exc),
         )
-        _record_exam_profile_update_status(
-            session,
-            paper,
-            status="failed",
-            states_updated=int(mastery.get("states_updated") or 0),
-            review_task_count=len(review_task_ids),
-            last_error=profile_update_error,
-        )
-    else:
-        _record_exam_profile_update_status(
-            session,
-            paper,
-            status="completed",
-            states_updated=int(mastery.get("states_updated") or 0),
-            review_task_count=len(review_task_ids),
-        )
-    return ExamGradeResponse(
-        id=paper.id or 0,
-        status="completed",
-        error_message=None,
-        created_at=paper.created_at,
-        updated_at=paper.updated_at,
-        exam_paper_id=paper.id or 0,
-        score=score_obtained,
-        states_updated=int(mastery.get("states_updated") or 0),
-        tasks_created=len(review_task_ids),
-        mastery_consumed=bool(mastery),
+        terminal_failure = False
+        with managed_session() as session:
+            released = exams_repo.release_exam_grading_claim(
+                session,
+                paper_id=paper_id,
+                claim_token=claim_token,
+                error_message=f"{type(exc).__name__}: grading_failed",
+                max_attempts=EXAM_GRADING_MAX_ATTEMPTS,
+            )
+            if released:
+                session.expire_all()
+                failed_paper = exams_repo.get_exam_paper_by_id(session, paper_id)
+                terminal_failure = failed_paper is not None and failed_paper.status == "grading_failed"
+        if terminal_failure:
+            _publish_exam_event(
+                course_id,
+                paper_id,
+                "failed",
+                {
+                    "exam_paper_id": paper_id,
+                    "status": "grading_failed",
+                    "error_message": "判卷多次失败，请手动重新批改。",
+                },
+            )
+    finally:
+        heartbeat.cancel()
+        try:
+            await heartbeat
+        except asyncio.CancelledError:
+            pass
+        except Exception as exc:
+            logger.warning(
+                "exam_grading_heartbeat_cleanup_failed",
+                paper_id=paper_id,
+                error_type=type(exc).__name__,
+            )
+
+
+def _schedule_exam_grading_task(
+    background_task_registry,
+    *,
+    course_id: str,
+    user_id: str,
+    paper_id: int,
+) -> bool:
+    if background_task_registry is None:
+        return False
+    background_task_registry.spawn(
+        _run_exam_grading_background(
+            course_id=course_id,
+            user_id=user_id,
+            paper_id=paper_id,
+            background_task_registry=background_task_registry,
+        ),
+        kind="exam.grading",
+        course_id=course_id,
+        name=f"exam.grading:{course_id}:{paper_id}",
+        dedupe_key=f"exam.grading:{paper_id}",
     )
+    return True
+
+
+def _recover_exam_grading_tasks_once(background_task_registry) -> int:
+    now = utcnow()
+    with managed_session() as session:
+        papers = exams_repo.list_recoverable_exam_grading_papers(session, as_of=now)
+        exhausted_papers = [
+            (str(paper.course_id), int(paper.id or 0))
+            for paper in papers
+            if paper.id is not None and int(paper.grading_attempts or 0) >= EXAM_GRADING_MAX_ATTEMPTS
+        ]
+        exhausted_paper_ids = {paper_id for _, paper_id in exhausted_papers}
+        for exhausted_course_id, paper_id in exhausted_papers:
+            if exams_repo.fail_exhausted_exam_grading(
+                session,
+                paper_id=paper_id,
+                as_of=now,
+                max_attempts=EXAM_GRADING_MAX_ATTEMPTS,
+            ):
+                _publish_exam_event(
+                    exhausted_course_id,
+                    paper_id,
+                    "failed",
+                    {
+                        "exam_paper_id": paper_id,
+                        "status": "grading_failed",
+                        "error_message": "判卷重试次数已用尽，请手动重新批改。",
+                    },
+                )
+        recoverable = [
+            (str(paper.course_id), str(paper.user_id), int(paper.id or 0))
+            for paper in papers
+            if paper.id is not None
+            and int(paper.id or 0) not in exhausted_paper_ids
+            and _is_exam_grading_recoverable_now(paper, as_of=now)
+        ]
+    return sum(
+        1
+        for course_id, user_id, paper_id in recoverable
+        if _schedule_exam_grading_task(
+            background_task_registry,
+            course_id=course_id,
+            user_id=user_id,
+            paper_id=paper_id,
+        )
+    )
+
+
+async def run_exam_grading_recovery_loop(*, task_registry) -> None:
+    while True:
+        try:
+            _recover_exam_grading_tasks_once(task_registry)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.exception("exam_grading_recovery_scan_failed", error=str(exc))
+        await asyncio.sleep(EXAM_GRADING_RECOVERY_INTERVAL_SECONDS)
+
+
+@router.get(
+    "/mastery-drills/active",
+    response_model=ApiResponse[ExamPaperDetailResponse | None],
+    summary="Fetch the active mastery drill for this course",
+    responses=build_error_responses([400, 404, 500]),
+)
+async def active_mastery_drill(
+    course_id: str = Path(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[ExamPaperDetailResponse | None]:
+    normalized = normalize_course_id(course_id)
+    _ensure_course(session, normalized, user.user_id)
+    active = exams_repo.get_active_mastery_drill_session(
+        session,
+        course_id=normalized,
+        user_id=user.user_id,
+    )
+    if active is None:
+        return ok_response(None)
+    paper = exams_repo.get_exam_paper_by_id(session, int(active.exam_paper_id or 0))
+    if paper is None or _is_hidden_exam_paper(paper):
+        return ok_response(None)
+    return ok_response(_paper_detail(session, paper))
 
 
 @router.post(
@@ -3424,7 +4212,7 @@ async def generate_exam(
 ) -> ApiResponse[ExamGenerateResponse]:
     normalized = normalize_course_id(course_id)
     _ensure_course(session, normalized, user.user_id)
-    mode = exam_mode_value(body.exam_mode)
+    mode = _require_generic_exam_mode(exam_mode_value(body.exam_mode))
     default_question_count = _default_exam_question_count_for_mode(mode)
     question_count = max(1, int(body.num_questions or default_question_count))
     paper_layout_mode = _normalize_paper_layout_mode(
@@ -3489,7 +4277,6 @@ async def generate_exam(
             sample_file_ids=body.sample_file_ids,
             paper_layout_mode=paper_layout_mode,
         )
-    served_from_prepared = paper is not None
     if paper is not None:
         paper = _mark_prewarm_paper_claimed(session, paper)
         paper_id = int(paper.id or 0)
@@ -3655,6 +4442,7 @@ async def exam_prewarm_status(
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[ExamPrewarmStatusResponse]:
+    del request, background_tasks
     normalized = normalize_course_id(course_id)
     _ensure_course(session, normalized, user.user_id)
     mode = exam_mode_value(exam_mode)
@@ -3715,7 +4503,6 @@ async def exam_prewarm_status(
             paper_layout_mode=resolved_paper_layout_mode,
         )
     status = _prewarm_status_from_candidate(candidate)
-    background_requested = False
 
     return ok_response(
         ExamPrewarmStatusResponse(
@@ -3725,7 +4512,7 @@ async def exam_prewarm_status(
             prepared_at=candidate.prepared_at if candidate is not None else None,
             expires_at=candidate.expires_at if candidate is not None else None,
             updated_at=candidate.updated_at if candidate is not None else None,
-            background_requested=background_requested,
+            background_requested=False,
             error_message=str(_json_dict(candidate.selection_context_json).get("error_message") or "")
             if candidate is not None and status == "failed"
             else None,
@@ -3765,6 +4552,7 @@ async def exam_history(
     )
     paper_ids = [int(paper.id or 0) for paper in rows if paper.id is not None]
     items_by_paper_id = exams_repo.list_items_by_papers(session, paper_ids)
+    mastery_drill_by_paper_id = exams_repo.list_mastery_drill_sessions_by_papers(session, paper_ids)
     all_items = [item for items in items_by_paper_id.values() for item in items]
     links_by_item_id = _links_for_items(session, all_items)
     knowledge_unit_by_id = _knowledge_units_for_item_links(session, links_by_item_id)
@@ -3790,6 +4578,9 @@ async def exam_history(
                         items_by_paper_id.get(int(paper.id or 0), []),
                         knowledge_unit_by_id=knowledge_unit_by_id,
                         links_by_item_id=links_by_item_id,
+                    ),
+                    mastery_drill=_mastery_drill_history_summary(
+                        mastery_drill_by_paper_id.get(int(paper.id or 0))
                     ),
                 )
                 for paper in rows
@@ -3877,7 +4668,7 @@ async def question_template_answer_history(
     "/question-templates/{question_template_id}/grade",
     response_model=ApiResponse[QuestionTemplateGradeResponse],
     summary="Grade one answer against a question template",
-    responses=build_error_responses([400, 404, 500]),
+    responses=build_error_responses([400, 404, 409, 500]),
 )
 async def grade_question_template_answer(
     course_id: str = Path(...),
@@ -3986,7 +4777,563 @@ async def question_types(
             )
         ).all()
     )
-    return ok_response([_question_type_response(item) for item in rows])
+    return ok_response([_question_type_response(item) for item in rows if is_supported_question_type(item.type_key)])
+
+
+@router.post(
+    "/mastery-drills/start",
+    response_model=ApiResponse[ExamPaperDetailResponse],
+    summary="Start or resume a durable mastery drill",
+    responses=build_error_responses([400, 404, 409, 500]),
+)
+async def start_mastery_drill(
+    course_id: str = Path(...),
+    body: MasteryDrillStartRequest = Body(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[ExamPaperDetailResponse]:
+    normalized = normalize_course_id(course_id)
+    _ensure_course(session, normalized, user.user_id)
+
+    active = exams_repo.get_open_mastery_drill_session(
+        session,
+        course_id=normalized,
+        user_id=user.user_id,
+    )
+    if active is not None:
+        active_paper = exams_repo.get_exam_paper_by_id(session, int(active.exam_paper_id or 0))
+        if (
+            active_paper is not None
+            and not _is_hidden_exam_paper(active_paper)
+            and active_paper.status in {"ready", "in_progress"}
+        ):
+            return ok_response(_paper_detail(session, active_paper))
+        abandoned = exams_repo.abandon_mastery_drill_session(
+            session,
+            drill_session_id=int(active.id or 0),
+            abandoned_at=utcnow(),
+        )
+        if abandoned:
+            logger.warning(
+                "mastery_drill_inconsistent_active_session_abandoned",
+                course_id=normalized,
+                user_id=user.user_id,
+                drill_session_id=int(active.id or 0),
+                exam_paper_id=int(active.exam_paper_id or 0),
+                exam_paper_status=str(active_paper.status if active_paper is not None else "missing"),
+            )
+        session.expire_all()
+
+    existing = exams_repo.get_mastery_drill_session_by_key(
+        session,
+        course_id=normalized,
+        user_id=user.user_id,
+        session_key=body.session_key,
+    )
+    if existing is not None:
+        existing_paper = exams_repo.get_exam_paper_by_id(session, int(existing.exam_paper_id or 0))
+        if existing_paper is not None and not _is_hidden_exam_paper(existing_paper):
+            return ok_response(_paper_detail(session, existing_paper))
+
+    template_ids = [int(template_id) for template_id in body.question_template_ids]
+    if len(template_ids) != len(set(template_ids)):
+        raise AITeachMeError(
+            detail="Mastery drill question template IDs must be unique.",
+            error_code="MASTERY_DRILL_DUPLICATE_TEMPLATE",
+            status_code=400,
+        )
+    templates = list(
+        session.exec(
+            select(QuestionTemplate).where(
+                QuestionTemplate.course_id == normalized,
+                QuestionTemplate.id.in_(template_ids),
+            )
+        ).all()
+    )
+    template_by_id = {int(template.id or 0): template for template in templates}
+    missing_template_ids = [template_id for template_id in template_ids if template_id not in template_by_id]
+    if missing_template_ids:
+        raise AITeachMeError(
+            detail="One or more mastery drill templates were not found.",
+            error_code="MASTERY_DRILL_TEMPLATE_NOT_FOUND",
+            status_code=404,
+            data={"question_template_ids": missing_template_ids},
+        )
+
+    ordered_templates = [template_by_id[template_id] for template_id in template_ids]
+    for template in ordered_templates:
+        _require_supported_question_type_for_api(template.question_type)
+        if template.status != "active":
+            raise AITeachMeError(
+                detail=f"Question template `{template.id}` is not active.",
+                error_code="MASTERY_DRILL_TEMPLATE_NOT_ACTIVE",
+                status_code=409,
+                data={"question_template_id": int(template.id or 0), "status": template.status},
+            )
+        if not template.stem.strip() or not template.answer.strip():
+            raise AITeachMeError(
+                detail=f"Question template `{template.id}` is incomplete.",
+                error_code="MASTERY_DRILL_TEMPLATE_INCOMPLETE",
+                status_code=409,
+                data={"question_template_id": int(template.id or 0)},
+            )
+
+    configured_question_types = [
+        _require_supported_question_type_for_api(question_type)
+        for question_type in body.configured_question_types
+    ]
+    now = utcnow()
+    config_snapshot = {
+        "version": 1,
+        "configured_question_count": int(body.configured_question_count),
+        "configured_question_types": configured_question_types,
+        "question_template_ids": template_ids,
+    }
+    config_json = json.dumps(config_snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    paper = ExamPaper(
+        course_id=normalized,
+        user_id=user.user_id,
+        exam_mode="mastery_drill",
+        status="in_progress",
+        visibility="visible",
+        generation_origin="mastery_drill_session",
+        config_hash=hashlib.sha256(config_json.encode("utf-8")).hexdigest(),
+        config_snapshot_json=config_json,
+        total_items=len(ordered_templates),
+        total_score=float(len(ordered_templates)),
+        selection_context_json=json.dumps(
+            {
+                "standalone_mastery_drill": True,
+                "persistent_mastery_drill": True,
+                "title": "独立闯关训练",
+            },
+            ensure_ascii=False,
+        ),
+        created_at=now,
+        updated_at=now,
+    )
+    try:
+        exams_repo.create_exam_paper(session, paper, auto_commit=False)
+        template_links = exams_repo.list_links_for_templates(session, template_ids)
+        items = exams_repo.create_exam_paper_items(
+            session,
+            [
+                ExamPaperItem(
+                    exam_paper_id=int(paper.id or 0),
+                    question_template_id=int(template.id or 0),
+                    item_order=index,
+                    stem_snapshot=template.stem,
+                    options_snapshot_json=template.options_json,
+                    answer_snapshot=template.answer,
+                    explanation_snapshot=template.explanation,
+                    selection_context_json=json.dumps(
+                        {
+                            "mastery_drill_session": True,
+                            "template_version": int(template.template_version or 1),
+                        },
+                        ensure_ascii=False,
+                    ),
+                    difficulty=template.difficulty,
+                    question_type=template.question_type,
+                    score=1.0,
+                    created_at=now,
+                    updated_at=now,
+                )
+                for index, template in enumerate(ordered_templates, start=1)
+            ],
+            auto_commit=False,
+        )
+        for item in items:
+            exams_repo.replace_exam_paper_item_links(
+                session,
+                item_id=int(item.id or 0),
+                refs=template_links.get(int(item.question_template_id or 0), []),
+                auto_commit=False,
+            )
+        drill = MasteryDrillSession(
+            exam_paper_id=int(paper.id or 0),
+            course_id=normalized,
+            user_id=user.user_id,
+            session_key=body.session_key,
+            status="active",
+            config_snapshot_json=config_json,
+            started_at=now,
+            created_at=now,
+            updated_at=now,
+        )
+        exams_repo.create_mastery_drill_session(session, drill, auto_commit=False)
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        existing = exams_repo.get_mastery_drill_session_by_key(
+            session,
+            course_id=normalized,
+            user_id=user.user_id,
+            session_key=body.session_key,
+        )
+        if existing is None:
+            existing = exams_repo.get_active_mastery_drill_session(
+                session,
+                course_id=normalized,
+                user_id=user.user_id,
+            )
+        if existing is None:
+            raise
+        concurrent_paper = exams_repo.get_exam_paper_by_id(session, int(existing.exam_paper_id or 0))
+        if concurrent_paper is None or _is_hidden_exam_paper(concurrent_paper):
+            raise
+        return ok_response(_paper_detail(session, concurrent_paper))
+
+    session.expire_all()
+    stored_paper = exams_repo.get_exam_paper_by_id(session, int(paper.id or 0))
+    if stored_paper is None:
+        _raise_not_found("Created mastery drill paper was not found.")
+    _capture_exam_event(
+        "mastery_drill_session_started",
+        course_id=normalized,
+        user=user,
+        paper=stored_paper,
+        insert_id_parts=[body.session_key],
+        properties={
+            "question_count": len(ordered_templates),
+            "configured_question_count": int(body.configured_question_count),
+            "configured_question_types": configured_question_types,
+        },
+    )
+    return ok_response(_paper_detail(session, stored_paper))
+
+
+@router.post(
+    "/{exam_paper_id}/mastery-drill-attempts",
+    response_model=ApiResponse[MasteryDrillAttemptResponse],
+    summary="Persist and grade one mastery-drill attempt",
+    responses=build_error_responses([400, 404, 409, 500]),
+)
+async def record_mastery_drill_attempt(
+    course_id: str = Path(...),
+    exam_paper_id: int = Path(..., ge=1),
+    body: MasteryDrillAttemptRequest = Body(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[MasteryDrillAttemptResponse]:
+    normalized = normalize_course_id(course_id)
+    course = _ensure_course(session, normalized, user.user_id)
+    paper = exams_repo.get_exam_paper_by_id(session, exam_paper_id)
+    if paper is None or paper.course_id != normalized or paper.user_id != user.user_id or _is_hidden_exam_paper(paper):
+        _raise_not_found(f"Exam paper `{exam_paper_id}` not found.")
+    if paper.exam_mode != "mastery_drill":
+        raise AITeachMeError(
+            detail="This exam paper is not a mastery drill.",
+            error_code="EXAM_NOT_MASTERY_DRILL",
+            status_code=409,
+        )
+    drill = exams_repo.get_mastery_drill_session_by_paper(session, paper_id=exam_paper_id)
+    if drill is None:
+        _raise_not_found("Mastery drill session was not found.", error_code="MASTERY_DRILL_NOT_FOUND")
+    if drill.status != "active" or paper.status not in {"ready", "in_progress"}:
+        raise AITeachMeError(
+            detail="This mastery drill is already complete.",
+            error_code="MASTERY_DRILL_NOT_ACTIVE",
+            status_code=409,
+        )
+    item = session.get(ExamPaperItem, body.exam_paper_item_id)
+    if item is None or int(item.exam_paper_id or 0) != exam_paper_id:
+        _raise_not_found(
+            f"Exam paper item `{body.exam_paper_item_id}` not found.",
+            error_code="EXAM_PAPER_ITEM_NOT_FOUND",
+        )
+    _require_supported_question_type_for_api(item.question_type)
+    answer = str(body.answer or "").strip()
+    if not answer:
+        raise AITeachMeError(
+            detail="Mastery drill answer cannot be empty.",
+            error_code="MASTERY_DRILL_EMPTY_ANSWER",
+            status_code=400,
+        )
+    request_payload = {
+        "exam_paper_item_id": int(body.exam_paper_item_id),
+        "answer": answer,
+        "time_spent_seconds": body.time_spent_seconds,
+        "hint_used": body.hint_used,
+        "confidence_self_report": body.confidence_self_report,
+    }
+    request_hash = hashlib.sha256(
+        json.dumps(request_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    claimed_at = utcnow()
+    claim_token = uuid.uuid4().hex
+    outcome, attempt = exams_repo.claim_mastery_drill_attempt(
+        session,
+        drill_session_id=int(drill.id or 0),
+        item=item,
+        attempt_key=body.attempt_key,
+        request_hash=request_hash,
+        answer=answer,
+        time_spent_seconds=body.time_spent_seconds,
+        hint_used=body.hint_used,
+        confidence_self_report=body.confidence_self_report,
+        claim_token=claim_token,
+        claimed_at=claimed_at,
+        lease_expires_at=claimed_at + MASTERY_DRILL_ATTEMPT_LEASE_DURATION,
+    )
+    if outcome == "conflict":
+        raise AITeachMeError(
+            detail="This attempt key was already used for a different answer.",
+            error_code="MASTERY_DRILL_ATTEMPT_CONFLICT",
+            status_code=409,
+        )
+    if outcome == "completed":
+        return ok_response(_mastery_drill_attempt_response(attempt))
+    if outcome == "passed":
+        raise AITeachMeError(
+            detail="This mastery drill item was already passed.",
+            error_code="MASTERY_DRILL_ITEM_ALREADY_PASSED",
+            status_code=409,
+        )
+    if outcome == "in_progress":
+        raise AITeachMeError(
+            detail="This question already has an answer attempt being graded.",
+            error_code="MASTERY_DRILL_ATTEMPT_IN_PROGRESS",
+            status_code=409,
+        )
+
+    attempt_id = int(attempt.id or 0)
+    heartbeat = asyncio.create_task(
+        _renew_mastery_drill_attempt_lease_loop(attempt_id=attempt_id, claim_token=claim_token),
+        name=f"mastery-drill-attempt.heartbeat:{attempt_id}",
+    )
+    try:
+        grade = await _grade_exam_paper_item_answer(
+            course_id=normalized,
+            course_name=course.name,
+            item=item,
+            answer=answer,
+        )
+    except asyncio.CancelledError:
+        exams_repo.fail_mastery_drill_attempt(
+            session,
+            attempt_id=attempt_id,
+            claim_token=claim_token,
+            error_code="MASTERY_DRILL_ATTEMPT_CANCELLED",
+        )
+        raise
+    except Exception as exc:
+        error_code = exc.error_code if isinstance(exc, AITeachMeError) else "MASTERY_DRILL_ATTEMPT_GRADE_FAILED"
+        exams_repo.fail_mastery_drill_attempt(
+            session,
+            attempt_id=attempt_id,
+            claim_token=claim_token,
+            error_code=error_code,
+        )
+        raise
+    finally:
+        heartbeat.cancel()
+        try:
+            await heartbeat
+        except asyncio.CancelledError:
+            pass
+        except Exception as exc:
+            logger.warning(
+                "mastery_drill_attempt_heartbeat_cleanup_failed",
+                attempt_id=attempt_id,
+                error_type=type(exc).__name__,
+            )
+
+    finalized = exams_repo.finalize_mastery_drill_attempt(
+        session,
+        attempt_id=attempt_id,
+        claim_token=claim_token,
+        is_correct=grade.is_correct,
+        score_obtained=grade.score_obtained,
+        score_max=grade.score_max,
+        feedback_text=grade.feedback_text,
+        error_cause_label=grade.error_cause_label,
+        grading_mode=grade.grading_mode,
+        answered_at=utcnow(),
+    )
+    if finalized is None:
+        current = exams_repo.get_mastery_drill_attempt_by_key(
+            session,
+            drill_session_id=int(drill.id or 0),
+            attempt_key=body.attempt_key,
+        )
+        if current is not None and current.status == "graded":
+            return ok_response(_mastery_drill_attempt_response(current))
+        raise AITeachMeError(
+            detail="The mastery drill grading claim was lost; retry the same attempt.",
+            error_code="MASTERY_DRILL_ATTEMPT_CLAIM_LOST",
+            status_code=409,
+        )
+    _capture_exam_event(
+        "mastery_drill_attempt_graded",
+        course_id=normalized,
+        user=user,
+        paper=paper,
+        insert_id_parts=[str(finalized.id), body.attempt_key],
+        properties={
+            "question_type": item.question_type,
+            "difficulty": item.difficulty,
+            "attempt_no": finalized.attempt_no,
+            "is_correct": finalized.is_correct,
+            "grading_mode": finalized.grading_mode,
+            "hint_used": finalized.hint_used,
+        },
+    )
+    return ok_response(_mastery_drill_attempt_response(finalized))
+
+
+@router.post(
+    "/{exam_paper_id}/mastery-drill-complete",
+    response_model=ApiResponse[ExamGradeResponse],
+    summary="Idempotently complete a mastery drill",
+    responses=build_error_responses([400, 404, 409, 500]),
+)
+async def complete_mastery_drill(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    course_id: str = Path(...),
+    exam_paper_id: int = Path(..., ge=1),
+    body: MasteryDrillCompleteRequest = Body(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[ExamGradeResponse]:
+    normalized = normalize_course_id(course_id)
+    _ensure_course(session, normalized, user.user_id)
+    paper = exams_repo.get_exam_paper_by_id(session, exam_paper_id)
+    if paper is None or paper.course_id != normalized or paper.user_id != user.user_id or _is_hidden_exam_paper(paper):
+        _raise_not_found(f"Exam paper `{exam_paper_id}` not found.")
+    if paper.exam_mode != "mastery_drill":
+        raise AITeachMeError(
+            detail="This exam paper is not a mastery drill.",
+            error_code="EXAM_NOT_MASTERY_DRILL",
+            status_code=409,
+        )
+    drill = exams_repo.get_mastery_drill_session_by_paper(session, paper_id=exam_paper_id)
+    if drill is None:
+        _raise_not_found("Mastery drill session was not found.", error_code="MASTERY_DRILL_NOT_FOUND")
+    if drill.status == "completed" and paper.status == "graded":
+        return ok_response(_exam_grade_response_from_paper(session, paper))
+    if drill.status != "active" or paper.status not in {"ready", "in_progress"}:
+        raise AITeachMeError(
+            detail="This mastery drill cannot be completed from its current state.",
+            error_code="MASTERY_DRILL_NOT_COMPLETABLE",
+            status_code=409,
+        )
+
+    items = exams_repo.list_items_by_paper(session, exam_paper_id)
+    _require_supported_exam_items(items)
+    incomplete_item_ids = [int(item.id or 0) for item in items if item.is_correct is not True]
+    if incomplete_item_ids:
+        raise AITeachMeError(
+            detail="Every mastery drill item must be passed before completion.",
+            error_code="MASTERY_DRILL_ITEMS_INCOMPLETE",
+            status_code=409,
+            data={"exam_paper_item_ids": incomplete_item_ids},
+        )
+    attempts = exams_repo.list_mastery_drill_attempts(
+        session,
+        drill_session_id=int(drill.id or 0),
+    )
+    graded_item_ids = {
+        int(attempt.exam_paper_item_id)
+        for attempt in attempts
+        if attempt.status == "graded" and attempt.is_correct is True
+    }
+    missing_attempt_item_ids = [int(item.id or 0) for item in items if int(item.id or 0) not in graded_item_ids]
+    if missing_attempt_item_ids:
+        raise AITeachMeError(
+            detail="Every mastery drill item requires a persisted correct attempt.",
+            error_code="MASTERY_DRILL_ATTEMPTS_INCOMPLETE",
+            status_code=409,
+            data={"exam_paper_item_ids": missing_attempt_item_ids},
+        )
+
+    canonical_attempts = [
+        {
+            "id": int(attempt.id or 0),
+            "item_id": int(attempt.exam_paper_item_id or 0),
+            "is_correct": bool(attempt.is_correct),
+        }
+        for attempt in attempts
+        if attempt.status == "graded"
+    ]
+    submission_hash = hashlib.sha256(
+        json.dumps(canonical_attempts, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    first_attempt_by_item_id: dict[int, MasteryDrillAttempt] = {}
+    for attempt in attempts:
+        if attempt.status != "graded":
+            continue
+        first_attempt_by_item_id.setdefault(int(attempt.exam_paper_item_id or 0), attempt)
+    total_score = sum(float(item.score or 0.0) for item in items)
+    score_obtained = 0.0
+    for item in items:
+        first_attempt = first_attempt_by_item_id.get(int(item.id or 0))
+        if first_attempt is None:
+            continue
+        attempt_score_max = float(first_attempt.score_max or 0.0)
+        if attempt_score_max <= 0:
+            score_obtained += float(item.score or 0.0) if first_attempt.is_correct is True else 0.0
+            continue
+        score_ratio = max(0.0, min(1.0, float(first_attempt.score_obtained or 0.0) / attempt_score_max))
+        score_obtained += float(item.score or 0.0) * score_ratio
+    completed_at = utcnow()
+    finalized = exams_repo.finalize_mastery_drill_session(
+        session,
+        drill=drill,
+        paper=paper,
+        completion_key=body.completion_key,
+        submission_hash=submission_hash,
+        total_score=total_score,
+        score_obtained=score_obtained,
+        duration_seconds=body.duration_seconds,
+        completed_at=completed_at,
+    )
+    session.expire_all()
+    paper = exams_repo.get_exam_paper_by_id(session, exam_paper_id)
+    if paper is None:
+        _raise_not_found(f"Exam paper `{exam_paper_id}` not found.")
+    if not finalized and paper.status != "graded":
+        raise AITeachMeError(
+            detail="The mastery drill completion state changed; reload and retry.",
+            error_code="MASTERY_DRILL_COMPLETION_CONFLICT",
+            status_code=409,
+        )
+
+    if finalized:
+        _capture_exam_event(
+            "mastery_drill_session_completed",
+            course_id=normalized,
+            user=user,
+            paper=paper,
+            insert_id_parts=[body.completion_key, submission_hash],
+            properties={
+                "question_count": len(items),
+                "total_attempt_count": len([attempt for attempt in attempts if attempt.status == "graded"]),
+                "wrong_attempt_count": len(
+                    [attempt for attempt in attempts if attempt.status == "graded" and attempt.is_correct is False]
+                ),
+                "duration_seconds": body.duration_seconds,
+            },
+        )
+
+    profile_sync = exams_repo.get_exam_profile_sync(session, paper_id=exam_paper_id)
+    if profile_sync is not None and is_exam_profile_sync_recoverable_now(profile_sync):
+        registry = getattr(request.app.state, "background_task_registry", None)
+        scheduled = schedule_exam_profile_sync_task(
+            registry,
+            course_id=normalized,
+            user_id=user.user_id,
+            paper_id=exam_paper_id,
+        )
+        if not scheduled:
+            background_tasks.add_task(
+                run_exam_profile_sync_background,
+                course_id=normalized,
+                user_id=user.user_id,
+                paper_id=exam_paper_id,
+            )
+    return ok_response(_exam_grade_response_from_paper(session, paper))
 
 
 @router.get(
@@ -4038,7 +5385,7 @@ async def exam_generation_stream(
         initial = snapshot_payload()
         if should_emit_snapshot(initial, force=True):
             yield format_sse_event("snapshot", initial)
-        if str(initial.get("status") or "") in {"ready", "failed", "graded", "submitted"}:
+        if str(initial.get("status") or "") in {"ready", "failed", "graded"}:
             yield format_sse_event("done", initial)
             return
 
@@ -4054,7 +5401,7 @@ async def exam_generation_stream(
                         yield format_sse_event("snapshot", snapshot)
                     else:
                         yield format_sse_event("ping", {})
-                    if str(snapshot.get("status") or "") in {"ready", "failed", "graded", "submitted"}:
+                    if str(snapshot.get("status") or "") in {"ready", "failed", "graded"}:
                         yield format_sse_event("done", snapshot)
                         break
                     continue
@@ -4082,6 +5429,7 @@ async def exam_generation_stream(
     responses=build_error_responses([400, 404, 500]),
 )
 async def exam_detail(
+    request: Request,
     course_id: str = Path(...),
     exam_paper_id: int = Path(...),
     user: CurrentUserContext = Depends(get_current_user_context),
@@ -4092,6 +5440,21 @@ async def exam_detail(
     paper = exams_repo.get_exam_paper_by_id(session, exam_paper_id)
     if paper is None or paper.course_id != normalized or paper.user_id != user.user_id or _is_hidden_exam_paper(paper):
         _raise_not_found(f"Exam paper `{exam_paper_id}` not found.")
+    if _is_exam_grading_recoverable_now(paper):
+        _schedule_exam_grading_task(
+            getattr(request.app.state, "background_task_registry", None),
+            course_id=normalized,
+            user_id=user.user_id,
+            paper_id=exam_paper_id,
+        )
+    profile_sync = _ensure_legacy_exam_profile_sync(session, paper)
+    if profile_sync is not None and is_exam_profile_sync_recoverable_now(profile_sync):
+        schedule_exam_profile_sync_task(
+            getattr(request.app.state, "background_task_registry", None),
+            course_id=normalized,
+            user_id=user.user_id,
+            paper_id=exam_paper_id,
+        )
     return ok_response(_paper_detail(session, paper))
 
 
@@ -4144,9 +5507,72 @@ async def exam_study_guide(
 
 
 @router.post(
+    "/{exam_paper_id}/profile-sync/retry",
+    response_model=ApiResponse[ExamProfileSyncResponse],
+    summary="Retry Profile synchronization for a graded exam",
+    responses=build_error_responses([400, 404, 409, 500]),
+)
+async def retry_exam_profile_sync(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    course_id: str = Path(...),
+    exam_paper_id: int = Path(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[ExamProfileSyncResponse]:
+    normalized = normalize_course_id(course_id)
+    _ensure_course(session, normalized, user.user_id)
+    paper = exams_repo.get_exam_paper_by_id(session, exam_paper_id)
+    if paper is None or paper.course_id != normalized or paper.user_id != user.user_id or _is_hidden_exam_paper(paper):
+        _raise_not_found(f"Exam paper `{exam_paper_id}` not found.")
+    if paper.status != "graded":
+        raise AITeachMeError(
+            detail="Profile synchronization is available only after grading is complete.",
+            error_code="EXAM_NOT_GRADED",
+            status_code=409,
+        )
+
+    task = exams_repo.get_exam_profile_sync(session, paper_id=exam_paper_id)
+    if task is None:
+        task = exams_repo.ensure_exam_profile_sync(
+            session,
+            paper=paper,
+            status="pending",
+            trigger="manual_retry",
+            next_attempt_at=utcnow(),
+            auto_commit=True,
+        )
+    elif task.status in {"failed", "retry_wait"}:
+        exams_repo.request_exam_profile_sync_retry(
+            session,
+            paper_id=exam_paper_id,
+            requested_at=utcnow(),
+        )
+        session.expire_all()
+        task = exams_repo.get_exam_profile_sync(session, paper_id=exam_paper_id) or task
+
+    if is_exam_profile_sync_recoverable_now(task):
+        background_task_registry = getattr(request.app.state, "background_task_registry", None)
+        scheduled = schedule_exam_profile_sync_task(
+            background_task_registry,
+            course_id=normalized,
+            user_id=user.user_id,
+            paper_id=exam_paper_id,
+        )
+        if not scheduled:
+            background_tasks.add_task(
+                run_exam_profile_sync_background,
+                course_id=normalized,
+                user_id=user.user_id,
+                paper_id=exam_paper_id,
+            )
+    return ok_response(_exam_profile_sync_response(session, paper, task=task))
+
+
+@router.post(
     "/{exam_paper_id}/submit",
     response_model=ApiResponse[ExamGradeResponse],
-    summary="Submit answers and update KnowledgeUnit mastery",
+    summary="Submit answers and start grading",
     responses=build_error_responses([400, 404, 409, 500]),
 )
 async def submit_exam(
@@ -4163,58 +5589,131 @@ async def submit_exam(
     paper = exams_repo.get_exam_paper_by_id(session, exam_paper_id)
     if paper is None or paper.course_id != normalized or paper.user_id != user.user_id or _is_hidden_exam_paper(paper):
         _raise_not_found(f"Exam paper `{exam_paper_id}` not found.")
+    _require_generic_exam_mode(str(paper.exam_mode or ""))
     if paper.status == "generating":
         raise AITeachMeError(detail="Exam is still generating.", error_code="EXAM_STILL_GENERATING", status_code=409)
     if paper.status == "failed":
         raise AITeachMeError(detail="Exam generation failed.", error_code="EXAM_GENERATION_FAILED", status_code=409)
-    if paper.status == "graded":
-        raise AITeachMeError(detail="Exam already graded.", error_code="EXAM_ALREADY_GRADED", status_code=409)
+    paper_items = exams_repo.list_items_by_paper(session, exam_paper_id)
+    _require_supported_exam_items(paper_items)
+    resolved_answers, submission_hash, submission_key = _resolve_exam_submission_answers(paper_items, body)
 
-    answer_by_id = {item.exam_paper_item_id: item.answer for item in body.answers if item.exam_paper_item_id is not None}
-    answer_by_order = {item.item_order: item.answer for item in body.answers if item.item_order is not None}
+    accepted_now = False
+    restarted_now = False
     now = utcnow()
-    for item in exams_repo.list_items_by_paper(session, exam_paper_id):
-        item.answer_content = answer_by_id.get(item.id) or answer_by_order.get(item.item_order) or ""
-        item.answered_at = now
-        item.updated_at = now
-        session.add(item)
-    paper.status = "submitted"
-    paper.submitted_at = now
-    paper.updated_at = now
-    session.add(paper)
-    session.commit()
-    session.refresh(paper)
-    _capture_exam_event(
-        "exam_submitted",
-        course_id=normalized,
-        user=user,
-        paper=paper,
-        insert_id_parts=["submitted", str(paper.submitted_at.isoformat() if paper.submitted_at else utcnow().isoformat())],
-        properties={
-            "answer_count": len(body.answers),
-            "answered_count": sum(1 for item in body.answers if str(item.answer or "").strip()),
-        },
-    )
-    grade_response = await _grade_exam(session, paper)
-    _capture_exam_event(
-        "exam_graded",
-        course_id=normalized,
-        user=user,
-        paper=paper,
-        insert_id_parts=["graded", str(paper.graded_at.isoformat() if paper.graded_at else utcnow().isoformat())],
-        properties={
-            "answer_count": len(body.answers),
-            "answered_count": sum(1 for item in body.answers if str(item.answer or "").strip()),
-            "states_updated": grade_response.states_updated,
-            "tasks_created": grade_response.tasks_created,
-            "mastery_consumed": grade_response.mastery_consumed,
-        },
-    )
-    background_tasks.add_task(
-        _spawn_exam_study_guide_after_response,
-        request,
+    if paper.submission_hash:
+        if paper.submission_hash != submission_hash:
+            raise AITeachMeError(
+                detail="This exam was already submitted with different answers.",
+                error_code="EXAM_SUBMISSION_CONFLICT",
+                status_code=409,
+            )
+    elif paper.status in {"submitted", "grading", "grading_failed"}:
+        legacy_answers_match = all(
+            str(item.answer_content or "") == resolved_answers.get(int(item.id or 0), "")
+            for item in paper_items
+        )
+        if not legacy_answers_match:
+            raise AITeachMeError(
+                detail="This exam was already submitted with different answers.",
+                error_code="EXAM_SUBMISSION_CONFLICT",
+                status_code=409,
+            )
+        paper.submission_key = submission_key
+        paper.submission_hash = submission_hash
+        paper.updated_at = now
+        session.add(paper)
+        session.commit()
+    elif paper.status == "graded":
+        # Papers graded before submission fingerprints were introduced remain safely readable.
+        return ok_response(_exam_grade_response_from_paper(session, paper))
+    elif paper.status in {"ready", "in_progress"}:
+        accepted_now = exams_repo.claim_exam_submission(
+            session,
+            paper_id=exam_paper_id,
+            submission_key=submission_key,
+            submission_hash=submission_hash,
+            submitted_at=now,
+        )
+        if accepted_now:
+            for item in paper_items:
+                item.answer_content = resolved_answers.get(int(item.id or 0), "")
+                item.answered_at = now
+                item.updated_at = now
+                session.add(item)
+            session.commit()
+        else:
+            session.rollback()
+            session.expire_all()
+            paper = exams_repo.get_exam_paper_by_id(session, exam_paper_id)
+            if paper is None:
+                _raise_not_found(f"Exam paper `{exam_paper_id}` not found.")
+            if paper.submission_hash != submission_hash:
+                raise AITeachMeError(
+                    detail="This exam was already submitted with different answers.",
+                    error_code="EXAM_SUBMISSION_CONFLICT",
+                    status_code=409,
+                )
+    else:
+        raise AITeachMeError(
+            detail=f"Exam status `{paper.status}` cannot be submitted.",
+            error_code="EXAM_NOT_SUBMITTABLE",
+            status_code=409,
+        )
+
+    if paper.status == "graded":
+        return ok_response(_exam_grade_response_from_paper(session, paper))
+    if paper.status == "grading_failed":
+        restarted_now = exams_repo.restart_failed_exam_grading(
+            session,
+            paper_id=exam_paper_id,
+            submission_hash=submission_hash,
+            restarted_at=now,
+        )
+        if restarted_now:
+            session.commit()
+        else:
+            session.rollback()
+
+    session.expire_all()
+    paper = exams_repo.get_exam_paper_by_id(session, exam_paper_id)
+    if paper is None:
+        _raise_not_found(f"Exam paper `{exam_paper_id}` not found.")
+    if accepted_now:
+        _capture_exam_event(
+            "exam_submitted",
+            course_id=normalized,
+            user=user,
+            paper=paper,
+            insert_id_parts=["submitted", submission_hash],
+            properties={
+                "answer_count": len(body.answers),
+                "answered_count": sum(1 for answer in resolved_answers.values() if answer.strip()),
+            },
+        )
+    elif restarted_now:
+        _capture_exam_event(
+            "exam_grading_restarted",
+            course_id=normalized,
+            user=user,
+            paper=paper,
+            insert_id_parts=["manual-retry", submission_hash, now.isoformat()],
+            properties={"automatic_attempt_limit": EXAM_GRADING_MAX_ATTEMPTS},
+        )
+
+    background_task_registry = getattr(request.app.state, "background_task_registry", None)
+    scheduled = _schedule_exam_grading_task(
+        background_task_registry,
         course_id=normalized,
         user_id=user.user_id,
         paper_id=exam_paper_id,
     )
-    return ok_response(grade_response)
+    if not scheduled:
+        background_tasks.add_task(
+            _run_exam_grading_background,
+            course_id=normalized,
+            user_id=user.user_id,
+            paper_id=exam_paper_id,
+            background_task_registry=None,
+        )
+    return ok_response(_exam_grade_response_from_paper(session, paper))

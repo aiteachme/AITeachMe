@@ -41,7 +41,10 @@ from app.shared.infra.database.core import (  # noqa: E402
     _postgres_table_exists,
 )
 from app.shared.infra.env_support import get_env, get_env_bool  # noqa: E402
-from app.shared.infra.runtime import is_cloud_mode  # noqa: E402
+from app.shared.infra.runtime import (  # noqa: E402
+    collect_project_settings_config_errors,
+    is_cloud_mode,
+)
 
 ALLOW_RESET_ENV = "ALLOW_CLOUD_DB_RESET"
 
@@ -153,6 +156,17 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     args = _build_arg_parser().parse_args(argv)
+    settings_errors = collect_project_settings_config_errors()
+    if settings_errors:
+        print(
+            "cloud database bootstrap stopped before database inspection: "
+            "project settings are invalid or incompatible with this backend build.",
+            file=sys.stderr,
+        )
+        for error in settings_errors:
+            print(f"- {error}", file=sys.stderr)
+        return 2
+
     allow_reset = bool(args.reset_db) or get_env_bool(ALLOW_RESET_ENV, False)
     try:
         current_revision, existing_tables = _inspect_database_state()

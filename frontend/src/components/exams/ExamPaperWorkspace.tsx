@@ -1,15 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bookmark, CheckCircle2, ChevronLeft, ChevronRight, ListChecks, Loader2, Sparkles, ZoomIn, ZoomOut } from "lucide-react";
+import { AlertCircle, Bookmark, CheckCircle2, ChevronLeft, ChevronRight, ListChecks, Loader2, RefreshCw, Sparkles, ZoomIn, ZoomOut } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import {
+  completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePost,
   getExamDetailApiV1CoursesCourseIdExamsExamPaperIdGetQueryKey,
   getExamHistoryApiV1CoursesCourseIdExamsHistoryGetQueryKey,
+  recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPost,
   useExamDetailApiV1CoursesCourseIdExamsExamPaperIdGet,
+  useRetryExamProfileSyncApiV1CoursesCourseIdExamsExamPaperIdProfileSyncRetryPost,
   useSubmitExamApiV1CoursesCourseIdExamsExamPaperIdSubmitPost,
 } from "../../api/generated/exams";
-import type { ExamPaperDetailResponse, ExamPaperItemResponse } from "../../api/generated/model";
+import type {
+  ExamPaperDetailResponse,
+  ExamPaperItemResponse,
+  MasteryDrillAttemptResponse,
+} from "../../api/generated/model";
 import { getMasteryOverviewApiV1CoursesCourseIdProfileMasteryGetQueryKey } from "../../api/generated/profile";
 import {
   getApiErrorMessage,
@@ -42,14 +49,14 @@ import {
 } from "./examGenerationStream";
 import type { ExamStudyGuideResponse } from "./types";
 import {
-  buildExamTitle,
   buildQuestionAiDraft,
   buildQuestionSelectedText,
   buildQuestionSelectionContext,
   hasAnsweredQuestion,
   MASTERY_DRILL_EXAM_MODE,
 } from "./examDisplay";
-import { gradeQuestionTemplateAnswer } from "./questionTemplateGrading";
+import type { QuestionTemplateGradeResult } from "./questionTemplateGrading";
+import { isSupportedQuestionType } from "./questionTypes";
 
 async function getExamStudyGuide(courseId: string, paperId: number, signal?: AbortSignal) {
   return orvalApiClient<{ data?: { code?: number; message?: string; data?: ExamStudyGuideResponse } }>(
@@ -70,6 +77,12 @@ type QuestionTemplateMarkResponse = {
 type QuestionTemplateMarkVariables = {
   questionTemplateId: number;
   isMarked: boolean;
+};
+
+type MasteryDrillCompletionVariables = {
+  courseId: string;
+  paperId: number;
+  completionKey: string;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -122,6 +135,13 @@ function isQuestionTemplateMarked(item: ExamPaperItemResponse) {
   return (item as ExamPaperItemResponse & { is_marked?: boolean | null }).is_marked === true;
 }
 
+function createDrillIdempotencyKey(prefix: string) {
+  const randomValue = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `${prefix}-${randomValue}`.slice(0, 128);
+}
+
 interface ExamPaperWorkspaceProps {
   courseId: string;
   paperId: number;
@@ -153,10 +173,23 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
   const [submitStage, setSubmitStage] = useState<1 | 2 | 3 | 4>(1);
   const handledJumpMarkerRef = useRef<number | string | null>(null);
   const isSubmitOverlayClosedManuallyRef = useRef(false);
+  const previousPaperStatusRef = useRef<string | null>(null);
+  const previousProfileSyncStatusRef = useRef<string | null>(null);
+  const handledGradedAtRef = useRef<string | null>(null);
+  const masteryDrillAttemptKeyRef = useRef(new Map<string, string>());
+  const masteryDrillCompletionKeyRef = useRef(new Map<string, string>());
   const answerStorageKey = useMemo(
     () => `aiteachme:exam-draft-answers:${courseId}:${paperId}`,
     [paperId, courseId],
   );
+
+  useEffect(() => {
+    previousPaperStatusRef.current = null;
+    previousProfileSyncStatusRef.current = null;
+    handledGradedAtRef.current = null;
+    isSubmitOverlayClosedManuallyRef.current = false;
+    masteryDrillAttemptKeyRef.current.clear();
+  }, [courseId, paperId]);
 
   useEffect(() => {
     if (!isSidebarOpen) {
@@ -173,6 +206,28 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
   const paper = useMemo<ExamPaperDetailResponse | null>(
     () => unwrapOrvalResponse<ExamPaperDetailResponse>(examDetailQuery.data),
     [examDetailQuery.data],
+  );
+
+  const profileSyncStatus = paper?.profile_sync?.status ?? null;
+  const shouldPollProfileSync = profileSyncStatus === "pending"
+    || profileSyncStatus === "processing"
+    || profileSyncStatus === "retry_wait";
+
+  useEffect(() => {
+    const isGradingPaper = paper?.status === "submitted" || paper?.status === "grading";
+    if (!isGradingPaper && !shouldPollProfileSync) return;
+    const timer = window.setInterval(() => {
+      void examDetailQuery.refetch();
+    }, isGradingPaper ? 1_500 : 15_000);
+    return () => window.clearInterval(timer);
+  }, [examDetailQuery.refetch, paper?.status, shouldPollProfileSync]);
+  const unsupportedQuestionTypes = useMemo(
+    () => Array.from(new Set(
+      (paper?.items ?? [])
+        .map((item: ExamPaperItemResponse) => item.question_type)
+        .filter((questionType: string) => !isSupportedQuestionType(questionType)),
+    )),
+    [paper?.items],
   );
   const isPaperExamMode = paper?.exam_mode === "paper_exam";
   const isActiveMasteryDrill = paper?.exam_mode === MASTERY_DRILL_EXAM_MODE && paper.status !== "graded";
@@ -387,25 +442,32 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
   useEffect(() => {
     if (!paper?.items) return;
     setAnswers((current) => {
+      if (paper.status === "grading_failed") {
+        return Object.fromEntries(
+          (paper.items ?? []).map((item: ExamPaperItemResponse) => [item.item_order, item.user_answer ?? ""]),
+        );
+      }
       let stored: Record<number, string> = {};
-      try {
-        const parsed = JSON.parse(window.localStorage.getItem(answerStorageKey) || "{}");
-        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-          for (const [key, value] of Object.entries(parsed)) {
-            const order = Number(key);
-            if (Number.isFinite(order) && order > 0) {
-              stored[order] = typeof value === "string" ? value : String(value ?? "");
+      if (!paper.mastery_drill) {
+        try {
+          const parsed = JSON.parse(window.localStorage.getItem(answerStorageKey) || "{}");
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            for (const [key, value] of Object.entries(parsed)) {
+              const order = Number(key);
+              if (Number.isFinite(order) && order > 0) {
+                stored[order] = typeof value === "string" ? value : String(value ?? "");
+              }
             }
           }
+        } catch {
+          stored = {};
         }
-      } catch {
-        stored = {};
       }
 
       const next: Record<number, string> = { ...stored };
       for (const item of paper.items ?? []) {
         const serverAnswer = item.user_answer ?? "";
-        if (serverAnswer.trim()) {
+        if (serverAnswer.trim() && (!paper.mastery_drill || item.is_correct === true)) {
           next[item.item_order] = serverAnswer;
         }
       }
@@ -417,10 +479,10 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
       }
       return next;
     });
-  }, [answerStorageKey, paper?.id, paper?.items]);
+  }, [answerStorageKey, paper?.id, paper?.items, paper?.status]);
 
   useEffect(() => {
-    if (!paper || paper.status === "graded") return;
+    if (!paper || paper.status === "graded" || paper.status === "grading_failed") return;
     try {
       const nonEmptyAnswers = Object.fromEntries(
         Object.entries(answers).filter(([, value]) => value.trim().length > 0),
@@ -594,36 +656,117 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
     ? questionTemplateMarkMutation.variables?.questionTemplateId ?? null
     : null;
 
-  const gradeSubjectiveAnswer = useCallback(async (item: ExamPaperItemResponse, answer: string) => {
-    if (!item.question_template_id) {
-      throw new Error("缺少题目标识，无法判题");
+  const gradePersistentDrillAnswer = useCallback(async (
+    item: ExamPaperItemResponse,
+    answer: string,
+  ): Promise<QuestionTemplateGradeResult> => {
+    const payloadKey = `${paperId}:${item.id}:${answer}`;
+    let attemptKey = masteryDrillAttemptKeyRef.current.get(payloadKey);
+    if (!attemptKey) {
+      attemptKey = createDrillIdempotencyKey("web-attempt");
+      masteryDrillAttemptKeyRef.current.set(payloadKey, attemptKey);
     }
     try {
-      return await gradeQuestionTemplateAnswer(courseId, item.question_template_id, answer);
+      const response = await recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPost(
+        courseId,
+        paperId,
+        {
+          exam_paper_item_id: item.id,
+          answer,
+          attempt_key: attemptKey,
+        },
+      );
+      const attempt = unwrapOrvalResponse<MasteryDrillAttemptResponse>(response);
+      if (!attempt) {
+        throw new Error("服务端没有返回闯关判题结果。");
+      }
+      masteryDrillAttemptKeyRef.current.delete(payloadKey);
+      return {
+        question_template_id: item.question_template_id,
+        question_type: item.question_type,
+        is_correct: attempt.is_correct === true,
+        score_obtained: attempt.score_obtained ?? 0,
+        score_max: attempt.score_max ?? 1,
+        feedback_text: attempt.feedback_text ?? "",
+        error_cause_label: attempt.error_cause_label,
+        grading_mode: attempt.grading_mode === "subjective_llm" || attempt.grading_mode === "subjective_fallback"
+          ? attempt.grading_mode
+          : "objective_rule",
+        correct_answer: item.correct_answer ?? "",
+      };
     } catch (error) {
       toast({
-        title: "AI 判题失败",
-        description: getApiErrorMessage(error, "请稍后重试"),
+        title: "答案保存或判题失败",
+        description: getApiErrorMessage(error, "请重试当前答案"),
         variant: "error",
       });
       throw error;
     }
-  }, [courseId, toast]);
+  }, [courseId, paperId, toast]);
+
+  const completePersistentMasteryDrill = useMutation({
+    mutationFn: async ({
+      courseId: targetCourseId,
+      paperId: targetPaperId,
+      completionKey,
+    }: MasteryDrillCompletionVariables) => {
+      return completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePost(
+        targetCourseId,
+        targetPaperId,
+        { completion_key: completionKey },
+      );
+    },
+    retry: 2,
+    onSuccess: async (_response, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: getExamDetailApiV1CoursesCourseIdExamsExamPaperIdGetQueryKey(
+            variables.courseId,
+            variables.paperId,
+          ),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: getExamHistoryApiV1CoursesCourseIdExamsHistoryGetQueryKey(
+            variables.courseId,
+            { page: 1, size: 24 },
+          ),
+        }),
+      ]);
+      toast({
+        title: "闯关完成",
+        description: "本轮逐题作答记录已保存，学习画像正在后台同步。",
+        variant: "success",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "闯关结果保存失败",
+        description: getApiErrorMessage(error, "逐题答案仍已保存，刷新后可以继续完成。"),
+        variant: "error",
+      });
+    },
+  });
+
+  const completePersistentMasteryDrillMutate = completePersistentMasteryDrill.mutate;
+  const completeCurrentPersistentMasteryDrill = useCallback(() => {
+    const paperIdentity = `${courseId}:${paperId}`;
+    let completionKey = masteryDrillCompletionKeyRef.current.get(paperIdentity);
+    if (!completionKey) {
+      completionKey = createDrillIdempotencyKey("web-complete");
+      masteryDrillCompletionKeyRef.current.set(paperIdentity, completionKey);
+    }
+    completePersistentMasteryDrillMutate({ courseId, paperId, completionKey });
+  }, [completePersistentMasteryDrillMutate, courseId, paperId]);
+  const completionMutationTargetsCurrentPaper =
+    completePersistentMasteryDrill.variables?.courseId === courseId
+    && completePersistentMasteryDrill.variables?.paperId === paperId;
 
   const submitExam = useSubmitExamApiV1CoursesCourseIdExamsExamPaperIdSubmitPost({
     request: {
       timeout: LONG_RUNNING_API_TIMEOUT_MS,
     },
     mutation: {
-      onSuccess: async (response) => {
-        const graded = unwrapOrvalResponse(response);
-        const isManuallyClosed = isSubmitOverlayClosedManuallyRef.current;
-
-        if (!isManuallyClosed) {
-          setSubmitProgress(100);
-          setSubmitStage(4);
-        }
-
+      onSuccess: async () => {
         await Promise.all([
           queryClient.invalidateQueries({
             queryKey: getExamHistoryApiV1CoursesCourseIdExamsHistoryGetQueryKey(courseId, { page: 1, size: 24 }),
@@ -631,41 +774,7 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
           queryClient.invalidateQueries({
             queryKey: getExamDetailApiV1CoursesCourseIdExamsExamPaperIdGetQueryKey(courseId, paperId),
           }),
-          queryClient.invalidateQueries({
-            queryKey: getMasteryOverviewApiV1CoursesCourseIdProfileMasteryGetQueryKey(courseId),
-          }),
         ]);
-
-        if (!isManuallyClosed) {
-          await new Promise((resolve) => window.setTimeout(resolve, 850));
-          setShowSubmitOverlay(false);
-
-          toast({
-            title: "交卷成功",
-            description: graded?.mastery_consumed
-              ? `本次得分 ${graded?.score ?? 0}，掌握度已同步更新。`
-              : `本次得分 ${graded?.score ?? 0}，画像同步未完成，可稍后刷新画像查看。`,
-            variant: "success",
-          });
-          try {
-            window.localStorage.removeItem(answerStorageKey);
-          } catch {
-            // Best-effort local draft cleanup.
-          }
-          setActiveStage(2);
-          window.scrollTo({ top: 0, behavior: "smooth" });
-        } else {
-          try {
-            window.localStorage.removeItem(answerStorageKey);
-          } catch {
-            // Best-effort local draft cleanup.
-          }
-          toast({
-            title: "后台判卷完成",
-            description: `您的试卷“${(paper && buildExamTitle(paper)) || "试卷"}”已判分完成，得分 ${graded?.score ?? 0}。`,
-            variant: "success",
-          });
-        }
       },
       onError: (error) => {
         const isManuallyClosed = isSubmitOverlayClosedManuallyRef.current;
@@ -686,10 +795,80 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
       },
     },
   });
+  const retryProfileSync = useRetryExamProfileSyncApiV1CoursesCourseIdExamsExamPaperIdProfileSyncRetryPost({
+    mutation: {
+      onSuccess: async () => {
+        await queryClient.invalidateQueries({ queryKey: examDetailQueryKey });
+        toast({
+          title: "已重新安排画像同步",
+          description: "成绩不会重复计算，系统只会重新消费本次考试的画像证据。",
+          variant: "success",
+        });
+      },
+      onError: (error) => {
+        toast({
+          title: "画像同步重试失败",
+          description: getApiErrorMessage(error, "请稍后再试。"),
+          variant: "error",
+        });
+      },
+    },
+  });
+
+  const isGrading = submitExam.isPending || paper?.status === "submitted" || paper?.status === "grading";
+
+  useEffect(() => {
+    const previousStatus = previousPaperStatusRef.current;
+    previousPaperStatusRef.current = paper?.status ?? null;
+    if (paper?.status !== "graded" || !paper.graded_at) return;
+    if (handledGradedAtRef.current === paper.graded_at) return;
+    if (previousStatus !== "submitted" && previousStatus !== "grading") return;
+    handledGradedAtRef.current = paper.graded_at;
+
+    const isManuallyClosed = isSubmitOverlayClosedManuallyRef.current;
+    if (!isManuallyClosed) {
+      setSubmitProgress(100);
+      setSubmitStage(4);
+      window.setTimeout(() => setShowSubmitOverlay(false), 850);
+    }
+    try {
+      window.localStorage.removeItem(answerStorageKey);
+      window.localStorage.removeItem(`aiteachme:exam-submission-key:${courseId}:${paperId}`);
+    } catch {
+      // Best-effort local state cleanup.
+    }
+    void queryClient.invalidateQueries({
+      queryKey: getExamHistoryApiV1CoursesCourseIdExamsHistoryGetQueryKey(courseId, { page: 1, size: 24 }),
+    });
+    toast({
+      title: isManuallyClosed ? "后台判卷完成" : "交卷成功",
+      description: `本次得分 ${paper.score_obtained ?? 0}，判卷结果已保存，学习画像正在后台同步。`,
+      variant: "success",
+    });
+    setActiveStage(2);
+    if (!isManuallyClosed) {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, [answerStorageKey, courseId, paper?.graded_at, paper?.score_obtained, paper?.status, paperId, queryClient, toast]);
+
+  useEffect(() => {
+    const previousStatus = previousProfileSyncStatusRef.current;
+    previousProfileSyncStatusRef.current = profileSyncStatus;
+    if (profileSyncStatus !== "completed" || previousStatus === null || previousStatus === "completed") return;
+
+    void queryClient.invalidateQueries({
+      queryKey: getMasteryOverviewApiV1CoursesCourseIdProfileMasteryGetQueryKey(courseId),
+    });
+    toast({
+      title: "学习画像已同步",
+      description: "本次考试证据已写入掌握度和复习计划。",
+      variant: "success",
+    });
+  }, [courseId, profileSyncStatus, queryClient, toast]);
 
   useEffect(() => {
     let timer: number = 0;
-    if (submitExam.isPending) {
+    if (isGrading) {
       setShowSubmitOverlay(true);
       setSubmitProgress(0);
       setSubmitStage(1);
@@ -722,36 +901,64 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
         cancelAnimationFrame(timer);
       }
     };
-  }, [submitExam.isPending]);
+  }, [isGrading]);
+
+  const getOrCreateSubmissionKey = useCallback(() => {
+    let submissionKey = "";
+    try {
+      const storageKey = `aiteachme:exam-submission-key:${courseId}:${paperId}`;
+      submissionKey = window.localStorage.getItem(storageKey) ?? "";
+      if (!submissionKey) {
+        submissionKey = window.crypto.randomUUID();
+        window.localStorage.setItem(storageKey, submissionKey);
+      }
+    } catch {
+      submissionKey = window.crypto.randomUUID();
+    }
+    return submissionKey;
+  }, [courseId, paperId]);
 
   const submitCurrentExam = useCallback(() => {
     if (!paper) return;
+    if (unsupportedQuestionTypes.length > 0) {
+      toast({
+        title: "无法提交试卷",
+        description: `当前版本不支持题型：${unsupportedQuestionTypes.join("、")}。请重新生成试卷。`,
+        variant: "error",
+      });
+      return;
+    }
     isSubmitOverlayClosedManuallyRef.current = false;
     submitExam.mutate({
       courseId,
       examPaperId: paperId,
       data: {
+        submission_key: getOrCreateSubmissionKey(),
         answers: (paper.items ?? []).map((item: ExamPaperItemResponse) => ({
           exam_paper_item_id: item.id,
           item_order: item.item_order,
-          answer: answers[item.item_order] ?? "",
+          answer: paper.status === "grading_failed"
+            ? item.user_answer ?? ""
+            : answers[item.item_order] ?? "",
         })),
       },
     });
-  }, [answers, courseId, paper, paperId, submitExam]);
+  }, [answers, courseId, getOrCreateSubmissionKey, paper, paperId, submitExam, toast, unsupportedQuestionTypes]);
 
   const examActionControls = paper ? (
     <>
       <Button
         className={`h-14 rounded-full bg-black px-10 text-base font-semibold shadow-[0_18px_40px_rgba(15,23,42,0.18)] dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white ${paper.status === "graded" ? "hidden" : ""}`}
         onClick={submitCurrentExam}
-        disabled={submitExam.isPending}
+        disabled={isGrading || unsupportedQuestionTypes.length > 0}
       >
         {paper.status === "graded"
           ? "已完成批改"
-          : submitExam.isPending
-            ? "提交中..."
-            : "提交"}
+          : isGrading
+            ? "批改中..."
+            : paper.status === "grading_failed"
+              ? "重新批改"
+              : "提交"}
       </Button>
       {paper.status === "graded" && (
         <>
@@ -832,6 +1039,68 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
 
           {paper && (
             <>
+              {paper.status === "graded" && paper.profile_sync && paper.profile_sync.status !== "completed" && (
+                <div
+                  className={`${isPaperCanvasLayout ? "absolute left-1/2 top-20 z-40 w-[min(92vw,760px)] -translate-x-1/2 shadow-xl" : ""} flex items-center justify-between gap-4 rounded-2xl border px-4 py-3 text-sm ${
+                    paper.profile_sync.status === "failed"
+                      ? "border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200"
+                      : paper.profile_sync.status === "retry_wait" || paper.profile_sync.status === "not_tracked"
+                        ? "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
+                        : "border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-200"
+                  }`}
+                  role={paper.profile_sync.status === "failed" ? "alert" : "status"}
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    {paper.profile_sync.status === "failed" ? (
+                      <AlertCircle className="h-5 w-5 shrink-0" />
+                    ) : (
+                      <RefreshCw className={`h-5 w-5 shrink-0 ${paper.profile_sync.status === "pending" || paper.profile_sync.status === "processing" ? "animate-spin" : ""}`} />
+                    )}
+                    <div className="min-w-0">
+                      <p className="font-semibold">
+                        {paper.profile_sync.status === "pending" || paper.profile_sync.status === "processing"
+                          ? "成绩已保存，正在同步学习画像"
+                          : paper.profile_sync.status === "retry_wait"
+                            ? "画像同步暂时失败，系统将自动重试"
+                            : paper.profile_sync.status === "failed"
+                              ? "画像同步失败"
+                              : "这份旧试卷尚未同步学习画像"}
+                      </p>
+                      {paper.profile_sync.last_error_code ? (
+                        <p className="mt-0.5 truncate text-xs opacity-75">错误代码：{paper.profile_sync.last_error_code}</p>
+                      ) : null}
+                    </div>
+                  </div>
+                  {(paper.profile_sync.can_retry || paper.profile_sync.status === "not_tracked") ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-9 shrink-0 rounded-full bg-white/70 px-4 dark:bg-slate-950/50"
+                      disabled={retryProfileSync.isPending}
+                      onClick={() => retryProfileSync.mutate({ courseId, examPaperId: paperId })}
+                    >
+                      {retryProfileSync.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                      立即重试
+                    </Button>
+                  ) : null}
+                </div>
+              )}
+
+              {paper.status === "grading_failed" && (
+                <div
+                  className={`${isPaperCanvasLayout ? "absolute left-1/2 top-20 z-40 w-[min(92vw,760px)] -translate-x-1/2 shadow-xl" : ""} flex items-center justify-between gap-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200`}
+                  role="alert"
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <AlertCircle className="h-5 w-5 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="font-semibold">自动判卷多次失败，已停止重试</p>
+                      <p className="mt-0.5 text-xs opacity-80">原答卷已锁定保存，可点击“重新批改”启动一轮新的判卷。</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {paper.status === "generating" && (
                 <div
                   className={isPaperCanvasLayout ? "h-full min-h-0 transition-all duration-150" : "transition-all duration-150"}
@@ -859,31 +1128,29 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
 
               {paper.status !== "generating" && paper.status !== "failed" && activeStage !== 3 && (
                 paper.exam_mode === MASTERY_DRILL_EXAM_MODE && paper.status !== "graded" ? (
-                  <ExamMasteryDrillSession
-                    paper={paper}
-                    answers={answers}
-                    setAnswers={setAnswers}
-                    isCompleting={submitExam.isPending}
-                    onBack={() => navigate(backHref)}
-                    onGradeSubjectiveAnswer={gradeSubjectiveAnswer}
-                    onComplete={(finalAnswers) => {
-                      isSubmitOverlayClosedManuallyRef.current = false;
-                      submitExam.mutate({
-                        courseId,
-                        examPaperId: paperId,
-                        data: {
-                          answers: (paper.items ?? []).map((item: ExamPaperItemResponse) => ({
-                            exam_paper_item_id: item.id,
-                            item_order: item.item_order,
-                            answer: finalAnswers[item.item_order] ?? "",
-                          })),
-                        },
-                      });
-                    }}
-                    onQuestionAi={openQuestionAi}
-                    onQuestionMarkToggle={toggleQuestionMark}
-                    markingQuestionTemplateId={markingQuestionTemplateId}
-                  />
+                  paper.mastery_drill ? (
+                    <ExamMasteryDrillSession
+                      paper={paper}
+                      answers={answers}
+                      setAnswers={setAnswers}
+                      isCompleting={completePersistentMasteryDrill.isPending && completionMutationTargetsCurrentPaper}
+                      onBack={() => navigate(backHref)}
+                      onGradeAnswer={gradePersistentDrillAnswer}
+                      onComplete={completeCurrentPersistentMasteryDrill}
+                      onRetryComplete={completeCurrentPersistentMasteryDrill}
+                      completionError={completePersistentMasteryDrill.isError && completionMutationTargetsCurrentPaper
+                        ? getApiErrorMessage(completePersistentMasteryDrill.error, "闯关结果保存失败，请重试。")
+                        : null}
+                      onQuestionAi={openQuestionAi}
+                      onQuestionMarkToggle={toggleQuestionMark}
+                      markingQuestionTemplateId={markingQuestionTemplateId}
+                    />
+                  ) : (
+                    <div className="rounded-[28px] border border-rose-200 bg-rose-50 px-6 py-12 text-center text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300" role="alert">
+                      <h2 className="text-lg font-semibold text-rose-950 dark:text-rose-100">闯关记录不完整</h2>
+                      <p className="mt-2">当前闯关缺少服务端会话，已停止本地判分。请返回训练中心重新创建闯关。</p>
+                    </div>
+                  )
                 ) : (
                   <div
                     className={isPaperCanvasLayout ? "h-full min-h-0 transition-all duration-150" : "transition-all duration-150"}

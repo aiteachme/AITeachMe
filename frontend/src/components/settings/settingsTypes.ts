@@ -33,6 +33,7 @@ export interface SettingEntry {
   restart_required?: boolean;
   ui_group?: string;
   ui_order?: number;
+  ui_parent_key?: string | null;
   description?: string;
   options?: Array<{ value: string | null; label: string }>;
 }

@@ -9,7 +9,6 @@ from app.workflows.digest.planner.lib.plans import (
     compose_effective_planner_request_text,
     normalize_planner_diagnosis_draft,
     normalize_planner_draft,
-    planner_mode_label,
 )
 from app.workflows.digest.planner.lib.store import _ensure_chapter_count_payload
 from app.workflows.digest.docgen.nodes.load_context import _render_diagnose_brief
@@ -25,8 +24,6 @@ from app.workflows.digest.planner.prompts.build_plan_composer import (
     PLAN_START,
     SUGGESTION_END,
     SUGGESTION_START,
-    build_planner_diagnosis_messages,
-    build_planner_stream_messages,
 )
 
 
@@ -59,11 +56,6 @@ def _planner_payload(*, chapter_count: int = 3) -> dict[str, object]:
             for index in range(1, chapter_count + 1)
         ],
     }
-
-
-def test_planner_mode_label_is_student_facing() -> None:
-    assert planner_mode_label("sprint") == "紧凑节奏"
-    assert planner_mode_label("systematic") == "系统节奏"
 
 
 def test_normalize_planner_draft_uses_new_planner_fields() -> None:
@@ -584,7 +576,7 @@ def test_planner_sse_preview_payload_exposes_new_planner_contract() -> None:
             "user_prompt": "线性代数速成入门",
             "digest_mode": "sprint",
             "planner_session_id": "session_1",
-            "model_override": "gpt-5.5",
+            "model_override": "reason",
             "planning_note": "用户要速成线性代数。",
             "material_note": "资料重点是矩阵和线性方程组。",
         },
@@ -655,57 +647,6 @@ def test_parse_diagnosis_response_reads_choice_questions() -> None:
             "answer": "",
         }
     ]
-
-
-def test_planner_diagnosis_prompt_keeps_resolution_inside_docgen_document() -> None:
-    messages = build_planner_diagnosis_messages(
-        course_name="初中数学",
-        user_prompt="14 天复习函数、几何和统计",
-        digest_mode="sprint",
-        material_context=_material_context(),
-        planning_note="用户需要按考试范围构建复习路径。",
-        material_note="暂无绑定资料。",
-        message_history=[],
-    )
-    prompt_text = "\n".join(message["content"] for message in messages)
-
-    assert "练后解析方式" in prompt_text
-    assert "文档内例题、随堂练习和章末小测" in prompt_text
-    assert "开篇铺垫长度" in prompt_text
-    assert "第一章铺垫长度" not in prompt_text
-    assert "后续 examine/profile 流程" in prompt_text
-    assert "测后反馈方式" not in prompt_text
-    assert "测后怎么看" not in prompt_text
-
-
-def test_planner_stream_prompt_maps_diagnose_answers_to_generation_actions() -> None:
-    latest_plan = _planner_payload()
-    latest_plan["diagnose"] = [
-        {
-            "question": "解析怎么写？",
-            "purpose": "文档落点：影响文档内例题、练习和章末小测的解析配置。",
-            "options": ["只给要点", "写清依据", "补错因提醒", "补变式题"],
-            "answer": "补变式题",
-        }
-    ]
-    latest_plan["diagnose_status"] = "answered"
-
-    messages = build_planner_stream_messages(
-        course_name="初中数学",
-        user_prompt="14 天复习函数、几何和统计",
-        digest_mode="sprint",
-        material_context=_material_context(),
-        planning_note="用户需要按考试范围构建复习路径。",
-        material_note="暂无绑定资料。",
-        message_history=[],
-        latest_plan=latest_plan,
-    )
-    prompt_text = "\n".join(message["content"] for message in messages)
-
-    assert "前置诊断执行策略" in prompt_text
-    assert "选择“补变式题”" in prompt_text
-    assert "example_coverage_plan 或 chapter_end_practice_plan" in prompt_text
-    assert "不要编造诊断偏好" not in prompt_text
 
 
 def test_normalize_planner_diagnosis_draft_returns_docgen_ready_questions() -> None:

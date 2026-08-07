@@ -58,7 +58,11 @@ function ModelProbeBadge({ state }: { state: ProbeState | undefined }) {
   if (!state || state.status === "idle") return null;
   if (state.status === "testing") {
     return (
-      <span className="inline-flex items-center gap-1 text-[12px] font-medium text-zinc-500 dark:text-slate-400">
+      <span
+        className="inline-flex items-center gap-1 text-[12px] font-medium text-zinc-500 dark:text-slate-400"
+        role="status"
+        aria-live="polite"
+      >
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
         测试中
       </span>
@@ -68,7 +72,11 @@ function ModelProbeBadge({ state }: { state: ProbeState | undefined }) {
   const ok = state.status === "success";
   const Icon = ok ? CheckCircle2 : XCircle;
   return (
-    <span className={ok ? "inline-flex min-w-0 items-center gap-1 text-[12px] font-medium text-emerald-600 dark:text-emerald-400" : "inline-flex min-w-0 items-start gap-1 text-[12px] font-medium text-rose-600 dark:text-rose-400"}>
+    <span
+      className={ok ? "inline-flex min-w-0 items-center gap-1 text-[12px] font-medium text-emerald-600 dark:text-emerald-400" : "inline-flex min-w-0 items-start gap-1 text-[12px] font-medium text-rose-600 dark:text-rose-400"}
+      role="status"
+      aria-live="polite"
+    >
       <Icon className={ok ? "h-3.5 w-3.5 shrink-0" : "mt-0.5 h-3.5 w-3.5 shrink-0"} />
       <span className={ok ? "truncate" : "whitespace-normal break-words leading-5"}>
         {state.message || (ok ? "通过" : "失败")}
@@ -121,7 +129,7 @@ function renderGroupNote(label: string) {
   if (label === "统一模型接入") {
     return (
       <p className={SETTINGS_STYLES.section.groupNote}>
-        模型网关密钥和地址优先配置；接口模式、推理强度和并发限制按上游能力微调。
+        模型网关密钥和地址优先配置；接口模式和并发限制按上游能力微调。
       </p>
     );
   }
@@ -180,6 +188,26 @@ function buildEntryGroups(
     });
 }
 
+function prepareInlineEntries(entries: SettingEntry[]): {
+  rowEntries: SettingEntry[];
+  inlineEntries: Map<string, SettingEntry>;
+} {
+  const entryKeys = new Set(entries.map((entry) => entry.key));
+  const inlineEntries = new Map<string, SettingEntry>();
+  const rowEntries: SettingEntry[] = [];
+
+  for (const entry of entries) {
+    const parentKey = String(entry.ui_parent_key ?? "").trim();
+    if (parentKey && entryKeys.has(parentKey) && !inlineEntries.has(parentKey)) {
+      inlineEntries.set(parentKey, entry);
+      continue;
+    }
+    rowEntries.push(entry);
+  }
+
+  return { rowEntries, inlineEntries };
+}
+
 function RuntimeSettingsGroupList({
   entries,
   settingsDraft,
@@ -198,6 +226,7 @@ function RuntimeSettingsGroupList({
   error: string | null;
 }) {
   const [probeStates, setProbeStates] = useState<Record<string, ProbeState>>({});
+  const { rowEntries, inlineEntries } = prepareInlineEntries(entries);
 
   const runProbe = useCallback(async (slot: ModelProbeSlot, endpointRole: ModelProbeEndpointRole) => {
     const key = probeKey(slot, endpointRole);
@@ -242,11 +271,19 @@ function RuntimeSettingsGroupList({
 
   return (
     <div className={SETTINGS_STYLES.list.root}>
-      {entries.map((entry) => {
+      {rowEntries.map((entry) => {
+        const inlineEntry = inlineEntries.get(entry.key);
         if (!entry.editable) {
-          return <ReadonlySettingsRow key={entry.key} entry={entry} />;
+          return (
+            <ReadonlySettingsRow
+              key={entry.key}
+              entry={entry}
+              inlineEntry={inlineEntry}
+            />
+          );
         }
         const isEnvEntry = entry.source === "env";
+        const inlineIsEnvEntry = inlineEntry?.source === "env";
         const modelProbeSlot = MODEL_PROBE_ENTRY_SLOTS[entry.key];
         return (
           <EditableSettingsRow
@@ -254,6 +291,25 @@ function RuntimeSettingsGroupList({
             entry={entry}
             value={(isEnvEntry ? envDraft : settingsDraft)[entry.key] ?? null}
             onChange={isEnvEntry ? onEnvChange : onServerChange}
+            commitTextOnChange={Boolean(modelProbeSlot)}
+            inlineFallbackValue={
+              modelProbeSlot && modelProbeSlot !== "primary"
+                ? String(settingsDraft["models.primary"] ?? "")
+                : undefined
+            }
+            inlineEntry={inlineEntry}
+            inlineValue={
+              inlineEntry
+                ? (inlineIsEnvEntry ? envDraft : settingsDraft)[inlineEntry.key] ?? null
+                : undefined
+            }
+            onInlineChange={
+              inlineEntry
+                ? inlineIsEnvEntry
+                  ? onEnvChange
+                  : onServerChange
+                : undefined
+            }
             afterControl={modelProbeSlot ? (
               <ModelProbeInlineControls
                 slot={modelProbeSlot}

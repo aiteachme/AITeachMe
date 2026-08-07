@@ -7,7 +7,7 @@ import binascii
 
 import httpx
 import structlog
-from fastapi import APIRouter, Body, Depends, HTTPException, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response
 
 from sqlmodel import Session
 
@@ -20,6 +20,7 @@ from app.schemas.system import (
     InitRequest,
     ModelProbeRequest,
     ModelProbeResult,
+    ModelReasoningCapabilitiesResult,
     SettingsOverviewData,
     UpdateUserSettingsRequest,
 )
@@ -28,6 +29,7 @@ from app.shared.infra.exceptions import AITeachMeError
 from app.workflows.support.system import (
     build_init_data,
     build_settings_overview_data,
+    get_model_reasoning_capabilities,
     read_community_feishu_qr_bytes,
     read_community_wechat_qr_bytes,
     test_settings_model_connection,
@@ -268,6 +270,22 @@ async def get_system_settings(
     return ok_response(build_settings_overview_data(session=session, user_id=user.user_id))
 
 
+@router.get(
+    "/settings/model-capabilities/reasoning",
+    response_model=ApiResponse[ModelReasoningCapabilitiesResult],
+    summary="读取模型推理强度能力",
+    description="按代码能力目录解析模型支持的 reasoning effort，不请求外部模型网关。",
+    responses=build_error_responses([422, 500]),
+)
+async def get_system_model_reasoning_capabilities(
+    model: str = Query(min_length=1, max_length=256),
+    _: CurrentUserContext = Depends(get_current_user_context),
+) -> ApiResponse[ModelReasoningCapabilitiesResult]:
+    """读取当前模型名对应的推理强度选项。"""
+
+    return ok_response(get_model_reasoning_capabilities(model))
+
+
 @router.patch(
     "/settings",
     response_model=ApiResponse[SettingsOverviewData],
@@ -297,7 +315,7 @@ async def update_system_settings(
     "/settings/model-probe",
     response_model=ApiResponse[ModelProbeResult],
     summary="测试设置页模型连通性",
-    description="按 reason / primary / light 槽位测试主模型网关或备用模型网关。主网关按当前主模型路由测试，备用网关强制 Chat Completions 并快速失败。",
+    description="按 reason / primary / light 槽位测试主模型网关或备用模型网关，并复用真实运行时的模型与接口路由。",
     responses=build_error_responses([422, 500]),
 )
 async def probe_system_settings_model(

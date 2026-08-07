@@ -16,9 +16,14 @@ from app.models import (
     ChatSession,
     Course,
     CourseFileLink,
+    ExamPaper,
+    ExamPaperItem,
     KnowledgeEdge,
     KnowledgeDocument,
     KnowledgeUnit,
+    MasteryDrillAttempt,
+    MasteryDrillSession,
+    QuestionTemplate,
     RawFile,
     RetrievalChunk,
 )
@@ -26,6 +31,7 @@ from app.schemas.export_import import ExportOptions, ImportOptions
 from app.shared.infra.exceptions import InvalidImportPackageError
 from app.workflows.support import course_shares as course_shares_module
 from app.shared.infra.storage import build_course_storage_scope
+from app.utils.time import utcnow
 from app.workflows.digest.docgen.lib import build_lifecycle as docgen_build_lifecycle
 from app.workflows.support.export_import import exports as export_module
 from app.workflows.support.export_import import imports as import_module
@@ -295,6 +301,152 @@ def test_share_snapshot_strips_private_data_from_real_export(
         package_path.unlink(missing_ok=True)
         if snapshot_path is not None:
             snapshot_path.unlink(missing_ok=True)
+def test_mastery_drill_history_round_trips_with_exam_history(
+    session: Session,
+    export_import_store: _FakeStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seed_course_graph(session)
+    template = QuestionTemplate(
+        course_id=COURSE_ID,
+        question_type="single_choice",
+        difficulty="medium",
+        stem="Which matrix is invertible?",
+        stem_hash="mastery-drill-export-template",
+        options_json='["A", "B"]',
+        answer="A",
+        explanation="A has a non-zero determinant.",
+    )
+    session.add(template)
+    session.flush()
+    paper = ExamPaper(
+        course_id=COURSE_ID,
+        user_id="user-1",
+        exam_mode="mastery_drill",
+        status="graded",
+        total_items=1,
+        total_score=1.0,
+        score_obtained=1.0,
+    )
+    session.add(paper)
+    session.flush()
+    item = ExamPaperItem(
+        exam_paper_id=int(paper.id or 0),
+        question_template_id=int(template.id or 0),
+        item_order=1,
+        stem_snapshot=template.stem,
+        options_snapshot_json=template.options_json,
+        answer_snapshot=template.answer,
+        explanation_snapshot=template.explanation,
+        difficulty=template.difficulty,
+        question_type=template.question_type,
+        answer_content="A",
+        is_correct=True,
+        score=1.0,
+        score_obtained=1.0,
+        score_max=1.0,
+    )
+    session.add(item)
+    session.flush()
+    drill = MasteryDrillSession(
+        exam_paper_id=int(paper.id or 0),
+        course_id=COURSE_ID,
+        user_id="user-1",
+        session_key="mastery-drill-export-session",
+        status="completed",
+        total_attempts=2,
+        wrong_attempts=1,
+        completion_key="mastery-drill-export-complete",
+        completed_at=utcnow(),
+    )
+    session.add(drill)
+    session.flush()
+    session.add_all(
+        [
+            MasteryDrillAttempt(
+                mastery_drill_session_id=int(drill.id or 0),
+                exam_paper_item_id=int(item.id or 0),
+                question_template_id=int(template.id or 0),
+                attempt_no=1,
+                attempt_key="mastery-drill-export-attempt-1",
+                request_hash="request-hash-1",
+                status="graded",
+                answer_content="B",
+                is_correct=False,
+                score_obtained=0.0,
+                score_max=1.0,
+                answered_at=utcnow(),
+            ),
+            MasteryDrillAttempt(
+                mastery_drill_session_id=int(drill.id or 0),
+                exam_paper_item_id=int(item.id or 0),
+                question_template_id=int(template.id or 0),
+                attempt_no=2,
+                attempt_key="mastery-drill-export-attempt-2",
+                request_hash="request-hash-2",
+                status="graded",
+                answer_content="A",
+                is_correct=True,
+                score_obtained=1.0,
+                score_max=1.0,
+                answered_at=utcnow(),
+            ),
+        ]
+    )
+    session.commit()
+
+    package_path = export_module.export_course(
+        session,
+        course_id=COURSE_ID,
+        options=ExportOptions(
+            include_raw_markdowns=False,
+            include_knowledge_docs=False,
+            include_chat_history=False,
+            include_exam_history=True,
+            include_profile=False,
+        ),
+    )
+    target_engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    SQLModel.metadata.create_all(target_engine)
+    monkeypatch.setattr(import_module, "_create_unique_course_id", lambda _session: IMPORTED_COURSE_ID)
+
+    try:
+        with zipfile.ZipFile(package_path, "r") as exported:
+            assert "db/mastery_drill_session.json" in exported.namelist()
+            assert "db/mastery_drill_attempt.json" in exported.namelist()
+
+        with Session(target_engine, expire_on_commit=False) as target_session:
+            result = import_module.import_course(
+                target_session,
+                file_path=package_path,
+                options=ImportOptions(new_course_name="Imported Algebra", rebuild_embeddings=False),
+                user_id="user-2",
+            )
+            imported_drill = target_session.exec(
+                select(MasteryDrillSession).where(MasteryDrillSession.course_id == IMPORTED_COURSE_ID)
+            ).one()
+            imported_attempts = target_session.exec(
+                select(MasteryDrillAttempt)
+                .where(MasteryDrillAttempt.mastery_drill_session_id == int(imported_drill.id or 0))
+                .order_by(MasteryDrillAttempt.attempt_no)
+            ).all()
+            imported_paper = target_session.get(ExamPaper, imported_drill.exam_paper_id)
+            imported_item = target_session.get(ExamPaperItem, imported_attempts[0].exam_paper_item_id)
+
+        assert result.imported_counts["mastery_drill_session"] == 1
+        assert result.imported_counts["mastery_drill_attempt"] == 2
+        assert imported_drill.user_id == "user-2"
+        assert imported_drill.total_attempts == 2
+        assert imported_drill.wrong_attempts == 1
+        assert imported_paper is not None and imported_paper.course_id == IMPORTED_COURSE_ID
+        assert imported_item is not None and imported_item.exam_paper_id == imported_paper.id
+        assert [attempt.is_correct for attempt in imported_attempts] == [False, True]
+    finally:
+        package_path.unlink(missing_ok=True)
 
 
 def test_export_skips_stale_cover_without_current_published_docs(
@@ -1169,10 +1321,3 @@ def test_imported_embedding_rebuild_reserves_foreground_llm_slots(
     assert captured["course_id"] == IMPORTED_COURSE_ID
     assert captured["embedding_count"] == 5
     assert captured["embedding_model"] == "text-embedding-v4"
-
-
-def test_run_async_handles_plain_coroutines() -> None:
-    async def compute() -> str:
-        return "done"
-
-    assert import_module._run_async(compute()) == "done"

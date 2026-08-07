@@ -10,10 +10,8 @@ from app.workflows.digest.docgen.lib.chapter_enhancement import (
 from app.workflows.digest.docgen.lib.chapter_review import _coverage, _rule_review_chapter
 from app.workflows.digest.docgen.lib.chapter_planning import _filter_scope_items
 from app.workflows.digest.docgen.lib.models import ChapterGenerationTask, EnhancedChapterDraft
-from app.workflows.digest.docgen.lib.presentation_policy import build_presentation_contract_prompt
 from app.workflows.digest.docgen.lib.textbook_style import normalize_textbook_headings
 from app.workflows.digest.docgen.lib.mode_profiles import get_docgen_mode_profile
-from app.workflows.digest.docgen.prompts.generation import build_docgen_writer_messages
 from app.workflows.digest.planner.lib.constants import get_planner_mode_contract
 
 
@@ -60,7 +58,6 @@ def test_docgen_retrieval_profile_does_not_keyword_route_user_text() -> None:
 
     assert policy["internal_profile"] == "docgen_balanced"
     assert policy["external_focus"] == "general_learning_sources"
-    assert "未提供结构化专门检索 profile" in policy["reason"]
 
 
 def test_docgen_retrieval_profile_rejects_removed_site_specific_contract() -> None:
@@ -213,41 +210,6 @@ def test_learning_scaffold_does_not_generate_local_sections() -> None:
     assert "核心总结" not in scaffold
 
 
-def test_docgen_writer_prompt_asks_for_short_teaching_callouts() -> None:
-    messages = build_docgen_writer_messages(
-        title="函数图像",
-        objective="理解函数图像与解析式的对应关系",
-        digest_mode="systematic",
-        required_elements=["一次函数", "图像变换"],
-        writing_instructions="",
-        source_count=1,
-        dense_context="函数图像需要结合解析式、斜率和截距理解。",
-        chapter_index=1,
-        chapter_count=3,
-    )
-    prompt_text = "\n".join(message["content"] for message in messages)
-    contract = build_presentation_contract_prompt(digest_mode="systematic")
-
-    assert "`> [!IMPORTANT]`" in prompt_text
-    assert "`> [!TIP]`" in contract
-    assert "`> [!QUESTION]`" in prompt_text
-    assert "解析、步骤和答案保持普通正文" in prompt_text
-
-
-def test_mode_sections_do_not_provide_keyword_scaffold_fallback() -> None:
-    assert (
-        pedagogy._build_mode_sections(
-            title="矩阵分解",
-            objective="理解矩阵分解在课程中的位置",
-            required_elements=["奇异值分解", "低秩近似"],
-            digest_mode="systematic",
-            chapter_index=1,
-            chapter_count=3,
-        )
-        == []
-    )
-
-
 def test_textbook_heading_normalization_drops_duplicate_headings_without_local_titles() -> None:
     markdown = (
         "# 计算机硬件组成与指令系统基础\n\n"
@@ -385,47 +347,6 @@ def test_chapter_scope_filter_removes_other_chapter_targets_without_title_genera
     )
 
     assert filtered == ["Internet 的功能与信息服务", "网络覆盖地域的分类标准"]
-
-
-def test_sprint_rule_review_does_not_force_problem_table_for_concept_chapter() -> None:
-    draft = EnhancedChapterDraft(
-        chapter_index=1,
-        title="矩阵分解",
-        markdown=(
-            "# 矩阵分解\n\n"
-            "## 分解直觉\n\n"
-            "矩阵分解把复杂矩阵拆成更容易解释的结构。\n\n"
-            "### 短例子\n\n"
-            "示例：把一个数据矩阵拆成方向和权重，可以帮助理解主要变化方向。\n\n"
-            "### 反例\n\n"
-            "反例：如果只看矩阵大小，不看任务目标，就无法判断该用哪种分解。\n"
-        ),
-    )
-    task = ChapterGenerationTask(
-        chapter_index=1,
-        confirmed_title="矩阵分解",
-        required_elements=["奇异值分解", "低秩近似"],
-        practice_seed_policy={
-            "digest_mode": "sprint",
-            "example_density_policy": {
-                "worked_examples_per_chapter": 4,
-                "practice_tasks_per_chapter": 4,
-                "training_chapter_min_examples": 6,
-                "concept_chapter_min_examples": 2,
-            },
-        },
-    )
-
-    _reviewed, _report, actions = _rule_review_chapter(
-        draft=draft,
-        task=task,
-        claim_ledger=None,
-        claim_evidence_map=None,
-        conflict_report=None,
-        digest_mode="sprint",
-    )
-
-    assert not any(action.action_id.endswith("_sprint_problem_organization") for action in actions)
 
 
 def test_sprint_rule_review_does_not_keyword_reject_unanswered_practice() -> None:

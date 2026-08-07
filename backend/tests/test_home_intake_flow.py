@@ -105,13 +105,24 @@ def test_explicit_chat_scene_controls_prompt_scene() -> None:
     ) == ChatPromptScene.GLOBAL_ASSISTANT
 
 
-def test_course_keyword_alone_does_not_trigger_home_intake() -> None:
-    assert not home_intake.should_use_home_intake_flow(
-        scene="global_assistant",
-        source="global_assistant",
-        course_id="global",
-        question="基础教育课程改革有哪些最新政策变化？",
-    )
+def test_home_intake_rejects_unrelated_or_explicit_tool_requests() -> None:
+    cases = [
+        {
+            "scene": "global_assistant",
+            "source": "global_assistant",
+            "course_id": "global",
+            "question": "基础教育课程改革有哪些最新政策变化？",
+        },
+        {
+            "scene": "home_intake",
+            "source": "home_intake",
+            "course_id": "global",
+            "question": "使用ask_user_options问我问题",
+        },
+    ]
+
+    for case in cases:
+        assert not home_intake.should_use_home_intake_flow(**case), case["question"]
 
 
 def test_creation_followup_routes_short_answer_to_home_intake() -> None:
@@ -129,39 +140,25 @@ def test_creation_followup_routes_short_answer_to_home_intake() -> None:
     )
 
 
-def test_graph_routes_home_intake_after_history_without_retrieval() -> None:
-    assert interact_graph._route_after_history_step(
-        {
-            "course_id": "global",
-            "scene": "global_assistant",
-            "source": "global_assistant",
-            "question": "帮我构建一门计算机组成原理期末冲刺课",
-            "recent_messages": [],
-            "error": None,
-        }
-    ) == "home_intake"
+def test_graph_routes_home_intake_without_hijacking_library_retrieval() -> None:
+    cases = [
+        ("global_assistant", "帮我构建一门计算机组成原理期末冲刺课", "home_intake"),
+        ("library_selection", "这份资料主要讲什么？", "continue"),
+    ]
 
+    for source, question, expected in cases:
+        route = interact_graph._route_after_history_step(
+            {
+                "course_id": "global",
+                "scene": "global_assistant",
+                "source": source,
+                "question": question,
+                "recent_messages": [],
+                "error": None,
+            }
+        )
 
-def test_graph_keeps_library_selection_on_retrieval_path() -> None:
-    assert interact_graph._route_after_history_step(
-        {
-            "course_id": "global",
-            "scene": "global_assistant",
-            "source": "library_selection",
-            "question": "这份资料主要讲什么？",
-            "recent_messages": [],
-            "error": None,
-        }
-    ) == "continue"
-
-
-def test_explicit_ask_user_options_bypasses_home_intake() -> None:
-    assert not home_intake.should_use_home_intake_flow(
-        scene="home_intake",
-        source="home_intake",
-        course_id="global",
-        question="使用ask_user_options问我问题",
-    )
+        assert route == expected, source
 
 
 def test_client_action_only_turn_can_persist(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -313,7 +310,7 @@ async def test_home_intake_confirmation_runs_create_tool(monkeypatch: pytest.Mon
             "session_id": "session_1",
             "user_id": "user_1",
             "attached_file_ids": ["file_b"],
-            "model_override": "gpt-5.4-mini",
+            "model_override": "primary",
         },
     )
 
@@ -326,7 +323,7 @@ async def test_home_intake_confirmation_runs_create_tool(monkeypatch: pytest.Mon
                 "course_id": "course_abc",
                 "initial_prompt": "帮我构建线性代数学习计划",
                 "auto_start": True,
-                "model": "gpt-5.4-mini",
+                "model": "primary",
             },
         }
     ]

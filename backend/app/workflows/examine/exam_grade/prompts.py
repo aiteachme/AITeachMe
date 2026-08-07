@@ -10,55 +10,6 @@ _LATEX_FEEDBACK_RULE = (
 )
 
 
-def build_objective_feedback_messages(
-    *,
-    course_name: str,
-    question_type: str,
-    stem: str,
-    options: list[str] | None,
-    correct_answer: str,
-    reference_explanation: str,
-    user_answer: str,
-    is_correct: bool,
-) -> list[ChatMessage]:
-    option_block = "\n".join(
-        f"{index + 1}. {option}"
-        for index, option in enumerate(options or [])
-    ).strip() or "无选项"
-    verdict = "正确" if is_correct else "错误或未作答"
-    user_answer_block = user_answer.strip() or "未作答"
-    return [
-        {
-            "role": "system",
-            "content": (
-                "你是一名严谨且友好的阅卷老师。"
-                "用户已经完成了一道客观题的作答，正确性已由程序规则判定。"
-                "你的任务不是重新判对错，而是基于用户的实际作答生成一段简洁、清晰、面向学生的解析。"
-                f"{_LATEX_FEEDBACK_RULE}"
-                "输出必须是结构化 JSON。"
-            ),
-        },
-        {
-            "role": "user",
-            "content": (
-                f"课程：{course_name}\n"
-                f"题型：{question_type}\n"
-                f"题目：{stem}\n"
-                f"选项：\n{option_block}\n"
-                f"标准答案：{correct_answer}\n"
-                f"参考解析：{reference_explanation}\n"
-                f"用户答案：{user_answer_block}\n"
-                f"程序判定结果：{verdict}\n\n"
-                "请生成：\n"
-                "1. `feedback_text`：80-220字，直接解释为什么本次作答正确/错误；若未作答，要明确指出遗漏并给出关键思路。\n"
-                "2. `error_cause_label`：若答错或未作答，可从 `knowledge_gap`、`careless_mistake`、`expression_issue`、`unknown` 中选一个；若答对则返回 null。\n"
-                "3. 如果 `feedback_text` 含数学公式，必须使用 LaTeX，并用 `$...$` 或 `$$...$$` 包裹。\n"
-                "不要输出 Markdown 代码块。"
-            ),
-        },
-    ]
-
-
 def build_subjective_grade_messages(
     *,
     course_name: str,

@@ -414,12 +414,33 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     from app.workflows.ingest import run_ingest_recovery_loop
     from app.workflows.support.system import refresh_community_qr_cache
+    from app.api.exams import run_exam_grading_recovery_loop
+    from app.workflows.profile.sync import run_exam_profile_sync_recovery_loop
+    from app.workflows.examine.initial_exam import run_course_initial_exam_recovery_loop
 
     app.state.background_task_registry.spawn(
         run_ingest_recovery_loop(task_registry=app.state.background_task_registry),
         kind="ingest.recovery",
         name="ingest.recovery",
         dedupe_key="ingest.recovery",
+    )
+    app.state.background_task_registry.spawn(
+        run_exam_grading_recovery_loop(task_registry=app.state.background_task_registry),
+        kind="exam.grading.recovery",
+        name="exam.grading.recovery",
+        dedupe_key="exam.grading.recovery",
+    )
+    app.state.background_task_registry.spawn(
+        run_course_initial_exam_recovery_loop(task_registry=app.state.background_task_registry),
+        kind="exam.initial.recovery",
+        name="exam.initial.recovery",
+        dedupe_key="exam.initial.recovery",
+    )
+    app.state.background_task_registry.spawn(
+        run_exam_profile_sync_recovery_loop(task_registry=app.state.background_task_registry),
+        kind="exam.profile_sync.recovery",
+        name="exam.profile_sync.recovery",
+        dedupe_key="exam.profile_sync.recovery",
     )
     app.state.background_task_registry.spawn(
         refresh_community_qr_cache(),

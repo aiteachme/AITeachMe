@@ -444,7 +444,7 @@ async def _agenerate_image_impl(
     last_error: Exception | None = None
     call_started_at = time.monotonic()
     tracked_model = str(call_kwargs["model"])
-    async with get_llm_concurrency_limiter():
+    async with get_llm_concurrency_limiter().slot() as lease:
         for attempt in range(1, max_retries + 1):
             start = time.monotonic()
             logger.info(
@@ -534,7 +534,7 @@ async def _agenerate_image_impl(
                     **trace_log_fields(),
                 )
             if attempt < max_retries:
-                await asyncio.sleep(attempt * 2)
+                await lease.sleep_without_holding_slot(attempt * 2)
 
     track_call(
         task_type=TaskType.IMAGE_GENERATION,

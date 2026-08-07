@@ -24,6 +24,7 @@ import type { ExamPaperDetailResponse, ExamPaperItemResponse, PaperPreviewRow } 
 import { cn } from "../../lib/utils";
 import { ExamMarkdown } from "./ExamMarkdown";
 import { buildExamQuestionAnchorId } from "../interaction";
+import { isSupportedQuestionType } from "./questionTypes";
 import {
   formatAnswerDisplayValue,
   formatTrueFalseOptionLabel,
@@ -719,7 +720,7 @@ function PaperExamQuestionBlock({
   const correctMultiChoice = splitMultiChoiceAnswer(item.correct_answer);
   const isGraded = paper.status === "graded";
   const isReviewStage = isGraded && activeStage === 2;
-  const isReadonly = isGraded;
+  const isReadonly = isGraded || paper.status === "grading_failed";
   const isCorrect = item.is_correct === true;
   const isSelectedReviewItem = isReviewStage && selectedItemId === item.id;
   const isQuestionHighlighted = highlightedQuestionOrder === item.item_order;
@@ -763,7 +764,12 @@ function PaperExamQuestionBlock({
             ) : null}
           </div>
 
-          {isChoice ? (
+          {!isSupportedQuestionType(item.question_type) ? (
+            <div className="mt-2 flex items-start gap-1.5 border border-rose-300 bg-rose-50 px-2 py-1.5 text-xs leading-5 text-rose-800 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200" role="alert">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>不支持题型「{item.question_type || "未指定"}」，无法作答。</span>
+            </div>
+          ) : isChoice ? (
             <div
               className="mt-1.5 grid gap-x-7 gap-y-0.5"
               role={isMultipleChoice ? "group" : "radiogroup"}

@@ -5,20 +5,27 @@ from __future__ import annotations
 from datetime import datetime
 
 import sqlalchemy as sa
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, func, select
 
 from app.models import (
+    CourseInitialExamJob,
     ExamPaper,
     ExamPaperItem,
+    ExamProfileSync,
     ExamStudyGuideCache,
+    MasteryDrillAttempt,
+    MasteryDrillSession,
     QuestionKnowledgeUnitLink,
     QuestionTemplate,
     UserKnowledgeState,
 )
+from app.shared.kernel.question_types import require_supported_question_type_key
 from app.utils.time import ensure_utc_datetime, utcnow
 
 
 def create_question_template(session: Session, template: QuestionTemplate) -> QuestionTemplate:
+    template.question_type = require_supported_question_type_key(template.question_type)
     session.add(template)
     session.commit()
     session.refresh(template)
@@ -67,17 +74,32 @@ def list_wrong_question_template_ids(
     if not ids:
         return set()
 
-    rows = session.exec(
-        select(ExamPaperItem.question_template_id)
+    ranked = (
+        select(
+            ExamPaperItem.question_template_id.label("question_template_id"),
+            ExamPaperItem.is_correct.label("is_correct"),
+            func.row_number()
+            .over(
+                partition_by=ExamPaperItem.question_template_id,
+                order_by=(ExamPaperItem.answered_at.desc(), ExamPaperItem.id.desc()),
+            )
+            .label("answer_rank"),
+        )
         .join(ExamPaper, ExamPaper.id == ExamPaperItem.exam_paper_id)
         .where(
             ExamPaperItem.question_template_id.in_(ids),
-            ExamPaperItem.is_correct.is_(False),
+            ExamPaperItem.answered_at.is_not(None),
             ExamPaper.course_id == course_id,
             ExamPaper.user_id == user_id,
             ExamPaper.visibility != "hidden",
         )
-        .distinct()
+        .subquery()
+    )
+    rows = session.exec(
+        select(ranked.c.question_template_id).where(
+            ranked.c.answer_rank == 1,
+            ranked.c.is_correct.is_(False),
+        )
     ).all()
     return {int(item) for item in rows if item is not None}
 
@@ -336,6 +358,7 @@ def create_exam_paper_items(
     auto_commit: bool = True,
 ) -> list[ExamPaperItem]:
     for item in items:
+        item.question_type = require_supported_question_type_key(item.question_type)
         session.add(item)
     if auto_commit:
         session.commit()
@@ -346,8 +369,1020 @@ def create_exam_paper_items(
     return items
 
 
+def create_mastery_drill_session(
+    session: Session,
+    drill: MasteryDrillSession,
+    *,
+    auto_commit: bool = True,
+) -> MasteryDrillSession:
+    session.add(drill)
+    if auto_commit:
+        session.commit()
+        session.refresh(drill)
+    else:
+        session.flush()
+    return drill
+
+
+def get_mastery_drill_session_by_paper(
+    session: Session,
+    *,
+    paper_id: int,
+) -> MasteryDrillSession | None:
+    return session.exec(
+        select(MasteryDrillSession).where(MasteryDrillSession.exam_paper_id == paper_id)
+    ).first()
+
+
+def get_mastery_drill_session_by_key(
+    session: Session,
+    *,
+    course_id: str,
+    user_id: str,
+    session_key: str,
+) -> MasteryDrillSession | None:
+    return session.exec(
+        select(MasteryDrillSession).where(
+            MasteryDrillSession.course_id == course_id,
+            MasteryDrillSession.user_id == user_id,
+            MasteryDrillSession.session_key == session_key,
+        )
+    ).first()
+
+
+def get_open_mastery_drill_session(
+    session: Session,
+    *,
+    course_id: str,
+    user_id: str,
+) -> MasteryDrillSession | None:
+    """Return the active row even when its paper is no longer resumable."""
+
+    return session.exec(
+        select(MasteryDrillSession)
+        .where(
+            MasteryDrillSession.course_id == course_id,
+            MasteryDrillSession.user_id == user_id,
+            MasteryDrillSession.status == "active",
+        )
+        .order_by(MasteryDrillSession.updated_at.desc(), MasteryDrillSession.id.desc())
+        .limit(1)
+    ).first()
+
+
+def get_active_mastery_drill_session(
+    session: Session,
+    *,
+    course_id: str,
+    user_id: str,
+) -> MasteryDrillSession | None:
+    return session.exec(
+        select(MasteryDrillSession)
+        .join(ExamPaper, ExamPaper.id == MasteryDrillSession.exam_paper_id)
+        .where(
+            MasteryDrillSession.course_id == course_id,
+            MasteryDrillSession.user_id == user_id,
+            MasteryDrillSession.status == "active",
+            ExamPaper.status.in_(("ready", "in_progress")),
+            ExamPaper.visibility != "hidden",
+        )
+        .order_by(MasteryDrillSession.updated_at.desc(), MasteryDrillSession.id.desc())
+        .limit(1)
+    ).first()
+
+
+def list_mastery_drill_sessions_by_papers(
+    session: Session,
+    paper_ids: list[int],
+) -> dict[int, MasteryDrillSession]:
+    normalized_ids = sorted({int(paper_id) for paper_id in paper_ids if int(paper_id) > 0})
+    if not normalized_ids:
+        return {}
+    rows = session.exec(
+        select(MasteryDrillSession).where(MasteryDrillSession.exam_paper_id.in_(normalized_ids))
+    ).all()
+    return {int(row.exam_paper_id): row for row in rows}
+
+
+def abandon_mastery_drill_session(
+    session: Session,
+    *,
+    drill_session_id: int,
+    abandoned_at: datetime,
+) -> bool:
+    result = session.exec(
+        sa.update(MasteryDrillSession)
+        .where(
+            MasteryDrillSession.id == drill_session_id,
+            MasteryDrillSession.status == "active",
+        )
+        .values(status="abandoned", updated_at=abandoned_at)
+        .execution_options(synchronize_session=False)
+    )
+    session.commit()
+    return int(result.rowcount or 0) == 1
+
+
+def list_mastery_drill_attempts(
+    session: Session,
+    *,
+    drill_session_id: int,
+) -> list[MasteryDrillAttempt]:
+    return list(
+        session.exec(
+            select(MasteryDrillAttempt)
+            .where(MasteryDrillAttempt.mastery_drill_session_id == drill_session_id)
+            .order_by(MasteryDrillAttempt.created_at.asc(), MasteryDrillAttempt.id.asc())
+        ).all()
+    )
+
+
+def list_mastery_drill_attempts_by_paper(
+    session: Session,
+    *,
+    paper_id: int,
+) -> list[MasteryDrillAttempt]:
+    drill = get_mastery_drill_session_by_paper(session, paper_id=paper_id)
+    if drill is None or drill.id is None:
+        return []
+    return list_mastery_drill_attempts(session, drill_session_id=int(drill.id))
+
+
+def get_mastery_drill_attempt_by_key(
+    session: Session,
+    *,
+    drill_session_id: int,
+    attempt_key: str,
+) -> MasteryDrillAttempt | None:
+    return session.exec(
+        select(MasteryDrillAttempt).where(
+            MasteryDrillAttempt.mastery_drill_session_id == drill_session_id,
+            MasteryDrillAttempt.attempt_key == attempt_key,
+        )
+    ).first()
+
+
+def get_active_mastery_drill_attempt_for_item(
+    session: Session,
+    *,
+    item_id: int,
+) -> MasteryDrillAttempt | None:
+    return session.exec(
+        select(MasteryDrillAttempt)
+        .where(
+            MasteryDrillAttempt.exam_paper_item_id == item_id,
+            MasteryDrillAttempt.status == "grading",
+        )
+        .order_by(MasteryDrillAttempt.id.desc())
+        .limit(1)
+    ).first()
+
+
+def _mastery_drill_item_is_passed(session: Session, *, item_id: int) -> bool:
+    return session.exec(
+        select(ExamPaperItem.id).where(
+            ExamPaperItem.id == item_id,
+            ExamPaperItem.is_correct.is_(True),
+        )
+    ).first() is not None
+
+
+def claim_mastery_drill_attempt(
+    session: Session,
+    *,
+    drill_session_id: int,
+    item: ExamPaperItem,
+    attempt_key: str,
+    request_hash: str,
+    answer: str,
+    time_spent_seconds: int | None,
+    hint_used: bool,
+    confidence_self_report: int | None,
+    claim_token: str,
+    claimed_at: datetime,
+    lease_expires_at: datetime,
+) -> tuple[str, MasteryDrillAttempt]:
+    """Claim one attempt before grading so retries cannot duplicate model calls."""
+
+    item_id = int(item.id or 0)
+    session.exec(
+        sa.update(MasteryDrillAttempt)
+        .where(
+            MasteryDrillAttempt.exam_paper_item_id == item_id,
+            MasteryDrillAttempt.status == "grading",
+            MasteryDrillAttempt.lease_expires_at.is_not(None),
+            MasteryDrillAttempt.lease_expires_at <= claimed_at,
+        )
+        .values(
+            status="failed",
+            claim_token="",
+            lease_expires_at=None,
+            error_code="attempt_grading_lease_expired",
+            updated_at=claimed_at,
+        )
+        .execution_options(synchronize_session=False)
+    )
+
+    existing = get_mastery_drill_attempt_by_key(
+        session,
+        drill_session_id=drill_session_id,
+        attempt_key=attempt_key,
+    )
+    if existing is not None:
+        if existing.request_hash != request_hash:
+            return "conflict", existing
+        if existing.status == "graded":
+            session.commit()
+            return "completed", existing
+        if existing.status == "grading":
+            session.commit()
+            return "in_progress", existing
+        if _mastery_drill_item_is_passed(session, item_id=item_id):
+            session.commit()
+            return "passed", existing
+        result = session.exec(
+            sa.update(MasteryDrillAttempt)
+            .where(
+                MasteryDrillAttempt.id == int(existing.id or 0),
+                MasteryDrillAttempt.status == "failed",
+            )
+            .values(
+                status="grading",
+                claim_token=claim_token,
+                lease_expires_at=lease_expires_at,
+                error_code="",
+                updated_at=claimed_at,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        session.commit()
+        session.expire_all()
+        refreshed = session.get(MasteryDrillAttempt, int(existing.id or 0)) or existing
+        return ("claimed" if int(result.rowcount or 0) == 1 else "in_progress"), refreshed
+
+    active = get_active_mastery_drill_attempt_for_item(session, item_id=item_id)
+    if active is not None:
+        session.commit()
+        return "in_progress", active
+    if _mastery_drill_item_is_passed(session, item_id=item_id):
+        session.commit()
+        passed_attempt = session.exec(
+            select(MasteryDrillAttempt)
+            .where(
+                MasteryDrillAttempt.exam_paper_item_id == item_id,
+                MasteryDrillAttempt.status == "graded",
+                MasteryDrillAttempt.is_correct.is_(True),
+            )
+            .order_by(MasteryDrillAttempt.answered_at.desc(), MasteryDrillAttempt.id.desc())
+            .limit(1)
+        ).first()
+        if passed_attempt is not None:
+            return "passed", passed_attempt
+
+    attempt_no = int(
+        session.exec(
+            select(func.count())
+            .select_from(MasteryDrillAttempt)
+            .where(MasteryDrillAttempt.exam_paper_item_id == item_id)
+        ).one()
+    ) + 1
+    attempt = MasteryDrillAttempt(
+        mastery_drill_session_id=drill_session_id,
+        exam_paper_item_id=item_id,
+        question_template_id=int(item.question_template_id or 0),
+        attempt_no=attempt_no,
+        attempt_key=attempt_key,
+        request_hash=request_hash,
+        status="grading",
+        answer_content=answer,
+        time_spent_seconds=time_spent_seconds,
+        hint_used=hint_used,
+        confidence_self_report=confidence_self_report,
+        claim_token=claim_token,
+        lease_expires_at=lease_expires_at,
+        created_at=claimed_at,
+        updated_at=claimed_at,
+    )
+    try:
+        with session.begin_nested():
+            session.add(attempt)
+            session.flush()
+    except IntegrityError:
+        session.expire_all()
+        existing = get_mastery_drill_attempt_by_key(
+            session,
+            drill_session_id=drill_session_id,
+            attempt_key=attempt_key,
+        )
+        if existing is None:
+            existing = get_active_mastery_drill_attempt_for_item(session, item_id=item_id)
+        if existing is None:
+            raise
+        session.commit()
+        if existing.attempt_key == attempt_key and existing.request_hash != request_hash:
+            return "conflict", existing
+        return ("completed" if existing.status == "graded" else "in_progress"), existing
+    session.commit()
+    session.refresh(attempt)
+    return "claimed", attempt
+
+
+def finalize_mastery_drill_attempt(
+    session: Session,
+    *,
+    attempt_id: int,
+    claim_token: str,
+    is_correct: bool,
+    score_obtained: float,
+    score_max: float,
+    feedback_text: str,
+    error_cause_label: str | None,
+    grading_mode: str,
+    answered_at: datetime,
+) -> MasteryDrillAttempt | None:
+    result = session.exec(
+        sa.update(MasteryDrillAttempt)
+        .where(
+            MasteryDrillAttempt.id == attempt_id,
+            MasteryDrillAttempt.status == "grading",
+            MasteryDrillAttempt.claim_token == claim_token,
+        )
+        .values(
+            status="graded",
+            is_correct=is_correct,
+            score_obtained=score_obtained,
+            score_max=score_max,
+            feedback_text=feedback_text,
+            error_cause_label=error_cause_label,
+            grading_mode=grading_mode,
+            claim_token="",
+            lease_expires_at=None,
+            error_code="",
+            answered_at=answered_at,
+            updated_at=answered_at,
+        )
+        .execution_options(synchronize_session=False)
+    )
+    if int(result.rowcount or 0) != 1:
+        session.rollback()
+        return None
+
+    attempt = session.get(MasteryDrillAttempt, attempt_id)
+    if attempt is None:
+        session.rollback()
+        return None
+    item = session.get(ExamPaperItem, int(attempt.exam_paper_item_id))
+    drill = session.get(MasteryDrillSession, int(attempt.mastery_drill_session_id))
+    if item is None or drill is None:
+        session.rollback()
+        return None
+
+    item.answer_content = attempt.answer_content
+    item.is_correct = is_correct
+    item.score_obtained = score_obtained
+    item.score_max = score_max
+    item.feedback_text = feedback_text
+    item.error_cause_label = error_cause_label
+    item.time_spent_seconds = attempt.time_spent_seconds
+    item.hint_used = attempt.hint_used
+    item.confidence_self_report = attempt.confidence_self_report
+    item.answered_at = answered_at
+    item.graded_at = answered_at
+    item.updated_at = answered_at
+    session.add(item)
+    session.exec(
+        sa.update(MasteryDrillSession)
+        .where(MasteryDrillSession.id == int(drill.id or 0))
+        .values(
+            total_attempts=MasteryDrillSession.total_attempts + 1,
+            wrong_attempts=MasteryDrillSession.wrong_attempts + (0 if is_correct else 1),
+            updated_at=answered_at,
+        )
+        .execution_options(synchronize_session=False)
+    )
+    session.exec(
+        sa.update(ExamPaper)
+        .where(ExamPaper.id == int(drill.exam_paper_id))
+        .values(status="in_progress", updated_at=answered_at)
+        .execution_options(synchronize_session=False)
+    )
+    session.commit()
+    session.expire_all()
+    return session.get(MasteryDrillAttempt, attempt_id)
+
+
+def renew_mastery_drill_attempt_lease(
+    session: Session,
+    *,
+    attempt_id: int,
+    claim_token: str,
+    lease_expires_at: datetime,
+) -> bool:
+    result = session.exec(
+        sa.update(MasteryDrillAttempt)
+        .where(
+            MasteryDrillAttempt.id == attempt_id,
+            MasteryDrillAttempt.status == "grading",
+            MasteryDrillAttempt.claim_token == claim_token,
+        )
+        .values(lease_expires_at=lease_expires_at, updated_at=utcnow())
+        .execution_options(synchronize_session=False)
+    )
+    session.commit()
+    return int(result.rowcount or 0) == 1
+
+
+def fail_mastery_drill_attempt(
+    session: Session,
+    *,
+    attempt_id: int,
+    claim_token: str,
+    error_code: str,
+) -> bool:
+    now = utcnow()
+    result = session.exec(
+        sa.update(MasteryDrillAttempt)
+        .where(
+            MasteryDrillAttempt.id == attempt_id,
+            MasteryDrillAttempt.status == "grading",
+            MasteryDrillAttempt.claim_token == claim_token,
+        )
+        .values(
+            status="failed",
+            claim_token="",
+            lease_expires_at=None,
+            error_code=error_code[:80],
+            updated_at=now,
+        )
+        .execution_options(synchronize_session=False)
+    )
+    session.commit()
+    return int(result.rowcount or 0) == 1
+
+
 def get_exam_paper_by_id(session: Session, paper_id: int) -> ExamPaper | None:
     return session.get(ExamPaper, paper_id)
+
+
+def get_exam_profile_sync(session: Session, *, paper_id: int) -> ExamProfileSync | None:
+    return session.exec(
+        select(ExamProfileSync).where(ExamProfileSync.exam_paper_id == paper_id)
+    ).first()
+
+
+def ensure_exam_profile_sync(
+    session: Session,
+    *,
+    paper: ExamPaper,
+    status: str = "pending",
+    trigger: str = "exam_graded",
+    states_updated: int = 0,
+    review_task_count: int = 0,
+    next_attempt_at: datetime | None = None,
+    auto_commit: bool = False,
+) -> ExamProfileSync:
+    paper_id = int(paper.id or 0)
+    existing = get_exam_profile_sync(session, paper_id=paper_id)
+    if existing is not None:
+        return existing
+    now = utcnow()
+    task = ExamProfileSync(
+        exam_paper_id=paper_id,
+        course_id=paper.course_id,
+        user_id=paper.user_id,
+        status=status,
+        trigger=trigger,
+        states_updated=max(0, int(states_updated or 0)),
+        review_task_count=max(0, int(review_task_count or 0)),
+        next_attempt_at=(next_attempt_at or now) if status != "completed" else None,
+        completed_at=now if status == "completed" else None,
+        created_at=now,
+        updated_at=now,
+    )
+    try:
+        with session.begin_nested():
+            session.add(task)
+            session.flush()
+    except IntegrityError:
+        session.expire_all()
+        existing = get_exam_profile_sync(session, paper_id=paper_id)
+        if existing is None:
+            raise
+        return existing
+    if auto_commit:
+        session.commit()
+        session.refresh(task)
+    return task
+
+
+def finalize_mastery_drill_session(
+    session: Session,
+    *,
+    drill: MasteryDrillSession,
+    paper: ExamPaper,
+    completion_key: str,
+    submission_hash: str,
+    total_score: float,
+    score_obtained: float,
+    duration_seconds: int | None,
+    completed_at: datetime,
+) -> bool:
+    """Atomically close the drill, grade its paper envelope, and enqueue Profile sync."""
+
+    drill_result = session.exec(
+        sa.update(MasteryDrillSession)
+        .where(
+            MasteryDrillSession.id == int(drill.id or 0),
+            MasteryDrillSession.status == "active",
+        )
+        .values(
+            status="completed",
+            completion_key=completion_key,
+            completed_at=completed_at,
+            updated_at=completed_at,
+        )
+        .execution_options(synchronize_session=False)
+    )
+    paper_result = session.exec(
+        sa.update(ExamPaper)
+        .where(
+            ExamPaper.id == int(paper.id or 0),
+            ExamPaper.status.in_(("ready", "in_progress")),
+        )
+        .values(
+            status="graded",
+            submission_key=completion_key,
+            submission_hash=submission_hash,
+            submitted_at=completed_at,
+            graded_at=completed_at,
+            total_score=max(0.0, float(total_score)),
+            score_obtained=max(0.0, float(score_obtained)),
+            duration_seconds=duration_seconds,
+            updated_at=completed_at,
+        )
+        .execution_options(synchronize_session=False)
+    )
+    if int(drill_result.rowcount or 0) != 1 or int(paper_result.rowcount or 0) != 1:
+        session.rollback()
+        return False
+
+    ensure_exam_profile_sync(
+        session,
+        paper=paper,
+        status="pending",
+        trigger="mastery_drill_completed",
+        next_attempt_at=completed_at,
+        auto_commit=False,
+    )
+    session.commit()
+    return True
+
+
+def claim_exam_profile_sync(
+    session: Session,
+    *,
+    paper_id: int,
+    claim_token: str,
+    claimed_at: datetime,
+    lease_expires_at: datetime,
+) -> bool:
+    result = session.exec(
+        sa.update(ExamProfileSync)
+        .where(
+            ExamProfileSync.exam_paper_id == paper_id,
+            sa.or_(
+                sa.and_(
+                    ExamProfileSync.status.in_(("pending", "retry_wait")),
+                    sa.or_(
+                        ExamProfileSync.next_attempt_at.is_(None),
+                        ExamProfileSync.next_attempt_at <= claimed_at,
+                    ),
+                ),
+                sa.and_(
+                    ExamProfileSync.status == "processing",
+                    sa.or_(
+                        ExamProfileSync.lease_expires_at.is_(None),
+                        ExamProfileSync.lease_expires_at <= claimed_at,
+                    ),
+                ),
+            ),
+        )
+        .values(
+            status="processing",
+            claim_token=claim_token,
+            lease_expires_at=lease_expires_at,
+            attempt_count=ExamProfileSync.attempt_count + 1,
+            next_attempt_at=None,
+            started_at=claimed_at,
+            last_error_code="",
+            updated_at=claimed_at,
+        )
+        .execution_options(synchronize_session=False)
+    )
+    session.commit()
+    return int(result.rowcount or 0) == 1
+
+
+def finalize_exam_profile_sync(
+    session: Session,
+    *,
+    paper_id: int,
+    claim_token: str,
+    states_updated: int,
+    review_task_count: int,
+    completed_at: datetime,
+) -> bool:
+    result = session.exec(
+        sa.update(ExamProfileSync)
+        .where(
+            ExamProfileSync.exam_paper_id == paper_id,
+            ExamProfileSync.status == "processing",
+            ExamProfileSync.claim_token == claim_token,
+        )
+        .values(
+            status="completed",
+            claim_token="",
+            lease_expires_at=None,
+            next_attempt_at=None,
+            last_error_code="",
+            states_updated=max(0, int(states_updated or 0)),
+            review_task_count=max(0, int(review_task_count or 0)),
+            completed_at=completed_at,
+            updated_at=completed_at,
+        )
+        .execution_options(synchronize_session=False)
+    )
+    return int(result.rowcount or 0) == 1
+
+
+def renew_exam_profile_sync_lease(
+    session: Session,
+    *,
+    paper_id: int,
+    claim_token: str,
+    lease_expires_at: datetime,
+) -> bool:
+    result = session.exec(
+        sa.update(ExamProfileSync)
+        .where(
+            ExamProfileSync.exam_paper_id == paper_id,
+            ExamProfileSync.status == "processing",
+            ExamProfileSync.claim_token == claim_token,
+        )
+        .values(lease_expires_at=lease_expires_at, updated_at=utcnow())
+        .execution_options(synchronize_session=False)
+    )
+    session.commit()
+    return int(result.rowcount or 0) == 1
+
+
+def release_exam_profile_sync(
+    session: Session,
+    *,
+    paper_id: int,
+    claim_token: str,
+    status: str,
+    next_attempt_at: datetime | None,
+    error_code: str,
+) -> bool:
+    now = utcnow()
+    result = session.exec(
+        sa.update(ExamProfileSync)
+        .where(
+            ExamProfileSync.exam_paper_id == paper_id,
+            ExamProfileSync.status == "processing",
+            ExamProfileSync.claim_token == claim_token,
+        )
+        .values(
+            status=status,
+            claim_token="",
+            lease_expires_at=None,
+            next_attempt_at=next_attempt_at,
+            last_error_code=error_code[:80],
+            last_error_at=now,
+            updated_at=now,
+        )
+        .execution_options(synchronize_session=False)
+    )
+    session.commit()
+    return int(result.rowcount or 0) == 1
+
+
+def request_exam_profile_sync_retry(
+    session: Session,
+    *,
+    paper_id: int,
+    requested_at: datetime,
+) -> bool:
+    result = session.exec(
+        sa.update(ExamProfileSync)
+        .where(
+            ExamProfileSync.exam_paper_id == paper_id,
+            ExamProfileSync.status.in_(("failed", "retry_wait")),
+        )
+        .values(
+            status="pending",
+            next_attempt_at=requested_at,
+            claim_token="",
+            lease_expires_at=None,
+            manual_retry_count=ExamProfileSync.manual_retry_count + 1,
+            last_error_code="",
+            updated_at=requested_at,
+        )
+        .execution_options(synchronize_session=False)
+    )
+    session.commit()
+    return int(result.rowcount or 0) == 1
+
+
+def list_recoverable_exam_profile_syncs(
+    session: Session,
+    *,
+    as_of: datetime,
+    limit: int = 100,
+) -> list[ExamProfileSync]:
+    stmt = (
+        select(ExamProfileSync)
+        .where(
+            sa.or_(
+                sa.and_(
+                    ExamProfileSync.status.in_(("pending", "retry_wait")),
+                    sa.or_(
+                        ExamProfileSync.next_attempt_at.is_(None),
+                        ExamProfileSync.next_attempt_at <= as_of,
+                    ),
+                ),
+                sa.and_(
+                    ExamProfileSync.status == "processing",
+                    sa.or_(
+                        ExamProfileSync.lease_expires_at.is_(None),
+                        ExamProfileSync.lease_expires_at <= as_of,
+                    ),
+                ),
+            )
+        )
+        .order_by(ExamProfileSync.next_attempt_at.asc(), ExamProfileSync.id.asc())
+        .limit(max(1, limit))
+    )
+    return list(session.exec(stmt).all())
+
+
+def claim_exam_submission(
+    session: Session,
+    *,
+    paper_id: int,
+    submission_key: str,
+    submission_hash: str,
+    submitted_at: datetime,
+) -> bool:
+    """Atomically accept the first submission for a ready paper."""
+
+    result = session.exec(
+        sa.update(ExamPaper)
+        .where(
+            ExamPaper.id == paper_id,
+            ExamPaper.status.in_(("ready", "in_progress")),
+            ExamPaper.submission_hash == "",
+        )
+        .values(
+            status="submitted",
+            submission_key=submission_key,
+            submission_hash=submission_hash,
+            submitted_at=submitted_at,
+            grading_last_error="",
+            updated_at=submitted_at,
+        )
+    )
+    return int(result.rowcount or 0) == 1
+
+
+def claim_exam_grading(
+    session: Session,
+    *,
+    paper_id: int,
+    claim_token: str,
+    claimed_at: datetime,
+    lease_expires_at: datetime,
+    max_attempts: int = 3,
+) -> bool:
+    """Claim one grading attempt, including takeover of an expired lease."""
+
+    result = session.exec(
+        sa.update(ExamPaper)
+        .where(
+            ExamPaper.id == paper_id,
+            ExamPaper.grading_attempts < max(1, max_attempts),
+            sa.or_(
+                ExamPaper.status == "submitted",
+                sa.and_(
+                    ExamPaper.status == "grading",
+                    sa.or_(
+                        ExamPaper.grading_lease_expires_at.is_(None),
+                        ExamPaper.grading_lease_expires_at <= claimed_at,
+                    ),
+                ),
+            ),
+        )
+        .values(
+            status="grading",
+            grading_claim_token=claim_token,
+            grading_lease_expires_at=lease_expires_at,
+            grading_attempts=ExamPaper.grading_attempts + 1,
+            grading_last_error="",
+            updated_at=claimed_at,
+        )
+    )
+    session.commit()
+    return int(result.rowcount or 0) == 1
+
+
+def renew_exam_grading_lease(
+    session: Session,
+    *,
+    paper_id: int,
+    claim_token: str,
+    lease_expires_at: datetime,
+) -> bool:
+    now = utcnow()
+    result = session.exec(
+        sa.update(ExamPaper)
+        .where(
+            ExamPaper.id == paper_id,
+            ExamPaper.status == "grading",
+            ExamPaper.grading_claim_token == claim_token,
+        )
+        .values(grading_lease_expires_at=lease_expires_at, updated_at=now)
+    )
+    session.commit()
+    return int(result.rowcount or 0) == 1
+
+
+def release_exam_grading_claim(
+    session: Session,
+    *,
+    paper_id: int,
+    claim_token: str,
+    error_message: str,
+    terminal_when_exhausted: bool = True,
+    max_attempts: int = 3,
+) -> bool:
+    """Release a failed claim, stopping automatic retries after the configured limit."""
+
+    now = utcnow()
+    result = session.exec(
+        sa.update(ExamPaper)
+        .where(
+            ExamPaper.id == paper_id,
+            ExamPaper.status == "grading",
+            ExamPaper.grading_claim_token == claim_token,
+        )
+        .values(
+            status=sa.case(
+                (
+                    sa.and_(
+                        terminal_when_exhausted,
+                        ExamPaper.grading_attempts >= max(1, max_attempts),
+                    ),
+                    "grading_failed",
+                ),
+                else_="submitted",
+            ),
+            grading_claim_token="",
+            grading_lease_expires_at=None,
+            grading_last_error=error_message[:4000],
+            updated_at=now,
+        )
+    )
+    session.commit()
+    return int(result.rowcount or 0) == 1
+
+
+def fail_exhausted_exam_grading(
+    session: Session,
+    *,
+    paper_id: int,
+    as_of: datetime,
+    max_attempts: int = 3,
+    error_message: str = "grading_retry_exhausted",
+) -> bool:
+    """Close an exhausted submitted paper or expired grading lease."""
+
+    result = session.exec(
+        sa.update(ExamPaper)
+        .where(
+            ExamPaper.id == paper_id,
+            ExamPaper.grading_attempts >= max(1, max_attempts),
+            sa.or_(
+                ExamPaper.status == "submitted",
+                sa.and_(
+                    ExamPaper.status == "grading",
+                    sa.or_(
+                        ExamPaper.grading_lease_expires_at.is_(None),
+                        ExamPaper.grading_lease_expires_at <= as_of,
+                    ),
+                ),
+            ),
+        )
+        .values(
+            status="grading_failed",
+            grading_claim_token="",
+            grading_lease_expires_at=None,
+            grading_last_error=sa.case(
+                (ExamPaper.grading_last_error != "", ExamPaper.grading_last_error),
+                else_=error_message[:4000],
+            ),
+            updated_at=as_of,
+        )
+    )
+    session.commit()
+    return int(result.rowcount or 0) == 1
+
+
+def restart_failed_exam_grading(
+    session: Session,
+    *,
+    paper_id: int,
+    submission_hash: str,
+    restarted_at: datetime,
+) -> bool:
+    """Atomically begin a new bounded grading cycle for the saved submission."""
+
+    result = session.exec(
+        sa.update(ExamPaper)
+        .where(
+            ExamPaper.id == paper_id,
+            ExamPaper.status == "grading_failed",
+            ExamPaper.submission_hash == submission_hash,
+        )
+        .values(
+            status="submitted",
+            grading_claim_token="",
+            grading_lease_expires_at=None,
+            grading_attempts=0,
+            grading_last_error="",
+            updated_at=restarted_at,
+        )
+    )
+    return int(result.rowcount or 0) == 1
+
+
+def finalize_exam_grading_claim(
+    session: Session,
+    *,
+    paper_id: int,
+    claim_token: str,
+    total_score: float,
+    score_obtained: float,
+    graded_at: datetime,
+) -> bool:
+    """Fence stale workers while moving the active grading claim to graded."""
+
+    result = session.exec(
+        sa.update(ExamPaper)
+        .where(
+            ExamPaper.id == paper_id,
+            ExamPaper.status == "grading",
+            ExamPaper.grading_claim_token == claim_token,
+        )
+        .values(
+            status="graded",
+            total_score=total_score,
+            score_obtained=score_obtained,
+            graded_at=graded_at,
+            grading_claim_token="",
+            grading_lease_expires_at=None,
+            grading_last_error="",
+            updated_at=graded_at,
+        )
+    )
+    return int(result.rowcount or 0) == 1
+
+
+def list_recoverable_exam_grading_papers(
+    session: Session,
+    *,
+    as_of: datetime,
+    limit: int = 100,
+) -> list[ExamPaper]:
+    stmt = (
+        select(ExamPaper)
+        .where(
+            ExamPaper.visibility != "hidden",
+            sa.or_(
+                ExamPaper.status == "submitted",
+                sa.and_(
+                    ExamPaper.status == "grading",
+                    sa.or_(
+                        ExamPaper.grading_lease_expires_at.is_(None),
+                        ExamPaper.grading_lease_expires_at <= as_of,
+                    ),
+                ),
+            ),
+        )
+        .order_by(ExamPaper.submitted_at.asc(), ExamPaper.id.asc())
+        .limit(max(1, limit))
+    )
+    return list(session.exec(stmt).all())
 
 
 def list_items_by_paper(session: Session, paper_id: int) -> list[ExamPaperItem]:
@@ -772,8 +1807,21 @@ def delete_exam_paper_cascade(session: Session, *, paper_id: int) -> bool:
         .where(UserKnowledgeState.source_exam_paper_id == paper_id)
         .values(source_exam_paper_id=None)
     )
+    # Keep the completed one-time marker even when the generated paper is
+    # deleted. Otherwise deleting history could accidentally re-enable the
+    # automatic initial exam.
+    session.exec(
+        sa.update(CourseInitialExamJob)
+        .where(CourseInitialExamJob.exam_paper_id == paper_id)
+        .values(exam_paper_id=None, updated_at=utcnow())
+    )
 
     if item_ids:
+        session.exec(
+            sa.delete(MasteryDrillAttempt).where(
+                MasteryDrillAttempt.exam_paper_item_id.in_(item_ids)
+            )
+        )
         session.exec(
             sa.delete(QuestionKnowledgeUnitLink).where(
                 QuestionKnowledgeUnitLink.exam_paper_item_id.in_(item_ids)
@@ -781,6 +1829,8 @@ def delete_exam_paper_cascade(session: Session, *, paper_id: int) -> bool:
         )
 
     session.exec(sa.delete(ExamPaperItem).where(ExamPaperItem.exam_paper_id == paper_id))
+    session.exec(sa.delete(MasteryDrillSession).where(MasteryDrillSession.exam_paper_id == paper_id))
+    session.exec(sa.delete(ExamProfileSync).where(ExamProfileSync.exam_paper_id == paper_id))
 
     session.delete(paper)
     session.commit()

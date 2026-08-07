@@ -25,16 +25,16 @@ import {
 import { useNavigate, useParams } from "react-router-dom";
 
 import {
+  activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGet,
+  completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePost,
   getExamHistoryApiV1CoursesCourseIdExamsHistoryGetQueryKey,
+  recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPost,
+  startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPost,
   useExamHistoryApiV1CoursesCourseIdExamsHistoryGet,
   useGenerateExamApiV1CoursesCourseIdExamsGeneratePost,
 } from "../api/generated/exams";
 import type { ExamHistoryItem } from "../api/generated/model";
-import type {
-  ExamNodeLinkResponse,
-  ExamPaperDetailResponse,
-  ExamPaperItemResponse,
-} from "../api/generated/model";
+import type { ExamPaperDetailResponse, ExamPaperItemResponse } from "../api/generated/model";
 import {
   getApiErrorMessage,
   openAuthenticatedSse,
@@ -59,6 +59,7 @@ import {
   getDefaultCreateExamConfigForMode,
   loadCreateExamConfig,
   toExamGenerateRequest,
+  isSupportedQuestionType,
 } from "../components/exams";
 import type { CreateExamConfig } from "../components/exams/CreateExamModal";
 import {
@@ -74,7 +75,10 @@ import {
   formatAnswerDisplayValue,
   formatQuestionTypeLabel,
 } from "../components/exams/examDisplay";
-import { gradeQuestionTemplateAnswer, isAiGradedQuestionType } from "../components/exams/questionTemplateGrading";
+import {
+  isAiGradedQuestionType,
+  type QuestionTemplateGradeResult,
+} from "../components/exams/questionTemplateGrading";
 import { useApiAuthGeneration } from "../hooks/useApiAuthGeneration";
 import {
   parseExamGenerationSnapshot,
@@ -856,6 +860,76 @@ async function updateQuestionTemplateMark(
   );
 }
 
+async function startPersistentMasteryDrill(
+  courseId: string,
+  payload: {
+    session_key: string;
+    question_template_ids: number[];
+    configured_question_count: number;
+    configured_question_types: string[];
+  },
+) {
+  const response = await startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPost(courseId, payload);
+  const paper = unwrapOrvalResponse<ExamPaperDetailResponse>(response);
+  if (!paper) {
+    throw new Error("闯关会话创建成功，但服务端没有返回会话详情。");
+  }
+  return paper;
+}
+
+async function getActivePersistentMasteryDrill(courseId: string, signal?: AbortSignal) {
+  const response = await activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGet(
+    courseId,
+    { signal },
+  );
+  return unwrapOrvalResponse<ExamPaperDetailResponse>(response);
+}
+
+async function recordPersistentMasteryDrillAttempt(
+  courseId: string,
+  paperId: number,
+  payload: {
+    exam_paper_item_id: number;
+    answer: string;
+    attempt_key: string;
+  },
+) {
+  const response = await recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPost(
+    courseId,
+    paperId,
+    payload,
+  );
+  const attempt = unwrapOrvalResponse<import("../api/generated/model").MasteryDrillAttemptResponse>(response);
+  if (!attempt) {
+    throw new Error("答案已经提交，但服务端没有返回判题结果。");
+  }
+  return attempt;
+}
+
+async function completePersistentMasteryDrill(
+  courseId: string,
+  paperId: number,
+  payload: { completion_key: string; duration_seconds?: number },
+) {
+  const response = await completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePost(
+    courseId,
+    paperId,
+    payload,
+  );
+  const result = unwrapOrvalResponse<import("../api/generated/model").ExamGradeResponse>(response);
+  if (!result) {
+    throw new Error("闯关已经完成，但服务端没有返回保存结果。");
+  }
+  return result;
+}
+
+function createMasteryDrillIdempotencyKey(prefix: string) {
+  const randomValue = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `${prefix}-${randomValue}`.slice(0, 128);
+}
+
 async function getExamPrewarmStatus(
   courseId: string,
   config: ReturnType<typeof loadCreateExamConfig>,
@@ -938,6 +1012,14 @@ export function ExamsPage() {
     () => getDefaultCreateExamConfigForMode("web_practice"),
     [],
   );
+  const practiceCreateConfig = useMemo(
+    () => (
+      courseId
+        ? applyExamModeToCreateConfig(currentCreateConfig ?? loadCreateExamConfig(courseId), "web_practice")
+        : defaultPracticeCreateConfig
+    ),
+    [courseId, currentCreateConfig, defaultPracticeCreateConfig],
+  );
   const paperCreateConfig = useMemo(
     () => (courseId ? applyExamModeToCreateConfig(currentCreateConfig ?? loadCreateExamConfig(courseId), "paper_exam") : null),
     [courseId, currentCreateConfig],
@@ -951,15 +1033,15 @@ export function ExamsPage() {
       "exam-prewarm-status",
       courseId,
       "default-web-practice",
-      defaultPracticeCreateConfig.examMode,
-      defaultPracticeCreateConfig.numQuestions,
-      defaultPracticeCreateConfig.paperLayoutMode,
-      defaultPracticeCreateConfig.userPrompt.trim(),
+      practiceCreateConfig.examMode,
+      practiceCreateConfig.numQuestions,
+      practiceCreateConfig.paperLayoutMode,
+      practiceCreateConfig.userPrompt.trim(),
     ],
     enabled: Boolean(courseId),
     queryFn: async ({ signal }) => {
       if (!courseId) return null;
-      const response = await getExamPrewarmStatus(courseId, defaultPracticeCreateConfig, signal);
+      const response = await getExamPrewarmStatus(courseId, practiceCreateConfig, signal);
       return unwrapOrvalResponse<ExamPrewarmStatusResponse>(response);
     },
     staleTime: 30_000,
@@ -1344,7 +1426,7 @@ export function ExamsPage() {
     }
     const config =
       examMode === "web_practice"
-        ? defaultPracticeCreateConfig
+        ? practiceCreateConfig
         : applyExamModeToCreateConfig(currentCreateConfig ?? loadCreateExamConfig(courseId), examMode);
     generateExam.mutate({
       courseId,
@@ -1380,7 +1462,7 @@ export function ExamsPage() {
   const isMasteryFallbackGenerating = isMasteryFallbackGeneratePending && generateExam.isPending;
   const practiceLabel = PAPER_EXAM_MODES.find((item) => item.value === "web_practice")?.label ?? "测验";
   const paperLabel = PAPER_EXAM_MODES.find((item) => item.value === "paper_exam")?.label ?? "考卷";
-  const practiceQuestionCount = defaultPracticeCreateConfig.numQuestions;
+  const practiceQuestionCount = practiceCreateConfig.numQuestions;
   const paperQuestionCount = paperCreateConfig?.numQuestions ?? 24;
   const isDefaultPracticePrewarmPreparing = practicePrewarmStatusQuery.data?.status === "preparing";
   const isPracticeExamGenerating =
@@ -1701,36 +1783,6 @@ export function ExamsPage() {
   );
 }
 
-function getTemplateKnowledgeUnitId(ref: Record<string, unknown>): number {
-  const value = Number(ref.knowledge_unit_id ?? ref.unit_id ?? 0);
-  return Number.isFinite(value) && value > 0 ? Math.round(value) : 0;
-}
-
-function buildTemplateKnowledgeLinks(refs: Array<Record<string, unknown>>): ExamNodeLinkResponse[] {
-  return refs
-    .map((ref): ExamNodeLinkResponse | null => {
-      const knowledgeUnitId = getTemplateKnowledgeUnitId(ref);
-      if (!knowledgeUnitId) {
-        return null;
-      }
-      const coverageWeight = Number(ref.coverage_weight ?? 1);
-      const masteryScore = Number(ref.mastery_score);
-      const rawName =
-        typeof ref.knowledge_unit_name === "string"
-          ? ref.knowledge_unit_name
-          : typeof ref.canonical_name === "string"
-            ? ref.canonical_name
-            : "";
-      return {
-        knowledge_unit_id: knowledgeUnitId,
-        knowledge_unit_name: rawName.trim() || `知识点 #${knowledgeUnitId}`,
-        coverage_weight: Number.isFinite(coverageWeight) ? coverageWeight : 1,
-        mastery_score: Number.isFinite(masteryScore) ? masteryScore : null,
-      };
-    })
-    .filter((item): item is ExamNodeLinkResponse => item !== null);
-}
-
 function hashTemplateForSession(templateId: number, seed: number): number {
   const text = `${seed}:${templateId}`;
   let hash = 2166136261;
@@ -1769,7 +1821,12 @@ function sortMasteryDrillCandidates(
 }
 
 function isMasteryDrillTemplateUsable(template: QuestionTemplateItem): boolean {
-  return Boolean(template.stem.trim() && template.answer.trim() && template.status !== "archived");
+  return Boolean(
+    isSupportedQuestionType(template.question_type) &&
+    template.stem.trim() &&
+    template.answer.trim() &&
+    template.status !== "archived"
+  );
 }
 
 function getMasteryDrillUsableTemplates(
@@ -1834,66 +1891,6 @@ function selectMasteryDrillTemplates(
   return [...selectedTemplates, ...fallbackTemplates].slice(0, normalizedConfig.numQuestions);
 }
 
-function buildStandaloneMasteryDrillPaper(
-  courseId: string,
-  templates: QuestionTemplateItem[],
-  seed: number,
-  config: MasteryDrillConfig = DEFAULT_MASTERY_DRILL_CONFIG,
-  selectedTemplateIds?: number[],
-  selectionOptions: { recentTemplateIds?: number[]; recentWrongTemplateIds?: number[] } = {},
-): ExamPaperDetailResponse {
-  const templateById = new Map(templates.map((template) => [template.id, template]));
-  const selectedTemplates = selectedTemplateIds?.length
-    ? selectedTemplateIds
-        .map((templateId) => templateById.get(templateId))
-        .filter((template): template is QuestionTemplateItem => Boolean(template))
-    : selectMasteryDrillTemplates(templates, seed, config, selectionOptions);
-  const normalizedConfig = normalizeMasteryDrillConfig(config);
-  const items: ExamPaperItemResponse[] = selectedTemplates.map((template, index) => ({
-    id: template.id,
-    item_order: index + 1,
-    question_template_id: template.id,
-    question_type: template.question_type,
-    difficulty: template.difficulty,
-    stem: template.stem,
-    options: template.options ?? null,
-    correct_answer: template.answer,
-    explanation: template.explanation,
-    knowledge_unit_links: buildTemplateKnowledgeLinks(template.knowledge_unit_refs ?? []),
-    selection_context: {
-      standalone_mastery_drill: true,
-      question_template_id: template.id,
-      configured_question_count: normalizedConfig.numQuestions,
-      configured_question_types: normalizedConfig.questionTypes,
-    },
-    user_answer: null,
-    is_correct: null,
-    score_obtained: null,
-    score_max: 1,
-    error_cause_label: null,
-    is_marked: template.is_marked === true,
-  }));
-
-  return {
-    id: 900_000_000 + (Math.abs(Math.round(seed)) % 90_000_000),
-    course_id: courseId,
-    user_id: "local",
-    exam_mode: MASTERY_DRILL_EXAM_MODE,
-    status: "ready",
-    total_items: items.length,
-    score_obtained: null,
-    total_score: items.length,
-    submitted_at: null,
-    graded_at: null,
-    created_at: new Date(seed).toISOString(),
-    selection_context: {
-      standalone_mastery_drill: true,
-      title: "独立闯关训练",
-    },
-    items,
-  };
-}
-
 function buildMasteryDrillAnalyticsProperties(
   paper: ExamPaperDetailResponse,
   extraProperties: Record<string, unknown> = {},
@@ -1944,6 +1941,7 @@ export function MasteryDrillPage() {
     sidebarRequest,
   } = useAiInteraction();
   const [answers, setAnswers] = useState<Record<number, string>>({});
+  const [drillPaper, setDrillPaper] = useState<ExamPaperDetailResponse | null>(null);
   const [sessionSeed, setSessionSeed] = useState(() => Date.now());
   const [sessionTemplateSelection, setSessionTemplateSelection] = useState<{
     seed: number;
@@ -1953,8 +1951,13 @@ export function MasteryDrillPage() {
   const startedSessionKeyRef = useRef<string | null>(null);
   const completedSessionKeyRef = useRef<string | null>(null);
   const startedAtMsRef = useRef<number | null>(null);
+  const startRequestKeyRef = useRef<string | null>(null);
+  const sessionKeyByRequestRef = useRef(new Map<string, string>());
+  const attemptKeyByPayloadRef = useRef(new Map<string, string>());
+  const completionKeyByPaperRef = useRef(new Map<number, string>());
 
   const templatesQueryKey = useMemo(() => ["exam-question-templates", courseId] as const, [courseId]);
+  const activeDrillQueryKey = useMemo(() => ["active-mastery-drill", courseId] as const, [courseId]);
   const masteryDrillConfig = useMemo(
     () => (courseId ? loadMasteryDrillConfig(courseId) : DEFAULT_MASTERY_DRILL_CONFIG),
     [courseId],
@@ -1979,6 +1982,23 @@ export function MasteryDrillPage() {
       return unwrapOrvalResponse<QuestionTemplateItem[]>(response) ?? [];
     },
   });
+  const activeDrillQuery = useQuery({
+    queryKey: activeDrillQueryKey,
+    enabled: Boolean(courseId),
+    queryFn: ({ signal }) => getActivePersistentMasteryDrill(courseId ?? "", signal),
+  });
+  useEffect(() => {
+    const activePaper = activeDrillQuery.data;
+    if (!activePaper || drillPaper?.id === activePaper.id) {
+      return;
+    }
+    setDrillPaper(activePaper);
+    setAnswers(Object.fromEntries(
+      (activePaper.items ?? [])
+        .filter((item) => item.is_correct === true && Boolean(item.user_answer))
+        .map((item) => [item.item_order, item.user_answer ?? ""]),
+    ));
+  }, [activeDrillQuery.data, drillPaper?.id]);
   const templates = templatesQuery.data ?? [];
   useEffect(() => {
     if (!templatesQuery.isSuccess) {
@@ -2019,33 +2039,78 @@ export function MasteryDrillPage() {
     sessionTemplateSelection.configKey === masteryDrillConfigKey
     ? sessionTemplateSelection.ids
     : undefined;
-  const drillPaper = useMemo(
-    () => (
-      courseId
-        ? buildStandaloneMasteryDrillPaper(
-            courseId,
-            templates,
-            sessionSeed,
-            masteryDrillConfig,
-            selectedTemplateIds,
-            {
-              recentTemplateIds: recentMasteryDrillTemplateIds,
-              recentWrongTemplateIds: recentWrongMasteryDrillTemplateIds,
-            },
-          )
-        : null
-    ),
-    [
-      courseId,
-      masteryDrillConfig,
-      recentMasteryDrillTemplateIds,
-      recentWrongMasteryDrillTemplateIds,
-      selectedTemplateIds,
-      sessionSeed,
-      templates,
-    ],
-  );
-  const selectedCount = drillPaper?.items?.length ?? 0;
+  const startDrillMutation = useMutation({
+    mutationFn: ({
+      requestKey,
+      templateIds,
+    }: {
+      requestKey: string;
+      templateIds: number[];
+    }) => {
+      if (!courseId) {
+        throw new Error("缺少课程标识，无法创建闯关记录。");
+      }
+      let sessionKey = sessionKeyByRequestRef.current.get(requestKey);
+      if (!sessionKey) {
+        sessionKey = createMasteryDrillIdempotencyKey("web-drill");
+        sessionKeyByRequestRef.current.set(requestKey, sessionKey);
+      }
+      return startPersistentMasteryDrill(courseId, {
+        session_key: sessionKey,
+        question_template_ids: templateIds,
+        configured_question_count: masteryDrillConfig.numQuestions,
+        configured_question_types: masteryDrillConfig.questionTypes,
+      });
+    },
+    onSuccess: (paper) => {
+      setDrillPaper(paper);
+      setAnswers(Object.fromEntries(
+        (paper.items ?? [])
+          .filter((item) => item.is_correct === true && Boolean(item.user_answer))
+          .map((item) => [item.item_order, item.user_answer ?? ""]),
+      ));
+    },
+    onError: (error) => {
+      startRequestKeyRef.current = null;
+      toast({
+        title: "闯关记录创建失败",
+        description: getApiErrorMessage(error, "请稍后重试"),
+        variant: "error",
+      });
+    },
+  });
+
+  useEffect(() => {
+    if (
+      !courseId ||
+      !templatesQuery.isSuccess ||
+      !activeDrillQuery.isSuccess ||
+      activeDrillQuery.data ||
+      drillPaper ||
+      startDrillMutation.isPending ||
+      !selectedTemplateIds?.length
+    ) {
+      return;
+    }
+    const requestKey = `${courseId}:${sessionSeed}:${masteryDrillConfigKey}:${selectedTemplateIds.join(",")}`;
+    if (startRequestKeyRef.current === requestKey) {
+      return;
+    }
+    startRequestKeyRef.current = requestKey;
+    startDrillMutation.mutate({ requestKey, templateIds: selectedTemplateIds });
+  }, [
+    courseId,
+    activeDrillQuery.data,
+    activeDrillQuery.isSuccess,
+    drillPaper,
+    masteryDrillConfigKey,
+    selectedTemplateIds,
+    sessionSeed,
+    startDrillMutation,
+    templatesQuery.isSuccess,
+  ]);
+
+  const selectedCount = drillPaper?.items?.length ?? selectedTemplateIds?.length ?? 0;
 
   useEffect(() => {
     if (!courseId || !templatesQuery.isSuccess || !drillPaper || selectedCount <= 0) {
@@ -2079,6 +2144,10 @@ export function MasteryDrillPage() {
 
   const restartDrill = () => {
     setAnswers({});
+    setDrillPaper(null);
+    startRequestKeyRef.current = null;
+    attemptKeyByPayloadRef.current.clear();
+    queryClient.setQueryData(activeDrillQueryKey, null);
     startedAtMsRef.current = null;
     setSessionSeed((current) => {
       const nextSeed = Date.now();
@@ -2173,20 +2242,141 @@ export function MasteryDrillPage() {
     });
   };
 
-  const gradeSubjectiveAnswer = async (item: ExamPaperItemResponse, answer: string) => {
-    if (!courseId || !item.question_template_id) {
-      throw new Error("缺少题目标识，无法判题");
+  const gradePersistentAnswer = async (
+    item: ExamPaperItemResponse,
+    answer: string,
+  ): Promise<QuestionTemplateGradeResult> => {
+    if (!courseId || !drillPaper) {
+      throw new Error("缺少闯关会话，无法保存答案");
+    }
+    const payloadKey = `${drillPaper.id}:${item.id}:${answer}`;
+    let attemptKey = attemptKeyByPayloadRef.current.get(payloadKey);
+    if (!attemptKey) {
+      attemptKey = createMasteryDrillIdempotencyKey("web-attempt");
+      attemptKeyByPayloadRef.current.set(payloadKey, attemptKey);
     }
     try {
-      return await gradeQuestionTemplateAnswer(courseId, item.question_template_id, answer);
+      const attempt = await recordPersistentMasteryDrillAttempt(courseId, drillPaper.id, {
+        exam_paper_item_id: item.id,
+        answer,
+        attempt_key: attemptKey,
+      });
+      attemptKeyByPayloadRef.current.delete(payloadKey);
+      return {
+        question_template_id: item.question_template_id,
+        question_type: item.question_type,
+        is_correct: attempt.is_correct === true,
+        score_obtained: attempt.score_obtained ?? 0,
+        score_max: attempt.score_max ?? 1,
+        feedback_text: attempt.feedback_text ?? "",
+        error_cause_label: attempt.error_cause_label,
+        grading_mode: attempt.grading_mode === "subjective_llm" || attempt.grading_mode === "subjective_fallback"
+          ? attempt.grading_mode
+          : "objective_rule",
+        correct_answer: item.correct_answer ?? "",
+      };
     } catch (error) {
       toast({
-        title: "AI 判题失败",
-        description: getApiErrorMessage(error, "请稍后重试"),
+        title: "答案保存或判题失败",
+        description: getApiErrorMessage(error, "请重试当前答案"),
         variant: "error",
       });
       throw error;
     }
+  };
+
+  const completeDrillMutation = useMutation({
+    mutationFn: ({ paperId, completionKey, durationSeconds }: {
+      paperId: number;
+      completionKey: string;
+      durationSeconds?: number;
+    }) => {
+      if (!courseId) {
+        throw new Error("缺少课程标识，无法保存闯关结果。");
+      }
+      return completePersistentMasteryDrill(courseId, paperId, {
+        completion_key: completionKey,
+        duration_seconds: durationSeconds,
+      });
+    },
+    retry: 2,
+    onSuccess: async (_response, variables) => {
+      if (courseId) {
+        completedSessionKeyRef.current = `${courseId}:${variables.paperId}`;
+      }
+      await queryClient.invalidateQueries({
+        queryKey: getExamHistoryApiV1CoursesCourseIdExamsHistoryGetQueryKey(
+          courseId ?? "",
+          EXAM_HISTORY_LIST_PARAMS,
+        ),
+      });
+      toast({
+        title: "闯关完成",
+        description: "本轮作答过程已保存，并会同步到学习画像。",
+        variant: "success",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "闯关结果保存失败",
+        description: getApiErrorMessage(error, "答案已经逐题保存，可在当前页面重试。"),
+        variant: "error",
+      });
+    },
+  });
+
+  const handlePersistentDrillComplete = (
+    finalAnswers: Record<number, string>,
+    summary: import("../components/exams/ExamMasteryDrillSession").MasteryDrillCompletionSummary,
+  ) => {
+    if (!drillPaper || !courseId) {
+      return;
+    }
+    setAnswers(finalAnswers);
+    const sessionKey = `${courseId}:${drillPaper.id}`;
+    if (completedSessionKeyRef.current === sessionKey) {
+      return;
+    }
+    const startedAtMs = startedAtMsRef.current;
+    const durationMs = startedAtMs === null ? undefined : Math.max(0, Date.now() - startedAtMs);
+    trackCourseAnalyticsEvent(
+      "mastery_drill_completed",
+      courseId,
+      buildMasteryDrillAnalyticsProperties(drillPaper, {
+        duration_ms: durationMs,
+        total_attempt_count: summary.totalAttemptCount,
+        wrong_attempt_count: summary.wrongAttemptCount,
+        persisted: true,
+      }),
+    );
+    rememberRecentWrongMasteryDrillTemplateIds(
+      courseId,
+      summary.wrongQuestionTemplateIds,
+      masteryDrillConfig,
+    );
+    let completionKey = completionKeyByPaperRef.current.get(drillPaper.id);
+    if (!completionKey) {
+      completionKey = createMasteryDrillIdempotencyKey("web-complete");
+      completionKeyByPaperRef.current.set(drillPaper.id, completionKey);
+    }
+    completeDrillMutation.mutate({
+      paperId: drillPaper.id,
+      completionKey,
+      durationSeconds: durationMs === undefined ? undefined : Math.round(durationMs / 1000),
+    });
+  };
+
+  const retryPersistentDrillComplete = () => {
+    const variables = completeDrillMutation.variables;
+    if (
+      completeDrillMutation.isPending
+      || !variables
+      || !drillPaper
+      || variables.paperId !== drillPaper.id
+    ) {
+      return;
+    }
+    completeDrillMutation.mutate(variables);
   };
 
   if (!courseId) {
@@ -2209,20 +2399,22 @@ export function MasteryDrillPage() {
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-5">
         <TrainingCenterBackButton onClick={backToTrainingCenter} />
 
-        {templatesQuery.isLoading ? (
+        {templatesQuery.isLoading || activeDrillQuery.isLoading || startDrillMutation.isPending ? (
           <div className="rounded-2xl border border-slate-200 bg-white px-6 py-12 text-center text-sm text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-950/80 dark:text-slate-400">
             <Loader2 className="mx-auto mb-3 h-5 w-5 animate-spin" />
-            正在加载题库模板...
+            {templatesQuery.isLoading || activeDrillQuery.isLoading
+              ? "正在加载并检查未完成的闯关..."
+              : "正在创建或恢复闯关记录..."}
           </div>
         ) : null}
 
-        {templatesQuery.error ? (
+        {templatesQuery.error || activeDrillQuery.error ? (
           <div className="rounded-2xl border border-red-200 bg-red-50 px-6 py-4 text-sm text-red-700 shadow-sm dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
-            {getApiErrorMessage(templatesQuery.error, "加载题库模板失败")}
+            {getApiErrorMessage(templatesQuery.error ?? activeDrillQuery.error, "加载闯关记录失败")}
           </div>
         ) : null}
 
-        {!templatesQuery.isLoading && !templatesQuery.error && selectedCount === 0 ? (
+        {!templatesQuery.isLoading && !activeDrillQuery.isLoading && !startDrillMutation.isPending && !templatesQuery.error && !activeDrillQuery.error && selectedCount === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-6 py-12 text-center shadow-sm dark:border-slate-800 dark:bg-slate-950/80">
             <BookOpen className="mx-auto h-10 w-10 text-slate-300 dark:text-slate-600" />
             <h2 className="mt-4 text-lg font-semibold text-slate-950 dark:text-slate-100">还没有可用于闯关的题目</h2>
@@ -2246,39 +2438,18 @@ export function MasteryDrillPage() {
             paper={drillPaper}
             answers={answers}
             setAnswers={setAnswers}
-            isCompleting={false}
+            isCompleting={completeDrillMutation.isPending}
             onRestart={restartDrill}
-            completionDescription="本轮结果只保留在当前页面，不会生成试卷记录，也不会出现在历史记录里。"
-            onGradeSubjectiveAnswer={gradeSubjectiveAnswer}
-            onComplete={(finalAnswers, summary) => {
-              setAnswers(finalAnswers);
-              const sessionKey = `${courseId}:${sessionSeed}:${masteryDrillConfigKey}`;
-              const isFirstCompletion = completedSessionKeyRef.current !== sessionKey;
-              if (isFirstCompletion) {
-                completedSessionKeyRef.current = sessionKey;
-                const startedAtMs = startedAtMsRef.current;
-                const durationMs = startedAtMs === null ? undefined : Math.max(0, Date.now() - startedAtMs);
-                trackCourseAnalyticsEvent(
-                  "mastery_drill_completed",
-                  courseId,
-                  buildMasteryDrillAnalyticsProperties(drillPaper, {
-                    duration_ms: durationMs,
-                    total_attempt_count: summary.totalAttemptCount,
-                    wrong_attempt_count: summary.wrongAttemptCount,
-                  }),
-                );
-                rememberRecentWrongMasteryDrillTemplateIds(
-                  courseId,
-                  summary.wrongQuestionTemplateIds,
-                  masteryDrillConfig,
-                );
-                toast({
-                  title: "闯关完成",
-                  description: "本轮没有生成试卷记录，可直接再来一轮。",
-                  variant: "success",
-                });
-              }
-            }}
+            onRetryComplete={retryPersistentDrillComplete}
+            completionDescription="本轮作答过程已保存到历史记录，并会同步到学习画像。"
+            completionError={completeDrillMutation.isError
+              ? getApiErrorMessage(
+                completeDrillMutation.error,
+                "训练记录保存失败，答案已逐题保存，请重试。",
+              )
+              : null}
+            onGradeAnswer={gradePersistentAnswer}
+            onComplete={handlePersistentDrillComplete}
             onQuestionAi={openQuestionAi}
             onQuestionMarkToggle={toggleQuestionMark}
             markingQuestionTemplateId={markingQuestionTemplateId}

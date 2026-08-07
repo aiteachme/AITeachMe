@@ -104,7 +104,7 @@ def _planner_session_response() -> BuildPlannerSessionResponse:
             status="draft",
             planner_session_id="planner-session-12345678",
         ),
-        model_override="model-a",
+        model_override="primary",
         turns=[],
         created_at=now,
         updated_at=now,
@@ -120,7 +120,7 @@ def _confirm_response() -> BuildPlannerConfirmResponse:
         course_id=COURSE_ID,
         status="confirmed",
         digest_mode="sprint",
-        model_override="model-a",
+        model_override="primary",
         selected_file_ids=["file-a"],
         user_prompt="learn",
         course_name="API 课程规划",
@@ -219,7 +219,7 @@ def test_knowledge_build_spawns_background_docgen_with_accepted_files(monkeypatc
         planner_session_id="planner-1",
         confirmed_plan_id="plan-1",
         digest_mode="sprint",
-        model_override="model-a",
+        model_override="primary",
     )
 
     def fake_trigger_docgen_build(_session, **kwargs):
@@ -622,7 +622,7 @@ def test_interactive_selection_generation_persists_overlay_without_handle_leak(m
     monkeypatch.setattr(
         api,
         "get_confirmed_plan",
-        lambda *_args, **_kwargs: SimpleNamespace(plan_json={"model_override": "gpt-5.4-mini"}),
+        lambda *_args, **_kwargs: SimpleNamespace(plan_json={"model_override": "primary"}),
     )
     monkeypatch.setattr(api, "interactive_overlay_reference_guard", guard)
     monkeypatch.setattr(api, "find_interactive_overlay_by_client_reference", fake_find_overlay)
@@ -646,7 +646,7 @@ def test_interactive_selection_generation_persists_overlay_without_handle_leak(m
     )
 
     assert response.data.title == "Generated Demo"
-    assert overrides == ["gpt-5.4-mini"]
+    assert overrides == ["primary"]
     assert response.data.version_no == 9
     assert response.data.overlay_id.startswith("interactive-")
     assert "selection-ref" in response.data.preview_url

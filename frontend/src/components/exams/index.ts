@@ -13,6 +13,12 @@ export { ExamQuestionAnalysisSheet } from "./ExamQuestionAnalysisSheet";
 export { ExamPaperSheet } from "./ExamPaperSheet";
 export { ExamPaperWorkspace } from "./ExamPaperWorkspace";
 export {
+  isSupportedQuestionType,
+  normalizeQuestionTypeKey,
+  requireSupportedQuestionType,
+  SUPPORTED_QUESTION_TYPE_KEYS,
+} from "./questionTypes";
+export {
   MASTERY_DRILL_EXAM_MODE,
   MASTERY_DRILL_QUESTION_COUNT,
   PAPER_EXAM_MODES,

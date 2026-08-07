@@ -421,30 +421,6 @@ def _chapter_context_for_index(
     return chapter_contexts.get(chapter_index) or ChapterSourceContext(chapter_index=chapter_index)
 
 
-def _guideline_as_backbone_payload(guideline: dict[str, object]) -> dict[str, object]:
-    if not guideline:
-        return {}
-    payload = dict(guideline)
-    if "concept_dependency_graph" not in payload and "dependency_edges" in payload:
-        payload["concept_dependency_graph"] = payload.get("dependency_edges")
-    return payload
-
-
-def _document_backbone_payload(structured_context: dict[str, object]) -> dict[str, object]:
-    manifest = _as_mapping(structured_context.get("docgen_manifest"))
-    guideline_backbone = _guideline_as_backbone_payload(_as_mapping(manifest.get("guideline")))
-    backbone = _as_mapping(manifest.get("document_backbone_snapshot"))
-    if backbone:
-        if guideline_backbone:
-            backbone.setdefault("canonical_glossary", guideline_backbone.get("canonical_glossary"))
-            backbone.setdefault("concept_dependency_graph", guideline_backbone.get("concept_dependency_graph"))
-        return backbone
-    if guideline_backbone:
-        return guideline_backbone
-    summary = _as_mapping(structured_context.get("document_summary_json"))
-    return _as_mapping(summary.get("docgen_learning_backbone") or summary.get("document_backbone"))
-
-
 def _preliminary_kg_payload(structured_context: dict[str, object]) -> dict[str, object]:
     manifest = _as_mapping(structured_context.get("docgen_manifest"))
     draft = _as_mapping(manifest.get("docgen_kg_draft"))

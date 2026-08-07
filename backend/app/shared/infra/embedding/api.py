@@ -86,7 +86,7 @@ async def _call_embedding(
     )
 
     async def _await_embedding(request_kwargs: dict[str, object]):
-        async with get_llm_concurrency_limiter():
+        async with get_llm_concurrency_limiter().slot():
             provider_call = litellm.aembedding(**request_kwargs)
             if overall_timeout_s is None:
                 return await provider_call
