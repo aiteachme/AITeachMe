@@ -754,13 +754,8 @@ class ExamQuestionDraft(BaseModel):
         declared = sorted(declared_indices)
         if self.question_type == "single_choice" and declared != expected:
             raise ValueError("choice explanation must match correct_indices")
-        if self.question_type == "multiple_choice":
-            declared_set = set(declared)
-            expected_set = set(expected)
-            if declared_set.isdisjoint(expected_set) or (
-                len(declared_set) > 1 and declared != expected
-            ):
-                raise ValueError("choice explanation must match correct_indices")
+        if self.question_type == "multiple_choice" and declared != expected:
+            raise ValueError("choice explanation must match correct_indices")
 
 
 class ExamQuestionBatch(BaseModel):

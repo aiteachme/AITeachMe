@@ -2564,6 +2564,23 @@ def test_exam_question_draft_rejects_choice_explanation_answer_mismatch() -> Non
         )
 
 
+def test_exam_question_draft_rejects_partial_multiple_choice_answer_declaration() -> None:
+    with pytest.raises(ValidationError, match="choice explanation must match correct_indices"):
+        generator.ExamQuestionDraft.model_validate(
+            {
+                "item_order": 1,
+                "question_type": "multiple_choice",
+                "difficulty": "medium",
+                "stem": "选择所有正确的说法。",
+                "options": ["说法一", "说法二", "说法三", "说法四"],
+                "correct_indices": [0, 2],
+                "option_judgements": [True, False, True, False],
+                "explanation": "正确答案是 A。",
+                "knowledge_unit_id": 1,
+            }
+        )
+
+
 def test_exam_question_draft_allows_explaining_why_another_option_is_wrong() -> None:
     draft = generator.ExamQuestionDraft.model_validate(
         {
