@@ -43,6 +43,11 @@ on:
         type: string
         required: false
         default: ""
+      public_app_url:
+        description: remote 桌面包生成分享链接时使用的公网 Web 地址
+        type: string
+        required: false
+        default: "https://aiteachme.cn"
       bundle_private_env:
         description: 是否把 Secret AITEACHME_BUNDLED_ENV_JSON 里的私有模型配置加密内置进 local 桌面包
         type: boolean
@@ -305,6 +310,7 @@ jobs:
           $arguments = @{
             PackageMode = "${{ inputs.desktop_package_mode }}"
             ApiUrl = "${{ inputs.api_url }}"
+            PublicAppUrl = "${{ inputs.public_app_url }}"
             SkipInstall = $true
             HideElectronSuffix = $true
           }

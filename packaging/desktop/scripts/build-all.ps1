@@ -1,5 +1,6 @@
 param(
     [string]$ApiUrl = $env:AITEACHME_REMOTE_API_URL,
+    [string]$PublicAppUrl = $env:AITEACHME_REMOTE_FRONTEND_URL,
     [switch]$SkipInstall,
     [string]$BackendPort = "",
     [switch]$ImportBundledEnv,
@@ -77,14 +78,14 @@ if ($IncludeRemote) {
         Invoke-BuildStep `
             -Name "Electron remote installer" `
             -Script (Join-Path $scriptDir "build-electron.ps1") `
-            -Arguments @($commonArgs + @("-Flavor", "remote", "-ApiUrl", $ApiUrl, "-HideElectronSuffix"))
+            -Arguments @($commonArgs + @("-Flavor", "remote", "-ApiUrl", $ApiUrl, "-PublicAppUrl", $PublicAppUrl, "-HideElectronSuffix"))
     }
 
     if ($buildTauri) {
         Invoke-BuildStep `
             -Name "Tauri remote installer" `
             -Script (Join-Path $scriptDir "build-tauri.ps1") `
-            -Arguments @($commonArgs + @("-Flavor", "remote", "-ApiUrl", $ApiUrl))
+            -Arguments @($commonArgs + @("-Flavor", "remote", "-ApiUrl", $ApiUrl, "-PublicAppUrl", $PublicAppUrl))
     }
 }
 

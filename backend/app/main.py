@@ -473,6 +473,7 @@ _COURSE_SHARE_SECURITY_HEADERS = {
     "Pragma": "no-cache",
     "Expires": "0",
     "Referrer-Policy": "no-referrer",
+    "X-Robots-Tag": "noindex, nofollow, noarchive",
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
     "Cross-Origin-Resource-Policy": "same-origin",

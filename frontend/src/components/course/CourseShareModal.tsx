@@ -5,25 +5,10 @@ import { Check, Copy, ExternalLink, Link2, Loader2, RotateCcw, Share2 } from "lu
 import { apiClient, getApiErrorMessage } from "../../api/client";
 import type { ApiResponse } from "../../api/types";
 import type { CourseShareData } from "../../api/generated/model";
+import { buildCourseShareUrl } from "../../lib/courseSharing";
 import { Button } from "../ui/Button";
 import { useToast } from "../ui/Toast";
 import { CourseOperationModal } from "./CourseOperationModal";
-
-function getAppBasePath(): string {
-  const base = (import.meta.env.BASE_URL || "").trim();
-  if (!base || base === "/" || base === "./") {
-    return "";
-  }
-  return `/${base.replace(/^\/+|\/+$/g, "")}`;
-}
-
-function buildShareUrl(share: CourseShareData): string {
-  const path = share.share_path || (share.token ? `/share/courses/${share.token}` : "");
-  if (!path || typeof window === "undefined") {
-    return path;
-  }
-  return new URL(`${getAppBasePath()}${path.startsWith("/") ? path : `/${path}`}`, window.location.origin).toString();
-}
 
 function formatDateTime(value: string): string {
   const date = new Date(value);
@@ -61,7 +46,7 @@ export function CourseShareModal({ courseId, onClose }: CourseShareModalProps) {
   const activeShare = useMemo(() => {
     return (sharesQuery.data ?? []).find((item) => item.status === "active" && item.can_import && item.token);
   }, [sharesQuery.data]);
-  const shareUrl = activeShare ? buildShareUrl(activeShare) : "";
+  const shareUrl = activeShare ? buildCourseShareUrl(activeShare) : "";
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -77,7 +62,7 @@ export function CourseShareModal({ courseId, onClose }: CourseShareModalProps) {
     },
     onSuccess: async (data) => {
       await queryClient.invalidateQueries({ queryKey });
-      const url = buildShareUrl(data);
+      const url = buildCourseShareUrl(data);
       let copiedUrl = false;
       try {
         if (url && navigator.clipboard) {

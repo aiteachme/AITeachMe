@@ -387,6 +387,7 @@ def test_course_share_create_preview_and_revoke(
     assert preview.status_code == 200
     assert preview.headers["cache-control"] == "private, no-store, max-age=0"
     assert preview.headers["referrer-policy"] == "no-referrer"
+    assert preview.headers["x-robots-tag"] == "noindex, nofollow, noarchive"
     assert preview.headers["x-content-type-options"] == "nosniff"
     preview_data = preview.json()["data"]
     assert preview_data["course_name"] == "Python 入门"

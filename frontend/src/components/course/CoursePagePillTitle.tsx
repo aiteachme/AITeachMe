@@ -41,6 +41,7 @@ import { apiClient } from "../../api/client";
 import type { ApiResponse } from "../../api/types";
 import type { DocGenGetResponse, ExamHistoryItem } from "../../api/generated/model";
 import { ACTIVE_DOC_BUILD_STATUSES } from "../knowledge-docs/utils";
+import { useCanManageCourseShares } from "../../hooks/useCourseShareCapability";
 import { CourseShareModal } from "./CourseShareModal";
 import { TopBar } from "../layout/TopBar";
 
@@ -261,6 +262,7 @@ export function CoursePagePillTitle({
   const [tooltip, setTooltip] = useState<CourseNavTooltipState | null>(null);
   const [isShareOpen, setIsShareOpen] = useState(false);
   const [isScrollHidden, setIsScrollHidden] = useState(false);
+  const canManageCourseShares = useCanManageCourseShares();
   const previousTrainingUnlockedRef = useRef<boolean | null>(null);
   const courseId = params.courseId || (href ? href.split("/")[2] : undefined);
   const shouldHideInlineCourseNav = Boolean(courseId && ENABLE_PERSISTENT_COURSE_NAV && placement === "page");
@@ -635,26 +637,32 @@ export function CoursePagePillTitle({
             </Link>
           );
         })}
-        <div className="h-5 w-px shrink-0 bg-slate-200 dark:bg-slate-800" />
-        <button
-          type="button"
-          onClick={() => setIsShareOpen(true)}
-          className="group relative flex h-9 shrink-0 items-center gap-2 rounded-lg px-3 text-[12px] font-semibold text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white dark:focus-visible:ring-indigo-500"
-          title="分享课程：生成可浏览的课程链接。"
-          aria-label="分享课程：生成可浏览的课程链接。"
-          onMouseEnter={(event) => showTooltip("分享课程：生成可浏览的课程链接。", event.currentTarget)}
-          onMouseLeave={hideTooltip}
-          onFocus={(event) => showTooltip("分享课程：生成可浏览的课程链接。", event.currentTarget)}
-          onBlur={hideTooltip}
-        >
-          <Share2 className="h-3.5 w-3.5 shrink-0 text-slate-400 transition-colors group-hover:text-indigo-600 dark:group-hover:text-indigo-300" />
-          <span className="whitespace-nowrap">分享</span>
-        </button>
+        {canManageCourseShares ? (
+          <>
+            <div className="h-5 w-px shrink-0 bg-slate-200 dark:bg-slate-800" />
+            <button
+              type="button"
+              onClick={() => setIsShareOpen(true)}
+              className="group relative flex h-9 shrink-0 items-center gap-2 rounded-lg px-3 text-[12px] font-semibold text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white dark:focus-visible:ring-indigo-500"
+              title="分享课程：生成可浏览的课程链接。"
+              aria-label="分享课程：生成可浏览的课程链接。"
+              onMouseEnter={(event) => showTooltip("分享课程：生成可浏览的课程链接。", event.currentTarget)}
+              onMouseLeave={hideTooltip}
+              onFocus={(event) => showTooltip("分享课程：生成可浏览的课程链接。", event.currentTarget)}
+              onBlur={hideTooltip}
+            >
+              <Share2 className="h-3.5 w-3.5 shrink-0 text-slate-400 transition-colors group-hover:text-indigo-600 dark:group-hover:text-indigo-300" />
+              <span className="whitespace-nowrap">分享</span>
+            </button>
+          </>
+        ) : null}
       </nav>
       <div className={cn("flex justify-end pr-1", isFloatingLayoutNav && !isScrollHidden ? "pointer-events-auto" : isFloatingLayoutNav ? "pointer-events-none" : undefined)}>
         <TopBar />
       </div>
-      {isShareOpen ? <CourseShareModal courseId={courseId} onClose={() => setIsShareOpen(false)} /> : null}
+      {isShareOpen && canManageCourseShares ? (
+        <CourseShareModal courseId={courseId} onClose={() => setIsShareOpen(false)} />
+      ) : null}
       {tooltip && typeof document !== "undefined"
         ? createPortal(
             <div

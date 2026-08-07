@@ -44,6 +44,8 @@ Environment:
 
 前端 Web 镜像默认使用 `VITE_BASE_PATH=/` 构建静态资源路径，避免深链页面把 JS/CSS 错误解析成相对路径。只有部署到子路径时才需要覆盖这个值。
 
+`FRONTEND_PUBLIC_URL` 会在容器启动时写入前端运行时配置，用于生成课程分享链接；桌面 remote 包使用对应的 `AITEACHME_REMOTE_FRONTEND_URL`。
+
 PostHog 这类浏览器端配置由容器启动脚本写入 `/runtime-config.js`，所以 Sealos 的运行时环境变量会在页面加载时生效；不需要把这些值作为 Docker build args 重新构建镜像。注意优先在前端 App 配置 `VITE_POSTHOG_*` 这组公开浏览器变量。脚本也会兼容读取同一前端容器里的 `POSTHOG_ENABLED`、`POSTHOG_TOKEN`、`POSTHOG_HOST`、`POSTHOG_DEBUG` 作为兜底；后端 App 如需采集服务端事件则仍应单独配置 `POSTHOG_*`。
 
 ## 上传大小与网关限制

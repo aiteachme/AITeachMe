@@ -116,6 +116,7 @@ def test_request_and_exception_paths_are_redacted_before_logging(monkeypatch: py
     assert response.status_code == 200
     assert response.headers["cache-control"] == "private, no-store, max-age=0"
     assert response.headers["referrer-policy"] == "no-referrer"
+    assert response.headers["x-robots-tag"] == "noindex, nofollow, noarchive"
     assert any(
         item.get("path") == "/api/v1/course-shares/:shareToken/documents/doc-1"
         for item in bound_contexts

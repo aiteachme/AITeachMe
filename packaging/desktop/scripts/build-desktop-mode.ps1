@@ -4,6 +4,7 @@ param(
     [string]$PackageMode,
     [string]$BackendPort = "",
     [string]$ApiUrl = $env:AITEACHME_REMOTE_API_URL,
+    [string]$PublicAppUrl = $env:AITEACHME_REMOTE_FRONTEND_URL,
     [switch]$SkipInstall,
     [switch]$HideElectronSuffix,
     [switch]$ImportBundledEnv,
@@ -59,7 +60,7 @@ function Build-ElectronLocal {
 }
 
 function Build-ElectronRemote {
-    $arguments = @("-Flavor", "remote", "-ApiUrl", $ApiUrl)
+    $arguments = @("-Flavor", "remote", "-ApiUrl", $ApiUrl, "-PublicAppUrl", $PublicAppUrl)
     if ($SkipInstall) {
         $arguments += "-SkipInstall"
     }
@@ -96,7 +97,7 @@ function Build-TauriLocal {
 }
 
 function Build-TauriRemote {
-    $arguments = @("-Flavor", "remote", "-ApiUrl", $ApiUrl)
+    $arguments = @("-Flavor", "remote", "-ApiUrl", $ApiUrl, "-PublicAppUrl", $PublicAppUrl)
     if ($SkipInstall) {
         $arguments += "-SkipInstall"
     }

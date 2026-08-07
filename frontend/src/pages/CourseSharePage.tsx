@@ -903,16 +903,29 @@ export function CourseSharePage() {
     const existingMeta = document.head.querySelector<HTMLMetaElement>('meta[name="referrer"]');
     const previousContent = existingMeta?.content;
     const meta = existingMeta ?? document.createElement("meta");
+    const existingRobotsMeta = document.head.querySelector<HTMLMetaElement>('meta[name="robots"]');
+    const previousRobotsContent = existingRobotsMeta?.content;
+    const robotsMeta = existingRobotsMeta ?? document.createElement("meta");
     if (!existingMeta) {
       meta.name = "referrer";
       document.head.appendChild(meta);
     }
+    if (!existingRobotsMeta) {
+      robotsMeta.name = "robots";
+      document.head.appendChild(robotsMeta);
+    }
     meta.content = "no-referrer";
+    robotsMeta.content = "noindex,nofollow,noarchive";
     return () => {
       if (existingMeta) {
         existingMeta.content = previousContent ?? "";
       } else {
         meta.remove();
+      }
+      if (existingRobotsMeta) {
+        existingRobotsMeta.content = previousRobotsContent ?? "";
+      } else {
+        robotsMeta.remove();
       }
     };
   }, []);

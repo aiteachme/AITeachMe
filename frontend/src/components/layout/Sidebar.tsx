@@ -36,6 +36,7 @@ import { cn } from "../../lib/utils";
 import { publicAssetPath } from "../../lib/publicAsset";
 import { buildPreferredCourseEntryPath, getCourseIdFromPathname } from "../../lib/courseNavigation";
 import { isElectronRuntime } from "../../lib/electronRuntime";
+import { useCanManageCourseShares } from "../../hooks/useCourseShareCapability";
 
 import { CourseExportModal } from "../course/CourseExportModal";
 import { CourseImportModal } from "../course/CourseImportModal";
@@ -264,6 +265,7 @@ export function Sidebar({
   const [shareCourseId, setShareCourseId] = useState<string | null>(null);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [showDocsHint, setShowDocsHint] = useState(false);
+  const canManageCourseShares = useCanManageCourseShares();
 
   const menuRef = useRef<HTMLDivElement>(null);
   const menuButtonRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
@@ -1218,22 +1220,24 @@ export function Sidebar({
                     transformOrigin: menuPosition.placement === "top" ? "bottom right" : "top right",
                   }}
                 >
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      setOpenMenuId(null);
-                      setCourseActionError(undefined);
-                      setShareCourseId(openMenuCourse.course_id);
-                    }}
-                    className="group flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
-                  >
-                    <Share2 className="h-4 w-4 shrink-0 text-slate-400 transition group-hover:text-slate-700 dark:text-slate-500 dark:group-hover:text-slate-200" />
-                    <span className="min-w-0">
-                      <span className="block font-medium text-slate-900 dark:text-slate-100">分享课程</span>
-                      <span className="block text-[11px] leading-4 text-slate-500 dark:text-slate-400">生成可浏览链接</span>
-                    </span>
-                  </button>
+                  {canManageCourseShares ? (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setOpenMenuId(null);
+                        setCourseActionError(undefined);
+                        setShareCourseId(openMenuCourse.course_id);
+                      }}
+                      className="group flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                    >
+                      <Share2 className="h-4 w-4 shrink-0 text-slate-400 transition group-hover:text-slate-700 dark:text-slate-500 dark:group-hover:text-slate-200" />
+                      <span className="min-w-0">
+                        <span className="block font-medium text-slate-900 dark:text-slate-100">分享课程</span>
+                        <span className="block text-[11px] leading-4 text-slate-500 dark:text-slate-400">生成可浏览链接</span>
+                      </span>
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     role="menuitem"
@@ -1326,7 +1330,7 @@ export function Sidebar({
         <CourseExportModal courseId={exportCourseId} onClose={() => setExportCourseId(null)} />
       ) : null}
 
-      {shareCourseId ? (
+      {shareCourseId && canManageCourseShares ? (
         <CourseShareModal courseId={shareCourseId} onClose={() => setShareCourseId(null)} />
       ) : null}
 

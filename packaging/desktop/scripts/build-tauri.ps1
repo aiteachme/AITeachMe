@@ -3,6 +3,7 @@ param(
     [ValidateSet("local", "remote")]
     [string]$Flavor,
     [string]$ApiUrl = $env:AITEACHME_REMOTE_API_URL,
+    [string]$PublicAppUrl = $env:AITEACHME_REMOTE_FRONTEND_URL,
     [switch]$SkipInstall,
     [switch]$ImportBundledEnv,
     [string]$BundledEnvConfigPath = "packaging\desktop\private\bundled-env.json",
@@ -101,6 +102,9 @@ if ($Flavor -eq "remote") {
     if ($ApiUrl -notmatch "^https?://") {
         throw "Remote API URL must start with http:// or https://: $ApiUrl"
     }
+    if (-not [string]::IsNullOrWhiteSpace($PublicAppUrl) -and $PublicAppUrl -notmatch "^https?://") {
+        throw "Remote public frontend URL must start with http:// or https://: $PublicAppUrl"
+    }
 }
 
 Assert-RustToolchain
@@ -116,6 +120,11 @@ if ($windowsSigning.Enabled -and $null -eq $tauriWindowsSigningConfig) {
 }
 
 $apiBaseUrl = if ($Flavor -eq "local") { "" } else { $ApiUrl.TrimEnd("/") }
+$publicAppBaseUrl = if ($Flavor -eq "remote" -and -not [string]::IsNullOrWhiteSpace($PublicAppUrl)) {
+    $PublicAppUrl.TrimEnd("/")
+} else {
+    ""
+}
 $releaseSuffix = if ($Flavor -eq "local") {
     Get-AITeachMeInstallerReleaseSuffix `
         -Bundled:$ImportBundledEnv `
@@ -135,6 +144,7 @@ if ($Flavor -eq "local") {
 }
 else {
     Write-Host "API base URL: $apiBaseUrl"
+    Write-Host "Public app URL: $publicAppBaseUrl"
 }
 if ($releaseSuffix) {
     Write-Host "Release suffix: $releaseSuffix"
@@ -212,9 +222,11 @@ if ($Flavor -eq "local") {
 }
 
 $previousViteApiUrl = [Environment]::GetEnvironmentVariable("VITE_API_URL", "Process")
+$previousVitePublicAppUrl = [Environment]::GetEnvironmentVariable("VITE_PUBLIC_APP_URL", "Process")
 
 try {
     [Environment]::SetEnvironmentVariable("VITE_API_URL", $apiBaseUrl, "Process")
+    [Environment]::SetEnvironmentVariable("VITE_PUBLIC_APP_URL", $publicAppBaseUrl, "Process")
 
     Write-Host ""
     Write-Host "==== Generate frontend API client ====" -ForegroundColor Cyan
@@ -229,6 +241,7 @@ try {
 }
 finally {
     [Environment]::SetEnvironmentVariable("VITE_API_URL", $previousViteApiUrl, "Process")
+    [Environment]::SetEnvironmentVariable("VITE_PUBLIC_APP_URL", $previousVitePublicAppUrl, "Process")
 }
 
 Copy-TauriArtifacts -RepoRoot $repoRoot -Flavor "tauri-$Flavor" -ReleaseSuffix $releaseSuffix -IncludeUpdater:$tauriLocalUpdaterEnabled

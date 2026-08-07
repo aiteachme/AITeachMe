@@ -39,6 +39,7 @@
 - `-TauriOnly`：只构建 Tauri 安装包，不生成默认 Electron 安装包。
 - `-IncludeRemote`：额外构建 remote 安装包。
 - `-ApiUrl <url>`：remote 包使用的后端地址，也可用环境变量 `AITEACHME_REMOTE_API_URL`。
+- `-PublicAppUrl <url>`：remote 包用于生成分享链接的公网 Web 地址，也可用环境变量 `AITEACHME_REMOTE_FRONTEND_URL`；未配置时桌面端不显示分享入口。
 - `-ImportBundledEnv`：把私有大模型配置加密后打进本地后端包。
 - `-BundledEnvConfigPath <path>`：指定私有 JSON 路径，默认 `packaging\desktop\private\bundled-env.json`。
 - `-BundledEnvArtifactSuffix <name>`：自定义预绑定包后缀，默认 `bundled`。
