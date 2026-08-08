@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Mapping, Sequence
 
 import structlog
 
 from app.shared.infra.env_support import get_env_bounded_float
+from app.shared.infra.exceptions import LLMTimeoutError
 from app.shared.infra.llm_support import acompletion_with_fallback, run_llm_tasks
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.models import ChapterExecutionBrief, clean_string_list
@@ -47,8 +47,16 @@ async def build_chapter_execution_brief(
     extra_metadata: Mapping[str, object] | None = None,
 ) -> ChapterExecutionBrief:
     chapter_index = int(chapter.get("chapter_index", 0) or 0) or 1
+    timeout_s = _chapter_brief_timeout_seconds()
 
     async def _run_chapter_brief(_: object) -> object:
+        completion_kwargs = docgen_completion_kwargs_with_metadata(
+            DocGenModelStep.CHAPTER_EXECUTION_BRIEF,
+            digest_mode=digest_mode,
+            extra_metadata=extra_metadata,
+            docgen_stage="build_chapter_execution_brief",
+        )
+        completion_kwargs["overall_timeout_s"] = timeout_s
         return await acompletion_with_fallback(
             build_chapter_execution_brief_messages(
                 course_name=course_name,
@@ -65,22 +73,13 @@ async def build_chapter_execution_brief(
                 docgen_history_brief=docgen_history_brief,
                 learner_profile_text=learner_profile_text,
             ),
-            **docgen_completion_kwargs_with_metadata(
-                DocGenModelStep.CHAPTER_EXECUTION_BRIEF,
-                digest_mode=digest_mode,
-                extra_metadata=extra_metadata,
-                docgen_stage="build_chapter_execution_brief",
-            ),
+            **completion_kwargs,
             response_model=ChapterExecutionBrief,
         )
 
     try:
-        timeout_s = _chapter_brief_timeout_seconds()
-        (response,) = await asyncio.wait_for(
-            run_llm_tasks([None], _run_chapter_brief, max_concurrent=1),
-            timeout=timeout_s,
-        )
-    except asyncio.TimeoutError as exc:
+        (response,) = await run_llm_tasks([None], _run_chapter_brief, max_concurrent=1)
+    except LLMTimeoutError as exc:
         logger.warning("docgen_chapter_brief_timeout", chapter_index=chapter_index, timeout_s=timeout_s)
         raise ChapterExecutionBriefError(f"LLM timed out building chapter brief for chapter {chapter_index}.") from exc
     except Exception as exc:

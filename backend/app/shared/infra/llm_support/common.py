@@ -7,8 +7,8 @@ import re
 import secrets
 import threading
 import time
-from collections.abc import AsyncGenerator, Awaitable, Mapping
-from contextlib import contextmanager
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Mapping
+from contextlib import asynccontextmanager, contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any, Iterator, Literal, NoReturn
@@ -48,6 +48,10 @@ _LLM_LIMITER_LOCK = threading.Lock()
 _LLM_RUNTIME_SNAPSHOT: ContextVar["LLMRuntimeSnapshot | None"] = ContextVar(
     "llm_runtime_snapshot",
     default=None,
+)
+_LLM_OVERALL_TIMEOUT_BUDGETS: ContextVar[tuple["_OverallTimeoutBudget", ...]] = ContextVar(
+    "llm_overall_timeout_budgets",
+    default=(),
 )
 _PRIMARY_BASE_URL_ENV_NAME = "LLM_BASE_URL"
 _PRIMARY_API_KEY_ENV_NAME = "LLM_API_KEY"
@@ -136,6 +140,39 @@ class _LimiterWaiter:
     future: asyncio.Future[None]
 
 
+@dataclass(slots=True)
+class _OverallTimeoutBudget:
+    """Track active helper time while pausing for shared concurrency slots."""
+
+    timeout: asyncio.Timeout
+    remaining_s: float
+    pause_depth: int = 0
+    active_started_at: float | None = None
+
+    def start(self) -> None:
+        loop = asyncio.get_running_loop()
+        self.active_started_at = loop.time()
+        self.timeout.reschedule(self.active_started_at + self.remaining_s)
+
+    def pause(self) -> None:
+        if self.pause_depth == 0 and self.active_started_at is not None:
+            loop = asyncio.get_running_loop()
+            now = loop.time()
+            self.remaining_s = max(0.0, self.remaining_s - (now - self.active_started_at))
+            self.active_started_at = None
+            self.timeout.reschedule(None if self.remaining_s > 0 else now)
+        self.pause_depth += 1
+
+    def resume(self) -> None:
+        if self.pause_depth <= 0:
+            return
+        self.pause_depth -= 1
+        if self.pause_depth == 0:
+            loop = asyncio.get_running_loop()
+            self.active_started_at = loop.time()
+            self.timeout.reschedule(self.active_started_at + self.remaining_s)
+
+
 class LLMConcurrencyLease:
     """One independently owned limiter slot that can be closed from any task."""
 
@@ -217,57 +254,64 @@ class LLMConcurrencyLimiter:
         wait_started_at = 0.0
         wait_trace_cm: Any | None = None
         wait_trace_run: Any | None = None
-        while True:
-            waiter: _LimiterWaiter | None = None
-            acquired = False
-            acquired_snapshot: dict[str, Any] | None = None
-            wait_trace_snapshot: dict[str, Any] | None = None
-            with self._lock:
-                effective_limit = self._effective_limit_locked()
-                if self._active < effective_limit:
-                    self._active += 1
-                    acquired = True
+        timeout_budgets = _LLM_OVERALL_TIMEOUT_BUDGETS.get()
+        for budget in timeout_budgets:
+            budget.pause()
+        try:
+            while True:
+                waiter: _LimiterWaiter | None = None
+                acquired = False
+                acquired_snapshot: dict[str, Any] | None = None
+                wait_trace_snapshot: dict[str, Any] | None = None
+                with self._lock:
+                    effective_limit = self._effective_limit_locked()
+                    if self._active < effective_limit:
+                        self._active += 1
+                        acquired = True
+                        if wait_trace_cm is not None:
+                            acquired_snapshot = self._trace_snapshot_locked(
+                                effective_limit=effective_limit,
+                            )
+                    else:
+                        if wait_trace_cm is None:
+                            wait_started_at = time.monotonic()
+                            wait_trace_snapshot = self._trace_snapshot_locked(
+                                effective_limit=effective_limit,
+                                queued_waiter=True,
+                            )
+                        future: asyncio.Future[None] = loop.create_future()
+                        waiter = _LimiterWaiter(loop=loop, future=future)
+                        self._waiters.append(waiter)
+                if acquired:
                     if wait_trace_cm is not None:
-                        acquired_snapshot = self._trace_snapshot_locked(
-                            effective_limit=effective_limit,
+                        self._close_wait_trace(
+                            wait_trace_cm,
+                            wait_trace_run,
+                            wait_started_at=wait_started_at,
+                            outcome="acquired",
+                            snapshot=acquired_snapshot,
                         )
-                else:
-                    if wait_trace_cm is None:
-                        wait_started_at = time.monotonic()
-                        wait_trace_snapshot = self._trace_snapshot_locked(
-                            effective_limit=effective_limit,
-                            queued_waiter=True,
+                    return
+                if wait_trace_snapshot is not None:
+                    wait_started_at = time.monotonic()
+                    wait_trace_cm, wait_trace_run = self._open_wait_trace(wait_trace_snapshot)
+                try:
+                    await asyncio.wait_for(waiter.future, timeout=0.5)
+                except asyncio.TimeoutError:
+                    self._remove_waiter(waiter)
+                except asyncio.CancelledError:
+                    self._remove_waiter(waiter)
+                    if wait_trace_cm is not None:
+                        self._close_wait_trace(
+                            wait_trace_cm,
+                            wait_trace_run,
+                            wait_started_at=wait_started_at,
+                            outcome="cancelled",
                         )
-                    future: asyncio.Future[None] = loop.create_future()
-                    waiter = _LimiterWaiter(loop=loop, future=future)
-                    self._waiters.append(waiter)
-            if acquired:
-                if wait_trace_cm is not None:
-                    self._close_wait_trace(
-                        wait_trace_cm,
-                        wait_trace_run,
-                        wait_started_at=wait_started_at,
-                        outcome="acquired",
-                        snapshot=acquired_snapshot,
-                    )
-                return
-            if wait_trace_snapshot is not None:
-                wait_started_at = time.monotonic()
-                wait_trace_cm, wait_trace_run = self._open_wait_trace(wait_trace_snapshot)
-            try:
-                await asyncio.wait_for(waiter.future, timeout=0.5)
-            except asyncio.TimeoutError:
-                self._remove_waiter(waiter)
-            except asyncio.CancelledError:
-                self._remove_waiter(waiter)
-                if wait_trace_cm is not None:
-                    self._close_wait_trace(
-                        wait_trace_cm,
-                        wait_trace_run,
-                        wait_started_at=wait_started_at,
-                        outcome="cancelled",
-                    )
-                raise
+                    raise
+        finally:
+            for budget in reversed(timeout_budgets):
+                budget.resume()
 
     def _trace_snapshot_locked(
         self,
@@ -977,10 +1021,28 @@ def pop_overall_timeout_s(call_kwargs: dict[str, Any]) -> float | None:
 async def wait_for_overall_timeout(awaitable: Awaitable[Any], timeout_s: float | None) -> Any:
     """Apply an optional timeout to a whole helper call."""
 
-    if timeout_s is None:
+    async with _overall_timeout_scope(timeout_s):
         return await awaitable
+
+
+@asynccontextmanager
+async def _overall_timeout_scope(timeout_s: float | None) -> AsyncIterator[None]:
+    """Pause an overall helper deadline while it waits for the shared LLM slot."""
+
+    if timeout_s is None:
+        yield
+        return
+
     try:
-        return await asyncio.wait_for(awaitable, timeout=timeout_s)
+        async with asyncio.timeout(None) as timeout:
+            budget = _OverallTimeoutBudget(timeout=timeout, remaining_s=float(timeout_s))
+            budget.start()
+            current_budgets = _LLM_OVERALL_TIMEOUT_BUDGETS.get()
+            token = _LLM_OVERALL_TIMEOUT_BUDGETS.set((*current_budgets, budget))
+            try:
+                yield
+            finally:
+                _LLM_OVERALL_TIMEOUT_BUDGETS.reset(token)
     except asyncio.TimeoutError as exc:
         raise LLMTimeoutError(timeout_s=int(timeout_s)) from exc
 
@@ -992,16 +1054,9 @@ async def iter_with_overall_timeout(
     """Yield a stream while bounding the total stream lifetime."""
 
     try:
-        if timeout_s is None:
+        async with _overall_timeout_scope(timeout_s):
             async for chunk in stream:
                 yield chunk
-            return
-
-        async with asyncio.timeout(timeout_s):
-            async for chunk in stream:
-                yield chunk
-    except asyncio.TimeoutError as exc:
-        raise LLMTimeoutError(timeout_s=int(timeout_s)) from exc
     finally:
         await stream.aclose()
 

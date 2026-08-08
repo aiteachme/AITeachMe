@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from app.shared.infra.exceptions import LLMTimeoutError
 from app.shared.infra.llm_support import (
     run_llm_tasks,
     get_llm_concurrency_limit,
@@ -364,6 +365,57 @@ async def test_llm_limiter_traces_wait_for_concurrency_slot(monkeypatch) -> None
     assert run.outputs["outcome"] == "acquired"
     assert run.outputs["configured_limit"] == 1
     assert int(run.outputs["wait_ms"]) >= 0
+
+
+@pytest.mark.anyio
+async def test_llm_overall_timeout_pauses_while_retry_reacquires_slot() -> None:
+    set_system_settings_override({"llm": {"concurrency_limit": 1}})
+    limiter = get_llm_concurrency_limiter()
+    first_attempt_active = asyncio.Event()
+    allow_retry = asyncio.Event()
+    blocker_active = asyncio.Event()
+    release_blocker = asyncio.Event()
+
+    async def retried_call() -> str:
+        async with limiter.slot() as lease:
+            first_attempt_active.set()
+            await allow_retry.wait()
+            await lease.sleep_without_holding_slot(0.02)
+            return "ok"
+
+    async def blocker() -> None:
+        await first_attempt_active.wait()
+        async with limiter.slot():
+            blocker_active.set()
+            await release_blocker.wait()
+
+    call_task = asyncio.create_task(
+        llm_common.wait_for_overall_timeout(retried_call(), timeout_s=0.1)
+    )
+    await asyncio.wait_for(first_attempt_active.wait(), timeout=1)
+    blocker_task = asyncio.create_task(blocker())
+    await asyncio.sleep(0.01)
+    allow_retry.set()
+    await asyncio.wait_for(blocker_active.wait(), timeout=1)
+
+    await asyncio.sleep(0.15)
+    assert not call_task.done()
+
+    release_blocker.set()
+    assert await asyncio.wait_for(call_task, timeout=1) == "ok"
+    await blocker_task
+
+
+@pytest.mark.anyio
+async def test_llm_overall_timeout_still_counts_active_execution() -> None:
+    limiter = get_llm_concurrency_limiter()
+
+    async def slow_call() -> None:
+        async with limiter.slot():
+            await asyncio.sleep(0.05)
+
+    with pytest.raises(LLMTimeoutError):
+        await llm_common.wait_for_overall_timeout(slow_call(), timeout_s=0.01)
 
 
 @pytest.mark.anyio
