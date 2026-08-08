@@ -2617,6 +2617,37 @@ def test_exam_question_draft_ignores_explicit_wrong_answer_declaration() -> None
     assert draft.correct_indices == [1]
 
 
+@pytest.mark.parametrize(
+    "explanation",
+    [
+        "答案不应该是 B，正确答案是 A。",
+        "不正确的答案是 B，正确答案是 A。",
+        "错误选项的答案应该是 B，正确答案是 A。",
+        "B 并非正确答案，正确答案是 A。",
+        "答案不应该是选项2，正确答案是选项1。",
+        "答案不应该是索引 [1]，正确答案是索引 [0]。",
+    ],
+)
+def test_exam_question_draft_ignores_negated_answer_declarations(explanation: str) -> None:
+    assert generator._choice_indices_declared_in_explanation(explanation, option_count=4) == [0]
+
+    draft = generator.ExamQuestionDraft.model_validate(
+        {
+            "item_order": 1,
+            "question_type": "single_choice",
+            "difficulty": "medium",
+            "stem": "下列哪一项满足定义？",
+            "options": ["满足全部条件", "条件不足", "仅满足部分条件", "与定义无关"],
+            "correct_indices": [0],
+            "option_judgements": [True, False, False, False],
+            "explanation": explanation,
+            "knowledge_unit_id": 1,
+        }
+    )
+
+    assert draft.correct_indices == [0]
+
+
 def test_exam_question_draft_allows_explaining_why_another_option_is_wrong() -> None:
     draft = generator.ExamQuestionDraft.model_validate(
         {

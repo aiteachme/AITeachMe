@@ -74,6 +74,12 @@ _CHOICE_EXPLANATION_INDEX_RE = re.compile(
     rf"{_CHOICE_EXPLANATION_DECLARATION_CONNECTOR}(?:index|索引)\s*\[?\s*([0-3])\s*\]?",
     re.IGNORECASE,
 )
+_NEGATED_CHOICE_EXPLANATION_DECLARATION_RE = re.compile(
+    r"(?:不|非|未)(?:一定|必然|必)?(?:是|为)?\s*$|"
+    r"(?:不|非)正确(?:答案|选项)?的?\s*$|"
+    r"错误(?:答案|选项)?的?\s*$",
+    re.IGNORECASE,
+)
 _QUESTION_GENERATION_TOTAL_TIMEOUT_S = 120.0
 
 
@@ -201,7 +207,13 @@ def _choice_indices_declared_in_explanation(explanation: str, *, option_count: i
         if 0 <= index < option_count and index not in indices:
             indices.append(index)
 
+    def declaration_is_negated(match: re.Match[str]) -> bool:
+        prefix = cleaned[max(0, match.start() - 24):match.start()]
+        return _NEGATED_CHOICE_EXPLANATION_DECLARATION_RE.search(prefix) is not None
+
     for match in _CHOICE_EXPLANATION_LABEL_RE.finditer(cleaned):
+        if declaration_is_negated(match):
+            continue
         labels = re.split(
             rf"\s*{_CHOICE_EXPLANATION_LABEL_SEPARATOR}\s*",
             match.group(1).strip(),
@@ -213,9 +225,13 @@ def _choice_indices_declared_in_explanation(explanation: str, *, option_count: i
                 add_index(ord(normalized) - ord("a"))
 
     for match in _CHOICE_EXPLANATION_ORDINAL_RE.finditer(cleaned):
+        if declaration_is_negated(match):
+            continue
         add_index(int(match.group(1)) - 1)
 
     for match in _CHOICE_EXPLANATION_INDEX_RE.finditer(cleaned):
+        if declaration_is_negated(match):
+            continue
         add_index(int(match.group(1)))
 
     return indices
