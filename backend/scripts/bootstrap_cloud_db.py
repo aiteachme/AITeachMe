@@ -19,8 +19,8 @@ Behavior:
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
 import os
-import subprocess
 import sys
 from pathlib import Path
 
@@ -59,12 +59,27 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _run_script(script_name: str, *script_args: str) -> None:
-    subprocess.run(
-        [sys.executable, str(BACKEND_ROOT / "scripts" / script_name), *script_args],
-        cwd=BACKEND_ROOT,
-        check=True,
-    )
+def _prepare_runtime_schema() -> int:
+    from scripts import prepare_cloud_db
+
+    return prepare_cloud_db.main([])
+
+
+def _validate_runtime_dependencies() -> int:
+    from scripts import check_cloud_db
+
+    return check_cloud_db.main()
+
+
+def _run_post_migration_step(step_name: str, step: Callable[[], int]) -> None:
+    exit_code = step()
+    if exit_code:
+        raise RuntimeError(f"{step_name} failed (exit={exit_code})")
+
+
+def _run_post_migration_steps() -> None:
+    _run_post_migration_step("prepare_cloud_db.py", _prepare_runtime_schema)
+    _run_post_migration_step("check_cloud_db.py", _validate_runtime_dependencies)
 
 
 def _run_alembic_upgrade_head() -> None:
@@ -208,15 +223,9 @@ def main(argv: list[str] | None = None) -> int:
             f"(current_revision={_format_revision(upgraded_revision)}, "
             f"expected_revision={expected_revision})"
         )
-        _run_script("prepare_cloud_db.py")
-        _run_script("check_cloud_db.py")
-    except subprocess.CalledProcessError as exc:
-        print(
-            f"cloud database bootstrap failed while running `{Path(exc.cmd[-1]).name}` "
-            f"(exit={exc.returncode})",
-            file=sys.stderr,
-        )
-        return exc.returncode or 1
+        # Keep preparation and validation in this process. Spawning fresh
+        # interpreters repeatedly re-imports LlamaIndex/boto3 before Uvicorn.
+        _run_post_migration_steps()
     except Exception as exc:  # noqa: BLE001
         if _looks_like_database_connectivity_error(exc):
             print(_format_database_connectivity_error(exc), file=sys.stderr)

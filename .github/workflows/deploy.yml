@@ -881,18 +881,9 @@ jobs:
           echo "Deploying backend image: ${{ steps.image.outputs.image }}"
           echo "Rollout timeout: ${BACKEND_ROLLOUT_TIMEOUT_SECONDS}s"
 
-          kubectl -n "${SEALOS_NAMESPACE}" patch \
-            "deployment/${SEALOS_BACKEND_DEPLOYMENT}" \
-            --type=merge \
-            -p "{\"spec\":{\"progressDeadlineSeconds\":${BACKEND_ROLLOUT_TIMEOUT_SECONDS}}}"
-
           kubectl -n "${SEALOS_NAMESPACE}" get \
             "secret/${SEALOS_IMAGE_PULL_SECRET}" \
             >/dev/null
-
-          kubectl -n "${SEALOS_NAMESPACE}" patch \
-            "deployment/${SEALOS_BACKEND_DEPLOYMENT}" \
-            -p "{\"spec\":{\"template\":{\"spec\":{\"imagePullSecrets\":[{\"name\":\"${SEALOS_IMAGE_PULL_SECRET}\"}]}}}}"
 
           backend_container_name="$(
             kubectl -n "${SEALOS_NAMESPACE}" get \
@@ -904,12 +895,25 @@ jobs:
             exit 1
           fi
 
-          security_patch="$(
+          deployment_patch="$(
             cat <<JSON
           {
             "spec": {
+              "progressDeadlineSeconds": ${BACKEND_ROLLOUT_TIMEOUT_SECONDS},
+              "strategy": {
+                "type": "RollingUpdate",
+                "rollingUpdate": {
+                  "maxUnavailable": 0,
+                  "maxSurge": 1
+                }
+              },
               "template": {
                 "spec": {
+                  "imagePullSecrets": [
+                    {
+                      "name": "${SEALOS_IMAGE_PULL_SECRET}"
+                    }
+                  ],
                   "securityContext": {
                     "runAsNonRoot": true,
                     "runAsUser": 10001,
@@ -922,11 +926,39 @@ jobs:
                   "containers": [
                     {
                       "name": "${backend_container_name}",
+                      "image": "${{ steps.image.outputs.image }}",
                       "securityContext": {
                         "allowPrivilegeEscalation": false,
                         "capabilities": {
                           "drop": ["ALL"]
                         }
+                      },
+                      "ports": [
+                        {
+                          "name": "http",
+                          "containerPort": 9020,
+                          "protocol": "TCP"
+                        }
+                      ],
+                      "startupProbe": {
+                        "httpGet": {
+                          "path": "/api/health",
+                          "port": "http",
+                          "scheme": "HTTP"
+                        },
+                        "periodSeconds": 10,
+                        "timeoutSeconds": 5,
+                        "failureThreshold": 330
+                      },
+                      "readinessProbe": {
+                        "httpGet": {
+                          "path": "/api/health",
+                          "port": "http",
+                          "scheme": "HTTP"
+                        },
+                        "periodSeconds": 5,
+                        "timeoutSeconds": 3,
+                        "failureThreshold": 3
                       }
                     }
                   ]
@@ -939,11 +971,7 @@ jobs:
           kubectl -n "${SEALOS_NAMESPACE}" patch \
             "deployment/${SEALOS_BACKEND_DEPLOYMENT}" \
             --type=strategic \
-            -p "${security_patch}"
-
-          kubectl -n "${SEALOS_NAMESPACE}" set image \
-            "deployment/${SEALOS_BACKEND_DEPLOYMENT}" \
-            "*=${{ steps.image.outputs.image }}"
+            -p "${deployment_patch}"
 
           kubectl -n "${SEALOS_NAMESPACE}" rollout status \
             "deployment/${SEALOS_BACKEND_DEPLOYMENT}" \
@@ -971,20 +999,6 @@ jobs:
             | grep -E "^${SEALOS_BACKEND_DEPLOYMENT}-|^NAME" || true
 
           echo
-          echo "## Deployment describe"
-          kubectl -n "${SEALOS_NAMESPACE}" describe \
-            "deployment/${SEALOS_BACKEND_DEPLOYMENT}" || true
-
-          echo
-          echo "## Pod describe"
-          for pod in $(kubectl -n "${SEALOS_NAMESPACE}" get pods --no-headers 2>/dev/null \
-            | awk -v prefix="${SEALOS_BACKEND_DEPLOYMENT}-" '$1 ~ "^" prefix { print $1 }'); do
-            echo
-            echo "### ${pod}"
-            kubectl -n "${SEALOS_NAMESPACE}" describe pod "${pod}" || true
-          done
-
-          echo
           echo "## Pod logs"
           for pod in $(kubectl -n "${SEALOS_NAMESPACE}" get pods --no-headers 2>/dev/null \
             | awk -v prefix="${SEALOS_BACKEND_DEPLOYMENT}-" '$1 ~ "^" prefix { print $1 }'); do
@@ -1003,6 +1017,7 @@ jobs:
             | tail -n 80 || true
 
       - name: Smoke test backend in cluster
+        id: smoke_backend
         if: steps.optin.outputs.enabled == 'true'
         shell: bash
         run: |
@@ -1031,6 +1046,21 @@ jobs:
 
           echo "Backend in-cluster health/upload check did not pass." >&2
           exit 1
+
+      - name: Show Sealos backend logs after failed smoke
+        if: always() && steps.optin.outputs.enabled == 'true' && steps.smoke_backend.outcome == 'failure'
+        shell: bash
+        run: |
+          set +e
+
+          for pod in $(kubectl -n "${SEALOS_NAMESPACE}" get pods --no-headers 2>/dev/null \
+            | awk -v prefix="${SEALOS_BACKEND_DEPLOYMENT}-" '$1 ~ "^" prefix { print $1 }'); do
+            echo "### ${pod} logs after failed smoke"
+            kubectl -n "${SEALOS_NAMESPACE}" logs "${pod}" --all-containers --tail=240 || true
+            echo
+            echo "### ${pod} previous logs"
+            kubectl -n "${SEALOS_NAMESPACE}" logs "${pod}" --all-containers --previous --tail=240 || true
+          done
 
       - name: Backend summary
         id: result

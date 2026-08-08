@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import subprocess
 import sys
 from pathlib import Path
 
@@ -38,10 +37,14 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
 
 def _run_bootstrap(*, reset_db: bool) -> None:
-    command = [sys.executable, str(BACKEND_ROOT / "scripts" / "bootstrap_cloud_db.py")]
+    from scripts import bootstrap_cloud_db
+
+    bootstrap_args: list[str] = []
     if reset_db:
-        command.append("--reset-db")
-    subprocess.run(command, cwd=BACKEND_ROOT, check=True)
+        bootstrap_args.append("--reset-db")
+    exit_code = bootstrap_cloud_db.main(bootstrap_args)
+    if exit_code:
+        raise RuntimeError(f"cloud database bootstrap failed (exit={exit_code})")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -58,13 +61,12 @@ def main(argv: list[str] | None = None) -> int:
         _run_bootstrap(
             reset_db=bool(args.reset_db),
         )
-    except subprocess.CalledProcessError as exc:
+    except RuntimeError as exc:
         print(
-            "cloud database bootstrap command failed; app startup aborted "
-            f"(exit={exc.returncode})",
+            f"{exc}; app startup aborted",
             file=sys.stderr,
         )
-        return exc.returncode or 1
+        return 1
 
     uvicorn_cmd = [
         sys.executable,

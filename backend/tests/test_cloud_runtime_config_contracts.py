@@ -187,6 +187,26 @@ def test_cloud_database_bootstrap_stops_before_inspection_on_settings_mismatch(
     assert "stopped before database inspection" in capsys.readouterr().err
 
 
+def test_cloud_database_post_migration_steps_run_in_order_in_one_process(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr(
+        bootstrap_cloud_db,
+        "_prepare_runtime_schema",
+        lambda: calls.append("prepare") or 0,
+    )
+    monkeypatch.setattr(
+        bootstrap_cloud_db,
+        "_validate_runtime_dependencies",
+        lambda: calls.append("validate") or 0,
+    )
+
+    bootstrap_cloud_db._run_post_migration_steps()
+
+    assert calls == ["prepare", "validate"]
+
+
 def test_cloud_lifespan_rejects_invalid_config_before_database_init(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -253,3 +273,16 @@ def test_deploy_workflow_serializes_and_reconciles_current_successful_main() -> 
     assert "cloudflare/wrangler-action@v3" in workflow
     assert "--commit-hash=${{ env.SOURCE_SHA }}" in workflow
     assert "CLOUDFLARE_DEPLOY_KEY" not in workflow
+
+
+def test_sealos_backend_rollout_waits_for_fastapi_readiness() -> None:
+    workflow = (
+        Path(__file__).resolve().parents[2] / ".github" / "workflows" / "deploy.yml"
+    ).read_text(encoding="utf-8")
+
+    assert '"maxUnavailable": 0' in workflow
+    assert '"maxSurge": 1' in workflow
+    assert '"startupProbe"' in workflow
+    assert '"readinessProbe"' in workflow
+    assert '"path": "/api/health"' in workflow
+    assert "describe pod" not in workflow
