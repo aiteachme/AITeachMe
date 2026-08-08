@@ -189,6 +189,33 @@ def test_unit_test_renderer_keeps_decimal_steps_and_code_options_readable() -> N
     assert "> 5. 0" not in unit_test
 
 
+def test_unit_test_renderer_removes_fill_blank_options_and_resolves_letter_answer() -> None:
+    unit_test = render_unit_test_markdown(
+        ChapterUnitTestSet(
+            chapter_index=1,
+            items=[
+                ChapterUnitTestItem(
+                    type="填空题",
+                    difficulty="基础",
+                    target="对称轴、顶点与最值",
+                    stem=r"函数 $y=x^2-4x+1$ 的对称轴是____，顶点是____，最小值是____。",
+                    options=[r"$x=2$，$(2,-3)$，$-3$"],
+                    answer="A",
+                    basis=r"配方得到 $y=(x-2)^2-3$。",
+                )
+            ],
+        ),
+        title="二次函数",
+        min_items=1,
+        fallback_targets=[],
+    )
+
+    assert "**Q01｜填空题｜基础｜考点：对称轴、顶点与最值**" in unit_test
+    assert "**选项**" not in unit_test
+    assert "> A\n" not in unit_test
+    assert r"$x=2$，$(2,-3)$，$-3$" in unit_test
+
+
 def test_unit_test_renderer_normalizes_metadata_and_keeps_four_options() -> None:
     unit_test = render_unit_test_markdown(
         ChapterUnitTestSet(

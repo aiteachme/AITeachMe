@@ -47,19 +47,21 @@ _UNIT_REF_WEIGHT_RE = re.compile(
     re.IGNORECASE,
 )
 _CHOICE_EXPLANATION_DECLARATION_PREFIX = (
-    r"(?:正确(?:答案|选项)|参考答案|标准答案|"
+    r"(?:(?<![不非])正确(?:答案|选项)|参考答案|标准答案|"
+    r"(?<!错误)(?<!错误的)(?<!不正确)(?<!非正确)"
     r"答案\s*(?:(?:应该|应当)?\s*(?:是|为|选择)|[:：=])|"
     r"应(?:为|选择)|应该(?:为|是|选择)|应当(?:为|是|选择)|"
-    r"correct\s+(?:answer|option))"
+    r"(?<![A-Za-z])correct\s+(?:answer|option))"
 )
 _CHOICE_EXPLANATION_DECLARATION_CONNECTOR = (
     r"\s*(?:(?:应该|应当)?\s*(?:是|为|选择|选)|"
     r"is|should\s+(?:be|select))?\s*"
 )
+_CHOICE_EXPLANATION_LABEL_SEPARATOR = r"(?:[,，、/&]|和|及|与|\band\b)"
 _CHOICE_EXPLANATION_LABEL_RE = re.compile(
     rf"{_CHOICE_EXPLANATION_DECLARATION_PREFIX}"
     rf"{_CHOICE_EXPLANATION_DECLARATION_CONNECTOR}(?:选项|option)?\s*"
-    r"([A-Da-d](?:\s*[,，、/]\s*[A-Da-d])*)",
+    rf"([A-Da-d](?:\s*{_CHOICE_EXPLANATION_LABEL_SEPARATOR}\s*[A-Da-d])*)",
     re.IGNORECASE,
 )
 _CHOICE_EXPLANATION_ORDINAL_RE = re.compile(
@@ -200,7 +202,11 @@ def _choice_indices_declared_in_explanation(explanation: str, *, option_count: i
             indices.append(index)
 
     for match in _CHOICE_EXPLANATION_LABEL_RE.finditer(cleaned):
-        labels = re.split(r"[,，、/\s]+", match.group(1).strip())
+        labels = re.split(
+            rf"\s*{_CHOICE_EXPLANATION_LABEL_SEPARATOR}\s*",
+            match.group(1).strip(),
+            flags=re.IGNORECASE,
+        )
         for label in labels:
             normalized = label.strip().casefold()
             if len(normalized) == 1 and normalized in "abcd":

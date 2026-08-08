@@ -2581,6 +2581,42 @@ def test_exam_question_draft_rejects_partial_multiple_choice_answer_declaration(
         )
 
 
+def test_exam_question_draft_allows_conjoined_multiple_choice_answer_declaration() -> None:
+    draft = generator.ExamQuestionDraft.model_validate(
+        {
+            "item_order": 1,
+            "question_type": "multiple_choice",
+            "difficulty": "medium",
+            "stem": "选择所有正确的说法。",
+            "options": ["说法一", "说法二", "说法三", "说法四"],
+            "correct_indices": [0, 2],
+            "option_judgements": [True, False, True, False],
+            "explanation": "正确答案是 A 和 C。",
+            "knowledge_unit_id": 1,
+        }
+    )
+
+    assert draft.correct_indices == [0, 2]
+
+
+def test_exam_question_draft_ignores_explicit_wrong_answer_declaration() -> None:
+    draft = generator.ExamQuestionDraft.model_validate(
+        {
+            "item_order": 1,
+            "question_type": "single_choice",
+            "difficulty": "medium",
+            "stem": "下列哪一项满足定义？",
+            "options": ["条件不足", "满足全部条件", "仅满足部分条件", "与定义无关"],
+            "correct_indices": [1],
+            "option_judgements": [False, True, False, False],
+            "explanation": "错误答案是 A，正确答案是 B。",
+            "knowledge_unit_id": 1,
+        }
+    )
+
+    assert draft.correct_indices == [1]
+
+
 def test_exam_question_draft_allows_explaining_why_another_option_is_wrong() -> None:
     draft = generator.ExamQuestionDraft.model_validate(
         {

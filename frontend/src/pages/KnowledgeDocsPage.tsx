@@ -872,7 +872,7 @@ function isVisibleHeading(heading: HTMLElement): boolean {
 
 function isTocTrackedHeading(heading: HTMLElement): boolean {
   const level = getHeadingLevel(heading);
-  return level >= 1 && level <= 3;
+  return level >= 1 && level <= 6;
 }
 
 function findHeadingSectionElement(heading: HTMLElement): HTMLElement | null {
@@ -958,6 +958,14 @@ function isScrollSpyTargetAtBottom(target: ScrollSpyScrollTarget): boolean {
   }
   return target.scrollHeight > target.clientHeight &&
     target.scrollTop + target.clientHeight >= target.scrollHeight - 15;
+}
+
+function isScrollableScrollSpyTarget(target: ScrollSpyScrollTarget): boolean {
+  if (isWindowScrollTarget(target)) {
+    const scroller = document.scrollingElement;
+    return Boolean(scroller && scroller.scrollHeight > scroller.clientHeight + 1);
+  }
+  return target.scrollHeight > target.clientHeight + 1;
 }
 
 function getKnowledgeMaxScrollTop(container: HTMLElement): number {
@@ -2494,6 +2502,7 @@ export function KnowledgeDocsPage() {
   }, [isGraphDrawerOpen]);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
   const lazyLoadSentinelRef = useRef<HTMLDivElement | null>(null);
   const contentAreaRef = useRef<HTMLDivElement>(null);
   const floatingRef = useRef<HTMLDivElement>(null);
@@ -2584,10 +2593,11 @@ export function KnowledgeDocsPage() {
 
   const setScrollContainerRef = useCallback((node: HTMLDivElement | null) => {
     scrollRef.current = node;
+    setScrollElement(node);
   }, []);
 
   useEffect(() => {
-    const root = scrollRef.current;
+    const root = scrollElement;
     const sentinel = lazyLoadSentinelRef.current;
     if (!root || !sentinel || !hasNextChunk || effectiveDocViewMode !== "live") {
       return;
@@ -2606,7 +2616,7 @@ export function KnowledgeDocsPage() {
     });
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [effectiveDocViewMode, hasNextChunk, loadNextChunk, loadedChunkCount]);
+  }, [effectiveDocViewMode, hasNextChunk, loadNextChunk, loadedChunkCount, scrollElement]);
 
   const isCompactToc = viewportWidth < TOC_DRAWER_BREAKPOINT;
   const isCompactComment = viewportWidth < COMMENT_DRAWER_BREAKPOINT;
@@ -2948,6 +2958,22 @@ export function KnowledgeDocsPage() {
     () => toc.find((item) => item.id === visibleActiveHeading) ?? null,
     [toc, visibleActiveHeading]
   );
+
+  // Keep the currently read heading visible even when its branch was collapsed by default.
+  // A manual collapse remains respected until the active heading changes.
+  useEffect(() => {
+    if (!activeHeading || tocTree.length === 0) return;
+    const ancestorIds = findTocPath(tocTree, activeHeading).map((node) => node.item.id);
+    if (ancestorIds.length === 0) return;
+    setCollapsedTocIds((prev) => {
+      const next = new Set(prev);
+      let changed = false;
+      for (const id of ancestorIds) {
+        if (next.delete(id)) changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [activeHeading, tocTree]);
   const buildCurrentDocPageContext = useCallback(
     (anchorId: string = activeTocItem?.id ?? visibleActiveHeading) =>
       buildKnowledgeDocPageContext(
@@ -3570,7 +3596,7 @@ export function KnowledgeDocsPage() {
   ]);
 
   useEffect(() => {
-    const container = scrollRef.current;
+    const container = scrollElement;
     if (!courseId || !hasRenderedMarkdown || !container) {
       return;
     }
@@ -3634,22 +3660,26 @@ export function KnowledgeDocsPage() {
         saveNow();
       }
     };
-  }, [courseId, hasRenderedMarkdown, readingDocumentIdentity]);
+  }, [courseId, hasRenderedMarkdown, readingDocumentIdentity, scrollElement]);
 
   // Track active heading from the actual scroll targets so the TOC follows both inner and shell scrolling.
   useEffect(() => {
     if (isReadingPositionRestoring) return;
-    const container = scrollRef.current;
+    const container = scrollElement;
     if (!container) return;
     const scrollTargets = collectScrollSpyScrollTargets(container);
 
     const headingRoot = contentAreaRef.current;
-    const headings = Array.from((headingRoot ?? container).querySelectorAll<HTMLElement>("[data-heading-id]"))
-      .filter(isTocTrackedHeading);
-    if (headings.length === 0) {
-      setActiveHeading("");
-      return;
-    }
+    const trackedHeadingIds = new Set(toc.map((item) => item.id));
+    if (trackedHeadingIds.size === 0) return;
+
+    const collectCurrentHeadings = () => (
+      Array.from((headingRoot ?? container).querySelectorAll<HTMLElement>("[data-heading-id]"))
+        .filter((heading) => {
+          const id = heading.getAttribute("data-heading-id") ?? "";
+          return heading.isConnected && isTocTrackedHeading(heading) && trackedHeadingIds.has(id);
+        })
+    );
 
     let rafId = 0;
     let positionRafId = 0;
@@ -3662,9 +3692,15 @@ export function KnowledgeDocsPage() {
       });
     };
 
-    const findActiveHeadingId = () => {
+    const findActiveHeadingId = (): string | null => {
+      // Markdown rerenders after lazy chunks, highlighting and collapse changes.
+      // Always read current nodes instead of retaining disconnected headings.
+      const headings = collectCurrentHeadings();
       const visibleHeadings = headings.filter(isVisibleHeading);
-      if (scrollTargets.some(isScrollSpyTargetAtBottom)) {
+      // Images, diagrams and lazy chunks can make a different nested container
+      // scrollable after the effect was installed, so resolve it for every pass.
+      const primaryScrollTarget = scrollTargets.find(isScrollableScrollSpyTarget) ?? container;
+      if (isScrollSpyTargetAtBottom(primaryScrollTarget)) {
         const lastHeading = visibleHeadings[visibleHeadings.length - 1];
         if (lastHeading) {
           return lastHeading.getAttribute("data-heading-id") ?? "";
@@ -3672,7 +3708,9 @@ export function KnowledgeDocsPage() {
       }
 
       if (visibleHeadings.length === 0) {
-        return "";
+        // A transient empty DOM during Markdown replacement must not erase the
+        // last valid TOC position and make the scroll-spy appear to disappear.
+        return null;
       }
 
       const activationY = getScrollSpyActivationY(container, scrollTargets);
@@ -3700,7 +3738,9 @@ export function KnowledgeDocsPage() {
       window.cancelAnimationFrame(rafId);
       rafId = window.requestAnimationFrame(() => {
         const nextId = findActiveHeadingId();
-        setActiveHeading((prev) => (prev === nextId ? prev : nextId));
+        if (nextId) {
+          setActiveHeading((prev) => (prev === nextId ? prev : nextId));
+        }
       });
     };
 
@@ -3717,9 +3757,22 @@ export function KnowledgeDocsPage() {
       syncActiveHeading();
     };
 
+    const handleUserScrollIntent = () => {
+      if (scrollingToHeadingTargetRef.current === null) return;
+      scrollingToHeadingTargetRef.current = null;
+      if (scrollspyIgnoreTimerRef.current !== null) {
+        window.clearTimeout(scrollspyIgnoreTimerRef.current);
+        scrollspyIgnoreTimerRef.current = null;
+      }
+      syncActiveHeading();
+    };
+
     scrollTargets.forEach((target) => {
       target.addEventListener("scroll", handleScroll, { passive: true });
       target.addEventListener("scrollend", handleScrollEnd, { passive: true });
+      target.addEventListener("wheel", handleUserScrollIntent, { passive: true });
+      target.addEventListener("touchstart", handleUserScrollIntent, { passive: true });
+      target.addEventListener("pointerdown", handleUserScrollIntent, { passive: true });
     });
     window.addEventListener("resize", schedulePositionRefresh);
     const resizeObserverTarget = headingRoot;
@@ -3729,6 +3782,17 @@ export function KnowledgeDocsPage() {
     if (resizeObserver && resizeObserverTarget) {
       resizeObserver.observe(resizeObserverTarget);
     }
+    const mutationObserver = typeof MutationObserver !== "undefined" && headingRoot
+      ? new MutationObserver(schedulePositionRefresh)
+      : null;
+    if (mutationObserver && headingRoot) {
+      mutationObserver.observe(headingRoot, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["data-heading-id", "data-collapsed"],
+      });
+    }
     syncActiveHeading();
 
     return () => {
@@ -3737,11 +3801,15 @@ export function KnowledgeDocsPage() {
       scrollTargets.forEach((target) => {
         target.removeEventListener("scroll", handleScroll);
         target.removeEventListener("scrollend", handleScrollEnd);
+        target.removeEventListener("wheel", handleUserScrollIntent);
+        target.removeEventListener("touchstart", handleUserScrollIntent);
+        target.removeEventListener("pointerdown", handleUserScrollIntent);
       });
       window.removeEventListener("resize", schedulePositionRefresh);
       resizeObserver?.disconnect();
+      mutationObserver?.disconnect();
     };
-  }, [isReadingPositionRestoring, renderedMarkdown, tocSignature]);
+  }, [isReadingPositionRestoring, renderedMarkdown, scrollElement, tocSignature]);
 
   // Keep the active TOC item aligned when layout changes or window resizes
   useEffect(() => {
@@ -6613,17 +6681,17 @@ export function KnowledgeDocsPage() {
           <div
             data-toc-id={item.id}
             className={cn(
-              "group relative flex items-center rounded-md transition-colors duration-150 overflow-hidden",
+              "group relative my-px flex min-h-8 items-center overflow-hidden rounded-md transition-colors duration-150",
               isActive
-                ? "bg-indigo-50/70 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300"
-                : "text-slate-600 hover:bg-slate-100/60 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-100"
+                ? "bg-[#EAF2FF] text-[#245BDB] dark:bg-blue-500/15 dark:text-blue-300"
+                : "text-[#4E5969] hover:bg-[#F2F3F5] hover:text-[#1F2329] dark:text-slate-400 dark:hover:bg-slate-800/70 dark:hover:text-slate-100"
             )}
             style={{ paddingLeft: indent + 8 }}
           >
             {/* Active indicator bar */}
             {isActive && (
               <span
-                className="absolute top-1/2 -translate-y-1/2 w-[3px] h-4 bg-indigo-600 dark:bg-indigo-400 rounded-r-full"
+                className="absolute top-1/2 h-[18px] w-0.5 -translate-y-1/2 rounded-full bg-[#3370FF] dark:bg-blue-400"
                 style={{ left: indent + 2 }}
               />
             )}
@@ -6639,7 +6707,7 @@ export function KnowledgeDocsPage() {
                 className={cn(
                   "w-5 h-5 shrink-0 flex items-center justify-center rounded transition-colors",
                   isActive
-                    ? "text-indigo-500 hover:bg-indigo-100/50 dark:text-indigo-300 dark:hover:bg-indigo-500/20"
+                    ? "text-[#3370FF] hover:bg-blue-100/70 dark:text-blue-300 dark:hover:bg-blue-500/20"
                     : "text-slate-400 hover:bg-slate-200/60 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
                 )}
                 title={isCollapsed ? `展开：${item.text}` : `收起：${item.text}`}
@@ -6663,9 +6731,9 @@ export function KnowledgeDocsPage() {
               title={item.text}
               aria-label={`跳转到：${item.text}`}
               className={cn(
-                "flex-1 min-w-0 text-left py-1.5 pr-1 text-[14px] leading-5 truncate transition-colors",
+                "min-w-0 flex-1 truncate py-1.5 pr-1 text-left text-[13.5px] leading-5 transition-colors",
                 isActive
-                  ? "font-semibold text-indigo-700 dark:text-indigo-300"
+                  ? "font-medium text-[#245BDB] dark:text-blue-300"
                   : item.level === 1
                     ? "font-semibold text-slate-800 dark:text-slate-100"
                     : "font-normal text-slate-700 dark:text-slate-300",
@@ -6675,7 +6743,10 @@ export function KnowledgeDocsPage() {
             >
               {displayText.number ? (
                 <span
-                  className="mr-1.5 select-none font-semibold text-indigo-600 dark:text-indigo-400"
+                  className={cn(
+                    "mr-1.5 select-none font-medium",
+                    isActive ? "text-[#3370FF] dark:text-blue-300" : "text-[#8F959E] dark:text-slate-500",
+                  )}
                 >
                   {displayText.number}
                 </span>

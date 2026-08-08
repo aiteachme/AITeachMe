@@ -896,7 +896,6 @@ export function CourseSharePage() {
   const [isMobileTocOpen, setIsMobileTocOpen] = useState(false);
   const [isTocCollapsed, setIsTocCollapsed] = useState(false);
   const [pageWideMode, setPageWideMode] = useState(false);
-  const [collapsedTocIds, setCollapsedTocIds] = useState<Set<string>>(() => new Set());
   const [savePromptFeature, setSavePromptFeature] = useState<string | null>(null);
 
   useEffect(() => {
@@ -986,7 +985,15 @@ export function CourseSharePage() {
     scrollRef.current = node;
     setScrollElement(node);
   }, []);
-  const { tocTree, activeHeading, scrollToHeading } = useDocToc(isKnowledgeView ? documentContent : "", scrollRef, scrollElement);
+  const {
+    tocTree,
+    activeHeading,
+    collapsedTocIds,
+    setCollapsedTocIds,
+    toggleTocCollapse,
+    scrollToHeading,
+    bindTocNav,
+  } = useDocToc(isKnowledgeView ? documentContent : "", scrollRef, scrollElement);
   const collapsibleTocIds = useMemo(() => collectCollapsibleTocIds(tocTree), [tocTree]);
   const pageShellMaxWidthClass = pageWideMode ? "max-w-none" : "max-w-[1120px]";
   const docColumnMaxWidthClass = pageWideMode ? "max-w-none" : "max-w-[980px]";
@@ -1043,15 +1050,6 @@ export function CourseSharePage() {
     });
   }, [location.hash, location.pathname, location.search, navigate]);
 
-  const toggleTocCollapse = useCallback((id: string) => {
-    setCollapsedTocIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
-
   const expandAllTocLevels = useCallback(() => {
     setCollapsedTocIds(new Set());
   }, []);
@@ -1084,16 +1082,16 @@ export function CourseSharePage() {
           <div
             data-toc-id={item.id}
             className={cn(
-              "group relative flex items-center overflow-hidden rounded-md transition-colors duration-150",
+              "group relative my-px flex min-h-8 items-center overflow-hidden rounded-md transition-colors duration-150",
               isActive
-                ? "bg-indigo-50/70 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300"
-                : "text-slate-600 hover:bg-slate-100/60 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-100",
+                ? "bg-[#EAF2FF] text-[#245BDB] dark:bg-blue-500/15 dark:text-blue-300"
+                : "text-[#4E5969] hover:bg-[#F2F3F5] hover:text-[#1F2329] dark:text-slate-400 dark:hover:bg-slate-800/70 dark:hover:text-slate-100",
             )}
             style={{ paddingLeft: indent + 8 }}
           >
             {isActive ? (
               <span
-                className="absolute top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-r-full bg-indigo-600 dark:bg-indigo-400"
+                className="absolute top-1/2 h-[18px] w-0.5 -translate-y-1/2 rounded-full bg-[#3370FF] dark:bg-blue-400"
                 style={{ left: indent + 2 }}
               />
             ) : null}
@@ -1108,7 +1106,7 @@ export function CourseSharePage() {
                 className={cn(
                   "flex h-5 w-5 shrink-0 items-center justify-center rounded transition-colors",
                   isActive
-                    ? "text-indigo-500 hover:bg-indigo-100/50 dark:text-indigo-300 dark:hover:bg-indigo-500/20"
+                    ? "text-[#3370FF] hover:bg-blue-100/70 dark:text-blue-300 dark:hover:bg-blue-500/20"
                     : "text-slate-400 hover:bg-slate-200/60 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300",
                 )}
                 title={isCollapsed ? `展开：${item.text}` : `收起：${item.text}`}
@@ -1126,9 +1124,9 @@ export function CourseSharePage() {
               title={item.text}
               aria-label={`跳转到：${item.text}`}
               className={cn(
-                "min-w-0 flex-1 truncate py-1.5 pr-1 text-left text-[14px] leading-5 transition-colors",
+                "min-w-0 flex-1 truncate py-1.5 pr-1 text-left text-[13.5px] leading-5 transition-colors",
                 isActive
-                  ? "font-semibold text-indigo-700 dark:text-indigo-300"
+                  ? "font-medium text-[#245BDB] dark:text-blue-300"
                   : item.level === 1
                     ? "font-semibold text-slate-800 dark:text-slate-100"
                     : "font-normal text-slate-700 dark:text-slate-300",
@@ -1137,7 +1135,10 @@ export function CourseSharePage() {
               )}
             >
               {displayText.number ? (
-                <span className="mr-1.5 select-none font-semibold text-indigo-600 dark:text-indigo-400">
+                <span className={cn(
+                  "mr-1.5 select-none font-medium",
+                  isActive ? "text-[#3370FF] dark:text-blue-300" : "text-[#8F959E] dark:text-slate-500",
+                )}>
                   {displayText.number}
                 </span>
               ) : null}
@@ -1159,7 +1160,12 @@ export function CourseSharePage() {
 
     return (
       <div className="relative h-full">
-        <nav className={cn("toc-scroll h-full overflow-y-auto pr-2", showBulkControls ? "py-2" : "pb-2 pt-0")}>
+        <nav
+          ref={showBulkControls === isMobileTocOpen
+            ? bindTocNav
+            : undefined}
+          className={cn("toc-scroll h-full overflow-y-auto pr-2", showBulkControls ? "py-2" : "pb-2 pt-0")}
+        >
           {showBulkControls && tocTree.length > 0 ? (
             <div className="sticky top-0 z-10 mb-1 flex h-8 items-center justify-end bg-white/95 px-1 pb-1 pt-0.5 backdrop-blur dark:bg-slate-950/95">
               <div className="flex items-center gap-0.5 text-slate-400">

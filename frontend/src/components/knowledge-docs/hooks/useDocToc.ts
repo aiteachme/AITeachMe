@@ -2,7 +2,7 @@
 /*  useDocToc — TOC parsing, active heading tracking, scroll-to        */
 /* ------------------------------------------------------------------ */
 
-import { useState, useEffect, useCallback, useLayoutEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useLayoutEffect, useMemo, useRef, type Dispatch, type SetStateAction } from "react";
 import type { TocItem, TocTreeNode } from "../types";
 import { tocEqual, buildTocTree, findAncestorIds } from "../utils";
 
@@ -13,9 +13,10 @@ export interface DocTocState {
   setActiveHeading: (id: string) => void;
   activeTocItem: TocItem | null;
   collapsedTocIds: Set<string>;
+  setCollapsedTocIds: Dispatch<SetStateAction<Set<string>>>;
   toggleTocCollapse: (id: string) => void;
   scrollToHeading: (id: string) => void;
-  tocNavRef: React.RefObject<HTMLElement | null>;
+  bindTocNav: (node: HTMLElement | null) => void;
 }
 
 export function useDocToc(
@@ -26,8 +27,11 @@ export function useDocToc(
   const [toc, setToc] = useState<TocItem[]>([]);
   const [activeHeading, setActiveHeading] = useState("");
   const [collapsedTocIds, setCollapsedTocIds] = useState<Set<string>>(new Set());
-  const tocNavRef = useRef<HTMLElement>(null);
+  const tocNavRef = useRef<HTMLElement | null>(null);
   const headingFlashTimersRef = useRef(new Map<string, number>());
+  const bindTocNav = useCallback((node: HTMLElement | null) => {
+    tocNavRef.current = node;
+  }, []);
 
   const tocTree = useMemo(() => buildTocTree(toc), [toc]);
 
@@ -121,15 +125,19 @@ export function useDocToc(
   /* Auto-scroll TOC sidebar to keep active item visible */
   useEffect(() => {
     if (!activeHeading || !tocNavRef.current) return;
-    const activeBtn = tocNavRef.current.querySelector(`[data-toc-id="${activeHeading}"]`) as HTMLElement | null;
+    const activeBtn = tocNavRef.current.querySelector(
+      `[data-toc-id="${CSS.escape(activeHeading)}"]`,
+    ) as HTMLElement | null;
     if (!activeBtn) return;
     const nav = tocNavRef.current;
     const navRect = nav.getBoundingClientRect();
     const btnRect = activeBtn.getBoundingClientRect();
-    if (btnRect.top < navRect.top + 8 || btnRect.bottom > navRect.bottom - 8) {
-      activeBtn.scrollIntoView({ behavior: "smooth", block: "center" });
-    }
-  }, [activeHeading]);
+    const safeInset = Math.min(48, Math.max(12, nav.clientHeight * 0.12));
+    if (btnRect.top >= navRect.top + safeInset && btnRect.bottom <= navRect.bottom - safeInset) return;
+    const nextTop = nav.scrollTop + (btnRect.top - navRect.top) - nav.clientHeight * 0.35;
+    const maxTop = Math.max(0, nav.scrollHeight - nav.clientHeight);
+    nav.scrollTo({ top: Math.max(0, Math.min(maxTop, nextTop)), behavior: "smooth" });
+  }, [activeHeading, collapsedTocIds]);
 
   /* Track active heading on scroll */
   useEffect(() => {
@@ -141,13 +149,23 @@ export function useDocToc(
       rafPending = true;
       window.requestAnimationFrame(() => {
         rafPending = false;
-        const headings = container.querySelectorAll("[data-heading-id]");
-        let current = "";
-        for (const el of headings) {
-          const rect = el.getBoundingClientRect();
-          if (rect.top <= 120) {
-            current = el.getAttribute("data-heading-id") ?? "";
-          }
+        const headings = Array.from(container.querySelectorAll<HTMLElement>("[data-heading-id]"))
+          .filter((heading) => heading.isConnected && heading.getClientRects().length > 0);
+        if (headings.length === 0) {
+          // Keep the last valid location while React replaces Markdown nodes.
+          return;
+        }
+        if (container.scrollHeight > container.clientHeight + 1 &&
+          container.scrollTop + container.clientHeight >= container.scrollHeight - 15) {
+          setActiveHeading(headings[headings.length - 1].getAttribute("data-heading-id") ?? "");
+          return;
+        }
+        const containerRect = container.getBoundingClientRect();
+        const activationY = containerRect.top + Math.min(120, Math.max(48, container.clientHeight * 0.18));
+        let current = headings[0].getAttribute("data-heading-id") ?? "";
+        for (const heading of headings) {
+          if (heading.getBoundingClientRect().top > activationY) break;
+          current = heading.getAttribute("data-heading-id") ?? current;
         }
         setActiveHeading(current);
       });
@@ -215,8 +233,9 @@ export function useDocToc(
     setActiveHeading,
     activeTocItem,
     collapsedTocIds,
+    setCollapsedTocIds,
     toggleTocCollapse,
     scrollToHeading,
-    tocNavRef,
+    bindTocNav,
   };
 }
