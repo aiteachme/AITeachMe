@@ -52,11 +52,13 @@ def build_repair_or_route_node(*, context: WorkflowContext):
             digest_mode=state.get("digest_mode") or None,
             current_stage_description="正在处理复核回流动作：执行安全局部修补，其余重动作记录为 warning。",
         )
-        # 只允许 repair router 执行已有安全局部补丁；整章重写仍会被降级或记录。
+        allow_llm_patches = str(state.get("digest_mode") or "").strip().lower() != "sprint"
+        # Sprint keeps one semantic writing pass. Deterministic presentation
+        # repairs still run, while semantic gaps remain visible as warnings.
         repaired, updated_actions, unresolved, repair_trace = await repair_or_route_review_actions(
             reviewed_chapters=reviewed,
             review_actions=actions,
-            allow_llm_patches=True,
+            allow_llm_patches=allow_llm_patches,
         )
         changed_count = sum(1 for item in repair_trace if item.changed)
         changed_chapters = {
@@ -109,7 +111,7 @@ def build_repair_or_route_node(*, context: WorkflowContext):
             for item in repaired
             if item.chapter_index in changed_chapters
         ]
-        kg_prefetch_status = "deferred_until_final_markdown"
+        kg_prefetch_status = str(state.get("kg_prefetch_status") or "not_started")
         await publish_docgen_progress(
             context,
             state=state,

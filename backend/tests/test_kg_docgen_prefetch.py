@@ -396,7 +396,18 @@ async def test_completed_prefetch_refresh_prioritizes_fresh_records(monkeypatch)
 
 
 @pytest.mark.anyio
-async def test_final_locked_prefetch_fans_out_to_global_concurrency(monkeypatch) -> None:
+@pytest.mark.parametrize(
+    ("prefetch_phase", "expected_fanout_mode"),
+    [
+        ("enhanced_chapters", "all_independent_enhanced_chapters_sections"),
+        ("final_locked_markdown", "all_independent_final_locked_markdown_sections"),
+    ],
+)
+async def test_whole_document_prefetch_fans_out_to_global_concurrency(
+    monkeypatch,
+    prefetch_phase: str,
+    expected_fanout_mode: str,
+) -> None:
     key = ("course_prefetch_concurrency", "build_prefetch_concurrency")
     captured_concurrency: list[int] = []
     captured_traces: list[dict[str, object]] = []
@@ -454,7 +465,7 @@ async def test_final_locked_prefetch_fans_out_to_global_concurrency(monkeypatch)
         build_session_id=key[1],
         chapters=[{"chapter_index": 1, "title": "final", "markdown": "# final\n\n正文"}],
         document_backbone={},
-        docgen_manifest={"kg_prefetch_phase": "final_locked_markdown"},
+        docgen_manifest={"kg_prefetch_phase": prefetch_phase},
     )
 
     try:
@@ -474,7 +485,7 @@ async def test_final_locked_prefetch_fans_out_to_global_concurrency(monkeypatch)
         assert metrics["prefetch_configured_concurrency"] == 6
         assert metrics["prefetch_llm_concurrency_cap"] == 10
         assert metrics["prefetch_effective_concurrency"] == 10
-        assert metrics["prefetch_fanout_mode"] == "all_independent_final_sections"
+        assert metrics["prefetch_fanout_mode"] == expected_fanout_mode
         run = captured_traces[0]["run"]
         assert isinstance(run, FakeTraceRun)
         assert run.outputs is not None

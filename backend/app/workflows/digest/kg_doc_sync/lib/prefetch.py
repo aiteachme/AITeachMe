@@ -387,10 +387,13 @@ def start_docgen_kg_prefetch(
     configured_concurrency = int(settings.knowledge_graph.prefetch_concurrency or 1)
     llm_concurrency_cap = _graph_llm_concurrency_cap()
     prefetch_phase = _prefetch_trace_phase(docgen_manifest)
-    final_locked_markdown = prefetch_phase == "final_locked_markdown"
+    whole_document_phase = prefetch_phase in {
+        "enhanced_chapters",
+        "final_locked_markdown",
+    }
     concurrency = (
         llm_concurrency_cap
-        if final_locked_markdown
+        if whole_document_phase
         else _prefetch_concurrency_limit(
             configured_concurrency,
             global_limit=llm_concurrency_cap,
@@ -403,8 +406,8 @@ def start_docgen_kg_prefetch(
                 "prefetch_llm_concurrency_cap": llm_concurrency_cap,
                 "prefetch_effective_concurrency": concurrency,
                 "prefetch_fanout_mode": (
-                    "all_independent_final_sections"
-                    if final_locked_markdown
+                    f"all_independent_{prefetch_phase}_sections"
+                    if whole_document_phase
                     else "bounded_speculative_sidecar"
                 ),
             }

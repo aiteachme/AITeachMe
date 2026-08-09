@@ -153,15 +153,15 @@ user_profile.prompt_addendum
 
 输入：`chapter_drafts`, `intent_profile`, `summary_enhanced`, `preliminary_kg`
 
-动作：增强 Mermaid、静态图、交互 HTML、练习资产；Writer 未直接输出 Mermaid 时，使用章节标题与核心知识点构造确定性 mindmap，不再为每章单独调用图示 LLM。KG 抽取延后到章节复核完成，避免增强稿和最终复核稿重复抽取。
+动作：增强 Mermaid、静态图、交互 HTML、练习资产；Writer 未直接输出 Mermaid 时，使用章节标题与核心知识点构造确定性 mindmap，不再为每章单独调用图示 LLM。全部增强稿就绪后先应用与发布相同的确定性 Markdown 规范化，再用整本内容启动一次 KG prefetch，与后续按章复核、跨章检查和必要修补并行运行。
 
-输出：`enhanced_chapter_drafts`, `asset_manifests`, `practice_manifests`
+输出：`enhanced_chapter_drafts`, `asset_manifests`, `practice_manifests`, `kg_prefetch_status`
 
 ## 11. `review_chapters`
 
 输入：`enhanced_chapter_draft`, `guideline`, `dispatch_table`, `chapters_enhanced`, `summary_enhanced`, `user_profile`
 
-动作：按章做确定性覆盖、证据、长度、Markdown 和章末测试结构校验；不再使用常驻的第二次 LLM 语义重审。显式大纲覆盖低于 90% 时生成单章局部补漏动作；轻微逐字匹配提示只记录，不触发模型。每章校验完成后把最终增强稿增量追加到 KG prefetch，并同步产出章节级 KG refinement。
+动作：按章做确定性覆盖、证据、长度、Markdown 和章末测试结构校验；不再使用常驻的第二次 LLM 语义重审。显式大纲覆盖低于 90% 时生成单章局部补漏动作；轻微逐字匹配提示只记录，不触发模型。复核只同步产出章节级 KG refinement，不重复启动 KG 抽取。
 
 输出：`reviewed_chapter_overlay_items`, `chapter_review_report_items`, `review_action_items`, `kg_refinement_items`
 
@@ -177,7 +177,7 @@ user_profile.prompt_addendum
 
 输入：`reviewed_chapter_drafts`, `review_actions`, `document_consistency_report`
 
-动作：先执行确定性的 Markdown 展示修复；仅对 Review 明确判定为低于覆盖门槛的章节执行一次短局部补丁，禁止整章重写、跨章扩写和引入无证据事实。低 evidence binding 只保留证据分数和 warning，不调用模型追加无法改变绑定关系的免责声明；其余复杂语义动作同样只记录。正常章节不增加模型调用，只有正文实际变化的章节才重新增量抽取 KG。
+动作：先执行确定性的 Markdown 展示修复。Sprint 只保留一次 Writer 语义生成，Review 发现的语义缺口记录为 warning，不再执行第二轮模型补写；Systematic 仅对明确低于覆盖门槛的章节允许一次短局部补丁，禁止整章重写、跨章扩写和引入无证据事实。低 evidence binding 只保留证据分数和 warning。正文实际变化的 section 由最终 KG 同步按内容哈希补抽。
 
 输出：`reviewed_chapter_drafts`, `repair_trace`, `unresolved_warnings`, `kg_refinement_items`, `kg_prefetch_status`
 
@@ -201,7 +201,7 @@ user_profile.prompt_addendum
 
 输入：`chapter_metadatas`, `title_review_report`, `reviewed_chapter_drafts`, `document_backbone`, `preliminary_kg`, `kg_refinement_items`, `build_session_id`
 
-动作：在最终标题同步后启动最终 Markdown 的 KG prefetch，立即读取当前缓存快照并生成 `docgen_kg_draft`，不在发布前固定等待；文档发布与剩余抽取并行推进。质量门只决定当前草稿能否在文档发布后被 fast-finalize 复用，不在此节点写图谱表。
+动作：在最终标题同步后读取增强阶段已经启动的整本 KG prefetch；只有缓存缺失才用最终 Markdown 兜底启动一次。该节点立即用当前缓存快照生成 `docgen_kg_draft`，不在发布前固定等待；文档发布与剩余抽取继续并行。质量门只决定当前草稿能否在文档发布后被 fast-finalize 复用，不在此节点写图谱表。
 
 输出：`docgen_kg_draft`, `kg_prefetch_metrics`, `kg_prefetch_ready`, `kg_draft_early_persist_metrics`
 
@@ -221,7 +221,7 @@ user_profile.prompt_addendum
 
 输入：`doc_ids`, `merged_markdown`, `chapter_metadatas`, `docgen_kg_draft`, `build_session_id`
 
-动作：review 与 repair 阶段只沉淀 KG refinement，不再对尚未锁定的章节重复抽取。最终 Markdown 锁定后用准确的发布 payload 启动唯一一次 KG 预取；无拓扑依赖的 section 一次并发抽取。正式同步消费缓存时会等待最终预取的有界重试窗口；若仍需取消后台任务，会先确认请求已经退出，再做 catch-up，避免同一 section 被后台与正式同步重复调用。文档发布后，KG Doc Sync 与课程向量索引检查并行启动：前者复用最终预取并正式固化，后者在运行时允许写入但索引缺失时自动补建并复验；仍不可查询则明确失败，避免假成功后伴读长期降级。
+动作：全部章节增强完成后用整本增强稿启动唯一一次 KG 预取，与 review、repair 和文档收口交织运行；无拓扑依赖的 section 并发抽取。正式同步按 section key 与 content hash 复用未变化结果，只对修复或改名后未命中的 section 做 catch-up；消费缓存时会等待有界重试窗口，若仍需取消后台任务，会先确认请求已经退出，避免同一 section 被后台与正式同步重复调用。文档发布后，KG Doc Sync 与课程向量索引检查并行启动：前者正式固化图谱，后者在运行时允许写入但索引缺失时自动补建并复验；仍不可查询则明确失败，避免假成功后伴读长期降级。
 
 输出：`graph_sync_status`, `graph_sync_metrics`, `vector_index_status`, `vector_index_chunk_count`
 

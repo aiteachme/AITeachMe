@@ -244,28 +244,17 @@ def build_prepare_knowledge_graph_node(*, context: WorkflowContext):
             status="running",
             stage="preparing_knowledge_graph",
             digest_mode=state.get("digest_mode") or None,
-            current_stage_description="正在启动最终知识图谱预抽取，文档发布将与抽取并行推进。",
+            current_stage_description="正在收集知识图谱预抽取结果，文档发布将与剩余抽取并行推进。",
         )
 
         final_chapters = _as_dict_list(state.get("chapter_metadatas"))
-        if final_chapters:
-            # Earlier chapter-side prefetches are speculative: whole-book review,
-            # repair and final title locking may all change their section hashes.
-            # Refresh from the exact publish payload so final graph sync can reuse
-            # the work instead of extracting the published document a second time.
-            start_docgen_kg_prefetch(
-                course_id=course_id,
-                build_session_id=build_session_id,
-                chapters=_chapters_for_prefetch(state),
-                document_backbone=dict(state.get("document_backbone") or {}),
-                docgen_manifest={**_kg_manifest(state), "kg_prefetch_phase": "final_locked_markdown"},
-            )
-
         records, metrics = snapshot_docgen_kg_prefetch(
             course_id=course_id,
             build_session_id=build_session_id,
         )
         if metrics.get("prefetch_status") == "missing":
+            # Enhanced chapters normally start the whole-document sidecar.
+            # Only a cold cache needs a final-Markdown fallback here.
             chapters = _chapters_for_prefetch(state)
             restarted = start_docgen_kg_prefetch(
                 course_id=course_id,

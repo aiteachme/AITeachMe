@@ -298,7 +298,7 @@ def build_document_consistency_review_node(*, context: WorkflowContext):
             ReviewAction.model_validate(item)
             for item in list(state.get("review_action_items") or [])
         ]
-        kg_prefetch_status = "incremental_from_reviewed_chapters"
+        kg_prefetch_status = str(state.get("kg_prefetch_status") or "not_started")
         consistency_report = review_document_consistency(
             reviewed_chapters=reviewed,
             document_backbone=document_backbone,

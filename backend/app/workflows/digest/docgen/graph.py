@@ -264,6 +264,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
         "description": (
             "对单章草稿做表现层增强：生成或修复 Mermaid、交互 HTML sidecar、公式/Markdown 结构。"
             "该节点不重写核心知识，不改变 claim/evidence 绑定，也不按本地关键词补标题、例题或练习。"
+            "全部增强稿就绪后立即启动整本 KG prefetch，使抽取与后续复核、修补和文档收口并行。"
         ),
         "reads": ["chapter_drafts", "claim_ledgers", "document_backbone", "digest_mode"],
         "writes": ["enhanced_chapter_drafts", "asset_manifests", "practice_manifests", "kg_prefetch_status"],
@@ -362,8 +363,8 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
     NODE_REPAIR_OR_ROUTE: {
         "description": (
             "根据 review_actions 执行有限回流：只自动处理确定性的 Markdown 展示修复；"
-            "section/evidence/regenerate/re_dispatch/rebuild_backbone 等语义动作记录为 unresolved warnings。"
-            "该节点不触发第二次语义 LLM 重写。"
+            "Sprint 将语义动作记录为 unresolved warnings，不触发第二次语义 LLM 重写；"
+            "Systematic 仍允许一次受控的单章局部补写。"
         ),
         "reads": [
             "review_actions",
@@ -403,7 +404,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
     NODE_PREPARE_KNOWLEDGE_GRAPH: {
         "description": (
             "在 review/repair、整本文档合并和最终标题同步后，发布前准备 KG 候选草稿。"
-            "它会等待 DocGen 期间持续刷新的 KG 预抽取 sidecar 尽量完成；如果缓存缺失，会用 reviewed/repaired 章节兜底启动一次预抽取。"
+            "它读取增强阶段启动的整本 KG 预抽取快照；如果缓存缺失，会用 reviewed/repaired 章节兜底启动一次预抽取。"
             "质量门只决定草稿是否可被发布后的 fast-finalize 复用；KnowledgeUnit、KnowledgeEdge、source_ref 和废弃收口"
             "都必须等 KnowledgeDoc 发布成功后由固化节点写入。"
         ),

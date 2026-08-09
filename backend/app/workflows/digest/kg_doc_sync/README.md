@@ -45,9 +45,9 @@ early_units_callback
 
 ## 0. 预抽取 sidecar
 
-输入：DocGen final locked markdown, `build_session_id`, `course_id`
+输入：DocGen enhanced whole-document markdown, `build_session_id`, `course_id`
 
-动作：只在最终 Markdown 锁定后启动一次预抽取并写入进程内缓存；review / repair 阶段的临时正文不再触发重复抽取。普通篇幅按章一次抽取；长章先按整本文档约 3200 字/任务计算总任务数，再把额外任务分给当前单任务内容最多的章节，避免逐章向上取整制造冗余请求。各 section 没有拓扑依赖，直接使用统一 LLM 全局并发上限一次 fan-out，不再人为分批。复用要求 section key 与 content hash 同时匹配，标题变化即使正文相同也会补抽，避免沿用旧标题节点。正式同步消费缓存时，未完成 sidecar 会在取消后完全退出才允许 catch-up，禁止同一 section 重复占用模型并发。
+动作：全部章节增强完成后，立即用整本增强稿启动一次预抽取，和按章 review、跨章检查及必要修补交织运行。各 section 没有拓扑依赖，统一受 LLM 全局并发上限调度。最终 Markdown 固化时继续使用现有 sidecar；只有缓存缺失才启动整本文档兜底预抽取。正式同步按 section key 与 content hash 复用结果，标题或正文变化的 section 才补抽，因此 repair 不会让未改章节重复占用模型并发。
 
 输出：`prefetched_sections`
 

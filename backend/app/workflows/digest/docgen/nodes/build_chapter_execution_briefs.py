@@ -148,7 +148,7 @@ def build_chapter_execution_briefs_node(*, context: WorkflowContext):
         )
         return {
             "chapter_execution_briefs": chapter_briefs,
-            "kg_prefetch_status": "deferred_until_reviewed_chapters",
+            "kg_prefetch_status": "deferred_until_enhanced_chapters",
             "kg_prefetch_ready": False,
             "chapter_prepare_ms": elapsed_ms,
             "llm_calls_total": 0,
