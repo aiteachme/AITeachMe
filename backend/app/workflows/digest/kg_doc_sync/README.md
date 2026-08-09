@@ -95,7 +95,7 @@ DocGen 的 `prepare_knowledge_graph` 会在 `merge_review / sync_locked_titles` 
 
 输入：`markdown`, `structured_context`, `prefetched_sections`
 
-动作：优先使用 quality-ready 且覆盖最终章节的 `docgen_kg_draft` fast-finalize；否则按最终 Markdown 切章节/小节，仅复用 section key 与 content hash 同时命中的 prefetch，未命中则 LLM catch-up 抽取，并合并 payload。
+动作：只有 quality-ready、覆盖最终章节且已经包含全部最终 Markdown prefetch payload 的 `docgen_kg_draft` 才允许 fast-finalize；结构预览草稿不能覆盖更丰富的 section 抽取结果。否则按最终 Markdown 切章节/小节，仅复用 section key 与 content hash 同时命中的 prefetch，未命中才执行 LLM catch-up 抽取，并合并 payload。
 
 输出：`extraction_payload`, extract metrics
 

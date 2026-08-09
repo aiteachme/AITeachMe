@@ -53,8 +53,11 @@ def _quality_ready_draft_context() -> dict[str, object]:
         ],
         "docgen_manifest": {
             "docgen_kg_draft": {
+                "ready": True,
                 "quality_ready": True,
                 "fast_visible_ready": True,
+                "prefetch_section_count": 2,
+                "prefetch_payload_section_count": 2,
                 "covered_chapter_indices": [1, 2],
                 "nodes": [
                     {
@@ -1294,6 +1297,20 @@ def test_docgen_kg_draft_final_payload_rejects_stale_quality_flag_without_audit(
     context = _quality_ready_draft_context()
     draft = context["docgen_manifest"]["docgen_kg_draft"]  # type: ignore[index]
     draft.pop("quality_audit", None)  # type: ignore[attr-defined]
+
+    payload = sync.build_docgen_kg_draft_final_payload(
+        markdown="# 矩阵基础\n\n正文\n\n# 应用训练\n\n正文",
+        structured_context=context,
+    )
+
+    assert payload is None
+
+
+def test_docgen_kg_draft_final_payload_requires_complete_prefetch_payloads() -> None:
+    context = _quality_ready_draft_context()
+    draft = context["docgen_manifest"]["docgen_kg_draft"]  # type: ignore[index]
+    draft["prefetch_section_count"] = 2  # type: ignore[index]
+    draft["prefetch_payload_section_count"] = 1  # type: ignore[index]
 
     payload = sync.build_docgen_kg_draft_final_payload(
         markdown="# 矩阵基础\n\n正文\n\n# 应用训练\n\n正文",

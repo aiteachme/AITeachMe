@@ -800,7 +800,7 @@ def build_docgen_kg_draft_final_payload(
     manifest = _as_mapping(normalized_context.get("docgen_manifest"))
     summary = _as_mapping(normalized_context.get("document_summary_json"))
     draft = _as_mapping(manifest.get("docgen_kg_draft") or summary.get("docgen_kg_draft"))
-    if not draft or not _docgen_draft_quality_gate_passed(draft):
+    if not draft or not _docgen_draft_finalization_gate_passed(draft):
         return None
 
     chapters = extract_markdown_chapter_chunks(markdown, max_body_chars=None)
@@ -993,6 +993,21 @@ def _docgen_draft_quality_gate_passed(draft: dict[str, object]) -> bool:
         if int(audit.get("structure_edge_count", 0) or 0) <= 0:
             return False
     return True
+
+
+def _docgen_draft_finalization_gate_passed(draft: dict[str, object]) -> bool:
+    """Require complete final-Markdown prefetch evidence before fast-finalize.
+
+    A heading/preliminary draft can be useful for an early preview and still
+    pass the structural quality audit. It must not replace the richer section
+    extraction results in the authoritative graph, though.
+    """
+
+    if not _docgen_draft_quality_gate_passed(draft) or not bool(draft.get("ready")):
+        return False
+    section_count = int(draft.get("prefetch_section_count", 0) or 0)
+    payload_section_count = int(draft.get("prefetch_payload_section_count", 0) or 0)
+    return section_count > 0 and payload_section_count == section_count
 
 
 def _resolve_unique_draft_unit(
