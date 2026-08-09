@@ -17,12 +17,9 @@ from app.workflows.digest.docgen.lib.pipeline_artifacts import build_docgen_kg_d
 from app.workflows.digest.docgen.nodes.common import publish_docgen_progress
 from app.workflows.digest.docgen.state import DocGenState
 from app.workflows.digest.kg_doc_sync.lib.prefetch import (
-    await_docgen_kg_prefetch,
     snapshot_docgen_kg_prefetch,
     start_docgen_kg_prefetch,
 )
-
-_QUALITY_READY_RECHECK_WAIT_S = 4.0
 
 
 def _as_dict_list(value: object) -> list[dict[str, Any]]:
@@ -85,22 +82,6 @@ def _chapters_for_prefetch(state: DocGenState) -> list[dict[str, Any]]:
     for chapter_index in sorted(set(drafts_by_index) - seen_indices):
         merged.append(drafts_by_index[chapter_index])
     return sorted(merged, key=lambda item: int(item.get("chapter_index", 0) or 0))
-
-
-async def _await_prefetch(
-    *,
-    course_id: str,
-    build_session_id: str,
-    wait_timeout_s: float | None = None,
-) -> dict[str, int | str]:
-    kwargs: dict[str, object] = {}
-    if wait_timeout_s is not None:
-        kwargs["wait_timeout_s"] = wait_timeout_s
-    return await await_docgen_kg_prefetch(
-        course_id=course_id,
-        build_session_id=build_session_id,
-        **kwargs,
-    )
 
 
 def _deferred_pre_publish_metrics(*, sync_after_docgen: bool) -> dict[str, object]:
@@ -263,31 +244,27 @@ def build_prepare_knowledge_graph_node(*, context: WorkflowContext):
             status="running",
             stage="preparing_knowledge_graph",
             digest_mode=state.get("digest_mode") or None,
-            current_stage_description="正在等待知识图谱预抽取完成，准备供文档发布后正式固化。",
+            current_stage_description="正在启动最终知识图谱预抽取，文档发布将与抽取并行推进。",
         )
 
-        final_title_changed = int(dict(state.get("title_review_report") or {}).get("changed_count", 0) or 0) > 0
         final_chapters = _as_dict_list(state.get("chapter_metadatas"))
-        if final_title_changed and final_chapters:
-            refreshed = start_docgen_kg_prefetch(
+        if final_chapters:
+            # Earlier chapter-side prefetches are speculative: whole-book review,
+            # repair and final title locking may all change their section hashes.
+            # Refresh from the exact publish payload so final graph sync can reuse
+            # the work instead of extracting the published document a second time.
+            start_docgen_kg_prefetch(
                 course_id=course_id,
                 build_session_id=build_session_id,
                 chapters=_chapters_for_prefetch(state),
                 document_backbone=dict(state.get("document_backbone") or {}),
                 docgen_manifest={**_kg_manifest(state), "kg_prefetch_phase": "final_locked_markdown"},
             )
-            metrics = (
-                await _await_prefetch(course_id=course_id, build_session_id=build_session_id)
-                if refreshed
-                else {
-                    "prefetch_status": "missing",
-                    "prefetch_section_count": 0,
-                    "prefetch_failed_section_count": 0,
-                    "prefetch_ready": 0,
-                }
-            )
-        else:
-            metrics = await _await_prefetch(course_id=course_id, build_session_id=build_session_id)
+
+        records, metrics = snapshot_docgen_kg_prefetch(
+            course_id=course_id,
+            build_session_id=build_session_id,
+        )
         if metrics.get("prefetch_status") == "missing":
             chapters = _chapters_for_prefetch(state)
             restarted = start_docgen_kg_prefetch(
@@ -298,8 +275,12 @@ def build_prepare_knowledge_graph_node(*, context: WorkflowContext):
                 docgen_manifest={**_kg_manifest(state), "kg_prefetch_phase": "final_locked_markdown" if final_chapters else "prepare_fallback"},
             )
             if restarted:
-                metrics = await _await_prefetch(course_id=course_id, build_session_id=build_session_id)
+                records, metrics = snapshot_docgen_kg_prefetch(
+                    course_id=course_id,
+                    build_session_id=build_session_id,
+                )
             else:
+                records = []
                 metrics = {
                     "prefetch_status": "not_started",
                     "prefetch_section_count": 0,
@@ -307,12 +288,6 @@ def build_prepare_knowledge_graph_node(*, context: WorkflowContext):
                     "prefetch_ready": 0,
                 }
 
-        records, snapshot_metrics = snapshot_docgen_kg_prefetch(
-            course_id=course_id,
-            build_session_id=build_session_id,
-        )
-        if snapshot_metrics.get("prefetch_status") != "missing" or metrics.get("prefetch_status") == "missing":
-            metrics = {**dict(metrics), **dict(snapshot_metrics)}
         prefetch_status = str(metrics.get("prefetch_status") or "").strip() or "unknown"
         prefetch_ready = bool(int(metrics.get("prefetch_ready", 0) or 0))
         draft = build_docgen_kg_draft(
@@ -323,40 +298,11 @@ def build_prepare_knowledge_graph_node(*, context: WorkflowContext):
             prefetch_metrics=metrics,
             stage="prepare_knowledge_graph",
         )
-        quality_recheck_waited = False
-        if not draft.get("quality_ready") and not prefetch_ready:
-            quality_recheck_waited = True
-            recheck_metrics = await _await_prefetch(
-                course_id=course_id,
-                build_session_id=build_session_id,
-                wait_timeout_s=_QUALITY_READY_RECHECK_WAIT_S,
-            )
-            recheck_records, recheck_snapshot_metrics = snapshot_docgen_kg_prefetch(
-                course_id=course_id,
-                build_session_id=build_session_id,
-            )
-            metrics = {**dict(metrics), **dict(recheck_metrics)}
-            if (
-                recheck_snapshot_metrics.get("prefetch_status") != "missing"
-                or recheck_metrics.get("prefetch_status") == "missing"
-            ):
-                metrics = {**dict(metrics), **dict(recheck_snapshot_metrics)}
-                records = recheck_records
-            prefetch_status = str(metrics.get("prefetch_status") or "").strip() or "unknown"
-            prefetch_ready = bool(int(metrics.get("prefetch_ready", 0) or 0))
-            draft = build_docgen_kg_draft(
-                preliminary_kg=dict(state.get("preliminary_kg") or {}),
-                kg_refinement_items=list(state.get("kg_refinement_items") or []),
-                reviewed_chapters=_chapters_for_prefetch(state),
-                prefetched_records=records,
-                prefetch_metrics=metrics,
-                stage="prepare_knowledge_graph",
-            )
         metrics["docgen_kg_draft_node_count"] = int(draft.get("node_count", 0) or 0)
         metrics["docgen_kg_draft_edge_count"] = int(draft.get("edge_count", 0) or 0)
         metrics["docgen_kg_draft_chapter_coverage_ratio"] = str(draft.get("chapter_coverage_ratio", 0.0))
         metrics["docgen_kg_fast_visible_ready"] = 1 if draft.get("fast_visible_ready") else 0
-        metrics["docgen_kg_quality_recheck_waited"] = 1 if quality_recheck_waited else 0
+        metrics["docgen_kg_quality_recheck_waited"] = 0
         quality_audit = dict(draft.get("quality_audit") or {})
         metrics["docgen_kg_quality_status"] = str(draft.get("quality_status") or quality_audit.get("quality_status") or "")
         metrics["docgen_kg_quality_score"] = str(draft.get("quality_score") or quality_audit.get("quality_score") or 0.0)

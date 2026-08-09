@@ -75,11 +75,14 @@ APP_MODE=local
 AUTH_ENABLED=false
 LLM_API_KEY=<model-api-key>
 LLM_BASE_URL=https://api.example.com/v1
+# 可选：承接主模型名单外的模型及主端点故障切换
+# LLM_FALLBACK_API_KEY=<fallback-model-api-key>
+# LLM_FALLBACK_BASE_URL=https://fallback.example.com/v1
 ```
 
 未开启鉴权的本地模型网关可以不填 `LLM_API_KEY`。实际模型槽位可在设置页或项目 settings override 中配置。
 `LLM_API_KEY` / `LLM_BASE_URL` 支持英文逗号配置多组主用 endpoint：等长时按顺序配对，单地址多 key 或单 key 多地址会自动扩展。
-备用模型网关可配置 `LLM_FALLBACK_API_KEY` / `LLM_FALLBACK_BASE_URL`，主用 endpoint 失败时接管；备用地址会自动识别 provider，模型默认继承 `models.reason / primary / light`，也可通过 `fallback_models.*` 分别覆盖。
+备用模型网关可配置 `LLM_FALLBACK_API_KEY` / `LLM_FALLBACK_BASE_URL`，主用 endpoint 失败时接管，同时直接承接 `llm.fallback_only_models` 中的模型。备用地址会自动识别 provider，文本模型默认继承 `models.reason / primary / light`，也可通过 `fallback_models.*` 分别覆盖；Embedding 继续使用 `models.embedding` 中的模型名。
 
 ### 模型原生工具
 
@@ -88,7 +91,7 @@ AITeachMe 的课程 RAG 默认使用自管 KnowledgeUnit / 知识图谱 / 本地
 - `原生联网检索`：把外部/最新信息查询交给 Responses `web_search`。`Auto` 会随 OpenAI / OpenAI-compatible Responses 路线发送，不支持时按接口模式回退；`Force` 用于明确要求兼容网关接收该参数。
 - `原生文件检索`：把额外文件检索交给 Responses `file_search`。只有配置 OpenAI `vector_store_id` 列表后才会发送；`Auto` 只在课程工具链且本地 RAG 没有高相关证据时作为补充，`Force` 才会显式强制参与。
 
-`llm.api_mode=auto` 的接口选择是确定性的：`backend/app/shared/infra/llm_support/model_catalog.py` 中 `RESPONSES_API_MODELS` 的文本模型优先走 Responses，名单外文本模型走 Chat Completions；音频、Realtime、图像和视频模型由各自专用集成处理，不属于该文本名单。只有首次 Responses 调用明确表现为网关不支持时，系统才会自动回退一次 Chat Completions。
+模型默认优先走主端点，`llm.fallback_only_models` 中的模型直接走 `LLM_FALLBACK_*`。`llm.api_mode=auto` 时，`llm.responses_api_models` 中的文本模型使用 Responses，其余文本模型使用 Chat Completions；fallback 文本请求默认使用 Chat Completions。Embedding、文生图、语音、视频等专用接口不参与该接口判断，图片理解除外。
 
 三层文本模型可分别配置 `llm.reasoning_efforts.light / primary / reason`，`null` 使用模型默认值。设置页会根据已保存的有效模型名动态显示对应下拉框和合法强度；未知的 OpenAI-compatible 自定义模型不会猜测能力，需要时可在 YAML 中显式配置。`extract` 槽位继承 `light` 的强度，备用网关沿用对应逻辑槽位的配置。
 

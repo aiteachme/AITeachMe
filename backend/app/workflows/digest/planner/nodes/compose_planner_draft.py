@@ -26,13 +26,10 @@ from app.workflows.digest.planner.lib.plans import (
 from app.workflows.digest.planner.prompts.build_plan_composer import (
     CHAPTERS_END,
     CHAPTERS_START,
-    DIAGNOSE_END,
-    DIAGNOSE_START,
     PLAN_END,
     PLAN_START,
     SUGGESTION_END,
     SUGGESTION_START,
-    build_planner_diagnosis_messages,
     build_planner_stream_messages,
 )
 from app.workflows.digest.planner.state import BuildPlannerState
@@ -215,43 +212,6 @@ def _parse_chapters(value: str) -> list[dict[str, Any]]:
     return chapters
 
 
-def _parse_diagnose(value: str) -> list[dict[str, Any]]:
-    if not value.strip():
-        return []
-    try:
-        decoded = json.loads(value)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"diagnose json invalid: {exc}") from exc
-    if not isinstance(decoded, list):
-        raise ValueError("diagnose must be a JSON array")
-    diagnose: list[dict[str, Any]] = []
-    for raw in decoded[:5]:
-        if not isinstance(raw, dict):
-            continue
-        question = _clean_text(raw.get("question") or raw.get("title") or raw.get("prompt"))
-        if not question:
-            continue
-        options = _string_list(
-            raw.get("options")
-            or raw.get("choices")
-            or raw.get("sample_answers")
-            or raw.get("quick_answers")
-            or raw.get("example_answers")
-            or raw.get("answers")
-        )[:4]
-        if len(options) < 2:
-            continue
-        diagnose.append(
-            {
-                "question": question,
-                "purpose": _clean_text(raw.get("purpose") or raw.get("diagnosis_target") or raw.get("target")),
-                "options": options,
-                "answer": _clean_text(raw.get("answer") or raw.get("user_answer") or raw.get("selected_answer")),
-            }
-        )
-    return diagnose
-
-
 def _parse_planner_response(text: str) -> dict[str, Any]:
     plan = _clean_text(_extract_between(text, PLAN_START, PLAN_END))
     suggestion = _clean_text(_extract_between(text, SUGGESTION_START, SUGGESTION_END))
@@ -261,13 +221,6 @@ def _parse_planner_response(text: str) -> dict[str, Any]:
     if not suggestion:
         raise ValueError("planner response is missing suggestion")
     return {"suggestion": suggestion, "plan": plan, "diagnose": [], "chapters": chapters}
-
-
-def _parse_diagnosis_response(text: str) -> list[dict[str, Any]]:
-    diagnose = _parse_diagnose(_extract_between(text, DIAGNOSE_START, DIAGNOSE_END))
-    if not diagnose:
-        raise ValueError("planner diagnosis response is missing useful choice questions")
-    return diagnose
 
 
 def _plan_preview_payload(state: BuildPlannerState, payload: dict[str, Any]) -> dict[str, Any]:
@@ -392,38 +345,39 @@ def _should_generate_diagnosis_first(state: BuildPlannerState) -> bool:
     return not isinstance(latest_plan, dict) or not latest_plan
 
 
-async def _stream_diagnosis_response(state: BuildPlannerState) -> str:
-    material_context = state["material_context"]
-    latest_plan = dict(state.get("latest_plan") or {})
-    planning_note = str(state.get("planning_note") or latest_plan.get("planning_note") or "").strip()
-    material_note = str(state.get("material_note") or "").strip()
-    messages = build_planner_diagnosis_messages(
-        course_name=_course_for_prompt(state),
-        user_prompt=state.get("user_prompt") or latest_plan.get("user_prompt") or "",
-        digest_mode=state.get("digest_mode") or latest_plan.get("digest_mode") or material_context.course_mode_decision.mode.value,
-        material_context=material_context,
-        planning_note=planning_note,
-        material_note=material_note,
-        message_history=list(state.get("message_history", [])),
-    )
-    await emit_planner_event(
-        state,
-        event="planner.diagnose.started",
-        detail="正在生成前置诊断选择题。",
-    )
-    raw_tokens: list[str] = []
-    stream = acompletion_stream(
-        messages,
-        **planner_completion_kwargs_with_metadata(
-            PlannerModelStep.DIAGNOSE_QUESTIONS,
-            model_override=state.get("model_override"),
-            planner_session_id=state.get("planner_session_id") or "",
-            substep="生成前置诊断",
-        ),
-    )
-    async for token in stream:
-        raw_tokens.append(token)
-    return "".join(raw_tokens).strip()
+def _build_diagnosis_questions() -> list[dict[str, Any]]:
+    """Return the four stable choices that directly control DocGen output.
+
+    These dimensions are product contracts rather than subject-matter analysis,
+    so another model pass only restates the same choices and adds latency.
+    """
+
+    return [
+        {
+            "question": "基础从哪里起？",
+            "purpose": "文档落点：调整前置概念篇幅、开篇铺垫和首批例题难度。",
+            "options": ["从零补基础", "概念学过但不牢", "能做基础题", "直接查漏冲刺"],
+            "answer": "",
+        },
+        {
+            "question": "讲解先重哪里？",
+            "purpose": "文档落点：调整核心概念、典型方法、例题应用和易错边界的篇幅。",
+            "options": ["核心概念", "典型方法", "例题应用", "易错边界"],
+            "answer": "",
+        },
+        {
+            "question": "练习怎么安排？",
+            "purpose": "文档落点：调整随堂检查、典型题练习、变式练习和章末小测密度。",
+            "options": ["少量随堂检查", "每节配一题", "多练典型题", "增加章末小测"],
+            "answer": "",
+        },
+        {
+            "question": "解析写到多细？",
+            "purpose": "文档落点：调整答案要点、分步依据、错因提醒和补充变式的粒度。",
+            "options": ["只给答案要点", "分步写清依据", "重点解释错因", "答案后补变式"],
+            "answer": "",
+        },
+    ]
 
 
 def build_compose_planner_draft_node(*, context: WorkflowContext):
@@ -442,24 +396,12 @@ def build_compose_planner_draft_node(*, context: WorkflowContext):
             planner_operation=state.get("planner_operation", ""),
         )
         if _should_generate_diagnosis_first(state):
-            try:
-                raw_output = await _stream_diagnosis_response(state)
-                diagnose_questions = _parse_diagnosis_response(raw_output)
-            except Exception as exc:
-                logger.exception(
-                    "planner_diagnosis_generation_failed",
-                    planner_session_id=state.get("planner_session_id") or "",
-                    course_id=state.get("course_id") or "",
-                    error_type=type(exc).__name__,
-                    error=str(exc),
-                )
-                await emit_planner_event(
-                    state,
-                    event="planner.diagnose.failed",
-                    detail="前置诊断生成失败，请重试。",
-                    payload={"error_type": type(exc).__name__},
-                )
-                raise
+            await emit_planner_event(
+                state,
+                event="planner.diagnose.started",
+                detail="正在准备前置诊断选择题。",
+            )
+            diagnose_questions = _build_diagnosis_questions()
             latest_plan = dict(state.get("latest_plan") or {})
             planning_note = compose_planning_note(
                 state.get("planning_note") or latest_plan.get("planning_note"),
@@ -578,7 +520,7 @@ def build_compose_planner_draft_node(*, context: WorkflowContext):
 
 
 __all__ = [
-    "_parse_diagnosis_response",
+    "_build_diagnosis_questions",
     "_parse_planner_response",
     "build_compose_planner_draft_node",
 ]

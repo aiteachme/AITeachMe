@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Any, Literal
 
 ModelAPIModeHint = Literal["responses"]
@@ -15,38 +16,7 @@ ReasoningEffort = Literal[
     "max",
 ]
 
-# Text-generation models that should prefer the Responses API in ``auto`` mode.
-# This catalog selects the API shape only; streaming callers always request a
-# real upstream stream independently of the selected model name.
-# Models not listed here use Chat Completions unless the caller explicitly
-# requests Responses. Specialized audio, Realtime, image, and video models use
-# their dedicated project integrations instead of this text adapter.
-RESPONSES_API_MODELS: tuple[str, ...] = (
-    "codex-auto-review",
-    "gpt-5.2",
-    "gpt-5.2-2025-12-11",
-    "gpt-5.2-chat-latest",
-    "gpt-5.2-pro",
-    "gpt-5.2-pro-2025-12-11",
-    "gpt-5.3-codex",
-    "gpt-5.3-codex-spark",
-    "gpt-5.4",
-    "gpt-5.4-2026-03-05",
-    "gpt-5.4-mini",
-    "gpt-5.4-mini-2026-03-17",
-    "gpt-5.4-pro",
-    "gpt-5.4-pro-2026-03-05",
-    "gpt-5.5",
-    "gpt-5.5-pro",
-    "gpt-5.5-pro-2026-04-23",
-    "gpt-5.6",
-    "gpt-5.6-luna",
-    "gpt-5.6-sol",
-    "gpt-5.6-terra",
-)
-
 _RESPONSES_ROUTE_MARKERS = frozenset({"responses"})
-_RESPONSES_API_MODELS_LOWER = frozenset(item.lower() for item in RESPONSES_API_MODELS)
 
 # The portable /v1/models response does not advertise reasoning-effort values.
 # Keep verified families here so settings UI and request validation share one
@@ -96,11 +66,13 @@ def model_name_candidates(model: Any) -> tuple[str, ...]:
     return tuple(dict.fromkeys(candidates))
 
 
-def classify_known_model_api_mode(model: Any) -> ModelAPIModeHint | None:
-    """Return the Responses hint for code-owned text model names."""
+def classify_known_model_api_mode(
+    model: Any,
+    responses_api_models: Iterable[str] = (),
+) -> ModelAPIModeHint | None:
+    """Return the Responses hint for configured text model names."""
 
-    candidates = frozenset(candidate.lower() for candidate in model_name_candidates(model))
-    if candidates & _RESPONSES_API_MODELS_LOWER:
+    if model_is_listed(model, responses_api_models):
         return "responses"
     parts = [
         part.lower()
@@ -110,6 +82,21 @@ def classify_known_model_api_mode(model: Any) -> ModelAPIModeHint | None:
     if any(part in _RESPONSES_ROUTE_MARKERS for part in parts[:-1]):
         return "responses"
     return None
+
+
+def model_is_listed(
+    model: Any,
+    configured_models: Iterable[str],
+) -> bool:
+    """Return whether a model is explicitly listed in one configured catalog."""
+
+    candidates = frozenset(candidate.lower() for candidate in model_name_candidates(model))
+    normalized_models = frozenset(
+        str(item).strip().lower()
+        for item in configured_models
+        if str(item).strip()
+    )
+    return bool(candidates & normalized_models)
 
 
 def reasoning_efforts_for_model(
@@ -139,8 +126,8 @@ def reasoning_efforts_for_model(
 __all__ = [
     "ModelAPIModeHint",
     "ReasoningEffort",
-    "RESPONSES_API_MODELS",
     "classify_known_model_api_mode",
+    "model_is_listed",
     "model_name_candidates",
     "reasoning_efforts_for_model",
 ]

@@ -13,21 +13,12 @@ from app.workflows.common.model_policy import ProviderNativeToolPolicy, compact_
 
 PlannerModelSlot = Literal["light", "primary", "reason"]
 PlannerAPIMode = Literal["auto", "chat_completions", "responses"]
-_PLANNER_FAST_TIMEOUT_S = 60
-_PLANNER_UNDERSTAND_TIMEOUT_S = 45
-_PLANNER_UNDERSTAND_OVERALL_TIMEOUT_S = 45
 _PLANNER_DRAFT_TIMEOUT_S = 120
 _PLANNER_DRAFT_OVERALL_TIMEOUT_S = 180
-_PLANNER_IDENTITY_OVERALL_TIMEOUT_S = 60
 
 
 class PlannerModelStep(str, Enum):
-    MATERIAL_BATCH_SUMMARY = "load_materials.summarize_section_batch"
-    STREAM_PLANNING_NOTE = "understand_goal_and_materials.stream_planning_note"
-    SUMMARIZE_MATERIALS = "understand_goal_and_materials.summarize_materials"
-    DIAGNOSE_QUESTIONS = "compose_planner_draft.diagnose_questions"
     DRAFT_PLAN = "compose_planner_draft"
-    COURSE_IDENTITY = "generate_course_identity"
 
 
 @dataclass(frozen=True)
@@ -38,7 +29,7 @@ class PlannerModelPolicy:
     api_mode: PlannerAPIMode | None = None
     max_tokens: int | None = None
     timeout_s: int | None = None
-    overall_timeout_s: int = _PLANNER_IDENTITY_OVERALL_TIMEOUT_S
+    overall_timeout_s: int = _PLANNER_DRAFT_OVERALL_TIMEOUT_S
     max_retries: int = 3
     temperature: float | None = None
     provider_native_tools: ProviderNativeToolPolicy = field(default_factory=ProviderNativeToolPolicy.disabled)
@@ -101,66 +92,15 @@ class PlannerModelPolicy:
 
 
 _POLICIES: dict[PlannerModelStep, PlannerModelPolicy] = {
-    PlannerModelStep.MATERIAL_BATCH_SUMMARY: PlannerModelPolicy(
-        step=PlannerModelStep.MATERIAL_BATCH_SUMMARY,
-        call_type="structured",
-        model="light",
-        max_tokens=1800,
-        timeout_s=_PLANNER_UNDERSTAND_TIMEOUT_S,
-        overall_timeout_s=_PLANNER_UNDERSTAND_OVERALL_TIMEOUT_S,
-        max_retries=2,
-        temperature=0.3,
-        note="Planner material batch summary for uploaded section map-reduce.",
-    ),
-    PlannerModelStep.STREAM_PLANNING_NOTE: PlannerModelPolicy(
-        step=PlannerModelStep.STREAM_PLANNING_NOTE,
-        call_type="stream",
-        model="light",
-        max_tokens=2200,
-        timeout_s=_PLANNER_UNDERSTAND_TIMEOUT_S,
-        overall_timeout_s=_PLANNER_UNDERSTAND_OVERALL_TIMEOUT_S,
-        temperature=0.3,
-        note="首轮流式生成规划判断。",
-    ),
-    PlannerModelStep.SUMMARIZE_MATERIALS: PlannerModelPolicy(
-        step=PlannerModelStep.SUMMARIZE_MATERIALS,
-        call_type="structured",
-        model="light",
-        max_tokens=1600,
-        timeout_s=_PLANNER_UNDERSTAND_TIMEOUT_S,
-        overall_timeout_s=_PLANNER_UNDERSTAND_OVERALL_TIMEOUT_S,
-        temperature=0.2,
-        note="首轮摘要学习资料，形成内部资料边界供方案生成使用。",
-    ),
     PlannerModelStep.DRAFT_PLAN: PlannerModelPolicy(
         step=PlannerModelStep.DRAFT_PLAN,
         call_type="stream",
         model="light",
-        max_tokens=5200,
+        max_tokens=8000,
         timeout_s=_PLANNER_DRAFT_TIMEOUT_S,
         overall_timeout_s=_PLANNER_DRAFT_OVERALL_TIMEOUT_S,
         temperature=0.3,
         note="生成 suggestion、plan 和 chapters；plan 段落会流式展示。",
-    ),
-    PlannerModelStep.DIAGNOSE_QUESTIONS: PlannerModelPolicy(
-        step=PlannerModelStep.DIAGNOSE_QUESTIONS,
-        call_type="stream",
-        model="light",
-        max_tokens=1600,
-        timeout_s=_PLANNER_FAST_TIMEOUT_S,
-        overall_timeout_s=_PLANNER_FAST_TIMEOUT_S,
-        temperature=0.3,
-        note="生成前置诊断选择题；失败时终止本轮 Planner 构建。",
-    ),
-    PlannerModelStep.COURSE_IDENTITY: PlannerModelPolicy(
-        step=PlannerModelStep.COURSE_IDENTITY,
-        call_type="structured",
-        model="light",
-        max_tokens=240,
-        timeout_s=_PLANNER_FAST_TIMEOUT_S,
-        overall_timeout_s=_PLANNER_IDENTITY_OVERALL_TIMEOUT_S,
-        temperature=0.7,
-        note="一次结构化调用同时生成课程名和课程图标 key。",
     ),
 }
 

@@ -27,16 +27,22 @@ from app.workflows.digest.kg_doc_sync.lib.incremental_sync import (
     _graph_llm_concurrency_cap,
     extract_knowledge_graph_section_records_async,
 )
+from app.workflows.digest.kg_doc_sync.lib.model_policy import (
+    kg_doc_sync_section_llm_max_retries,
+    kg_doc_sync_section_llm_timeout_s,
+)
 from app.workflows.digest.kg_doc_sync.lib.models import SectionExtractionRecord
 from app.workflows.support.courses.learning_context import load_course_llm_context
 
 logger = structlog.get_logger(__name__)
 
 _PREFETCH_START_DELAY_S = 0.5
-_PREFETCH_CONSUME_GRACE_S = 8.0
-_PREFETCH_FOREGROUND_SLOT_RESERVE = 2
-_PREFETCH_GLOBAL_FRACTION_DIVISOR = 3
-_PREFETCH_BACKGROUND_HARD_CAP = 2
+_PREFETCH_AWAIT_GRACE_S = 8.0
+_PREFETCH_EXTRACTION_ATTEMPTS = kg_doc_sync_section_llm_max_retries()
+_PREFETCH_CONSUME_GRACE_S = float(
+    kg_doc_sync_section_llm_timeout_s() * _PREFETCH_EXTRACTION_ATTEMPTS
+    + 20
+)
 
 
 @dataclass(slots=True)
@@ -64,22 +70,14 @@ def _prefetch_concurrency_limit(
     *,
     global_limit: int | None = None,
 ) -> int:
-    """Cap background prefetch so foreground workflows keep LLM capacity."""
+    """Respect the configured prefetch limit and the shared global LLM limit."""
 
     configured_limit = max(1, int(configured or 1))
     llm_limit = max(
         1,
         int(_graph_llm_concurrency_cap() if global_limit is None else global_limit or 1),
     )
-    if llm_limit <= _PREFETCH_FOREGROUND_SLOT_RESERVE:
-        background_cap = 1
-    else:
-        background_cap = min(
-            max(1, llm_limit - _PREFETCH_FOREGROUND_SLOT_RESERVE),
-            max(1, llm_limit // _PREFETCH_GLOBAL_FRACTION_DIVISOR),
-            _PREFETCH_BACKGROUND_HARD_CAP,
-        )
-    return max(1, min(configured_limit, llm_limit, background_cap))
+    return min(configured_limit, llm_limit)
 
 
 def _prefetch_trace_phase(docgen_manifest: dict[str, Any] | None) -> str:
@@ -136,6 +134,7 @@ async def _extract_prefetch_records_with_trace(
     llm_concurrency_cap: int,
     incremental: bool,
     on_record: Any,
+    prefetched_records: list[SectionExtractionRecord] | None = None,
 ) -> tuple[list[SectionExtractionRecord], dict[str, Any]]:
     workflow = "kg_docgen_prefetch"
     lane = "background"
@@ -186,6 +185,7 @@ async def _extract_prefetch_records_with_trace(
                         course_context=course_context,
                         structured_context=structured_context,
                         concurrency_limit=concurrency,
+                        prefetched_records=prefetched_records,
                         on_record=on_record,
                     )
                 if trace_run is not None:
@@ -386,9 +386,15 @@ def start_docgen_kg_prefetch(
     )
     configured_concurrency = int(settings.knowledge_graph.prefetch_concurrency or 1)
     llm_concurrency_cap = _graph_llm_concurrency_cap()
-    concurrency = _prefetch_concurrency_limit(
-        configured_concurrency,
-        global_limit=llm_concurrency_cap,
+    prefetch_phase = _prefetch_trace_phase(docgen_manifest)
+    final_locked_markdown = prefetch_phase == "final_locked_markdown"
+    concurrency = (
+        llm_concurrency_cap
+        if final_locked_markdown
+        else _prefetch_concurrency_limit(
+            configured_concurrency,
+            global_limit=llm_concurrency_cap,
+        )
     )
     with _LOCK:
         cache.metrics.update(
@@ -396,6 +402,11 @@ def start_docgen_kg_prefetch(
                 "prefetch_configured_concurrency": configured_concurrency,
                 "prefetch_llm_concurrency_cap": llm_concurrency_cap,
                 "prefetch_effective_concurrency": concurrency,
+                "prefetch_fanout_mode": (
+                    "all_independent_final_sections"
+                    if final_locked_markdown
+                    else "bounded_speculative_sidecar"
+                ),
             }
         )
 
@@ -425,6 +436,7 @@ def start_docgen_kg_prefetch(
                 llm_concurrency_cap=llm_concurrency_cap,
                 incremental=False,
                 on_record=_on_record,
+                prefetched_records=prior_records,
             )
             with _LOCK:
                 active = _CACHES.get(key)
@@ -531,6 +543,7 @@ def start_docgen_kg_prefetch_incremental(
         if cache is None:
             cache = _PrefetchCache(course_id=course_id, build_session_id=build_session_id)
             _CACHES[key] = cache
+        prior_records = list(cache.records)
         cache.status = "running"
         cache.metrics["prefetch_incremental_task_count"] = int(
             cache.metrics.get("prefetch_incremental_task_count", 0) or 0
@@ -582,6 +595,7 @@ def start_docgen_kg_prefetch_incremental(
                 llm_concurrency_cap=llm_concurrency_cap,
                 incremental=True,
                 on_record=_on_record,
+                prefetched_records=prior_records,
             )
             with _LOCK:
                 active = _CACHES.get(key)
@@ -674,9 +688,9 @@ async def consume_docgen_kg_prefetch(
     active_tasks = _active_cache_tasks(cache)
     if active_tasks and wait_timeout_s > 0:
         try:
-            await asyncio.wait_for(asyncio.shield(asyncio.gather(*active_tasks)), timeout=wait_timeout_s)
-        except TimeoutError:
-            pass
+            done, _pending = await asyncio.wait(active_tasks, timeout=wait_timeout_s)
+            for task in done:
+                task.result()
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -686,6 +700,7 @@ async def consume_docgen_kg_prefetch(
         cache.status = "consumed_cancelled"
         for task in active_tasks:
             task.cancel()
+        await asyncio.gather(*active_tasks, return_exceptions=True)
         _cleanup_consumed_cache_when_done(key, cache)
     else:
         _drop_cache_if_current(key, cache)
@@ -699,7 +714,7 @@ async def await_docgen_kg_prefetch(
     *,
     course_id: str,
     build_session_id: str,
-    wait_timeout_s: float = _PREFETCH_CONSUME_GRACE_S,
+    wait_timeout_s: float = _PREFETCH_AWAIT_GRACE_S,
 ) -> dict[str, int | str]:
     """Wait for the DocGen KG prefetch task without consuming its cache."""
 
@@ -716,9 +731,9 @@ async def await_docgen_kg_prefetch(
     active_tasks = _active_cache_tasks(cache)
     if active_tasks and wait_timeout_s > 0:
         try:
-            await asyncio.wait_for(asyncio.shield(asyncio.gather(*active_tasks)), timeout=wait_timeout_s)
-        except TimeoutError:
-            pass
+            done, _pending = await asyncio.wait(active_tasks, timeout=wait_timeout_s)
+            for task in done:
+                task.result()
         except asyncio.CancelledError:
             raise
         except Exception:

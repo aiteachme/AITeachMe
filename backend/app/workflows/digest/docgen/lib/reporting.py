@@ -252,24 +252,52 @@ def build_docgen_lane_summary(
         for chapter in chapter_metadatas
     ) or len(practice_items) or len(state.get("exam_questions", []))
 
+    def _nested_metric(chapter: Mapping[str, Any], key: str, *containers: str) -> float:
+        for container in containers:
+            nested = chapter.get(container)
+            if isinstance(nested, Mapping):
+                value = float(nested.get(key, 0.0) or 0.0)
+                if value > 0:
+                    return value
+        return float(chapter.get(key, 0.0) or 0.0)
+
+    # Successful runs already contain the exact metadata that will be persisted.
+    # Do not average writer/research/intermediate scores together with final review
+    # scores: that produces a number which matches no published chapter.
+    final_quality_records = chapter_metadatas or list(state.get("chapter_review_reports") or [])
+    if final_quality_records:
+        coverage_scores = [
+            value
+            for chapter in final_quality_records
+            if (value := _nested_metric(chapter, "coverage_score", "chapter_review_report", "quality_signals")) > 0
+        ]
+        quality_scores = [
+            value
+            for chapter in final_quality_records
+            if (value := _nested_metric(chapter, "quality_score", "quality_signals", "chapter_review_report")) > 0
+        ]
+    else:
+        fallback_quality_records = enhanced_chapter_drafts or chapter_drafts or research_records
+        coverage_scores = [
+            value
+            for chapter in fallback_quality_records
+            if (value := _nested_metric(chapter, "coverage_score", "quality_signals")) > 0
+        ]
+        if not coverage_scores:
+            coverage_scores = [
+                float(trace.get("coverage_score", 0.0) or 0.0)
+                for trace in research_traces
+                if float(trace.get("coverage_score", 0.0) or 0.0) > 0
+            ]
+        quality_scores = [
+            value
+            for chapter in fallback_quality_records
+            if (value := _nested_metric(chapter, "quality_score", "quality_signals")) > 0
+        ]
+
     def _quality_mapping(chapter: Mapping[str, Any]) -> Mapping[str, Any]:
         nested = chapter.get("quality_signals")
         return nested if isinstance(nested, Mapping) else chapter
-
-    coverage_scores = [
-        float(_quality_mapping(chapter).get("coverage_score", 0.0) or 0.0)
-        for chapter in [*chapter_drafts, *enhanced_chapter_drafts, *research_records]
-        if float(_quality_mapping(chapter).get("coverage_score", 0.0) or 0.0) > 0
-    ] + [
-        float(trace.get("coverage_score", 0.0) or 0.0)
-        for trace in research_traces
-        if float(trace.get("coverage_score", 0.0) or 0.0) > 0
-    ]
-    quality_scores = [
-        float(_quality_mapping(chapter).get("quality_score", 0.0) or 0.0)
-        for chapter in [*chapter_drafts, *enhanced_chapter_drafts]
-        if float(_quality_mapping(chapter).get("quality_score", 0.0) or 0.0) > 0
-    ]
     repaired_chapter_count = sum(
         1
         for chapter in [*chapter_drafts, *enhanced_chapter_drafts]

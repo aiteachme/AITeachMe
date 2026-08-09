@@ -1,24 +1,12 @@
-"""Understand the learning goal and material scope before composing a plan."""
+"""Reuse deterministic material context before composing a plan."""
 
 from __future__ import annotations
 
-import time
-
 import structlog
 
-from app.shared.infra.llm_support import acompletion_stream, acompletion_with_fallback, run_llm_tasks
 from app.shared.infra.workflow.context import WorkflowContext
-from app.workflows.digest.planner.lib.model_policy import (
-    PlannerModelStep,
-    planner_completion_kwargs_with_metadata,
-)
-from app.workflows.digest.planner.lib.models import PlannerMaterialNote
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event, emit_planner_token
 from app.workflows.digest.planner.lib.plans import _resolve_course_name, compose_planning_note
-from app.workflows.digest.planner.prompts.goal_materials import (
-    build_material_note_messages,
-    build_stream_planning_note_prompt,
-)
 from app.workflows.digest.planner.state import BuildPlannerState
 
 logger = structlog.get_logger(__name__)
@@ -33,84 +21,56 @@ def _course_for_prompt(state: BuildPlannerState) -> str:
     )
 
 
-async def _stream_planning_note(state: BuildPlannerState) -> str:
-    material_context = state["material_context"]
-    prompt = build_stream_planning_note_prompt(
-        course_name=_course_for_prompt(state),
-        user_prompt=state.get("user_prompt") or "",
-        digest_mode=state.get("digest_mode") or material_context.course_mode_decision.mode.value,
-        material_context=material_context,
-        message_history=list(state.get("message_history", [])),
-    )
-    tokens: list[str] = []
-    started_at = time.monotonic()
-    first_token_ms: int | None = None
-    await emit_planner_event(state, event="planner.planning_note.started", detail="正在识别学习意图和规划边界。")
-    stream = acompletion_stream(
-        [{"role": "user", "content": prompt}],
-        **planner_completion_kwargs_with_metadata(
-            PlannerModelStep.STREAM_PLANNING_NOTE,
-            model_override=state.get("model_override"),
-            planner_session_id=state.get("planner_session_id") or "",
-            substep="流式生成 planning_note",
-        ),
-    )
-    async for token in stream:
-        if first_token_ms is None:
-            first_token_ms = int((time.monotonic() - started_at) * 1000)
-        tokens.append(token)
-        await emit_planner_token(state, token)
-    text = "".join(tokens).strip()
-    logger.info(
-        "planner_planning_note_stream_completed",
-        planner_session_id=state.get("planner_session_id") or "",
-        course_id=state.get("course_id") or "",
-        first_token_ms=first_token_ms,
-        planning_note_chars=len(text),
-    )
-    if not text:
-        raise ValueError("planner planning_note stream returned empty text")
-    await emit_planner_event(
-        state,
-        event="planner.planning_note.ready",
-        detail="规划判断已生成，准备结合资料边界生成方案。",
-        payload={"planning_note": text},
-    )
-    return text
+def _clean_items(values: object, *, limit: int = 6) -> list[str]:
+    items = values if isinstance(values, list) else []
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in items:
+        text = " ".join(str(value or "").split()).strip()
+        key = text.casefold()
+        if not text or key in seen:
+            continue
+        seen.add(key)
+        result.append(text)
+        if len(result) >= limit:
+            break
+    return result
 
 
-async def _summarize_materials(state: BuildPlannerState) -> str:
+def _build_planning_note(state: BuildPlannerState) -> str:
     material_context = state["material_context"]
-    await emit_planner_event(state, event="planner.material_note.started", detail="正在整理资料边界和学科情况。")
-    result = await acompletion_with_fallback(
-        build_material_note_messages(
-            course_name=_course_for_prompt(state),
-            user_prompt=state.get("user_prompt") or "",
-            digest_mode=state.get("digest_mode") or material_context.course_mode_decision.mode.value,
-            material_context=material_context,
-        ),
-        **planner_completion_kwargs_with_metadata(
-            PlannerModelStep.SUMMARIZE_MATERIALS,
-            model_override=state.get("model_override"),
-            planner_session_id=state.get("planner_session_id") or "",
-            substep="生成 material_note",
-        ),
-        response_model=PlannerMaterialNote,
+    user_prompt = " ".join(str(state.get("user_prompt") or "").split()).strip()
+    mode = state.get("digest_mode") or material_context.course_mode_decision.mode.value
+    goal = user_prompt or f"围绕{_course_for_prompt(state)}建立可执行学习路径"
+    pace = "紧凑冲刺" if str(mode) == "sprint" else "系统学习"
+    return f"学习目标：{goal}。规划节奏：{pace}；方案将直接以用户目标和已解析资料为边界。"
+
+
+def _build_material_note(state: BuildPlannerState) -> str:
+    material_context = state["material_context"]
+    sources = list(material_context.source_documents or [])
+    filenames = _clean_items([item.filename for item in sources], limit=4)
+    topics = _clean_items(
+        [
+            *list(material_context.material_hints.chapter_candidates or []),
+            *list(material_context.learning_domain_profile.key_topics or []),
+            *list(material_context.learning_domain_profile.knowledge_domain_hints or []),
+        ],
+        limit=6,
     )
-    material_note = result.material_note.strip() if isinstance(result, PlannerMaterialNote) else PlannerMaterialNote.model_validate(result).material_note.strip()
-    if not material_note:
-        raise ValueError("planner material_note returned empty text")
-    await emit_planner_event(
-        state,
-        event="planner.material_note.ready",
-        detail="资料边界已整理。",
-        payload={"material_note": material_note},
-    )
-    return material_note
+    if not sources:
+        return "当前没有已解析本地资料；方案将严格依据用户目标组织，并明确资料不足处。"
+    parts = [f"已解析 {len(sources)} 份资料"]
+    if filenames:
+        parts.append("来源包括：" + "、".join(filenames))
+    if topics:
+        parts.append("资料主题集中在：" + "、".join(topics))
+    parts.append("后续章节只从这些资料和用户目标确定范围")
+    return "；".join(parts) + "。"
 
 
 def build_understand_goal_and_materials_node(*, context: WorkflowContext):
-    """Build the planning note + material note fan-out node."""
+    """Build planning context directly from already prepared material facts."""
 
     del context
 
@@ -125,39 +85,25 @@ def build_understand_goal_and_materials_node(*, context: WorkflowContext):
                 "material_note": "",
             }
 
-        logger.info(
-            "planner_planning_note_node_started",
-            planner_session_id=state.get("planner_session_id", ""),
-            course_id=state.get("course_id", ""),
+        await emit_planner_event(
+            state,
+            event="planner.analysis.started",
+            detail="正在复用已解析的学习目标和资料边界。",
         )
-        try:
-            planning_note, material_note = await run_llm_tasks(
-                [
-                    lambda: _stream_planning_note(state),
-                    lambda: _summarize_materials(state),
-                ],
-                lambda task: task(),
-            )
-        except Exception as exc:
-            logger.exception(
-                "planner_analysis_generation_failed",
-                planner_session_id=state.get("planner_session_id") or "",
-                course_id=state.get("course_id") or "",
-                error_type=type(exc).__name__,
-                error=str(exc),
-            )
-            await emit_planner_event(
-                state,
-                event="planner.analysis.failed",
-                detail="规划判断或资料边界生成失败，请重试。",
-                payload={"error_type": type(exc).__name__},
-            )
-            raise
+        planning_note = _build_planning_note(state)
+        material_note = _build_material_note(state)
+        await emit_planner_token(state, planning_note)
         await emit_planner_event(
             state,
             event="planner.analysis.ready",
-            detail="规划判断和资料边界已完成，开始并行生成课程身份和正式方案。",
+            detail="学习目标和资料边界已就绪，开始生成正式方案。",
             payload={"planning_note": compose_planning_note(planning_note, material_note)},
+        )
+        logger.info(
+            "planner_material_context_reused",
+            planner_session_id=state.get("planner_session_id", ""),
+            course_id=state.get("course_id", ""),
+            source_count=len(state["material_context"].source_documents),
         )
         return {"planning_note": planning_note, "material_note": material_note}
 

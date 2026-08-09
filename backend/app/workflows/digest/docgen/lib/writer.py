@@ -16,16 +16,14 @@ from app.workflows.digest.common.pedagogy import (
     analyze_chapter_heading_quality,
     resolve_effective_chapter_title,
 )
-from app.workflows.digest.docgen.prompts.generation import (
-    build_docgen_heading_repair_messages,
-    build_docgen_writer_messages,
-)
+from app.workflows.digest.docgen.prompts.generation import build_docgen_writer_messages
 from app.workflows.digest.docgen.lib.asset_requests import (
     ASSET_REQUEST_LANGUAGE,
     build_asset_request_block,
     has_asset_request,
     strip_asset_requests,
 )
+from app.workflows.digest.docgen.lib.chapter_review import measure_chapter_coverage
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.presentation_policy import (
     find_docgen_presentation_issues,
@@ -249,27 +247,6 @@ class DocGenWriterRuntime(BaseTracedExecution):
             markdown,
             digest_mode=digest_mode,
         )
-        heading_repair_applied = False
-        if bool(heading_quality.get("needs_agent_repair")):
-            repaired_markdown = await self._repair_heading_structure(
-                title=title,
-                objective=objective,
-                digest_mode=digest_mode,
-                required_elements=required_elements,
-                writing_instructions=writing_instructions,
-                source_count=source_count,
-                markdown=markdown,
-                dense_context=dense_context,
-                chapter_index=chapter_index,
-                chapter_count=chapter_count,
-            )
-            if repaired_markdown:
-                markdown = repaired_markdown
-                heading_repair_applied = True
-                heading_quality = analyze_chapter_heading_quality(
-                    markdown,
-                    digest_mode=digest_mode,
-                )
 
         markdown = self._ensure_media_placeholders(
             markdown,
@@ -300,7 +277,6 @@ class DocGenWriterRuntime(BaseTracedExecution):
                 "repair_applied": bool(quality_summary.get("repair_applied", False)),
                 "repair_actions": list(quality_summary.get("repair_actions", []) or []),
                 "quality_summary": quality_summary,
-                "heading_repair_applied": heading_repair_applied,
                 "writer_no_content_reason": writer_no_content_reason,
                 "heading_missing_module_count": len(list(heading_quality.get("missing_modules") or [])),
             },
@@ -319,59 +295,6 @@ class DocGenWriterRuntime(BaseTracedExecution):
                 chapter_index=self.context.chapter_index,
                 error=str(exc),
             )
-
-    async def _repair_heading_structure(
-        self,
-        *,
-        title: str,
-        objective: str,
-        digest_mode: str,
-        required_elements: list[str],
-        writing_instructions: str,
-        source_count: int,
-        markdown: str,
-        dense_context: str,
-        chapter_index: int | None,
-        chapter_count: int | None,
-    ) -> str | None:
-        llm = self.context.resolve_llm_caller()
-        messages = build_docgen_heading_repair_messages(
-            title=title,
-            objective=objective,
-            digest_mode=digest_mode,
-            required_elements=required_elements,
-            writing_instructions=writing_instructions,
-            source_count=source_count,
-            markdown=markdown,
-            dense_context=dense_context,
-            chapter_index=chapter_index,
-            chapter_count=chapter_count,
-        )
-        try:
-            async def _run_heading_repair(_: object) -> str:
-                return str(
-                    await llm(
-                        messages,
-                        **docgen_completion_kwargs_with_metadata(
-                            DocGenModelStep.HEADING_REPAIR,
-                            digest_mode=digest_mode,
-                            extra_metadata=self.context.trace_metadata(
-                                chapter_index=chapter_index,
-                                substep="heading_repair",
-                            ),
-                        ),
-                    )
-                    or ""
-                )
-
-            (repaired,) = await run_llm_tasks([None], _run_heading_repair, max_concurrent=1)
-        except Exception:
-            return None
-
-        cleaned = str(repaired).strip()
-        if not cleaned:
-            return None
-        return cleaned
 
     def _ensure_media_placeholders(
         self,
@@ -513,21 +436,7 @@ class DocGenWriterRuntime(BaseTracedExecution):
         return cleaned + "\n"
 
     def _measure_coverage(self, markdown: str, *, coverage_requirements: list[str]) -> tuple[float, list[str]]:
-        if not coverage_requirements:
-            return 1.0, []
-        normalized_markdown = self._normalize_blob(markdown)
-        missing_requirements: list[str] = []
-        hits = 0
-        for requirement in coverage_requirements:
-            if self._is_requirement_covered(normalized_markdown, requirement):
-                hits += 1
-                continue
-            missing_requirements.append(requirement)
-        return round(hits / max(1, len(coverage_requirements)), 4), missing_requirements
-
-    def _is_requirement_covered(self, normalized_markdown: str, requirement: str) -> bool:
-        needle = self._normalize_blob(requirement)
-        return bool(needle and needle in normalized_markdown)
+        return measure_chapter_coverage(markdown, coverage_requirements)
 
     def _estimate_quality_score(self, *, markdown: str, coverage_score: float, min_word_count: int) -> float:
         word_count = count_words(markdown)
@@ -536,9 +445,5 @@ class DocGenWriterRuntime(BaseTracedExecution):
         placeholder_bonus = 0.1 if any(token in markdown for token in _PLACEHOLDER_TOKEN_MAP.values()) else 0.0
         score = (coverage_score * 0.55) + (length_score * 0.3) + (heading_score * 0.15) + placeholder_bonus
         return round(min(1.0, score), 4)
-
-    def _normalize_blob(self, value: str) -> str:
-        return re.sub(r"\s+", "", str(value or "").strip()).casefold()
-
 
 __all__ = ["DocGenWriterNoContentError", "DocGenWriterRuntime"]

@@ -187,14 +187,14 @@ shared.infra -> shared.kernel
 | 类型 | 保存位置 | 例子 |
 | --- | --- | --- |
 | 项目默认非敏感 settings | `shared/infra/settings/defaults.py` + 可选 `PROJECT_SETTINGS_PATH` override | 模型名、并发、检索策略 |
-| 用户级非敏感 settings 覆盖 | 用户数据库 `user.runtime_settings_json` | 用户选择的模型名、top_k |
+| 本地非敏感 settings 覆盖 | `system_runtime_settings.settings_json` | 设置页选择的模型名、top_k |
 | 环境变量 / 敏感项 | `.env` 或浏览器 localStorage 草稿 | API Key、数据库连接串、SMTP 密码 |
 
 规则：
 
 - 密钥不写入用户 settings 数据库。
 - `frontend/src/api/generated/` 由 Orval 生成，不手改。
-- 用户 settings 覆盖按当前 schema 投影，旧 key 自动忽略。
+- 本地 settings 覆盖按当前 schema 投影，旧 key 自动忽略；旧版 `user.runtime_settings_json` 只参与兼容迁移。
 
 ## 8. 基础设施边界
 

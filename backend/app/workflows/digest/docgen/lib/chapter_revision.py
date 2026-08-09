@@ -8,6 +8,7 @@ import structlog
 
 from app.shared.infra.llm_support import run_llm_tasks
 from app.shared.infra.tools.builtin.markdown_processing import count_words
+from app.workflows.digest.docgen.lib.chapter_review import measure_chapter_coverage
 from app.workflows.digest.docgen.lib.chapter_planning import estimate_quality_from_markdown
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.models import ChapterQualitySignals
@@ -29,12 +30,7 @@ def critique_chapter(
         warnings.append("章节长度低于最低目标。")
     if markdown.count("\n## ") < (2 if str(digest_mode).strip().lower() == "sprint" else 3):
         warnings.append("章节结构不够完整。")
-    normalized = "".join(str(markdown or "").split()).casefold()
-    missing = [
-        item
-        for item in required_points
-        if str(item).strip() and "".join(str(item).split()).casefold() not in normalized
-    ]
+    coverage_score, missing = measure_chapter_coverage(markdown, list(required_points))
     if missing:
         warnings.append("缺少学习大纲项：" + "、".join(missing[:5]))
     if source_count <= 0:
@@ -44,7 +40,6 @@ def critique_chapter(
         required_points=required_points,
         min_word_count=min_word_count,
     )
-    coverage_score = 1.0 if not required_points else round((len(required_points) - len(missing)) / max(1, len(required_points)), 4)
     return ChapterQualitySignals(
         coverage_score=coverage_score,
         quality_score=quality_score,

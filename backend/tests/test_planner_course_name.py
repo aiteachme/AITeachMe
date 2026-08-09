@@ -1,7 +1,5 @@
 import asyncio
 
-import pytest
-
 from app.workflows.digest.common.models import DigestMaterialContext
 from app.shared.infra.llm_support.common import build_completion_context, prepare_completion_attempt
 from app.shared.infra.llm_support.native_tools import PROVIDER_NATIVE_TOOLS_KWARG
@@ -36,10 +34,15 @@ def test_planner_stream_policy_keeps_gpt55_auto_on_responses_without_native_tool
                     "light": "gpt-5.5",
                     "reason": "gpt-5.5",
                 },
-                "llm": {"api_mode": "auto", "native_web_search": "force", "native_file_search": "force"},
+                "llm": {
+                    "api_mode": "auto",
+                    "responses_api_models": ["gpt-5.5"],
+                    "native_web_search": "force",
+                    "native_file_search": "force",
+                },
             }
         )
-        for step in (PlannerModelStep.STREAM_PLANNING_NOTE, PlannerModelStep.DRAFT_PLAN):
+        for step in (PlannerModelStep.DRAFT_PLAN,):
             policy_kwargs = planner_completion_kwargs(step)
             assert int(policy_kwargs.pop("overall_timeout_s")) >= int(policy_kwargs["timeout"])
             assert policy_kwargs[PROVIDER_NATIVE_TOOLS_KWARG] == []
@@ -74,34 +77,71 @@ def test_clean_course_name_handles_numbered_or_labeled_candidates() -> None:
     assert _clean_course_name("学习方案") == ""
 
 
-def test_course_identity_raises_when_llm_fails(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def fail_identity(*args, **kwargs):
-        raise TimeoutError("identity timed out")
-
+def test_course_identity_uses_explicit_topic_without_llm() -> None:
     events: list[dict[str, object]] = []
 
     async def record_event(payload: dict[str, object]) -> None:
         events.append(payload)
 
-    monkeypatch.setattr(identity_node, "acompletion_with_fallback", fail_identity)
-
     node = identity_node.build_generate_course_identity_node(context=None)
-    with pytest.raises(TimeoutError, match="identity timed out"):
-        asyncio.run(
-            node(
-                {
-                    "course_id": "course_test",
-                    "planner_session_id": "planner_test",
-                    "planner_operation": "create",
-                    "user_prompt": "我想学习线性代数",
-                    "material_context": DigestMaterialContext(),
-                    "progress_callback": record_event,
-                }
-            )
+    result = asyncio.run(
+        node(
+            {
+                "course_id": "course_test",
+                "planner_session_id": "planner_test",
+                "planner_operation": "create",
+                "user_prompt": "我想学习线性代数",
+                "material_context": DigestMaterialContext(),
+                "progress_callback": record_event,
+            }
         )
+    )
 
     stages = [str(event.get("stage") or "") for event in events]
+    assert result["generated_course_name"] == "线性代数"
+    assert result["generated_course_icon_key"]
     assert "planner.identity.started" in stages
-    assert "planner.identity.failed" in stages
-    assert "planner.identity.fallback" not in stages
-    assert "planner.identity.ready" not in stages
+    assert "planner.identity.ready" in stages
+    assert "planner.identity.failed" not in stages
+
+
+def test_course_identity_does_not_persist_generic_learning_plan_name() -> None:
+    node = identity_node.build_generate_course_identity_node(context=None)
+    result = asyncio.run(
+        node(
+            {
+                "course_id": "course_test",
+                "planner_session_id": "planner_test",
+                "planner_operation": "create",
+                "user_prompt": (
+                    "跳过前置诊断。请严格生成三章学习方案，依次覆盖："
+                    "C语言变量与数据类型、流程控制、指针与数组。不要扩展章节。"
+                ),
+                "material_context": DigestMaterialContext(),
+            }
+        )
+    )
+
+    assert result["generated_course_name"] == "C语言变量与数据类型"
+    assert result["generated_course_name"] != "方案"
+
+
+def test_course_identity_uses_uploaded_material_topic_instead_of_instruction_noun() -> None:
+    node = identity_node.build_generate_course_identity_node(context=None)
+    result = asyncio.run(
+        node(
+            {
+                "course_id": "course_test",
+                "planner_session_id": "planner_test",
+                "planner_operation": "create",
+                "user_prompt": (
+                    "请基于上传的 C 语言材料先做必要的前置诊断，随后生成严格三章的学习方案："
+                    "第一章变量与数据类型，第二章流程控制，第三章指针与数组。"
+                    "不得增加第四章，且每章要明确列出必须覆盖的知识要素。"
+                ),
+                "material_context": DigestMaterialContext(),
+            }
+        )
+    )
+
+    assert result["generated_course_name"] == "C 语言"

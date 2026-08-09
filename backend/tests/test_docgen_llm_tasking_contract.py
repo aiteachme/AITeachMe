@@ -8,7 +8,6 @@ from types import SimpleNamespace
 import pytest
 
 from app.shared.infra.execution import TracedExecutionContext
-from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.docgen.lib import (
     chapter_execution_brief,
     chapter_revision,
@@ -27,17 +26,10 @@ from app.workflows.digest.docgen.lib.models import (
     ChapterQualitySignals,
     DocGenIntentProfile,
     EnhancedChapterDraft,
-    LLMChapterReviewResult,
     LockedChapterTitle,
 )
 from app.workflows.digest.docgen.lib.query_planning import ResearchSubQueryPlan
-from app.workflows.digest.docgen.lib.unit_tests import (
-    ChapterUnitTestGenerationError,
-    ChapterUnitTestItem,
-    ChapterUnitTestSet,
-)
 from app.workflows.digest.docgen.lib.writer import DocGenWriterRuntime
-from app.workflows.digest.docgen.nodes import generate_unit_tests
 
 
 @pytest.mark.anyio
@@ -387,25 +379,7 @@ async def test_chapter_rewrite_uses_run_llm_tasks(monkeypatch) -> None:
 
 
 @pytest.mark.anyio
-async def test_chapter_review_uses_run_llm_tasks(monkeypatch) -> None:
-    scheduler_calls: list[dict[str, object]] = []
-
-    async def fake_run_llm_tasks(items, worker, *, max_concurrent=None, on_result=None):
-        queued = list(items)
-        scheduler_calls.append({"items": queued, "max_concurrent": max_concurrent})
-        return [await worker(item) for item in queued]
-
-    async def fake_completion(*args, **kwargs):
-        return LLMChapterReviewResult(
-            passed=True,
-            coverage_score=1.0,
-            evidence_support_score=1.0,
-            quality_score=1.0,
-        )
-
-    monkeypatch.setattr(chapter_review, "run_llm_tasks", fake_run_llm_tasks)
-    monkeypatch.setattr(chapter_review, "acompletion_with_fallback", fake_completion)
-
+async def test_chapter_review_does_not_schedule_a_second_llm_pass() -> None:
     reviewed, report, _actions = await chapter_review.review_chapter(
         draft=EnhancedChapterDraft(
             chapter_index=1,
@@ -435,8 +409,8 @@ async def test_chapter_review_uses_run_llm_tasks(monkeypatch) -> None:
     )
 
     assert reviewed.chapter_index == 1
-    assert report.quality_score >= 1.0
-    assert scheduler_calls == [{"items": [None], "max_concurrent": 1}]
+    assert report.review_mode == "rule_guardrail"
+    assert report.llm_action_count == 0
 
 
 @pytest.mark.anyio
@@ -531,167 +505,3 @@ async def test_static_html_figure_assets_batch_candidates_through_scheduler(monk
     assert len(assets) == 2
     assert len(written_assets) == 2
     assert {asset["anchor_heading"] for asset in assets} == {"基本数据类型", "逻辑运算符优先级"}
-
-
-@pytest.mark.anyio
-async def test_generate_unit_tests_node_batches_chapter_drafts_through_scheduler(monkeypatch) -> None:
-    scheduler_calls: list[dict[str, object]] = []
-
-    async def fake_run_llm_tasks(items, worker, *, max_concurrent=None, on_result=None):
-        queued = list(items)
-        scheduler_calls.append({"items": [item.chapter_index for item in queued], "max_concurrent": max_concurrent})
-        results = []
-        for index, item in enumerate(queued):
-            result = await worker(item)
-            if on_result is not None:
-                await on_result(index, item, result)
-            results.append(result)
-        return results
-
-    async def fake_generate_chapter_unit_tests(**kwargs):
-        draft = kwargs["draft"]
-        return ChapterUnitTestSet(
-            chapter_index=draft.chapter_index,
-            items=[
-                ChapterUnitTestItem(
-                    type="短答题",
-                    target=draft.title,
-                    stem=f"说明{draft.title}的核心判断 {index}。",
-                    answer="按正文要点作答。",
-                    basis="能说清概念与步骤即可。",
-                )
-                for index in range(1, 6)
-            ],
-        )
-
-    async def noop_publish(*args, **kwargs):
-        return None
-
-    monkeypatch.setattr(generate_unit_tests, "run_llm_tasks", fake_run_llm_tasks)
-    monkeypatch.setattr(generate_unit_tests, "generate_chapter_unit_tests", fake_generate_chapter_unit_tests)
-    monkeypatch.setattr(generate_unit_tests, "update_knowledge_build_status", lambda *args, **kwargs: None)
-    monkeypatch.setattr(generate_unit_tests, "upsert_knowledge_build_chapter_progress", lambda *args, **kwargs: None)
-    monkeypatch.setattr(generate_unit_tests, "upsert_knowledge_build_chapter_preview", lambda *args, **kwargs: None)
-    monkeypatch.setattr(generate_unit_tests, "append_knowledge_build_recent_event", lambda *args, **kwargs: None)
-    monkeypatch.setattr(generate_unit_tests, "publish_docgen_progress", noop_publish)
-
-    drafts = [
-        ChapterDraft(chapter_index=1, title="变量基础", markdown="# 变量基础\n\n变量用于保存值。"),
-        ChapterDraft(chapter_index=2, title="函数调用", markdown="# 函数调用\n\n函数调用需要参数与返回值。"),
-    ]
-    tasks = [
-        ChapterGenerationTask(chapter_index=1, confirmed_title="变量基础", required_elements=["变量定义"]),
-        ChapterGenerationTask(chapter_index=2, confirmed_title="函数调用", required_elements=["参数传递"]),
-    ]
-    node = generate_unit_tests.build_generate_unit_tests_node(
-        context=WorkflowContext(
-            workflow_name="digest.docgen.test",
-            course_id="course_docgen0000",
-            metadata={"build_session_id": "build-1"},
-        )
-    )
-
-    result = await node(
-        {
-            "course_id": "course_docgen0000",
-            "requested_at": "2026-06-17T00:00:00+08:00",
-            "digest_mode": "systematic",
-            "chapter_drafts": [item.model_dump(mode="json") for item in drafts],
-            "chapter_tasks": [item.model_dump(mode="json") for item in tasks],
-        }
-    )
-
-    assert scheduler_calls == [{"items": [1, 2], "max_concurrent": None}]
-    assert result["llm_calls_total"] == 2
-    assert len(result["unit_test_chapter_drafts"]) == 2
-    assert all("## 单元测试" in item["markdown"] for item in result["unit_test_chapter_drafts"])
-
-
-@pytest.mark.anyio
-async def test_generate_unit_tests_node_skips_failed_chapter_without_blocking_publish(monkeypatch) -> None:
-    progress_rows: list[dict[str, object]] = []
-    preview_rows: list[dict[str, object]] = []
-    recent_events: list[dict[str, object]] = []
-    progress_events: list[dict[str, object]] = []
-
-    async def fake_run_llm_tasks(items, worker, *, max_concurrent=None, on_result=None):
-        results = []
-        for index, item in enumerate(list(items)):
-            result = await worker(item)
-            if on_result is not None:
-                await on_result(index, item, result)
-            results.append(result)
-        return results
-
-    async def fake_generate_chapter_unit_tests(**kwargs):
-        draft = kwargs["draft"]
-        if draft.chapter_index == 2:
-            raise ChapterUnitTestGenerationError("connection error")
-        return ChapterUnitTestSet(
-            chapter_index=draft.chapter_index,
-            items=[
-                ChapterUnitTestItem(
-                    type="短答题",
-                    target=draft.title,
-                    stem=f"说明{draft.title}的核心判断 {index}。",
-                    answer="按正文要点作答。",
-                    basis="能说清概念与步骤即可。",
-                )
-                for index in range(1, 6)
-            ],
-        )
-
-    async def fake_publish(*args, **kwargs):
-        progress_events.append(dict(kwargs.get("payload") or {}, stage=kwargs.get("stage")))
-
-    monkeypatch.setattr(generate_unit_tests, "run_llm_tasks", fake_run_llm_tasks)
-    monkeypatch.setattr(generate_unit_tests, "generate_chapter_unit_tests", fake_generate_chapter_unit_tests)
-    monkeypatch.setattr(generate_unit_tests, "update_knowledge_build_status", lambda *args, **kwargs: None)
-    monkeypatch.setattr(
-        generate_unit_tests,
-        "upsert_knowledge_build_chapter_progress",
-        lambda *args, **kwargs: progress_rows.append(dict(kwargs.get("chapter_progress") or {})),
-    )
-    monkeypatch.setattr(
-        generate_unit_tests,
-        "upsert_knowledge_build_chapter_preview",
-        lambda *args, **kwargs: preview_rows.append(dict(kwargs.get("chapter_preview") or {})),
-    )
-    monkeypatch.setattr(
-        generate_unit_tests,
-        "append_knowledge_build_recent_event",
-        lambda *args, **kwargs: recent_events.append(dict(kwargs.get("event") or {})),
-    )
-    monkeypatch.setattr(generate_unit_tests, "publish_docgen_progress", fake_publish)
-
-    drafts = [
-        ChapterDraft(chapter_index=1, title="变量基础", markdown="# 变量基础\n\n变量用于保存值。"),
-        ChapterDraft(chapter_index=2, title="函数调用", markdown="# 函数调用\n\n函数调用需要参数与返回值。"),
-    ]
-    node = generate_unit_tests.build_generate_unit_tests_node(
-        context=WorkflowContext(
-            workflow_name="digest.docgen.test",
-            course_id="course_docgen0000",
-            metadata={"build_session_id": "build-1"},
-        )
-    )
-
-    result = await node(
-        {
-            "course_id": "course_docgen0000",
-            "requested_at": "2026-06-17T00:00:00+08:00",
-            "digest_mode": "systematic",
-            "chapter_drafts": [item.model_dump(mode="json") for item in drafts],
-            "chapter_tasks": [],
-        }
-    )
-
-    assert len(result["unit_test_chapter_drafts"]) == 2
-    assert "## 单元测试" in result["unit_test_chapter_drafts"][0]["markdown"]
-    assert "## 单元测试" not in result["unit_test_chapter_drafts"][1]["markdown"]
-    assert result["unit_test_items"][1]["skipped"] is True
-    assert result["unit_test_skipped_count"] == 1
-    assert any(row.get("status") == "unit_test_skipped" for row in progress_rows)
-    assert any(row.get("status") == "unit_test_skipped" for row in preview_rows)
-    assert any(event.get("stage") == "chapter_unit_test_skipped" for event in recent_events)
-    assert any(event.get("stage") == "unit_tests_ready" and event.get("unit_test_skipped_count") == 1 for event in progress_events)

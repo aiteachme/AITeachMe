@@ -1170,8 +1170,11 @@ class ChapterReviewReport(DocGenBaseModel):
     missing_elements: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     fallback_used: bool = False
+    review_mode: str = ""
+    llm_action_count: int = 0
+    rule_action_count: int = 0
 
-    @field_validator("report_id", mode="before")
+    @field_validator("report_id", "review_mode", mode="before")
     @classmethod
     def _text(cls, value: Any) -> str:
         return clean_text(value)

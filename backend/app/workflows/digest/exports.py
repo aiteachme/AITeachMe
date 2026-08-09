@@ -10,9 +10,9 @@ from app.workflows.digest.docgen.graph import (
     NODE_DOCUMENT_CONSISTENCY_REVIEW,
     NODE_ENHANCE_CHAPTERS,
     NODE_GENERATE_CHAPTERS,
-    NODE_GENERATE_UNIT_TESTS,
     NODE_DISPLAY_NAMES as DOCGEN_NODE_DISPLAY_NAMES,
     NODE_MERGE_REVIEW,
+    NODE_PREPARE_KNOWLEDGE_GRAPH,
     NODE_PUBLISH,
     NODE_REPAIR_OR_ROUTE,
     NODE_REVIEW_CHAPTERS,
@@ -30,10 +30,6 @@ PLANNER_PROMPTS = {
 }
 
 DOCGEN_PROMPTS = {
-    "intent_core_prompt": "DocGen document-level intent inference prompt.",
-    "file_summary_prompt": "DocGen file material summary prompt.",
-    "title_lock_prompt": "DocGen chapter title locking prompt.",
-    "chapter_execution_brief_prompt": "DocGen chapter execution brief prompt.",
     "query_planning_prompt": "DocGen chapter research query planning prompt.",
     "research_purify_prompt": "DocGen dense-context cleanup prompt.",
     "writer_prompt": "Chapter writing prompt used by DocGen.",
@@ -41,8 +37,6 @@ DOCGEN_PROMPTS = {
     "chapter_rewrite_prompt": "Bounded chapter rewrite prompt.",
     "mermaid_prompt": "Mindmap rendering prompt used by DocGen.",
     "interactive_html_prompt": "DocGen interactive HTML sidecar prompt.",
-    "chapter_review_prompt": "DocGen chapter review prompt.",
-    "repair_prompt": "DocGen review-action patch prompt.",
 }
 
 
@@ -57,14 +51,14 @@ def _build_docgen_graph_for_export():
 
 _DOCGEN_SEND_EDGES = (
     f"{NODE_ASSEMBLE_CHAPTER_TASKS} -. Send xN .-> {NODE_GENERATE_CHAPTERS}",
-    f"{NODE_GENERATE_CHAPTERS} --> {NODE_GENERATE_UNIT_TESTS}",
-    f"{NODE_GENERATE_UNIT_TESTS} --> {NODE_ENHANCE_CHAPTERS}",
+    f"{NODE_GENERATE_CHAPTERS} --> {NODE_ENHANCE_CHAPTERS}",
     f"{NODE_ENHANCE_CHAPTERS} -. Send xN .-> {NODE_REVIEW_CHAPTERS}",
     f"{NODE_REVIEW_CHAPTERS} --> {NODE_DOCUMENT_CONSISTENCY_REVIEW}",
     f"{NODE_DOCUMENT_CONSISTENCY_REVIEW} --> {NODE_REPAIR_OR_ROUTE}",
     f"{NODE_REPAIR_OR_ROUTE} --> {NODE_MERGE_REVIEW}",
     f"{NODE_MERGE_REVIEW} --> {NODE_SYNC_LOCKED_TITLES}",
-    f"{NODE_SYNC_LOCKED_TITLES} --> {NODE_PUBLISH}",
+    f"{NODE_SYNC_LOCKED_TITLES} --> {NODE_PREPARE_KNOWLEDGE_GRAPH}",
+    f"{NODE_PREPARE_KNOWLEDGE_GRAPH} --> {NODE_PUBLISH}",
     f"{NODE_PUBLISH} --> {NODE_SYNC_KNOWLEDGE_GRAPH}",
     f"{NODE_SYNC_KNOWLEDGE_GRAPH} --> __end__",
 )

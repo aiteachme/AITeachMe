@@ -7,6 +7,7 @@ import re
 from typing import Any
 
 from app.shared.infra.tools.builtin.markdown_processing import count_words
+from app.workflows.digest.docgen.lib.chapter_review import measure_chapter_coverage
 from app.workflows.digest.common.pedagogy import resolve_effective_chapter_title
 from app.workflows.digest.docgen.lib.models import (
     BackboneResearchAgenda,
@@ -31,6 +32,7 @@ from app.workflows.digest.docgen.lib.mode_profiles import get_docgen_mode_profil
 _SCOPE_PUNCT_RE = re.compile(r"[\s,，、;；:：/／|｜()（）《》“”\"'`]+")
 _MERMAID_STRUCTURE_HINT_TERMS = ("图", "结构", "流程", "关系", "路径", "层次", "机制", "过程", "框架", "脉络")
 _MERMAID_ROLE_TYPES = ("topic", "concept", "principle", "formula_model", "procedure", "skill", "misconception")
+_MERMAID_LABEL_RE = re.compile(r"[^0-9A-Za-z\u4e00-\u9fff、，。·\- ]+")
 
 
 def _priority_files_for_chapter(
@@ -106,11 +108,27 @@ def _suggest_mermaid_placeholder_requests(
     has_rich_knowledge_structure = len(strong_targets) >= 4
     if not has_structure_marker and not has_rich_knowledge_structure:
         return []
-    focus = "、".join(strong_targets[:4])
-    description = f"{title}的知识结构或方法路径图"
-    if focus:
-        description = f"{description}，围绕：{focus}"
-    return [{"kind": "mermaid", "description": description}]
+    def mermaid_label(value: object, *, limit: int) -> str:
+        cleaned = _MERMAID_LABEL_RE.sub("", str(value or ""))
+        cleaned = re.sub(r"\s+", " ", cleaned).strip(" ，。-、")
+        return cleaned[:limit].rstrip(" ，。-、")
+
+    root = mermaid_label(title, limit=18)
+    children = clean_string_list(
+        [mermaid_label(item, limit=20) for item in strong_targets],
+        limit=6,
+    )
+    children = [item for item in children if item and item.casefold() != root.casefold()]
+    if not root or len(children) < 2:
+        return []
+    source = "\n".join(
+        [
+            "mindmap",
+            f"  root(({root}))",
+            *(f"    {item}" for item in children),
+        ]
+    )
+    return [{"kind": "mermaid", "description": source}]
 
 
 def _example_coverage_plan(
@@ -361,6 +379,12 @@ def assemble_chapter_generation_plan(
             target_length=str(build_constraints.get("target_length") or "") if explicit_total_words else "",
             target_total_words=explicit_total_words,
         )
+        required_element_count = min(8, len(clean_string_list(seed.required_elements)))
+        extra_coverage_units = max(0, required_element_count - 4)
+        if extra_coverage_units:
+            target_cap = 1800 if mode_profile.is_sprint else 2600
+            target_words = min(target_cap, target_words + extra_coverage_units * 150)
+            min_words = min(target_words, min_words + extra_coverage_units * 100)
         affinity = _affinity_for_chapter(
             chapter_index=chapter_index,
             source_affinity_by_chapter=source_affinity_by_chapter,
@@ -494,7 +518,11 @@ def assemble_chapter_generation_plan(
                 "example_coverage_plan": example_coverage_plan,
                 "chapter_end_practice_plan": chapter_end_practice_plan,
             },
-            coverage_threshold=max(mode_profile.coverage_threshold, round(0.55 + intent_profile.review_strictness * 0.25, 3)),
+            coverage_threshold=max(
+                0.9,
+                mode_profile.coverage_threshold,
+                round(0.55 + intent_profile.review_strictness * 0.25, 3),
+            ),
             evidence_support_threshold=max(
                 mode_profile.evidence_support_threshold,
                 round(0.42 + intent_profile.evidence_strictness * 0.28, 3),
@@ -523,9 +551,7 @@ def assemble_chapter_generation_plan(
 def estimate_quality_from_markdown(markdown: str, *, required_points: Sequence[str], min_word_count: int) -> float:
     if not markdown.strip():
         return 0.0
-    normalized = "".join(markdown.split()).casefold()
-    hits = sum(1 for item in required_points if str(item).strip() and "".join(str(item).split()).casefold() in normalized)
-    coverage = 1.0 if not required_points else hits / max(1, len(required_points))
+    coverage, _missing = measure_chapter_coverage(markdown, list(required_points))
     length = min(1.0, count_words(markdown) / max(1, min_word_count))
     structure = 1.0 if markdown.count("\n## ") >= 4 else 0.65
     return round((coverage * 0.45) + (length * 0.3) + (structure * 0.25), 4)

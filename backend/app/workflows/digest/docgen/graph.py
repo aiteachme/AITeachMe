@@ -38,7 +38,6 @@ from app.workflows.digest.docgen.nodes.confirm_and_seed_backbone import build_co
 from app.workflows.digest.docgen.nodes.enhance_chapters import build_enhance_chapters_node
 from app.workflows.digest.docgen.nodes.generate_chapters import build_generate_chapters_node
 from app.workflows.digest.docgen.nodes.generate_cover import build_generate_cover_node
-from app.workflows.digest.docgen.nodes.generate_unit_tests import build_generate_unit_tests_node
 from app.workflows.digest.docgen.nodes.load_context import build_load_context_node
 from app.workflows.digest.docgen.nodes.lock_titles_for_chapters import build_lock_titles_for_chapters_node
 from app.workflows.digest.docgen.nodes.merge_review import build_merge_review_node
@@ -60,12 +59,8 @@ NODE_LOAD_CONTEXT = "load_context"
 NODE_PREPARE_GLOBAL_SEED = "prepare_global_seed"
 NODE_GENERATE_COVER = "generate_cover"
 NODE_LOCK_TITLES = "lock_titles_for_chapters"
-NODE_CONFIRM_BACKBONE_SEED = "confirm_backbone_seed"
-NODE_BUILD_BACKBONE = "build_document_backbone"
-NODE_BUILD_CHAPTER_BRIEFS = "build_chapter_execution_briefs"
 NODE_ASSEMBLE_CHAPTER_TASKS = "assemble_chapter_tasks"
 NODE_GENERATE_CHAPTERS = "generate_chapters"
-NODE_GENERATE_UNIT_TESTS = "generate_unit_tests"
 NODE_ENHANCE_CHAPTERS = "enhance_chapters"
 NODE_REVIEW_CHAPTERS = "review_chapters"
 NODE_DOCUMENT_CONSISTENCY_REVIEW = "document_consistency_review"
@@ -83,12 +78,8 @@ NODE_DISPLAY_NAMES = {
     NODE_PREPARE_GLOBAL_SEED: "准备全局种子",
     NODE_GENERATE_COVER: "生成封面",
     NODE_LOCK_TITLES: "锁定章节标题",
-    NODE_CONFIRM_BACKBONE_SEED: "确认骨架种子",
-    NODE_BUILD_BACKBONE: "构建文档知识骨架",
-    NODE_BUILD_CHAPTER_BRIEFS: "生成章节执行简报",
-    NODE_ASSEMBLE_CHAPTER_TASKS: "组装最终章节任务",
+    NODE_ASSEMBLE_CHAPTER_TASKS: "准备章节生成任务",
     NODE_GENERATE_CHAPTERS: "生成章节草稿",
-    NODE_GENERATE_UNIT_TESTS: "生成章末单元测试",
     NODE_ENHANCE_CHAPTERS: "增强章节内容",
     NODE_REVIEW_CHAPTERS: "复核章节内容",
     NODE_DOCUMENT_CONSISTENCY_REVIEW: "复核整本一致性",
@@ -126,8 +117,8 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
     },
     NODE_PREPARE_GLOBAL_SEED: {
         "description": (
-            "做 DocGen 全局轻准备：并行推断文档级 intent_core，并按文件生成材料摘要、章节亲和度和高置信证据候选。"
-            "这一步只把资料压缩成后续可用的结构化信号，不生成整本大纲，也不提前写章节正文。"
+            "做 DocGen 全局轻准备：从 confirmed plan 确定性编译 intent_core，并依据解析切片标题/预览生成"
+            "章节亲和度和证据候选；不再重复调用 LLM 摘要同一批资料。"
         ),
         "reads": ["docgen_context", "chapter_assignments", "shared_inputs", "source_packets", "section_packets"],
         "writes": [
@@ -159,6 +150,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
     NODE_GENERATE_COVER: {
         "description": (
             "根据课程、用户目标、confirmed plan、资料摘要和 intent_profile 生成可选封面 sidecar。"
+            "准备全局种子后即与正文生成并行，只在 merge_review 前汇合；"
             "封面是 best-effort 辅助资产，失败或未配置图像模型时不阻断正文生成链路。"
         ),
         "reads": ["course_id", "course_name", "user_prompt", "document_context", "confirmed_plan", "file_summaries", "intent_profile"],
@@ -175,113 +167,74 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "intent_profile",
         ],
         "output_keys": ["cover_artifact", "cover_markdown", "cover_ms"],
+        "fanout": "runs in parallel with backbone and chapter generation",
+        "fanin": "joins repair_or_route at merge_review",
     },
     NODE_LOCK_TITLES: {
         "description": (
-            "在单节点内部按章节并行锁定最终章节标题。每个子任务只允许基于 confirmed plan、用户目标和课程模式优化标题表达，"
-            "不能生成教学大纲、检索 query 或媒体需求，避免后续节点反复改标题导致章节身份漂移。"
+            "直接锁定 confirmed plan 中用户已经确认的章节标题，不再让第二个模型改写目录，"
+            "避免章节身份漂移并消除逐章标题调用。"
         ),
         "reads": ["chapter_assignments", "docgen_context", "confirmed_plan"],
         "writes": ["locked_titles"],
         "input_keys": ["course_id", "course_name", "chapter_assignments", "docgen_context", "build_session_id"],
         "output_keys": ["locked_titles", "title_lock_ms", "llm_calls_total", "error"],
-        "fanout": "internal_async_per_chapter",
-    },
-    NODE_CONFIRM_BACKBONE_SEED: {
-        "description": (
-            "用纯规则合并 confirmed plan、锁定标题、文件摘要、章节亲和度和高置信证据，生成整本文档骨架 seed。"
-            "这里确定每章的目标、required elements、初始检索方向和 backbone_research_agenda，是进入全局知识骨架前的规则收口。"
-        ),
-        "reads": [
-            "confirmed_plan",
-            "locked_titles",
-            "file_summaries",
-            "source_affinity_by_chapter",
-            "high_confidence_evidence_units",
-        ],
-        "writes": ["chapter_generation_plan_seed", "chapter_task_seeds", "chapters_enhanced", "backbone_research_agenda", "locked_titles"],
-        "input_keys": [
-            "confirmed_plan",
-            "locked_titles",
-            "file_summaries",
-            "source_affinity_by_chapter",
-            "high_confidence_evidence_units",
-        ],
-        "output_keys": ["chapter_generation_plan_seed", "chapter_task_seeds", "chapters_enhanced", "backbone_research_agenda", "seed_backbone_ms"],
-    },
-    NODE_BUILD_BACKBONE: {
-        "description": (
-            "构建整本文档级知识骨架，包括 canonical glossary、概念依赖、符号规范、核心主张池和易混点。"
-            "当前实现以规则和 DocGen 结构化信号为主，用来约束后续章节写作和图谱同步；"
-            "同时先产出第一版 chapters_enhanced、dispatch_table 和 preliminary_kg，让 KG 候选早于章节 brief fan-in 出现。"
-        ),
-        "reads": ["chapter_task_seeds", "summary_enhanced", "high_confidence_evidence_units", "backbone_research_agenda"],
-        "writes": ["document_backbone", "guideline", "chapters_enhanced", "dispatch_table", "preliminary_kg", "backbone_conflict_warnings"],
-        "input_keys": ["chapter_task_seeds", "summary_enhanced", "high_confidence_evidence_units", "backbone_research_agenda"],
-        "output_keys": ["document_backbone", "guideline", "chapters_enhanced", "dispatch_table", "preliminary_kg", "backbone_conflict_warnings", "backbone_ms"],
-    },
-    NODE_BUILD_CHAPTER_BRIEFS: {
-        "description": (
-            "在单节点内部按章节并行生成最小执行简报。每个 brief 只给本章 teaching_outline、目标概念/定义/公式/例题/易错点"
-            "和少量检索 query，不允许改标题或扩展成完整大纲；brief fan-in 后会立即基于 brief/dispatch/证据启动 KG 早期预抽取。"
-        ),
-        "reads": [
-            "chapter_task_seeds",
-            "document_backbone",
-            "intent_core",
-            "summary_enhanced",
-            "guideline",
-            "dispatch_table",
-            "preliminary_kg",
-            "high_confidence_evidence_units",
-            "build_session_id",
-        ],
-        "writes": ["chapter_execution_briefs", "kg_prefetch_status", "kg_prefetch_ready"],
-        "input_keys": [
-            "course_id",
-            "course_name",
-            "build_session_id",
-            "chapter_task_seeds",
-            "document_backbone",
-            "intent_core",
-            "summary_enhanced",
-            "high_confidence_evidence_units",
-            "digest_mode",
-        ],
-        "output_keys": ["chapter_execution_briefs", "kg_prefetch_status", "kg_prefetch_ready", "chapter_prepare_ms", "llm_calls_total", "error"],
-        "fanout": "internal_async_per_chapter",
+        "fanout": "deterministic_per_chapter",
     },
     NODE_ASSEMBLE_CHAPTER_TASKS: {
         "description": (
-            "用纯规则把 locked titles、intent_core、document_backbone、文件摘要和章节 brief 合并成最终 ChapterGenerationPlan"
-            "与 ChapterGenerationTask 列表。后续章节 fan-out 只消费这里冻结的单章执行合同。"
+            "把原本严格串行且都不调用模型的骨架种子确认、全文骨架、章节 brief 和任务组装合并为一个准备节点。"
+            "它一次产出最终 ChapterGenerationPlan 与 ChapterGenerationTask；后续章节 fan-out 只消费这里冻结的单章执行合同。"
         ),
         "reads": [
             "confirmed_plan",
             "locked_titles",
             "intent_core",
-            "chapter_task_seeds",
-            "chapter_execution_briefs",
-            "document_backbone",
             "file_summaries",
+            "source_affinity_by_chapter",
+            "high_confidence_evidence_units",
         ],
-        "writes": ["chapter_generation_plan", "chapter_tasks", "chapters_enhanced", "dispatch_table", "preliminary_kg", "chapter_execution_briefs"],
+        "writes": [
+            "chapter_generation_plan_seed",
+            "chapter_task_seeds",
+            "document_backbone",
+            "guideline",
+            "chapter_execution_briefs",
+            "chapter_generation_plan",
+            "chapter_tasks",
+            "chapters_enhanced",
+            "dispatch_table",
+            "preliminary_kg",
+        ],
         "input_keys": [
             "confirmed_plan",
             "locked_titles",
             "intent_core",
-            "chapter_task_seeds",
-            "chapter_execution_briefs",
-            "document_backbone",
             "file_summaries",
+            "source_affinity_by_chapter",
+            "high_confidence_evidence_units",
         ],
-        "output_keys": ["chapter_generation_plan", "chapter_tasks", "chapters_enhanced", "dispatch_table", "preliminary_kg", "chapter_execution_briefs", "assemble_tasks_ms", "error"],
+        "output_keys": [
+            "chapter_generation_plan_seed",
+            "chapter_task_seeds",
+            "document_backbone",
+            "guideline",
+            "chapter_execution_briefs",
+            "chapter_generation_plan",
+            "chapter_tasks",
+            "chapters_enhanced",
+            "dispatch_table",
+            "preliminary_kg",
+            "chapter_prepare_ms",
+            "assemble_tasks_ms",
+            "error",
+        ],
         "routing": "next step sends one branch per chapter",
     },
     NODE_GENERATE_CHAPTERS: {
         "description": (
             "LangGraph Send fan-out 后的单章生成节点。每个分支独立执行本地/外部检索、上下文压缩、claim/evidence/conflict 账本构建、"
-            "章节正文写作、轻量 critique 和必要 rewrite；输出 body-only 章节草稿，通过 reducer 汇总回整本 state。"
+            "章节正文与章末单元测试的一次性写作；输出完整章节草稿，通过 reducer 汇总回整本 state。"
         ),
         "reads": ["chapter_task", "shared_inputs", "document_context", "docgen_context", "document_backbone"],
         "writes": ["chapter_drafts", "research_traces", "claim_ledgers", "claim_evidence_maps", "evidence_ledgers", "conflict_reports"],
@@ -306,18 +259,6 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "error",
         ],
         "fanout": "langgraph_send_per_chapter",
-    },
-    NODE_GENERATE_UNIT_TESTS: {
-        "description": (
-            "在所有章节正文 fan-in 后，按章节并行生成固定的章末 `## 单元测试` 模块。"
-            "该节点读取 body-only 草稿和 chapter_end_practice_plan，输出统一表格样式的可判定短测题，"
-            "避免 writer 把测试和正文混写，也避免重复单元测试标题。"
-        ),
-        "reads": ["chapter_drafts", "chapter_tasks", "digest_mode"],
-        "writes": ["unit_test_chapter_drafts", "unit_test_items"],
-        "input_keys": ["chapter_drafts", "chapter_tasks", "digest_mode"],
-        "output_keys": ["unit_test_chapter_drafts", "unit_test_items", "unit_test_ms", "llm_calls_total", "error"],
-        "fanout": "internal_async_per_chapter",
     },
     NODE_ENHANCE_CHAPTERS: {
         "description": (
@@ -373,9 +314,8 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
     },
     NODE_DOCUMENT_CONSISTENCY_REVIEW: {
         "description": (
-            "在所有章节复核 fan-in 后执行整本文档一致性检查，重点看跨章术语、符号、定义、前置关系、重复讲解和风格断裂。"
-            "先用规则基线兜底，再做一次结构化 LLM 整本复核；不检索、不改正文，只产出 document_consistency_report、"
-            "整本 review_decision 和可交给 repair 节点处理的 document-level review_actions。"
+            "在所有章节复核 fan-in 后执行轻量规则一致性检查，验证章节数量、重复标题和骨架术语覆盖。"
+            "不再把整本正文交给第二次 LLM 重审，只产出 document_consistency_report 和 review_decision。"
         ),
         "reads": [
             "enhanced_chapter_drafts",
@@ -421,9 +361,9 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
     },
     NODE_REPAIR_OR_ROUTE: {
         "description": (
-            "根据 review_actions 执行有限回流：surface_patch/section_patch/evidence_patch 会做局部 Markdown patch，"
-            "regenerate_chapter 会降级为单章局部修补，re_dispatch/rebuild_backbone 等重动作结构化记录为 unresolved warnings。"
-            "这个节点负责把复核问题转成可追踪的修补记录，不重新展开整本生成。"
+            "根据 review_actions 执行有限回流：只自动处理确定性的 Markdown 展示修复；"
+            "section/evidence/regenerate/re_dispatch/rebuild_backbone 等语义动作记录为 unresolved warnings。"
+            "该节点不触发第二次语义 LLM 重写。"
         ),
         "reads": [
             "review_actions",
@@ -538,9 +478,9 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
     NODE_MERGE_REVIEW: {
         "description": (
             "把 reviewed chapter drafts 按 chapter_index 去重排序并合并为整本文档 Markdown，生成章节发布 metadata，"
-            "同时做发布前完整性检查。这里不再重写知识内容，只负责 fan-in 后的结构收口。"
+            "同时合并并行生成的可选封面并做发布前完整性检查。这里不再重写知识内容，只负责 fan-in 后的结构收口。"
         ),
-        "reads": ["reviewed_chapter_drafts", "chapter_generation_plan", "document_backbone", "asset_manifests", "practice_manifests"],
+        "reads": ["reviewed_chapter_drafts", "chapter_generation_plan", "document_backbone", "asset_manifests", "practice_manifests", "cover_artifact", "cover_markdown"],
         "writes": ["merged_markdown", "chapter_metadatas", "merge_review_report"],
         "input_keys": [
             "reviewed_chapter_drafts",
@@ -654,6 +594,30 @@ def _langgraph_node_metadata(node_key: str) -> dict[str, object]:
     )
 
 
+def _build_prepare_chapter_tasks_node(*, context: WorkflowContext):
+    """Collapse the strictly sequential deterministic preparation steps."""
+
+    handlers = (
+        build_confirm_and_seed_backbone_node(context=context),
+        build_document_backbone_node(context=context),
+        build_chapter_execution_briefs_node(context=context),
+        build_assemble_chapter_tasks_node(context=context),
+    )
+
+    async def prepare_chapter_tasks(state: DocGenState) -> dict:
+        current = dict(state)
+        merged: dict[str, Any] = {}
+        for handler in handlers:
+            output = await handler(current)
+            merged.update(output)
+            current.update(output)
+            if current.get("error"):
+                break
+        return merged
+
+    return prepare_chapter_tasks
+
+
 def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
     """Build the rewritten DocGen graph."""
 
@@ -700,42 +664,12 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
         metadata=_langgraph_node_metadata(NODE_LOCK_TITLES),
     )
     workflow.add_node(
-        NODE_CONFIRM_BACKBONE_SEED,
-        _trace_docgen_node(
-            trace,
-            NODE_CONFIRM_BACKBONE_SEED,
-            build_confirm_and_seed_backbone_node(context=context),
-            timing_field="seed_backbone_ms",
-        ),
-        metadata=_langgraph_node_metadata(NODE_CONFIRM_BACKBONE_SEED),
-    )
-    workflow.add_node(
-        NODE_BUILD_BACKBONE,
-        _trace_docgen_node(
-            trace,
-            NODE_BUILD_BACKBONE,
-            build_document_backbone_node(context=context),
-            timing_field="backbone_ms",
-        ),
-        metadata=_langgraph_node_metadata(NODE_BUILD_BACKBONE),
-    )
-    workflow.add_node(
-        NODE_BUILD_CHAPTER_BRIEFS,
-        _trace_docgen_node(
-            trace,
-            NODE_BUILD_CHAPTER_BRIEFS,
-            build_chapter_execution_briefs_node(context=context),
-            timing_field="chapter_prepare_ms",
-        ),
-        metadata=_langgraph_node_metadata(NODE_BUILD_CHAPTER_BRIEFS),
-    )
-    workflow.add_node(
         NODE_ASSEMBLE_CHAPTER_TASKS,
         _trace_docgen_node(
             trace,
             NODE_ASSEMBLE_CHAPTER_TASKS,
-            build_assemble_chapter_tasks_node(context=context),
-            timing_field="assemble_tasks_ms",
+            _build_prepare_chapter_tasks_node(context=context),
+            timing_field="chapter_prepare_ms",
         ),
         metadata=_langgraph_node_metadata(NODE_ASSEMBLE_CHAPTER_TASKS),
     )
@@ -743,16 +677,6 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
         NODE_GENERATE_CHAPTERS,
         _trace_docgen_node(trace, NODE_GENERATE_CHAPTERS, build_generate_chapters_node(context=context)),
         metadata=_langgraph_node_metadata(NODE_GENERATE_CHAPTERS),
-    )
-    workflow.add_node(
-        NODE_GENERATE_UNIT_TESTS,
-        _trace_docgen_node(
-            trace,
-            NODE_GENERATE_UNIT_TESTS,
-            build_generate_unit_tests_node(context=context),
-            timing_field="unit_test_ms",
-        ),
-        metadata=_langgraph_node_metadata(NODE_GENERATE_UNIT_TESTS),
     )
     workflow.add_node(
         NODE_ENHANCE_CHAPTERS,
@@ -848,50 +772,17 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
     workflow.set_entry_point(NODE_LOAD_CONTEXT)
     workflow.add_conditional_edges(
         NODE_LOAD_CONTEXT,
-        route_after_step_for_trace,
-        {"continue": NODE_PREPARE_GLOBAL_SEED, "fail": END},
+        build_seed_preparation_sends_for_trace,
+        {"fail": END},
     )
-    workflow.add_conditional_edges(
-        NODE_PREPARE_GLOBAL_SEED,
-        route_after_step_for_trace,
-        {"continue": NODE_GENERATE_COVER, "fail": END},
-    )
-    workflow.add_conditional_edges(
-        NODE_GENERATE_COVER,
-        route_after_step_for_trace,
-        {"continue": NODE_LOCK_TITLES, "fail": END},
-    )
-    workflow.add_conditional_edges(
-        NODE_LOCK_TITLES,
-        route_after_step_for_trace,
-        {"continue": NODE_CONFIRM_BACKBONE_SEED, "fail": END},
-    )
-    workflow.add_conditional_edges(
-        NODE_CONFIRM_BACKBONE_SEED,
-        route_after_step_for_trace,
-        {"continue": NODE_BUILD_BACKBONE, "fail": END},
-    )
-    workflow.add_conditional_edges(
-        NODE_BUILD_BACKBONE,
-        route_after_step_for_trace,
-        {"continue": NODE_BUILD_CHAPTER_BRIEFS, "fail": END},
-    )
-    workflow.add_conditional_edges(
-        NODE_BUILD_CHAPTER_BRIEFS,
-        route_after_step_for_trace,
-        {"continue": NODE_ASSEMBLE_CHAPTER_TASKS, "fail": END},
-    )
+    workflow.add_edge(NODE_PREPARE_GLOBAL_SEED, NODE_GENERATE_COVER)
+    workflow.add_edge([NODE_PREPARE_GLOBAL_SEED, NODE_LOCK_TITLES], NODE_ASSEMBLE_CHAPTER_TASKS)
     workflow.add_conditional_edges(
         NODE_ASSEMBLE_CHAPTER_TASKS,
         build_generation_sends_for_trace,
         {"fail": END},
     )
-    workflow.add_edge(NODE_GENERATE_CHAPTERS, NODE_GENERATE_UNIT_TESTS)
-    workflow.add_conditional_edges(
-        NODE_GENERATE_UNIT_TESTS,
-        route_after_step_for_trace,
-        {"continue": NODE_ENHANCE_CHAPTERS, "fail": END},
-    )
+    workflow.add_edge(NODE_GENERATE_CHAPTERS, NODE_ENHANCE_CHAPTERS)
     workflow.add_conditional_edges(
         NODE_ENHANCE_CHAPTERS,
         build_review_sends_for_trace,
@@ -903,11 +794,7 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
         route_after_step_for_trace,
         {"continue": NODE_REPAIR_OR_ROUTE, "fail": END},
     )
-    workflow.add_conditional_edges(
-        NODE_REPAIR_OR_ROUTE,
-        route_after_step_for_trace,
-        {"continue": NODE_MERGE_REVIEW, "fail": END},
-    )
+    workflow.add_edge([NODE_REPAIR_OR_ROUTE, NODE_GENERATE_COVER], NODE_MERGE_REVIEW)
     workflow.add_conditional_edges(
         NODE_MERGE_REVIEW,
         route_after_step_for_trace,
@@ -990,8 +877,6 @@ def create_docgen_initial_state(
         "kg_draft_early_persist_metrics": {},
         "kg_draft_rollback_metrics": {},
         "cancel_after_rollback": False,
-        "unit_test_chapter_drafts": [],
-        "unit_test_items": [],
         "error": None,
     }
 
@@ -1005,6 +890,28 @@ def route_after_step_for_trace(state: DocGenState) -> Literal["fail", "continue"
 
 
 route_after_step_for_trace = named_route(route_after_step_for_trace, "检查是否继续")
+
+
+def build_seed_preparation_sends(state: DocGenState) -> list[Send] | Literal["fail"]:
+    """Run independent global-context preparation and title locking in parallel."""
+
+    if state.get("error"):
+        return "fail"
+    branch_state = dict(state)
+    return [
+        Send(NODE_PREPARE_GLOBAL_SEED, branch_state),
+        Send(NODE_LOCK_TITLES, branch_state),
+    ]
+
+
+def build_seed_preparation_sends_for_trace(state: DocGenState) -> list[Send] | Literal["fail"]:
+    return build_seed_preparation_sends(state)
+
+
+build_seed_preparation_sends_for_trace = named_route(
+    build_seed_preparation_sends_for_trace,
+    "并行准备全局上下文与确认标题",
+)
 
 
 def _child_state_base(state: DocGenState, *, teaching_action: str) -> dict[str, Any]:

@@ -1,6 +1,6 @@
 # KG Doc Sync 链路
 
-最后更新：2026-06-15
+最后更新：2026-08-09
 
 职责：把已发布知识文档同步成知识图谱。
 
@@ -45,9 +45,9 @@ early_units_callback
 
 ## 0. 预抽取 sidecar
 
-输入：DocGen brief / enhanced / reviewed / repaired markdown, `build_session_id`, `course_id`
+输入：DocGen final locked markdown, `build_session_id`, `course_id`
 
-动作：DocGen 写作期提前切 section，调用 LLM 抽 `SectionExtractionPayload`，写进程内缓存。早期 brief 候选会被完整章节、reviewed 章节和 repaired 章节逐步刷新；已完成记录会保留，供发布前候选兜底。
+动作：只在最终 Markdown 锁定后启动一次预抽取并写入进程内缓存；review / repair 阶段的临时正文不再触发重复抽取。普通篇幅按章一次抽取；长章先按整本文档约 3200 字/任务计算总任务数，再把额外任务分给当前单任务内容最多的章节，避免逐章向上取整制造冗余请求。各 section 没有拓扑依赖，直接使用统一 LLM 全局并发上限一次 fan-out，不再人为分批。复用要求 section key 与 content hash 同时匹配，标题变化即使正文相同也会补抽，避免沿用旧标题节点。正式同步消费缓存时，未完成 sidecar 会在取消后完全退出才允许 catch-up，禁止同一 section 重复占用模型并发。
 
 输出：`prefetched_sections`
 
@@ -95,7 +95,7 @@ DocGen 的 `prepare_knowledge_graph` 会在 `merge_review / sync_locked_titles` 
 
 输入：`markdown`, `structured_context`, `prefetched_sections`
 
-动作：优先使用 quality-ready 且覆盖最终章节的 `docgen_kg_draft` fast-finalize；否则按最终 Markdown 切章节/小节，命中 prefetch 则复用，未命中则 LLM catch-up 抽取，并合并 payload。
+动作：优先使用 quality-ready 且覆盖最终章节的 `docgen_kg_draft` fast-finalize；否则按最终 Markdown 切章节/小节，仅复用 section key 与 content hash 同时命中的 prefetch，未命中则 LLM catch-up 抽取，并合并 payload。
 
 输出：`extraction_payload`, extract metrics
 

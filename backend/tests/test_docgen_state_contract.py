@@ -7,10 +7,14 @@ from types import SimpleNamespace
 import pytest
 
 from app.shared.infra.workflow.context import WorkflowContext
+from app.workflows.digest.common.metrics import DigestTokenSummary
 from app.workflows.digest.common.markdown_knowledge_anchors import MarkdownKnowledgeUnit
 from app.workflows.digest.docgen import graph
 from app.workflows.digest.docgen.lib import chapter_planning, quality, repair
+from app.workflows.digest.docgen.lib.chapter_review import measure_chapter_coverage
+from app.workflows.digest.docgen.lib.document_backbone import build_document_backbone as build_document_backbone_value
 from app.workflows.digest.docgen.lib.models import (
+    BackboneResearchAgenda,
     CanonicalClaim,
     CanonicalGlossaryItem,
     AssetManifest,
@@ -24,7 +28,6 @@ from app.workflows.digest.docgen.lib.models import (
     DocGenContext,
     DocGenIntentProfile,
     DocumentBackbone,
-    DocumentConsistencyReport,
     EnhancedChapterDraft,
     FileMaterialSummary,
     HighConfidenceEvidenceUnit,
@@ -48,6 +51,7 @@ from app.workflows.digest.docgen.lib.pipeline_artifacts import (
     build_user_profile_enhanced,
 )
 from app.workflows.digest.docgen.lib.pipeline_context import learner_profile_text_for_branch
+from app.workflows.digest.docgen.lib.reporting import build_docgen_lane_summary
 from app.workflows.digest.docgen.nodes import generate_chapters
 from app.workflows.digest.docgen.nodes import (
     build_document_backbone,
@@ -55,6 +59,7 @@ from app.workflows.digest.docgen.nodes import (
     enhance_chapters,
     generate_cover,
     lock_titles_for_chapters,
+    prepare_global_seed,
     prepare_knowledge_graph,
     repair_or_route,
     review_content,
@@ -88,6 +93,84 @@ def test_initial_state_exposes_explicit_docgen_pipeline_artifacts() -> None:
     assert state["docgen_kg_draft"] == {}
     assert state["kg_draft_early_persist_metrics"] == {}
     assert state["kg_draft_rollback_metrics"] == {}
+
+
+def test_document_backbone_matches_whitespace_normalized_terms_to_their_chapter() -> None:
+    term = "逻辑运算符&& || !的条件真值与优先级"
+    backbone, _ = build_document_backbone_value(
+        task_seeds=[
+            ChapterGenerationTaskSeed(
+                chapter_index=1,
+                confirmed_title="变量与数据类型",
+                required_elements=["变量声明与定义"],
+            ),
+            ChapterGenerationTaskSeed(
+                chapter_index=2,
+                confirmed_title="流程控制",
+                required_elements=[term],
+            ),
+        ],
+        agenda=BackboneResearchAgenda(glossary_candidates=[term]),
+        evidence_units=[],
+        file_summaries=[],
+    )
+
+    glossary_item = next(item for item in backbone.canonical_glossary if item.term == term)
+    assert glossary_item.target_chapters == [2]
+
+
+def test_writer_and_review_share_semantic_required_element_coverage() -> None:
+    score, missing = measure_chapter_coverage(
+        "# 数组任务\n\n本节完成数组求和，并计算平均值，最后定位最大元素的下标。",
+        ["数组求和、平均值、最大值下标"],
+    )
+
+    assert score == 1.0
+    assert missing == []
+
+
+def test_docgen_lane_summary_uses_final_published_quality_metrics() -> None:
+    state = {
+        "chapter_drafts": [
+            {"chapter_index": 1, "quality_signals": {"coverage_score": 0.55, "quality_score": 0.7}},
+            {"chapter_index": 2, "quality_signals": {"coverage_score": 0.65, "quality_score": 0.8}},
+        ],
+        "research_traces": [{"coverage_score": 0.4}],
+        "chapter_metadatas": [
+            {
+                "chapter_index": 1,
+                "chapter_review_report": {"coverage_score": 1.0},
+                "quality_signals": {"quality_score": 0.92},
+            },
+            {
+                "chapter_index": 2,
+                "chapter_review_report": {"coverage_score": 0.9},
+                "quality_signals": {"quality_score": 0.88},
+            },
+        ],
+    }
+
+    summary = build_docgen_lane_summary(state, token_summary=DigestTokenSummary())
+
+    assert summary["coverage_score"] == pytest.approx(0.95)
+    assert summary["quality_score"] == pytest.approx(0.9)
+    assert summary["quality_summary"]["avg_coverage_score"] == pytest.approx(0.95)
+
+
+def test_intent_payload_preserves_confirmed_contract_and_legacy_fields() -> None:
+    payload = prepare_global_seed._intent_payload_for_state(  # noqa: SLF001
+        DocGenIntentProfile(
+            learning_goal_text="掌握矩阵乘法",
+            content_strategy_text="严格按确认章节组织",
+            depth_level="compact",
+            example_ratio=0.32,
+        )
+    )
+
+    assert payload["learning_goal_text"] == "掌握矩阵乘法"
+    assert payload["content_strategy_text"] == "严格按确认章节组织"
+    assert payload["example_ratio"] == pytest.approx(0.32)
+    assert payload["legacy_compat"]["depth_level"] == "compact"
 
 
 def test_chapter_generation_plan_ignores_planner_default_length_for_writer_budget() -> None:
@@ -128,6 +211,43 @@ def test_chapter_generation_plan_ignores_planner_default_length_for_writer_budge
     task = plan.chapters[0]
     assert task.min_word_count == 1050
     assert task.target_word_count == 1850
+
+
+def test_sprint_plan_expands_one_writer_budget_for_dense_confirmed_contract() -> None:
+    required_elements = [f"必备知识点 {index}" for index in range(1, 8)]
+    plan = chapter_planning.assemble_chapter_generation_plan(
+        docgen_context=DocGenContext(course_name="C 语言", digest_mode="sprint"),
+        confirmed_chapters=[
+            {"chapter_index": 1, "title": "循环结构训练", "objective": "覆盖循环结构与综合训练"},
+        ],
+        locked_titles=[
+            LockedChapterTitle(chapter_index=1, confirmed_title="循环结构训练", enhanced_title="循环结构训练"),
+        ],
+        intent_profile=DocGenIntentProfile(depth_level="compact"),
+        file_summaries=[],
+        task_seeds=[
+            ChapterGenerationTaskSeed(
+                chapter_index=1,
+                confirmed_title="循环结构训练",
+                enhanced_title="循环结构训练",
+                chapter_goal="覆盖循环结构与综合训练",
+                required_elements=required_elements,
+                retrieval_queries=["循环结构"],
+            )
+        ],
+        chapter_execution_briefs=[
+            ChapterExecutionBrief(
+                chapter_index=1,
+                teaching_outline=["按确认合同逐项讲解"],
+                content_role_targets={"concept": required_elements[:4]},
+                example_coverage_plan=[{"target": required_elements[0], "form": "worked_example"}],
+            )
+        ],
+    )
+
+    task = plan.chapters[0]
+    assert task.min_word_count == 1000
+    assert task.target_word_count == 1500
 
 
 def test_chapter_generation_plan_requests_mermaid_for_structured_chapter() -> None:
@@ -171,12 +291,18 @@ def test_chapter_generation_plan_requests_mermaid_for_structured_chapter() -> No
 
     task = plan.chapters[0]
     assert task.allowed_assets == ["mermaid"]
-    assert task.placeholder_requests == [
-        {
-            "kind": "mermaid",
-            "description": "函数与极限结构的知识结构或方法路径图，围绕：函数概念、极限定义、连续性、间断点",
-        }
-    ]
+    assert len(task.placeholder_requests) == 1
+    assert task.placeholder_requests[0]["kind"] == "mermaid"
+    assert task.placeholder_requests[0]["description"] == (
+        "mindmap\n"
+        "  root((函数与极限结构))\n"
+        "    函数概念\n"
+        "    极限定义\n"
+        "    连续性\n"
+        "    间断点\n"
+        "    间断点判定流程\n"
+        "    把极限存在误当作函数连续"
+    )
 
 
 def test_docgen_pipeline_artifacts_keep_stage_outputs_compact() -> None:
@@ -901,32 +1027,15 @@ def test_docgen_kg_draft_blocks_unresolved_repair_warning_but_accepts_applied_re
 
 
 @pytest.mark.anyio
-async def test_chapter_brief_node_receives_dispatch_sources_evidence_and_profile(monkeypatch) -> None:
-    captured: dict[str, object] = {}
-    captured_prefetch: dict[str, object] = {}
-
-    async def fake_build_chapter_execution_brief(**kwargs):
-        captured.update(kwargs)
-        return ChapterExecutionBrief(
-            chapter_index=1,
-            teaching_outline=["先讲定义"],
-            content_role_targets={"concept": ["矩阵乘法"]},
-            example_coverage_plan=[{"target": "矩阵乘法"}],
-            chapter_end_practice_plan=[{"target": "矩阵乘法"}],
-            retrieval_queries=["矩阵乘法"],
-        )
+async def test_chapter_brief_node_compiles_confirmed_contract_without_llm(monkeypatch) -> None:
+    progress_payload: dict[str, object] = {}
 
     async def fake_publish(*args, **kwargs):
+        progress_payload.update(dict(kwargs.get("payload") or {}))
         return None
 
-    monkeypatch.setattr(build_chapter_execution_briefs, "build_chapter_execution_brief", fake_build_chapter_execution_brief)
     monkeypatch.setattr(build_chapter_execution_briefs, "append_knowledge_build_recent_event", lambda *args, **kwargs: None)
     monkeypatch.setattr(build_chapter_execution_briefs, "publish_docgen_progress", fake_publish)
-    monkeypatch.setattr(
-        build_chapter_execution_briefs,
-        "start_docgen_kg_prefetch",
-        lambda **kwargs: captured_prefetch.update(kwargs) is None or True,
-    )
 
     node = build_chapter_execution_briefs.build_chapter_execution_briefs_node(
         context=WorkflowContext(workflow_name="digest.docgen", course_id="course_state_contract")
@@ -996,100 +1105,27 @@ async def test_chapter_brief_node_receives_dispatch_sources_evidence_and_profile
         }
     )
 
-    assert result["chapter_execution_briefs"][0]["chapter_index"] == 1
-    assert captured["source_slices"][0]["section_ref"] == "s1"
-    assert captured["evidence_items"][0]["evidence_id"] == "e1"
-    assert "基础薄弱" in str(captured["learner_profile_text"])
-    assert "错误率高" in str(captured["learner_profile_text"])
-    assert result["kg_prefetch_status"] == "started_from_chapter_briefs"
-    assert captured_prefetch["build_session_id"] == "build-brief"
-    assert captured_prefetch["chapters"][0]["markdown"].startswith("# 矩阵基础")
-    assert "章节测试计划" in captured_prefetch["chapters"][0]["markdown"]
-    assert captured_prefetch["docgen_manifest"]["kg_prefetch_phase"] == "chapter_briefs"
-    assert captured_prefetch["docgen_manifest"]["preliminary_kg"]["nodes"][0]["name"] == "矩阵乘法"
+    brief = result["chapter_execution_briefs"][0]
+    assert brief["chapter_index"] == 1
+    assert "矩阵乘法" in brief["content_role_targets"]["concept"]
+    assert "矩阵乘法需要行列配对" in brief["content_role_targets"]["principle"]
+    assert brief["definition_targets"] == ["矩阵乘法"]
+    assert brief["example_coverage_plan"][0]["min_examples"] == 1
+    assert result["kg_prefetch_status"] == "deferred_until_reviewed_chapters"
+    assert result["llm_calls_total"] == 0
+    assert progress_payload["kg_prefetch_started"] is False
+    assert progress_payload["brief_mode"] == "compiled_from_confirmed_contract"
 
 
 @pytest.mark.anyio
-async def test_chapter_brief_node_stops_without_fallback_when_llm_fails(monkeypatch) -> None:
-    captured_events: list[dict[str, object]] = []
-    captured_prefetch: dict[str, object] = {}
-
-    async def failing_build_chapter_execution_brief(**kwargs):
-        raise RuntimeError("brief model timeout")
-
-    async def fake_publish(*args, **kwargs):
-        return None
-
-    def fake_append_event(course_id, *, requested_at, build_group_id, event):
-        captured_events.append(dict(event))
-
-    monkeypatch.setattr(build_chapter_execution_briefs, "build_chapter_execution_brief", failing_build_chapter_execution_brief)
-    monkeypatch.setattr(build_chapter_execution_briefs, "append_knowledge_build_recent_event", fake_append_event)
-    monkeypatch.setattr(build_chapter_execution_briefs, "publish_docgen_progress", fake_publish)
-    monkeypatch.setattr(
-        build_chapter_execution_briefs,
-        "start_docgen_kg_prefetch",
-        lambda **kwargs: captured_prefetch.update(kwargs) is None or True,
-    )
+async def test_chapter_brief_node_rejects_missing_chapter_seeds() -> None:
 
     node = build_chapter_execution_briefs.build_chapter_execution_briefs_node(
         context=WorkflowContext(workflow_name="digest.docgen", course_id="course_state_contract")
     )
-    with pytest.raises(RuntimeError, match="brief model timeout"):
-        await node(
-            {
-                "course_id": "course_state_contract",
-                "requested_at": datetime(2026, 4, 29, tzinfo=timezone.utc),
-                "build_group_id": "group-brief-fallback",
-                "build_session_id": "build-brief-fallback",
-                "docgen_context": DocGenContext(
-                    course_id="course_state_contract",
-                    course_name="线性代数",
-                    digest_mode="systematic",
-                    plan="按概念组织",
-                ).model_dump(mode="json"),
-                "user_profile": {},
-                "chapter_task_seeds": [
-                    ChapterGenerationTaskSeed(
-                        chapter_index=1,
-                        confirmed_title="矩阵基础",
-                        enhanced_title="矩阵乘法入门",
-                        chapter_goal="讲清矩阵乘法",
-                        required_elements=["矩阵乘法", "行列配对"],
-                        source_slices=[
-                            ChapterSourceSlice(
-                                chapter_index=1,
-                                file_id="f1",
-                                filename="notes.md",
-                                section_ref="s1",
-                                section_title="矩阵乘法",
-                                summary="矩阵乘法依赖行列配对",
-                            )
-                        ],
-                    ).model_dump(mode="json")
-                ],
-                "document_backbone": DocumentBackbone(
-                    canonical_glossary=[
-                        CanonicalGlossaryItem(term="矩阵乘法", definition="按行列配对求和", target_chapters=[1])
-                    ],
-                    canonical_claim_pool=[
-                        CanonicalClaim(claim_id="c1", claim_text="矩阵乘法需要行列配对", target_chapter=1)
-                    ],
-                ).model_dump(mode="json"),
-                "intent_core": {"learning_goal_text": "掌握矩阵乘法"},
-                "high_confidence_evidence_units": [
-                    HighConfidenceEvidenceUnit(
-                        evidence_id="e1",
-                        text="矩阵乘法依赖行列配对",
-                        chapter_affinity={1: 0.9},
-                        confidence=0.9,
-                    ).model_dump(mode="json")
-                ],
-            }
-        )
+    result = await node({"chapter_task_seeds": []})
 
-    assert captured_prefetch == {}
-    assert any(event["stage"] == "chapter_execution_brief_failed" for event in captured_events)
+    assert result == {"error": "缺少可生成执行 brief 的章节 seed。"}
 
 
 def test_writer_context_consumes_dispatch_guideline_and_evidence() -> None:
@@ -1177,22 +1213,12 @@ def test_writer_context_consumes_dispatch_guideline_and_evidence() -> None:
 async def test_lock_titles_uses_course_id_state_key(monkeypatch) -> None:
     captured_course_ids: list[str] = []
 
-    async def fake_lock_title_for_chapter(**kwargs):
-        chapter = kwargs["chapter"]
-        return LockedChapterTitle(
-            chapter_index=int(chapter["chapter_index"]),
-            confirmed_title=str(chapter["title"]),
-            enhanced_title=str(chapter["title"]),
-            fallback_used=True,
-        )
-
     def fake_append(course_id: str, **kwargs) -> None:
         captured_course_ids.append(course_id)
 
     def fake_upsert(course_id: str, **kwargs) -> None:
         captured_course_ids.append(course_id)
 
-    monkeypatch.setattr(lock_titles_for_chapters, "lock_title_for_chapter", fake_lock_title_for_chapter)
     monkeypatch.setattr(lock_titles_for_chapters, "append_knowledge_build_recent_event", fake_append)
     monkeypatch.setattr(lock_titles_for_chapters, "upsert_knowledge_build_chapter_progress", fake_upsert)
 
@@ -1220,6 +1246,7 @@ async def test_lock_titles_uses_course_id_state_key(monkeypatch) -> None:
     )
 
     assert result["locked_titles"][0]["enhanced_title"] == "计算机系统构成"
+    assert result["llm_calls_total"] == 0
     assert captured_course_ids == ["course_state_contract", "course_state_contract"]
 
 
@@ -1322,8 +1349,7 @@ async def test_generate_cover_node_forwards_build_generation(monkeypatch: pytest
 
 
 @pytest.mark.anyio
-async def test_enhance_node_appends_kg_prefetch_incrementally(monkeypatch) -> None:
-    captured_incremental_prefetch: dict[str, object] = {}
+async def test_enhance_node_defers_kg_until_reviewed_chapters(monkeypatch) -> None:
     captured_progress_payload: dict[str, object] = {}
 
     async def fake_run_llm_tasks(items, worker, *, max_concurrent=None, on_result=None):
@@ -1350,11 +1376,6 @@ async def test_enhance_node_appends_kg_prefetch_incrementally(monkeypatch) -> No
     monkeypatch.setattr(enhance_chapters, "upsert_knowledge_build_chapter_preview", lambda *args, **kwargs: None)
     monkeypatch.setattr(enhance_chapters, "upsert_knowledge_build_chapter_progress", lambda *args, **kwargs: None)
     monkeypatch.setattr(enhance_chapters, "append_knowledge_build_recent_event", lambda *args, **kwargs: None)
-    monkeypatch.setattr(
-        enhance_chapters,
-        "start_docgen_kg_prefetch_incremental",
-        lambda **kwargs: captured_incremental_prefetch.update(kwargs) is None or True,
-    )
 
     async def fake_publish(*args, **kwargs):
         captured_progress_payload.update(dict(kwargs.get("payload") or {}))
@@ -1385,14 +1406,10 @@ async def test_enhance_node_appends_kg_prefetch_incrementally(monkeypatch) -> No
         }
     )
 
-    assert result["kg_prefetch_status"] == "incremental_from_enhanced_chapters"
+    assert result["kg_prefetch_status"] == "deferred_until_reviewed_chapters"
     assert result["enhanced_chapter_drafts"][0]["markdown"].endswith("变量位置已经补齐。")
-    assert captured_incremental_prefetch["course_id"] == "course_state_contract"
-    assert captured_incremental_prefetch["build_session_id"] == "build-enhance-prefetch"
-    assert captured_incremental_prefetch["chapters"][0]["chapter_index"] == 1
-    assert captured_incremental_prefetch["docgen_manifest"]["kg_prefetch_phase"] == "enhanced_chapters_incremental"
-    assert captured_incremental_prefetch["docgen_manifest"]["preliminary_kg"]["nodes"][0]["name"] == "变量"
-    assert captured_progress_payload["kg_prefetch_incremental_started"] is True
+    assert captured_progress_payload["kg_prefetch_started"] is False
+    assert captured_progress_payload["kg_prefetch_incremental_started"] is False
 
 
 def test_review_sends_only_single_chapter_payload() -> None:
@@ -1452,7 +1469,6 @@ def test_review_sends_only_single_chapter_payload() -> None:
 @pytest.mark.anyio
 async def test_review_node_outputs_overlay_without_markdown(monkeypatch) -> None:
     captured_review_kwargs: dict = {}
-    captured_incremental_prefetch: dict = {}
     captured_publish_payload: dict = {}
 
     async def fake_review_chapter(**kwargs):
@@ -1469,6 +1485,7 @@ async def test_review_node_outputs_overlay_without_markdown(monkeypatch) -> None
             chapter_index=1,
             passed=False,
             warnings=["需要补例题"],
+            review_mode="rule_fallback_after_llm_error",
         )
         return reviewed, report, []
 
@@ -1477,12 +1494,6 @@ async def test_review_node_outputs_overlay_without_markdown(monkeypatch) -> None
     monkeypatch.setattr(review_content, "upsert_knowledge_build_chapter_progress", lambda *args, **kwargs: None)
     monkeypatch.setattr(review_content, "upsert_knowledge_build_chapter_preview", lambda *args, **kwargs: None)
     monkeypatch.setattr(review_content, "append_knowledge_build_recent_event", lambda *args, **kwargs: None)
-    monkeypatch.setattr(
-        review_content,
-        "start_docgen_kg_prefetch_incremental",
-        lambda **kwargs: captured_incremental_prefetch.update(kwargs) is None or True,
-    )
-
     async def fake_publish(*args, **kwargs):
         captured_publish_payload.update(dict(kwargs.get("payload") or {}))
         return None
@@ -1540,6 +1551,7 @@ async def test_review_node_outputs_overlay_without_markdown(monkeypatch) -> None
         }
     ]
     assert result["kg_refinement_items"][0]["chapter_index"] == 1
+    assert result["llm_calls_total"] == 0
     assert result["kg_refinement_items"][0]["node_count"] >= 1
     assert result["kg_refinement_items"][0]["needs_repair"] is False
     assert captured_review_kwargs["guideline_summary"]["canonical_glossary"][0]["term"] == "矩阵乘法"
@@ -1548,12 +1560,7 @@ async def test_review_node_outputs_overlay_without_markdown(monkeypatch) -> None
     assert captured_review_kwargs["evidence_items"][0]["evidence_id"] == "e1"
     assert "学习者容易漏看单位" in captured_review_kwargs["learner_profile_text"]
     assert "多检查易错点" in captured_review_kwargs["learner_profile_text"]
-    assert captured_incremental_prefetch["build_session_id"] == "build-review"
-    assert captured_incremental_prefetch["chapters"][0]["chapter_index"] == 1
-    assert captured_incremental_prefetch["document_backbone"]["chapter_count"] == 1
-    assert captured_incremental_prefetch["docgen_manifest"]["kg_prefetch_phase"] == "reviewed_chapter_incremental"
-    assert captured_incremental_prefetch["docgen_manifest"]["kg_refinement_items"][0]["chapter_index"] == 1
-    assert captured_publish_payload["kg_prefetch_incremental_started"] is True
+    assert captured_publish_payload["kg_prefetch_incremental_started"] is False
 
 
 @pytest.mark.anyio
@@ -1633,29 +1640,7 @@ async def test_document_consistency_llm_review_adds_document_actions(monkeypatch
 
 
 @pytest.mark.anyio
-async def test_document_consistency_node_merges_document_review_actions(monkeypatch) -> None:
-    async def fake_document_review(**kwargs):
-        return (
-            DocumentConsistencyReport(
-                passed=False,
-                issues=[{"severity": "warning", "issue_type": "notation_drift", "detail": "符号不一致。"}],
-                source_summary={"document_review_mode": "llm_structured_with_rule_guardrails"},
-            ),
-            [
-                ReviewAction(
-                    action_id="document_review_01_section_patch",
-                    action_type="section_patch",
-                    chapter_index=1,
-                    severity="warning",
-                    reason="跨章符号不一致",
-                    target_anchor="符号说明",
-                    instruction="补充符号边界。",
-                )
-            ],
-            1,
-        )
-
-    monkeypatch.setattr(review_content, "review_document_consistency_with_llm", fake_document_review)
+async def test_document_consistency_node_keeps_rule_actions_without_llm_review(monkeypatch) -> None:
     monkeypatch.setattr(review_content, "update_knowledge_build_status", lambda *args, **kwargs: None)
     monkeypatch.setattr(review_content, "append_knowledge_build_recent_event", lambda *args, **kwargs: None)
 
@@ -1696,41 +1681,23 @@ async def test_document_consistency_node_merges_document_review_actions(monkeypa
         }
     )
 
-    assert result["review_decision"] == "needs_repair"
-    assert result["llm_calls_total"] == 1
+    assert result["review_decision"] == "publish_with_warnings"
+    assert result["llm_calls_total"] == 0
     assert [item["action_id"] for item in result["review_actions"]] == [
         "chapter_review_record",
-        "document_review_01_section_patch",
     ]
     assert result["document_consistency_report"]["source_summary"]["document_review_mode"] == (
-        "llm_structured_with_rule_guardrails"
+        "rule_cross_chapter_guardrail"
     )
 
 
 @pytest.mark.anyio
-async def test_document_consistency_node_refreshes_kg_prefetch_from_reviewed_chapters(monkeypatch) -> None:
-    async def fake_document_review(**kwargs):
-        return (
-            DocumentConsistencyReport(
-                passed=True,
-                issues=[],
-                source_summary={"document_review_mode": "llm_structured_with_rule_guardrails"},
-            ),
-            [],
-            1,
-        )
-
+async def test_document_consistency_node_does_not_restart_reviewed_kg_prefetch(monkeypatch) -> None:
     captured: dict[str, object] = {}
-
-    def fake_start_docgen_kg_prefetch(**kwargs):
-        captured.update(kwargs)
-        return True
 
     async def fake_publish(*args, **kwargs):
         captured["progress_payload"] = kwargs.get("payload")
 
-    monkeypatch.setattr(review_content, "review_document_consistency_with_llm", fake_document_review)
-    monkeypatch.setattr(review_content, "start_docgen_kg_prefetch", fake_start_docgen_kg_prefetch)
     monkeypatch.setattr(review_content, "update_knowledge_build_status", lambda *args, **kwargs: None)
     monkeypatch.setattr(review_content, "append_knowledge_build_recent_event", lambda *args, **kwargs: None)
     monkeypatch.setattr(review_content, "publish_docgen_progress", fake_publish)
@@ -1765,21 +1732,16 @@ async def test_document_consistency_node_refreshes_kg_prefetch_from_reviewed_cha
         }
     )
 
-    assert result["kg_prefetch_status"] == "refreshed_from_reviewed_chapters"
+    assert result["kg_prefetch_status"] == "incremental_from_reviewed_chapters"
     assert result["llm_calls_total"] == 0
     assert result["document_consistency_report"]["source_summary"]["document_review_mode"] == (
-        "single_chapter_rule_guardrail"
+        "rule_cross_chapter_guardrail"
     )
-    assert captured["course_id"] == "course_state_contract"
-    assert captured["build_session_id"] == "build_reviewed_prefetch"
-    assert captured["chapters"][0]["markdown"].endswith("review 后正文。")
-    assert captured["docgen_manifest"]["kg_prefetch_phase"] == "reviewed_markdown"
-    assert captured["docgen_manifest"]["kg_refinement_items"][0]["nodes"][0]["name"] == "行列配对"
-    assert captured["progress_payload"]["kg_prefetch_status"] == "refreshed_from_reviewed_chapters"
+    assert captured["progress_payload"]["kg_prefetch_status"] == "incremental_from_reviewed_chapters"
 
 
 @pytest.mark.anyio
-async def test_repair_node_refreshes_kg_prefetch_after_changed_patch(monkeypatch) -> None:
+async def test_repair_node_defers_kg_prefetch_until_final_markdown(monkeypatch) -> None:
     repaired_chapter = ReviewedChapterDraft(
         chapter_index=1,
         title="矩阵乘法",
@@ -1805,17 +1767,12 @@ async def test_repair_node_refreshes_kg_prefetch_after_changed_patch(monkeypatch
     async def fake_repair_or_route_review_actions(*args, **kwargs):
         return [repaired_chapter], [action], [], [trace]
 
-    captured_prefetch: dict[str, object] = {}
-
-    def fake_start_docgen_kg_prefetch(**kwargs):
-        captured_prefetch.update(kwargs)
-        return True
+    captured_progress: dict[str, object] = {}
 
     async def fake_publish_docgen_progress(*args, **kwargs):
-        captured_prefetch["progress_payload"] = kwargs.get("payload")
+        captured_progress["payload"] = kwargs.get("payload")
 
     monkeypatch.setattr(repair_or_route, "repair_or_route_review_actions", fake_repair_or_route_review_actions)
-    monkeypatch.setattr(repair_or_route, "start_docgen_kg_prefetch", fake_start_docgen_kg_prefetch)
     monkeypatch.setattr(repair_or_route, "update_knowledge_build_status", lambda *args, **kwargs: None)
     monkeypatch.setattr(repair_or_route, "append_knowledge_build_recent_event", lambda *args, **kwargs: None)
     monkeypatch.setattr(repair_or_route, "publish_docgen_progress", fake_publish_docgen_progress)
@@ -1847,20 +1804,15 @@ async def test_repair_node_refreshes_kg_prefetch_after_changed_patch(monkeypatch
         }
     )
 
-    assert result["kg_prefetch_status"] == "refreshed_after_repair"
+    assert result["kg_prefetch_status"] == "deferred_until_final_markdown"
     assert result["kg_refinement_items"][0]["chapter_index"] == 1
     assert result["kg_refinement_items"][0]["node_count"] >= 1
     assert result["kg_refinement_items"][0]["source"] == "docgen_review_refinement"
-    assert captured_prefetch["course_id"] == "course_state_contract"
-    assert captured_prefetch["build_session_id"] == "build_kg_refresh"
-    assert captured_prefetch["chapters"][0]["markdown"].endswith("新增了维度匹配的易错提醒。")
-    assert captured_prefetch["docgen_manifest"]["preliminary_kg"]["nodes"][0]["name"] == "矩阵乘法"
-    assert captured_prefetch["docgen_manifest"]["kg_prefetch_phase"] == "repair_patched_markdown"
-    assert captured_prefetch["progress_payload"]["kg_prefetch_status"] == "refreshed_after_repair"
+    assert captured_progress["payload"]["kg_prefetch_status"] == "deferred_until_final_markdown"
 
 
 @pytest.mark.anyio
-async def test_repair_node_refreshes_kg_prefetch_even_without_patch(monkeypatch) -> None:
+async def test_repair_node_does_not_reextract_unchanged_chapters(monkeypatch) -> None:
     reviewed_chapter = ReviewedChapterDraft(
         chapter_index=1,
         title="矩阵乘法",
@@ -1887,15 +1839,10 @@ async def test_repair_node_refreshes_kg_prefetch_even_without_patch(monkeypatch)
 
     captured_prefetch: dict[str, object] = {}
 
-    def fake_start_docgen_kg_prefetch(**kwargs):
-        captured_prefetch.update(kwargs)
-        return True
-
     async def fake_publish_docgen_progress(*args, **kwargs):
         captured_prefetch["progress_payload"] = kwargs.get("payload")
 
     monkeypatch.setattr(repair_or_route, "repair_or_route_review_actions", fake_repair_or_route_review_actions)
-    monkeypatch.setattr(repair_or_route, "start_docgen_kg_prefetch", fake_start_docgen_kg_prefetch)
     monkeypatch.setattr(repair_or_route, "update_knowledge_build_status", lambda *args, **kwargs: None)
     monkeypatch.setattr(repair_or_route, "append_knowledge_build_recent_event", lambda *args, **kwargs: None)
     monkeypatch.setattr(repair_or_route, "publish_docgen_progress", fake_publish_docgen_progress)
@@ -1922,35 +1869,32 @@ async def test_repair_node_refreshes_kg_prefetch_even_without_patch(monkeypatch)
         }
     )
 
-    assert result["kg_prefetch_status"] == "refreshed_after_review_repair"
+    assert result["kg_prefetch_status"] == "deferred_until_final_markdown"
     assert result["kg_refinement_items"] == []
-    assert captured_prefetch["chapters"][0]["markdown"].endswith("review 后正文。")
-    assert captured_prefetch["docgen_manifest"]["kg_prefetch_phase"] == "repair_reviewed_markdown"
-    assert captured_prefetch["docgen_manifest"]["review_actions"][0]["action_id"] == "repair_kg_no_patch"
-    assert captured_prefetch["docgen_manifest"]["kg_refinement_items"][0]["nodes"][0]["name"] == "核心概念"
-    assert captured_prefetch["progress_payload"]["kg_prefetch_status"] == "refreshed_after_review_repair"
+    assert captured_prefetch["progress_payload"]["kg_prefetch_status"] == "deferred_until_final_markdown"
 
 
 @pytest.mark.anyio
 async def test_prepare_knowledge_graph_starts_missing_prefetch_but_defers_quality_ready_draft(monkeypatch) -> None:
-    await_calls = 0
+    snapshot_calls = 0
     captured: dict[str, object] = {}
 
-    async def fake_await_prefetch(*args, **kwargs):
-        nonlocal await_calls
-        await_calls += 1
-        if await_calls == 1:
-            return {
+    def fake_snapshot_docgen_kg_prefetch(*args, **kwargs):
+        nonlocal snapshot_calls
+        del args, kwargs
+        snapshot_calls += 1
+        if snapshot_calls == 1:
+            return [], {
                 "prefetch_status": "missing",
                 "prefetch_section_count": 0,
                 "prefetch_failed_section_count": 0,
                 "prefetch_ready": 0,
             }
-        return {
-            "prefetch_status": "completed",
-            "prefetch_section_count": 1,
+        return [], {
+            "prefetch_status": "running",
+            "prefetch_section_count": 0,
             "prefetch_failed_section_count": 0,
-            "prefetch_ready": 1,
+            "prefetch_ready": 0,
         }
 
     def fake_start_docgen_kg_prefetch(**kwargs):
@@ -1967,8 +1911,16 @@ async def test_prepare_knowledge_graph_starts_missing_prefetch_but_defers_qualit
             knowledge_graph=SimpleNamespace(sync_after_docgen=True, prefetch_during_docgen=True)
         ),
     )
-    monkeypatch.setattr(prepare_knowledge_graph, "_await_prefetch", fake_await_prefetch)
-    monkeypatch.setattr(prepare_knowledge_graph, "start_docgen_kg_prefetch", fake_start_docgen_kg_prefetch)
+    monkeypatch.setattr(
+        prepare_knowledge_graph,
+        "snapshot_docgen_kg_prefetch",
+        fake_snapshot_docgen_kg_prefetch,
+    )
+    monkeypatch.setattr(
+        prepare_knowledge_graph,
+        "start_docgen_kg_prefetch",
+        fake_start_docgen_kg_prefetch,
+    )
     monkeypatch.setattr(prepare_knowledge_graph, "update_knowledge_build_status", lambda *args, **kwargs: None)
     monkeypatch.setattr(prepare_knowledge_graph, "append_knowledge_build_recent_event", lambda *args, **kwargs: None)
     monkeypatch.setattr(prepare_knowledge_graph, "publish_docgen_progress", fake_publish_docgen_progress)
@@ -2010,9 +1962,9 @@ async def test_prepare_knowledge_graph_starts_missing_prefetch_but_defers_qualit
         }
     )
 
-    assert result["kg_prefetch_status"] == "completed"
-    assert result["kg_prefetch_ready"] is True
-    assert result["kg_prefetch_metrics"]["prefetch_section_count"] == 1
+    assert result["kg_prefetch_status"] == "running"
+    assert result["kg_prefetch_ready"] is False
+    assert result["kg_prefetch_metrics"]["prefetch_section_count"] == 0
     assert result["docgen_kg_draft"]["node_count"] >= 2
     assert result["docgen_kg_draft"]["nodes"][0]["name"]
     assert result["docgen_kg_draft"]["fast_visible_ready"] is True
@@ -2038,10 +1990,10 @@ async def test_prepare_knowledge_graph_starts_missing_prefetch_but_defers_qualit
     assert result["kg_prefetch_metrics"]["docgen_kg_pre_publish_unit_count"] == 0
     assert result["kg_prefetch_metrics"]["docgen_kg_pre_publish_edge_count"] == 0
     assert result["kg_prefetch_metrics"]["docgen_kg_pre_publish_persisted"] == 0
-    assert await_calls == 2
+    assert snapshot_calls == 2
     assert "修补后的章节内容。" in captured["chapters"][0]["markdown"]
     assert captured["docgen_manifest"]["preliminary_kg"]["nodes"][0]["name"] == "矩阵乘法"
-    assert captured["progress_payload"]["kg_prefetch_ready"] is True
+    assert captured["progress_payload"]["kg_prefetch_ready"] is False
     assert captured["progress_payload"]["docgen_kg_draft_node_count"] >= 2
     assert captured["progress_payload"]["docgen_kg_quality_status"] == "ready"
     assert captured["progress_payload"]["docgen_kg_quality_audit"]["missing_chapter_count"] == 0
@@ -2073,9 +2025,6 @@ def _prepare_knowledge_graph_finalize_failure_case(
         "quality_audit": {},
     }
 
-    async def fake_await_prefetch(*_args, **_kwargs):
-        return dict(prefetch_metrics)
-
     async def fail_progress(*_args, **_kwargs):
         raise progress_failure
 
@@ -2086,7 +2035,6 @@ def _prepare_knowledge_graph_finalize_failure_case(
             knowledge_graph=SimpleNamespace(sync_after_docgen=True, prefetch_during_docgen=True)
         ),
     )
-    monkeypatch.setattr(prepare_knowledge_graph, "_await_prefetch", fake_await_prefetch)
     monkeypatch.setattr(
         prepare_knowledge_graph,
         "snapshot_docgen_kg_prefetch",
@@ -2143,21 +2091,21 @@ async def test_prepare_knowledge_graph_routes_cancellation_to_rollback_state(mon
 
 
 @pytest.mark.anyio
-async def test_prepare_knowledge_graph_refreshes_after_locked_title_changes(monkeypatch) -> None:
-    await_calls = 0
+async def test_prepare_knowledge_graph_refreshes_final_locked_markdown(monkeypatch) -> None:
+    snapshot_calls = 0
     captured: dict[str, object] = {}
     call_order: list[str] = []
 
-    async def fake_await_prefetch(*args, **kwargs):
-        nonlocal await_calls
+    def fake_snapshot_docgen_kg_prefetch(*args, **kwargs):
+        nonlocal snapshot_calls
         del args, kwargs
-        call_order.append("await")
-        await_calls += 1
-        return {
-            "prefetch_status": "completed",
-            "prefetch_section_count": 1,
+        call_order.append("snapshot")
+        snapshot_calls += 1
+        return [], {
+            "prefetch_status": "running",
+            "prefetch_section_count": 0,
             "prefetch_failed_section_count": 0,
-            "prefetch_ready": 1,
+            "prefetch_ready": 0,
         }
 
     def fake_start_docgen_kg_prefetch(**kwargs):
@@ -2175,8 +2123,16 @@ async def test_prepare_knowledge_graph_refreshes_after_locked_title_changes(monk
             knowledge_graph=SimpleNamespace(sync_after_docgen=True, prefetch_during_docgen=True)
         ),
     )
-    monkeypatch.setattr(prepare_knowledge_graph, "_await_prefetch", fake_await_prefetch)
-    monkeypatch.setattr(prepare_knowledge_graph, "start_docgen_kg_prefetch", fake_start_docgen_kg_prefetch)
+    monkeypatch.setattr(
+        prepare_knowledge_graph,
+        "snapshot_docgen_kg_prefetch",
+        fake_snapshot_docgen_kg_prefetch,
+    )
+    monkeypatch.setattr(
+        prepare_knowledge_graph,
+        "start_docgen_kg_prefetch",
+        fake_start_docgen_kg_prefetch,
+    )
     monkeypatch.setattr(prepare_knowledge_graph, "update_knowledge_build_status", lambda *args, **kwargs: None)
     monkeypatch.setattr(prepare_knowledge_graph, "append_knowledge_build_recent_event", lambda *args, **kwargs: None)
     monkeypatch.setattr(prepare_knowledge_graph, "publish_docgen_progress", fake_publish_docgen_progress)
@@ -2190,9 +2146,14 @@ async def test_prepare_knowledge_graph_refreshes_after_locked_title_changes(monk
             "requested_at": datetime(2026, 4, 29, tzinfo=timezone.utc),
             "build_session_id": "build_kg_final_titles",
             "digest_mode": "systematic",
-            "title_review_report": {"changed_count": 1},
+            "title_review_report": {"changed_count": 0},
             "final_chapter_titles": [
-                {"chapter_index": 1, "before": "旧标题", "after": "最终矩阵运算", "changed": True}
+                {
+                    "chapter_index": 1,
+                    "before": "最终矩阵运算",
+                    "after": "最终矩阵运算",
+                    "changed": False,
+                }
             ],
             "chapter_metadatas": [
                 {
@@ -2206,8 +2167,8 @@ async def test_prepare_knowledge_graph_refreshes_after_locked_title_changes(monk
             "reviewed_chapter_drafts": [
                 ReviewedChapterDraft(
                     chapter_index=1,
-                    title="旧标题",
-                    markdown="# 旧标题\n\n## 行列配对\n\n锁题前正文。\n\n## 单元测试\n\n1. 计算 AB。",
+                    title="最终矩阵运算",
+                    markdown="# 最终矩阵运算\n\n## 行列配对\n\n锁题前正文。\n\n## 单元测试\n\n1. 计算 AB。",
                 ).model_dump(mode="json")
             ],
             "document_backbone": DocumentBackbone().model_dump(mode="json"),
@@ -2225,14 +2186,14 @@ async def test_prepare_knowledge_graph_refreshes_after_locked_title_changes(monk
         }
     )
 
-    assert await_calls == 1
-    assert call_order == ["start", "await"]
-    assert result["kg_prefetch_status"] == "completed"
+    assert snapshot_calls == 1
+    assert call_order == ["start", "snapshot"]
+    assert result["kg_prefetch_status"] == "running"
     prefetch_kwargs = captured["prefetch_kwargs"]
     assert prefetch_kwargs["chapters"][0]["title"] == "最终矩阵运算"
     assert prefetch_kwargs["chapters"][0]["markdown"].startswith("# 最终矩阵运算")
     assert prefetch_kwargs["docgen_manifest"]["kg_prefetch_phase"] == "final_locked_markdown"
-    assert prefetch_kwargs["docgen_manifest"]["title_review_report"]["changed_count"] == 1
+    assert prefetch_kwargs["docgen_manifest"]["title_review_report"]["changed_count"] == 0
     assert result["docgen_kg_draft"]["covered_chapter_indices"] == [1]
     assert result["docgen_kg_draft"]["fast_visible_ready"] is True
     assert result["kg_draft_early_persist_metrics"]["skip_reason"] == "deferred_until_document_publish"
@@ -2241,7 +2202,6 @@ async def test_prepare_knowledge_graph_refreshes_after_locked_title_changes(monk
 
 @pytest.mark.anyio
 async def test_prepare_knowledge_graph_uses_ready_draft_when_prefetch_is_still_running(monkeypatch) -> None:
-    await_calls = 0
     snapshot_calls = 0
     captured: dict[str, object] = {}
     payload = SectionExtractionPayload(
@@ -2343,24 +2303,6 @@ async def test_prepare_knowledge_graph_uses_ready_draft_when_prefetch_is_still_r
         payload=payload,
     )
 
-    async def fake_await_prefetch(*args, **kwargs):
-        nonlocal await_calls
-        await_calls += 1
-        captured.setdefault("wait_timeouts", []).append(kwargs.get("wait_timeout_s"))
-        if await_calls == 1:
-            return {
-                "prefetch_status": "running",
-                "prefetch_section_count": 0,
-                "prefetch_failed_section_count": 0,
-                "prefetch_ready": 0,
-            }
-        return {
-            "prefetch_status": "completed",
-            "prefetch_section_count": 1,
-            "prefetch_failed_section_count": 0,
-            "prefetch_ready": 1,
-        }
-
     def fake_snapshot_docgen_kg_prefetch(*args, **kwargs):
         nonlocal snapshot_calls
         snapshot_calls += 1
@@ -2381,7 +2323,6 @@ async def test_prepare_knowledge_graph_uses_ready_draft_when_prefetch_is_still_r
             knowledge_graph=SimpleNamespace(sync_after_docgen=True, prefetch_during_docgen=True)
         ),
     )
-    monkeypatch.setattr(prepare_knowledge_graph, "_await_prefetch", fake_await_prefetch)
     monkeypatch.setattr(prepare_knowledge_graph, "snapshot_docgen_kg_prefetch", fake_snapshot_docgen_kg_prefetch)
     monkeypatch.setattr(prepare_knowledge_graph, "update_knowledge_build_status", lambda *args, **kwargs: None)
     monkeypatch.setattr(prepare_knowledge_graph, "append_knowledge_build_recent_event", lambda *args, **kwargs: None)
@@ -2417,9 +2358,7 @@ async def test_prepare_knowledge_graph_uses_ready_draft_when_prefetch_is_still_r
         }
     )
 
-    assert await_calls == 1
     assert snapshot_calls == 1
-    assert captured["wait_timeouts"] == [None]
     assert result["kg_prefetch_metrics"]["docgen_kg_quality_recheck_waited"] == 0
     assert result["kg_prefetch_ready"] is False
     assert result["docgen_kg_draft"]["quality_ready"] is True
@@ -2429,6 +2368,38 @@ async def test_prepare_knowledge_graph_uses_ready_draft_when_prefetch_is_still_r
     assert result["kg_prefetch_metrics"]["docgen_kg_pre_publish_persisted"] == 0
     assert result["kg_draft_early_persist_metrics"]["skip_reason"] == "deferred_until_document_publish"
     assert captured["progress_payload"]["docgen_kg_quality_status"] == "ready"
+
+
+@pytest.mark.anyio
+async def test_evidence_patch_is_recorded_without_llm_rewrite(monkeypatch) -> None:
+    async def fail_if_called(*args, **kwargs):
+        del args, kwargs
+        raise AssertionError("evidence warning must not call the LLM patcher")
+
+    monkeypatch.setattr(repair, "acompletion_with_fallback", fail_if_called)
+    chapter = ReviewedChapterDraft(
+        chapter_index=1,
+        title="矩阵乘法",
+        markdown="# 矩阵乘法\n\n## 核心规则\n\n矩阵乘法按行列配对。\n",
+    )
+    action = ReviewAction(
+        action_id="evidence_1",
+        action_type="evidence_patch",
+        chapter_index=1,
+        reason="主张证据支撑低于阈值。",
+        target_anchor="核心规则",
+    )
+
+    repaired, updated_actions, unresolved, traces = await repair.repair_or_route_review_actions(
+        reviewed_chapters=[chapter],
+        review_actions=[action],
+    )
+
+    assert repaired[0].markdown == chapter.markdown
+    assert updated_actions[0].status == "recorded"
+    assert len(unresolved) == 1
+    assert traces[0].changed is False
+    assert traces[0].llm_attempted is False
 
 
 @pytest.mark.anyio

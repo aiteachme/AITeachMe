@@ -19,7 +19,7 @@ from app.shared.infra.llm_support.responses_adapter import (
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.exceptions import LLMCallError
 from app.shared.infra.settings.defaults import get_default_settings_values
-from app.shared.infra.settings import set_system_settings_override
+from app.shared.infra.settings import reset_project_settings_cache, set_system_settings_override
 
 
 class FakeResponseEventType:
@@ -147,7 +147,11 @@ def test_auto_uses_responses_for_official_openai_reasoning_model(monkeypatch):
     monkeypatch.delenv("LLM_BASE_URL", raising=False)
     set_system_settings_override({
         "models": {"primary": "gpt-5.2"},
-        "llm": {"api_mode": "auto", "reasoning_efforts": {"primary": "high"}},
+        "llm": {
+            "api_mode": "auto",
+            "responses_api_models": ["gpt-5.2"],
+            "reasoning_efforts": {"primary": "high"},
+        },
     })
     context = build_completion_context(task_type=TaskType.CHAT, model="primary")
 
@@ -175,7 +179,7 @@ def test_auto_uses_responses_for_openai_compatible_reasoning_gateway(monkeypatch
     monkeypatch.delenv("LLM_PROVIDER", raising=False)
     set_system_settings_override({
         "models": {"primary": "gpt-5.5"},
-        "llm": {"api_mode": "auto"},
+        "llm": {"api_mode": "auto", "responses_api_models": ["gpt-5.5"]},
     })
     context = build_completion_context(task_type=TaskType.CHAT, model="primary")
 
@@ -207,6 +211,8 @@ def test_auto_uses_responses_for_openai_compatible_reasoning_gateway(monkeypatch
 def test_compatible_chat_preserves_configured_effort_for_unknown_model(monkeypatch):
     monkeypatch.setenv("LLM_API_KEY", "test-key")
     monkeypatch.setenv("LLM_BASE_URL", "https://gateway.example.com/v1")
+    monkeypatch.setenv("LLM_FALLBACK_API_KEY", "fallback-key")
+    monkeypatch.setenv("LLM_FALLBACK_BASE_URL", "https://fallback-gateway.example.com/v1")
     monkeypatch.delenv("LLM_PROVIDER", raising=False)
     set_system_settings_override({
         "models": {"primary": "custom-gateway-model"},
@@ -222,11 +228,12 @@ def test_compatible_chat_preserves_configured_effort_for_unknown_model(monkeypat
         call_kwargs={
             "model": "custom-gateway-model",
             "messages": [{"role": "user", "content": "hello"}],
-            "api_base": "https://gateway.example.com/v1",
+            "api_base": "https://fallback-gateway.example.com/v1",
             "custom_llm_provider": "openai",
         },
     )
 
+    assert context.endpoint_role == "primary"
     assert call.api_mode == "chat_completions"
     assert call.kwargs["reasoning_effort"] == "high"
 
@@ -257,16 +264,19 @@ def test_explicit_chat_mode_overrides_responses_model_catalog(monkeypatch):
     assert call.route_reason == "forced_chat_completions"
 
 
-def test_fallback_endpoint_uses_model_auto_mode_when_global_responses_is_configured(monkeypatch):
+def test_fallback_endpoint_defaults_to_chat_when_global_responses_is_configured(monkeypatch):
     monkeypatch.setenv("LLM_API_KEY", "primary-key")
     monkeypatch.setenv("LLM_BASE_URL", "https://primary-gateway.example.com/v1")
     monkeypatch.setenv("LLM_FALLBACK_API_KEY", "fallback-key")
     monkeypatch.setenv("LLM_FALLBACK_BASE_URL", "https://fallback-gateway.example.com/v1")
     set_system_settings_override({
         "models": {"primary": "plain-chat-model"},
-        "llm": {"api_mode": "responses"},
+        "llm": {
+            "api_mode": "responses",
+            "fallback_only_models": ["plain-chat-model"],
+        },
     })
-    context = build_completion_contexts(task_type=TaskType.CHAT, model="primary")[1]
+    context = build_completion_contexts(task_type=TaskType.CHAT, model="primary")[0]
 
     call = resolve_provider_call(
         context=context,
@@ -280,8 +290,8 @@ def test_fallback_endpoint_uses_model_auto_mode_when_global_responses_is_configu
 
     assert context.endpoint_role == "fallback"
     assert call.api_mode == "chat_completions"
-    assert call.requested_api_mode == "auto"
-    assert call.route_reason == "auto_plain_chat"
+    assert call.requested_api_mode == "chat_completions"
+    assert call.route_reason == "forced_chat_completions"
 
 
 def test_fallback_endpoint_group_retries_are_capped(monkeypatch):
@@ -311,9 +321,12 @@ def test_auto_classifies_gemini_fallback_override_as_chat_completions(monkeypatc
     monkeypatch.setenv("LLM_FALLBACK_BASE_URL", "https://generativelanguage.googleapis.com/v1beta")
     set_system_settings_override({
         "models": {"primary": "gemini-3.1-flash-lite"},
-        "llm": {"api_mode": "responses"},
+        "llm": {
+            "api_mode": "responses",
+            "fallback_only_models": ["gemini-3.1-flash-lite"],
+        },
     })
-    context = build_completion_contexts(task_type=TaskType.CHAT, model="primary")[1]
+    context = build_completion_contexts(task_type=TaskType.CHAT, model="primary")[0]
 
     call = resolve_provider_call(
         context=context,
@@ -327,8 +340,8 @@ def test_auto_classifies_gemini_fallback_override_as_chat_completions(monkeypatc
 
     assert context.endpoint_role == "fallback"
     assert call.api_mode == "chat_completions"
-    assert call.requested_api_mode == "auto"
-    assert call.route_reason == "auto_no_responses_support"
+    assert call.requested_api_mode == "chat_completions"
+    assert call.route_reason == "forced_chat_completions"
 
 
 def test_explicit_responses_mode_is_not_overridden_by_model_catalog(monkeypatch):
@@ -338,9 +351,12 @@ def test_explicit_responses_mode_is_not_overridden_by_model_catalog(monkeypatch)
     monkeypatch.setenv("LLM_FALLBACK_BASE_URL", "https://generativelanguage.googleapis.com/v1beta")
     set_system_settings_override({
         "models": {"primary": "gemini-3.1-flash-lite"},
-        "llm": {"api_mode": "responses"},
+        "llm": {
+            "api_mode": "responses",
+            "fallback_only_models": ["gemini-3.1-flash-lite"],
+        },
     })
-    context = build_completion_contexts(task_type=TaskType.CHAT, model="primary")[1]
+    context = build_completion_contexts(task_type=TaskType.CHAT, model="primary")[0]
 
     call = resolve_provider_call(
         context=context,
@@ -359,16 +375,19 @@ def test_explicit_responses_mode_is_not_overridden_by_model_catalog(monkeypatch)
     assert call.route_reason == "forced_responses"
 
 
-def test_fallback_auto_can_route_model_marked_for_responses(monkeypatch):
+def test_fallback_defaults_to_chat_for_model_with_responses_route_marker(monkeypatch):
     monkeypatch.setenv("LLM_API_KEY", "primary-key")
     monkeypatch.setenv("LLM_BASE_URL", "https://primary-gateway.example.com/v1")
     monkeypatch.setenv("LLM_FALLBACK_API_KEY", "fallback-key")
     monkeypatch.setenv("LLM_FALLBACK_BASE_URL", "https://fallback-gateway.example.com/v1")
     set_system_settings_override({
         "models": {"primary": "responses/campus-tutor-pro"},
-        "llm": {"api_mode": "chat_completions"},
+        "llm": {
+            "api_mode": "chat_completions",
+            "fallback_only_models": ["responses/campus-tutor-pro"],
+        },
     })
-    context = build_completion_contexts(task_type=TaskType.CHAT, model="primary")[1]
+    context = build_completion_contexts(task_type=TaskType.CHAT, model="primary")[0]
 
     call = resolve_provider_call(
         context=context,
@@ -381,9 +400,9 @@ def test_fallback_auto_can_route_model_marked_for_responses(monkeypatch):
     )
 
     assert context.endpoint_role == "fallback"
-    assert call.api_mode == "responses"
-    assert call.requested_api_mode == "auto"
-    assert call.route_reason == "auto_model_catalog_responses"
+    assert call.api_mode == "chat_completions"
+    assert call.requested_api_mode == "chat_completions"
+    assert call.route_reason == "forced_chat_completions"
 
 
 def test_auto_responses_html_gateway_error_falls_back_to_chat(monkeypatch):
@@ -392,7 +411,7 @@ def test_auto_responses_html_gateway_error_falls_back_to_chat(monkeypatch):
     monkeypatch.delenv("LLM_PROVIDER", raising=False)
     set_system_settings_override({
         "models": {"primary": "gpt-5.5"},
-        "llm": {"api_mode": "auto"},
+        "llm": {"api_mode": "auto", "responses_api_models": ["gpt-5.5"]},
     })
     context = build_completion_context(task_type=TaskType.CHAT, model="primary")
     call = resolve_provider_call(
@@ -478,6 +497,8 @@ def test_responses_text_extractors_accept_raw_text_and_sdk_events() -> None:
 def test_auto_keeps_unlisted_gateway_alias_on_chat(monkeypatch):
     monkeypatch.setenv("LLM_API_KEY", "test-key")
     monkeypatch.setenv("LLM_BASE_URL", "https://gateway.example.com/v1")
+    monkeypatch.setenv("LLM_FALLBACK_API_KEY", "fallback-key")
+    monkeypatch.setenv("LLM_FALLBACK_BASE_URL", "https://fallback-gateway.example.com/v1")
     monkeypatch.delenv("LLM_PROVIDER", raising=False)
     set_system_settings_override({
         "models": {"primary": "campus-tutor-pro"},
@@ -490,7 +511,7 @@ def test_auto_keeps_unlisted_gateway_alias_on_chat(monkeypatch):
         call_kwargs={
             "model": "campus-tutor-pro",
             "messages": [{"role": "user", "content": "hello"}],
-            "api_base": "https://gateway.example.com/v1",
+            "api_base": "https://fallback-gateway.example.com/v1",
             "custom_llm_provider": "openai",
         },
     )
@@ -559,6 +580,8 @@ def test_auto_keeps_chat_only_response_format_on_chat(monkeypatch):
     monkeypatch.setenv("LLM_API_KEY", "test-key")
     monkeypatch.setenv("LLM_PROVIDER", "openai")
     monkeypatch.delenv("LLM_BASE_URL", raising=False)
+    monkeypatch.setenv("LLM_FALLBACK_API_KEY", "fallback-key")
+    monkeypatch.setenv("LLM_FALLBACK_BASE_URL", "https://fallback-gateway.example.com/v1")
     set_system_settings_override({
         "models": {"primary": "gpt-4.1"},
         "llm": {"api_mode": "auto"},
@@ -601,7 +624,11 @@ async def test_text_completion_calls_litellm_responses_in_auto(monkeypatch):
     monkeypatch.setattr(text_module, "load_litellm", lambda: FakeLiteLLM())
     set_system_settings_override({
         "models": {"primary": "gpt-5.2"},
-        "llm": {"api_mode": "auto", "reasoning_efforts": {"primary": "high"}},
+        "llm": {
+            "api_mode": "auto",
+            "responses_api_models": ["gpt-5.2"],
+            "reasoning_efforts": {"primary": "high"},
+        },
     })
 
     result = await text_module.acompletion(
@@ -655,8 +682,12 @@ async def test_text_completion_records_provider_native_tool_events(monkeypatch):
     monkeypatch.setattr(text_module, "load_litellm", lambda: FakeLiteLLM())
     monkeypatch.setattr(text_module, "langsmith_trace", fake_langsmith_trace)
     set_system_settings_override({
-        "models": {"primary": "gpt-4.1"},
-        "llm": {"api_mode": "auto", "native_web_search": "auto"},
+        "models": {"primary": "gpt-5.2"},
+        "llm": {
+            "api_mode": "auto",
+            "responses_api_models": ["gpt-5.2"],
+            "native_web_search": "auto",
+        },
     })
 
     result = await text_module.acompletion(
@@ -715,7 +746,11 @@ async def test_text_completion_auto_responses_falls_back_once_to_chat(monkeypatc
     monkeypatch.setattr(text_module, "langsmith_trace", fake_langsmith_trace)
     set_system_settings_override({
         "models": {"primary": "gpt-5.5"},
-        "llm": {"api_mode": "auto", "reasoning_efforts": {"primary": "high"}},
+        "llm": {
+            "api_mode": "auto",
+            "responses_api_models": ["gpt-5.5"],
+            "reasoning_efforts": {"primary": "high"},
+        },
     })
 
     result = await text_module.acompletion(
@@ -816,7 +851,11 @@ async def test_stream_completion_reads_responses_deltas_in_auto(monkeypatch):
     monkeypatch.setattr(stream_module, "load_litellm", lambda: FakeLiteLLM())
     set_system_settings_override({
         "models": {"primary": "gpt-5.3-codex-spark"},
-        "llm": {"api_mode": "auto", "reasoning_efforts": {"primary": "low"}},
+        "llm": {
+            "api_mode": "auto",
+            "responses_api_models": ["gpt-5.3-codex-spark"],
+            "reasoning_efforts": {"primary": "low"},
+        },
     })
 
     chunks = [
@@ -883,7 +922,11 @@ async def test_stream_completion_reads_chat_shaped_responses_chunks(monkeypatch)
     monkeypatch.setattr(stream_module, "load_litellm", lambda: FakeLiteLLM())
     set_system_settings_override({
         "models": {"primary": "gpt-5.5"},
-        "llm": {"api_mode": "auto", "reasoning_efforts": {"primary": "low"}},
+        "llm": {
+            "api_mode": "auto",
+            "responses_api_models": ["gpt-5.5"],
+            "reasoning_efforts": {"primary": "low"},
+        },
     })
 
     chunks = [
@@ -931,7 +974,7 @@ async def test_stream_completion_reads_raw_text_responses_chunks(monkeypatch):
     monkeypatch.setattr(stream_module, "load_litellm", lambda: FakeLiteLLM())
     set_system_settings_override({
         "models": {"primary": "gpt-5.5"},
-        "llm": {"api_mode": "auto"},
+        "llm": {"api_mode": "auto", "responses_api_models": ["gpt-5.5"]},
     })
 
     chunks = [
@@ -964,7 +1007,7 @@ async def test_stream_completion_accepts_non_stream_responses_text(monkeypatch):
     monkeypatch.setattr(stream_module, "load_litellm", lambda: FakeLiteLLM())
     set_system_settings_override({
         "models": {"primary": "gpt-5.5"},
-        "llm": {"api_mode": "auto"},
+        "llm": {"api_mode": "auto", "responses_api_models": ["gpt-5.5"]},
     })
 
     chunks = [
@@ -1016,7 +1059,7 @@ async def test_stream_completion_reads_completed_responses_fallback(monkeypatch)
     monkeypatch.setattr(stream_module, "load_litellm", lambda: FakeLiteLLM())
     set_system_settings_override({
         "models": {"primary": "gpt-5.5"},
-        "llm": {"api_mode": "auto"},
+        "llm": {"api_mode": "auto", "responses_api_models": ["gpt-5.5"]},
     })
 
     chunks = [
@@ -1089,8 +1132,12 @@ async def test_stream_completion_records_provider_native_tool_events(monkeypatch
     monkeypatch.setattr(stream_module, "load_litellm", lambda: FakeLiteLLM())
     monkeypatch.setattr(stream_module, "langsmith_trace", fake_langsmith_trace)
     set_system_settings_override({
-        "models": {"primary": "gpt-4.1"},
-        "llm": {"api_mode": "auto", "native_web_search": "auto"},
+        "models": {"primary": "gpt-5.4-mini"},
+        "llm": {
+            "api_mode": "auto",
+            "responses_api_models": ["gpt-5.4-mini"],
+            "native_web_search": "auto",
+        },
     })
 
     chunks = [
@@ -1187,21 +1234,92 @@ def test_fallback_context_uses_explicit_fallback_model(monkeypatch, slot, fallba
     assert contexts[1].model == fallback_model
 
 
-def test_unlisted_model_is_not_blocked_from_primary_endpoint(monkeypatch):
+def test_fallback_only_model_routes_directly_to_fallback_endpoint(monkeypatch):
     monkeypatch.setenv("LLM_API_KEY", "primary-key")
     monkeypatch.setenv("LLM_BASE_URL", "https://primary-gateway.example.com")
     monkeypatch.setenv("LLM_FALLBACK_API_KEY", "fallback-key")
     monkeypatch.setenv("LLM_FALLBACK_BASE_URL", "https://fallback-gateway.example.com/v1")
     set_system_settings_override({
         "models": {"primary": "gemini-3.1-flash-lite"},
+        "llm": {"fallback_only_models": ["gemini-3.1-flash-lite"]},
     })
 
     contexts = build_completion_contexts(task_type=TaskType.CHAT, model="primary")
 
-    assert [context.endpoint_role for context in contexts] == ["primary", "fallback"]
-    assert contexts[0].base_url == "https://primary-gateway.example.com"
+    assert [context.endpoint_role for context in contexts] == ["fallback"]
+    assert contexts[0].base_url == "https://fallback-gateway.example.com/v1"
     assert contexts[0].provider == "openai_compatible"
     assert contexts[0].model == "gemini-3.1-flash-lite"
+
+
+def test_fallback_only_model_without_fallback_fails_before_primary_call(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "primary-key")
+    monkeypatch.setenv("LLM_BASE_URL", "https://primary-gateway.example.com")
+    monkeypatch.delenv("LLM_FALLBACK_API_KEY", raising=False)
+    monkeypatch.delenv("LLM_FALLBACK_BASE_URL", raising=False)
+    set_system_settings_override({
+        "models": {"primary": "gemini-3.1-flash-lite"},
+        "llm": {"fallback_only_models": ["gemini-3.1-flash-lite"]},
+    })
+
+    with pytest.raises(LLMCallError, match="被配置为 llm.fallback_only_models"):
+        build_completion_contexts(task_type=TaskType.CHAT, model="primary")
+
+
+@pytest.mark.parametrize(
+    ("model", "configured_primary_model", "expected_role", "expected_api_mode"),
+    [
+        ("campus-tutor-pro", "campus-tutor-pro", "primary", "responses"),
+        ("gpt-5.4-mini", "campus-tutor-pro", "primary", "chat_completions"),
+    ],
+)
+def test_project_yaml_responses_model_list_controls_only_api_mode(
+    monkeypatch,
+    tmp_path,
+    model,
+    configured_primary_model,
+    expected_role,
+    expected_api_mode,
+):
+    settings_path = tmp_path / "settings.yaml"
+    settings_path.write_text(
+        "models:\n"
+        f"  primary: {model}\n"
+        "llm:\n"
+        "  api_mode: auto\n"
+        "  responses_api_models:\n"
+        f"    - {configured_primary_model}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PROJECT_SETTINGS_PATH", str(settings_path))
+    monkeypatch.setenv("LLM_API_KEY", "primary-key")
+    monkeypatch.setenv("LLM_BASE_URL", "https://primary-gateway.example.com/v1")
+    monkeypatch.setenv("LLM_FALLBACK_API_KEY", "fallback-key")
+    monkeypatch.setenv("LLM_FALLBACK_BASE_URL", "https://fallback-gateway.example.com/v1")
+    set_system_settings_override({})
+    reset_project_settings_cache()
+
+    try:
+        context = build_completion_contexts(
+            task_type=TaskType.CHAT,
+            model="primary",
+        )[0]
+        call = resolve_provider_call(
+            context=context,
+            call_kwargs={
+                "model": context.model,
+                "messages": [{"role": "user", "content": "hello"}],
+                "api_base": context.base_url,
+                "custom_llm_provider": "openai",
+            },
+        )
+    finally:
+        set_system_settings_override({})
+        reset_project_settings_cache()
+
+    assert context.settings.llm.responses_api_models == (configured_primary_model,)
+    assert context.endpoint_role == expected_role
+    assert call.api_mode == expected_api_mode
 
 
 def test_fallback_api_key_without_base_url_is_ignored(monkeypatch):
@@ -1231,6 +1349,8 @@ def test_unconfigured_openai_compatible_settings_use_primary_gateway_defaults(mo
     assert defaults["models"]["primary"] == "gpt-5.4-mini"
     assert defaults["models"]["reason"] == "gpt-5.5"
     assert defaults["models"]["light"] == "gpt-5.4-mini"
+    assert defaults["llm"]["responses_api_models"] == []
+    assert defaults["llm"]["fallback_only_models"] == []
 
 
 def test_langsmith_trace_metadata_records_actual_model_route():
@@ -1290,7 +1410,7 @@ async def test_text_completion_fallback_inherits_main_model(monkeypatch):
     monkeypatch.setenv("LLM_FALLBACK_BASE_URL", "https://api.deepseek.com")
     monkeypatch.setattr(text_module, "load_litellm", lambda: FakeLiteLLM())
     set_system_settings_override({
-        "models": {"primary": "gpt-4.1"},
+        "models": {"primary": "gpt-5.4-mini"},
         "llm": {"api_mode": "chat_completions"},
     })
 
@@ -1303,8 +1423,8 @@ async def test_text_completion_fallback_inherits_main_model(monkeypatch):
 
     assert result == "fallback ok"
     assert [call["api_key"] for call in calls] == ["primary-key", "fallback-key"]
-    assert calls[0]["model"] == "gpt-4.1"
-    assert calls[1]["model"] == "gpt-4.1"
+    assert calls[0]["model"] == "gpt-5.4-mini"
+    assert calls[1]["model"] == "gpt-5.4-mini"
 
 
 @pytest.mark.anyio
@@ -1334,7 +1454,7 @@ async def test_text_completion_does_not_use_fallback_when_primary_succeeds(monke
     monkeypatch.setenv("LLM_FALLBACK_BASE_URL", "https://fallback-gateway.example.com/v1")
     monkeypatch.setattr(text_module, "load_litellm", lambda: FakeLiteLLM())
     set_system_settings_override({
-        "models": {"primary": "gpt-4.1"},
+        "models": {"primary": "gpt-5.4-mini"},
         "llm": {"api_mode": "chat_completions"},
     })
 
@@ -1348,7 +1468,7 @@ async def test_text_completion_does_not_use_fallback_when_primary_succeeds(monke
     assert result == "primary ok"
     assert len(calls) == 1
     assert calls[0]["api_key"] == "primary-key"
-    assert calls[0]["model"] == "gpt-4.1"
+    assert calls[0]["model"] == "gpt-5.4-mini"
 
 
 @pytest.mark.anyio
@@ -1387,7 +1507,7 @@ async def test_text_completion_retries_empty_primary_before_fallback(monkeypatch
     monkeypatch.setattr(text_module, "load_litellm", lambda: FakeLiteLLM())
     monkeypatch.setattr(text_module, "sleep_before_retry", no_sleep)
     set_system_settings_override({
-        "models": {"primary": "gpt-4.1"},
+        "models": {"primary": "gpt-5.4-mini"},
         "llm": {"api_mode": "chat_completions"},
     })
 
@@ -1434,7 +1554,7 @@ async def test_text_completion_does_not_fallback_after_empty_primary_exhausted(m
     monkeypatch.setattr(text_module, "load_litellm", lambda: FakeLiteLLM())
     monkeypatch.setattr(text_module, "sleep_before_retry", no_sleep)
     set_system_settings_override({
-        "models": {"primary": "gpt-4.1"},
+        "models": {"primary": "gpt-5.4-mini"},
         "llm": {"api_mode": "chat_completions"},
     })
 
@@ -1482,7 +1602,7 @@ async def test_text_completion_exhausts_primary_retries_before_fallback(monkeypa
     monkeypatch.setattr(text_module, "load_litellm", lambda: FakeLiteLLM())
     monkeypatch.setattr(text_module, "sleep_before_retry", no_sleep)
     set_system_settings_override({
-        "models": {"primary": "gpt-4.1"},
+        "models": {"primary": "gpt-5.4-mini"},
         "llm": {"api_mode": "chat_completions"},
     })
 
@@ -1527,7 +1647,7 @@ async def test_text_completion_caps_unhealthy_fallback_retries(monkeypatch):
     monkeypatch.setattr(text_module, "load_litellm", lambda: FakeLiteLLM())
     monkeypatch.setattr(text_module, "sleep_before_retry", no_sleep)
     set_system_settings_override({
-        "models": {"primary": "gpt-4.1"},
+        "models": {"primary": "gpt-5.4-mini"},
         "llm": {"api_mode": "chat_completions"},
     })
 
@@ -1588,7 +1708,7 @@ async def test_stream_completion_falls_back_before_first_token(monkeypatch):
     monkeypatch.setenv("LLM_FALLBACK_BASE_URL", "https://api.deepseek.com")
     monkeypatch.setattr(stream_module, "load_litellm", lambda: FakeLiteLLM())
     set_system_settings_override({
-        "models": {"primary": "gpt-4.1"},
+        "models": {"primary": "gpt-5.4-mini"},
         "llm": {"api_mode": "chat_completions"},
     })
 
@@ -1604,7 +1724,7 @@ async def test_stream_completion_falls_back_before_first_token(monkeypatch):
 
     assert chunks == ["ok"]
     assert [call["api_key"] for call in calls] == ["primary-key", "fallback-key"]
-    assert calls[1]["model"] == "gpt-4.1"
+    assert calls[1]["model"] == "gpt-5.4-mini"
 
 
 @pytest.mark.anyio
@@ -1767,7 +1887,7 @@ async def test_stream_auto_responses_html_iteration_error_falls_back_to_chat(mon
     monkeypatch.setattr(stream_module, "load_litellm", lambda: FakeLiteLLM())
     set_system_settings_override({
         "models": {"primary": "gpt-5.5"},
-        "llm": {"api_mode": "auto"},
+        "llm": {"api_mode": "auto", "responses_api_models": ["gpt-5.5"]},
     })
 
     chunks = [

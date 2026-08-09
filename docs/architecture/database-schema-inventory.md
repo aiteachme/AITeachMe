@@ -8,7 +8,7 @@
 
 ### 用户、系统与课程
 
-- `user`：用户主表，同时保存用户级非敏感运行设置覆盖 `runtime_settings_json`。
+- `user`：用户主表；`runtime_settings_json` 仅保留旧版本地设置兼容数据，当前有效本地覆盖由 `system_runtime_settings` 管理。
 - `email_confirmation`：邮箱验证记录。
 - `course`：课程空间主表，保存标题、描述、学习意图、文档摘要、LLM 上下文与构建锁字段。
 - `system_runtime_settings`：系统级运行设置覆盖与状态快照表；这是一张单行表，正常只有 `id = "runtime"` 一行。同一行保存当前有效 settings 快照哈希与来源，避免额外快照表。

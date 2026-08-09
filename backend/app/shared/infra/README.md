@@ -80,8 +80,10 @@ from app.shared.infra.search import web_search, search_knowledge
 - Provider-native tools 只通过 LLM helper 的 `provider_native_tools` kwarg 进入 Responses adapter；Chat Completions 和项目函数工具请求会丢弃该 hint，避免把 provider-specific 参数误传到普通网关。
 - `file_search` 需要外部 provider vector store，不能默认替代本地课程索引；`auto` 只在课程工具链且本地 RAG 证据不足时补充，`force` 才表示显式强制发送。
 - 全局 `settings.llm.native_*` 只提供默认能力开关；具体 workflow step 是否允许、继承或强制 provider-native tools，应由对应 `model_policy.py` 通过 `ProviderNativeToolPolicy` 声明。
-- 文本/流式普通输出会由 adapter 统一决定 `responses` 或 `chat_completions`：`auto` 模式只对 `model_catalog.RESPONSES_API_MODELS` 中的文本模型优先使用 Responses，名单外默认走 Chat Completions；结构化输出和项目函数工具固定走 Chat Completions。
-- `acompletion_stream()` 始终向上游请求真实流式输出。自定义 OpenAI-compatible Responses 网关不采用 LiteLLM 对未知模型名生成的伪流式；`RESPONSES_API_MODELS` 只决定接口形态，不再维护第二份流式模型名单。
+- 模型默认优先使用主端点，主端点调用失败后可以切换备用端点；`settings.llm.fallback_only_models` 中的模型直接使用备用端点，未配置可用备用端点时立即返回配置错误。
+- `api_mode=auto` 时，`settings.llm.responses_api_models` 中的文本模型使用 Responses，其余文本模型使用 Chat Completions。该名单不改变端点归属；fallback 文本请求默认使用 Chat Completions。
+- Embedding、文生图、语音、视频等模型使用各自专用接口，只参与主/备用端点选择；图片理解仍属于文本生成，参与 Responses / Chat Completions 判断。
+- `acompletion_stream()` 始终向上游请求真实流式输出。自定义 OpenAI-compatible Responses 网关不采用 LiteLLM 对未知模型名生成的伪流式。
 - LangSmith LLM span 会记录 requested / initial / final API mode、route reason、原生 Responses 流式状态和 provider-native tool types，用于判断是否发生 Responses 到 Chat 的自动回退。
 
 ## workflow / observability 公开接口

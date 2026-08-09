@@ -21,7 +21,7 @@ from app.utils.time import utcnow
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.docgen.lib.chapter_context import DocGenChapterContextRuntime
 from app.workflows.digest.docgen.lib.writer import DocGenWriterNoContentError, DocGenWriterRuntime
-from app.workflows.digest.docgen.lib.chapter_revision import critique_chapter, maybe_rewrite_chapter
+from app.workflows.digest.docgen.lib.chapter_revision import critique_chapter
 from app.workflows.digest.docgen.lib.source_slices import build_priority_source_context
 from app.workflows.digest.docgen.lib.models import (
     ChapterDraft,
@@ -312,7 +312,6 @@ def _execution_contract_for_writer(
     chapter_contract: dict | None = None,
     evidence_items: list[dict] | None = None,
 ) -> dict:
-    practice_style = str((task.practice_seed_policy or {}).get("style") or "").strip().lower()
     example_ratio = _unit_float((task.practice_seed_policy or {}).get("example_ratio"))
     practice_ratio = _unit_float((task.practice_seed_policy or {}).get("practice_ratio"))
     density_policy = dict((task.practice_seed_policy or {}).get("example_density_policy") or {})
@@ -710,7 +709,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
             list(task.source_slices or []),
             max_total_chars=max(1800, int(task.budget_policy.max_context_chars * 0.45)),
         )
-        use_priority_context_only = bool(priority_context.text and len(priority_context.text) >= 900)
+        use_priority_context_only = bool(priority_context.source_details)
         if use_priority_context_only:
             dense_context = priority_context.text.strip()
             sources = list(priority_context.sources)
@@ -904,6 +903,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
                 fallback_used=True,
             )
         writer_markdown = ""
+        writer_attempt_count = 1
         stream_direct_last_at = 0.0
         stream_direct_last_len = 0
         stream_persist_last_at = perf_counter()
@@ -987,6 +987,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
                 on_stream_update=_publish_writer_stream_preview,
             )
             writer_markdown = ensure_chapter_heading(title, writer_result.content)
+            writer_attempt_count += int(bool(writer_result.metadata.get("writer_no_content_reason")))
         except DocGenWriterNoContentError as exc:
             await preview_persist_buffer.close()
             failure_summary = "章节写作没有生成可发布正文，已停止发布；不会使用模板兜底内容。"
@@ -1054,27 +1055,11 @@ def build_generate_chapters_node(*, context: WorkflowContext):
             raise
         quality = critique_chapter(
             markdown=writer_markdown,
-            required_points=targets,
+            required_points=task.required_elements,
             digest_mode=state.get("digest_mode") or "systematic",
             source_count=len(source_details),
             min_word_count=task.min_word_count,
         )
-        try:
-            writer = DocGenWriterRuntime(traced_context)
-            writer_markdown, quality = await maybe_rewrite_chapter(
-                llm=writer.context.resolve_llm_caller(),
-                markdown=writer_markdown,
-                title=title,
-                digest_mode=state.get("digest_mode") or "systematic",
-                required_points=targets,
-                dense_context=dense_context,
-                quality=quality,
-                min_word_count=task.min_word_count,
-                max_retries=task.budget_policy.max_writer_retries,
-                extra_metadata=traced_context.trace_metadata(chapter_index=task.chapter_index),
-            )
-        except Exception:
-            pass
         evidence_ledger = mark_evidence_used(evidence_ledger, writer_markdown)
         claim_ledger, claim_evidence_map = align_claim_evidence(
             claim_ledger=claim_ledger,
@@ -1176,7 +1161,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
             "research_sources": sources,
             "research_ms": research_ms,
             "draft_ms": elapsed_ms,
-            "llm_calls_total": 2 + (1 if quality.rewrite_used else 0),
+            "llm_calls_total": writer_attempt_count,
         }
 
     return generate_chapters_node

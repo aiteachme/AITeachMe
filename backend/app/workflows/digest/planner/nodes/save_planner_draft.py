@@ -16,6 +16,7 @@ from app.workflows.digest.planner.lib.plans import (
 )
 from app.workflows.digest.planner.lib.requested_structure import extract_explicit_learning_topic
 from app.workflows.digest.planner.lib.store import save_planner_result
+from app.workflows.digest.planner.nodes.generate_course_identity import _clean_course_name
 from app.workflows.digest.planner.state import BuildPlannerState
 
 logger = structlog.get_logger(__name__)
@@ -106,8 +107,8 @@ def build_save_planner_draft_node(*, context: WorkflowContext):
         )
         is_diagnosis_draft = str(raw_draft.get("planner_stage") or "").strip() == "diagnosis"
         # 上一个节点已经完成“生成”；这里把极简 JSON 合同补齐成 API/DocGen 稳定结构并落库。
-        explicit_topic = extract_explicit_learning_topic(request_prompt)
-        generated_course_name = str(state.get("generated_course_name") or "").strip()
+        explicit_topic = _clean_course_name(extract_explicit_learning_topic(request_prompt))
+        generated_course_name = _clean_course_name(str(state.get("generated_course_name") or ""))
         generated_course_icon = str(state.get("generated_course_icon_key") or "").strip()
         effective_course_name = explicit_topic or generated_course_name
         if is_diagnosis_draft:

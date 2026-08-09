@@ -23,7 +23,7 @@ def reset_settings_after_test():
 
 
 @pytest.mark.anyio
-async def test_embedding_uses_primary_endpoint_without_rewriting_base(monkeypatch) -> None:
+async def test_embedding_uses_fallback_endpoint_when_configured_fallback_only(monkeypatch) -> None:
     captured: dict[str, object] = {}
     monkeypatch.setenv("LLM_API_KEY", "primary-key")
     monkeypatch.setenv("LLM_BASE_URL", "https://primary.example.com")
@@ -32,6 +32,7 @@ async def test_embedding_uses_primary_endpoint_without_rewriting_base(monkeypatc
     monkeypatch.delenv("LLM_PROVIDER", raising=False)
     set_system_settings_override({
         "models": {"embedding": "text-embedding-v4"},
+        "llm": {"fallback_only_models": ["text-embedding-v4"]},
     })
 
     async def fake_call_embedding(
@@ -66,8 +67,8 @@ async def test_embedding_uses_primary_endpoint_without_rewriting_base(monkeypatc
     assert captured == {
         "model": "text-embedding-v4",
         "batch": ["hello"],
-        "api_base": "https://primary.example.com",
-        "api_key": "primary-key",
+        "api_base": "https://fallback.example.com/v1",
+        "api_key": "fallback-key",
         "provider": "openai_compatible",
         "api_version": None,
         "provider_timeout_s": 120,
@@ -79,11 +80,12 @@ async def test_embedding_uses_primary_endpoint_without_rewriting_base(monkeypatc
 async def test_embedding_batches_respect_explicit_concurrency_window(monkeypatch) -> None:
     captured_run_many: dict[str, object] = {}
     captured_traces: list[dict[str, object]] = []
-    monkeypatch.setenv("LLM_API_KEY", "primary-key")
-    monkeypatch.setenv("LLM_BASE_URL", "https://gateway.example.com")
+    monkeypatch.setenv("LLM_FALLBACK_API_KEY", "fallback-key")
+    monkeypatch.setenv("LLM_FALLBACK_BASE_URL", "https://gateway.example.com")
     monkeypatch.delenv("LLM_PROVIDER", raising=False)
     set_system_settings_override({
         "models": {"embedding": "text-embedding-v4"},
+        "llm": {"fallback_only_models": ["text-embedding-v4"]},
     })
 
     class FakeTraceRun:

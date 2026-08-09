@@ -1,25 +1,14 @@
-"""Generate course display identity for a new planner session."""
+"""Derive a stable course display identity from existing planner facts."""
 
 from __future__ import annotations
 
 import re
 
-import structlog
-
-from app.shared.infra.llm_support import acompletion_with_fallback
 from app.shared.infra.workflow.context import WorkflowContext
-from app.workflows.digest.planner.lib.model_policy import (
-    PlannerModelStep,
-    planner_completion_kwargs_with_metadata,
-)
-from app.workflows.digest.planner.lib.models import PlannerCourseIdentity
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event
 from app.workflows.digest.planner.lib.requested_structure import extract_explicit_learning_topic
-from app.workflows.digest.planner.prompts.course_name import build_course_identity_messages
 from app.workflows.digest.planner.state import BuildPlannerState
 from app.workflows.support.courses.icons import infer_course_icon_key, normalize_course_icon_key
-
-logger = structlog.get_logger(__name__)
 
 _AUTO_TITLE_PLACEHOLDERS = {
     "",
@@ -54,22 +43,30 @@ def _clean_course_name(value: str | None) -> str:
     return text[:_TITLE_MAX_CHARS].rstrip("，。；;:：.．、 ")
 
 
-def _collect_topic_hints(state: BuildPlannerState) -> list[str]:
+def _derive_course_name(state: BuildPlannerState) -> str:
+    explicit_topic = extract_explicit_learning_topic(state.get("user_prompt") or "")
+    if explicit_topic:
+        cleaned_explicit_topic = _clean_course_name(explicit_topic)
+        if cleaned_explicit_topic:
+            return cleaned_explicit_topic
     material_context = state["material_context"]
-    raw_items = [
+    profile = material_context.learning_domain_profile
+    candidates = [
+        profile.sub_discipline,
+        *list(profile.key_topics or []),
         *list(material_context.material_hints.chapter_candidates or []),
-        *list(material_context.learning_domain_profile.key_topics or []),
+        profile.discipline,
     ]
-    cleaned: list[str] = []
-    seen: set[str] = set()
-    for item in raw_items:
-        text = " ".join(str(item or "").split()).strip()
-        key = text.casefold()
-        if not text or key in seen:
-            continue
-        seen.add(key)
-        cleaned.append(text)
-    return cleaned
+    for candidate in candidates:
+        cleaned = _clean_course_name(str(candidate or ""))
+        if cleaned:
+            return cleaned
+    for packet in list(material_context.source_documents or []):
+        filename = re.sub(r"\.[^.]+$", "", str(packet.filename or "").strip())
+        cleaned = _clean_course_name(filename)
+        if cleaned:
+            return cleaned
+    return "学习课程"
 
 
 def build_generate_course_identity_node(*, context: WorkflowContext):
@@ -81,70 +78,18 @@ def build_generate_course_identity_node(*, context: WorkflowContext):
         if state.get("error") or not _needs_auto_course_identity(state):
             return {}
 
-        material_context = state["material_context"]
-        filenames = [
-            packet.filename
-            for packet in list(material_context.source_documents or [])
-            if str(packet.filename or "").strip()
-        ]
-        topic_hints = _collect_topic_hints(state)
-        planning_note = str(state.get("planning_note") or "").strip()
-        material_note = str(state.get("material_note") or "").strip()
-        await emit_planner_event(state, event="planner.identity.started", detail="正在生成课程名和图标。")
-        try:
-            result = await acompletion_with_fallback(
-                build_course_identity_messages(
-                    user_prompt=state.get("user_prompt") or "",
-                    filenames=filenames,
-                    digest_mode=state.get("digest_mode") or material_context.course_mode_decision.mode.value,
-                    planning_note=planning_note,
-                    material_note=material_note,
-                    topic_hints=topic_hints,
-                ),
-                **planner_completion_kwargs_with_metadata(
-                    PlannerModelStep.COURSE_IDENTITY,
-                    model_override=state.get("model_override"),
-                    planner_session_id=state.get("planner_session_id") or "",
-                    substep="生成 course_name 与 course_icon",
-                ),
-                response_model=PlannerCourseIdentity,
-            )
-        except Exception as exc:
-            logger.exception(
-                "planner_course_identity_generation_failed",
-                planner_session_id=state.get("planner_session_id") or "",
-                course_id=state.get("course_id") or "",
-                error_type=type(exc).__name__,
-                error=str(exc),
-            )
-            await emit_planner_event(
-                state,
-                event="planner.identity.failed",
-                detail="课程名和图标生成失败，请重试。",
-                payload={"error_type": type(exc).__name__},
-            )
-            raise
-
-        identity = result if isinstance(result, PlannerCourseIdentity) else PlannerCourseIdentity.model_validate(result)
-        explicit_topic = extract_explicit_learning_topic(state.get("user_prompt") or "")
-        course_name = explicit_topic or _clean_course_name(identity.course_name)
-        course_icon = normalize_course_icon_key(identity.course_icon) or infer_course_icon_key(course_name)
+        await emit_planner_event(state, event="planner.identity.started", detail="正在整理课程名和图标。")
+        course_name = _derive_course_name(state)
+        course_icon = normalize_course_icon_key(infer_course_icon_key(course_name))
         await emit_planner_event(
             state,
             event="planner.identity.ready",
             detail=f"课程身份已生成：{course_name or '当前主题'}。",
             payload={"course_name": course_name, "course_icon": course_icon},
         )
-        logger.info(
-            "planner_course_identity_generation_completed",
-            planner_session_id=state.get("planner_session_id") or "",
-            course_id=state.get("course_id") or "",
-            generated_course_name=course_name or None,
-            generated_course_icon_key=course_icon or None,
-        )
         return {"generated_course_name": course_name, "generated_course_icon_key": course_icon}
 
     return generate_course_identity_node
 
 
-__all__ = ["_clean_course_name", "build_generate_course_identity_node"]
+__all__ = ["_clean_course_name", "_derive_course_name", "build_generate_course_identity_node"]

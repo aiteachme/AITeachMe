@@ -101,7 +101,16 @@ async def enhance_chapter_draft(
     repair 的模型链路完成。
     """
 
-    markdown = _ensure_requested_placeholders(draft.markdown, draft.placeholder_requests)
+    markdown = normalize_docgen_presentation(
+        draft.markdown,
+        digest_mode=digest_mode,
+        title=draft.title,
+        focus_items=[
+            *(item.claim_text for item in list((claim_ledger or ClaimLedger()).items or []) if item.claim_text),
+            draft.title,
+        ],
+    )
+    markdown = _ensure_requested_placeholders(markdown, draft.placeholder_requests)
     settings = get_settings()
     mermaid_placeholders = [item.strip() for item in extract_asset_request_descriptions(markdown, kind="mermaid")]
     image_placeholders = [item.strip() for item in extract_asset_request_descriptions(markdown, kind="image")]
@@ -138,16 +147,6 @@ async def enhance_chapter_draft(
         warnings.append(f"章节增强失败，已保留原始正文：{str(exc)[:120]}")
     markdown = strip_asset_requests(markdown)
     markdown = normalize_math_delimiters(markdown)
-    markdown = validate_latex(markdown)
-    markdown = normalize_docgen_presentation(
-        markdown,
-        digest_mode=digest_mode,
-        title=draft.title,
-        focus_items=[
-            *(item.claim_text for item in list((claim_ledger or ClaimLedger()).items or []) if item.claim_text),
-            draft.title,
-        ],
-    )
 
     interactive_assets: list[dict[str, object]] = []
     if settings.docgen.generate_interactive_html:
@@ -166,6 +165,7 @@ async def enhance_chapter_draft(
 
     questions: list[dict] = []
     markdown = normalize_docgen_presentation(markdown, digest_mode=digest_mode, title=draft.title)
+    markdown = validate_latex(markdown)
     markdown = _sanitize_public_doc_terms(markdown)
     enhanced = EnhancedChapterDraft(
         chapter_index=draft.chapter_index,

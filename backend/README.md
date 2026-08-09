@@ -62,9 +62,13 @@ APP_MODE=local
 AUTH_ENABLED=false
 LLM_API_KEY=<model-api-key>
 LLM_BASE_URL=https://api.example.com/v1
+# 可选：承接 llm.fallback_only_models 和主端点故障切换
+# LLM_FALLBACK_API_KEY=<fallback-model-api-key>
+# LLM_FALLBACK_BASE_URL=https://fallback.example.com/v1
 ```
 
 未开启鉴权的 Ollama、vLLM、LM Studio 等本地网关可以不填 `LLM_API_KEY`。
+模型默认优先使用主端点；`llm.fallback_only_models` 中的模型直接使用 `LLM_FALLBACK_*`。`llm.responses_api_models` 只决定 `auto` 模式下的文本接口形态。
 
 ## 数据库
 

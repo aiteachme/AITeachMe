@@ -21,9 +21,10 @@ def test_native_web_search_routes_auto_to_openai_responses(monkeypatch) -> None:
     monkeypatch.setenv("LLM_PROVIDER", "openai")
     monkeypatch.delenv("LLM_BASE_URL", raising=False)
     set_system_settings_override({
-        "models": {"primary": "gpt-4.1"},
+        "models": {"primary": "gpt-5.4-mini"},
         "llm": {
             "api_mode": "auto",
+            "responses_api_models": ["gpt-4.1"],
             "native_web_search": "auto",
             "native_web_search_external_access": False,
         },
@@ -58,13 +59,13 @@ def test_native_web_search_routes_auto_to_openai_responses(monkeypatch) -> None:
     assert "tools" not in call.auto_chat_fallback_kwargs
 
 
-def test_native_tools_are_not_sent_to_chat_completions(monkeypatch) -> None:
+def test_native_tools_do_not_bypass_empty_responses_model_list(monkeypatch) -> None:
     monkeypatch.setenv("LLM_API_KEY", "test-key")
     monkeypatch.setenv("LLM_PROVIDER", "openai")
     monkeypatch.delenv("LLM_BASE_URL", raising=False)
     set_system_settings_override({
-        "models": {"primary": "gpt-4.1"},
-        "llm": {"api_mode": "chat_completions", "native_web_search": "force"},
+        "models": {"primary": "gpt-5.4-mini"},
+        "llm": {"api_mode": "auto", "native_web_search": "force"},
     })
     context = build_completion_context(task_type=TaskType.CHAT, model="primary")
 
@@ -80,7 +81,7 @@ def test_native_tools_are_not_sent_to_chat_completions(monkeypatch) -> None:
     )
 
     assert call.api_mode == "chat_completions"
-    assert call.route_reason == "forced_chat_completions"
+    assert call.route_reason == "auto_plain_chat"
     assert "provider_native_tools" not in call.kwargs
     assert "tools" not in call.kwargs
 
@@ -93,6 +94,7 @@ def test_native_web_search_auto_is_sent_to_openai_compatible_responses_gateway(m
         "models": {"primary": "gpt-5.5"},
         "llm": {
             "api_mode": "auto",
+            "responses_api_models": ["gpt-5.5"],
             "native_web_search": "auto",
         },
     })
@@ -165,9 +167,10 @@ def test_native_file_search_requires_configured_vector_store_ids(monkeypatch) ->
     monkeypatch.setenv("LLM_PROVIDER", "openai")
     monkeypatch.delenv("LLM_BASE_URL", raising=False)
     set_system_settings_override({
-        "models": {"primary": "gpt-4.1"},
+        "models": {"primary": "gpt-5.4-mini"},
         "llm": {
             "api_mode": "auto",
+            "responses_api_models": ["gpt-4.1"],
             "native_file_search": "auto",
             "native_file_search_vector_store_ids": "vs_course, vs_global",
             "native_file_search_max_results": 4,

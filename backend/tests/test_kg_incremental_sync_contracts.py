@@ -335,7 +335,8 @@ def test_extraction_task_planning_splits_large_chapters_and_hashes_content(monke
 
     assert len(child_chunks) == 3
     assert sync._should_split_chapter(chapter, child_chunks) is True
-    assert sync._desired_child_task_count(chapter, child_chunks, extra_task_budget=2) == 3
+    assert len(tasks) == 3
+    assert metrics["content_task_target"] >= len(tasks)
     assert metrics["chapter_split_count"] == 1
     assert metrics["subsection_task_count"] == 3
     assert [task.task_index for task in tasks] == [1, 2, 3]
@@ -724,6 +725,71 @@ def test_unit_upsert_prefers_existing_name_over_stale_anchor(session: Session) -
     assert unit.status == "active"
     assert '"normalized_alias": "ku-stale"' in unit.aliases_json
     assert session.get(KnowledgeUnit, stale.id).canonical_name == "自变量与因变量"
+
+
+def test_near_equivalent_unit_identity_is_conservative() -> None:
+    assert sync._is_near_equivalent_unit_identity(  # noqa: SLF001
+        left_name="break 与 continue 的控制转移规则",
+        left_summary="break 结束当前循环，continue 跳过当前轮剩余语句并进入下一轮。",
+        right_name="break与continue循环控制规则",
+        right_summary="break立即结束当前循环或switch，continue跳过本轮剩余语句并进入下一轮。",
+    )
+    assert sync._is_near_equivalent_unit_identity(  # noqa: SLF001
+        left_name="嵌套 if 的 else 配对规则",
+        left_summary="嵌套 if 中未显式配对的 else 默认与最近的未配对 if 结合。",
+        right_name="嵌套if的else就近配对规则",
+        right_summary="没有花括号时，else与前面最近的尚未匹配的if配对。",
+    )
+    assert not sync._is_near_equivalent_unit_identity(  # noqa: SLF001
+        left_name="array row index boundary rule",
+        left_summary="The row index starts from zero and must remain in range.",
+        right_name="array col index boundary rule",
+        right_summary="The column index starts from zero and must remain in range.",
+    )
+
+
+def test_unit_upsert_reuses_near_equivalent_technical_alias(session: Session) -> None:
+    cache = sync._build_unit_lookup_cache(session, course_id=COURSE_ID)  # noqa: SLF001
+    first, first_created = sync._upsert_unit(  # noqa: SLF001
+        session,
+        course_id=COURSE_ID,
+        item=MarkdownKnowledgeUnit(
+            anchor="ku_break_continue_transfer",
+            name="break 与 continue 的控制转移规则",
+            knowledge_unit_type="principle",
+            summary="break 结束当前循环，continue 跳过当前轮剩余语句并进入下一轮。",
+            body_markdown="第一处来源。",
+        ),
+        build_revision_no=1,
+        lookup_cache=cache,
+    )
+    second, second_created = sync._upsert_unit(  # noqa: SLF001
+        session,
+        course_id=COURSE_ID,
+        item=MarkdownKnowledgeUnit(
+            anchor="ku_break_continue_loop",
+            name="break与continue循环控制规则",
+            knowledge_unit_type="principle",
+            summary="break立即结束当前循环或switch，continue跳过本轮剩余语句并进入下一轮。",
+            body_markdown="第二处来源。",
+        ),
+        build_revision_no=1,
+        lookup_cache=cache,
+    )
+
+    assert first_created is True
+    assert second_created is False
+    assert second.id == first.id
+    assert second.canonical_name == "break 与 continue 的控制转移规则"
+    assert "ku_break_continue_transfer" in second.aliases_json
+    assert "ku_break_continue_loop" in second.aliases_json
+    stored = session.exec(
+        select(KnowledgeUnit).where(
+            KnowledgeUnit.course_id == COURSE_ID,
+            KnowledgeUnit.knowledge_unit_type == "principle",
+        )
+    ).all()
+    assert len(stored) == 1
 
 
 def test_deprecate_removed_units_keeps_same_identity_when_anchor_changes(session: Session) -> None:
@@ -1279,7 +1345,7 @@ def test_async_section_record_extraction_recovers_failed_llm_with_rule_fallback(
             candidate_id="node",
         )
 
-    monkeypatch.setattr(sync, "_extract_chapter_with_retries", fake_extract)
+    monkeypatch.setattr(sync, "_extract_chapter_graph_items", fake_extract)
 
     records, diagnostics = asyncio.run(
         sync.extract_knowledge_graph_section_records_async(
@@ -1303,6 +1369,57 @@ def test_async_section_record_extraction_recovers_failed_llm_with_rule_fallback(
     assert diagnostics["prefetch_section_count"] == 2
     assert diagnostics["prefetch_failed_section_count"] == 0
     assert diagnostics["rule_fallback_success_count"] == 1
+
+
+def test_section_record_prefetch_reuses_exact_key_but_reextracts_changed_title(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(sync, "_max_parallel_extractions", lambda: 1)
+    monkeypatch.setattr(sync, "_graph_llm_concurrency_cap", lambda: 1)
+    original_markdown = "# Original\n\nSame body"
+    original_chapters = extract_markdown_chapter_chunks(original_markdown, max_body_chars=None)
+    original_tasks, _ = sync._build_extraction_tasks(original_chapters, {})
+    prior_record = sync._section_record_for_task(
+        original_tasks[0],
+        payload=_payload(unit=_unit("ku_original", "Original"), candidate_id="original"),
+    )
+    extraction_calls = 0
+
+    async def fake_extract(task_index, chapter, **kwargs):
+        nonlocal extraction_calls
+        extraction_calls += 1
+        return _payload(
+            unit=_unit("ku_renamed", chapter.title, chapter_index=kwargs["source_chapter_index"]),
+            candidate_id="renamed",
+        )
+
+    monkeypatch.setattr(sync, "_extract_chapter_graph_items", fake_extract)
+
+    reused_records, reused_metrics = asyncio.run(
+        sync.extract_knowledge_graph_section_records_async(
+            markdown=original_markdown,
+            course_context="course",
+            concurrency_limit=1,
+            prefetched_records=[prior_record],
+        )
+    )
+    renamed_records, renamed_metrics = asyncio.run(
+        sync.extract_knowledge_graph_section_records_async(
+            markdown="# Renamed\n\nSame body",
+            course_context="course",
+            concurrency_limit=1,
+            prefetched_records=[prior_record],
+        )
+    )
+
+    assert extraction_calls == 1
+    assert len(reused_records) == 1
+    assert reused_records[0].section_key == prior_record.section_key
+    assert reused_metrics["prefetch_reused_section_count"] == 1
+    assert len(renamed_records) == 1
+    assert renamed_records[0].title == "Renamed"
+    assert renamed_records[0].section_key != prior_record.section_key
+    assert renamed_metrics["prefetch_reused_section_count"] == 0
 
 
 def test_async_graph_extraction_combines_prefetch_without_llm(monkeypatch: pytest.MonkeyPatch) -> None:

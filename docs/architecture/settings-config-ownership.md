@@ -43,7 +43,7 @@ system_runtime_settings.__env_overrides__
 - 本地设置页保存到数据库，不回写 `.env`。
 - 本地保存后的授权、模型网关、搜索和解析配置会优先于 `.env`。
 - 云端普通用户只读；启动时会忽略并清空旧的运行时覆盖，只更新有效配置快照。
-- 用户级非敏感覆盖保存在 `user.runtime_settings_json`，不再使用单独的一对一用户设置表。
+- `user.runtime_settings_json` 仅用于兼容旧版本地用户设置；本地启动会在系统设置为空时迁移到 `system_runtime_settings`，它不是独立的运行时覆盖层。
 - 当前有效 settings 快照保存在 `system_runtime_settings.effective_settings_json`，不再使用单独快照表。
 
 ## 2. 分层职责
@@ -53,7 +53,7 @@ system_runtime_settings.__env_overrides__
 | deployment env / `.env` | 部署、密钥、连接串 | `APP_MODE`、`DATABASE_URL`、`AUTH_*`、`S3_*`、`LLM_API_KEY`、`LLM_BASE_URL`、搜索 provider key | 部署平台或本地用户 |
 | code defaults | 项目级默认行为 | 模型路由默认值、上传限制、Planner/DocGen 策略、RAG、搜索画像、LLM 并发默认值、图谱同步、观测开关 | 代码 |
 | `PROJECT_SETTINGS_PATH` | 可选外部项目 override | 线上部署侧覆盖非敏感项目策略；Render 可指向 Secret File，本地默认不需要；私有 YAML 应写全当前 `Settings` schema | 显式配置者 |
-| `system_runtime_settings` | 本地：设置页全局覆盖与有效配置快照；云端：只保存有效配置快照 | `models.*`、`fallback_models.*`、`llm.reasoning_efforts.*`、`llm.concurrency_limit`、`ingest.*`、`planner.*`、`docgen.*`、`rag.*`、`search.retriever_profile`、`knowledge_graph.*`、粗粒度 observability、`settings_hash` | 本地设置页/API；云端启动快照 |
+| `system_runtime_settings` | 本地：设置页全局覆盖与有效配置快照；云端：只保存有效配置快照 | `models.*`、`fallback_models.*`、`llm.responses_api_models`、`llm.fallback_only_models`、`llm.reasoning_efforts.*`、`llm.concurrency_limit`、`ingest.*`、`planner.*`、`docgen.*`、`rag.*`、`search.retriever_profile`、`knowledge_graph.*`、粗粒度 observability、`settings_hash` | 本地设置页/API；云端启动快照 |
 | module constants | 模块内部执行细节 | timeout、并发、cache/fusion、parser chain 常量、LLM token budget、embedding batch | 对应模块代码 |
 
 代码默认值集中在：

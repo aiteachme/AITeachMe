@@ -313,25 +313,46 @@ def _malformed_heading_titles(titles: list[str]) -> list[str]:
     return list(dict.fromkeys(malformed))
 
 
+def _duplicate_heading_titles(markdown: str) -> list[str]:
+    """Find duplicate headings only when they collide at the same hierarchy path."""
+
+    stripped_markdown = _CODE_FENCE_RE.sub("", markdown or "")
+    current_h2 = ""
+    seen: set[tuple[int, str, str]] = set()
+    duplicates: list[str] = []
+    for hashes, raw_title in _HEADING_RE.findall(stripped_markdown):
+        level = len(hashes)
+        if level < 2 or level > 3:
+            continue
+        title = clean_generated_chapter_title(raw_title)
+        if not title:
+            continue
+        parent = current_h2 if level == 3 else ""
+        key = (level, parent, title)
+        if key in seen and title not in duplicates:
+            duplicates.append(title)
+        seen.add(key)
+        if level == 2:
+            current_h2 = title
+    return duplicates
+
+
 def analyze_chapter_heading_quality(markdown: str, *, digest_mode: str) -> dict[str, object]:
     normalized_mode = _normalize_mode(digest_mode)
     heading_titles = _extract_heading_titles(markdown, min_level=2, max_level=3)
     cleaned_titles = [clean_generated_chapter_title(title) for title in heading_titles if clean_generated_chapter_title(title)]
-    duplicates = list(dict.fromkeys(title for title in cleaned_titles if cleaned_titles.count(title) > 1))
+    duplicates = _duplicate_heading_titles(markdown)
     generic_titles = _generic_heading_titles(cleaned_titles)
     malformed_titles = _malformed_heading_titles(cleaned_titles)
     singleton_subheading_paths = _singleton_subheading_paths(markdown)
     missing_modules: list[str] = []
     min_h2_count = 3 if normalized_mode == "sprint" else 4
     h2_count = _count_headings(markdown, level=2)
-    force_model_heading_review = normalized_mode == "sprint"
     needs_agent_repair = bool(
-        force_model_heading_review
-        or h2_count < min_h2_count
+        h2_count < min_h2_count
         or duplicates
         or generic_titles
         or malformed_titles
-        or singleton_subheading_paths
     )
     needs_scaffold_fallback = False
     return {
@@ -343,7 +364,7 @@ def analyze_chapter_heading_quality(markdown: str, *, digest_mode: str) -> dict[
         "malformed_titles": malformed_titles,
         "singleton_subheading_paths": singleton_subheading_paths,
         "missing_modules": missing_modules,
-        "force_model_heading_review": force_model_heading_review,
+        "force_model_heading_review": False,
         "needs_agent_repair": needs_agent_repair,
         "needs_scaffold_fallback": needs_scaffold_fallback,
     }

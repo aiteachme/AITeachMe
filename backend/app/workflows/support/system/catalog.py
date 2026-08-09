@@ -193,7 +193,7 @@ SETTINGS_CATALOG: tuple[SettingsCatalogSection, ...] = (
             setting(
                 "llm.api_mode",
                 "接口模式",
-                description="Auto 对代码名单内的文本模型优先使用 Responses，名单外使用 Chat Completions；Responses 不受网关支持时自动回退一次。",
+                description="Auto 对配置名单内的文本模型优先使用 Responses，名单外使用 Chat Completions；Responses 不受网关支持时自动回退一次。",
                 ui_group="统一模型接入",
                 ui_order=30,
                 options=(

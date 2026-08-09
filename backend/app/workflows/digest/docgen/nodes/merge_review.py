@@ -113,6 +113,8 @@ def build_merge_review_node(*, context: WorkflowContext):
     async def merge_review_node(state: DocGenState) -> dict:
         """合并章节并生成 merge review report。"""
 
+        if state.get("error"):
+            return {}
         started_at = perf_counter()
         raw_chapters = list(state.get("reviewed_chapter_drafts") or []) or list(state.get("enhanced_chapter_drafts") or [])
         enhanced = _dedupe_enhanced(

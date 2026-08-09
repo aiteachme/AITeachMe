@@ -77,7 +77,10 @@ def resolve_provider_call(
     native_tool_types = tuple(provider_native_tool_request_types(clean_kwargs.get(PROVIDER_NATIVE_TOOLS_KWARG)))
     has_allowed_native_tools = _has_allowed_provider_native_tools(context, clean_kwargs)
     model_for_routing = clean_kwargs.get("model") or context.model
-    model_api_mode = classify_model_api_mode(model_for_routing)
+    model_api_mode = classify_model_api_mode(
+        model_for_routing,
+        responses_api_models=context.settings.llm.responses_api_models,
+    )
     has_basic_message_shape = _has_basic_responses_message_shape(clean_kwargs.get("messages"))
     has_chat_only_output_shape = _has_chat_only_output_shape(clean_kwargs)
     should_use_responses = (
@@ -85,7 +88,7 @@ def resolve_provider_call(
         or (
             requested_mode == "auto"
             and supports_auto_responses
-            and (model_api_mode == "responses" or has_allowed_native_tools)
+            and model_api_mode == "responses"
             and has_basic_message_shape
             and not has_chat_only_output_shape
         )
@@ -353,7 +356,7 @@ def _pop_adapter_kwargs(
     requested = clean_kwargs.pop("api_mode", None)
     if requested is None:
         if context.endpoint_role == "fallback":
-            requested = "auto"
+            requested = "chat_completions"
         else:
             requested = context.settings.llm.api_mode
     requested_text = str(requested or "auto").strip().lower()
@@ -362,10 +365,16 @@ def _pop_adapter_kwargs(
     return requested_text, clean_kwargs
 
 
-def classify_model_api_mode(model: Any) -> ModelAPIModeHint | None:
+def classify_model_api_mode(
+    model: Any,
+    *,
+    responses_api_models: tuple[str, ...] | None = None,
+) -> ModelAPIModeHint | None:
     """Return an exact model-level API mode hint for auto routing."""
 
-    return classify_known_model_api_mode(model)
+    if responses_api_models is None:
+        return classify_known_model_api_mode(model)
+    return classify_known_model_api_mode(model, responses_api_models)
 
 
 def _is_official_openai_call(

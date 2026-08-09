@@ -23,7 +23,7 @@ _ACTION_REQUIRES_FUTURE_REPAIR = {
     "re_dispatch",
     "rebuild_backbone",
 }
-_PATCHABLE_ACTION_TYPES = {"surface_patch", "section_patch", "evidence_patch", "regenerate_chapter"}
+_PATCHABLE_ACTION_TYPES = {"surface_patch", "section_patch", "regenerate_chapter"}
 _MAX_LLM_PATCH_ROUNDS_PER_CHAPTER = 3
 _MAX_PATCH_CONTEXT_CHARS = 7000
 _MAX_LOCAL_PATCH_CHARS = 2200
@@ -673,6 +673,7 @@ async def repair_or_route_review_actions(
     *,
     reviewed_chapters: list[ReviewedChapterDraft],
     review_actions: list[ReviewAction],
+    allow_llm_patches: bool = True,
 ) -> tuple[list[ReviewedChapterDraft], list[ReviewAction], list[str], list[RepairTraceItem]]:
     """Apply safe local patches and route heavier actions for later repair loops."""
 
@@ -707,6 +708,29 @@ async def repair_or_route_review_actions(
             indexed_action for indexed_action in llm_actions if _is_unit_test_append_action(indexed_action[1])
         ]
         remaining_llm_actions: list[tuple[int, ReviewAction]] = []
+        if not allow_llm_patches:
+            for action_index, action in llm_actions:
+                updated_action = action.model_copy(update={"status": "recorded"})
+                results.append(
+                    (
+                        action_index,
+                        updated_action,
+                        RepairTraceItem(
+                            trace_id=f"repair_trace_recorded_{_repair_action_key(action_index, action)}",
+                            action_id=action.action_id,
+                            action_type=action.action_type,
+                            chapter_index=action.chapter_index,
+                            status="recorded",
+                            reason=action.reason,
+                            target_anchor=action.target_anchor,
+                            changed=False,
+                            llm_attempted=False,
+                            detail="Recorded after rule review without a second semantic LLM rewrite.",
+                        ),
+                        _unresolved_message(updated_action, status="recorded"),
+                    )
+                )
+            return current_chapter, results
         repair_round = 1
         for action_batch in (regular_llm_actions, unit_test_llm_actions):
             current_batch = action_batch

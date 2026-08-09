@@ -1,6 +1,6 @@
 # Planner 链路
 
-最后更新：2026-06-15
+最后更新：2026-08-09
 
 职责：把用户目标和资料变成可确认的 `confirmed_plan`。Planner 不生成正文，不写 KG，不更新 Profile。
 
@@ -13,9 +13,7 @@
 
 ```text
 collect_planner_context
-  -> understand_goal_and_materials
-      -> compose_planner_draft
-      -> generate_course_identity
+  -> compose_planner_draft
   -> save_planner_draft
 ```
 
@@ -23,9 +21,9 @@ collect_planner_context
 
 输入：`course_id`, `user_id`, `file_ids`, `user_prompt`, `latest_plan`
 
-动作：读取上传资料、解析结果、历史 plan；资料未解析完成时降级使用文件名和 metadata。
+动作：读取上传资料、解析结果、历史 plan；短资料直接拼接，长资料按解析切片确定性、均匀摘录并保留 `section_ref`；资料未解析完成时降级使用文件名和 metadata。读取完成后，并行从现有事实整理目标边界，以及按“用户显式主题 -> 学科/关键主题 -> 文件名”生成课程名和图标。整个准备节点不调用 LLM。
 
-输出：`material_context`, `selected_file_ids`, `digest_mode`, `planner_context_stats`
+输出：`material_context`, `selected_file_ids`, `digest_mode`, `planner_context_stats`, `planning_note`, `material_note`, `generated_course_name`, `generated_course_icon_key`
 
 关键字段：
 
@@ -35,28 +33,17 @@ material_context.material_sections
 material_context.material_digest
 material_context.material_hints.chapter_candidates
 material_context.learning_domain_profile.key_topics
+planning_note
+material_note
 ```
 
-## 2. `understand_goal_and_materials`
-
-输入：`material_context`, `user_prompt`, `digest_mode`, `latest_plan`
-
-动作：并行生成目标理解和资料边界。
-
-输出：
-
-```text
-planning_note: 用户目标、学习场景、规划判断
-material_note: 资料边界、重点、缺失、风险
-```
-
-下游：`compose_planner_draft`, `generate_course_identity`, `confirmed_plan`
-
-## 3. `compose_planner_draft`
+## 2. `compose_planner_draft`
 
 输入：`material_context`, `planning_note`, `material_note`, `latest_plan`, `diagnose_answers`, `diagnose_status`, `diagnose_note`
 
 动作：先判断是否需要前置诊断；如果不需要或已回答，则生成正式方案。
+
+正式方案阶段是 Planner 唯一的内容生成 LLM 调用。前置诊断是独立的人机交互轮次，直接返回四道稳定的教学偏好题，不调用模型，也不与正式方案串成长调用链。
 
 诊断输出：
 
@@ -87,17 +74,9 @@ required_elements
 writing_instructions
 ```
 
-## 4. `generate_course_identity`
+`required_elements` 落盘前会过滤长代码、表格和 OCR 碎片，只保留可直接教学与验收的短知识点；模型输出全部不可用时，按章节标题补齐“核心概念 / 方法与典型题型 / 易错边界”三个本地目标。
 
-输入：`material_context`, `planning_note`, `material_note`, `user_prompt`
-
-动作：生成课程展示身份。
-
-输出：`generated_course_name`, `generated_course_icon_key`
-
-下游：`plan.course_name`, `plan.course_icon`, `confirmed_plan.course_name`
-
-## 5. `save_planner_draft`
+## 3. `save_planner_draft`
 
 输入：`build_plan_draft`, `generated_course_name`, `generated_course_icon_key`, `diagnose_answers`, `diagnose_status`, `diagnose_note`
 

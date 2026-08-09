@@ -21,8 +21,6 @@ PLAN_START = "<PLAN>"
 PLAN_END = "</PLAN>"
 SUGGESTION_START = "<SUGGESTION>"
 SUGGESTION_END = "</SUGGESTION>"
-DIAGNOSE_START = "<DIAGNOSE_JSON>"
-DIAGNOSE_END = "</DIAGNOSE_JSON>"
 CHAPTERS_START = "<CHAPTERS_JSON>"
 CHAPTERS_END = "</CHAPTERS_JSON>"
 
@@ -172,111 +170,6 @@ suggestion 字段正文
     )
 
 
-def build_planner_diagnosis_messages(
-    *,
-    course_name: str,
-    user_prompt: str,
-    digest_mode: str,
-    material_context: DigestMaterialContext,
-    planning_note: str,
-    material_note: str,
-    message_history: list[str],
-) -> list[dict[str, str]]:
-    """Build the first-stage prompt that only asks useful planner/docgen questions."""
-
-    mode_label = planner_mode_label(digest_mode)
-    system_prompt = f"""
-你是 AITeachMe 的前置诊断题设计器。
-本阶段不是画像问卷，也不是学习偏好调查；唯一产物是 4 个单选题，用来冻结正式 planner 和后续 DocGen 的可执行写作参数。
-
-四题固定覆盖以下四个不同维度，建议按此顺序输出：
-1. 基础起点：决定前置概念补多少、开篇铺垫长度、首批例题难度。
-2. 讲解重心：决定章节优先级、正文篇幅分配、例题类型。
-3. 练习/测试密度：决定随堂练习、变式题、章末小测题量。
-4. 练后解析方式：决定文档内例题、随堂练习和章末小测的答案要点、步骤依据、错因提醒或补充变式。
-
-只问后续文档能直接落实的选择。不要问抽象偏好、人格画像、学习动机、无法写进正文的目标，也不要承诺提分、掌握、通过考试等无法验证的效果。
-
-题面和选项必须像快速选择题：
-- question 通常 8-20 个中文字符，直问一个可执行取舍。
-- 每题 options 必须正好 4 个互斥选项。
-- 每个 option 通常 4-12 个中文字符，最长不超过 16 个中文字符。
-- option 用学生容易理解的短标签，能映射到正文讲法、例题、练习、测验或解析方式，例如“先补基础”“例题带路”“多练变式”“错因提醒”。
-- 避免“重某某思维”“强化能力”“提升素养”“高效学习”“大量训练”“竞赛拔高”这类难落地或过度承诺的标签。
-
-purpose 必须以“文档落点：”开头，并写清这题会改变哪些实际文档部件，例如章节顺序、讲解起点、例题难度、练习密度、章末小测题型、文档内答案解析或错因提示。purpose 只描述生成策略，不要写“第一章/第二章/第 N 章/生成 N 章”等章节编号或数量表达。
-
-输出前自检：
-- JSON 数组正好 4 项。
-- 每项都有 question、purpose、options。
-- 每个 options 正好 4 个不重复短标签。
-- 四题分别落到基础起点、讲解重心、练习/测试密度、练后解析方式。
-- 第四题只能控制 DocGen 文档内部的解析写法，不要写成真实考试后的反馈、成绩复盘、学习画像更新或后续 examine/profile 流程。
-- purpose 不引入具体章节编号或章节数量，避免被误解成用户要求的章节结构。
-- 没有抽象偏好题、人格题、长句选项或无法在文档中兑现的承诺。
-
-输出内容只包含：
-{DIAGNOSE_START} 到 {DIAGNOSE_END} 之间放合法 JSON 数组。
-""".strip()
-    prompt = f"""
-请生成前置诊断单选题。
-
-课程/主题：{course_name}
-用户原始输入：{user_prompt or "未提供"}
-模式：{mode_label}
-
-规划判断：
-{planning_note or "暂无"}
-
-资料边界：
-{material_note or "暂无"}
-
-资料画像：
-{render_material_overview(material_context)}
-
-资料上下文：
-{render_material_digest(material_context)}
-
-最近对话：
-{render_message_history(message_history)}
-
-输出 JSON 结构：
-[
-  {{"question":"短问题","purpose":"文档落点：它会改变哪些章节内容","options":["短选项一","短选项二","短选项三","短选项四"]}}
-]
-
-诊断题要求：
-1. 每题都必须能在 DocGen 文档中看见结果，不能只是“学习风格偏好”。
-2. 如果用户给出考试、天数、章节清单或资料边界，优先围绕这些约束提问，但仍保持四个维度各一题。
-3. 题目不要重复问同一维度；不要把“讲解重心”和“练习密度”混成两道相似偏好题。
-4. 选项避免“提高能力、强化思维、大量训练、重竞赛思维”这类空话，也不要写成长句；把具体执行细节写进 purpose。
-5. good question 示例：“基础从哪起？”“讲解重哪里？”“练习怎么放？”“解析怎么写？”。
-6. good option 示例：“先补基础”“概念先讲”“例题带路”“多练变式”“章末小测”“错因提醒”“步骤解析”“只给要点”“补变式题”。
-7. bad option 示例：“全面提升”“强化思维”“高效掌握”“大量训练”“竞赛拔高”“按个人偏好”。
-
-严格按以下格式输出：
-{DIAGNOSE_START}
-[{{"question":"问题文本","purpose":"文档落点：影响的章节、例题、练习、文档内小测或解析配置","options":["短选项一","短选项二","短选项三","短选项四"]}}]
-{DIAGNOSE_END}
-""".strip()
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": prompt},
-    ]
-    return trace_prompt_build(
-        "planner_diagnosis",
-        inputs={
-            "course_name": course_name,
-            "user_prompt_chars": len(user_prompt or ""),
-            "digest_mode": digest_mode,
-            "planning_note_chars": len(planning_note or ""),
-            "material_note_chars": len(material_note or ""),
-            "message_history_count": len(message_history),
-        },
-        output=messages,
-    )
-
-
 def build_planner_repair_messages(
     *,
     original_messages: list[dict[str, str]],
@@ -319,13 +212,10 @@ def _render_previous_planner(latest_plan: dict[str, Any] | None) -> str:
 __all__ = [
     "CHAPTERS_END",
     "CHAPTERS_START",
-    "DIAGNOSE_END",
-    "DIAGNOSE_START",
     "PLAN_END",
     "PLAN_START",
     "SUGGESTION_END",
     "SUGGESTION_START",
-    "build_planner_diagnosis_messages",
     "build_planner_repair_messages",
     "build_planner_stream_messages",
 ]

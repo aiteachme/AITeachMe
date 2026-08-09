@@ -7,16 +7,11 @@ from typing import Any
 
 from pydantic import Field, field_validator, model_validator
 
-from app.shared.infra.llm_support import acompletion_with_fallback
-from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.models import (
-    ChapterDraft,
-    ChapterGenerationTask,
     DocGenBaseModel,
     clean_string_list,
     clean_text,
 )
-from app.workflows.digest.docgen.prompts.chapter_unit_tests import build_chapter_unit_test_messages
 
 
 _BODY_TEST_OR_RECAP_HEADING_RE = re.compile(r"(?ms)^##\s+(?P<title>[^\n]+?)\s*\n.*?(?=^##\s+|\Z)")
@@ -488,77 +483,11 @@ def normalize_published_unit_test_sections(markdown: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", cleaned).strip() + "\n"
 
 
-async def generate_chapter_unit_tests(
-    *,
-    draft: ChapterDraft,
-    task: ChapterGenerationTask | None,
-    digest_mode: str,
-    min_items: int,
-    max_items: int,
-    trace_metadata: dict[str, object] | None = None,
-) -> ChapterUnitTestSet:
-    """Generate structured unit tests for one chapter; fail instead of fabricating local items."""
-
-    task = task or ChapterGenerationTask(chapter_index=draft.chapter_index, confirmed_title=draft.title)
-    required_elements = _task_targets(task)
-    chapter_end_practice_plan = list((task.practice_seed_policy or {}).get("chapter_end_practice_plan") or task.chapter_end_practice_plan or [])
-    messages = build_chapter_unit_test_messages(
-        chapter_title=draft.title,
-        digest_mode=digest_mode,
-        required_elements=required_elements,
-        chapter_end_practice_plan=chapter_end_practice_plan,
-        markdown=strip_existing_unit_test_sections(draft.markdown),
-        min_items=min_items,
-        max_items=max_items,
-    )
-    try:
-        response = await acompletion_with_fallback(
-            messages,
-            response_model=ChapterUnitTestSet,
-            **docgen_completion_kwargs_with_metadata(
-                DocGenModelStep.UNIT_TESTS,
-                digest_mode=digest_mode,
-                extra_metadata=trace_metadata or {},
-                chapter_index=draft.chapter_index,
-                substep="chapter_unit_tests",
-            ),
-        )
-        result = response if isinstance(response, ChapterUnitTestSet) else ChapterUnitTestSet.model_validate(response)
-    except Exception as exc:
-        raise ChapterUnitTestGenerationError(
-            f"unit-test model failed for chapter {draft.chapter_index}: {exc}"
-        ) from exc
-    result.chapter_index = draft.chapter_index
-    result.items = _prepare_unit_test_items(
-        result.items,
-        title=draft.title,
-        min_items=min_items,
-        max_items=max_items,
-        fallback_targets=required_elements,
-    )
-    return result
-
-
-def _task_targets(task: ChapterGenerationTask) -> list[str]:
-    return clean_string_list(
-        [
-            *task.content_points,
-            *task.concept_targets,
-            *task.definition_targets,
-            *task.formula_targets,
-            *task.example_targets,
-            *task.pitfall_targets,
-            *task.required_elements,
-        ],
-        limit=12,
-    )
-
 __all__ = [
     "ChapterUnitTestGenerationError",
     "ChapterUnitTestItem",
     "ChapterUnitTestSet",
     "append_unit_test_markdown",
-    "generate_chapter_unit_tests",
     "normalize_published_unit_test_sections",
     "render_unit_test_markdown",
     "strip_existing_unit_test_sections",

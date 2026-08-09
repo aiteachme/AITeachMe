@@ -131,6 +131,21 @@ def _strings(value: Any) -> list[str]:
     return cleaned
 
 
+_MAX_REQUIRED_ELEMENT_CHARS = 120
+
+
+def _required_elements(value: Any) -> list[str]:
+    """Keep chapter requirements as concise teaching targets, not OCR fragments."""
+
+    return [
+        text
+        for text in _strings(value)
+        if len(text) <= _MAX_REQUIRED_ELEMENT_CHARS
+        and text.count("|") < 3
+        and "```" not in text
+    ]
+
+
 def _diagnosis_contract_text(value: Any, *, field: str = "text") -> str:
     text = _student_facing_text(value)
     if not text:
@@ -308,6 +323,7 @@ def render_planner_chapter_contract(value: Any) -> str:
             "- 章节是可直接授课的内容模块，标题写成可独立理解的课程目录名，通常 4-12 字，不使用冒号/破折号副标题；过宽的目录词只补一个短学习焦点。",
             "- required_elements/key_points 描述所属章节内部的目标、概念、例题、易错点、练习、检测、纠错和巩固安排。",
             "- required_elements/key_points 中的知识对象必须具体：写成概念名、方法名、题型名或错因名；不要把“图示”“方法步骤”“单元测试”“讲后纠错与回顾”“为后续章节打底”当成独立要点。图示/小测/纠错需求要落成具体对象，例如“函数图像读图”“函数值求解例题”“自变量与因变量混淆”“函数综合练习题型”。",
+            "- 每个 required_elements/key_points 必须是一个不超过 60 个汉字的短知识点；禁止复制材料原文、代码、表格行、OCR 碎片或整段例题。",
             "- 用户以“按 A、B、C 划分章节/模块/单元”给出列表时，这个列表就是完整一级章节清单，chapters 与 A/B/C 逐项对应，数组长度等于列表项数量。",
             "- 用户给出的列表项已是清晰知识块名称时，标题等于该列表项；如果只是宽泛类别，可保留原词并补一个简短限定；进度、训练和检测安排写进 required_elements/key_points。",
             "- 用户同时给出学习天数和 A/B/C 列表时，天数是 A/B/C 的进度预算；最后一个知识块按它自身的具体对象、方法和练习安排展开。",
@@ -351,11 +367,15 @@ def _resolve_course_name(
 
 def _merge_chapter(raw: Mapping[str, Any], index: int) -> PlannerChapterPlan:
     title = _compact_planner_chapter_title(_text(raw.get("title")))
-    key_points = _strings(raw.get("required_elements") or raw.get("key_points"))
+    key_points = _required_elements(raw.get("required_elements") or raw.get("key_points"))
     if not title:
         raise ValueError(f"planner chapter #{index} is missing title")
     if not key_points:
-        raise ValueError(f"planner chapter `{title}` is missing key_points")
+        key_points = [
+            f"{title}核心概念",
+            f"{title}方法与典型题型",
+            f"{title}易错边界",
+        ]
     return PlannerChapterPlan(
         chapter_index=_positive_int(raw.get("chapter_index")) or index,
         title=title,

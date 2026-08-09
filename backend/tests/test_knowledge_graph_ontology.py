@@ -7,7 +7,10 @@ from app.workflows.digest.kg_doc_sync.lib.ontology import (
     format_ontology_unit_type_bullets,
     relation_endpoint_type_preferences,
 )
-from app.workflows.digest.kg_doc_sync.prompts.section_graph import SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
+from app.workflows.digest.kg_doc_sync.prompts.section_graph import (
+    SYSTEM_PROMPT_KNOWLEDGE_EXTRACT,
+    USER_PROMPT_KNOWLEDGE_EXTRACT,
+)
 from app.models.knowledge_taxonomy import (
     PARENT_KNOWLEDGE_UNIT_TYPES,
     PRIMARY_KNOWLEDGE_UNIT_TYPES,
@@ -57,6 +60,10 @@ def test_section_graph_prompt_uses_canonical_ontology_bullets():
     assert "`resource`" not in unit_bullets
     for spec in LEARNING_GRAPH_ONTOLOGY.relation_types:
         assert f"`{spec.value}`" in SYSTEM_PROMPT_KNOWLEDGE_EXTRACT
+
+
+def test_section_graph_prompt_keeps_a_bounded_static_context() -> None:
+    assert len(SYSTEM_PROMPT_KNOWLEDGE_EXTRACT) + len(USER_PROMPT_KNOWLEDGE_EXTRACT) <= 5200
 
 
 def test_relation_direction_rules_match_kg_doc_sync_ontology():

@@ -97,13 +97,16 @@ def build_docgen_writer_messages(
     mode_profile = get_docgen_mode_profile(digest_mode)
     normalized_mode = mode_profile.mode
     mode_label = mode_profile.prompt_label
-    required_text = "、".join(required_elements) if required_elements else "核心概念、推理过程、典型例子"
+    required_text = (
+        "\n".join(f"{index}. {item}" for index, item in enumerate(required_elements, start=1))
+        if required_elements
+        else "1. 核心概念、推理过程、典型例子"
+    )
     execution_contract = dict(execution_contract or {})
     practice_quota = dict(execution_contract.get("practice_quota") or {})
     content_role_targets = dict(execution_contract.get("content_role_targets") or {})
     example_coverage_plan = list(execution_contract.get("example_coverage_plan") or [])
     chapter_end_practice_plan = list(execution_contract.get("chapter_end_practice_plan") or [])
-    content_mix_policy = dict(execution_contract.get("content_mix_policy") or {})
     coverage_policy = [
         str(item).strip()
         for item in list(execution_contract.get("coverage_policy") or [])
@@ -158,7 +161,7 @@ def build_docgen_writer_messages(
 练习组织原则：
 - 按章节角色选择组织方式：概念章用短例子和反例，方法章用步骤和检查点，训练章按真实题型或任务差异分组。
 - 学习活动目标：训练型约 {training_min_examples} 个，普通方法章至少 {min_worked_examples} 个，概念章至少 {concept_min_examples} 个；完整活动含题目/任务、解析、答案/结论、易错点。
-- 正文知识点内安排必要例题、短检查和变式；章末单元测试由后续专门节点生成。
+- 正文知识点内安排必要例题、短检查和变式，并在本次写作末尾直接生成章末单元测试。
 """.strip()
     contract_summary = (
         f"- 目标字数：{execution_contract.get('target_word_count') or '未指定'}\n"
@@ -171,7 +174,7 @@ def build_docgen_writer_messages(
         f"- 例题密度：{example_density_policy.get('policy_text') or '例题、案例和任务服务当前知识点。'}\n"
         f"- 内容角色目标：{content_role_targets}\n"
         f"- 例题覆盖计划：{example_coverage_plan}\n"
-        f"- 章末单元测试计划：{chapter_end_practice_plan}（供后续专门节点使用，正文写作阶段只生成知识正文）\n"
+        f"- 章末单元测试计划：{chapter_end_practice_plan}（本次写作直接落成最终测试模块）\n"
         f"- 覆盖检查策略：{'；'.join(coverage_policy) if coverage_policy else '按学习大纲覆盖核心知识和例题。'}\n"
         f"- 本章主张目标：{'；'.join(claim_targets) if claim_targets else '按学习大纲覆盖'}\n"
         f"- 学习者画像参考：{learner_profile or '暂无画像；按用户目标和资料本身写作'}\n"
@@ -190,7 +193,8 @@ def build_docgen_writer_messages(
 章节标题：{title}
 学习目标：{objective or "把本章最核心的知识主线讲清楚。"}
 文档模式：{mode_label}
-必须覆盖：{required_text}
+必须逐项覆盖；每项至少落实到一个正文段落、小节、例题或练习，不得只在标题或清单中提及：
+{required_text}
 可用来源数量：{source_count}
 额外写作要求：{writing_instructions or "保持教学导向，强调理解路径与复习价值。"}
 
@@ -202,14 +206,15 @@ def build_docgen_writer_messages(
 
 写作口径：
 1. 只输出本章中文 Markdown 正文，以 `# {title}` 开头。
-2. {_opening_structure_instruction(digest_mode=normalized_mode)}；章末测试由后续专门节点追加。
+2. {_opening_structure_instruction(digest_mode=normalized_mode)}；最后直接生成唯一的 `## 单元测试`。
 3. 每个知识点小节讲清对象、条件/边界、处理路径、例题/任务、答案/结论和易错点/检查点。
 4. 例题、案例、变式训练和自测贴合本章材料；每个可判断任务给解析、答案或判定依据。
 5. 执行合同中的“本章边界外主题”只作必要前后联系，不扩写成独立小节。
 6. 学习者画像只调整解释节奏、练习密度、文档内解析方式和易错提醒；如果含前置诊断信号，把它落实到讲解起点、例题、练习、错因提醒、例题/练习解析和章末检测配置中，不在正文复述问卷，也不要写成真实考试后的反馈流程。
 7. 只有当概念关系、方法流程、几何/坐标/结构关系、实验路径等靠文字不直观时，才请求 Mermaid 图示；不要为公式展开、三步文字清单、单条箭头线或纯文字关系生成图。只允许使用 Mermaid 代码块表达图示，不请求图片、SVG、HTML 图或交互图。代码块只用于代码、命令、伪代码或 Mermaid。
-8. 严格控制篇幅：正文围绕目标字数写作，最多不超过目标字数约 35%；如果覆盖要求和篇幅冲突，压缩例题数量、合并相近提示，只保留最关键方法、易错点和短练习。
+8. 严格控制篇幅：正文围绕目标字数写作，最多不超过目标字数约 35%；如果覆盖要求和篇幅冲突，合并相近解释与重复例题，但不得删除“必须逐项覆盖”中的任何一项。
 9. 较长章节自然加入 2-3 个短提示块：`> [!IMPORTANT]` 写关键前提/结论，`> [!TIP]` 写快速抓手，`> [!WARNING]` 写易错边界；题干或短练习可用 `> [!QUESTION]` 轻底色题块，解析、步骤和答案保持普通正文。
+10. `## 单元测试` 必须是最后一个二级标题，按计划生成 {chapter_end_min_tasks}-{chapter_end_max_tasks} 个可判断的短题、案例检查、步骤任务、边界辨析或迁移任务；每题都包含题目以及答案、判定依据或解析，不能只留“自行思考”。
 
 版式合同：
 {_presentation_contract(digest_mode=normalized_mode)}
@@ -222,11 +227,15 @@ def build_docgen_writer_messages(
 输出要求：
 1. 只输出中文 Markdown。
 2. 一级标题必须是 `# {title}`。
-3. 本阶段只写知识正文和知识点内的例题、变式、检查点；正文末尾停在最后一个知识小节，章末测验由后续专门节点追加。
+3. 在知识正文和知识点内例题、变式、检查点之后，直接以唯一的 `## 单元测试` 收尾，不再交给第二次模型调用追加。
 4. 只写学生可见正文；不输出内部协议、调试信息、来源附录、草稿痕迹、HTML 注释或未渲染占位内容。
 
 研究材料：
 {dense_context}
+
+交稿前静默自检（不要把自检过程写进正文）：
+- 再逐项核对开头“必须逐项覆盖”的 {len(required_elements) or 1} 项要求；每项必须在正文解释、例题、练习或边界辨析中有实际内容。
+- 若仍有漏项，先合并重复解释或练习腾出篇幅并补齐，再输出最终 Markdown；不得用目录、清单或仅复述要素名称冒充覆盖。
 """.strip()
     messages = [
         {"role": "system", "content": system_prompt},
@@ -247,88 +256,6 @@ def build_docgen_writer_messages(
     )
 
 
-def build_docgen_heading_repair_messages(
-    *,
-    title: str,
-    objective: str,
-    digest_mode: str,
-    required_elements: list[str],
-    writing_instructions: str,
-    source_count: int,
-    markdown: str,
-    dense_context: str,
-    chapter_index: int | None = None,
-    chapter_count: int | None = None,
-) -> list[dict[str, str]]:
-    mode_profile = get_docgen_mode_profile(digest_mode)
-    normalized_mode = mode_profile.mode
-    mode_label = mode_profile.prompt_label
-    required_text = "、".join(required_elements) if required_elements else "核心概念、推理过程、典型例子"
-    system_prompt = """
-你是 AITeachMe 的教学编辑助手。
-你的任务不是重写整章主题，而是在保留原有内容价值和文风的前提下，修复章节的二级、三级标题与结构组织。
-标题要自然、具体、像真实中文讲义；参考结构只能帮助判断缺口，不能变成固定模板。
-修订目标是让它更像可读的课程讲义，而不是研究草稿、内部整理记录或套格式的提纲。
-标题应是内容名词短语，而不是学习动作口号、问答提示或内部修补口吻。
-标题只表达语义，不承担编号或样式说明。
-""".strip()
-    # 标题修复只需要局部参考；完整正文和完整研究上下文仍保留在 state/manifest。
-    user_prompt = f"""
-请把下面这一章 Markdown 修订成“标题和结构更清楚，但仍保持原有教学内容”的版本。
-章节标题：{title}
-学习目标：{objective or "把本章最核心的知识主线讲清楚"}
-文档模式：{mode_label}
-必须覆盖：{required_text}
-可用来源数量：{source_count}
-额外写作要求：{writing_instructions or "保持教学导向，优先让结构更清楚"}
-章节位置：第 {chapter_index or 1} 章 / 共 {chapter_count or '?'} 章
-
-模式参考：
-{_build_mode_contract(digest_mode=normalized_mode, chapter_index=chapter_index, chapter_count=chapter_count)}
-
-输出要求：
-1. 只输出修订后的完整中文 Markdown。
-2. 一级标题必须保持为 `# {title}`。
-3. 可以重命名、合并或降级标题；孤立三级标题要并入更具体的 `##`，或改成正文加粗小节。
-4. 标题要来自本章知识对象、方法、任务/题型或应用场景；不要套固定表头。
-5. 如果原文存在泛化目录标题、学习动作标题、内部检查标题、序号占位题型或证据整理标题，必须按小节正文改成具体内容名，或合并进相邻小节；不要保留这些标签当目录标题。
-6. 保留已有正文、例子、公式和重点提示块的学习价值，只删除重复、跑题、草稿痕迹、原始来源清单和内部调试信息。
-7. 只在结构确实不完整时补少量过渡句、总结句或提示句；不能凭空编造来源事实，不能改变公式和代码字面量的原意。
-
-写作口径：
-表达要像真实中文教学讲义：清楚、克制、可信、面向学习，不写聊天回复、鸡汤或内部草稿。
-版式口径：
-{_presentation_contract(digest_mode=normalized_mode)}
-如果正文已有例题、案例或任务区，要保留“题目/案例、解析、易错点”这类学习价值，不要改成只有列表。
-
-参考写作路径，不要照抄为目录：
-{_chapter_shape_hint(digest_mode=normalized_mode)}
-
-可参考但不要照抄的研究线索：
-{dense_context or "暂无额外研究线索，请主要整理现有正文结构。"}
-
-当前 Markdown：
-{markdown}
-""".strip()
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_prompt},
-    ]
-    return trace_prompt_build(
-        "docgen_heading_repair",
-        inputs={
-            "title": title,
-            "digest_mode": digest_mode,
-            "required_count": len(required_elements),
-            "markdown_chars": len(markdown),
-            "dense_context_chars": len(dense_context),
-            "chapter_index": chapter_index,
-            "chapter_count": chapter_count,
-        },
-        output=messages,
-    )
-
-
 def build_docgen_research_purify_messages(
     *,
     dense_context: str,
@@ -339,7 +266,6 @@ def build_docgen_research_purify_messages(
 ) -> list[dict[str, str]]:
     must_cover = "、".join(required_elements) if required_elements else "与本章最相关的核心知识"
     profile = get_docgen_mode_profile(digest_mode)
-    normalized_mode = profile.mode
     mode_label = profile.prompt_label
     system_prompt = """
 你是 AITeachMe 的研究整理助手。
@@ -505,7 +431,6 @@ def build_docgen_gap_query_messages(
 
 
 __all__ = [
-    "build_docgen_heading_repair_messages",
     "build_docgen_mermaid_prompt",
     "build_docgen_research_purify_messages",
     "build_docgen_sub_query_messages",

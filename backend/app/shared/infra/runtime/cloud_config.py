@@ -8,6 +8,7 @@ from sqlalchemy.exc import ArgumentError
 
 from app.shared.infra.env_support import get_env
 from app.shared.infra.settings import get_project_settings
+from app.shared.infra.settings.support import ProjectSettingsLoadError
 
 _MIN_AUTH_TOKEN_SECRET_LENGTH = 32
 _TRUE_VALUES = {"1", "true", "yes", "on"}
@@ -22,6 +23,8 @@ def collect_project_settings_config_errors() -> list[str]:
 
     try:
         get_project_settings()
+    except ProjectSettingsLoadError as exc:
+        return [str(exc)]
     except ValidationError as exc:
         errors: list[str] = []
         for detail in exc.errors(

@@ -33,7 +33,14 @@ def test_docgen_prepares_knowledge_graph_after_final_titles_before_publish() -> 
     def fail_node(node_key: str) -> str:
         return workflow.branches[node_key]["检查是否继续"].ends["fail"]
 
-    assert next_node(docgen_graph.NODE_REPAIR_OR_ROUTE) == docgen_graph.NODE_MERGE_REVIEW
+    assert (
+        (docgen_graph.NODE_REPAIR_OR_ROUTE, docgen_graph.NODE_GENERATE_COVER),
+        docgen_graph.NODE_MERGE_REVIEW,
+    ) in workflow.waiting_edges
+    assert (
+        (docgen_graph.NODE_PREPARE_GLOBAL_SEED, docgen_graph.NODE_LOCK_TITLES),
+        docgen_graph.NODE_ASSEMBLE_CHAPTER_TASKS,
+    ) in workflow.waiting_edges
     assert next_node(docgen_graph.NODE_MERGE_REVIEW) == docgen_graph.NODE_SYNC_LOCKED_TITLES
     assert next_node(docgen_graph.NODE_SYNC_LOCKED_TITLES) == docgen_graph.NODE_PREPARE_KNOWLEDGE_GRAPH
     assert next_node(docgen_graph.NODE_PREPARE_KNOWLEDGE_GRAPH) == docgen_graph.NODE_PUBLISH

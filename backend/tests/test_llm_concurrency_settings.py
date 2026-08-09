@@ -18,6 +18,7 @@ from app.shared.infra.llm_support import scheduler as scheduler_module
 from app.shared.infra.llm_support.defaults import DEFAULT_LLM_CONCURRENCY_LIMIT
 from app.shared.infra.llm_support.scheduler import get_llm_scheduler
 from app.shared.infra.settings import (
+    get_default_settings_values,
     get_settings,
     reset_project_settings_cache,
     set_system_settings_override,
@@ -48,6 +49,41 @@ def test_llm_concurrency_runtime_settings_override_default() -> None:
 
     assert get_settings().llm.concurrency_limit == 3
     assert get_llm_concurrency_limit() == 3
+
+
+def test_model_route_lists_follow_project_then_local_runtime_precedence(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    defaults = get_default_settings_values()
+    assert defaults["llm"]["responses_api_models"] == []
+    assert defaults["llm"]["fallback_only_models"] == []
+
+    settings_path = tmp_path / "settings.yaml"
+    settings_path.write_text(
+        "llm:\n"
+        "  responses_api_models: [yaml-response]\n"
+        "  fallback_only_models: [yaml-fallback]\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PROJECT_SETTINGS_PATH", str(settings_path))
+    reset_project_settings_cache()
+    set_system_settings_override({})
+
+    try:
+        project_settings = get_settings()
+        assert project_settings.llm.responses_api_models == ("yaml-response",)
+        assert project_settings.llm.fallback_only_models == ("yaml-fallback",)
+
+        set_system_settings_override(
+            {"llm": {"responses_api_models": ["runtime-response"]}}
+        )
+        effective_settings = get_settings()
+        assert effective_settings.llm.responses_api_models == ("runtime-response",)
+        assert effective_settings.llm.fallback_only_models == ("yaml-fallback",)
+    finally:
+        monkeypatch.delenv("PROJECT_SETTINGS_PATH")
+        _reset_settings_state()
 
 
 def test_kg_graph_cap_uses_full_shared_llm_limit() -> None:

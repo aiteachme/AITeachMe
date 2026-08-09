@@ -9,7 +9,7 @@ from pydantic import ValidationError
 from app import main as app_main
 from app.shared.infra.runtime import cloud_config, mode
 from app.shared.infra.storage import config as storage_config
-from app.shared.infra.settings import Settings
+from app.shared.infra.settings import Settings, reset_project_settings_cache
 from scripts import bootstrap_cloud_db, check_cloud_db, start_cloud_app
 
 
@@ -76,6 +76,34 @@ def test_cloud_runtime_config_reports_settings_schema_mismatch_without_values(
 
     assert any("fallback_models.removed_field" in error for error in errors)
     assert all("must-not-appear-in-errors" not in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    ("contents", "expected_error"),
+    [
+        (None, "does not exist"),
+        ("llm: [", "not valid YAML"),
+    ],
+)
+def test_configured_project_settings_file_must_load(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    contents: str | None,
+    expected_error: str,
+) -> None:
+    settings_path = tmp_path / "settings.yaml"
+    if contents is not None:
+        settings_path.write_text(contents, encoding="utf-8")
+    monkeypatch.setenv("PROJECT_SETTINGS_PATH", str(settings_path))
+    reset_project_settings_cache()
+
+    try:
+        errors = cloud_config.collect_project_settings_config_errors()
+    finally:
+        monkeypatch.delenv("PROJECT_SETTINGS_PATH")
+        reset_project_settings_cache()
+
+    assert any(expected_error in error for error in errors)
 
 
 @pytest.mark.parametrize(

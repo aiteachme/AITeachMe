@@ -33,12 +33,8 @@ from app.workflows.digest.docgen.lib.pipeline_context import (
 )
 from app.workflows.digest.docgen.lib.pipeline_artifacts import build_chapter_kg_refinement_item
 from app.workflows.digest.docgen.nodes.common import extract_markdown_preview_headings, publish_docgen_progress
-from app.workflows.digest.docgen.lib.quality import review_document_consistency, review_document_consistency_with_llm
+from app.workflows.digest.docgen.lib.quality import review_document_consistency
 from app.workflows.digest.docgen.state import DocGenState
-from app.workflows.digest.kg_doc_sync.lib.prefetch import (
-    start_docgen_kg_prefetch,
-    start_docgen_kg_prefetch_incremental,
-)
 
 
 def _review_decision(actions: list[ReviewAction], *, document_issue_count: int, document_has_error: bool = False) -> str:
@@ -116,38 +112,6 @@ def _materialize_reviewed_chapters(state: DocGenState) -> list[ReviewedChapterDr
             key=lambda raw: int((raw or {}).get("chapter_index", 0) or 0),
         )
     ]
-
-
-def _review_kg_manifest(
-    state: DocGenState,
-    *,
-    phase: str,
-    kg_refinement_items: list[dict[str, object]] | None = None,
-) -> dict[str, object]:
-    refinement_items = [
-        *list(state.get("kg_refinement_items") or []),
-        *list(kg_refinement_items or []),
-    ]
-    return {
-        "intent_profile": dict(state.get("intent_profile") or state.get("intent_core") or {}),
-        "intent_enhanced": dict(state.get("intent_enhanced") or {}),
-        "summary_enhanced": dict(state.get("summary_enhanced") or {}),
-        "user_profile": dict(state.get("user_profile") or {}),
-        "chapters_enhanced": list(state.get("chapters_enhanced") or []),
-        "chapter_task_seeds": list(state.get("chapter_task_seeds") or []),
-        "chapter_execution_briefs": list(state.get("chapter_execution_briefs") or []),
-        "chapter_generation_plan": dict(state.get("chapter_generation_plan") or {}),
-        "chapter_generation_plan_seed": dict(state.get("chapter_generation_plan_seed") or {}),
-        "document_backbone_snapshot": dict(state.get("document_backbone") or {}),
-        "guideline": dict(state.get("guideline") or {}),
-        "dispatch_table": dict(state.get("dispatch_table") or {}),
-        "preliminary_kg": dict(state.get("preliminary_kg") or {}),
-        "kg_refinement_items": refinement_items,
-        "docgen_kg_draft": dict(state.get("docgen_kg_draft") or {}),
-        "review_actions": list(state.get("review_action_items") or state.get("review_actions") or []),
-        "digest_mode": str(state.get("digest_mode") or ""),
-        "kg_prefetch_phase": phase,
-    }
 
 
 def build_review_chapter_node(*, context: WorkflowContext):
@@ -280,17 +244,6 @@ def build_review_chapter_node(*, context: WorkflowContext):
             report=report,
             actions=actions,
         )
-        kg_prefetch_incremental_started = start_docgen_kg_prefetch_incremental(
-            course_id=state["course_id"],
-            build_session_id=state.get("build_session_id", ""),
-            chapters=[reviewed.model_dump(mode="json")],
-            document_backbone=dict(state.get("document_backbone") or {}),
-            docgen_manifest=_review_kg_manifest(
-                state,
-                phase="reviewed_chapter_incremental",
-                kg_refinement_items=[kg_refinement_item],
-            ),
-        )
         await publish_docgen_progress(
             context,
             state=state,
@@ -304,7 +257,7 @@ def build_review_chapter_node(*, context: WorkflowContext):
                 "evidence_support_score": report.evidence_support_score,
                 "kg_refinement_node_count": int(kg_refinement_item.get("node_count", 0) or 0),
                 "kg_refinement_edge_count": int(kg_refinement_item.get("edge_count", 0) or 0),
-                "kg_prefetch_incremental_started": kg_prefetch_incremental_started,
+                "kg_prefetch_incremental_started": False,
             },
         )
         return {
@@ -320,7 +273,7 @@ def build_review_chapter_node(*, context: WorkflowContext):
             "review_action_items": [item.model_dump(mode="json") for item in actions],
             "kg_refinement_items": [kg_refinement_item],
             "review_ms": elapsed_ms,
-            "llm_calls_total": 1,
+            "llm_calls_total": 0,
         }
 
     return review_chapter_node
@@ -345,42 +298,22 @@ def build_document_consistency_review_node(*, context: WorkflowContext):
             ReviewAction.model_validate(item)
             for item in list(state.get("review_action_items") or [])
         ]
-        kg_prefetch_started = start_docgen_kg_prefetch(
-            course_id=state["course_id"],
-            build_session_id=state.get("build_session_id", ""),
-            chapters=[item.model_dump(mode="json") for item in reviewed],
-            document_backbone=dict(state.get("document_backbone") or {}),
-            docgen_manifest=_review_kg_manifest(state, phase="reviewed_markdown"),
+        kg_prefetch_status = "incremental_from_reviewed_chapters"
+        consistency_report = review_document_consistency(
+            reviewed_chapters=reviewed,
+            document_backbone=document_backbone,
+            expected_chapter_count=len(list(state.get("chapter_tasks") or [])),
         )
-        kg_prefetch_status = (
-            "refreshed_from_reviewed_chapters" if kg_prefetch_started else "not_started_from_reviewed_chapters"
-        )
-        if len(reviewed) <= 1:
-            consistency_report = review_document_consistency(
-                reviewed_chapters=reviewed,
-                document_backbone=document_backbone,
-                expected_chapter_count=len(list(state.get("chapter_tasks") or [])),
-            )
-            consistency_report = consistency_report.model_copy(
-                update={
-                    "source_summary": {
-                        **dict(consistency_report.source_summary or {}),
-                        "document_review_mode": "single_chapter_rule_guardrail",
-                    }
+        consistency_report = consistency_report.model_copy(
+            update={
+                "source_summary": {
+                    **dict(consistency_report.source_summary or {}),
+                    "document_review_mode": "rule_cross_chapter_guardrail",
                 }
-            )
-            document_actions = []
-            llm_calls = 0
-        else:
-            consistency_report, document_actions, llm_calls = await review_document_consistency_with_llm(
-                reviewed_chapters=reviewed,
-                document_backbone=document_backbone,
-                expected_chapter_count=len(list(state.get("chapter_tasks") or [])),
-                digest_mode=state.get("digest_mode") or "",
-                guideline=dict(state.get("guideline") or {}),
-                dispatch_table=dict(state.get("dispatch_table") or {}),
-                learner_profile_text=str(state.get("learner_profile_text") or ""),
-            )
+            }
+        )
+        document_actions = []
+        llm_calls = 0
         actions = [*actions, *document_actions]
         review_decision = _review_decision(
             actions,

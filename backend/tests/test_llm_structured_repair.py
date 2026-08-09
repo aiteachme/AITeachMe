@@ -125,7 +125,7 @@ async def test_structured_completion_strips_provider_native_tools(monkeypatch) -
     monkeypatch.setattr(structured_calls, "_load_instructor", lambda: None)
     set_system_settings_override({
         "models": {"primary": "gpt-5.5"},
-        "llm": {"api_mode": "auto"},
+        "llm": {"api_mode": "auto", "responses_api_models": ["gpt-5.5"]},
     })
 
     result = await structured_calls.acompletion_structured(
@@ -166,7 +166,7 @@ async def test_structured_completion_uses_responses_for_gpt55_gateway_without_v1
     monkeypatch.setattr(structured_calls, "_load_instructor", lambda: None)
     set_system_settings_override({
         "models": {"primary": "gpt-5.5"},
-        "llm": {"api_mode": "auto"},
+        "llm": {"api_mode": "auto", "responses_api_models": ["gpt-5.5"]},
     })
 
     result = await structured_calls.acompletion_structured(
@@ -209,7 +209,7 @@ async def test_structured_completion_repairs_responses_parse_failure_without_cha
     monkeypatch.setattr(structured_calls, "_load_instructor", lambda: None)
     set_system_settings_override({
         "models": {"primary": "gpt-5.5"},
-        "llm": {"api_mode": "auto"},
+        "llm": {"api_mode": "auto", "responses_api_models": ["gpt-5.5"]},
     })
 
     result = await structured_calls.acompletion_structured(

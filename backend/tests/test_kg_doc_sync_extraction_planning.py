@@ -6,6 +6,7 @@ from app.workflows.digest.docgen.lib.publish import build_merged_markdown
 from app.workflows.digest.kg_doc_sync.lib import incremental_sync
 from app.workflows.digest.kg_doc_sync.lib.extraction import ChunkExtractionResult
 from app.workflows.digest.kg_doc_sync.lib.extraction import _assign_candidate_ids_and_edge_types
+from app.workflows.digest.kg_doc_sync.lib.extraction import _clean_candidate_display_name
 from app.workflows.digest.kg_doc_sync.lib.extraction import _prepare_llm_chunk_content
 from app.workflows.digest.kg_doc_sync.lib.incremental_sync import (
     _build_backbone_graph_items,
@@ -70,6 +71,10 @@ def _payload(anchor: str, *, name: str = "概念 A") -> SectionExtractionPayload
             "total_extracted_edge_count": 0,
         },
     )
+
+
+def test_formula_candidate_name_preserves_absolute_value_delimiters() -> None:
+    assert _clean_candidate_display_name(r"$\ln|x|$", unit_type="formula_model") == r"\ln|x|"
 
 
 def _edge_payload(
@@ -241,7 +246,7 @@ def test_published_knowledge_doc_hides_source_appendix_by_default() -> None:
     assert "`PROMPT $P$G`" in markdown
 
 
-def test_medium_chapters_with_many_sections_split_into_subsection_tasks() -> None:
+def test_medium_chapters_with_many_sections_stay_one_task_per_chapter() -> None:
     markdown = "\n\n".join(
         [
             "# C1\n"
@@ -259,10 +264,37 @@ def test_medium_chapters_with_many_sections_split_into_subsection_tasks() -> Non
     tasks, metrics = _build_extraction_tasks(chapters, {})
 
     assert len(chapters) == 4
-    assert len(tasks) > len(chapters)
+    assert len(tasks) == len(chapters)
     assert len(tasks) <= metrics["planned_task_limit"]
-    assert metrics["chapter_split_count"] == 4
+    assert metrics["chapter_split_count"] == 0
+    assert metrics["chapter_task_count"] == len(chapters)
+    assert metrics["subsection_task_count"] == 0
+
+
+def test_dense_sprint_chapters_split_into_small_parallel_groups() -> None:
+    markdown = "\n\n".join(
+        "# C{chapter}\n".format(chapter=chapter)
+        + "\n".join(
+            f"## C{chapter}-S{section}\n" + ("知识点、例题与易错边界。" * 80)
+            for section in range(1, 7)
+        )
+        for chapter in range(1, 4)
+    )
+
+    chapters = extract_markdown_chapter_chunks(markdown, max_body_chars=None)
+    tasks, metrics = _build_extraction_tasks(chapters, {})
+
+    assert len(chapters) == 3
+    assert len(tasks) == 6
+    assert len(tasks) <= metrics["planned_task_limit"]
+    assert metrics["chapter_split_count"] == 3
+    assert metrics["chapter_task_count"] == 0
     assert metrics["subsection_task_count"] == len(tasks)
+    assert sorted(
+        sum(task.source_chapter_index == chapter for task in tasks)
+        for chapter in range(1, 4)
+    ) == [2, 2, 2]
+    assert all(len(task.chunk.body_markdown) < 4500 for task in tasks)
 
 
 def test_legacy_support_edge_type_is_normalized_before_literal_validation() -> None:
@@ -339,7 +371,7 @@ def test_stale_prefetch_payload_falls_back_to_catchup(monkeypatch) -> None:
         del args, kwargs
         return _payload("ku_new", name="概念 B")
 
-    monkeypatch.setattr(incremental_sync, "_extract_chapter_with_retries", fake_extract)
+    monkeypatch.setattr(incremental_sync, "_extract_chapter_graph_items", fake_extract)
 
     units, _edges, diagnostics = asyncio.run(
         incremental_sync._extract_markdown_graph_items_async(
@@ -354,12 +386,18 @@ def test_stale_prefetch_payload_falls_back_to_catchup(monkeypatch) -> None:
     assert [unit.anchor for unit in units] == ["ku_new"]
 
 
-def test_prefetch_payload_reused_when_only_heading_changes() -> None:
+def test_prefetch_payload_reextracts_when_heading_changes(monkeypatch) -> None:
     original_markdown = "# Old heading\nSame body"
     final_markdown = "# New heading\nSame body"
     original_chapters = extract_markdown_chapter_chunks(original_markdown, max_body_chars=None)
     original_tasks, _metrics = _build_extraction_tasks(original_chapters, {})
     record = incremental_sync._section_record_for_task(original_tasks[0], payload=_payload("ku_a"))
+
+    async def fake_extract(*args, **kwargs):
+        del args, kwargs
+        return _payload("ku_new_heading", name="New heading")
+
+    monkeypatch.setattr(incremental_sync, "_extract_chapter_graph_items", fake_extract)
 
     units, _edges, diagnostics = asyncio.run(
         incremental_sync._extract_markdown_graph_items_async(
@@ -368,9 +406,10 @@ def test_prefetch_payload_reused_when_only_heading_changes() -> None:
         )
     )
 
-    assert diagnostics["prefetch_reused_section_count"] == 1
-    assert diagnostics["prefetch_stale_section_count"] == 0
-    assert [unit.anchor for unit in units] == ["ku_a"]
+    assert diagnostics["prefetch_reused_section_count"] == 0
+    assert diagnostics["prefetch_catchup_section_count"] == 1
+    assert diagnostics["prefetch_stale_section_count"] == 1
+    assert [unit.anchor for unit in units] == ["ku_new_heading"]
 
 
 def test_docgen_backbone_payload_does_not_seed_knowledge_units_by_rule() -> None:
@@ -627,7 +666,7 @@ def test_chunk_extraction_result_caps_candidate_counts() -> None:
                     "knowledge_unit_type": "concept",
                     "local_summary": "summary",
                 }
-            for index in range(16)
+            for index in range(30)
             ],
             "edges": [
                 {
@@ -636,13 +675,13 @@ def test_chunk_extraction_result_caps_candidate_counts() -> None:
                     "edge_type": "prerequisite_for",
                     "description": "description",
                 }
-            for _index in range(20)
+            for _index in range(50)
             ],
         }
     )
 
-    assert len(result.nodes) == 12
-    assert len(result.edges) == 18
+    assert len(result.nodes) == 10
+    assert len(result.edges) == 16
 
 
 def test_chunk_extraction_drops_edges_with_unreturned_endpoints() -> None:

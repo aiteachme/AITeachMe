@@ -30,6 +30,8 @@ DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
     },
     "llm": {
         "api_mode": "auto",
+        "responses_api_models": [],
+        "fallback_only_models": [],
         "reasoning_efforts": {
             "light": None,
             "primary": None,

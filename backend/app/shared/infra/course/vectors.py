@@ -11,10 +11,11 @@ from sqlmodel import Session, func, select
 from app.models.course import Course
 from app.models.knowledge import RetrievalChunk
 from app.schemas.knowledge import CourseVectorStatusResponse
-from app.shared.infra.env_support import get_env, get_env_choice
+from app.shared.infra.llm_support.common import get_llm_runtime_snapshot
+from app.shared.infra.llm_support.model_catalog import model_is_listed
 from app.shared.infra.runtime import is_cloud_mode
 from app.shared.infra.settings import get_settings
-from app.shared.infra.settings.support import llm_provider_requires_api_key, resolve_runtime_llm_provider
+from app.shared.infra.settings.support import llm_provider_requires_api_key
 from app.shared.infra.course.settings import (
     build_course_index_ref_for_course,
     CourseEmbeddingBinding,
@@ -88,13 +89,32 @@ def get_runtime_embedding_config() -> RuntimeEmbeddingConfig:
     settings = get_settings()
     model = settings.normalized_embedding_model
     embedding_dim = settings.embedding_dim or None
-    base_url = get_env("LLM_BASE_URL")
-    provider = resolve_runtime_llm_provider(base_url=base_url)
     dimension_explicit = settings.embedding_dim_is_explicit
 
     if model is None:
         return RuntimeEmbeddingConfig(reason="embedding_not_configured")
-    if llm_provider_requires_api_key(provider, base_url=base_url) and not get_env_choice("LLM_API_KEY"):
+    snapshot = get_llm_runtime_snapshot()
+    endpoint_role = (
+        "fallback"
+        if model_is_listed(model, settings.llm.fallback_only_models)
+        else "primary"
+    )
+    endpoint = next(
+        (
+            candidate
+            for candidate in snapshot.completion_endpoints()
+            if candidate.role == endpoint_role
+            and (
+                candidate.api_key is not None
+                or not llm_provider_requires_api_key(
+                    candidate.provider,
+                    base_url=candidate.base_url,
+                )
+            )
+        ),
+        None,
+    )
+    if endpoint is None:
         return RuntimeEmbeddingConfig(
             configured=True,
             embedding_model=model,

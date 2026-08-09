@@ -1,6 +1,6 @@
 # DocGen 链路
 
-最后更新：2026-06-15
+最后更新：2026-08-09
 
 职责：根据 `confirmed_plan` 生成正式知识文档。
 
@@ -13,20 +13,16 @@
 
 ```text
 load_context
-  -> prepare_global_seed
-  -> generate_cover
-  -> lock_titles_for_chapters
-  -> confirm_backbone_seed
-  -> build_document_backbone
-  -> build_chapter_execution_briefs
-  -> assemble_chapter_tasks
+  -> [prepare_global_seed || lock_titles_for_chapters]
+  prepare_global_seed -> generate_cover ------------------------------┐
+  [prepare_global_seed + lock_titles_for_chapters] -> assemble_chapter_tasks
+     (内部依次完成 seed 确认、全文骨架、章节 brief 与任务冻结)
   -> generate_chapters
-  -> generate_unit_tests
   -> enhance_chapters
   -> review_chapters
   -> document_consistency_review
   -> repair_or_route
-  -> merge_review
+  [repair_or_route + generate_cover] -> merge_review <----------------┘
   -> sync_locked_titles
   -> prepare_knowledge_graph
   -> publish_document
@@ -73,7 +69,7 @@ document_context.learner_profile_text
 
 输入：`docgen_context`, `chapter_assignments`, `shared_inputs`, `learner_profile_text`
 
-动作：并行执行 `infer_intent_core` 和 `summarize_files`。
+动作：从用户确认方案和 `DocGenContext` 直接编译 `intent_core`；依据 confirmed chapters 与解析切片标题/预览做确定性资料路由。这里既不重复理解学习意图，也不再调用 LLM 做文件摘要。
 
 输出：`intent_core`, `intent_enhanced`, `file_summaries`, `summary_enhanced`, `user_profile`, `source_affinity_by_chapter`, `high_confidence_evidence_units`
 
@@ -91,7 +87,7 @@ user_profile.prompt_addendum
 
 输入：`course_name`, `intent_enhanced`, `summary_enhanced`
 
-动作：生成可选封面；失败不阻断正文。
+动作：生成可选封面；在 `prepare_global_seed` 完成后即启动，与骨架、章节写作、增强和复核并行，只在 `merge_review` 前汇合；失败不阻断正文。
 
 输出：`cover_artifact`, `cover_markdown`
 
@@ -99,11 +95,13 @@ user_profile.prompt_addendum
 
 输入：`chapter_assignments`, `confirmed_plan`, `intent_enhanced`
 
-动作：按章并行锁定最终标题；只锁标题，不改章节语义。
+动作：直接采用用户确认方案中的标题并做格式清洗；不再逐章调用 LLM 改写标题。
 
 输出：`locked_titles`
 
 ## 5. `confirm_backbone_seed`
+
+以下第 5～8 节是 `assemble_chapter_tasks` 图节点内部的确定性子步骤，不再分别占用四个 LangGraph 节点。
 
 输入：`locked_titles`, `chapter_assignments`, `file_summaries`, `source_affinity_by_chapter`, `high_confidence_evidence_units`
 
@@ -127,7 +125,7 @@ user_profile.prompt_addendum
 
 输入：`chapter_task_seeds`, `intent_core`, `document_backbone`, `guideline`, `summary_enhanced`, `user_profile`
 
-动作：按章并行生成 brief，说明每章讲什么、怎么讲、覆盖哪些点；brief fan-in 后可非阻塞启动早期 KG prefetch sidecar。
+动作：从已确认的章节 seed、全文 glossary、claim 和 confusion map 确定性编译 brief，说明每章讲什么、怎么讲、覆盖哪些点；本节点不调用 LLM，也不再对尚未成稿的 brief 启动 KG 抽取。
 
 输出：`chapter_execution_briefs`, `kg_prefetch_status`, `kg_prefetch_ready`
 
@@ -147,51 +145,43 @@ user_profile.prompt_addendum
 
 输入：`chapter_task`, `guideline`, `dispatch_table`, `summary_enhanced`, `user_profile`
 
-动作：LangGraph `Send` 按章 fan-out；每章检索资料、压缩上下文、生成正文。
+动作：LangGraph `Send` 按章 fan-out；Planner 已预选本地资料切片时，按上下文总预算装入最多四个高相关片段并直接进入 Writer，不再重复查询规划和研究净化；没有可用预选切片时才启动研究 fallback。每章在同一次 Writer 调用中生成正文以及最终 `## 单元测试`。Writer 使用与 Review 相同的语义覆盖算法静默复核 confirmed plan 必需要素，标题层级问题只做确定性规范化和质量标记，不再触发第二次结构重写 LLM。
 
 输出：`chapter_drafts`, `research_traces`, `claim_ledgers`, `claim_evidence_maps`, `evidence_ledgers`, `conflict_reports`
 
-## 10. `generate_unit_tests`
+## 10. `enhance_chapters`
 
-输入：`chapter_drafts`, `summary_enhanced`
+输入：`chapter_drafts`, `intent_profile`, `summary_enhanced`, `preliminary_kg`
 
-动作：给每章追加单元测试。
-
-输出：`unit_test_chapter_drafts`, `unit_test_items`
-
-## 11. `enhance_chapters`
-
-输入：`unit_test_chapter_drafts`, `intent_profile`, `summary_enhanced`, `preliminary_kg`
-
-动作：增强 Mermaid、静态图、交互 HTML、练习资产；可选用完整章节刷新 KG prefetch sidecar，并保留早期候选。
+动作：增强 Mermaid、静态图、交互 HTML、练习资产；Writer 未直接输出 Mermaid 时，使用章节标题与核心知识点构造确定性 mindmap，不再为每章单独调用图示 LLM。KG 抽取延后到章节复核完成，避免增强稿和最终复核稿重复抽取。
 
 输出：`enhanced_chapter_drafts`, `asset_manifests`, `practice_manifests`
 
-## 12. `review_chapters`
+## 11. `review_chapters`
 
 输入：`enhanced_chapter_draft`, `guideline`, `dispatch_table`, `chapters_enhanced`, `summary_enhanced`, `user_profile`
 
-动作：按章 review 覆盖、证据、结构、练习和风险；同步产出章节级 KG refinement。
+动作：按章做确定性覆盖、证据、长度、Markdown 和章末测试结构校验；不再使用常驻的第二次 LLM 语义重审。显式大纲覆盖低于 90% 时生成单章局部补漏动作；轻微逐字匹配提示只记录，不触发模型。每章校验完成后把最终增强稿增量追加到 KG prefetch，并同步产出章节级 KG refinement。
 
 输出：`reviewed_chapter_overlay_items`, `chapter_review_report_items`, `review_action_items`, `kg_refinement_items`
 
-## 13. `document_consistency_review`
+## 12. `document_consistency_review`
 
 输入：`reviewed_chapter_overlay_items`, `enhanced_chapter_drafts`, `guideline`, `dispatch_table`
 
-动作：检查全文术语、符号、范围、重复和前置关系。
+动作：用规则检查章节数量、重复标题、骨架术语覆盖等跨章合同；不把整本正文再次交给 LLM，也不重启整本 KG prefetch。
 
 输出：`reviewed_chapter_drafts`, `document_consistency_report`, `review_decision`, `review_actions`
 
-## 14. `repair_or_route`
+## 13. `repair_or_route`
 
 输入：`reviewed_chapter_drafts`, `review_actions`, `document_consistency_report`
 
-动作：只修真正的问题；无法安全修的问题写入 warning；无论是否 patch 都用最新 review/repair 上下文刷新 KG prefetch sidecar，patch 成功时追加修补后的 KG refinement。
+动作：先执行确定性的 Markdown 展示修复；仅对 Review 明确判定为低于覆盖门槛的章节执行一次短局部补丁，禁止整章重写、跨章扩写和引入无证据事实。低 evidence binding 只保留证据分数和 warning，不调用模型追加无法改变绑定关系的免责声明；其余复杂语义动作同样只记录。正常章节不增加模型调用，只有正文实际变化的章节才重新增量抽取 KG。
 
 输出：`reviewed_chapter_drafts`, `repair_trace`, `unresolved_warnings`, `kg_refinement_items`, `kg_prefetch_status`
 
-## 15. `merge_review`
+## 14. `merge_review`
 
 输入：`reviewed_chapter_drafts`, `cover_markdown`
 
@@ -199,7 +189,7 @@ user_profile.prompt_addendum
 
 输出：`merged_markdown`, `enriched_markdown`, `chapter_metadatas`, `merge_review_report`
 
-## 16. `sync_locked_titles`
+## 15. `sync_locked_titles`
 
 输入：`merged_markdown`, `chapter_metadatas`, `locked_titles`
 
@@ -207,11 +197,11 @@ user_profile.prompt_addendum
 
 输出：`final_chapter_titles`, `title_review_report`, `merged_markdown`, `enriched_markdown`
 
-## 17. `prepare_knowledge_graph`
+## 16. `prepare_knowledge_graph`
 
 输入：`chapter_metadatas`, `title_review_report`, `reviewed_chapter_drafts`, `document_backbone`, `preliminary_kg`, `kg_refinement_items`, `build_session_id`
 
-动作：在最终标题同步后、发布前等待或刷新 KG prefetch，并生成 `docgen_kg_draft`。质量门只决定该草稿能否在文档发布后被 fast-finalize 复用，不在此节点写图谱表。
+动作：在最终标题同步后启动最终 Markdown 的 KG prefetch，立即读取当前缓存快照并生成 `docgen_kg_draft`，不在发布前固定等待；文档发布与剩余抽取并行推进。质量门只决定当前草稿能否在文档发布后被 fast-finalize 复用，不在此节点写图谱表。
 
 输出：`docgen_kg_draft`, `kg_prefetch_metrics`, `kg_prefetch_ready`, `kg_draft_early_persist_metrics`
 
@@ -219,7 +209,7 @@ user_profile.prompt_addendum
 
 `KnowledgeUnit`、`KnowledgeEdge`、`KnowledgeGraphSourceRef`、补抽和废弃收口统一由 KnowledgeDoc 发布后的 `sync_knowledge_graph` 完成。因此进程在发布前退出时不会留下本轮 query-visible KG 半成品；`rollback_knowledge_graph` 仅保留旧版 early-persist 状态的兼容清理。
 
-## 18. `publish_document`
+## 17. `publish_document`
 
 输入：`merged_markdown`, `chapter_metadatas`, `intent_enhanced`, `summary_enhanced`, `user_profile`, `chapters_enhanced`, `dispatch_table`, `preliminary_kg`, `docgen_kg_draft`, `kg_draft_early_persist_metrics`, `guideline`
 
@@ -227,13 +217,13 @@ user_profile.prompt_addendum
 
 输出：`doc_ids`, `built_paths`, `build_group_id`, `merged_path`
 
-## 19. `sync_knowledge_graph`
+## 18. `sync_knowledge_graph`
 
 输入：`doc_ids`, `merged_markdown`, `chapter_metadatas`, `docgen_kg_draft`, `build_session_id`
 
-动作：在同一条 DocGen trace 下运行 KG Doc Sync。若 `docgen_kg_draft` quality-ready 且覆盖最终章节，优先 fast-finalize；否则复用 content hash 命中的 prefetch section，对缺失/变更 section 补抽。
+动作：review 与 repair 阶段只沉淀 KG refinement，不再对尚未锁定的章节重复抽取。最终 Markdown 锁定后用准确的发布 payload 启动唯一一次 KG 预取；无拓扑依赖的 section 一次并发抽取。正式同步消费缓存时会等待最终预取的有界重试窗口；若仍需取消后台任务，会先确认请求已经退出，再做 catch-up，避免同一 section 被后台与正式同步重复调用。文档发布后，KG Doc Sync 与课程向量索引检查并行启动：前者复用最终预取并正式固化，后者在运行时允许写入但索引缺失时自动补建并复验；仍不可查询则明确失败，避免假成功后伴读长期降级。
 
-输出：`graph_sync_status`, `graph_sync_metrics`
+输出：`graph_sync_status`, `graph_sync_metrics`, `vector_index_status`, `vector_index_chunk_count`
 
 ## Diagnose/Profile 入口
 

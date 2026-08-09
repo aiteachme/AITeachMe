@@ -1,8 +1,8 @@
 """Planner graph definition and public workflow entrypoints.
 
 真实链路主线：
-读取输入 -> 首轮并行生成规划判断/资料边界 -> 二阶段并行生成课程身份和方案大纲 -> 保存。
-调整链路会复用上一版规划判断和课程身份，只调用一次方案生成。
+准备资料、目标边界和课程身份 -> 一次生成方案大纲 -> 保存。
+调整链路复用上一版资料边界和课程身份，同样只调用一次方案生成。
 """
 
 from __future__ import annotations
@@ -38,10 +38,8 @@ from app.workflows.digest.planner.lib.store import (
 from app.workflows.digest.planner.lib.steps import (
     STEP_COMPOSE_PLAN,
     STEP_DISPLAY_NAMES,
-    STEP_GENERATE_TITLE,
     STEP_LOAD_MATERIALS,
     STEP_SAVE_PLAN,
-    STEP_UNDERSTAND_GOAL,
 )
 from app.workflows.digest.planner.lib.tracing import normalize_planner_operation, planner_trace_run_name
 from app.workflows.digest.planner.nodes.collect_planner_context import build_collect_planner_context_node
@@ -62,10 +60,19 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
         "description": (
             "把 API 请求整理成本轮 Planner 可用上下文：读取或创建 planner session，锁定选择的资料，"
             "加载可读 markdown / digest / 当前知识文档摘要。若资料还在解析，只用文件名、检测信息和用户目标构造 seed context，"
-            "明确标记为临时方案输入。"
+            "明确标记为临时方案输入；随后直接从这些确定性事实整理目标边界、课程名和图标，不调用模型。"
         ),
         "reads": ["planner_session", "raw_file", "parsed_markdown", "material_digest_cache", "latest_plan"],
-        "writes": ["selected_file_ids", "material_context", "digest_mode", "planner_context_stats"],
+        "writes": [
+            "selected_file_ids",
+            "material_context",
+            "digest_mode",
+            "planner_context_stats",
+            "planning_note",
+            "material_note",
+            "generated_course_name",
+            "generated_course_icon_key",
+        ],
         "input_keys": [
             "course_id",
             "user_id",
@@ -86,31 +93,13 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "planner_context_stats",
             "material_context",
             "digest_mode",
+            "planning_note",
+            "material_note",
+            "generated_course_name",
+            "generated_course_icon_key",
             "prepare_ms",
             "error",
         ],
-    },
-    STEP_UNDERSTAND_GOAL: {
-        "description": (
-            "首轮生成时并行完成两个理解动作：流式写出用户可见的规划判断，结构化整理资料边界与学科情况。"
-            "调整已有方案时不重新理解范围，直接复用上一版 planning_note。"
-        ),
-        "reads": ["material_context", "user_prompt", "digest_mode", "message_history", "latest_plan", "feedback_message"],
-        "writes": ["planning_note", "material_note"],
-        "input_keys": [
-            "course_id",
-            "material_context",
-            "user_prompt",
-            "digest_mode",
-            "message_history",
-            "latest_plan",
-            "feedback_message",
-            "planner_session_id",
-            "model_override",
-        ],
-        "output_keys": ["planning_note", "material_note", "bootstrap_ms", "error"],
-        "fanout": "stream_planning_note + summarize_materials",
-        "routing": "after this node, LangGraph runs compose_plan and generate_title in parallel",
     },
     STEP_COMPOSE_PLAN: {
         "description": (
@@ -133,32 +122,10 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "planner_session_id",
         ],
         "output_keys": ["build_plan_draft", "plan_outline_markdown", "compose_ms", "error"],
-        "fanin": "joins generate_course_identity at save_planner_draft",
-    },
-    STEP_GENERATE_TITLE: {
-        "description": (
-            "仅在创建新 Planner 会话时运行，和方案大纲生成并行。"
-            "根据规划判断、资料边界、资料文件名和 topic hints，通过一次结构化 LLM 生成 course_name 与 course_icon。"
-            "调整方案时不重复生成课程身份。"
-        ),
-        "reads": ["material_context", "planning_note", "material_note", "user_prompt", "digest_mode"],
-        "writes": ["generated_course_name", "generated_course_icon_key"],
-        "input_keys": [
-            "planner_operation",
-            "material_context",
-            "planning_note",
-            "material_note",
-            "user_prompt",
-            "digest_mode",
-            "model_override",
-            "planner_session_id",
-        ],
-        "output_keys": ["generated_course_name", "generated_course_icon_key", "title_ms"],
-        "fanin": "joins compose_planner_draft at save_planner_draft",
     },
     STEP_SAVE_PLAN: {
         "description": (
-            "等待方案大纲和课程身份两个分支汇合，把 build_plan_draft 规范化成稳定 latest_plan。"
+            "把 build_plan_draft 规范化成稳定 latest_plan。"
             "补齐章节索引、目标、required_elements、模式、course_name/course_icon，并写入 planner session 与 chat mirror。"
             "这里保存的是可继续调整的草案；用户确认后才会冻结为 DocGen 消费的 confirmed planner。"
         ),
@@ -181,9 +148,27 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "finalize_ms",
             "error",
         ],
-        "fanin": "compose_planner_draft + generate_course_identity",
     },
 }
+
+
+def _build_prepare_planner_context_node(*, context: WorkflowContext):
+    collect_context = build_collect_planner_context_node(context=context)
+    understand_goal = build_understand_goal_and_materials_node(context=context)
+    generate_identity = build_generate_course_identity_node(context=context)
+
+    async def prepare_planner_context(state: BuildPlannerState) -> dict:
+        prepared = await collect_context(state)
+        if prepared.get("error"):
+            return prepared
+        prepared_state = {**state, **prepared}
+        goal_result, identity_result = await asyncio.gather(
+            understand_goal(prepared_state),
+            generate_identity(prepared_state),
+        )
+        return {**prepared, **goal_result, **identity_result}
+
+    return prepare_planner_context
 
 
 def _require_success_state(result: WorkflowResult[BuildPlannerState]) -> BuildPlannerState:
@@ -223,8 +208,8 @@ def _langgraph_node_metadata(step: str) -> dict[str, object]:
 def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
     """构建 Planner 的 LangGraph。
 
-    Planner 只负责生成和修订可确认的方案：读取资料、生成规划判断/资料边界、
-    并行生成课程身份与 suggestion/plan/chapters、保存方案。不要在这里做 DocGen 的资料读取、证据绑定或正文写作，
+    Planner 只负责生成和修订可确认的方案：准备资料边界和课程身份、
+    一次生成 suggestion/plan/chapters、保存方案。不要在这里做 DocGen 的资料读取、证据绑定或正文写作，
     也不要把 API 持久化细节塞进节点之外的地方。
     """
 
@@ -240,20 +225,10 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
         _trace_planner_node(
             trace,
             STEP_LOAD_MATERIALS,
-            build_collect_planner_context_node(context=context),
+            _build_prepare_planner_context_node(context=context),
             timing_field="prepare_ms",
         ),
         metadata=_langgraph_node_metadata(STEP_LOAD_MATERIALS),
-    )
-    workflow.add_node(
-        STEP_UNDERSTAND_GOAL,
-        _trace_planner_node(
-            trace,
-            STEP_UNDERSTAND_GOAL,
-            build_understand_goal_and_materials_node(context=context),
-            timing_field="bootstrap_ms",
-        ),
-        metadata=_langgraph_node_metadata(STEP_UNDERSTAND_GOAL),
     )
     workflow.add_node(
         STEP_COMPOSE_PLAN,
@@ -264,16 +239,6 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
             timing_field="compose_ms",
         ),
         metadata=_langgraph_node_metadata(STEP_COMPOSE_PLAN),
-    )
-    workflow.add_node(
-        STEP_GENERATE_TITLE,
-        _trace_planner_node(
-            trace,
-            STEP_GENERATE_TITLE,
-            build_generate_course_identity_node(context=context),
-            timing_field="title_ms",
-        ),
-        metadata=_langgraph_node_metadata(STEP_GENERATE_TITLE),
     )
     workflow.add_node(
         STEP_SAVE_PLAN,
@@ -290,11 +255,9 @@ def build_planner_graph(*, context: WorkflowContext) -> StateGraph:
     workflow.add_conditional_edges(
         STEP_LOAD_MATERIALS,
         route_after_step_for_trace,
-        {"continue": STEP_UNDERSTAND_GOAL, "fail": END},
+        {"continue": STEP_COMPOSE_PLAN, "fail": END},
     )
-    workflow.add_edge(STEP_UNDERSTAND_GOAL, STEP_COMPOSE_PLAN)
-    workflow.add_edge(STEP_UNDERSTAND_GOAL, STEP_GENERATE_TITLE)
-    workflow.add_edge([STEP_COMPOSE_PLAN, STEP_GENERATE_TITLE], STEP_SAVE_PLAN)
+    workflow.add_edge(STEP_COMPOSE_PLAN, STEP_SAVE_PLAN)
     workflow.add_edge(STEP_SAVE_PLAN, END)
     return workflow
 
@@ -611,9 +574,7 @@ def _log_planner_runtime(*, course_id: str, session_id: str, final_state: Mappin
         return
     step_fields = {
         "collect_planner_context": "prepare_ms",
-        "understand_goal_and_materials": "bootstrap_ms",
         "compose_planner_draft": "compose_ms",
-        "generate_course_identity": "title_ms",
         "save_planner_draft": "finalize_ms",
     }
     logger.info(

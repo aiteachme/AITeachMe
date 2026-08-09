@@ -18,8 +18,6 @@ from app.workflows.digest.planner.nodes.save_planner_draft import _merge_diagnos
 from app.workflows.digest.planner.prompts.build_plan_composer import (
     CHAPTERS_END,
     CHAPTERS_START,
-    DIAGNOSE_END,
-    DIAGNOSE_START,
     PLAN_END,
     PLAN_START,
     SUGGESTION_END,
@@ -75,6 +73,42 @@ def test_normalize_planner_draft_uses_new_planner_fields() -> None:
     assert [chapter.title for chapter in draft.chapters] == ["任务切片 1", "任务切片 2", "任务切片 3"]
     assert draft.diagnose[0].question == "极限、导数、积分里你现在最怕哪一块？"
     assert draft.diagnose[0].options == ["极限定义", "导数应用", "积分计算", "综合应用"]
+
+
+def test_normalize_planner_draft_drops_ocr_fragments_from_required_elements() -> None:
+    payload = _planner_payload()
+    payload["chapters"][0]["required_elements"] = [
+        "变量定义、初始化与赋值",
+        "| int | a,b,c; | --- | --- | " + "破碎表格与 OCR 内容" * 20,
+        "```c int main(void) { return 0; } ```",
+    ]
+
+    draft = normalize_planner_draft(
+        payload,
+        course_id="C 语言",
+        user_prompt="学习 C 语言",
+        requested_digest_mode="sprint",
+    )
+
+    assert draft.chapters[0].required_elements == ["变量定义、初始化与赋值"]
+
+
+def test_normalize_planner_draft_uses_short_local_defaults_when_all_requirements_are_ocr_fragments() -> None:
+    payload = _planner_payload()
+    payload["chapters"][0]["required_elements"] = ["| --- | " + "OCR 碎片" * 50]
+
+    draft = normalize_planner_draft(
+        payload,
+        course_id="高数",
+        user_prompt="高数速成",
+        requested_digest_mode="sprint",
+    )
+
+    assert draft.chapters[0].required_elements == [
+        "任务切片 1核心概念",
+        "任务切片 1方法与典型题型",
+        "任务切片 1易错边界",
+    ]
 
 
 def test_normalize_planner_draft_rewrites_stale_figure_diagnosis_terms() -> None:
@@ -151,77 +185,73 @@ def test_docgen_diagnose_brief_renders_user_answers() -> None:
     assert "快速回答" not in brief
 
 
-def test_understand_goal_and_materials_raises_when_auxiliary_llms_fail(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def fail_planning_note(state):
-        raise TimeoutError("planning note timed out")
-
-    async def fail_material_note(state):
-        raise RuntimeError("material note unavailable")
-
+def test_understand_goal_and_materials_reuses_prepared_context_without_auxiliary_llms() -> None:
     events: list[dict[str, object]] = []
 
     async def record_event(payload: dict[str, object]) -> None:
         events.append(payload)
-
-    monkeypatch.setattr(understand_node, "_stream_planning_note", fail_planning_note)
-    monkeypatch.setattr(understand_node, "_summarize_materials", fail_material_note)
 
     node = understand_node.build_understand_goal_and_materials_node(context=None)
-    with pytest.raises(Exception):
-        asyncio.run(
-            node(
-                {
-                    "course_id": "course_test",
-                    "planner_session_id": "planner_test",
-                    "planner_operation": "create",
-                    "user_prompt": "两天速成线性代数",
-                    "digest_mode": "sprint",
-                    "material_context": _material_context(),
-                    "progress_callback": record_event,
-                }
-            )
+    result = asyncio.run(
+        node(
+            {
+                "course_id": "course_test",
+                "planner_session_id": "planner_test",
+                "planner_operation": "create",
+                "user_prompt": "两天速成线性代数",
+                "digest_mode": "sprint",
+                "material_context": _material_context(),
+                "progress_callback": record_event,
+            }
         )
+    )
 
     stages = [str(event.get("stage") or "") for event in events]
-    assert "planner.analysis.failed" in stages
-    assert "planner.planning_note.fallback" not in stages
-    assert "planner.material_note.fallback" not in stages
-    assert "planner.analysis.ready" not in stages
+    assert "两天速成线性代数" in result["planning_note"]
+    assert "用户目标" in result["material_note"]
+    assert "planner.analysis.started" in stages
+    assert "planner.analysis.ready" in stages
+    assert "planner.analysis.failed" not in stages
 
 
-def test_compose_planner_diagnosis_raises_when_stream_fails(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def fail_diagnosis(state):
-        raise TimeoutError("diagnosis timed out")
-
+def test_compose_planner_diagnosis_does_not_call_llm(monkeypatch: pytest.MonkeyPatch) -> None:
     events: list[dict[str, object]] = []
 
     async def record_event(payload: dict[str, object]) -> None:
         events.append(payload)
 
-    monkeypatch.setattr(plan_draft_node, "_stream_diagnosis_response", fail_diagnosis)
+    def fail_if_called(*args, **kwargs):
+        del args, kwargs
+        raise AssertionError("diagnosis must not call the LLM")
+
+    monkeypatch.setattr(plan_draft_node, "acompletion_stream", fail_if_called)
 
     node = plan_draft_node.build_compose_planner_draft_node(context=None)
-    with pytest.raises(TimeoutError, match="diagnosis timed out"):
-        asyncio.run(
-            node(
-                {
-                    "course_id": "course_test",
-                    "planner_session_id": "planner_test",
-                    "planner_operation": "create",
-                    "user_prompt": "两天速成线性代数",
-                    "digest_mode": "sprint",
-                    "material_context": _material_context(),
-                    "planning_note": "需要先建立核心概念和例题路径。",
-                    "material_note": "资料重点是矩阵和线性方程组。",
-                    "progress_callback": record_event,
-                }
-            )
+    result = asyncio.run(
+        node(
+            {
+                "course_id": "course_test",
+                "planner_session_id": "planner_test",
+                "planner_operation": "create",
+                "user_prompt": "两天速成线性代数",
+                "digest_mode": "sprint",
+                "material_context": _material_context(),
+                "planning_note": "需要先建立核心概念和例题路径。",
+                "material_note": "资料重点是矩阵和线性方程组。",
+                "progress_callback": record_event,
+            }
         )
+    )
 
     stages = [str(event.get("stage") or "") for event in events]
-    assert "planner.diagnose.failed" in stages
-    assert "planner.diagnose.fallback" not in stages
-    assert "planner.diagnose.ready" not in stages
+    diagnose = result["build_plan_draft"]["diagnose"]
+    assert [item["question"] for item in diagnose] == [
+        "基础从哪里起？",
+        "讲解先重哪里？",
+        "练习怎么安排？",
+        "解析写到多细？",
+    ]
+    assert stages == ["planner.diagnose.started", "planner.diagnose.ready"]
 
 
 def test_compose_planner_plan_raises_after_generation_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -627,28 +657,6 @@ def test_parse_planner_response_reads_marker_protocol() -> None:
     assert parsed["chapters"][0]["required_elements"] == ["实数与代数式", "方程基本变形"]
 
 
-def test_parse_diagnosis_response_reads_choice_questions() -> None:
-    parsed = plan_draft_node._parse_diagnosis_response(
-        f"""
-{DIAGNOSE_START}
-[
-  {{"question": "函数图像里你最容易混淆什么？", "purpose": "影响函数章节的例题和图示重点", "options": ["一次函数", "二次函数", "图像变换", "函数性质"]}},
-  {{"question": "这个空题会被丢弃", "purpose": "缺少选项", "options": []}}
-]
-{DIAGNOSE_END}
-"""
-    )
-
-    assert parsed == [
-        {
-            "question": "函数图像里你最容易混淆什么？",
-            "purpose": "影响函数章节的例题和图示重点",
-            "options": ["一次函数", "二次函数", "图像变换", "函数性质"],
-            "answer": "",
-        }
-    ]
-
-
 def test_normalize_planner_diagnosis_draft_returns_docgen_ready_questions() -> None:
     normalized = normalize_planner_diagnosis_draft(
         {
@@ -731,19 +739,10 @@ def test_parse_planner_response_rejects_empty_chapter_points() -> None:
 def test_planner_node_create_generates_diagnosis_before_plan(monkeypatch: pytest.MonkeyPatch) -> None:
     emitted_tokens: list[str] = []
     emitted_events: list[tuple[str, dict | None]] = []
-    raw_output = (
-        f'{DIAGNOSE_START}[{{"question":"你当前最想先补哪类能力？",'
-        f'"purpose":"影响章节优先级和练习密度",'
-        f'"options":["概念理解","基础计算","综合应用","错因提醒"]}}]{DIAGNOSE_END}'
-    )
 
-    def fake_acompletion_stream(*args, **kwargs) -> Iterator[str]:
+    def fail_if_called(*args, **kwargs) -> Iterator[str]:
         del args, kwargs
-
-        async def _gen():
-            yield raw_output
-
-        return _gen()
+        raise AssertionError("diagnosis must not call the LLM")
 
     async def fake_emit_token(state, token: str) -> None:
         del state
@@ -753,7 +752,7 @@ def test_planner_node_create_generates_diagnosis_before_plan(monkeypatch: pytest
         del state, detail
         emitted_events.append((event, payload))
 
-    monkeypatch.setattr(plan_draft_node, "acompletion_stream", fake_acompletion_stream)
+    monkeypatch.setattr(plan_draft_node, "acompletion_stream", fail_if_called)
     monkeypatch.setattr(plan_draft_node, "emit_planner_token", fake_emit_token)
     monkeypatch.setattr(plan_draft_node, "emit_planner_event", fake_emit_event)
 
@@ -779,7 +778,12 @@ def test_planner_node_create_generates_diagnosis_before_plan(monkeypatch: pytest
     assert result["build_plan_draft"]["plan"] == ""
     assert result["build_plan_draft"]["chapters"] == []
     assert result["build_plan_draft"]["diagnose_status"] == "pending"
-    assert result["build_plan_draft"]["diagnose"][0]["options"] == ["概念理解", "基础计算", "综合应用", "错因提醒"]
+    assert result["build_plan_draft"]["diagnose"][0]["options"] == [
+        "从零补基础",
+        "概念学过但不牢",
+        "能做基础题",
+        "直接查漏冲刺",
+    ]
     assert [event for event, _payload in emitted_events] == [
         "planner.diagnose.started",
         "planner.diagnose.ready",

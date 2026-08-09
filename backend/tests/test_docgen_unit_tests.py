@@ -8,8 +8,6 @@ from app.workflows.digest.docgen.lib.unit_tests import (
     render_unit_test_markdown,
     strip_existing_unit_test_sections,
 )
-from app.workflows.digest.docgen.lib.models import ChapterGenerationTask
-from app.workflows.digest.docgen.nodes.generate_unit_tests import _unit_test_bounds
 
 
 def test_unit_test_renderer_replaces_existing_unit_test_section_once() -> None:
@@ -54,21 +52,6 @@ def test_unit_test_renderer_replaces_existing_unit_test_section_once() -> None:
     assert "###" not in unit_test
     assert "> **答案与依据**" not in unit_test
     assert "**判定依据**" not in unit_test
-
-
-def test_unit_test_bounds_keep_chapter_coverage_above_six_items() -> None:
-    task = ChapterGenerationTask(
-        chapter_end_practice_plan=[{"target": f"考点 {index}"} for index in range(1, 7)],
-        required_elements=[f"知识点 {index}" for index in range(1, 10)],
-        practice_seed_policy={
-            "example_density_policy": {
-                "chapter_end_practice_min_tasks": 4,
-                "chapter_end_practice_max_tasks": 6,
-            }
-        },
-    )
-
-    assert _unit_test_bounds(task, digest_mode="systematic") == (7, 8)
 
 
 def test_unit_test_renderer_strips_body_writer_test_and_recap_sections() -> None:

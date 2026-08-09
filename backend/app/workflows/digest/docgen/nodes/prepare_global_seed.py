@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from time import perf_counter
 
-from app.shared.infra.llm_support import run_llm_tasks
 from app.shared.infra.workflow.context import WorkflowContext
 from app.shared.infra.knowledge.build_store import append_knowledge_build_recent_event, update_knowledge_build_status
 from app.utils.time import utcnow
-from app.workflows.digest.docgen.lib.file_summaries import derive_source_affinity_and_evidence, summarize_files
-from app.workflows.digest.docgen.lib.intent import infer_intent_core
+from app.workflows.digest.docgen.lib.file_summaries import (
+    derive_source_affinity_and_evidence,
+    summarize_files_deterministically,
+)
 from app.workflows.digest.docgen.lib.models import DocGenContext, DocGenIntentProfile
 from app.workflows.digest.docgen.lib.pipeline_artifacts import (
     build_intent_enhanced,
@@ -50,6 +51,38 @@ def _intent_payload_for_state(intent_core: DocGenIntentProfile) -> dict:
     }
 
 
+def _intent_from_confirmed_plan(
+    *,
+    docgen_context: DocGenContext,
+    confirmed_plan: dict,
+) -> DocGenIntentProfile:
+    """Compile writing intent from the user-confirmed contract without another LLM pass."""
+
+    sprint = docgen_context.digest_mode == "sprint"
+    plan_text = docgen_context.plan or str(confirmed_plan.get("plan") or "")
+    goal = docgen_context.user_prompt or str(confirmed_plan.get("user_prompt") or "") or plan_text
+    return DocGenIntentProfile(
+        learning_goal_text=goal,
+        audience_profile_text=docgen_context.learner_profile_text or "按用户确认的学习目标组织讲解",
+        content_strategy_text=plan_text or "严格按确认章节组织知识、示例与练习",
+        example_practice_policy=(
+            "紧凑讲解后立即用短例题和自测验证"
+            if sprint
+            else "概念、推导、例题和迁移练习逐层展开"
+        ),
+        source_usage_policy="本地资料优先；资料不足时明确不确定性，不补写无依据事实",
+        teaching_intent=goal or plan_text,
+        example_ratio=0.32 if sprint else 0.38,
+        practice_ratio=0.28 if sprint else 0.25,
+        evidence_strictness=0.68,
+        review_strictness=0.55,
+        depth_level="compact" if sprint else "standard",
+        explanation_depth="standard" if sprint else "detailed",
+        avoid_list=["脱离确认方案扩展章节", "无资料依据的断言", "重复解释同一知识点"],
+        fallback_used=False,
+    )
+
+
 def build_prepare_global_seed_node(*, context: WorkflowContext):
     """构建 DocGen 全局轻准备节点。"""
 
@@ -87,45 +120,23 @@ def build_prepare_global_seed_node(*, context: WorkflowContext):
             payload={"chapter_count": len(chapters), "file_count": len(getattr(state.get("shared_inputs"), "source_packets", []) or [])},
         )
 
-        extra = {
-            "build_session_id": state.get("build_session_id") or "",
-            "planner_session_id": state.get("planner_session_id") or "",
-            "confirmed_plan_id": state.get("confirmed_plan_id") or "",
-            "digest_mode": state.get("digest_mode") or "",
-        }
         material_profile = {}
         shared_inputs = state.get("shared_inputs")
         if shared_inputs is not None and getattr(shared_inputs, "material_profile", None) is not None:
             material_profile = shared_inputs.material_profile.model_dump(mode="json")
 
-        async def _run_intent_core():
-            step_started_at = perf_counter()
-            result = await infer_intent_core(
-                course_name=docgen_context.course_name,
-                digest_mode=docgen_context.digest_mode,
-                user_prompt=docgen_context.user_prompt,
-                plan=docgen_context.plan or str(confirmed_plan.get("plan") or ""),
-                material_profile=material_profile,
-                chapters=chapters,
-                docgen_history_brief=docgen_context.docgen_history_brief,
-                learner_profile_text=docgen_context.learner_profile_text,
-                extra_metadata=extra,
-            )
-            return result, int((perf_counter() - step_started_at) * 1000)
-
-        async def _run_file_summaries():
-            if shared_inputs is None:
-                return []
-            return await summarize_files(
+        intent_core = _intent_from_confirmed_plan(
+            docgen_context=docgen_context,
+            confirmed_plan=confirmed_plan,
+        )
+        intent_core_ms = 0
+        file_summaries = (
+            summarize_files_deterministically(
                 shared_inputs,
                 chapters=chapters,
-                digest_mode=docgen_context.digest_mode,
-                extra_metadata=extra,
             )
-
-        (intent_core, intent_core_ms), file_summaries = await run_llm_tasks(
-            [_run_intent_core, _run_file_summaries],
-            lambda task: task(),
+            if shared_inputs is not None
+            else []
         )
         if shared_inputs is not None:
             source_affinity, evidence_units = derive_source_affinity_and_evidence(
@@ -143,7 +154,7 @@ def build_prepare_global_seed_node(*, context: WorkflowContext):
             build_group_id=state.get("build_group_id") or None,
             event={
                 "stage": "docgen_global_seed_ready",
-                "summary": f"DocGen 全局种子准备完成：意图推断 1 次，文件摘要 {len(file_summaries)} 份。",
+                "summary": f"DocGen 全局种子准备完成：已复用确认方案，确定性资料路由 {len(file_summaries)} 份。",
                 "created_at": utcnow(),
             },
         )
@@ -185,7 +196,7 @@ def build_prepare_global_seed_node(*, context: WorkflowContext):
             "prepare_ms": elapsed_ms,
             "intent_core_ms": intent_core_ms,
             "file_summary_llm_calls": file_summary_llm_calls,
-            "llm_calls_total": 1 + file_summary_llm_calls,
+            "llm_calls_total": file_summary_llm_calls,
         }
 
     return prepare_global_seed_node

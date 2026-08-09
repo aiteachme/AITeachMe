@@ -24,6 +24,7 @@ from app.shared.infra.llm_support.defaults import (
     DEFAULT_LLM_CONCURRENCY_LIMIT,
     MAX_LLM_CONCURRENCY_LIMIT,
 )
+from app.shared.infra.llm_support.model_catalog import model_is_listed
 from app.shared.infra.llm_support.routing import (
     LLMCallProfile,
     get_task_profile,
@@ -855,6 +856,30 @@ def build_completion_contexts(
             )
 
     if contexts:
+        primary_contexts = tuple(
+            context for context in contexts if context.endpoint_role == "primary"
+        )
+        fallback_contexts = tuple(
+            context for context in contexts if context.endpoint_role == "fallback"
+        )
+        if (
+            primary_contexts
+            and model_is_listed(
+                primary_contexts[0].model,
+                primary_contexts[0].settings.llm.fallback_only_models,
+            )
+        ):
+            if fallback_contexts:
+                logger.info(
+                    "llm_primary_gateway_skipped_for_fallback_only_model",
+                    model=primary_contexts[0].model,
+                    model_selector=primary_contexts[0].model_selector,
+                )
+                return fallback_contexts
+            raise LLMCallError(
+                f"模型 `{primary_contexts[0].model}` 被配置为 llm.fallback_only_models，"
+                "且未配置可用的 LLM_FALLBACK_BASE_URL / LLM_FALLBACK_API_KEY。"
+            )
         return tuple(contexts)
     if missing_key_error is not None:
         raise missing_key_error

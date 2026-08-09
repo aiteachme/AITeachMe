@@ -30,7 +30,8 @@ def _target_chapters_for_term(term: str, task_seeds: Sequence[ChapterGenerationT
     chapters: list[int] = []
     for task in task_seeds:
         haystack = "".join(
-            [
+            "".join(value.split())
+            for value in [
                 task.confirmed_title,
                 task.enhanced_title,
                 task.chapter_goal,

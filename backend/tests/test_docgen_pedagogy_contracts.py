@@ -1,3 +1,5 @@
+import asyncio
+
 from app.workflows.digest.common import pedagogy
 from app.workflows.digest.common.contracts import (
     DigestConfirmedPlanContract,
@@ -7,9 +9,19 @@ from app.workflows.digest.common.contracts import (
 from app.workflows.digest.docgen.lib.chapter_enhancement import (
     _ensure_requested_placeholders,
 )
-from app.workflows.digest.docgen.lib.chapter_review import _coverage, _rule_review_chapter
+from app.workflows.digest.docgen.lib import chapter_review
+from app.workflows.digest.docgen.lib.chapter_review import measure_chapter_coverage, _rule_review_chapter
 from app.workflows.digest.docgen.lib.chapter_planning import _filter_scope_items
-from app.workflows.digest.docgen.lib.models import ChapterGenerationTask, EnhancedChapterDraft
+from app.workflows.digest.docgen.lib.models import (
+    ChapterGenerationTask,
+    ChapterReviewReport,
+    ClaimEvidenceBinding,
+    ClaimEvidenceMap,
+    ClaimItem,
+    ClaimLedger,
+    EnhancedChapterDraft,
+    ReviewedChapterDraft,
+)
 from app.workflows.digest.docgen.lib.textbook_style import normalize_textbook_headings
 from app.workflows.digest.docgen.lib.mode_profiles import get_docgen_mode_profile
 from app.workflows.digest.planner.lib.constants import get_planner_mode_contract
@@ -37,6 +49,47 @@ def test_chapter_title_resolution_keeps_model_titles_without_local_derivation() 
         )
         == "矩阵分解：奇异值分解和低秩近似"
     )
+
+
+def test_chapter_review_uses_rule_guardrail_only(monkeypatch) -> None:
+    draft = EnhancedChapterDraft(
+        chapter_index=1,
+        title="矩阵乘法",
+        markdown="# 矩阵乘法\n\n完整正文。",
+    )
+    rule_reviewed = ReviewedChapterDraft(
+        chapter_index=1,
+        title=draft.title,
+        markdown=draft.markdown,
+        review_report_ref="ch01_review",
+    )
+    rule_report = ChapterReviewReport(
+        report_id="ch01_review",
+        chapter_index=1,
+        passed=True,
+        quality_score=0.9,
+    )
+
+    monkeypatch.setattr(
+        chapter_review,
+        "_rule_review_chapter",
+        lambda **_kwargs: (rule_reviewed, rule_report, []),
+    )
+
+    reviewed, report, actions = asyncio.run(
+        chapter_review.review_chapter(
+            draft=draft,
+            task=None,
+            claim_ledger=None,
+            claim_evidence_map=None,
+            conflict_report=None,
+        )
+    )
+
+    assert reviewed.review_report_ref == "ch01_review"
+    assert report.review_mode == "rule_guardrail"
+    assert report.llm_action_count == 0
+    assert actions == []
 
 
 def test_docgen_retrieval_profile_does_not_keyword_route_user_text() -> None:
@@ -143,7 +196,7 @@ def test_heading_quality_detects_duplicate_titles_without_local_semantic_wordlis
     assert quality["missing_modules"] == []
 
 
-def test_heading_quality_detects_singleton_h3_sections() -> None:
+def test_heading_quality_reports_singleton_h3_without_triggering_llm_repair() -> None:
     quality = pedagogy.analyze_chapter_heading_quality(
         (
             "# 计算机基础\n\n"
@@ -165,10 +218,10 @@ def test_heading_quality_detects_singleton_h3_sections() -> None:
     assert quality["singleton_subheading_paths"] == [
         "存储器层级结构与特性对比 > 典型场景辨析",
     ]
-    assert quality["needs_agent_repair"] is True
+    assert quality["needs_agent_repair"] is False
 
 
-def test_heading_quality_forces_sprint_heading_model_review_without_title_wordlist() -> None:
+def test_heading_quality_does_not_force_valid_sprint_heading_model_review() -> None:
     quality = pedagogy.analyze_chapter_heading_quality(
         (
             "# 计算机基础\n\n"
@@ -179,9 +232,24 @@ def test_heading_quality_forces_sprint_heading_model_review_without_title_wordli
         digest_mode="sprint",
     )
 
-    assert quality["needs_agent_repair"] is True
-    assert quality["force_model_heading_review"] is True
+    assert quality["needs_agent_repair"] is False
+    assert quality["force_model_heading_review"] is False
     assert quality["malformed_titles"] == []
+
+
+def test_heading_quality_allows_repeated_h3_under_different_h2_sections() -> None:
+    quality = pedagogy.analyze_chapter_heading_quality(
+        (
+            "# C 语言\n\n"
+            "## 条件分支\n\n### 易错边界\n\n注意悬空 else。\n\n"
+            "## 循环控制\n\n### 易错边界\n\n注意循环边界。\n\n"
+            "## 综合练习\n\n完成综合练习。\n"
+        ),
+        digest_mode="sprint",
+    )
+
+    assert quality["duplicate_titles"] == []
+    assert quality["needs_agent_repair"] is False
 
 
 def test_heading_quality_detects_malformed_heading_shape_without_semantic_wordlist() -> None:
@@ -299,7 +367,7 @@ def test_sprint_rule_review_does_not_infer_problem_organization_from_title_keywo
     assert report.passed is False
 
 
-def test_rule_review_records_exact_contract_misses_without_local_patch() -> None:
+def test_rule_review_routes_material_contract_misses_to_local_patch() -> None:
     draft = EnhancedChapterDraft(
         chapter_index=1,
         title="函数与极限",
@@ -323,19 +391,155 @@ def test_rule_review_records_exact_contract_misses_without_local_patch() -> None
 
     coverage_actions = [action for action in actions if action.action_id == "review_ch01_section_patch"]
     assert coverage_actions
-    assert coverage_actions[0].action_type == "record_only"
-    assert coverage_actions[0].severity == "info"
+    assert coverage_actions[0].action_type == "section_patch"
+    assert coverage_actions[0].severity == "warning"
+    assert report.passed is False
+
+
+def test_rule_review_does_not_treat_source_claims_as_verbatim_coverage_contracts() -> None:
+    draft = EnhancedChapterDraft(
+        chapter_index=1,
+        title="变量与数据类型",
+        markdown=(
+            "# 变量与数据类型\n\n"
+            "## 变量定义\n\n变量需要先定义再使用。\n\n"
+            "## 单元测试\n\n**题目**：变量何时可以使用？\n\n**答案**：定义后。\n"
+        ),
+    )
+    task = ChapterGenerationTask(
+        chapter_index=1,
+        confirmed_title="变量与数据类型",
+        required_elements=["变量定义"],
+        claim_targets=["| int | a,b,c; | --- | --- | 破碎 OCR 表格与代码片段"],
+        min_word_count=1,
+    )
+
+    _reviewed, report, actions = _rule_review_chapter(
+        draft=draft,
+        task=task,
+        claim_ledger=None,
+        claim_evidence_map=None,
+        conflict_report=None,
+        digest_mode="sprint",
+    )
+
+    assert report.coverage_score == 1.0
+    assert report.missing_elements == []
+    assert not any(action.action_id == "review_ch01_section_patch" for action in actions)
+
+
+def test_rule_review_records_low_evidence_without_requesting_model_patch() -> None:
+    draft = EnhancedChapterDraft(
+        chapter_index=1,
+        title="变量",
+        markdown="# 变量\n\n## 定义\n\n变量需要先定义再使用。\n\n## 单元测试\n\n**题目**：变量何时可用？\n\n**答案**：定义后。\n",
+    )
+    task = ChapterGenerationTask(
+        chapter_index=1,
+        confirmed_title="变量",
+        required_elements=["变量定义"],
+        min_word_count=1,
+        evidence_support_threshold=0.6,
+    )
+    claim_ledger = ClaimLedger(
+        chapter_index=1,
+        items=[ClaimItem(claim_id="claim-1", chapter_index=1, claim_text="变量定义")],
+    )
+    claim_map = ClaimEvidenceMap(
+        chapter_index=1,
+        bindings=[ClaimEvidenceBinding(claim_id="claim-1", support_level=0.5)],
+    )
+
+    _reviewed, report, actions = _rule_review_chapter(
+        draft=draft,
+        task=task,
+        claim_ledger=claim_ledger,
+        claim_evidence_map=claim_map,
+        conflict_report=None,
+        digest_mode="sprint",
+    )
+
+    evidence_actions = [action for action in actions if action.action_id == "review_ch01_evidence"]
     assert report.passed is True
+    assert report.evidence_support_score == 0.5
+    assert evidence_actions[0].action_type == "record_only"
+    assert evidence_actions[0].severity == "warning"
 
 
-def test_rule_review_coverage_uses_exact_contract_text_not_keyword_tokens() -> None:
-    score, missing = _coverage(
+def test_rule_review_coverage_accepts_reordered_explicit_concepts() -> None:
+    score, missing = measure_chapter_coverage(
         "CPU 由运算器和控制器组成，内存储器负责保存正在处理的数据。",
         ["CPU、运算器、控制器与内存储器"],
     )
 
+    assert score == 1.0
+    assert missing == []
+
+
+def test_rule_review_coverage_rejects_incomplete_parallel_concepts() -> None:
+    target = "CPU、运算器、控制器与内存储器"
+
+    score, missing = measure_chapter_coverage("CPU 由运算器和控制器组成。", [target])
+
     assert score == 0.0
-    assert missing == ["CPU、运算器、控制器与内存储器"]
+    assert missing == [target]
+
+
+def test_rule_review_coverage_accepts_long_parallel_contract_rephrasing() -> None:
+    target = "C 程序入口 main 函数、源程序编译流程、头文件包含、宏定义替换规则的零基础铺垫"
+    markdown = (
+        "程序从 main 函数这个入口开始。源文件先编译再链接，头文件通过 include 引入声明，"
+        "宏定义在预处理阶段完成文本替换。"
+    )
+
+    score, missing = measure_chapter_coverage(markdown, [target])
+
+    assert score == 1.0
+    assert missing == []
+
+
+def test_rule_review_coverage_preserves_symbolic_pointer_expression() -> None:
+    target = "数组名与首元素地址、指针加减及*(p+i)访问关系"
+    markdown = (
+        "数组名 a 在多数表达式中转换为首元素地址 &a[0]。"
+        "p+i 指向第 i 个元素，*(p+i) 访问该元素；指针加减按元素大小移动。"
+    )
+
+    score, missing = measure_chapter_coverage(markdown, [target])
+
+    assert score == 1.0
+    assert missing == []
+
+
+def test_rule_review_coverage_accepts_short_parallel_compounds_across_explanation() -> None:
+    target = "循环变量更新、累加累乘与奇偶数统计题型"
+    markdown = (
+        "循环题要明确循环变量的初始化、条件和更新。"
+        "累加通常从 0 开始，累乘通常从 1 开始；奇偶数统计使用取余判断。"
+    )
+
+    score, missing = measure_chapter_coverage(markdown, [target])
+
+    assert score == 1.0
+    assert missing == []
+
+
+def test_rule_review_coverage_rejects_long_contract_with_multiple_missing_concepts() -> None:
+    target = "标识符命名规则、C 语言关键字、基本数据类型、sizeof 运算结果、变量初始化与赋值语句"
+
+    score, missing = measure_chapter_coverage("本节介绍标识符命名规则、C 语言关键字和基本数据类型。", [target])
+
+    assert score == 0.0
+    assert missing == [target]
+
+
+def test_rule_review_coverage_keeps_genuinely_missing_contract_visible() -> None:
+    target = "函数的基本概念、常见初等函数与图像性质"
+
+    score, missing = measure_chapter_coverage("极限描述变量逼近时的趋势。", [target])
+
+    assert score == 0.0
+    assert missing == [target]
 
 
 def test_chapter_scope_filter_removes_other_chapter_targets_without_title_generation() -> None:

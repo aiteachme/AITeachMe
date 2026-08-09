@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
+from difflib import SequenceMatcher
 import hashlib
 import json
+import re
 from dataclasses import dataclass, replace
 from time import perf_counter
 import threading
@@ -58,6 +60,7 @@ from app.workflows.digest.kg_doc_sync.lib.models import (
     SectionExtractionPayload,
 )
 from app.workflows.digest.kg_doc_sync.lib.ontology import default_relation_for_unit_type
+from app.workflows.digest.kg_doc_sync.lib.model_policy import kg_doc_sync_section_llm_max_retries
 from app.workflows.digest.kg_doc_sync.lib.relation_stitching import stitch_knowledge_graph_relations
 from app.workflows.digest.kg_doc_sync.lib.sync_runs import (
     create_sync_run,
@@ -71,16 +74,15 @@ _ANCHOR_ALIAS_SOURCE = "markdown_anchor"
 _SYNC_EDGE_MARKER = "markdown_anchor_sync"
 _RAG_DEDUP_TOP_K = 6
 _RAG_DEDUP_SIMILARITY_THRESHOLD = 0.82
+_NEAR_IDENTITY_NAME_SIMILARITY = 0.86
+_NEAR_IDENTITY_STRONG_NAME_SIMILARITY = 0.92
+_NEAR_IDENTITY_SUMMARY_SIMILARITY = 0.80
+_TECHNICAL_IDENTIFIER_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+\-]{1,}")
+_IDENTITY_NEGATION_MARKERS = ("不", "非", "无", "未", "not", "without")
 _DEFAULT_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS = 16
 _DOCS_SYNC_SPLIT_MIN_CHILD_SECTIONS = 2
-_DOCS_SYNC_SPLIT_MIN_CHAPTER_CHARS = 1800
-_DOCS_SYNC_SPLIT_TARGET_TASK_CHARS = 1400
-_DEFAULT_DOCS_SYNC_CHAPTER_MAX_RETRIES = 2
-_DEFAULT_DOCS_SYNC_CHAPTER_RETRY_DELAY_S = 0.4
-_DOCS_SYNC_CHAPTER_MAX_RETRIES = _DEFAULT_DOCS_SYNC_CHAPTER_MAX_RETRIES
-_DOCS_SYNC_CHAPTER_RETRY_DELAY_S = _DEFAULT_DOCS_SYNC_CHAPTER_RETRY_DELAY_S
-_DOCS_SYNC_SECTION_MAX_RETRIES = _DOCS_SYNC_CHAPTER_MAX_RETRIES
-_DOCS_SYNC_SECTION_RETRY_DELAY_S = _DOCS_SYNC_CHAPTER_RETRY_DELAY_S
+_DOCS_SYNC_SPLIT_MIN_CHAPTER_CHARS = 3000
+_DOCS_SYNC_SPLIT_TARGET_TASK_CHARS = 3200
 _RULE_FALLBACK_MAX_UNITS = 8
 _DEFAULT_EXTRACT_CANDIDATES = extract_candidates
 _ASYNC_BRIDGE_LOCK = threading.Lock()
@@ -1653,6 +1655,8 @@ def _apply_extracted_graph_items(
         target = unit_by_anchor.get(extracted_edge.target_anchor)
         if source is None or target is None or source.id is None or target.id is None:
             continue
+        if source.id == target.id:
+            continue
         if not validate_relation_direction(
             edge_type=extracted_edge.edge_type,
             source_type=source.knowledge_unit_type,
@@ -1869,20 +1873,6 @@ def _effective_concurrency_limit(task_count: int, *, override: int | None = None
     return max(1, min(max(1, task_count), max(1, limit), _graph_llm_concurrency_cap()))
 
 
-def _chapter_max_retries() -> int:
-    configured = _DOCS_SYNC_CHAPTER_MAX_RETRIES
-    if configured == _DEFAULT_DOCS_SYNC_CHAPTER_MAX_RETRIES:
-        configured = _DOCS_SYNC_SECTION_MAX_RETRIES
-    return max(1, int(configured))
-
-
-def _chapter_retry_delay_s() -> float:
-    configured = _DOCS_SYNC_CHAPTER_RETRY_DELAY_S
-    if configured == _DEFAULT_DOCS_SYNC_CHAPTER_RETRY_DELAY_S:
-        configured = _DOCS_SYNC_SECTION_RETRY_DELAY_S
-    return max(0.0, float(configured))
-
-
 def graph_extraction_parallelism() -> dict[str, int | float]:
     """Return the effective internal fan-out settings for docs-sync extraction."""
 
@@ -1891,8 +1881,7 @@ def graph_extraction_parallelism() -> dict[str, int | float]:
         "max_parallel_extractions": _max_parallel_extractions(),
         "llm_concurrency_cap": _graph_llm_concurrency_cap(),
         "planned_task_limit": _planned_extraction_task_limit(),
-        "chapter_max_retries": _chapter_max_retries(),
-        "chapter_retry_delay_s": _chapter_retry_delay_s(),
+        "section_llm_max_retries": kg_doc_sync_section_llm_max_retries(),
         "split_min_child_sections": _DOCS_SYNC_SPLIT_MIN_CHILD_SECTIONS,
         "split_min_chapter_chars": _DOCS_SYNC_SPLIT_MIN_CHAPTER_CHARS,
         "split_target_task_chars": _DOCS_SYNC_SPLIT_TARGET_TASK_CHARS,
@@ -1930,27 +1919,11 @@ def _should_split_chapter(chapter: MarkdownSectionChunk, child_chunks: list[Mark
     if len(child_chunks) < _DOCS_SYNC_SPLIT_MIN_CHILD_SECTIONS:
         return False
     chapter_chars = len(chapter.body_markdown or "")
-    return chapter_chars >= _DOCS_SYNC_SPLIT_MIN_CHAPTER_CHARS or len(child_chunks) >= 4
+    return chapter_chars >= _DOCS_SYNC_SPLIT_MIN_CHAPTER_CHARS
 
 
 def _chunk_chars(chunk: MarkdownSectionChunk) -> int:
     return len(chunk.body_markdown or "")
-
-
-def _desired_child_task_count(
-    chapter: MarkdownSectionChunk,
-    child_chunks: list[MarkdownSectionChunk],
-    *,
-    extra_task_budget: int,
-) -> int:
-    if extra_task_budget <= 0:
-        return 1
-    by_chars = max(
-        2,
-        (_chunk_chars(chapter) + _DOCS_SYNC_SPLIT_TARGET_TASK_CHARS - 1)
-        // _DOCS_SYNC_SPLIT_TARGET_TASK_CHARS,
-    )
-    return max(1, min(len(child_chunks), by_chars, extra_task_budget + 1))
 
 
 def _merge_child_chunk_group(
@@ -1994,21 +1967,29 @@ def _group_child_chunks(
     if len(child_chunks) <= group_count:
         return child_chunks
 
-    total_chars = sum(max(1, _chunk_chars(chunk)) for chunk in child_chunks)
-    target_chars = max(1, (total_chars + group_count - 1) // group_count)
     groups: list[list[MarkdownSectionChunk]] = []
-    current: list[MarkdownSectionChunk] = []
-    current_chars = 0
-    for chunk in child_chunks:
-        chunk_chars = max(1, _chunk_chars(chunk))
-        if current and len(groups) < group_count - 1 and current_chars + chunk_chars > target_chars:
-            groups.append(current)
-            current = []
-            current_chars = 0
-        current.append(chunk)
-        current_chars += chunk_chars
-    if current:
+    cursor = 0
+    chunk_sizes = [max(1, _chunk_chars(chunk)) for chunk in child_chunks]
+    while cursor < len(child_chunks):
+        remaining_groups = group_count - len(groups)
+        if remaining_groups <= 1:
+            groups.append(child_chunks[cursor:])
+            break
+
+        remaining_chunks = len(child_chunks) - cursor
+        max_group_chunks = remaining_chunks - (remaining_groups - 1)
+        remaining_chars = sum(chunk_sizes[cursor:])
+        target_chars = max(1, (remaining_chars + remaining_groups - 1) // remaining_groups)
+        current: list[MarkdownSectionChunk] = []
+        current_chars = 0
+        while len(current) < max_group_chunks:
+            next_chars = chunk_sizes[cursor + len(current)]
+            if current and current_chars + next_chars > target_chars:
+                break
+            current.append(child_chunks[cursor + len(current)])
+            current_chars += next_chars
         groups.append(current)
+        cursor += len(current)
 
     return [
         _merge_child_chunk_group(
@@ -2027,22 +2008,52 @@ def _build_extraction_tasks(
 ) -> tuple[list[_ExtractionTask], dict[str, int]]:
     tasks: list[_ExtractionTask] = []
     planned_task_limit = _planned_extraction_task_limit()
-    split_budget = max(0, planned_task_limit - len(chapters))
+    child_chunks_by_chapter = [_chapter_child_chunks(chapter) for chapter in chapters]
+    total_chars = sum(_chunk_chars(chapter) for chapter in chapters)
+    content_task_target = max(
+        len(chapters),
+        min(
+            planned_task_limit,
+            (total_chars + _DOCS_SYNC_SPLIT_TARGET_TASK_CHARS - 1)
+            // _DOCS_SYNC_SPLIT_TARGET_TASK_CHARS,
+        ),
+    )
+    group_counts = [1 for _chapter in chapters]
+    split_budget = max(0, content_task_target - len(chapters))
+    while split_budget > 0:
+        candidates = [
+            index
+            for index, (chapter, child_chunks) in enumerate(
+                zip(chapters, child_chunks_by_chapter, strict=True)
+            )
+            if _should_split_chapter(chapter, child_chunks)
+            and group_counts[index] < len(child_chunks)
+        ]
+        if not candidates:
+            break
+        selected = max(
+            candidates,
+            key=lambda index: (
+                _chunk_chars(chapters[index]) / group_counts[index],
+                _chunk_chars(chapters[index]),
+                -index,
+            ),
+        )
+        group_counts[selected] += 1
+        split_budget -= 1
     metrics = {
         "chapter_split_count": 0,
         "chapter_task_count": 0,
         "subsection_task_count": 0,
         "planned_task_limit": planned_task_limit,
+        "content_task_target": content_task_target,
     }
-    for source_chapter_index, chapter in enumerate(chapters, start=1):
+    for source_chapter_index, (chapter, child_chunks, child_task_count) in enumerate(
+        zip(chapters, child_chunks_by_chapter, group_counts, strict=True),
+        start=1,
+    ):
         chapter_context = _chapter_context_for_index(chapter_contexts, source_chapter_index)
-        child_chunks = _chapter_child_chunks(chapter)
-        if _should_split_chapter(chapter, child_chunks) and split_budget > 0:
-            child_task_count = _desired_child_task_count(
-                chapter,
-                child_chunks,
-                extra_task_budget=split_budget,
-            )
+        if child_task_count > 1:
             planned_child_chunks = _group_child_chunks(
                 chapter,
                 child_chunks,
@@ -2053,7 +2064,6 @@ def _build_extraction_tasks(
 
         if len(planned_child_chunks) > 1:
             metrics["chapter_split_count"] += 1
-            split_budget -= len(planned_child_chunks) - 1
             for child_chunk in planned_child_chunks:
                 metrics["subsection_task_count"] += 1
                 tasks.append(
@@ -2193,8 +2203,6 @@ async def _collect_section_payloads_async(
     on_record: object | None = None,
 ) -> tuple[list[SectionExtractionPayload], dict[str, int]]:
     prefetch_lookup: dict[tuple[str, str], SectionExtractionRecord] = {}
-    prefetch_hash_lookup: dict[str, SectionExtractionRecord] = {}
-    duplicate_hashes: set[str] = set()
     failed_prefetch_count = 0
     for record in list(prefetched_records or []):
         if record.payload is None:
@@ -2202,12 +2210,6 @@ async def _collect_section_payloads_async(
             continue
         record_key = (record.section_key, record.content_hash)
         prefetch_lookup[record_key] = record
-        if record.content_hash in prefetch_hash_lookup:
-            duplicate_hashes.add(record.content_hash)
-        else:
-            prefetch_hash_lookup[record.content_hash] = record
-    for content_hash in duplicate_hashes:
-        prefetch_hash_lookup.pop(content_hash, None)
     used_prefetch_keys: set[tuple[str, str]] = set()
     prefetch_enabled = prefetched_records is not None
     extraction_limit = _effective_concurrency_limit(
@@ -2217,13 +2219,16 @@ async def _collect_section_payloads_async(
 
     async def _extract_with_queue(task: _ExtractionTask) -> SectionExtractionPayload:
         key = (_section_task_key(task), _section_task_content_hash(task))
-        prefetched = prefetch_lookup.get(key) or prefetch_hash_lookup.get(key[1])
+        prefetched = prefetch_lookup.get(key)
         if prefetched is not None and prefetched.payload is not None:
-            used_prefetch_keys.add((prefetched.section_key, prefetched.content_hash))
-            return _apply_task_context_to_payload(prefetched.payload, task)
+            used_prefetch_keys.add(key)
+            payload = _apply_task_context_to_payload(prefetched.payload, task)
+            if callable(on_record):
+                on_record(_section_record_for_task(task, payload=payload))
+            return payload
 
         try:
-            payload = await _extract_chapter_with_retries(
+            payload = await _extract_chapter_graph_items(
                 task.task_index,
                 task.chunk,
                 course_context=course_context,
@@ -2470,6 +2475,7 @@ async def extract_knowledge_graph_section_records_async(
     course_context: str | None,
     structured_context: dict[str, object] | None = None,
     concurrency_limit: int | None = None,
+    prefetched_records: list[SectionExtractionRecord] | None = None,
     on_record: object | None = None,
 ) -> tuple[list[SectionExtractionRecord], dict[str, int]]:
     """Extract section-level graph payloads without global merge or persistence."""
@@ -2487,16 +2493,18 @@ async def extract_knowledge_graph_section_records_async(
         if callable(on_record):
             on_record(record)
 
-    await _collect_section_payloads_async(
+    _payloads, prefetch_stats = await _collect_section_payloads_async(
         extraction_tasks,
         course_context=course_context or "",
         concurrency_limit=concurrency_limit,
+        prefetched_records=prefetched_records,
         on_record=_remember,
     )
     diagnostics = _empty_extraction_diagnostics()
     diagnostics["chapter_count"] = len(chapters)
     diagnostics["section_count"] = len(extraction_tasks)
     diagnostics.update(task_metrics)
+    diagnostics.update(prefetch_stats)
     for record in records:
         if record.payload is None:
             continue
@@ -3163,60 +3171,6 @@ async def _extract_candidates_with_diagnostics_adapter(**kwargs) -> tuple[ChunkE
     return await extract_candidates_with_diagnostics(**kwargs)
 
 
-async def _extract_chapter_with_retries(
-    chapter_index: int,
-    chapter,
-    *,
-    course_context: str = "",
-    chapter_context: ChapterSourceContext | None = None,
-    source_chapter_index: int | None = None,
-    source_kind: str = "chapter",
-) -> SectionExtractionPayload:
-    last_error: Exception | None = None
-    max_retries = _chapter_max_retries()
-    for attempt in range(1, max_retries + 1):
-        try:
-            return await _extract_chapter_graph_items(
-                chapter_index,
-                chapter,
-                course_context=course_context,
-                chapter_context=chapter_context,
-                source_chapter_index=source_chapter_index,
-                source_kind=source_kind,
-            )
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            last_error = exc
-            logger.warning(
-                "knowledge_docs_sync_chapter_retry_scheduled",
-                chapter_index=chapter_index,
-                chunk_title=chapter.title,
-                header_path=chapter.header_path,
-                attempt=attempt,
-                max_retries=max_retries,
-                source_chapter_index=source_chapter_index,
-                source_kind=source_kind,
-                error_type=type(exc).__name__,
-            )
-            if attempt >= max_retries:
-                break
-            await asyncio.sleep(_chapter_retry_delay_s() * attempt)
-
-    logger.error(
-        "knowledge_docs_sync_chapter_llm_failed_after_retries",
-        chapter_index=chapter_index,
-        chunk_title=chapter.title,
-        header_path=chapter.header_path,
-        source_chapter_index=source_chapter_index,
-        source_kind=source_kind,
-        error_type=(type(last_error).__name__ if last_error is not None else "UnknownError"),
-    )
-    if last_error is not None:
-        raise last_error
-    raise RuntimeError("knowledge graph chapter extraction failed without an exception")
-
-
 def _build_section_course_context(
     course_context: str,
     *,
@@ -3522,6 +3476,93 @@ def _build_edge_lookup_cache(session: Session, *, course_id: str) -> _EdgeLookup
     )
 
 
+def _technical_identifiers(text: str) -> set[str]:
+    return {match.group(0).casefold() for match in _TECHNICAL_IDENTIFIER_RE.finditer(str(text or ""))}
+
+
+def _is_near_equivalent_unit_identity(
+    *,
+    left_name: str,
+    left_summary: str,
+    right_name: str,
+    right_summary: str,
+) -> bool:
+    """Conservatively identify technical aliases without merging contrast pairs."""
+
+    normalized_left = normalize_name(left_name)
+    normalized_right = normalize_name(right_name)
+    if not normalized_left or not normalized_right:
+        return False
+    if normalized_left == normalized_right:
+        return True
+
+    left_identifiers = _technical_identifiers(left_name)
+    right_identifiers = _technical_identifiers(right_name)
+    shared_identifiers = left_identifiers & right_identifiers
+    if len(shared_identifiers) < 2:
+        return False
+    if left_identifiers != right_identifiers:
+        return False
+
+    matcher = SequenceMatcher(None, normalized_left, normalized_right, autojunk=False)
+    name_similarity = matcher.ratio()
+    if name_similarity < _NEAR_IDENTITY_NAME_SIMILARITY:
+        return False
+
+    changes = [opcode for opcode in matcher.get_opcodes() if opcode[0] != "equal"]
+    if (
+        len(changes) == 1
+        and changes[0][0] == "replace"
+        and changes[0][2] - changes[0][1] == changes[0][4] - changes[0][3]
+    ):
+        return False
+
+    normalized_left_summary = normalize_name(left_summary)
+    normalized_right_summary = normalize_name(right_summary)
+    if normalized_left_summary and normalized_right_summary:
+        summary_similarity = SequenceMatcher(
+            None,
+            normalized_left_summary,
+            normalized_right_summary,
+            autojunk=False,
+        ).ratio()
+        if summary_similarity >= _NEAR_IDENTITY_SUMMARY_SIMILARITY:
+            return True
+
+    if name_similarity < _NEAR_IDENTITY_STRONG_NAME_SIMILARITY:
+        return False
+    if any(opcode[0] == "replace" for opcode in changes):
+        return False
+    changed_text = "".join(
+        normalized_left[left_start:left_end] + normalized_right[right_start:right_end]
+        for _tag, left_start, left_end, right_start, right_end in changes
+    ).casefold()
+    return not any(marker in changed_text for marker in _IDENTITY_NEGATION_MARKERS)
+
+
+def _find_near_equivalent_cached_unit(
+    cache: _UnitLookupCache,
+    *,
+    item: MarkdownKnowledgeUnit,
+    knowledge_unit_type: str,
+) -> KnowledgeUnit | None:
+    matches: list[KnowledgeUnit] = []
+    seen_ids: set[int] = set()
+    for candidate in cache.by_type_name.values():
+        identity = int(candidate.id or id(candidate))
+        if identity in seen_ids or normalize_knowledge_unit_type(candidate.knowledge_unit_type) != knowledge_unit_type:
+            continue
+        seen_ids.add(identity)
+        if _is_near_equivalent_unit_identity(
+            left_name=candidate.canonical_name,
+            left_summary=candidate.summary,
+            right_name=item.name,
+            right_summary=item.summary,
+        ):
+            matches.append(candidate)
+    return matches[0] if len(matches) == 1 else None
+
+
 def _upsert_unit(
     session: Session,
     *,
@@ -3553,6 +3594,7 @@ def _upsert_unit(
     # Exact type/name identity must win over stale anchor identity because the
     # database uniqueness constraint is defined on (course, type, normalized_name).
     unit = name_matched_unit or anchor_matched_unit
+    near_identity_match = False
     if unit is None:
         unit = (
             lookup_cache.by_type_name.get(type_name_key)
@@ -3564,6 +3606,13 @@ def _upsert_unit(
                 knowledge_unit_type=knowledge_unit_type,
             )
         )
+    if unit is None and lookup_cache is not None:
+        unit = _find_near_equivalent_cached_unit(
+            lookup_cache,
+            item=item,
+            knowledge_unit_type=knowledge_unit_type,
+        )
+        near_identity_match = unit is not None
     if unit is None and enable_rag_dedup:
         unit = _find_unit_with_rag(
             session,
@@ -3583,6 +3632,7 @@ def _upsert_unit(
     )
     if name_conflict_unit is not None and (unit is None or name_conflict_unit.id != unit.id):
         unit = name_conflict_unit
+        near_identity_match = False
     if unit is None and lookup_cache is None:
         unit = knowledge_unit_repo.find_knowledge_unit_by_normalized_name(
             session,
@@ -3606,11 +3656,19 @@ def _upsert_unit(
             _snapshot_unit_for_docgen_rollback(unit),
         )
     unit.knowledge_unit_type = knowledge_unit_type
-    unit.canonical_name = item.name
-    unit.normalized_name = normalized_name
-    unit.summary = item.summary or item.name
-    unit.body_markdown = item.body_markdown or item.summary or item.name
-    unit.body = unit.body_markdown
+    if near_identity_match:
+        incoming_summary = item.summary or item.name
+        if len(incoming_summary.strip()) > len((unit.summary or "").strip()):
+            unit.summary = incoming_summary
+        if not (unit.body_markdown or unit.body):
+            unit.body_markdown = item.body_markdown or incoming_summary
+            unit.body = unit.body_markdown
+    else:
+        unit.canonical_name = item.name
+        unit.normalized_name = normalized_name
+        unit.summary = item.summary or item.name
+        unit.body_markdown = item.body_markdown or item.summary or item.name
+        unit.body = unit.body_markdown
     unit.type_source, unit.type_confidence = _unit_type_source_for_kind(item.source_kind)
     unit.status = "active"
     unit.build_revision_no = build_revision_no

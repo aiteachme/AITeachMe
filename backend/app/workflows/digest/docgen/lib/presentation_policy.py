@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from app.shared.infra.tools.builtin.markdown_processing import (
@@ -40,6 +41,95 @@ RELATION_LABELS = {
     "similar_to": "相似",
     "extends_to": "拓展",
 }
+
+_INLINE_CODE_SPAN_RE = re.compile(r"(?P<ticks>`+)(?P<body>[^`\n]*?)(?P=ticks)")
+_TABLE_SEPARATOR_CELL_RE = re.compile(r"\s*:?-{3,}:?\s*")
+_UNPAIRED_HIGHLIGHT_ISSUE = "Markdown 高亮标记 == 未成对闭合。"
+_UNCONTROLLED_HTML_ISSUE = "Markdown 正文包含不受控 HTML 标签。"
+_RAW_HTML_TAG_RE = re.compile(r"</?(?!mark\b|br\b)[A-Za-z][^>\n]{0,120}>", re.IGNORECASE)
+
+
+def _split_unescaped_table_cells(line: str) -> list[str]:
+    stripped = str(line or "").strip()
+    if stripped.startswith("|"):
+        stripped = stripped[1:]
+    if stripped.endswith("|"):
+        stripped = stripped[:-1]
+    return re.split(r"(?<!\\)\|", stripped) if "|" in stripped else []
+
+
+def _is_table_separator_line(line: str) -> bool:
+    cells = _split_unescaped_table_cells(line)
+    return len(cells) >= 2 and all(_TABLE_SEPARATOR_CELL_RE.fullmatch(cell or "") for cell in cells)
+
+
+def _is_table_row(line: str) -> bool:
+    stripped = str(line or "").strip()
+    return bool(stripped and (stripped.startswith("|") or stripped.endswith("|")) and len(_split_unescaped_table_cells(stripped)) >= 2)
+
+
+def _escape_inline_code_pipes(line: str) -> str:
+    def replace_span(match: re.Match[str]) -> str:
+        body = re.sub(r"(?<!\\)\|", r"\\|", match.group("body"))
+        return f"{match.group('ticks')}{body}{match.group('ticks')}"
+
+    return _INLINE_CODE_SPAN_RE.sub(replace_span, line)
+
+
+def _protect_docgen_table_inline_code(markdown: str) -> str:
+    """Escape pipes inside inline code while traversing GFM table rows."""
+
+    lines = str(markdown or "").split("\n")
+    fixed: list[str] = []
+    in_fence = False
+    in_table = False
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            in_table = False
+            fixed.append(line)
+            continue
+        if in_fence:
+            fixed.append(line)
+            continue
+        next_line = lines[index + 1] if index + 1 < len(lines) else ""
+        if _is_table_row(line) and _is_table_separator_line(next_line):
+            in_table = True
+            fixed.append(_escape_inline_code_pipes(line))
+            continue
+        if in_table and (_is_table_row(line) or _is_table_separator_line(line)):
+            fixed.append(_escape_inline_code_pipes(line))
+            continue
+        in_table = False
+        fixed.append(line)
+    return "\n".join(fixed)
+
+
+def _docgen_text_without_code(markdown: str) -> str:
+    """Return prose used for highlight validation, excluding code and math."""
+
+    visible: list[str] = []
+    in_fence = False
+    in_math = False
+    for raw_line in str(markdown or "").replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        stripped = raw_line.strip()
+        boundary = stripped.removeprefix(">").strip()
+        if boundary.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if boundary == "$$":
+            in_math = not in_math
+            continue
+        if in_fence or in_math:
+            continue
+        visible.append(_INLINE_CODE_SPAN_RE.sub("", raw_line))
+    return "\n".join(visible)
+
+
+def _has_unpaired_docgen_highlight(markdown: str) -> bool:
+    markers = re.findall(r"(?<!\\)==", _docgen_text_without_code(markdown))
+    return len(markers) % 2 != 0
 
 
 def build_presentation_policy(*, digest_mode: str = "") -> dict[str, Any]:
@@ -114,7 +204,8 @@ def normalize_docgen_presentation(
 ) -> str:
     """Run the deterministic presentation normalizers used at DocGen boundaries."""
 
-    cleaned = normalize_mermaid_blocks(normalize_markdown_rendering(markdown))
+    cleaned = _protect_docgen_table_inline_code(markdown)
+    cleaned = normalize_mermaid_blocks(normalize_markdown_rendering(cleaned))
     cleaned = normalize_textbook_headings(
         cleaned,
         digest_mode=digest_mode,
@@ -127,11 +218,20 @@ def normalize_docgen_presentation(
 
 
 def find_docgen_presentation_issues(markdown: str) -> list[str]:
-    return find_markdown_presentation_issues(markdown)
+    issues = find_markdown_presentation_issues(markdown)
+    if _UNPAIRED_HIGHLIGHT_ISSUE in issues and not _has_unpaired_docgen_highlight(markdown):
+        issues = [issue for issue in issues if issue != _UNPAIRED_HIGHLIGHT_ISSUE]
+    if _UNCONTROLLED_HTML_ISSUE in issues and not _RAW_HTML_TAG_RE.search(_docgen_text_without_code(markdown)):
+        issues = [issue for issue in issues if issue != _UNCONTROLLED_HTML_ISSUE]
+    return issues
 
 
 def summarize_docgen_presentation(markdown: str) -> dict[str, object]:
-    return summarize_markdown_presentation(markdown)
+    summary = summarize_markdown_presentation(markdown)
+    issues = find_docgen_presentation_issues(markdown)
+    summary["issues"] = issues[:20]
+    summary["issue_count"] = len(issues)
+    return summary
 
 
 def summarize_docgen_presentation_collection(

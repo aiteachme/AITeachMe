@@ -149,8 +149,14 @@ def build_priority_source_context(
     sources: list[str] = []
     used_chars = 0
     seen: set[str] = set()
+    total_budget = max(1200, int(max_total_chars))
+    selected_slice_count = max(1, min(4, len(source_slices)))
+    excerpt_budget = max(
+        160,
+        min(int(max_excerpt_chars), (total_budget // selected_slice_count) - 260),
+    )
 
-    for raw_slice in source_slices:
+    for raw_slice in source_slices[:selected_slice_count]:
         section_ref = str(_slice_value(raw_slice, "section_ref", "") or "").strip()
         file_id = str(_slice_value(raw_slice, "file_id", "") or "").strip()
         if not section_ref:
@@ -180,13 +186,13 @@ def build_priority_source_context(
                 start_line=start_line,
                 end_line=end_line,
                 context_lines=0,
-                max_chars=max_excerpt_chars,
+                max_chars=excerpt_budget,
             )
         else:
-            excerpt = section.normalized_content[:max_excerpt_chars].strip()
+            excerpt = section.normalized_content[:excerpt_budget].strip()
 
-        summary = str(_slice_value(raw_slice, "summary", "") or "").strip()
-        reason = str(_slice_value(raw_slice, "reason", "") or "").strip()
+        summary = str(_slice_value(raw_slice, "summary", "") or "").strip()[:80]
+        reason = str(_slice_value(raw_slice, "reason", "") or "").strip()[:80]
         title = str(_slice_value(raw_slice, "section_title", "") or section.title or section.header_path).strip()
         line_label = f"L{start_line}-L{end_line}" if start_line and end_line else "line:unknown"
         block_lines = [
@@ -201,7 +207,7 @@ def build_priority_source_context(
         block = "\n".join(block_lines).strip()
         if not block:
             continue
-        if used_chars + len(block) > max(1200, int(max_total_chars)) and blocks:
+        if used_chars + len(block) > total_budget and blocks:
             break
         used_chars += len(block)
 

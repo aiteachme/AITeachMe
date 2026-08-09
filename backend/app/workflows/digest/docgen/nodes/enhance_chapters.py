@@ -19,7 +19,6 @@ from app.workflows.digest.docgen.lib.chapter_enhancement import enhance_chapter_
 from app.workflows.digest.docgen.lib.models import ChapterDraft, ClaimLedger
 from app.workflows.digest.docgen.nodes.common import extract_markdown_preview_headings, publish_docgen_progress
 from app.workflows.digest.docgen.state import DocGenState
-from app.workflows.digest.kg_doc_sync.lib.prefetch import start_docgen_kg_prefetch_incremental
 
 
 def build_enhance_chapters_node(*, context: WorkflowContext):
@@ -142,41 +141,7 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
         enhanced_items = [item[0] for item in results]
         asset_manifests = [item[1] for item in results]
         practice_manifests = [item[2] for item in results]
-        kg_prefetch_incremental_started = start_docgen_kg_prefetch_incremental(
-            course_id=state["course_id"],
-            build_session_id=state.get("build_session_id", ""),
-            chapters=[item.model_dump(mode="json") for item in enhanced_items],
-            document_backbone=state.get("document_backbone") or {},
-            docgen_manifest={
-                "intent_profile": dict(state.get("intent_profile") or state.get("intent_core") or {}),
-                "chapter_task_seeds": list(state.get("chapter_task_seeds") or []),
-                "chapter_execution_briefs": list(state.get("chapter_execution_briefs") or []),
-                "chapter_generation_plan": dict(state.get("chapter_generation_plan") or {}),
-                "chapter_generation_plan_seed": dict(state.get("chapter_generation_plan_seed") or {}),
-                "document_backbone_snapshot": dict(state.get("document_backbone") or {}),
-                "preliminary_kg": dict(state.get("preliminary_kg") or {}),
-                "kg_refinement_items": list(state.get("kg_refinement_items") or []),
-                "docgen_kg_draft": dict(state.get("docgen_kg_draft") or {}),
-                "digest_mode": str(state.get("digest_mode") or ""),
-                "kg_prefetch_phase": "enhanced_chapters_incremental",
-            },
-        )
-        kg_prefetch_status = (
-            "incremental_from_enhanced_chapters"
-            if kg_prefetch_incremental_started
-            else "not_started_from_enhanced_chapters"
-        )
-        if kg_prefetch_incremental_started:
-            append_knowledge_build_recent_event(
-                state["course_id"],
-                requested_at=state["requested_at"],
-                build_group_id=state.get("build_group_id") or None,
-                event={
-                    "stage": "kg_prefetch_incremental_started",
-                    "summary": "增强后的章节已追加进入知识图谱预抽取，不打断已有图谱 sidecar。",
-                    "created_at": utcnow(),
-                },
-            )
+        kg_prefetch_status = "deferred_until_reviewed_chapters"
         update_knowledge_build_status(
             state["course_id"],
             requested_at=state["requested_at"],
@@ -195,8 +160,8 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
                 "asset_count": sum(len(item.assets) for item in asset_manifests),
                 "practice_count": sum(len(item.questions) for item in practice_manifests),
                 "warning_count": sum(len(item.warnings) for item in enhanced_items),
-                "kg_prefetch_started": kg_prefetch_incremental_started,
-                "kg_prefetch_incremental_started": kg_prefetch_incremental_started,
+                "kg_prefetch_started": False,
+                "kg_prefetch_incremental_started": False,
                 "kg_prefetch_status": kg_prefetch_status,
             },
         )

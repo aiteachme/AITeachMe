@@ -27,6 +27,12 @@ LLM_PROVIDER_ENV_NAME = "LLM_PROVIDER"
 LLM_API_VERSION_ENV_NAME = "LLM_API_VERSION"
 DEFAULT_RETRIEVER_FALLBACK = "duckduckgo"
 DEFAULT_RUNTIME_RETRIEVER_PROFILE = "planner_fast"
+
+
+class ProjectSettingsLoadError(ValueError):
+    """A configured project settings file could not be loaded safely."""
+
+
 LLM_PROVIDER_ALIASES: dict[str, str] = {
     "openai": "openai",
     "openai_compatible": "openai_compatible",
@@ -659,8 +665,12 @@ def parse_yaml_mapping(text: str) -> dict[str, Any]:
     try:
         import yaml  # type: ignore
 
-        parsed = yaml.safe_load(text) or {}
-        return parsed if isinstance(parsed, dict) else {}
+        parsed = yaml.safe_load(text)
+        if parsed is None:
+            return {}
+        if not isinstance(parsed, dict):
+            raise ProjectSettingsLoadError("project settings YAML root must be a mapping")
+        return parsed
     except ImportError:
         pass
 
@@ -702,12 +712,23 @@ def load_project_settings_values(path: Path | None = None) -> dict[str, Any]:
     if current_path is None:
         return {}
     if not current_path.exists():
-        return {}
+        raise ProjectSettingsLoadError("configured PROJECT_SETTINGS_PATH does not exist")
+    if not current_path.is_file():
+        raise ProjectSettingsLoadError("configured PROJECT_SETTINGS_PATH is not a file")
     try:
-        raw = parse_yaml_mapping(current_path.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-    return raw if isinstance(raw, dict) else {}
+        text = current_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        raise ProjectSettingsLoadError(
+            "configured PROJECT_SETTINGS_PATH is not readable UTF-8 text"
+        ) from exc
+    try:
+        return parse_yaml_mapping(text)
+    except ProjectSettingsLoadError:
+        raise
+    except Exception as exc:
+        raise ProjectSettingsLoadError(
+            "configured PROJECT_SETTINGS_PATH is not valid YAML"
+        ) from exc
 
 
 def _normalize_profile_entries(value: Any) -> list[str]:
@@ -767,6 +788,7 @@ __all__ = [
     "LITELLM_PROVIDER_BY_RUNTIME_PROVIDER",
     "PROJECT_SETTINGS_ENV_NAME",
     "PROJECT_SETTINGS_SOURCE_LABEL",
+    "ProjectSettingsLoadError",
     "DEFAULT_RETRIEVER_FALLBACK",
     "DEFAULT_RUNTIME_RETRIEVER_PROFILE",
     "DEFAULT_RETRIEVER_PROFILES",

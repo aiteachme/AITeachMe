@@ -22,9 +22,9 @@ def _configured_runtime_snapshot() -> LLMRuntimeSnapshot:
     settings = get_settings()
     models = settings.models.model_copy(
         update={
-            "reason": "main-reason-model",
-            "primary": "main-primary-model",
-            "light": "main-light-model",
+            "reason": "gpt-5.6-sol",
+            "primary": "gpt-5.6-luna",
+            "light": "gpt-5.4-mini",
         },
     )
     fallback_models = settings.fallback_models.model_copy(
@@ -100,9 +100,9 @@ def test_confirmed_plan_payload_preserves_model_tier_override() -> None:
 @pytest.mark.parametrize(
     ("selector", "main_model", "configured_fallback_model", "effective_fallback_model", "effort"),
     [
-        ("reason", "main-reason-model", "fallback-reason-model", "fallback-reason-model", "high"),
-        ("primary", "main-primary-model", None, "main-primary-model", "medium"),
-        ("light", "main-light-model", "fallback-light-model", "fallback-light-model", "low"),
+        ("reason", "gpt-5.6-sol", "fallback-reason-model", "fallback-reason-model", "high"),
+        ("primary", "gpt-5.6-luna", None, "gpt-5.6-luna", "medium"),
+        ("light", "gpt-5.4-mini", "fallback-light-model", "fallback-light-model", "low"),
     ],
 )
 def test_runtime_model_tier_override_maps_models_fallbacks_and_efforts(

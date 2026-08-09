@@ -4,15 +4,13 @@ from __future__ import annotations
 
 from time import perf_counter
 
-from app.shared.infra.llm_support import run_llm_tasks
 from app.shared.infra.workflow.context import WorkflowContext
 from app.shared.infra.knowledge.build_store import (
     append_knowledge_build_recent_event,
     upsert_knowledge_build_chapter_progress,
 )
 from app.utils.time import utcnow
-from app.workflows.digest.docgen.lib.models import DocGenContext
-from app.workflows.digest.docgen.lib.title_lock import lock_title_for_chapter
+from app.workflows.digest.docgen.lib.title_lock import fallback_locked_title
 from app.workflows.digest.docgen.nodes.common import publish_docgen_progress
 from app.workflows.digest.docgen.state import DocGenState
 
@@ -28,22 +26,9 @@ def build_lock_titles_for_chapters_node(*, context: WorkflowContext):
         )
         if not chapters:
             return {"error": "缺少可锁定标题的学习大纲。"}
-        docgen_context = DocGenContext.model_validate(state.get("docgen_context") or {})
-
         async def _lock_one(chapter: dict) -> dict:
-            locked = await lock_title_for_chapter(
-                course_name=docgen_context.course_name,
-                digest_mode=docgen_context.digest_mode,
-                user_prompt=docgen_context.user_prompt,
-                plan=docgen_context.plan,
-                chapter=chapter,
-                docgen_history_brief=docgen_context.docgen_history_brief,
-                extra_metadata={
-                    "build_session_id": state.get("build_session_id") or "",
-                    "planner_session_id": state.get("planner_session_id") or "",
-                    "confirmed_plan_id": state.get("confirmed_plan_id") or "",
-                    "chapter_index": int(chapter.get("chapter_index", 0) or 0),
-                },
+            locked = fallback_locked_title(chapter).model_copy(
+                update={"fallback_used": False},
             )
             append_knowledge_build_recent_event(
                 state["course_id"],
@@ -68,10 +53,7 @@ def build_lock_titles_for_chapters_node(*, context: WorkflowContext):
             )
             return locked.model_dump(mode="json")
 
-        locked_titles = await run_llm_tasks(
-            chapters,
-            _lock_one,
-        )
+        locked_titles = [await _lock_one(chapter) for chapter in chapters]
         locked_titles.sort(key=lambda item: int(item.get("chapter_index", 0) or 0))
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         await publish_docgen_progress(
@@ -86,7 +68,7 @@ def build_lock_titles_for_chapters_node(*, context: WorkflowContext):
         return {
             "locked_titles": locked_titles,
             "title_lock_ms": elapsed_ms,
-            "llm_calls_total": len(locked_titles),
+            "llm_calls_total": 0,
         }
 
     return lock_titles_for_chapters_node

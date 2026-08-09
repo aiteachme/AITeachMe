@@ -16,10 +16,11 @@ def test_public_suggest_name_cost_route_is_removed() -> None:
     assert "acompletion(" not in courses_api
 
 
-def test_internal_planner_course_identity_workflow_remains() -> None:
+def test_internal_planner_course_identity_workflow_remains_without_llm_cost() -> None:
     identity_node = (
         BACKEND_ROOT / "app/workflows/digest/planner/nodes/generate_course_identity.py"
     ).read_text(encoding="utf-8")
 
     assert "generate_course_identity" in identity_node
-    assert "acompletion_with_fallback" in identity_node
+    assert "_derive_course_name" in identity_node
+    assert "acompletion" not in identity_node

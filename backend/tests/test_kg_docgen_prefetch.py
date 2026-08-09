@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import gc
 from collections.abc import Iterator
 from contextlib import contextmanager
 from types import SimpleNamespace
@@ -14,14 +15,15 @@ from app.workflows.digest.kg_doc_sync.lib.models import SectionExtractionRecord
 @pytest.mark.parametrize(
     ("configured", "global_limit", "expected"),
     [
-        (12, 12, 2),
-        (6, 10, 2),
+        (12, 12, 12),
+        (6, 10, 6),
         (1, 10, 1),
-        (6, 2, 1),
+        (6, 2, 2),
         (6, 1, 1),
+        (6, 300, 6),
     ],
 )
-def test_prefetch_concurrency_limit_reserves_foreground_capacity(
+def test_prefetch_concurrency_limit_uses_configured_and_global_limits(
     configured: int,
     global_limit: int,
     expected: int,
@@ -32,12 +34,26 @@ def test_prefetch_concurrency_limit_reserves_foreground_capacity(
     )
 
 
+def test_prefetch_default_consume_window_covers_all_section_attempts() -> None:
+    minimum_retry_window = (
+        prefetch.kg_doc_sync_section_llm_timeout_s() * prefetch._PREFETCH_EXTRACTION_ATTEMPTS
+    )
+
+    assert prefetch._PREFETCH_CONSUME_GRACE_S > minimum_retry_window
+
+
 @pytest.mark.anyio
 async def test_consume_docgen_kg_prefetch_cancels_unfinished_sidecar() -> None:
     key = ("course_prefetch_test", "build_prefetch_test")
     started = asyncio.Event()
     release = asyncio.Event()
     was_cancelled = False
+    loop = asyncio.get_running_loop()
+    previous_exception_handler = loop.get_exception_handler()
+    unhandled_contexts: list[dict[str, object]] = []
+    loop.set_exception_handler(
+        lambda _loop, context: unhandled_contexts.append(dict(context))
+    )
 
     async def _runner() -> None:
         nonlocal was_cancelled
@@ -63,13 +79,18 @@ async def test_consume_docgen_kg_prefetch_cancels_unfinished_sidecar() -> None:
 
         assert records == []
         assert metrics["prefetch_status"] == "consumed_cancelled"
+        assert task.done()
         await asyncio.gather(task, return_exceptions=True)
+        await asyncio.sleep(0)
+        gc.collect()
         await asyncio.sleep(0)
 
         with prefetch._LOCK:
             assert prefetch._CACHES.get(key) is None
         assert was_cancelled
+        assert unhandled_contexts == []
     finally:
+        loop.set_exception_handler(previous_exception_handler)
         if not task.done():
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
@@ -375,7 +396,7 @@ async def test_completed_prefetch_refresh_prioritizes_fresh_records(monkeypatch)
 
 
 @pytest.mark.anyio
-async def test_start_docgen_kg_prefetch_caps_background_concurrency(monkeypatch) -> None:
+async def test_final_locked_prefetch_fans_out_to_global_concurrency(monkeypatch) -> None:
     key = ("course_prefetch_concurrency", "build_prefetch_concurrency")
     captured_concurrency: list[int] = []
     captured_traces: list[dict[str, object]] = []
@@ -444,19 +465,20 @@ async def test_start_docgen_kg_prefetch_caps_background_concurrency(monkeypatch)
             wait_timeout_s=1,
         )
 
-        assert captured_concurrency == [2]
+        assert captured_concurrency == [10]
         assert len(captured_traces) == 1
         trace_kwargs = captured_traces[0]["kwargs"]
         assert trace_kwargs["name"] == "KG：DocGen 预取"
-        assert trace_kwargs["inputs"]["concurrency_limit"] == 2
+        assert trace_kwargs["inputs"]["concurrency_limit"] == 10
         assert trace_kwargs["extra_metadata"]["background_sidecar"] == "kg_docgen_prefetch"
         assert metrics["prefetch_configured_concurrency"] == 6
         assert metrics["prefetch_llm_concurrency_cap"] == 10
-        assert metrics["prefetch_effective_concurrency"] == 2
+        assert metrics["prefetch_effective_concurrency"] == 10
+        assert metrics["prefetch_fanout_mode"] == "all_independent_final_sections"
         run = captured_traces[0]["run"]
         assert isinstance(run, FakeTraceRun)
         assert run.outputs is not None
-        assert run.outputs["concurrency_limit"] == 2
+        assert run.outputs["concurrency_limit"] == 10
     finally:
         prefetch.cancel_docgen_kg_prefetch(course_id=key[0], build_session_id=key[1])
         with prefetch._LOCK:

@@ -49,8 +49,8 @@ _MULTISPACE_RE = re.compile(r"\s+")
 _CALLOUT_MARKER_LINE_RE = re.compile(
     r"(?im)^\s*>?\s*\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION|EXAMPLE|PRACTICE|QUESTION)\]\s*$",
 )
-_MAX_SECTION_CANDIDATE_NODES = 12
-_MAX_SECTION_CANDIDATE_EDGES = 18
+_MAX_SECTION_CANDIDATE_NODES = 10
+_MAX_SECTION_CANDIDATE_EDGES = 16
 _MAX_CANDIDATE_NAME_CHARS = 90
 _MAX_CANDIDATE_SUMMARY_CHARS = 140
 _MAX_EDGE_DESCRIPTION_CHARS = 140
@@ -162,12 +162,12 @@ class ChunkExtractionResult(BaseModel):
 
     nodes: list[CandidateNode] = Field(
         default_factory=list,
-        description="本片段最多 12 个高置信候选节点。",
+        description="本片段最多 10 个高置信候选节点。",
         json_schema_extra={"maxItems": _MAX_SECTION_CANDIDATE_NODES},
     )
     edges: list[CandidateEdge] = Field(
         default_factory=list,
-        description="本片段最多 18 条高置信候选关系。",
+        description="本片段最多 16 条高置信候选关系。",
         json_schema_extra={"maxItems": _MAX_SECTION_CANDIDATE_EDGES},
     )
 
@@ -225,7 +225,10 @@ def _clean_candidate_display_name(value: object, *, unit_type: str = "", max_cha
     text = _CANDIDATE_MATH_DELIMITER_RE.sub("", raw)
     text = _CANDIDATE_STYLE_RE.sub("", text)
     text = _normalize_text(text)
-    text = text.strip(" ：:，,。；;、|-")
+    # ``|`` can be a real mathematical delimiter (for example ``ln|x|``).
+    # Treating it as display punctuation corrupts otherwise valid formula
+    # names after the surrounding ``$...$`` markers have been removed.
+    text = text.strip(" ：:，,。；;、-")
     if not text:
         return ""
     if normalize_knowledge_unit_type(unit_type) != "formula_model" and len(text) > max_chars:

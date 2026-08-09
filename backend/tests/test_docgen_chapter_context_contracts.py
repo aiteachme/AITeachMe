@@ -264,6 +264,63 @@ def test_source_slice_line_spans_advance_for_repeated_sections() -> None:
     assert "L4: 重复定义" in hydrated.text
 
 
+def test_priority_source_context_spreads_budget_across_top_slices() -> None:
+    section_texts = [f"知识片段 {index}：" + (f"要点{index} " * 120) for index in range(1, 7)]
+    source_text = "\n\n".join(section_texts)
+    packet = SourcePacket(
+        file_id="file_budget",
+        filename="budget.md",
+        filetype="markdown",
+        markdown_path="",
+        asset_dir="",
+        normalized_content=source_text,
+        char_count=len(source_text),
+        has_formulas=False,
+        has_tables=False,
+        has_images=False,
+    )
+    sections = [
+        SectionPacket(
+            digest_chunk_uid=f"budget_sec_{index}",
+            source_file_id="file_budget",
+            source_filename="budget.md",
+            chunk_index=index - 1,
+            title=f"知识片段 {index}",
+            header_path=f"知识片段 {index}",
+            level=1,
+            normalized_content=text,
+            preview=text[:120],
+            char_count=len(text),
+        )
+        for index, text in enumerate(section_texts, start=1)
+    ]
+
+    hydrated = build_priority_source_context(
+        DigestMaterialContext(source_packets=[packet], section_packets=sections),
+        [
+            {
+                "file_id": "file_budget",
+                "section_ref": f"budget_sec_{index}",
+                "section_title": f"知识片段 {index}",
+                "summary": f"第 {index} 个高相关片段",
+            }
+            for index in range(1, 7)
+        ],
+        max_total_chars=1800,
+        max_excerpt_chars=900,
+    )
+
+    assert [item["source_ref"] for item in hydrated.source_details] == [
+        "budget_sec_1",
+        "budget_sec_2",
+        "budget_sec_3",
+        "budget_sec_4",
+    ]
+    assert "知识片段 1" in hydrated.text
+    assert "知识片段 4" in hydrated.text
+    assert "知识片段 5" not in hydrated.text
+
+
 def test_local_rag_section_fallback_searches_full_section_content() -> None:
     section = {
         "title": "tail coverage",

@@ -236,7 +236,7 @@ frontend/dist/
 - `.env.sample` 作为本地用户与设置页主入口；开发 / 部署 / 验证码 / 通知变量放在额外 sample 中供人工合并。
 - 本地默认不需要额外 settings 文件；非敏感项目默认配置由代码默认值提供，本地用户可通过设置页写入本地数据库。
 - 线上如需固定 `models.* / fallback_models.*` 等策略，可通过 `PROJECT_SETTINGS_PATH` 指向根目录 `settings.private.yaml` 或 Render 同名 Secret File；私有 YAML 应写全当前 `Settings` schema，云端数据库历史设置不参与覆盖。
-- 用户级非敏感 settings 覆盖存用户数据库。
+- 本地非敏感 settings 覆盖存 `system_runtime_settings`；旧版用户表中的覆盖只用于兼容迁移。
 - 密钥、连接串、SMTP、对象存储等敏感配置不写用户 settings 数据库。
 
 ## 9. 不要手改的内容

@@ -92,6 +92,8 @@ class ReasoningEffortsSettings(_SettingsModel):
 
 class LLMSettings(_SettingsModel):
     api_mode: Literal["auto", "chat_completions", "responses"] = "auto"
+    responses_api_models: tuple[str, ...]
+    fallback_only_models: tuple[str, ...]
     reasoning_efforts: ReasoningEffortsSettings = Field(default_factory=ReasoningEffortsSettings)
     native_web_search: Literal["off", "auto", "force"] = "auto"
     native_web_search_external_access: bool = True

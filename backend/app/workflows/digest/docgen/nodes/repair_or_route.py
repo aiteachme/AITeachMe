@@ -12,7 +12,6 @@ from app.workflows.digest.docgen.lib.pipeline_artifacts import build_chapter_kg_
 from app.workflows.digest.docgen.lib.repair import repair_or_route_review_actions
 from app.workflows.digest.docgen.nodes.common import publish_docgen_progress
 from app.workflows.digest.docgen.state import DocGenState
-from app.workflows.digest.kg_doc_sync.lib.prefetch import start_docgen_kg_prefetch
 
 
 def _repair_trace_used_llm(item) -> bool:
@@ -21,46 +20,6 @@ def _repair_trace_used_llm(item) -> bool:
 
 def _repair_trace_llm_call_group(item) -> str:
     return str(getattr(item, "llm_call_group", "") or "")
-
-
-def _repair_kg_manifest(
-    state: DocGenState,
-    *,
-    kg_refinements: list[dict[str, object]] | None = None,
-    review_actions: list[ReviewAction] | None = None,
-    phase: str,
-) -> dict[str, object]:
-    """Build the DocGen context payload used by repair-time KG prefetch."""
-
-    all_refinements = [
-        *list(state.get("kg_refinement_items") or []),
-        *list(kg_refinements or []),
-    ]
-    return {
-        "intent_profile": dict(state.get("intent_profile") or state.get("intent_core") or {}),
-        "intent_enhanced": dict(state.get("intent_enhanced") or {}),
-        "summary_enhanced": dict(state.get("summary_enhanced") or {}),
-        "user_profile": dict(state.get("user_profile") or {}),
-        "chapters_enhanced": list(state.get("chapters_enhanced") or []),
-        "chapter_task_seeds": list(state.get("chapter_task_seeds") or []),
-        "chapter_execution_briefs": list(state.get("chapter_execution_briefs") or []),
-        "chapter_generation_plan": dict(state.get("chapter_generation_plan") or {}),
-        "chapter_generation_plan_seed": dict(state.get("chapter_generation_plan_seed") or {}),
-        "document_backbone_snapshot": dict(state.get("document_backbone") or {}),
-        "guideline": dict(state.get("guideline") or {}),
-        "dispatch_table": dict(state.get("dispatch_table") or {}),
-        "preliminary_kg": dict(state.get("preliminary_kg") or {}),
-        "kg_refinement_items": all_refinements,
-        "docgen_kg_draft": dict(state.get("docgen_kg_draft") or {}),
-        "review_decision": str(state.get("review_decision") or ""),
-        "review_actions": (
-            [item.model_dump(mode="json") for item in review_actions]
-            if review_actions is not None
-            else list(state.get("review_actions") or [])
-        ),
-        "digest_mode": str(state.get("digest_mode") or ""),
-        "kg_prefetch_phase": phase,
-    }
 
 
 def build_repair_or_route_node(*, context: WorkflowContext):
@@ -93,10 +52,11 @@ def build_repair_or_route_node(*, context: WorkflowContext):
             digest_mode=state.get("digest_mode") or None,
             current_stage_description="正在处理复核回流动作：执行安全局部修补，其余重动作记录为 warning。",
         )
-        # 不在这里自动重写整章；复杂回流先结构化记录，避免修复阶段引入新的内容污染。
+        # 只允许 repair router 执行已有安全局部补丁；整章重写仍会被降级或记录。
         repaired, updated_actions, unresolved, repair_trace = await repair_or_route_review_actions(
             reviewed_chapters=reviewed,
             review_actions=actions,
+            allow_llm_patches=True,
         )
         changed_count = sum(1 for item in repair_trace if item.changed)
         changed_chapters = {
@@ -149,35 +109,7 @@ def build_repair_or_route_node(*, context: WorkflowContext):
             for item in repaired
             if item.chapter_index in changed_chapters
         ]
-        kg_prefetch_phase = "repair_patched_markdown" if changed_count else "repair_reviewed_markdown"
-        kg_prefetch_restarted = start_docgen_kg_prefetch(
-            course_id=state["course_id"],
-            build_session_id=state.get("build_session_id", ""),
-            chapters=[item.model_dump(mode="json") for item in repaired],
-            document_backbone=dict(state.get("document_backbone") or {}),
-            docgen_manifest=_repair_kg_manifest(
-                state,
-                kg_refinements=kg_refinements,
-                review_actions=updated_actions,
-                phase=kg_prefetch_phase,
-            ),
-        )
-        if kg_prefetch_restarted:
-            kg_prefetch_status = "refreshed_after_repair" if changed_count else "refreshed_after_review_repair"
-            append_knowledge_build_recent_event(
-                state["course_id"],
-                requested_at=state["requested_at"],
-                build_group_id=state.get("build_group_id") or None,
-                event={
-                    "stage": "kg_prefetch_refreshed_after_repair",
-                    "summary": (
-                        "KG prefetch restarted with repaired/reviewed chapters and review-repair context."
-                    ),
-                    "created_at": utcnow(),
-                },
-            )
-        else:
-            kg_prefetch_status = "not_started_after_repair"
+        kg_prefetch_status = "deferred_until_final_markdown"
         await publish_docgen_progress(
             context,
             state=state,
