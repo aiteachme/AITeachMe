@@ -126,7 +126,11 @@ class DocGenModeProfile:
 
         depth = str(depth_level or "").strip().lower()
         if self.is_sprint:
-            return 700, 1050 if depth == "compact" else 1250
+            if depth == "compact":
+                return 700, 1050
+            if depth == "deep":
+                return 1100, 1900
+            return 900, 1600
 
         base = 1850 if depth == "deep" else 1600
         return 1050, max(1400, base if chapter_count <= 8 else 1500)

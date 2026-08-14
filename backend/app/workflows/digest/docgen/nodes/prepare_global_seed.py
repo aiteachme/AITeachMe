@@ -84,7 +84,9 @@ def _intent_from_confirmed_plan(
         practice_ratio=0.0,
         evidence_strictness=0.68,
         review_strictness=0.55,
-        depth_level="compact" if docgen_context.digest_mode == "sprint" else "standard",
+        # Sprint controls the learning pace and chapter shape; it must not
+        # silently downgrade every confirmed course to a compact explanation.
+        depth_level="standard",
         explanation_depth="standard",
         avoid_list=["脱离确认方案扩展章节", "无资料依据的断言", "重复解释同一知识点"],
         fallback_used=False,

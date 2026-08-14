@@ -60,7 +60,7 @@ STUCK_MATH_FENCE_PATTERN = re.compile(
 )
 BLOCKQUOTE_PREFIX_PATTERN = re.compile(r"^\s*>\s?")
 MATH_FENCE_PATTERN = re.compile(r"^\s*(?:>\s*)?\$\$\s*$")
-CALLOUT_KINDS_PATTERN = r"NOTE|TIP|IMPORTANT|WARNING|CAUTION|EXAMPLE|PRACTICE|QUESTION"
+CALLOUT_KINDS_PATTERN = r"NOTE|TIP|IMPORTANT|WARNING|CAUTION|EXAMPLE|PRACTICE|QUESTION|ANSWER"
 CALLOUT_LINE_PATTERN = re.compile(
     rf"^(?P<indent>\s*)(?P<quote>>\s*)?\[!(?P<kind>{CALLOUT_KINDS_PATTERN})\](?P<rest>.*)$",
     re.IGNORECASE,
@@ -75,6 +75,7 @@ CALLOUT_FIELD_MARKER_TOKEN_PATTERN = re.compile(
 CALLOUT_FIELD_SPLIT_PATTERN = re.compile(
     rf"(?<!\*)(?=\s*(?:\*\*(?:{CALLOUT_FIELD_LABEL_PATTERN})\*\*|(?:{CALLOUT_FIELD_LABEL_PATTERN}))\s*[：:])"
 )
+MALFORMED_STRONG_CLOSER_PATTERN = re.compile(r"(\*\*[^*\n]+?)[ \t]+\*\*")
 LEARNING_CALLOUT_TASK_FIELD_PATTERN = re.compile(r"(题目/任务|题目|任务|案例|例题)", re.IGNORECASE)
 LEARNING_CALLOUT_REASON_FIELD_PATTERN = re.compile(r"(解析/判定依据|解析|解法|步骤|判定依据|错因)", re.IGNORECASE)
 LEARNING_CALLOUT_ANSWER_FIELD_PATTERN = re.compile(r"(答案/结论|答案|结论|正确答案|参考答案)", re.IGNORECASE)
@@ -847,8 +848,13 @@ def _normalize_callout_blocks(markdown: str) -> str:
                 break
             if body_stripped.startswith(("```", "---", "***", "___")) or re.match(r"^#{1,6}\s+\S", body_stripped):
                 break
+            boundary_markers = ("自测", "例题", "题目", "解析", "正确答案")
+            if kind == "ANSWER":
+                # “解析/正确答案”属于答案 callout 本身，不能把同一答案块
+                # 截成第二个普通段落，否则前端兼容层会再生成一个折叠区。
+                boundary_markers = ("自测", "例题", "题目")
             if body_lines and body_stripped.startswith("**") and any(
-                marker in body_stripped for marker in ("自测", "例题", "题目", "解析", "正确答案")
+                marker in body_stripped for marker in boundary_markers
             ):
                 break
             if CALLOUT_LINE_PATTERN.match(body_line):
@@ -1633,6 +1639,34 @@ def _repair_misplaced_code_fences(markdown: str) -> str:
     return text
 
 
+def _normalize_malformed_strong_closers(markdown: str) -> str:
+    """Remove whitespace immediately before a Markdown strong closer."""
+
+    fixed: list[str] = []
+    active_fence: str | None = None
+    for line in str(markdown or "").split("\n"):
+        fence_match = re.match(r"^\s*(```|~~~)", line)
+        if fence_match:
+            marker = fence_match.group(1)
+            if active_fence == marker:
+                active_fence = None
+            elif active_fence is None:
+                active_fence = marker
+            fixed.append(line)
+            continue
+        if active_fence:
+            fixed.append(line)
+            continue
+        fixed.append(
+            _replace_outside_inline_code(
+                line,
+                MALFORMED_STRONG_CLOSER_PATTERN,
+                r"\1**",
+            )
+        )
+    return "\n".join(fixed)
+
+
 def normalize_markdown_rendering(markdown: str) -> str:
     """修复学生文档里最容易破坏渲染的 Markdown 结构。
 
@@ -1641,7 +1675,10 @@ def normalize_markdown_rendering(markdown: str) -> str:
     不改知识内容，只修可渲染结构。
     """
 
-    text = _split_stuck_math_fences(str(markdown or "").replace("\r\n", "\n").replace("\r", "\n"))
+    text = _normalize_malformed_strong_closers(
+        str(markdown or "").replace("\r\n", "\n").replace("\r", "\n")
+    )
+    text = _split_stuck_math_fences(text)
     text = _repair_split_inline_code_math_literals(text)
     text = _repair_display_math_boundaries(text)
     text = _repair_misplaced_code_fences(text)

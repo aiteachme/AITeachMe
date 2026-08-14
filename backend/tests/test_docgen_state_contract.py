@@ -328,6 +328,7 @@ def test_intent_compilation_uses_planner_writing_strategies_without_fixed_teachi
     assert profile.audience_profile_text == "从高中生熟悉的生成式 AI 使用场景切入。"
     assert profile.example_ratio == 0.0
     assert profile.practice_ratio == 0.0
+    assert profile.depth_level == "standard"
     assert "紧凑讲解后立即" not in profile.example_practice_policy
 
 

@@ -265,8 +265,16 @@ class DocGenWriterRuntime(BaseTracedExecution):
             digest_mode=digest_mode,
             focus_items=required_elements,
         )
+        source_urls = list(
+            dict.fromkeys(
+                str(item.get("url") or "").strip()
+                for item in list(chapter_plan.get("source_details") or [])
+                if isinstance(item, Mapping) and str(item.get("url") or "").strip()
+            )
+        )
         return TracedExecutionResult(
             content=markdown,
+            sources=source_urls,
             metadata={
                 "title": title,
                 "coverage_score": float(quality_summary.get("coverage_score", 0.0) or 0.0),

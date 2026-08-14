@@ -337,7 +337,9 @@ def assemble_chapter_generation_plan(
         required_element_count = min(8, len(clean_string_list(seed.required_elements)))
         extra_coverage_units = max(0, required_element_count - 4)
         if extra_coverage_units:
-            target_cap = 1800 if mode_profile.is_sprint else 2600
+            # Extra coverage may expand a budget, but must never shrink an
+            # explicit user-provided total that already exceeds the soft cap.
+            target_cap = max(target_words, 1800 if mode_profile.is_sprint else 2600)
             target_words = min(target_cap, target_words + extra_coverage_units * 150)
             min_words = min(target_words, min_words + extra_coverage_units * 100)
         affinity = _affinity_for_chapter(

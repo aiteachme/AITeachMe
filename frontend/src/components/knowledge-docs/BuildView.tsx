@@ -115,6 +115,7 @@ function DocumentBackboneWorkspace({
 }) {
   const latestEvent = events[0];
   const stageLabel = EVENT_STAGE_LABELS[stage] ?? "文档骨架";
+  const visibleEvents = events.slice(0, 7).reverse();
 
   return (
     <div className="build-scroll h-full overflow-y-auto bg-white dark:bg-slate-900">
@@ -131,7 +132,7 @@ function DocumentBackboneWorkspace({
           ) : null}
         </div>
 
-        <div className="mt-4 max-w-[760px]" aria-live="polite" aria-atomic="true">
+        <div className="mt-4 max-w-[760px]" aria-live="polite">
           <p className="text-[14px] font-medium leading-7 text-zinc-800 dark:text-slate-200 md:text-[15px]">
             {latestEvent?.summary?.trim() || statusText || "正在准备文档结构与章节上下文"}
             {sseConnected ? <span className="build-stream-caret ml-1 inline-block h-[1em] w-[2px] translate-y-[0.14em] bg-blue-500" aria-hidden="true" /> : null}
@@ -142,6 +143,46 @@ function DocumentBackboneWorkspace({
               : "骨架就绪后，各章节将并行写作，正文会直接出现在这里。"}
           </p>
         </div>
+
+        {visibleEvents.length > 0 ? (
+          <ol className="mt-7 max-w-[760px] border-l border-zinc-200 pl-5 dark:border-slate-700">
+            {visibleEvents.map((event, index) => {
+              const isCurrent = index === visibleEvents.length - 1;
+              const eventLabel = EVENT_STAGE_LABELS[String(event.stage ?? "")] ?? "构建进展";
+              return (
+                <li
+                  key={buildEventIdentity(event)}
+                  className={cn(
+                    "relative pb-5 last:pb-0",
+                    isCurrent ? "text-zinc-900 dark:text-slate-100" : "text-zinc-500 dark:text-slate-400",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "absolute -left-[23px] top-[7px] h-1.5 w-1.5 rounded-full ring-4 ring-white dark:ring-slate-900",
+                      isCurrent ? "build-live-dot bg-blue-500 text-blue-500" : "bg-zinc-300 dark:bg-slate-600",
+                    )}
+                    aria-hidden="true"
+                  />
+                  <div className="flex min-w-0 items-baseline gap-2">
+                    <span className={cn("shrink-0 text-[11px] font-medium", isCurrent ? "text-blue-600 dark:text-blue-300" : "text-zinc-500 dark:text-slate-400")}>
+                      {eventLabel}
+                    </span>
+                    {event.created_at ? (
+                      <time className="ml-auto shrink-0 text-[10.5px] tabular-nums text-zinc-400 dark:text-slate-500">
+                        {formatBuildEventTime(event.created_at)}
+                      </time>
+                    ) : null}
+                  </div>
+                  <p className="mt-1 text-[12.5px] leading-6 text-zinc-600 dark:text-slate-300">
+                    {event.summary?.trim() || statusText || "正在继续构建"}
+                    {isCurrent && sseConnected ? <span className="build-stream-caret ml-1 inline-block h-[0.9em] w-px translate-y-[0.12em] bg-blue-500" aria-hidden="true" /> : null}
+                  </p>
+                </li>
+              );
+            })}
+          </ol>
+        ) : null}
       </div>
     </div>
   );
@@ -159,7 +200,7 @@ type BuildEventItem = {
 };
 
 function shouldOpenDetailsByDefault(): boolean {
-  return false;
+  return typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches;
 }
 
 const BUILD_MODE_LABELS: Record<string, string> = {

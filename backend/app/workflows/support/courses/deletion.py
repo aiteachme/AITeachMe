@@ -16,6 +16,7 @@ from app.workflows.support.courses.lib.deletion import (
     collect_course_delete_counts,
     delete_course_artifacts_async,
     delete_course_with_all_content,
+    schedule_course_external_cleanup,
 )
 
 
@@ -39,6 +40,7 @@ async def delete_course_record(
     background_task_registry: Any | None = None,
 ) -> CourseDeleteData:
     course = get_course_record(session, course_id, owner_user_id=owner_user_id)
+    normalized_course_id = course.id
     if force and known_detail_counts is not None:
         detail_counts = _normalize_known_detail_counts(known_detail_counts)
     else:
@@ -52,26 +54,35 @@ async def delete_course_record(
         owner_user_id=owner_user_id,
         background_task_registry=background_task_registry,
     )
-    deleted_counts = (
-        await asyncio.to_thread(
-            delete_course_with_all_content,
-            session,
-            course=course,
-            background_task_registry=background_task_registry,
-            counts=detail_counts,
-        )
-        if force
-        else await asyncio.to_thread(
-            _delete_empty_course,
-            session,
-            course,
-            background_task_registry=background_task_registry,
-            counts=detail_counts,
-        )
+    request_bind = session.get_bind()
+    worker_bind = getattr(request_bind, "engine", request_bind)
+    deleted_counts = await asyncio.to_thread(
+        _delete_course_in_worker,
+        worker_bind,
+        owner_user_id=owner_user_id,
+        course_id=normalized_course_id,
+        counts=detail_counts,
     )
+    # The request-scoped session may still cache the now-deleted course.
+    session.expire_all()
+    if background_task_registry is None:
+        await asyncio.to_thread(
+            schedule_course_external_cleanup,
+            normalized_course_id,
+            owner_user_id=owner_user_id,
+            background_task_registry=None,
+        )
+    else:
+        # BackgroundTaskRegistry.spawn() calls asyncio.create_task(), so it must
+        # run on the request event-loop thread rather than inside to_thread().
+        schedule_course_external_cleanup(
+            normalized_course_id,
+            owner_user_id=owner_user_id,
+            background_task_registry=background_task_registry,
+        )
     return CourseDeleteData(
         deleted=True,
-        course_id=course.id,
+        course_id=normalized_course_id,
         deleted_counts=deleted_counts,
     )
 
@@ -86,19 +97,27 @@ def _normalize_known_detail_counts(counts: dict[str, int]) -> dict[str, int]:
     return normalized
 
 
-def _delete_empty_course(
-    session: Session,
-    course: Course,
+def _delete_course_in_worker(
+    bind: Any,
     *,
-    background_task_registry: Any | None = None,
-    counts: dict[str, int] | None = None,
+    owner_user_id: str,
+    course_id: str,
+    counts: dict[str, int],
 ) -> dict[str, int]:
-    return delete_course_with_all_content(
-        session,
-        course=course,
-        background_task_registry=background_task_registry,
-        counts=counts,
-    )
+    # SQLAlchemy Session/Connection objects are not thread-safe. The worker owns
+    # a fresh Session for its full lifetime and receives only the shared Engine.
+    with Session(bind, expire_on_commit=False) as worker_session:
+        worker_course = get_course_record(
+            worker_session,
+            course_id,
+            owner_user_id=owner_user_id,
+        )
+        return delete_course_with_all_content(
+            worker_session,
+            course=worker_course,
+            counts=counts,
+            schedule_external_cleanup=False,
+        )
 
 
 async def _cancel_course_background_work(

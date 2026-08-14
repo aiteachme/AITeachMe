@@ -642,7 +642,7 @@ def test_course_share_create_and_delete_cannot_leave_an_active_orphan(
         "_delete_raw_files_and_artifacts",
     ):
         monkeypatch.setattr(course_deletion_workflow, helper_name, lambda *args, **kwargs: None)
-    monkeypatch.setattr(course_deletion_workflow, "_schedule_course_external_cleanup", lambda *args, **kwargs: None)
+    monkeypatch.setattr(course_deletion_workflow, "schedule_course_external_cleanup", lambda *args, **kwargs: None)
 
     original_revoke = course_deletion_workflow._revoke_course_shares
 

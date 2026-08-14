@@ -174,6 +174,35 @@ def test_normalize_supports_practice_and_question_callout_blocks() -> None:
     assert summary["callout_count"] == 2
 
 
+def test_normalize_supports_bare_answer_callout_without_duplicate_wrapper() -> None:
+    raw = (
+        "## 单元测试\n\n"
+        "> [!QUESTION]\n>\n> **Q04｜错误诊断｜中等**\n\n"
+        "[!ANSWER]\n"
+        "**答案：**能输出 3、2、1。\n"
+        "**解析：**循环边界包含 1。"
+    )
+
+    fixed = normalize_markdown_rendering(raw)
+
+    assert fixed.count("> [!ANSWER]") == 1
+    assert "> [!ANSWER]\n>\n> **答案：**能输出 3、2、1。" in fixed
+    assert "> **解析：**循环边界包含 1。" in fixed
+
+
+def test_normalize_repairs_strong_closer_padding_outside_code_fences() -> None:
+    raw = (
+        "**短练习： ** 下面代码有什么问题？行内字面量 `** keep **`。\n\n"
+        "```python\nprint('** keep **')\n```"
+    )
+
+    fixed = normalize_markdown_rendering(raw)
+
+    assert "**短练习：** 下面代码有什么问题？" in fixed
+    assert "`** keep **`" in fixed
+    assert "print('** keep **')" in fixed
+
+
 def test_normalize_splits_callout_learning_fields_into_paragraphs() -> None:
     raw = (
         "> [!EXAMPLE]\n"

@@ -232,8 +232,11 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                 all_results,
                 max_results=max(query_limit * max(1, len(executed_queries)), query_limit),
             )
+            # Source relevance must be measured against the concise query that
+            # produced the candidates.  The full teaching focus can exceed one
+            # hundred characters and used to dilute every lexical match to zero.
             curated_results, curator_metadata = await curator.curate_sources(
-                query=focus_text or base_queries[0],
+                query=base_queries[0],
                 sources=merged_results,
                 max_results=max(query_limit * 2, len(executed_queries) * 2),
             )

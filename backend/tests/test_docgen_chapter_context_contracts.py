@@ -478,6 +478,7 @@ async def test_research_round_keeps_external_calibration_when_local_is_sufficien
 @pytest.mark.anyio
 async def test_search_budget_and_execute_return_stable_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
     runtime = _runtime()
+    curation_queries: list[str] = []
 
     class SlowRetriever:
         name = "slow"
@@ -512,7 +513,8 @@ async def test_search_budget_and_execute_return_stable_metadata(monkeypatch: pyt
         def __init__(self, _context) -> None:
             pass
 
-        async def curate_sources(self, *, sources, **_kwargs):
+        async def curate_sources(self, *, sources, query, **_kwargs):
+            curation_queries.append(query)
             return list(sources), {
                 "selected_count": len(sources),
                 "trusted_source_count": 1,
@@ -585,3 +587,4 @@ async def test_search_budget_and_execute_return_stable_metadata(monkeypatch: pyt
     assert result.metadata["stop_reason"] == "query_plan_executed"
     assert result.metadata["compression_mode"] == "extractive"
     assert result.metadata["configured_retrievers"] == ["local_rag"]
+    assert curation_queries == ["矩阵"]

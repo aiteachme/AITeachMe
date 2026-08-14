@@ -157,6 +157,7 @@ def delete_course_with_all_content(
     course: Course,
     background_task_registry: Any | None = None,
     counts: dict[str, int] | None = None,
+    schedule_external_cleanup: bool = True,
 ) -> dict[str, int]:
     course_id = course.id
     expected_owner_user_id = course.user_id
@@ -217,11 +218,12 @@ def delete_course_with_all_content(
                 raise
 
     _delete_course_share_snapshots_best_effort(share_storage_keys)
-    _schedule_course_external_cleanup(
-        course_id,
-        owner_user_id=owner_user_id,
-        background_task_registry=background_task_registry,
-    )
+    if schedule_external_cleanup:
+        schedule_course_external_cleanup(
+            course_id,
+            owner_user_id=owner_user_id,
+            background_task_registry=background_task_registry,
+        )
     deleted_counts = {"course": 1, **counts}
     logger.info("course_deleted_with_all_content", course_id=course_id, course_name=course_name, deleted_counts=deleted_counts)
     return deleted_counts
@@ -251,7 +253,7 @@ def _delete_course_artifacts_best_effort(course_id: str, *, user_id: str | None)
     _delete_course_directory(course_id, user_id=user_id)
 
 
-def _schedule_course_external_cleanup(
+def schedule_course_external_cleanup(
     course_id: str,
     *,
     owner_user_id: str | None,
@@ -261,13 +263,31 @@ def _schedule_course_external_cleanup(
         _delete_course_external_artifacts_best_effort(course_id, user_id=owner_user_id)
         return
 
-    background_task_registry.spawn(
-        _delete_course_external_artifacts_async(course_id, user_id=owner_user_id),
-        kind="courses.delete.cleanup",
-        course_id=course_id,
-        name=f"courses.delete.cleanup:{course_id}",
-        dedupe_key=f"courses.delete.cleanup:{course_id}",
-    )
+    cleanup_coro = _delete_course_external_artifacts_async(course_id, user_id=owner_user_id)
+    try:
+        background_task_registry.spawn(
+            cleanup_coro,
+            kind="courses.delete.cleanup",
+            course_id=course_id,
+            name=f"courses.delete.cleanup:{course_id}",
+            dedupe_key=f"courses.delete.cleanup:{course_id}",
+        )
+    except Exception as exc:  # pragma: no cover - defensive shutdown race
+        cleanup_coro.close()
+        logger.warning(
+            "course_external_cleanup_schedule_failed",
+            course_id=course_id,
+            error=str(exc),
+        )
+        fallback_coro = _delete_course_external_artifacts_async(course_id, user_id=owner_user_id)
+        try:
+            asyncio.create_task(
+                fallback_coro,
+                name=f"courses.delete.cleanup.fallback:{course_id}",
+            )
+        except RuntimeError:
+            fallback_coro.close()
+            _delete_course_external_artifacts_best_effort(course_id, user_id=owner_user_id)
 
 
 async def _delete_course_external_artifacts_async(course_id: str, *, user_id: str | None) -> None:

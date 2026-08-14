@@ -1806,7 +1806,14 @@ function normalizeMalformedStrongClosersForRender(markdown: string): string {
         return line;
       }
       if (activeFence) return line;
-      return line.replace(/(\*\*[^*\n]+?)[ \t]+\*\*(?=\S)/g, "$1** ");
+      return line
+        .split(/(`+[^`]*`+)/g)
+        .map((part) => (
+          part.startsWith("`") && part.endsWith("`")
+            ? part
+            : part.replace(/(\*\*[^*\n]+?)[ \t]+\*\*/g, "$1**")
+        ))
+        .join("");
     })
     .join("\n");
 }
@@ -1847,6 +1854,18 @@ function normalizeLegacyUnitTestAnswersForRender(markdown: string): string {
       && !/^\s*>/.test(line)
       && /^\s*(?:\*\*)?\s*(?:参考|标准|正确)?答案(?:与解析|\s*[/／]\s*结论)?\s*(?:\*\*)?\s*(?:[:：]|$)/.test(line);
     if (!isPlainAnswerStart) {
+      output.push(line);
+      continue;
+    }
+
+    let previousNonEmptyLine = "";
+    for (let outputIndex = output.length - 1; outputIndex >= 0; outputIndex -= 1) {
+      if (output[outputIndex].trim()) {
+        previousNonEmptyLine = output[outputIndex];
+        break;
+      }
+    }
+    if (/^\s*(?:>\s*)?\[!ANSWER\]/i.test(previousNonEmptyLine ?? "")) {
       output.push(line);
       continue;
     }

@@ -180,6 +180,15 @@ def test_systematic_mode_contract_and_word_budget_stay_deep() -> None:
     ) == (3000, 10000)
 
 
+def test_sprint_standard_depth_keeps_a_teachable_chapter_budget() -> None:
+    profile = get_docgen_mode_profile("sprint")
+
+    assert profile.word_budget(
+        chapter_count=5,
+        depth_level="standard",
+    ) == (900, 1600)
+
+
 def test_heading_quality_detects_duplicate_titles_without_local_semantic_wordlist() -> None:
     quality = pedagogy.analyze_chapter_heading_quality(
         "# 线性代数\n\n## 核心概念\nA\n\n## 核心概念\nB",
