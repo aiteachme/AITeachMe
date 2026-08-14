@@ -3,7 +3,7 @@
   "info": {
     "title": "AITeachMe",
     "description": "本地优先的 AI 助教后端服务。",
-    "version": "0.1.3"
+    "version": "0.1.5"
   },
   "paths": {
     "/api/health": {
@@ -98,6 +98,46 @@
         "summary": "读取社区微信二维码",
         "description": "从项目公开 assets 仓库的远程图片直链读取社区微信二维码，并以 no-store 返回给前端。",
         "operationId": "get_community_wechat_qr_api_v1_system_community_wechat_qr_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/system/community/feishu-qr": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "读取社区飞书二维码",
+        "description": "从项目公开 assets 仓库的远程图片直链读取社区飞书二维码，并以 no-store 返回给前端。",
+        "operationId": "get_community_feishu_qr_api_v1_system_community_feishu_qr_get",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -232,13 +272,68 @@
         }
       }
     },
+    "/api/v1/system/settings/model-capabilities/reasoning": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "读取模型推理强度能力",
+        "description": "按代码能力目录解析模型支持的 reasoning effort，不请求外部模型网关。",
+        "operationId": "get_system_model_reasoning_capabilities_api_v1_system_settings_model_capabilities_reasoning_get",
+        "parameters": [
+          {
+            "name": "model",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "title": "Model"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ModelReasoningCapabilitiesResult_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "业务校验未通过。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/system/settings/model-probe": {
       "post": {
         "tags": [
           "system"
         ],
         "summary": "测试设置页模型连通性",
-        "description": "按 reason / primary / light 槽位测试主模型网关或备用模型网关。主网关按当前主模型路由测试，备用网关强制 Chat Completions 并快速失败。",
+        "description": "按 reason / primary / light 槽位测试主模型网关或备用模型网关，并复用真实运行时的模型与接口路由。",
         "operationId": "probe_system_settings_model_api_v1_system_settings_model_probe_post",
         "requestBody": {
           "content": {
@@ -313,8 +408,38 @@
               }
             }
           },
+          "401": {
+            "description": "接口可能返回业务错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "上游模型调用失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "依赖服务当前不可用。",
             "content": {
               "application/json": {
                 "schema": {
@@ -993,67 +1118,6 @@
           },
           "404": {
             "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务内部异常。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/courses/suggest-name": {
-      "post": {
-        "tags": [
-          "courses"
-        ],
-        "summary": "根据用户输入快速生成课程名称",
-        "operationId": "suggest_course_name_api_v1_courses_suggest_name_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CourseNameSuggestionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiResponse_CourseNameSuggestionResponse_"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数不合法。",
             "content": {
               "application/json": {
                 "schema": {
@@ -3208,6 +3272,30 @@
               "type": "string",
               "title": "Course Id"
             }
+          },
+          {
+            "name": "include_markdown",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include the full published Markdown in the response.",
+              "default": true,
+              "title": "Include Markdown"
+            },
+            "description": "Include the full published Markdown in the response."
+          },
+          {
+            "name": "include_draft",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include the current staging draft Markdown in the response.",
+              "default": true,
+              "title": "Include Draft"
+            },
+            "description": "Include the current staging draft Markdown in the response."
           }
         ],
         "responses": {
@@ -3257,6 +3345,213 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/courses/{course_id}/knowledge/docs/manifest": {
+      "get": {
+        "tags": [
+          "knowledge",
+          "knowledge"
+        ],
+        "summary": "Fetch the current published knowledge-doc manifest",
+        "operationId": "knowledge_docs_manifest_api_v1_courses__course_id__knowledge_docs_manifest_get",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_KnowledgeDocsPublishedManifestResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态不允许执行该操作。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "依赖服务当前不可用。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/courses/{course_id}/knowledge/docs/publications/{publication_id}/chunks/{chunk_index}": {
+      "get": {
+        "tags": [
+          "knowledge",
+          "knowledge"
+        ],
+        "summary": "Fetch one chunk from an exact current knowledge-doc publication",
+        "operationId": "knowledge_docs_publication_chunk_api_v1_courses__course_id__knowledge_docs_publications__publication_id__chunks__chunk_index__get",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          },
+          {
+            "name": "publication_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 96,
+              "title": "Publication Id"
+            }
+          },
+          {
+            "name": "chunk_index",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "title": "Chunk Index"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_KnowledgeDocPublishedChunkResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态不允许执行该操作。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "业务校验未通过。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "依赖服务当前不可用。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -5321,6 +5616,78 @@
         }
       }
     },
+    "/api/v1/courses/{course_id}/exams/mastery-drills/active": {
+      "get": {
+        "tags": [
+          "exams"
+        ],
+        "summary": "Fetch the active mastery drill for this course",
+        "operationId": "active_mastery_drill_api_v1_courses__course_id__exams_mastery_drills_active_get",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_Union_ExamPaperDetailResponse__NoneType__"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/courses/{course_id}/exams/generate": {
       "post": {
         "tags": [
@@ -5884,6 +6251,16 @@
               }
             }
           },
+          "409": {
+            "description": "当前资源状态不允许执行该操作。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "服务内部异常。",
             "content": {
@@ -6040,6 +6417,302 @@
           },
           "404": {
             "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/courses/{course_id}/exams/mastery-drills/start": {
+      "post": {
+        "tags": [
+          "exams"
+        ],
+        "summary": "Start or resume a durable mastery drill",
+        "operationId": "start_mastery_drill_api_v1_courses__course_id__exams_mastery_drills_start_post",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MasteryDrillStartRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ExamPaperDetailResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态不允许执行该操作。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/courses/{course_id}/exams/{exam_paper_id}/mastery-drill-attempts": {
+      "post": {
+        "tags": [
+          "exams"
+        ],
+        "summary": "Persist and grade one mastery-drill attempt",
+        "operationId": "record_mastery_drill_attempt_api_v1_courses__course_id__exams__exam_paper_id__mastery_drill_attempts_post",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          },
+          {
+            "name": "exam_paper_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "title": "Exam Paper Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MasteryDrillAttemptRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_MasteryDrillAttemptResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态不允许执行该操作。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/courses/{course_id}/exams/{exam_paper_id}/mastery-drill-complete": {
+      "post": {
+        "tags": [
+          "exams"
+        ],
+        "summary": "Idempotently complete a mastery drill",
+        "operationId": "complete_mastery_drill_api_v1_courses__course_id__exams__exam_paper_id__mastery_drill_complete_post",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          },
+          {
+            "name": "exam_paper_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "title": "Exam Paper Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MasteryDrillCompleteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ExamGradeResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态不允许执行该操作。",
             "content": {
               "application/json": {
                 "schema": {
@@ -6401,12 +7074,103 @@
         }
       }
     },
+    "/api/v1/courses/{course_id}/exams/{exam_paper_id}/profile-sync/retry": {
+      "post": {
+        "tags": [
+          "exams"
+        ],
+        "summary": "Retry Profile synchronization for a graded exam",
+        "operationId": "retry_exam_profile_sync_api_v1_courses__course_id__exams__exam_paper_id__profile_sync_retry_post",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          },
+          {
+            "name": "exam_paper_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Exam Paper Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ExamProfileSyncResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态不允许执行该操作。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/courses/{course_id}/exams/{exam_paper_id}/submit": {
       "post": {
         "tags": [
           "exams"
         ],
-        "summary": "Submit answers and update KnowledgeUnit mastery",
+        "summary": "Submit answers and start grading",
         "operationId": "submit_exam_api_v1_courses__course_id__exams__exam_paper_id__submit_post",
         "parameters": [
           {
@@ -6792,6 +7556,625 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/courses/{course_id}/shares": {
+      "post": {
+        "tags": [
+          "course-shares"
+        ],
+        "summary": "创建课程分享链接",
+        "operationId": "create_course_share_api_api_v1_courses__course_id__shares_post",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CourseShareCreateRequest",
+                "default": {
+                  "expires_in_days": 30
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_CourseShareData_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "接口可能返回业务错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态不允许执行该操作。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "上传文件超出大小限制。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "业务校验未通过。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "course-shares"
+        ],
+        "summary": "列出课程分享链接",
+        "operationId": "list_course_shares_api_api_v1_courses__course_id__shares_get",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_list_CourseShareData__"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "接口可能返回业务错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/courses/{course_id}/shares/{share_id}": {
+      "delete": {
+        "tags": [
+          "course-shares"
+        ],
+        "summary": "撤销课程分享链接",
+        "operationId": "revoke_course_share_api_api_v1_courses__course_id__shares__share_id__delete",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          },
+          {
+            "name": "share_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Share Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_CourseShareData_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "接口可能返回业务错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/course-shares/{token}": {
+      "get": {
+        "tags": [
+          "course-shares"
+        ],
+        "summary": "查看课程分享预览",
+        "operationId": "preview_course_share_api_api_v1_course_shares__token__get",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_CourseSharePreviewData_"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "接口可能返回业务错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/course-shares/{token}/documents/{doc_id}": {
+      "get": {
+        "tags": [
+          "course-shares"
+        ],
+        "summary": "查看课程分享知识文档",
+        "operationId": "read_course_share_document_api_api_v1_course_shares__token__documents__doc_id__get",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Token"
+            }
+          },
+          {
+            "name": "doc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Doc Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_CourseShareDocumentContent_"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "接口可能返回业务错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/course-shares/{token}/assets/{asset_path}": {
+      "get": {
+        "tags": [
+          "course-shares"
+        ],
+        "summary": "读取课程分享快照资产",
+        "operationId": "read_course_share_asset_api_api_v1_course_shares__token__assets__asset_path__get",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Token"
+            }
+          },
+          {
+            "name": "asset_path",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Asset Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "接口可能返回业务错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/course-shares/{token}/import": {
+      "post": {
+        "tags": [
+          "course-shares"
+        ],
+        "summary": "导入课程分享",
+        "operationId": "import_course_share_api_api_v1_course_shares__token__import_post",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CourseShareImportRequest",
+                "default": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ImportResultData_"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "接口可能返回业务错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "接口可能返回业务错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "上传文件超出大小限制。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "业务校验未通过。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -7660,7 +9043,7 @@
           "message": "ok"
         }
       },
-      "ApiResponse_CourseNameSuggestionResponse_": {
+      "ApiResponse_CourseShareData_": {
         "properties": {
           "code": {
             "type": "integer",
@@ -7677,7 +9060,7 @@
           "data": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/CourseNameSuggestionResponse"
+                "$ref": "#/components/schemas/CourseShareData"
               },
               {
                 "type": "null"
@@ -7687,7 +9070,75 @@
           }
         },
         "type": "object",
-        "title": "ApiResponse[CourseNameSuggestionResponse]",
+        "title": "ApiResponse[CourseShareData]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_CourseShareDocumentContent_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CourseShareDocumentContent"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[CourseShareDocumentContent]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_CourseSharePreviewData_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CourseSharePreviewData"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[CourseSharePreviewData]",
         "example": {
           "code": 0,
           "data": {},
@@ -7960,6 +9411,40 @@
         },
         "type": "object",
         "title": "ApiResponse[ExamPrewarmStatusResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_ExamProfileSyncResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExamProfileSyncResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[ExamProfileSyncResponse]",
         "example": {
           "code": 0,
           "data": {},
@@ -8442,6 +9927,74 @@
           "message": "ok"
         }
       },
+      "ApiResponse_KnowledgeDocPublishedChunkResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgeDocPublishedChunkResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[KnowledgeDocPublishedChunkResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_KnowledgeDocsPublishedManifestResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgeDocsPublishedManifestResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[KnowledgeDocsPublishedManifestResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
       "ApiResponse_KnowledgeGraphBuildData_": {
         "properties": {
           "code": {
@@ -8646,6 +10199,40 @@
           "message": "ok"
         }
       },
+      "ApiResponse_MasteryDrillAttemptResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MasteryDrillAttemptResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[MasteryDrillAttemptResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
       "ApiResponse_MasteryOverviewResponse_": {
         "properties": {
           "code": {
@@ -8708,6 +10295,40 @@
         },
         "type": "object",
         "title": "ApiResponse[ModelProbeResult]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_ModelReasoningCapabilitiesResult_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelReasoningCapabilitiesResult"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[ModelReasoningCapabilitiesResult]",
         "example": {
           "code": 0,
           "data": {},
@@ -9156,6 +10777,40 @@
           "message": "ok"
         }
       },
+      "ApiResponse_Union_ExamPaperDetailResponse__NoneType__": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExamPaperDetailResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[Union[ExamPaperDetailResponse, NoneType]]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
       "ApiResponse_bool_": {
         "properties": {
           "code": {
@@ -9259,6 +10914,44 @@
         },
         "type": "object",
         "title": "ApiResponse[list[CoursePackageItem]]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_list_CourseShareData__": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/CourseShareData"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data",
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[list[CourseShareData]]",
         "example": {
           "code": 0,
           "data": {},
@@ -12038,53 +13731,6 @@
           "size": 20
         }
       },
-      "CourseNameSuggestionRequest": {
-        "properties": {
-          "prompt": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Prompt",
-            "description": "User input learning goal."
-          },
-          "filenames": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Filenames",
-            "description": "Uploaded filenames."
-          }
-        },
-        "type": "object",
-        "title": "CourseNameSuggestionRequest"
-      },
-      "CourseNameSuggestionResponse": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "title": "Name",
-            "description": "AI-generated course name."
-          }
-        },
-        "type": "object",
-        "required": [
-          "name"
-        ],
-        "title": "CourseNameSuggestionResponse"
-      },
       "CoursePackageItem": {
         "properties": {
           "filename": {
@@ -12242,6 +13888,324 @@
           "generated_at"
         ],
         "title": "CourseProfileSummary"
+      },
+      "CourseShareCreateRequest": {
+        "properties": {
+          "expires_in_days": {
+            "type": "integer",
+            "maximum": 365.0,
+            "minimum": 1.0,
+            "title": "Expires In Days",
+            "default": 30
+          },
+          "export_options": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExportOptions"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "title": "CourseShareCreateRequest",
+        "description": "创建分享链接。"
+      },
+      "CourseShareData": {
+        "properties": {
+          "share_id": {
+            "type": "string",
+            "title": "Share Id"
+          },
+          "token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Token"
+          },
+          "share_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Share Path"
+          },
+          "source_course_id": {
+            "type": "string",
+            "title": "Source Course Id"
+          },
+          "course_name": {
+            "type": "string",
+            "title": "Course Name"
+          },
+          "course_description": {
+            "type": "string",
+            "title": "Course Description",
+            "default": ""
+          },
+          "course_icon_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Icon Key"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "can_import": {
+            "type": "boolean",
+            "title": "Can Import"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "file_size_bytes": {
+            "type": "integer",
+            "title": "File Size Bytes",
+            "default": 0
+          },
+          "import_count": {
+            "type": "integer",
+            "title": "Import Count",
+            "default": 0
+          },
+          "stats": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Stats"
+          },
+          "export_options": {
+            "$ref": "#/components/schemas/ExportOptions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "share_id",
+          "source_course_id",
+          "course_name",
+          "status",
+          "can_import",
+          "created_at",
+          "expires_at"
+        ],
+        "title": "CourseShareData",
+        "description": "课程分享链接状态。"
+      },
+      "CourseShareDocumentContent": {
+        "properties": {
+          "doc_id": {
+            "type": "string",
+            "title": "Doc Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary",
+            "default": ""
+          },
+          "excerpt": {
+            "type": "string",
+            "title": "Excerpt",
+            "default": ""
+          },
+          "chapter_index": {
+            "type": "integer",
+            "title": "Chapter Index",
+            "default": 0
+          },
+          "order_index": {
+            "type": "integer",
+            "title": "Order Index",
+            "default": 0
+          },
+          "content_markdown": {
+            "type": "string",
+            "title": "Content Markdown",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "doc_id",
+          "title"
+        ],
+        "title": "CourseShareDocumentContent",
+        "description": "分享页公开读取的单篇知识文档正文。"
+      },
+      "CourseShareDocumentPreview": {
+        "properties": {
+          "doc_id": {
+            "type": "string",
+            "title": "Doc Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary",
+            "default": ""
+          },
+          "excerpt": {
+            "type": "string",
+            "title": "Excerpt",
+            "default": ""
+          },
+          "chapter_index": {
+            "type": "integer",
+            "title": "Chapter Index",
+            "default": 0
+          },
+          "order_index": {
+            "type": "integer",
+            "title": "Order Index",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "doc_id",
+          "title"
+        ],
+        "title": "CourseShareDocumentPreview",
+        "description": "分享页公开展示的知识文档片段。"
+      },
+      "CourseShareImportRequest": {
+        "properties": {
+          "new_course_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Course Name"
+          }
+        },
+        "type": "object",
+        "title": "CourseShareImportRequest",
+        "description": "从分享链接导入课程。"
+      },
+      "CourseSharePreviewData": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "title": "Token"
+          },
+          "course_name": {
+            "type": "string",
+            "title": "Course Name"
+          },
+          "course_description": {
+            "type": "string",
+            "title": "Course Description",
+            "default": ""
+          },
+          "course_icon_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Icon Key"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "can_import": {
+            "type": "boolean",
+            "title": "Can Import"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "file_size_bytes": {
+            "type": "integer",
+            "title": "File Size Bytes",
+            "default": 0
+          },
+          "stats": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Stats"
+          },
+          "documents": {
+            "items": {
+              "$ref": "#/components/schemas/CourseShareDocumentPreview"
+            },
+            "type": "array",
+            "title": "Documents"
+          }
+        },
+        "type": "object",
+        "required": [
+          "token",
+          "course_name",
+          "status",
+          "can_import",
+          "created_at",
+          "expires_at"
+        ],
+        "title": "CourseSharePreviewData",
+        "description": "打开分享链接时展示的公开预览。"
       },
       "CourseUpdateRequest": {
         "properties": {
@@ -12799,7 +14763,7 @@
           "exam_mode": {
             "type": "string",
             "title": "Exam Mode",
-            "description": "Exam mode: web_practice | paper_exam | mastery_drill."
+            "description": "Exam mode: web_practice | paper_exam. Mastery drills use their dedicated API."
           },
           "user_prompt": {
             "anyOf": [
@@ -13033,6 +14997,16 @@
           "mastery_consumed": {
             "type": "boolean",
             "title": "Mastery Consumed"
+          },
+          "profile_sync": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExamProfileSyncResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -13142,6 +15116,16 @@
           },
           "paper_preview": {
             "$ref": "#/components/schemas/PaperPreview"
+          },
+          "mastery_drill": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MasteryDrillHistorySummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -13290,6 +15274,26 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Selection Context"
+          },
+          "profile_sync": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExamProfileSyncResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mastery_drill": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MasteryDrillSessionResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "paper_preview": {
             "$ref": "#/components/schemas/PaperPreview"
@@ -13536,6 +15540,92 @@
         ],
         "title": "ExamPrewarmStatusResponse"
       },
+      "ExamProfileSyncResponse": {
+        "properties": {
+          "exam_paper_id": {
+            "type": "integer",
+            "title": "Exam Paper Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "not_tracked",
+              "pending",
+              "processing",
+              "retry_wait",
+              "completed",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "attempt_count": {
+            "type": "integer",
+            "title": "Attempt Count",
+            "default": 0
+          },
+          "manual_retry_count": {
+            "type": "integer",
+            "title": "Manual Retry Count",
+            "default": 0
+          },
+          "next_attempt_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Attempt At"
+          },
+          "last_error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error Code"
+          },
+          "states_updated": {
+            "type": "integer",
+            "title": "States Updated",
+            "default": 0
+          },
+          "review_task_count": {
+            "type": "integer",
+            "title": "Review Task Count",
+            "default": 0
+          },
+          "can_retry": {
+            "type": "boolean",
+            "title": "Can Retry",
+            "default": false
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "exam_paper_id",
+          "status"
+        ],
+        "title": "ExamProfileSyncResponse"
+      },
       "ExamStudyGuideFocusUnit": {
         "properties": {
           "knowledge_unit_id": {
@@ -13689,6 +15779,20 @@
             "type": "array",
             "title": "Answers",
             "description": "Submitted answers."
+          },
+          "submission_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submission Key",
+            "description": "Stable client-generated key used to safely retry this submission."
           }
         },
         "type": "object",
@@ -15541,6 +17645,138 @@
         "title": "KnowledgeDocInteractiveSelectionResponse",
         "description": "Generated interactive HTML asset anchored back into a knowledge-doc section."
       },
+      "KnowledgeDocPublishedChunkResponse": {
+        "properties": {
+          "publication_id": {
+            "type": "string",
+            "title": "Publication Id",
+            "description": "Publication id supplied by the manifest."
+          },
+          "version_no": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version No",
+            "description": "Published DocGen version number."
+          },
+          "chunk_index": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Chunk Index",
+            "description": "Zero-based chunk index."
+          },
+          "chapter_index": {
+            "type": "integer",
+            "title": "Chapter Index",
+            "description": "DocGen chapter index represented by this chunk."
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "Published chapter title."
+          },
+          "markdown": {
+            "type": "string",
+            "title": "Markdown",
+            "description": "Unmodified Markdown slice for this chunk."
+          },
+          "headings": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeDocPublishedHeadingResponse"
+            },
+            "type": "array",
+            "title": "Headings",
+            "description": "Root-level headings contained in this chunk."
+          }
+        },
+        "type": "object",
+        "required": [
+          "publication_id",
+          "version_no",
+          "chunk_index",
+          "chapter_index",
+          "title",
+          "markdown"
+        ],
+        "title": "KnowledgeDocPublishedChunkResponse",
+        "description": "One chunk from an exact current publication snapshot."
+      },
+      "KnowledgeDocPublishedChunkSummary": {
+        "properties": {
+          "chunk_index": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Chunk Index",
+            "description": "Zero-based chunk index."
+          },
+          "chapter_index": {
+            "type": "integer",
+            "title": "Chapter Index",
+            "description": "DocGen chapter index represented by this chunk."
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "Published chapter title."
+          },
+          "heading_id": {
+            "type": "string",
+            "title": "Heading Id",
+            "description": "Stable id of the chapter H1 heading."
+          },
+          "char_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Char Count",
+            "description": "Exact number of Markdown characters in this chunk."
+          }
+        },
+        "type": "object",
+        "required": [
+          "chunk_index",
+          "chapter_index",
+          "title",
+          "heading_id",
+          "char_count"
+        ],
+        "title": "KnowledgeDocPublishedChunkSummary",
+        "description": "Lightweight metadata for one published Markdown chunk."
+      },
+      "KnowledgeDocPublishedHeadingResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable heading id matching the frontend Markdown renderer."
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "Rendered heading text used to derive the id."
+          },
+          "level": {
+            "type": "integer",
+            "maximum": 6.0,
+            "minimum": 1.0,
+            "title": "Level",
+            "description": "Markdown heading level."
+          },
+          "chunk_index": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Chunk Index",
+            "description": "Zero-based chunk containing this heading."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "text",
+          "level",
+          "chunk_index"
+        ],
+        "title": "KnowledgeDocPublishedHeadingResponse",
+        "description": "One root-level heading in the published Markdown."
+      },
       "KnowledgeDocSelectionContext": {
         "properties": {
           "selected_text": {
@@ -15636,6 +17872,67 @@
         "type": "object",
         "title": "KnowledgeDocSelectionContext",
         "description": "Context captured around one selected knowledge-doc fragment."
+      },
+      "KnowledgeDocsPublishedManifestResponse": {
+        "properties": {
+          "exists": {
+            "type": "boolean",
+            "title": "Exists",
+            "description": "Whether a current publication exists.",
+            "default": false
+          },
+          "publication_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publication Id",
+            "description": "Opaque id for the exact current publication and overlay snapshot."
+          },
+          "version_no": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Version No",
+            "description": "Published DocGen version number.",
+            "default": 0
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At",
+            "description": "Publication update timestamp."
+          },
+          "chunks": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeDocPublishedChunkSummary"
+            },
+            "type": "array",
+            "title": "Chunks",
+            "description": "Ordered chapter chunks; concatenating their Markdown preserves the source exactly."
+          },
+          "headings": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeDocPublishedHeadingResponse"
+            },
+            "type": "array",
+            "title": "Headings",
+            "description": "Ordered root-level heading index across all chunks."
+          }
+        },
+        "type": "object",
+        "title": "KnowledgeDocsPublishedManifestResponse",
+        "description": "Version-pinned table of contents for the current published document."
       },
       "KnowledgeGraphBuildData": {
         "properties": {
@@ -16783,6 +19080,427 @@
         "description": "登出请求。",
         "example": {}
       },
+      "MasteryDrillAttemptRequest": {
+        "properties": {
+          "exam_paper_item_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Exam Paper Item Id"
+          },
+          "answer": {
+            "type": "string",
+            "maxLength": 20000,
+            "title": "Answer"
+          },
+          "attempt_key": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Attempt Key"
+          },
+          "time_spent_seconds": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 86400.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Spent Seconds"
+          },
+          "hint_used": {
+            "type": "boolean",
+            "title": "Hint Used",
+            "default": false
+          },
+          "confidence_self_report": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 5.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence Self Report"
+          }
+        },
+        "type": "object",
+        "required": [
+          "exam_paper_item_id",
+          "answer",
+          "attempt_key"
+        ],
+        "title": "MasteryDrillAttemptRequest",
+        "description": "Persist and grade one answer attempt."
+      },
+      "MasteryDrillAttemptResponse": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "mastery_drill_session_id": {
+            "type": "integer",
+            "title": "Mastery Drill Session Id"
+          },
+          "exam_paper_item_id": {
+            "type": "integer",
+            "title": "Exam Paper Item Id"
+          },
+          "question_template_id": {
+            "type": "integer",
+            "title": "Question Template Id"
+          },
+          "attempt_no": {
+            "type": "integer",
+            "title": "Attempt No"
+          },
+          "attempt_key": {
+            "type": "string",
+            "title": "Attempt Key"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "grading",
+              "graded",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "answer": {
+            "type": "string",
+            "title": "Answer"
+          },
+          "is_correct": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Correct"
+          },
+          "score_obtained": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score Obtained"
+          },
+          "score_max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score Max"
+          },
+          "feedback_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedback Text"
+          },
+          "error_cause_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Cause Label"
+          },
+          "grading_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grading Mode"
+          },
+          "time_spent_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Spent Seconds"
+          },
+          "hint_used": {
+            "type": "boolean",
+            "title": "Hint Used",
+            "default": false
+          },
+          "confidence_self_report": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence Self Report"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "answered_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answered At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "mastery_drill_session_id",
+          "exam_paper_item_id",
+          "question_template_id",
+          "attempt_no",
+          "attempt_key",
+          "status",
+          "answer",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "MasteryDrillAttemptResponse"
+      },
+      "MasteryDrillCompleteRequest": {
+        "properties": {
+          "completion_key": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Completion Key"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 604800.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "completion_key"
+        ],
+        "title": "MasteryDrillCompleteRequest",
+        "description": "Idempotently finish a drill after every item has been passed."
+      },
+      "MasteryDrillHistorySummary": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "completed",
+              "abandoned"
+            ],
+            "title": "Status"
+          },
+          "total_attempts": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total Attempts",
+            "default": 0
+          },
+          "wrong_attempts": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Wrong Attempts",
+            "default": 0
+          },
+          "attempt_accuracy": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempt Accuracy"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "MasteryDrillHistorySummary"
+      },
+      "MasteryDrillSessionResponse": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "exam_paper_id": {
+            "type": "integer",
+            "title": "Exam Paper Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "completed",
+              "abandoned"
+            ],
+            "title": "Status"
+          },
+          "config_snapshot": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Config Snapshot"
+          },
+          "total_attempts": {
+            "type": "integer",
+            "title": "Total Attempts",
+            "default": 0
+          },
+          "wrong_attempts": {
+            "type": "integer",
+            "title": "Wrong Attempts",
+            "default": 0
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "attempts": {
+            "items": {
+              "$ref": "#/components/schemas/MasteryDrillAttemptResponse"
+            },
+            "type": "array",
+            "title": "Attempts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "exam_paper_id",
+          "status",
+          "started_at"
+        ],
+        "title": "MasteryDrillSessionResponse"
+      },
+      "MasteryDrillStartRequest": {
+        "properties": {
+          "session_key": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Session Key"
+          },
+          "question_template_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "maxItems": 80,
+            "minItems": 1,
+            "title": "Question Template Ids"
+          },
+          "configured_question_count": {
+            "type": "integer",
+            "maximum": 80.0,
+            "minimum": 1.0,
+            "title": "Configured Question Count"
+          },
+          "configured_question_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Configured Question Types"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_key",
+          "question_template_ids",
+          "configured_question_count"
+        ],
+        "title": "MasteryDrillStartRequest",
+        "description": "Start a new durable drill or resume the active one for the course."
+      },
       "MasteryOverviewResponse": {
         "properties": {
           "course_id": {
@@ -17050,6 +19768,37 @@
         ],
         "title": "ModelProbeResult",
         "description": "设置页模型连通性测试结果。"
+      },
+      "ModelReasoningCapabilitiesResult": {
+        "properties": {
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "description": "完成首尾空白清理后的模型名。"
+          },
+          "reasoning_efforts": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reasoning Efforts",
+            "description": "支持的 reasoning effort；空列表表示已知不支持，null 表示模型能力未知。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model",
+          "reasoning_efforts"
+        ],
+        "title": "ModelReasoningCapabilitiesResult",
+        "description": "已知模型的 reasoning effort 能力。"
       },
       "NodeRevisionItem": {
         "properties": {
@@ -18407,6 +21156,18 @@
             "title": "Ui Order",
             "description": "设置页内的稳定排序值。",
             "default": 0
+          },
+          "ui_parent_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ui Parent Key",
+            "description": "可选的同一行父设置键。"
           },
           "description": {
             "type": "string",

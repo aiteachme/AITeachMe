@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 import { createPortal } from "react-dom";
 import { Link, useParams, useLocation } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -10,6 +18,10 @@ import {
   FileText,
   BarChart3,
   Lock,
+  Loader2,
+  MoreHorizontal,
+  Save,
+  Share2,
 } from "lucide-react";
 
 import { cn } from "../../lib/utils";
@@ -18,6 +30,7 @@ import {
   buildKnowledgeBuildRuntimeQueryKey,
   buildRuntimeFailureBackoffMs,
   fetchKnowledgeBuildRuntime,
+  hasKnowledgeBuildDraftFallback,
 } from "../../lib/knowledgeBuildRuntime";
 import {
   getExamHistoryApiV1CoursesCourseIdExamsHistoryGetQueryKey,
@@ -27,8 +40,10 @@ import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { apiClient } from "../../api/client";
 import type { ApiResponse } from "../../api/types";
 import type { DocGenGetResponse, ExamHistoryItem } from "../../api/generated/model";
-import { TopBar } from "../layout/TopBar";
 import { ACTIVE_DOC_BUILD_STATUSES } from "../knowledge-docs/utils";
+import { useCanManageCourseShares } from "../../hooks/useCourseShareCapability";
+import { CourseShareModal } from "./CourseShareModal";
+import { TopBar } from "../layout/TopBar";
 
 interface CoursePagePillTitleProps {
   icon: LucideIcon;
@@ -37,12 +52,27 @@ interface CoursePagePillTitleProps {
   className?: string;
   innerClassName?: string;
   placement?: "layout" | "page";
+  scrollRootRef?: RefObject<HTMLElement | null>;
 }
 
 interface CourseNavTooltipState {
   text: string;
   left: number;
   top: number;
+}
+
+interface CourseSharePillTitleProps {
+  courseName: string;
+  activeView: "build" | "knowledge-docs" | "exams" | "profile";
+  isSaving: boolean;
+  canSave: boolean;
+  importError?: string;
+  saveLabel?: string;
+  saveDescription?: string;
+  onSave: () => void;
+  onViewChange: (view: "build" | "knowledge-docs" | "exams" | "profile") => void;
+  className?: string;
+  innerClassName?: string;
 }
 
 function courseNavTooltipFromTarget(text: string, target: HTMLElement): CourseNavTooltipState {
@@ -56,6 +86,166 @@ function courseNavTooltipFromTarget(text: string, target: HTMLElement): CourseNa
 
 export const ENABLE_PERSISTENT_COURSE_NAV = true;
 export const SHOW_COURSE_OVERVIEW_NAV_ENTRY = false;
+const COURSE_NAV_TOP_REVEAL_PX = 64;
+const COURSE_NAV_HIDE_DELTA_PX = 28;
+const COURSE_NAV_SHOW_DELTA_PX = 12;
+
+const COURSE_NAV_SHELL_CLASS =
+  "sticky top-0 z-30 grid h-16 w-full shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center border-b border-slate-200/70 bg-[#fafafa]/92 px-4 backdrop-blur-md dark:border-slate-800/60 dark:bg-[#0b0f19]/92";
+
+const COURSE_NAV_LIST_CLASS =
+  "flex max-w-full items-center gap-1 overflow-x-auto rounded-[10px] border border-slate-200/80 bg-white/95 p-1 shadow-[0_2px_12px_rgba(15,23,42,0.05)] scrollbar-none dark:border-slate-800/80 dark:bg-slate-900/95";
+
+const COURSE_NAV_ITEM_CLASS =
+  "group relative flex h-9 shrink-0 items-center gap-2 rounded-lg px-3 text-[12px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 dark:focus-visible:ring-indigo-500";
+
+export function CourseSharePillTitle({
+  courseName,
+  activeView,
+  isSaving,
+  canSave,
+  importError,
+  saveLabel = "保存到我的课程",
+  saveDescription = "导入后继续训练和编辑",
+  onSave,
+  onViewChange,
+  className,
+  innerClassName,
+}: CourseSharePillTitleProps) {
+  const actionMenuButtonRef = useRef<HTMLButtonElement | null>(null);
+  const actionMenuRef = useRef<HTMLDivElement | null>(null);
+  const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
+  const [actionMenuPosition, setActionMenuPosition] = useState<{ left: number; top: number } | null>(null);
+  const navItems = [
+    { id: "build", label: "方案规划", icon: Sparkles },
+    { id: "knowledge-docs", label: "知识库", icon: BookOpen },
+    { id: "exams", label: "训练中心", icon: FileText },
+    { id: "profile", label: "课程画像", icon: BarChart3 },
+  ] as const;
+
+  const updateActionMenuPosition = useCallback(() => {
+    const trigger = actionMenuButtonRef.current;
+    if (!trigger || typeof window === "undefined") {
+      setActionMenuPosition(null);
+      return;
+    }
+    const rect = trigger.getBoundingClientRect();
+    const width = 220;
+    setActionMenuPosition({
+      left: Math.min(Math.max(8, rect.right - width), Math.max(8, window.innerWidth - width - 8)),
+      top: Math.min(rect.bottom + 8, Math.max(8, window.innerHeight - 132)),
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!isActionMenuOpen) return;
+    updateActionMenuPosition();
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (actionMenuButtonRef.current?.contains(target) || actionMenuRef.current?.contains(target)) {
+        return;
+      }
+      setIsActionMenuOpen(false);
+    };
+    const handleViewportChange = () => updateActionMenuPosition();
+
+    document.addEventListener("mousedown", handlePointerDown);
+    window.addEventListener("resize", handleViewportChange);
+    window.addEventListener("scroll", handleViewportChange, true);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      window.removeEventListener("resize", handleViewportChange);
+      window.removeEventListener("scroll", handleViewportChange, true);
+    };
+  }, [isActionMenuOpen, updateActionMenuPosition]);
+
+  return (
+    <div className={cn(COURSE_NAV_SHELL_CLASS, "max-md:block", className)}>
+      <div className="hidden min-w-0 pr-4 md:block">
+        <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{courseName}</p>
+      </div>
+      <nav className={cn(COURSE_NAV_LIST_CLASS, "min-w-0 max-md:absolute max-md:left-16 max-md:right-3 max-md:top-2 max-md:max-w-none", innerClassName)} aria-label="共享课程页面导航">
+        {navItems.map((item) => {
+          const isActive = item.id === activeView;
+          const ItemIcon = item.icon;
+
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onViewChange(item.id)}
+              aria-label={item.label}
+              aria-current={isActive ? "page" : undefined}
+              title={`${item.label}：查看共享课程的只读内容。`}
+              className={cn(
+                COURSE_NAV_ITEM_CLASS,
+                "max-[480px]:w-9 max-[480px]:justify-center max-[480px]:gap-0 max-[480px]:px-0",
+                isActive
+                  ? "bg-slate-950 text-white shadow-sm dark:bg-slate-100 dark:text-slate-950"
+                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white",
+              )}
+            >
+              <ItemIcon className={cn("h-3.5 w-3.5 shrink-0", isActive ? "text-white dark:text-slate-950" : "text-slate-400 transition-colors group-hover:text-indigo-600 dark:group-hover:text-indigo-300")} />
+              <span className="whitespace-nowrap max-[480px]:hidden">{item.label}</span>
+              {isActive ? (
+                <span className="absolute inset-x-2 -bottom-1 h-0.5 rounded-full bg-indigo-400 dark:bg-indigo-500" />
+              ) : null}
+            </button>
+          );
+        })}
+        <div className="h-5 w-px shrink-0 bg-slate-200 dark:bg-slate-800" />
+        <button
+          ref={actionMenuButtonRef}
+          type="button"
+          onClick={() => {
+            setIsActionMenuOpen((value) => !value);
+            window.requestAnimationFrame(updateActionMenuPosition);
+          }}
+          className="group relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white dark:focus-visible:ring-indigo-500"
+          title="共享课程操作"
+          aria-label="共享课程操作"
+          aria-expanded={isActionMenuOpen}
+        >
+          <MoreHorizontal className="h-4 w-4 shrink-0 text-slate-400 transition-colors group-hover:text-indigo-600 dark:group-hover:text-indigo-300" />
+        </button>
+      </nav>
+      {isActionMenuOpen && actionMenuPosition && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              ref={actionMenuRef}
+              className="fixed z-[140] w-[220px] overflow-hidden rounded-lg border border-slate-200 bg-white p-1 shadow-[0_16px_36px_rgba(15,23,42,0.16)] ring-1 ring-slate-950/5 dark:border-slate-700 dark:bg-slate-900 dark:shadow-[0_18px_42px_rgba(0,0,0,0.45)] dark:ring-white/5"
+              style={{ left: actionMenuPosition.left, top: actionMenuPosition.top }}
+              role="menu"
+            >
+              <button
+                type="button"
+                role="menuitem"
+                disabled={!canSave || isSaving}
+                onClick={() => {
+                  setIsActionMenuOpen(false);
+                  onSave();
+                }}
+                className="group flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400 dark:text-slate-200 dark:hover:bg-slate-800"
+                title={importError || saveLabel}
+              >
+                {isSaving ? (
+                  <Loader2 className="h-4 w-4 shrink-0 animate-spin text-slate-400" />
+                ) : (
+                  <Save className="h-4 w-4 shrink-0 text-slate-400 transition group-hover:text-slate-700 dark:text-slate-500 dark:group-hover:text-slate-200" />
+                )}
+                <span className="min-w-0">
+                  <span className="block font-medium text-slate-900 group-disabled:text-slate-400 dark:text-slate-100">{saveLabel}</span>
+                  <span className="block text-[11px] leading-4 text-slate-500 dark:text-slate-400">{saveDescription}</span>
+                </span>
+              </button>
+            </div>,
+            document.body,
+          )
+        : null}
+    </div>
+  );
+}
 
 export function CoursePagePillTitle({
   icon: Icon,
@@ -64,32 +254,114 @@ export function CoursePagePillTitle({
   className,
   innerClassName,
   placement = "page",
+  scrollRootRef,
 }: CoursePagePillTitleProps) {
   const params = useParams<{ courseId: string }>();
   const { pathname } = useLocation();
   const queryClient = useQueryClient();
   const [tooltip, setTooltip] = useState<CourseNavTooltipState | null>(null);
+  const [isShareOpen, setIsShareOpen] = useState(false);
+  const [isScrollHidden, setIsScrollHidden] = useState(false);
+  const canManageCourseShares = useCanManageCourseShares();
   const previousTrainingUnlockedRef = useRef<boolean | null>(null);
   const courseId = params.courseId || (href ? href.split("/")[2] : undefined);
   const shouldHideInlineCourseNav = Boolean(courseId && ENABLE_PERSISTENT_COURSE_NAV && placement === "page");
 
+  useLayoutEffect(() => {
+    setIsScrollHidden(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    const scrollRoot = scrollRootRef?.current;
+    if (!scrollRoot) return;
+
+    const previousScrollTops = new WeakMap<HTMLElement, number>();
+    let activeScrollTarget: HTMLElement | null = null;
+    let accumulatedDelta = 0;
+    let activeDirection = 0;
+
+    const handleScroll = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      if (
+        target !== scrollRoot &&
+        !target.classList.contains("course-page-scroll-container") &&
+        !target.classList.contains("doc-scroll-container")
+      ) return;
+
+      const currentScrollTop = target.scrollTop;
+      const previousScrollTop = previousScrollTops.get(target);
+      previousScrollTops.set(target, currentScrollTop);
+
+      if (currentScrollTop <= COURSE_NAV_TOP_REVEAL_PX) {
+        activeScrollTarget = target;
+        accumulatedDelta = 0;
+        activeDirection = 0;
+        setIsScrollHidden(false);
+        return;
+      }
+
+      if (previousScrollTop === undefined || activeScrollTarget !== target) {
+        activeScrollTarget = target;
+        accumulatedDelta = 0;
+        activeDirection = 0;
+        return;
+      }
+
+      const delta = currentScrollTop - previousScrollTop;
+      if (Math.abs(delta) < 1) return;
+
+      const direction = delta > 0 ? 1 : -1;
+      accumulatedDelta = direction === activeDirection ? accumulatedDelta + delta : delta;
+      activeDirection = direction;
+
+      if (accumulatedDelta >= COURSE_NAV_HIDE_DELTA_PX) {
+        accumulatedDelta = 0;
+        setIsScrollHidden(true);
+      } else if (accumulatedDelta <= -COURSE_NAV_SHOW_DELTA_PX) {
+        accumulatedDelta = 0;
+        setIsScrollHidden(false);
+      }
+    };
+
+    scrollRoot.addEventListener("scroll", handleScroll, { capture: true, passive: true });
+    return () => scrollRoot.removeEventListener("scroll", handleScroll, true);
+  }, [pathname, scrollRootRef]);
+
+  useEffect(() => {
+    if (isScrollHidden) setTooltip(null);
+  }, [isScrollHidden]);
+
+  const isFloatingLayoutNav = placement === "layout";
   const shellClassName = cn(
-    "sticky top-0 z-30 grid h-16 w-full shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center border-b border-slate-200/70 bg-[#fafafa]/92 px-4 backdrop-blur-md dark:border-slate-800/60 dark:bg-[#0b0f19]/92",
+    isFloatingLayoutNav
+      ? "pointer-events-none absolute inset-x-0 top-0 z-40 grid h-16 w-full grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center px-4 transition-[transform,opacity] transform-gpu motion-reduce:transition-none"
+      : COURSE_NAV_SHELL_CLASS,
+    isFloatingLayoutNav && (
+      isScrollHidden
+        ? "-translate-y-full opacity-0 duration-[130ms] ease-in"
+        : "translate-y-0 opacity-100 duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)]"
+    ),
     className,
   );
   const navClassName = cn(
-    "flex max-w-full items-center gap-1 overflow-x-auto rounded-[10px] border border-slate-200/80 bg-white/95 p-1 shadow-[0_2px_12px_rgba(15,23,42,0.05)] scrollbar-none dark:border-slate-800/80 dark:bg-slate-900/95",
+    "flex max-w-full items-center gap-1 overflow-x-auto rounded-[10px] border border-slate-200/80 bg-white/95 p-1 shadow-[0_8px_24px_-14px_rgba(15,23,42,0.28)] backdrop-blur-md scrollbar-none dark:border-slate-800/80 dark:bg-slate-900/95 dark:shadow-[0_10px_28px_-16px_rgba(0,0,0,0.7)]",
+    isFloatingLayoutNav && !isScrollHidden ? "pointer-events-auto" : isFloatingLayoutNav ? "pointer-events-none" : undefined,
     innerClassName,
   );
 
   // 1. Query Document Build Status
   const docMarkdownQuery = useQuery({
-    queryKey: ["docgen-content", courseId, null],
+    queryKey: ["docgen-content", courseId, null, "metadata"],
     queryFn: async (): Promise<DocGenGetResponse> => {
       if (!courseId) throw new Error("缺少课程 ID");
       const response = await apiClient<ApiResponse<DocGenGetResponse>>({
         method: "POST",
         url: `/api/v1/courses/${courseId}/knowledge/docs`,
+        params: {
+          include_markdown: false,
+          include_draft: false,
+        },
       });
       if (!response.data) throw new Error("加载知识文档状态失败");
       return response.data;
@@ -164,9 +436,10 @@ export function CoursePagePillTitle({
   }, [isBuilding, isBuilt, runtimeQuery.data?.training_unlocked]);
 
   const hasDraftDoc = useMemo(() => {
-    const data = docMarkdownQuery.data as (DocGenGetResponse & { draft_markdown?: string | null }) | undefined;
-    return Boolean(String(data?.draft_markdown ?? "").trim());
-  }, [docMarkdownQuery.data]);
+    return Boolean(
+      docMarkdownQuery.data?.build?.draft_available || hasKnowledgeBuildDraftFallback(runtimeQuery.data),
+    );
+  }, [docMarkdownQuery.data?.build?.draft_available, runtimeQuery.data]);
 
   const hasRuntimeBuildStarted = useMemo(() => {
     return Boolean(runtimeQuery.data?.build_group_id) || runtimeStatuses.some((status) => Boolean(status && status !== "idle"));
@@ -223,7 +496,7 @@ export function CoursePagePillTitle({
       </div>
     );
     return (
-      <div className={shellClassName}>
+      <div className={shellClassName} onFocusCapture={() => setIsScrollHidden(false)}>
         <div />
         {inner}
         <div className="flex justify-end">
@@ -269,7 +542,7 @@ export function CoursePagePillTitle({
   ] as const;
 
   return (
-    <div className={shellClassName}>
+    <div className={shellClassName} onFocusCapture={() => setIsScrollHidden(false)}>
       <div />
       <nav className={navClassName} aria-label="课程页面导航">
         {SHOW_COURSE_OVERVIEW_NAV_ENTRY && href ? (
@@ -286,6 +559,7 @@ export function CoursePagePillTitle({
             >
               <Compass className="h-3.5 w-3.5 shrink-0 text-slate-400 transition-colors group-hover:text-indigo-600 dark:group-hover:text-indigo-300" />
               <span className="whitespace-nowrap">总览</span>
+              <span className="h-3 w-3 shrink-0" aria-hidden="true" />
             </Link>
             <div className="h-5 w-px shrink-0 bg-slate-200 dark:bg-slate-800" />
           </>
@@ -311,7 +585,7 @@ export function CoursePagePillTitle({
             ? `${item.label}：${disabledReason}`
             : `${item.label}：${item.description}`;
           const itemClassName = cn(
-            "group relative flex h-9 shrink-0 items-center gap-2 rounded-lg px-3 text-[12px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 dark:focus-visible:ring-indigo-500",
+            COURSE_NAV_ITEM_CLASS,
             isActive
               ? "bg-slate-950 text-white shadow-sm dark:bg-slate-100 dark:text-slate-950"
               : "text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white",
@@ -334,7 +608,9 @@ export function CoursePagePillTitle({
               >
                 <ItemIcon className="h-3.5 w-3.5 shrink-0 text-slate-300 dark:text-slate-700" />
                 <span className="whitespace-nowrap">{item.label}</span>
-                <Lock className="h-3 w-3 shrink-0 text-slate-300 dark:text-slate-700" strokeWidth={1.5} />
+                <span className="flex h-3 w-3 shrink-0 items-center justify-center" aria-hidden="true">
+                  <Lock className="h-3 w-3 text-slate-300 dark:text-slate-700" strokeWidth={1.5} />
+                </span>
               </div>
             );
           }
@@ -354,16 +630,39 @@ export function CoursePagePillTitle({
             >
               <ItemIcon className={cn("h-3.5 w-3.5 shrink-0", isActive ? "text-white dark:text-slate-950" : "text-slate-400 transition-colors group-hover:text-indigo-600 dark:group-hover:text-indigo-300")} />
               <span className="whitespace-nowrap">{item.label}</span>
+              <span className="h-3 w-3 shrink-0" aria-hidden="true" />
               {isActive ? (
                 <span className="absolute inset-x-2 -bottom-1 h-0.5 rounded-full bg-indigo-400 dark:bg-indigo-500" />
               ) : null}
             </Link>
           );
         })}
+        {canManageCourseShares ? (
+          <>
+            <div className="h-5 w-px shrink-0 bg-slate-200 dark:bg-slate-800" />
+            <button
+              type="button"
+              onClick={() => setIsShareOpen(true)}
+              className="group relative flex h-9 shrink-0 items-center gap-2 rounded-lg px-3 text-[12px] font-semibold text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white dark:focus-visible:ring-indigo-500"
+              title="分享课程：生成可浏览的课程链接。"
+              aria-label="分享课程：生成可浏览的课程链接。"
+              onMouseEnter={(event) => showTooltip("分享课程：生成可浏览的课程链接。", event.currentTarget)}
+              onMouseLeave={hideTooltip}
+              onFocus={(event) => showTooltip("分享课程：生成可浏览的课程链接。", event.currentTarget)}
+              onBlur={hideTooltip}
+            >
+              <Share2 className="h-3.5 w-3.5 shrink-0 text-slate-400 transition-colors group-hover:text-indigo-600 dark:group-hover:text-indigo-300" />
+              <span className="whitespace-nowrap">分享</span>
+            </button>
+          </>
+        ) : null}
       </nav>
-      <div className="flex justify-end pr-1">
+      <div className={cn("flex justify-end pr-1", isFloatingLayoutNav && !isScrollHidden ? "pointer-events-auto" : isFloatingLayoutNav ? "pointer-events-none" : undefined)}>
         <TopBar />
       </div>
+      {isShareOpen && canManageCourseShares ? (
+        <CourseShareModal courseId={courseId} onClose={() => setIsShareOpen(false)} />
+      ) : null}
       {tooltip && typeof document !== "undefined"
         ? createPortal(
             <div

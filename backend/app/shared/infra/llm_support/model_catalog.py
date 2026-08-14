@@ -4,12 +4,25 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-ModelAPIModeHint = Literal["chat_completions", "responses"]
+ModelAPIModeHint = Literal["responses"]
+ReasoningEffort = Literal[
+    "none",
+    "minimal",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+]
 
-PRIMARY_GATEWAY_MODEL_ALLOWLIST: tuple[str, ...] = (
+# Text-generation models that should prefer the Responses API in ``auto`` mode.
+# This catalog selects the API shape only; streaming callers always request a
+# real upstream stream independently of the selected model name.
+# Models not listed here use Chat Completions unless the caller explicitly
+# requests Responses. Specialized audio, Realtime, image, and video models use
+# their dedicated project integrations instead of this text adapter.
+RESPONSES_API_MODELS: tuple[str, ...] = (
     "codex-auto-review",
-    "gpt-4o-audio-preview",
-    "gpt-4o-realtime-preview",
     "gpt-5.2",
     "gpt-5.2-2025-12-11",
     "gpt-5.2-chat-latest",
@@ -20,31 +33,52 @@ PRIMARY_GATEWAY_MODEL_ALLOWLIST: tuple[str, ...] = (
     "gpt-5.4",
     "gpt-5.4-2026-03-05",
     "gpt-5.4-mini",
+    "gpt-5.4-mini-2026-03-17",
+    "gpt-5.4-pro",
+    "gpt-5.4-pro-2026-03-05",
     "gpt-5.5",
-    "gpt-image-1",
-    "gpt-image-1.5",
-    "gpt-image-2",
+    "gpt-5.5-pro",
+    "gpt-5.5-pro-2026-04-23",
+    "gpt-5.6",
+    "gpt-5.6-luna",
+    "gpt-5.6-sol",
+    "gpt-5.6-terra",
 )
-
-FALLBACK_RUNTIME_MODEL_OVERRIDES: tuple[str, ...] = ("gemini-3.1-flash-lite",)
-
-RESPONSES_API_MODELS: tuple[str, ...] = PRIMARY_GATEWAY_MODEL_ALLOWLIST
-CHAT_COMPLETIONS_API_MODELS: tuple[str, ...] = FALLBACK_RUNTIME_MODEL_OVERRIDES
-
-ALLOWED_RUNTIME_MODEL_OVERRIDES: tuple[str, ...] = (
-    *PRIMARY_GATEWAY_MODEL_ALLOWLIST,
-    *FALLBACK_RUNTIME_MODEL_OVERRIDES,
-)
-
-PRIMARY_GATEWAY_MODEL_ALLOWLIST_SET = frozenset(PRIMARY_GATEWAY_MODEL_ALLOWLIST)
-RESPONSES_API_MODELS_SET = frozenset(RESPONSES_API_MODELS)
-CHAT_COMPLETIONS_API_MODELS_SET = frozenset(CHAT_COMPLETIONS_API_MODELS)
-ALLOWED_RUNTIME_MODEL_OVERRIDES_SET = frozenset(ALLOWED_RUNTIME_MODEL_OVERRIDES)
 
 _RESPONSES_ROUTE_MARKERS = frozenset({"responses"})
-_PRIMARY_GATEWAY_MODEL_ALLOWLIST_LOWER = frozenset(item.lower() for item in PRIMARY_GATEWAY_MODEL_ALLOWLIST_SET)
-_RESPONSES_API_MODELS_LOWER = frozenset(item.lower() for item in RESPONSES_API_MODELS_SET)
-_CHAT_COMPLETIONS_API_MODELS_LOWER = frozenset(item.lower() for item in CHAT_COMPLETIONS_API_MODELS_SET)
+_RESPONSES_API_MODELS_LOWER = frozenset(item.lower() for item in RESPONSES_API_MODELS)
+
+# The portable /v1/models response does not advertise reasoning-effort values.
+# Keep verified families here so settings UI and request validation share one
+# deterministic capability source; unknown gateway aliases remain configurable
+# through YAML without being guessed in the UI.
+_STANDARD_REASONING_EFFORTS: tuple[ReasoningEffort, ...] = (
+    "none",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+)
+_CODEX_REASONING_EFFORTS: tuple[ReasoningEffort, ...] = (
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+)
+_PRO_REASONING_EFFORTS: tuple[ReasoningEffort, ...] = (
+    "medium",
+    "high",
+    "xhigh",
+)
+_MAX_REASONING_EFFORTS: tuple[ReasoningEffort, ...] = (
+    "none",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+)
+_KNOWN_NON_REASONING_MODELS = frozenset({"gpt-5.2-chat-latest"})
 
 
 def model_name_candidates(model: Any) -> tuple[str, ...]:
@@ -62,29 +96,10 @@ def model_name_candidates(model: Any) -> tuple[str, ...]:
     return tuple(dict.fromkeys(candidates))
 
 
-def model_matches_any_name(model: Any, names: tuple[str, ...] | frozenset[str]) -> bool:
-    """Return whether a model matches any exact catalog name or provider suffix."""
-
-    allowed = frozenset(str(item or "").strip().lower() for item in names if str(item or "").strip())
-    if not allowed:
-        return False
-    candidates = frozenset(candidate.lower() for candidate in model_name_candidates(model))
-    return bool(candidates & allowed)
-
-
-def is_primary_gateway_model(model: Any) -> bool:
-    """Return whether the model is explicitly available on the primary gateway."""
-
-    candidates = frozenset(candidate.lower() for candidate in model_name_candidates(model))
-    return bool(candidates & _PRIMARY_GATEWAY_MODEL_ALLOWLIST_LOWER)
-
-
 def classify_known_model_api_mode(model: Any) -> ModelAPIModeHint | None:
-    """Return the API mode for models whose transport is code-owned."""
+    """Return the Responses hint for code-owned text model names."""
 
     candidates = frozenset(candidate.lower() for candidate in model_name_candidates(model))
-    if candidates & _CHAT_COMPLETIONS_API_MODELS_LOWER:
-        return "chat_completions"
     if candidates & _RESPONSES_API_MODELS_LOWER:
         return "responses"
     parts = [
@@ -97,19 +112,35 @@ def classify_known_model_api_mode(model: Any) -> ModelAPIModeHint | None:
     return None
 
 
+def reasoning_efforts_for_model(
+    model: Any,
+) -> tuple[ReasoningEffort, ...] | None:
+    """Return known reasoning efforts, ``()`` for known non-reasoning, or ``None`` when unknown."""
+
+    for candidate in reversed(model_name_candidates(model)):
+        normalized = candidate.lower()
+        if normalized in _KNOWN_NON_REASONING_MODELS:
+            return ()
+        if normalized == "gpt-5.6" or normalized.startswith("gpt-5.6-"):
+            return _MAX_REASONING_EFFORTS
+        if normalized.startswith(("gpt-5.2-pro", "gpt-5.4-pro", "gpt-5.5-pro")):
+            return _PRO_REASONING_EFFORTS
+        if normalized == "gpt-5.5" or normalized.startswith("gpt-5.5-"):
+            return _STANDARD_REASONING_EFFORTS
+        if normalized == "gpt-5.4" or normalized.startswith("gpt-5.4-"):
+            return _STANDARD_REASONING_EFFORTS
+        if normalized == "gpt-5.3-codex" or normalized.startswith("gpt-5.3-codex-"):
+            return _CODEX_REASONING_EFFORTS
+        if normalized == "gpt-5.2" or normalized.startswith("gpt-5.2-"):
+            return _STANDARD_REASONING_EFFORTS
+    return None
+
+
 __all__ = [
-    "ALLOWED_RUNTIME_MODEL_OVERRIDES",
-    "ALLOWED_RUNTIME_MODEL_OVERRIDES_SET",
-    "CHAT_COMPLETIONS_API_MODELS",
-    "CHAT_COMPLETIONS_API_MODELS_SET",
-    "FALLBACK_RUNTIME_MODEL_OVERRIDES",
     "ModelAPIModeHint",
-    "PRIMARY_GATEWAY_MODEL_ALLOWLIST",
-    "PRIMARY_GATEWAY_MODEL_ALLOWLIST_SET",
+    "ReasoningEffort",
     "RESPONSES_API_MODELS",
-    "RESPONSES_API_MODELS_SET",
     "classify_known_model_api_mode",
-    "is_primary_gateway_model",
-    "model_matches_any_name",
     "model_name_candidates",
+    "reasoning_efforts_for_model",
 ]

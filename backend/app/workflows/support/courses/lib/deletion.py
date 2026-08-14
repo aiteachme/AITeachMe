@@ -22,7 +22,10 @@ from app.models import (
     ChatSession,
     ExamPaper,
     ExamPaperItem,
+    ExamProfileSync,
     ExamStudyGuideCache,
+    MasteryDrillAttempt,
+    MasteryDrillSession,
     KnowledgeDocument,
     KnowledgeEdge,
     KnowledgeGraphSourceRef,
@@ -34,11 +37,16 @@ from app.models import (
     RawFile,
     RetrievalChunk,
     Course,
+    CourseInitialExamJob,
     CourseFileLink,
+    CourseShare,
     UserKnowledgeState,
 )
 from app.schemas.course import CourseDeletePreviewData
+from app.shared.infra.exceptions import CourseRegistryNotFoundError
 from app.utils.path_helpers import build_course_dir
+from app.utils.time import utcnow
+from app.workflows.support.course_mutation_lock import course_mutation_lock
 
 logger = structlog.get_logger()
 _POSTGRES_IDENTIFIER_RE = re.compile(r"[a-z_][a-z0-9_]*")
@@ -84,6 +92,27 @@ def collect_course_delete_counts(session: Session, *, course_id: str) -> dict[st
         "question_template": _count_rows(session, QuestionTemplate, QuestionTemplate.course_id == course_id),
         "question_type_registry": _count_rows(session, QuestionTypeRegistry, QuestionTypeRegistry.course_id == course_id),
         "exam_paper": _count_rows(session, ExamPaper, ExamPaper.course_id == course_id),
+        "course_initial_exam_job": _count_rows(
+            session,
+            CourseInitialExamJob,
+            CourseInitialExamJob.course_id == course_id,
+        ),
+        "exam_profile_sync": _count_rows(session, ExamProfileSync, ExamProfileSync.course_id == course_id),
+        "mastery_drill_session": _count_rows(
+            session,
+            MasteryDrillSession,
+            MasteryDrillSession.course_id == course_id,
+        ),
+        "mastery_drill_attempt": _count_query(
+            session,
+            select(func.count())
+            .select_from(MasteryDrillAttempt)
+            .join(
+                MasteryDrillSession,
+                MasteryDrillAttempt.mastery_drill_session_id == MasteryDrillSession.id,
+            )
+            .where(MasteryDrillSession.course_id == course_id),
+        ),
         "exam_study_guide_cache": _count_rows(
             session,
             ExamStudyGuideCache,
@@ -105,6 +134,7 @@ def collect_course_delete_counts(session: Session, *, course_id: str) -> dict[st
             KnowledgeGraphSourceRef,
             KnowledgeGraphSourceRef.course_id == course_id,
         ),
+        "course_share": _count_rows(session, CourseShare, CourseShare.source_course_id == course_id),
     }
 
 
@@ -129,29 +159,71 @@ def delete_course_with_all_content(
     counts: dict[str, int] | None = None,
 ) -> dict[str, int]:
     course_id = course.id
-    owner_user_id = course.user_id
-    counts = dict(counts) if counts is not None else collect_course_delete_counts(session, course_id=course_id)
-    try:
-        _delete_profiles(session, course_id=course_id)
-        _delete_exam_records(session, course_id=course_id)
-        _delete_chat_messages(session, course_id=course_id)
-        _delete_knowledge_and_curriculum(session, course_id=course_id)
-        _delete_documents_and_chunks(session, course_id=course_id)
-        _delete_planner_records(session, course_id=course_id)
-        _delete_raw_files_and_artifacts(session, course_id=course_id, owner_user_id=owner_user_id)
-        session.delete(course)
-        session.commit()
-    except Exception:
-        session.rollback()
-        raise
+    expected_owner_user_id = course.user_id
+    with course_mutation_lock(course_id):
+        locked_course = session.exec(
+            select(Course)
+            .where(Course.id == course_id)
+            .where(Course.user_id == expected_owner_user_id)
+            .with_for_update()
+        ).first()
+        if locked_course is None:
+            raise CourseRegistryNotFoundError(course_id)
 
+        owner_user_id = locked_course.user_id
+        course_name = locked_course.name
+        counts = dict(counts) if counts is not None else collect_course_delete_counts(session, course_id=course_id)
+        share_storage_keys: list[str] = []
+        commit_attempted = False
+        bind: Any | None = None
+        try:
+            share_storage_keys = _revoke_course_shares(session, course_id=course_id)
+            _delete_profiles(session, course_id=course_id)
+            _delete_exam_records(session, course_id=course_id)
+            _delete_chat_messages(session, course_id=course_id)
+            _delete_knowledge_and_curriculum(session, course_id=course_id)
+            _delete_documents_and_chunks(session, course_id=course_id)
+            _delete_planner_records(session, course_id=course_id)
+            _delete_raw_files_and_artifacts(session, course_id=course_id, owner_user_id=owner_user_id)
+            session.delete(locked_course)
+            bind = session.get_bind()
+            commit_attempted = True
+            session.commit()
+        except Exception as commit_exc:
+            try:
+                session.rollback()
+            except Exception as rollback_exc:  # pragma: no cover - defensive connection failure guard
+                logger.warning(
+                    "course_delete_rollback_failed",
+                    course_id=course_id,
+                    error=str(rollback_exc),
+                )
+
+            if not commit_attempted or bind is None:
+                raise
+
+            verified, committed = _verify_course_delete_commit_outcome(
+                bind,
+                course_id=course_id,
+                expected_share_storage_keys=share_storage_keys,
+            )
+            if not committed:
+                if not verified:
+                    logger.warning(
+                        "course_delete_cleanup_retained_after_uncertain_commit",
+                        course_id=course_id,
+                        error=str(commit_exc),
+                    )
+                raise
+
+    _delete_course_share_snapshots_best_effort(share_storage_keys)
     _schedule_course_external_cleanup(
         course_id,
         owner_user_id=owner_user_id,
         background_task_registry=background_task_registry,
     )
     deleted_counts = {"course": 1, **counts}
-    logger.info("course_deleted_with_all_content", course_id=course_id, course_name=course.name, deleted_counts=deleted_counts)
+    logger.info("course_deleted_with_all_content", course_id=course_id, course_name=course_name, deleted_counts=deleted_counts)
     return deleted_counts
 
 
@@ -218,6 +290,24 @@ def _delete_exam_records(session: Session, *, course_id: str) -> None:
     paper_item_ids = select(ExamPaperItem.id).where(ExamPaperItem.exam_paper_id.in_(paper_ids))
     template_item_ids = select(ExamPaperItem.id).where(ExamPaperItem.question_template_id.in_(template_ids))
 
+    drill_session_ids = select(MasteryDrillSession.id).where(MasteryDrillSession.exam_paper_id.in_(paper_ids))
+
+    session.exec(
+        sa.delete(MasteryDrillAttempt)
+        .where(
+            sa.or_(
+                MasteryDrillAttempt.mastery_drill_session_id.in_(drill_session_ids),
+                MasteryDrillAttempt.exam_paper_item_id.in_(template_item_ids),
+            )
+        )
+        .execution_options(synchronize_session=False)
+    )
+    session.exec(
+        sa.delete(MasteryDrillSession)
+        .where(MasteryDrillSession.exam_paper_id.in_(paper_ids))
+        .execution_options(synchronize_session=False)
+    )
+
     session.exec(
         sa.delete(QuestionKnowledgeUnitLink)
         .where(
@@ -241,6 +331,8 @@ def _delete_exam_records(session: Session, *, course_id: str) -> None:
     )
 
     _bulk_delete_by_course(session, ExamStudyGuideCache, course_id=course_id)
+    _bulk_delete_by_course(session, ExamProfileSync, course_id=course_id)
+    _bulk_delete_by_course(session, CourseInitialExamJob, course_id=course_id)
     _bulk_delete_by_course(session, ExamPaper, course_id=course_id)
     _bulk_delete_by_course(session, QuestionTemplate, course_id=course_id)
     _bulk_delete_by_course(session, QuestionTypeRegistry, course_id=course_id)
@@ -253,6 +345,70 @@ def _delete_chat_messages(session: Session, *, course_id: str) -> None:
 
 def _delete_profiles(session: Session, *, course_id: str) -> None:
     _bulk_delete_by_course(session, UserKnowledgeState, course_id=course_id)
+
+
+def _revoke_course_shares(session: Session, *, course_id: str) -> list[str]:
+    now = utcnow()
+    shares = session.exec(
+        select(CourseShare)
+        .where(CourseShare.source_course_id == course_id)
+        .with_for_update()
+    ).all()
+    for share in shares:
+        if share.status != "revoked":
+            share.status = "revoked"
+            share.revoked_at = share.revoked_at or now
+            share.updated_at = now
+            session.add(share)
+    return list(dict.fromkeys(share.storage_key for share in shares if share.storage_key))
+
+
+def _verify_course_delete_commit_outcome(
+    bind: Any,
+    *,
+    course_id: str,
+    expected_share_storage_keys: list[str],
+) -> tuple[bool, bool]:
+    """Confirm an ambiguous delete commit before irreversible external cleanup."""
+
+    try:
+        with Session(bind, expire_on_commit=False) as verification_session:
+            if verification_session.get(Course, course_id) is not None:
+                return True, False
+
+            shares = verification_session.exec(
+                select(CourseShare).where(CourseShare.source_course_id == course_id)
+            ).all()
+            if any(share.status != "revoked" for share in shares):
+                return True, False
+
+            actual_storage_keys = {
+                share.storage_key
+                for share in shares
+                if share.storage_key
+            }
+            if actual_storage_keys != set(expected_share_storage_keys):
+                return True, False
+            return True, True
+    except Exception as exc:
+        logger.warning(
+            "course_delete_commit_outcome_verification_failed",
+            course_id=course_id,
+            error=str(exc),
+        )
+        return False, False
+
+
+def _delete_course_share_snapshots_best_effort(storage_keys: list[str]) -> None:
+    for storage_key in storage_keys:
+        try:
+            run_store_sync(get_content_store().delete, storage_key)
+        except Exception as exc:  # pragma: no cover - best-effort cleanup
+            logger.warning(
+                "course_share_snapshot_cleanup_failed",
+                storage_key=storage_key,
+                error=str(exc),
+            )
 
 
 def _delete_knowledge_and_curriculum(session: Session, *, course_id: str) -> None:

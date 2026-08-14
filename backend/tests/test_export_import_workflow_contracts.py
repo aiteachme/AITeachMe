@@ -16,31 +16,84 @@ from app.models import (
     ChatSession,
     Course,
     CourseFileLink,
+    ExamPaper,
+    ExamPaperItem,
     KnowledgeEdge,
+    KnowledgeDocument,
     KnowledgeUnit,
+    MasteryDrillAttempt,
+    MasteryDrillSession,
+    QuestionTemplate,
     RawFile,
     RetrievalChunk,
 )
 from app.schemas.export_import import ExportOptions, ImportOptions
 from app.shared.infra.exceptions import InvalidImportPackageError
+from app.workflows.support import course_shares as course_shares_module
+from app.shared.infra.storage import build_course_storage_scope
+from app.utils.time import utcnow
+from app.workflows.digest.docgen.lib import build_lifecycle as docgen_build_lifecycle
 from app.workflows.support.export_import import exports as export_module
 from app.workflows.support.export_import import imports as import_module
 
 
 COURSE_ID = "course_math00000000"
 IMPORTED_COURSE_ID = "course_imported1234"
+_VALID_PNG_BYTES = b"\x89PNG\r\n\x1a\nverified-image"
+EMPTY_DOCS_COURSE_ID = "course_emptydocs000"
+LEGACY_DOCS_COURSE_ID = "course_legacydocs00"
+PUBLISHED_COVER_FILENAME = "cover.published123.png"
+UNPUBLISHED_COVER_FILENAME = "cover.unpublished999.png"
 
 
 class _FakeStore:
     def __init__(self) -> None:
         self.writes: dict[str, bytes] = {}
+        self.read_keys: list[str] = []
 
     def list_prefix(self, prefix: str) -> list[str]:
-        return [f"{prefix.rstrip('/')}/docgen_cover_latest.png"]
+        return [
+            f"{prefix.rstrip('/')}/cover.png",
+            f"{prefix.rstrip('/')}/{PUBLISHED_COVER_FILENAME}",
+            f"{prefix.rstrip('/')}/{UNPUBLISHED_COVER_FILENAME}",
+        ]
+
+    def read_json_raw(self, key: str) -> dict[str, object] | None:
+        if key.endswith("/knowledge_markdowns/manifest.json"):
+            namespace = key.split("/knowledge_markdowns/", 1)[0]
+            return {
+                "docgen_manifest_key": (
+                    f"{namespace}/knowledge_markdowns/versions/v0001/stale/docgen_manifest.json"
+                )
+            }
+        if key.endswith("/versions/v0001/receipt/docgen_manifest.json"):
+            namespace = key.split("/knowledge_markdowns/", 1)[0]
+            return {
+                "cover_artifact": {
+                    "storage_key": f"{namespace}/assets/docgen/{PUBLISHED_COVER_FILENAME}",
+                }
+            }
+        if key.endswith("/versions/v0001/stale/docgen_manifest.json"):
+            namespace = key.split("/knowledge_markdowns/", 1)[0]
+            return {
+                "cover_artifact": {
+                    "storage_key": f"{namespace}/assets/docgen/{UNPUBLISHED_COVER_FILENAME}",
+                }
+            }
+        return None
+
+    def read_text(self, _key: str) -> str:
+        return ""
 
     def read_bytes(self, key: str) -> bytes:
-        assert key.endswith("docgen_cover_latest.png")
-        return b"cover-bytes"
+        self.read_keys.append(key)
+        if key in self.writes:
+            return self.writes[key]
+        if key.endswith(PUBLISHED_COVER_FILENAME):
+            return b"cover-bytes"
+        if key.endswith("/cover.png"):
+            return b"stale-cover-bytes"
+        raise AssertionError(f"unexpected cover read: {key}")
 
     def write_bytes(self, key: str, data: bytes) -> None:
         self.writes[key] = data
@@ -127,6 +180,20 @@ def _seed_course_graph(session: Session) -> None:
     session.add(first)
     session.add(second)
     session.add(planner_session)
+    session.add(
+        KnowledgeDocument(
+            course_id=COURSE_ID,
+            chapter_index=1,
+            title="Matrices",
+            markdown_content="# Matrices",
+            markdown_path=(
+                f"users/user-1/courses/{COURSE_ID}/knowledge_markdowns/"
+                "versions/v0001/receipt/chapter_01_Matrices.md"
+            ),
+            is_current=True,
+            status="published",
+        )
+    )
     session.commit()
     session.refresh(first)
     session.refresh(second)
@@ -184,6 +251,418 @@ def test_export_preview_and_archive_include_selected_course_graph(
         package_path.unlink(missing_ok=True)
 
 
+def test_share_snapshot_strips_private_data_from_real_export(
+    session: Session,
+    export_import_store: _FakeStore,
+) -> None:
+    del export_import_store
+    _seed_course_graph(session)
+    course = session.get(Course, COURSE_ID)
+    assert course is not None
+    options = ExportOptions(
+        include_raw_files=False,
+        include_raw_markdowns=False,
+        include_knowledge_docs=True,
+        include_chat_history=False,
+        include_exam_history=False,
+        include_profile=False,
+    )
+    package_path = export_module.export_course(session, course_id=COURSE_ID, options=options)
+    snapshot_path: Path | None = None
+
+    try:
+        snapshot_path, _stats = course_shares_module._build_share_snapshot(
+            package_path,
+            course=course,
+            options=options,
+        )
+        with zipfile.ZipFile(snapshot_path, "r") as archive:
+            names = set(archive.namelist())
+            unpacked = b"\n".join(archive.read(name) for name in names)
+            manifest = json.loads(archive.read("manifest.json").decode("utf-8"))
+
+        assert names == {
+            "manifest.json",
+            "db/course.json",
+            "db/knowledge_document.json",
+            "db/knowledge_unit.json",
+            "db/knowledge_edge.json",
+        }
+        assert manifest["extensions"]["share_snapshot_schema"] == "aiteachme.course-share.v1"
+        for private_marker in (
+            b"Review fundamentals",
+            b"embedding",
+            b"file-old",
+            b"session-1",
+            b"user-1",
+        ):
+            assert private_marker not in unpacked
+    finally:
+        package_path.unlink(missing_ok=True)
+        if snapshot_path is not None:
+            snapshot_path.unlink(missing_ok=True)
+def test_mastery_drill_history_round_trips_with_exam_history(
+    session: Session,
+    export_import_store: _FakeStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seed_course_graph(session)
+    template = QuestionTemplate(
+        course_id=COURSE_ID,
+        question_type="single_choice",
+        difficulty="medium",
+        stem="Which matrix is invertible?",
+        stem_hash="mastery-drill-export-template",
+        options_json='["A", "B"]',
+        answer="A",
+        explanation="A has a non-zero determinant.",
+    )
+    session.add(template)
+    session.flush()
+    paper = ExamPaper(
+        course_id=COURSE_ID,
+        user_id="user-1",
+        exam_mode="mastery_drill",
+        status="graded",
+        total_items=1,
+        total_score=1.0,
+        score_obtained=1.0,
+    )
+    session.add(paper)
+    session.flush()
+    item = ExamPaperItem(
+        exam_paper_id=int(paper.id or 0),
+        question_template_id=int(template.id or 0),
+        item_order=1,
+        stem_snapshot=template.stem,
+        options_snapshot_json=template.options_json,
+        answer_snapshot=template.answer,
+        explanation_snapshot=template.explanation,
+        difficulty=template.difficulty,
+        question_type=template.question_type,
+        answer_content="A",
+        is_correct=True,
+        score=1.0,
+        score_obtained=1.0,
+        score_max=1.0,
+    )
+    session.add(item)
+    session.flush()
+    drill = MasteryDrillSession(
+        exam_paper_id=int(paper.id or 0),
+        course_id=COURSE_ID,
+        user_id="user-1",
+        session_key="mastery-drill-export-session",
+        status="completed",
+        total_attempts=2,
+        wrong_attempts=1,
+        completion_key="mastery-drill-export-complete",
+        completed_at=utcnow(),
+    )
+    session.add(drill)
+    session.flush()
+    session.add_all(
+        [
+            MasteryDrillAttempt(
+                mastery_drill_session_id=int(drill.id or 0),
+                exam_paper_item_id=int(item.id or 0),
+                question_template_id=int(template.id or 0),
+                attempt_no=1,
+                attempt_key="mastery-drill-export-attempt-1",
+                request_hash="request-hash-1",
+                status="graded",
+                answer_content="B",
+                is_correct=False,
+                score_obtained=0.0,
+                score_max=1.0,
+                answered_at=utcnow(),
+            ),
+            MasteryDrillAttempt(
+                mastery_drill_session_id=int(drill.id or 0),
+                exam_paper_item_id=int(item.id or 0),
+                question_template_id=int(template.id or 0),
+                attempt_no=2,
+                attempt_key="mastery-drill-export-attempt-2",
+                request_hash="request-hash-2",
+                status="graded",
+                answer_content="A",
+                is_correct=True,
+                score_obtained=1.0,
+                score_max=1.0,
+                answered_at=utcnow(),
+            ),
+        ]
+    )
+    session.commit()
+
+    package_path = export_module.export_course(
+        session,
+        course_id=COURSE_ID,
+        options=ExportOptions(
+            include_raw_markdowns=False,
+            include_knowledge_docs=False,
+            include_chat_history=False,
+            include_exam_history=True,
+            include_profile=False,
+        ),
+    )
+    target_engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    SQLModel.metadata.create_all(target_engine)
+    monkeypatch.setattr(import_module, "_create_unique_course_id", lambda _session: IMPORTED_COURSE_ID)
+
+    try:
+        with zipfile.ZipFile(package_path, "r") as exported:
+            assert "db/mastery_drill_session.json" in exported.namelist()
+            assert "db/mastery_drill_attempt.json" in exported.namelist()
+
+        with Session(target_engine, expire_on_commit=False) as target_session:
+            result = import_module.import_course(
+                target_session,
+                file_path=package_path,
+                options=ImportOptions(new_course_name="Imported Algebra", rebuild_embeddings=False),
+                user_id="user-2",
+            )
+            imported_drill = target_session.exec(
+                select(MasteryDrillSession).where(MasteryDrillSession.course_id == IMPORTED_COURSE_ID)
+            ).one()
+            imported_attempts = target_session.exec(
+                select(MasteryDrillAttempt)
+                .where(MasteryDrillAttempt.mastery_drill_session_id == int(imported_drill.id or 0))
+                .order_by(MasteryDrillAttempt.attempt_no)
+            ).all()
+            imported_paper = target_session.get(ExamPaper, imported_drill.exam_paper_id)
+            imported_item = target_session.get(ExamPaperItem, imported_attempts[0].exam_paper_item_id)
+
+        assert result.imported_counts["mastery_drill_session"] == 1
+        assert result.imported_counts["mastery_drill_attempt"] == 2
+        assert imported_drill.user_id == "user-2"
+        assert imported_drill.total_attempts == 2
+        assert imported_drill.wrong_attempts == 1
+        assert imported_paper is not None and imported_paper.course_id == IMPORTED_COURSE_ID
+        assert imported_item is not None and imported_item.exam_paper_id == imported_paper.id
+        assert [attempt.is_correct for attempt in imported_attempts] == [False, True]
+    finally:
+        package_path.unlink(missing_ok=True)
+
+
+def test_export_skips_stale_cover_without_current_published_docs(
+    session: Session,
+    export_import_store: _FakeStore,
+) -> None:
+    session.add(
+        Course(
+            id=EMPTY_DOCS_COURSE_ID,
+            user_id="user-1",
+            name="Empty Docs",
+        )
+    )
+    session.commit()
+
+    package_path = export_module.export_course(
+        session,
+        course_id=EMPTY_DOCS_COURSE_ID,
+        options=ExportOptions(
+            include_raw_markdowns=False,
+            include_knowledge_docs=True,
+            include_chat_history=False,
+            include_exam_history=False,
+            include_profile=False,
+        ),
+    )
+
+    try:
+        with zipfile.ZipFile(package_path, "r") as zf:
+            assert "knowledge/cover.png" not in set(zf.namelist())
+        assert export_import_store.read_keys == []
+    finally:
+        package_path.unlink(missing_ok=True)
+
+
+@pytest.mark.parametrize(
+    "invalid_path",
+    [
+        (
+            f"users/foreign-user/courses/{COURSE_ID}/knowledge_markdowns/"
+            "versions/v0001/receipt/chapter_02_Determinants.md"
+        ),
+        (
+            f"users/user-1/courses/{COURSE_ID}/knowledge_markdowns/"
+            "versions/v0001"
+        ),
+    ],
+)
+def test_export_skips_cover_when_versioned_current_docs_have_invalid_receipt_path(
+    session: Session,
+    export_import_store: _FakeStore,
+    invalid_path: str,
+) -> None:
+    _seed_course_graph(session)
+    session.add(
+        KnowledgeDocument(
+            course_id=COURSE_ID,
+            chapter_index=2,
+            title="Determinants",
+            markdown_content="# Determinants",
+            markdown_path=invalid_path,
+            is_current=True,
+            status="published",
+        )
+    )
+    session.commit()
+
+    package_path = export_module.export_course(
+        session,
+        course_id=COURSE_ID,
+        options=ExportOptions(
+            include_raw_markdowns=False,
+            include_knowledge_docs=True,
+            include_chat_history=False,
+            include_exam_history=False,
+            include_profile=False,
+        ),
+    )
+
+    try:
+        with zipfile.ZipFile(package_path, "r") as zf:
+            assert "knowledge/cover.png" not in set(zf.namelist())
+        assert export_import_store.read_keys == []
+    finally:
+        package_path.unlink(missing_ok=True)
+
+
+def test_export_skips_legacy_storage_cover_without_current_doc_reference(
+    session: Session,
+    export_import_store: _FakeStore,
+) -> None:
+    session.add(
+        Course(
+            id=LEGACY_DOCS_COURSE_ID,
+            user_id="user-1",
+            name="Legacy Docs",
+        )
+    )
+    session.add(
+        KnowledgeDocument(
+            course_id=LEGACY_DOCS_COURSE_ID,
+            chapter_index=1,
+            title="Legacy Chapter",
+            markdown_content="# Legacy Chapter\n\nNo published cover reference.",
+            markdown_path=None,
+            is_current=True,
+            status="published",
+        )
+    )
+    session.commit()
+
+    package_path = export_module.export_course(
+        session,
+        course_id=LEGACY_DOCS_COURSE_ID,
+        options=ExportOptions(
+            include_raw_markdowns=False,
+            include_knowledge_docs=True,
+            include_chat_history=False,
+            include_exam_history=False,
+            include_profile=False,
+        ),
+    )
+
+    try:
+        with zipfile.ZipFile(package_path, "r") as zf:
+            assert "knowledge/cover.png" not in set(zf.namelist())
+        assert export_import_store.read_keys == []
+    finally:
+        package_path.unlink(missing_ok=True)
+
+
+def test_import_rewrites_legacy_docgen_cover_reference(
+    session: Session,
+    export_import_store: _FakeStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session.add(
+        Course(
+            id=LEGACY_DOCS_COURSE_ID,
+            user_id="user-1",
+            name="Legacy Docs",
+        )
+    )
+    session.add(
+        KnowledgeDocument(
+            course_id=LEGACY_DOCS_COURSE_ID,
+            chapter_index=1,
+            title="Legacy Chapter",
+            markdown_content=(
+                f"![](../assets/docgen/{PUBLISHED_COVER_FILENAME})\n\n"
+                "# Legacy Chapter"
+            ),
+            markdown_path=(
+                f"users/user-1/courses/{LEGACY_DOCS_COURSE_ID}/"
+                "knowledge_markdowns/chapter_01.md"
+            ),
+            is_current=True,
+            status="published",
+        )
+    )
+    session.commit()
+
+    package_path = export_module.export_course(
+        session,
+        course_id=LEGACY_DOCS_COURSE_ID,
+        options=ExportOptions(
+            include_raw_markdowns=False,
+            include_knowledge_docs=True,
+            include_chat_history=False,
+            include_exam_history=False,
+            include_profile=False,
+        ),
+    )
+    target_engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    SQLModel.metadata.create_all(target_engine)
+    monkeypatch.setattr(
+        import_module,
+        "_create_unique_course_id",
+        lambda _session: IMPORTED_COURSE_ID,
+    )
+
+    try:
+        with zipfile.ZipFile(package_path, "r") as exported:
+            assert exported.read("knowledge/cover.png") == b"cover-bytes"
+
+        with Session(target_engine, expire_on_commit=False) as target_session:
+            import_module.import_course(
+                target_session,
+                file_path=package_path,
+                options=ImportOptions(
+                    new_course_name="Imported Legacy Docs",
+                    rebuild_embeddings=False,
+                ),
+                user_id="user-2",
+            )
+            imported_doc = target_session.exec(
+                select(KnowledgeDocument).where(
+                    KnowledgeDocument.course_id == IMPORTED_COURSE_ID,
+                    KnowledgeDocument.is_current.is_(True),
+                    KnowledgeDocument.status == "published",
+                )
+            ).one()
+
+        assert PUBLISHED_COVER_FILENAME not in imported_doc.markdown_content
+        assert imported_doc.markdown_content.count(
+            "![](../assets/docgen/cover.png)"
+        ) == 1
+        assert imported_doc.markdown_content.endswith("# Legacy Chapter")
+    finally:
+        package_path.unlink(missing_ok=True)
+
+
 def test_import_course_remaps_ids_and_restores_docgen_assets(
     session: Session,
     export_import_store: _FakeStore,
@@ -201,6 +680,11 @@ def test_import_course_remaps_ids_and_restores_docgen_assets(
             include_profile=False,
         ),
     )
+    with zipfile.ZipFile(package_path, "a", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("share_assets/docgen/figure.png", _VALID_PNG_BYTES)
+        zf.writestr("share_assets/docgen/active.html", "<script>alert(1)</script>")
+        zf.writestr("share_assets/docgen/vector.svg", "<svg><script>alert(1)</script></svg>")
+        zf.writestr("share_assets/docgen/fake.png", b"<html>not an image</html>")
 
     engine = create_engine(
         "sqlite://",
@@ -209,6 +693,7 @@ def test_import_course_remaps_ids_and_restores_docgen_assets(
     )
     SQLModel.metadata.create_all(engine)
     monkeypatch.setattr(import_module, "_create_unique_course_id", lambda session: IMPORTED_COURSE_ID)
+    reexport_path: Path | None = None
 
     try:
         with Session(engine, expire_on_commit=False) as target_session:
@@ -221,6 +706,40 @@ def test_import_course_remaps_ids_and_restores_docgen_assets(
             imported_course = target_session.exec(select(Course).where(Course.id == IMPORTED_COURSE_ID)).first()
             imported_units = target_session.exec(select(KnowledgeUnit).where(KnowledgeUnit.course_id == IMPORTED_COURSE_ID)).all()
             imported_edges = target_session.exec(select(KnowledgeEdge).where(KnowledgeEdge.course_id == IMPORTED_COURSE_ID)).all()
+            imported_doc = target_session.exec(
+                select(KnowledgeDocument)
+                .where(
+                    KnowledgeDocument.course_id == IMPORTED_COURSE_ID,
+                    KnowledgeDocument.is_current.is_(True),
+                    KnowledgeDocument.status == "published",
+                )
+                .order_by(
+                    KnowledgeDocument.order_index,
+                    KnowledgeDocument.chapter_index,
+                    KnowledgeDocument.id,
+                )
+            ).first()
+            published_result = docgen_build_lifecycle.get_docgen_result(
+                target_session,
+                course_id=IMPORTED_COURSE_ID,
+                course_scope=build_course_storage_scope(
+                    user_id="user-2",
+                    course_id=IMPORTED_COURSE_ID,
+                ),
+            )
+            reexport_path = export_module.export_course(
+                target_session,
+                course_id=IMPORTED_COURSE_ID,
+                options=ExportOptions(
+                    include_raw_markdowns=False,
+                    include_knowledge_docs=True,
+                    include_chat_history=False,
+                    include_exam_history=False,
+                    include_profile=False,
+                ),
+            )
+            with zipfile.ZipFile(reexport_path, "r") as reexported:
+                reexported_cover = reexported.read("knowledge/cover.png")
 
         assert result.course_id == IMPORTED_COURSE_ID
         assert result.course_name == "Imported Algebra"
@@ -232,8 +751,76 @@ def test_import_course_remaps_ids_and_restores_docgen_assets(
         assert imported_course.name == "Imported Algebra"
         assert len(imported_units) == 2
         assert len(imported_edges) == 1
+        assert imported_doc is not None
+        assert imported_doc.markdown_path is None
+        assert imported_doc.markdown_content.startswith(
+            "![](../assets/docgen/cover.png)\n\n# Matrices"
+        )
+        assert imported_doc.markdown_content.count(
+            "![](../assets/docgen/cover.png)"
+        ) == 1
+        assert published_result.exists is True
+        assert "![](../assets/docgen/cover.png)" in published_result.markdown
+        assert "# Matrices" in published_result.markdown
+        assert reexported_cover == b"cover-bytes"
         assert any(key.endswith("/assets/docgen/cover.png") for key in export_import_store.writes)
+        shared_asset_key = f"users/user-2/courses/{IMPORTED_COURSE_ID}/assets/docgen/figure.png"
+        assert export_import_store.writes[shared_asset_key] == _VALID_PNG_BYTES
+        assert not any(key.endswith(("active.html", "vector.svg", "fake.png")) for key in export_import_store.writes)
     finally:
+        package_path.unlink(missing_ok=True)
+        if reexport_path is not None:
+            reexport_path.unlink(missing_ok=True)
+
+
+def test_import_course_can_defer_commit_and_cleanup_storage(
+    session: Session,
+    export_import_store: _FakeStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _seed_course_graph(session)
+    package_path = export_module.export_course(
+        session,
+        course_id=COURSE_ID,
+        options=ExportOptions(
+            include_raw_markdowns=False,
+            include_knowledge_docs=True,
+            include_chat_history=False,
+            include_exam_history=False,
+            include_profile=False,
+        ),
+    )
+    target_engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    SQLModel.metadata.create_all(target_engine)
+    monkeypatch.setattr(import_module, "_create_unique_course_id", lambda session: IMPORTED_COURSE_ID)
+
+    try:
+        with Session(target_engine, expire_on_commit=False) as target_session:
+            result = import_module.import_course(
+                target_session,
+                file_path=package_path,
+                options=ImportOptions(new_course_name="Deferred Algebra", rebuild_embeddings=False),
+                user_id="user-2",
+                commit=False,
+            )
+            assert result.course_id == IMPORTED_COURSE_ID
+            assert target_session.get(Course, IMPORTED_COURSE_ID) is not None
+
+            target_session.rollback()
+            assert target_session.get(Course, IMPORTED_COURSE_ID) is None
+
+        import_module.cleanup_imported_course_artifacts(
+            IMPORTED_COURSE_ID,
+            user_id="user-2",
+        )
+        imported_prefix = f"users/user-2/courses/{IMPORTED_COURSE_ID}/"
+        assert not any(key.startswith(imported_prefix) for key in export_import_store.writes)
+    finally:
+        target_engine.dispose()
         package_path.unlink(missing_ok=True)
 
 
@@ -507,7 +1094,100 @@ def test_import_archive_validation_rejects_bad_shapes_and_paths(tmp_path: Path) 
         export_module._read_manifest(bad_manifest_dir)
 
 
-def test_import_lookup_and_background_rebuild_scheduling() -> None:
+def test_public_share_asset_extraction_accepts_docgen_relative_prefix() -> None:
+    documents = [
+        {
+            "markdown_content": (
+                "![](../assets/docgen/cover.png)\n"
+                "![](../../assets/private.png)\n"
+                "![](../assets/docgen/../private.png)"
+            )
+        }
+    ]
+
+    assert export_module.extract_referenced_asset_paths(
+        documents,
+        local_only=True,
+    ) == ["docgen/cover.png"]
+
+
+def test_unpack_files_restores_share_assets_without_cover(
+    session: Session,
+    tmp_path: Path,
+    export_import_store: _FakeStore,
+) -> None:
+    share_asset = tmp_path / "share_assets" / "docgen" / "figure.png"
+    share_asset.parent.mkdir(parents=True)
+    share_asset.write_bytes(_VALID_PNG_BYTES)
+
+    import_module._unpack_files(
+        session,
+        tmp_path,
+        IMPORTED_COURSE_ID,
+        user_id="user-2",
+        file_id_map={},
+    )
+
+    expected_key = (
+        f"users/user-2/courses/{IMPORTED_COURSE_ID}/assets/docgen/figure.png"
+    )
+    assert export_import_store.writes[expected_key] == _VALID_PNG_BYTES
+
+
+def test_restore_share_assets_requires_safe_type_magic_and_size(
+    tmp_path: Path,
+    export_import_store: _FakeStore,
+) -> None:
+    share_root = tmp_path / "share_assets" / "nested"
+    share_root.mkdir(parents=True)
+    valid_assets = {
+        "image.png": _VALID_PNG_BYTES,
+        "photo.jpg": b"\xff\xd8\xff\xe0jpeg",
+        "photo.jpeg": b"\xff\xd8\xff\xe1jpeg",
+        "animation.gif": b"GIF89aimage",
+        "diagram.webp": b"RIFF\x04\x00\x00\x00WEBPimage",
+    }
+    for filename, data in valid_assets.items():
+        (share_root / filename).write_bytes(data)
+    (share_root / "active.html").write_text("<script>alert(1)</script>", encoding="utf-8")
+    (share_root / "vector.svg").write_text("<svg><script>alert(1)</script></svg>", encoding="utf-8")
+    (share_root / "fake.png").write_bytes(b"<html>not an image</html>")
+
+    course_scope = import_module.build_course_storage_scope(
+        user_id="user-2",
+        course_id=IMPORTED_COURSE_ID,
+    )
+    import_module._restore_share_assets(
+        tmp_path,
+        course_scope=course_scope,
+        content_store=export_import_store,
+    )
+
+    expected_keys = {
+        f"{course_scope.namespace}/assets/nested/{filename}"
+        for filename in valid_assets
+    }
+    assert set(export_import_store.writes) == expected_keys
+    assert all(export_import_store.writes[key] == valid_assets[key.rsplit("/", 1)[-1]] for key in expected_keys)
+
+    large_root = tmp_path / "large" / "share_assets"
+    large_root.mkdir(parents=True)
+    large_image = large_root / "too-large.png"
+    with large_image.open("wb") as file:
+        file.write(_VALID_PNG_BYTES)
+        file.truncate(import_module.MAX_IMPORTED_SHARE_ASSET_BYTES + 1)
+
+    with pytest.raises(InvalidImportPackageError, match="16 MiB"):
+        import_module._restore_share_assets(
+            tmp_path / "large",
+            course_scope=course_scope,
+            content_store=export_import_store,
+        )
+
+
+def test_import_lookup_and_background_rebuild_scheduling(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(import_module, "_import_embedding_rebuild_route_unavailable_reason", lambda: None)
+
     assert import_module._lookup_imported_id("1", {1: "one"}) == "one"
     assert import_module._lookup_imported_id(2, {"2": "two"}) == "two"
     assert import_module._lookup_imported_or_existing_id("existing", {"old": "existing"}) == "existing"
@@ -540,6 +1220,27 @@ def test_import_lookup_and_background_rebuild_scheduling() -> None:
         imported_counts={"retrieval_chunk": 2},
     ) is True
     assert registry.names == [f"course.import.embeddings:{IMPORTED_COURSE_ID}"]
+
+
+def test_import_embedding_rebuild_not_scheduled_when_model_route_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        import_module,
+        "_import_embedding_rebuild_route_unavailable_reason",
+        lambda: "embedding route unavailable",
+    )
+
+    class Registry:
+        def spawn(self, coroutine, **_kwargs) -> None:  # pragma: no cover - must not be called
+            coroutine.close()
+            raise AssertionError("background rebuild should not be scheduled")
+
+    assert import_module.spawn_imported_embedding_rebuild_background(
+        Registry(),
+        course_id=IMPORTED_COURSE_ID,
+        imported_counts={"retrieval_chunk": 2},
+    ) is False
 
 
 def test_imported_embedding_rebuild_reserves_foreground_llm_slots(
@@ -620,10 +1321,3 @@ def test_imported_embedding_rebuild_reserves_foreground_llm_slots(
     assert captured["course_id"] == IMPORTED_COURSE_ID
     assert captured["embedding_count"] == 5
     assert captured["embedding_model"] == "text-embedding-v4"
-
-
-def test_run_async_handles_plain_coroutines() -> None:
-    async def compute() -> str:
-        return "done"
-
-    assert import_module._run_async(compute()) == "done"

@@ -20,6 +20,20 @@ resolve_profile_context
   -> refresh_user_profile
 ```
 
+### 事务与并发
+
+`run_profile_update_workflow` 在读取任何 mastery 或画像汇总前，先用
+`exam_paper_id` 解析并校验真实用户。PostgreSQL 随后按该用户获取事务级 advisory
+lock，因此同一用户的画像更新即使来自不同课程或不同知识点，也会串行执行；锁一直
+持有到整条 workflow commit 或 rollback，并且不参与业务实体行的锁顺序。
+
+默认由 workflow 创建 session，并在全链成功后 commit、失败时 rollback。传入外部
+`session` 时，workflow 不会替调用方结束事务；调用方必须负责 commit/rollback，在此
+之前事务锁会继续持有。SQLite 会在业务读取前使用 `BEGIN IMMEDIATE` 获取单写者槽位；
+若外部 session 只有依赖产生的只读事务，会先结束该只读事务再重新开始，若已有待提交
+写入、已经 flush，或无法证明当前 SQLite 事务只读，则直接拒绝，避免静默丢弃调用方
+数据。这里不引入进程级全局锁。
+
 ## 1. `resolve_profile_context`
 
 输入：`course_id`, `user_id`, `exam_paper_id`, `top_n`

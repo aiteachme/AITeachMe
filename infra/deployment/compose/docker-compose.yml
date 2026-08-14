@@ -19,6 +19,8 @@ services:
       PORT: 9020
       PYTHONUNBUFFERED: 1
       PYTHONUTF8: 1
+    # start_cloud_app.py 是 fail-closed 的云端专用入口；本地 Compose 直接启动通用服务。
+    command: ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "9020"]
     restart: unless-stopped
 
   frontend:

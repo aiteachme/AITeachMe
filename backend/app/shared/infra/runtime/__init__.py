@@ -1,5 +1,9 @@
 """Canonical runtime helpers for app mode, local paths, and background tasks."""
 
+from app.shared.infra.runtime.cloud_config import (
+    collect_cloud_runtime_config_errors,
+    collect_project_settings_config_errors,
+)
 from app.shared.infra.runtime.mode import (
     get_app_version,
     get_guest_cookie_name,
@@ -20,6 +24,8 @@ from app.shared.infra.runtime.tasks import BackgroundTaskRegistry, ManagedTaskRe
 __all__ = [
     "BackgroundTaskRegistry",
     "ManagedTaskRecord",
+    "collect_cloud_runtime_config_errors",
+    "collect_project_settings_config_errors",
     "get_app_version",
     "get_backend_root",
     "get_guest_cookie_name",

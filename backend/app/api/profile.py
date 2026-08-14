@@ -22,6 +22,10 @@ from app.schemas.profile import (
 from app.shared.infra.exceptions import AITeachMeError
 from app.workflows.profile import run_profile_snapshot_workflow, run_profile_study_plan_workflow
 from app.workflows.profile.common.lib.course_profile import refresh_course_profile_summary
+from app.workflows.profile.common.lib.locking import (
+    acquire_profile_user_lock,
+    prepare_profile_write_transaction,
+)
 from app.workflows.profile.common.lib.user_profile import refresh_user_profile_summary
 
 router = APIRouter(prefix="/api/v1/courses/{course_id}/profile", tags=["profile"])
@@ -216,13 +220,16 @@ async def review_tasks(
     summary="Mark one review task as completed",
     responses=build_error_responses([400, 404, 500]),
 )
-async def complete_review(
+def complete_review(
     course_id: str = Path(...),
     task_id: int = Path(...),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[ReviewTaskResponse]:
     normalized = normalize_course_id(course_id)
+    prepare_profile_write_transaction(session)
+    acquire_profile_user_lock(session, user_id=user.user_id)
+    session.expire_all()
     _ensure_course(session, normalized, user.user_id)
     task = profile_repo.complete_review_task(
         session,

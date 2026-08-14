@@ -27,7 +27,8 @@ def build_generate_cover_node(*, context: WorkflowContext):
             plan=str(document_context.get("plan") or ""),
             digest_mode=state.get("digest_mode"),
             confirmed_plan=state.get("confirmed_plan"),
-            requested_at=state.get("requested_at"),
+            requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
             file_summaries=list(state.get("file_summaries") or []),
             intent_profile=dict(state.get("intent_profile") or {}),
         )

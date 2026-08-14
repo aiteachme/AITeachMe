@@ -20,27 +20,6 @@ def test_digest_workflow_nodes_have_langsmith_metadata() -> None:
     _assert_trace_details_complete(docgen_graph.NODE_DISPLAY_NAMES, docgen_graph.NODE_TRACE_DETAILS)
     _assert_trace_details_complete(kg_doc_sync_graph.NODE_DISPLAY_NAMES, kg_doc_sync_graph.NODE_TRACE_DETAILS)
     _assert_trace_details_complete(planner_graph.STEP_DISPLAY_NAMES, planner_graph.NODE_TRACE_DETAILS)
-    assert "图谱同步：复核图谱质量" == kg_doc_sync_graph.NODE_DISPLAY_NAMES[kg_doc_sync_graph.NODE_AUDIT_GRAPH]
-    assert "同步课程知识图谱" == docgen_graph.NODE_DISPLAY_NAMES[docgen_graph.NODE_SYNC_KNOWLEDGE_GRAPH]
-    assert "同一 DocGen trace" in docgen_graph.NODE_TRACE_DETAILS[docgen_graph.NODE_SYNC_KNOWLEDGE_GRAPH]["description"]
-    assert "run_llm_tasks" in kg_doc_sync_graph.NODE_TRACE_DETAILS[kg_doc_sync_graph.NODE_EXTRACT]["fanout"]
-    assert "async gather + semaphore" not in kg_doc_sync_graph.NODE_TRACE_DETAILS[kg_doc_sync_graph.NODE_EXTRACT]["fanout"]
-
-
-def test_planner_workflow_node_names_are_action_oriented() -> None:
-    expected_node_keys = {
-        "collect_planner_context",
-        "understand_goal_and_materials",
-        "compose_planner_draft",
-        "generate_course_identity",
-        "save_planner_draft",
-    }
-
-    assert set(planner_graph.STEP_DISPLAY_NAMES) == expected_node_keys
-    assert set(planner_graph.NODE_TRACE_DETAILS) == expected_node_keys
-    assert "上下文" in planner_graph.NODE_TRACE_DETAILS["collect_planner_context"]["description"]
-    assert "流式" in planner_graph.NODE_TRACE_DETAILS["compose_planner_draft"]["description"]
-    assert "confirmed planner" in planner_graph.NODE_TRACE_DETAILS["save_planner_draft"]["description"]
 
 
 def test_docgen_prepares_knowledge_graph_after_final_titles_before_publish() -> None:

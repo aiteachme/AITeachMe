@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from time import perf_counter
 
 import structlog
@@ -10,6 +11,8 @@ from app.shared.infra.storage import build_course_storage_scope
 from app.shared.infra.tools.builtin.markdown_processing import build_draft_excerpt
 from app.shared.infra.knowledge.build_store import (
     append_knowledge_build_recent_event,
+    claim_knowledge_build_publish,
+    is_knowledge_build_lock_owner,
     update_knowledge_build_status,
     update_knowledge_build_merge_preview,
     upsert_knowledge_build_chapter_progress,
@@ -143,20 +146,70 @@ def build_publish_document_node(*, context: WorkflowContext):
         user_prompt = state.get("user_prompt")
         requested_at = state["requested_at"]
         standalone = True
+        build_group_id = str(state.get("build_group_id") or "").strip()
+
+        def _build_lock_error(*, phase: str) -> str | None:
+            try:
+                owns_build_lock = is_knowledge_build_lock_owner(
+                    course_id,
+                    build_group_id=build_group_id,
+                    course_scope=course_scope,
+                )
+            except Exception as exc:
+                node_logger.error(
+                    "docgen_publish_lock_check_failed",
+                    build_group_id=build_group_id,
+                    phase=phase,
+                    error=str(exc),
+                )
+                return "knowledge_build_lock_owner_check_failed"
+            if owns_build_lock:
+                return None
+            node_logger.error(
+                "docgen_publish_lock_ownership_lost",
+                build_group_id=build_group_id,
+                phase=phase,
+            )
+            return "knowledge_build_lock_ownership_lost"
+
+        def _publish_failure(
+            exc: Exception,
+            *,
+            phase: str,
+            cancel_after_rollback: bool = False,
+        ) -> dict[str, object]:
+            node_logger.error(
+                "docgen_publish_failed",
+                build_group_id=build_group_id,
+                phase=phase,
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
+            return {
+                "error": "knowledge_build_publish_failed",
+                "cancel_after_rollback": cancel_after_rollback,
+            }
 
         if not chapter_metadatas:
             return {"error": "当前没有可用于最终发布的章节内容。"}
+        owner_error = _build_lock_error(phase="before_staging")
+        if owner_error:
+            return {"error": owner_error}
 
-        update_knowledge_build_status(
-            course_id,
-            course_scope=course_scope,
-            requested_at=requested_at,
-            status="publishing",
-            stage="publishing",
-            draft_available=True,
-            staged_chapter_count=len(chapter_metadatas),
-            current_stage_description="正在发布最终知识文档。",
-        )
+        try:
+            update_knowledge_build_status(
+                course_id,
+                course_scope=course_scope,
+                requested_at=requested_at,
+                build_group_id=build_group_id,
+                status="running",
+                stage="doc_lane_staging",
+                draft_available=True,
+                staged_chapter_count=len(chapter_metadatas),
+                current_stage_description="正在暂存最终知识文档。",
+            )
+        except Exception as exc:
+            return _publish_failure(exc, phase="staging_status")
         node_logger.info(
             "docgen_finalize_started",
             chapter_count=len(chapter_metadatas),
@@ -164,36 +217,106 @@ def build_publish_document_node(*, context: WorkflowContext):
             standalone=standalone,
         )
 
-        staged_docs = await stage_knowledge_docs(
-            course_id=course_id,
-            chapter_metadatas=chapter_metadatas,
-            document_context=document_context,
-            cover_markdown=cover_markdown,
-            docgen_artifacts=docgen_artifacts,
-            course_scope=course_scope,
-        )
+        try:
+            staged_docs = await stage_knowledge_docs(
+                course_id=course_id,
+                chapter_metadatas=chapter_metadatas,
+                document_context=document_context,
+                cover_markdown=cover_markdown,
+                docgen_artifacts=docgen_artifacts,
+                course_scope=course_scope,
+                requested_at=requested_at,
+                build_group_id=build_group_id,
+            )
+        except asyncio.CancelledError:
+            return {
+                "error": "knowledge_build_cancelled",
+                "cancel_after_rollback": True,
+            }
+        except Exception as exc:
+            return _publish_failure(exc, phase="staging")
 
         doc_ids: list[int] = []
         if standalone:
-            doc_ids = publish_staged_knowledge_docs(
-                course_id=course_id,
-                chapter_metadatas=chapter_metadatas,
-                chapter_assignments=chapter_assignments,
-                document_context=document_context,
-                cover_markdown=cover_markdown,
-                user_prompt=user_prompt,
-                requested_at=requested_at,
-                version_no=1,
-                build_session_id=state.get("build_session_id"),
-                docgen_artifacts=docgen_artifacts,
-                course_scope=course_scope,
+            try:
+                publish_token = claim_knowledge_build_publish(
+                    course_id,
+                    build_group_id=build_group_id,
+                    course_scope=course_scope,
+                )
+            except Exception as exc:
+                return _publish_failure(exc, phase="claim")
+            if publish_token is None:
+                node_logger.error(
+                    "docgen_publish_claim_rejected",
+                    build_group_id=build_group_id,
+                )
+                return {"error": "knowledge_build_publish_claim_rejected"}
+            try:
+                update_knowledge_build_status(
+                    course_id,
+                    course_scope=course_scope,
+                    requested_at=requested_at,
+                    build_group_id=build_group_id,
+                    status="publishing",
+                    stage="publishing",
+                    draft_available=True,
+                    staged_chapter_count=len(chapter_metadatas),
+                    current_stage_description="正在发布最终知识文档。",
+                )
+            except Exception as exc:
+                return _publish_failure(exc, phase="publishing_status")
+            publish_task = asyncio.create_task(
+                asyncio.to_thread(
+                    publish_staged_knowledge_docs,
+                    course_id=course_id,
+                    chapter_metadatas=chapter_metadatas,
+                    chapter_assignments=chapter_assignments,
+                    document_context=document_context,
+                    cover_markdown=cover_markdown,
+                    user_prompt=user_prompt,
+                    requested_at=requested_at,
+                    version_no=1,
+                    build_session_id=state.get("build_session_id"),
+                    docgen_artifacts=docgen_artifacts,
+                    course_scope=course_scope,
+                    build_group_id=build_group_id,
+                    publish_token=publish_token,
+                )
             )
+            cancelled_error: asyncio.CancelledError | None = None
+            while not publish_task.done():
+                try:
+                    await asyncio.shield(publish_task)
+                except asyncio.CancelledError as exc:
+                    # ``to_thread`` cannot stop its worker. Keep the owner lock
+                    # until every publish write has finished, then propagate the
+                    # original cancellation to the lifecycle.
+                    cancelled_error = cancelled_error or exc
+                    continue
+                except Exception:
+                    break
+            if cancelled_error is not None:
+                if not publish_task.cancelled():
+                    publish_error = publish_task.exception()
+                    if publish_error is not None:
+                        return _publish_failure(
+                            publish_error,
+                            phase="worker_drain",
+                            cancel_after_rollback=True,
+                        )
+                raise cancelled_error
+            try:
+                doc_ids = publish_task.result()
+            except Exception as exc:
+                return _publish_failure(exc, phase="worker")
             node_logger.info("docgen_standalone_publish_completed", doc_count=len(doc_ids))
 
         update_knowledge_build_merge_preview(
             course_id,
             course_scope=course_scope,
             requested_at=requested_at,
+            build_group_id=build_group_id or None,
             merge_preview={
                 "latest_chapter_titles": [str(chapter.get("title") or "").strip() for chapter in chapter_metadatas],
                 "draft_excerpt": build_draft_excerpt(staged_docs.merged_markdown, max_chars=1600),
@@ -211,6 +334,7 @@ def build_publish_document_node(*, context: WorkflowContext):
                 course_id,
                 course_scope=course_scope,
                 requested_at=requested_at,
+                build_group_id=build_group_id or None,
                 chapter_progress={
                     "chapter_index": int(chapter.get("chapter_index", 0) or 0),
                     "title": title,
@@ -236,6 +360,7 @@ def build_publish_document_node(*, context: WorkflowContext):
             course_id,
             course_scope=course_scope,
             requested_at=requested_at,
+            build_group_id=build_group_id or None,
             event={
                 "stage": "docgen_finalized",
                 "summary": (
@@ -245,6 +370,19 @@ def build_publish_document_node(*, context: WorkflowContext):
                 ),
                 "created_at": utcnow(),
             },
+        )
+        update_knowledge_build_status(
+            course_id,
+            course_scope=course_scope,
+            requested_at=requested_at,
+            build_group_id=build_group_id,
+            status="completed",
+            stage="completed",
+            error_message=None,
+            draft_available=False,
+            draft_updated_at=None,
+            staged_chapter_count=len(chapter_metadatas),
+            published_doc_count=len(doc_ids),
         )
         await publish_docgen_progress(
             context,

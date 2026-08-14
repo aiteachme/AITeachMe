@@ -21,9 +21,9 @@ from app.workflows.ingest.intake import (
     get_user_files_or_raise,
     list_course_files,
     ready_file_ids_for_course_indexing,
-    run_parse_files_background,
     save_uploaded_files_and_request_parse,
     spawn_index_course_files_background,
+    spawn_parse_files_background,
 )
 from app.workflows.support.courses import get_course_record
 
@@ -191,19 +191,11 @@ async def upload_files(
     )
     background_task_registry = getattr(request.app.state, "background_task_registry", None)
     if parse_file_ids:
-        if background_task_registry is None:
-            raise RuntimeError("background_task_registry unavailable")
-        background_task_registry.spawn(
-            run_parse_files_background(
-                user_id=user.user_id,
-                course_id=normalized_course_id,
-                file_ids=parse_file_ids,
-                background_task_registry=background_task_registry,
-            ),
-            kind="files.parse",
+        spawn_parse_files_background(
+            background_task_registry,
+            user_id=user.user_id,
             course_id=normalized_course_id,
-            name=f"files.parse:{normalized_course_id}",
-            dedupe_key=f"files.parse:{normalized_course_id}:{':'.join(sorted(parse_file_ids))}",
+            file_ids=parse_file_ids,
         )
     parse_file_id_set = set(parse_file_ids)
     reused_ready_file_ids = [

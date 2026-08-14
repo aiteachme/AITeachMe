@@ -7,13 +7,9 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.shared.infra.observability import trace as trace_module
 from app.workflows.digest.kg_doc_sync.lib import prefetch
 from app.workflows.digest.kg_doc_sync.lib.models import SectionExtractionRecord
-
-
-def anyio_backend() -> str:
-    return "asyncio"
-
 
 @pytest.mark.parametrize(
     ("configured", "global_limit", "expected"),
@@ -465,3 +461,101 @@ async def test_start_docgen_kg_prefetch_caps_background_concurrency(monkeypatch)
         prefetch.cancel_docgen_kg_prefetch(course_id=key[0], build_session_id=key[1])
         with prefetch._LOCK:
             prefetch._CACHES.pop(key, None)
+
+
+@pytest.mark.anyio
+async def test_prefetch_trace_handles_expected_cancellation_without_swallowing(monkeypatch) -> None:
+    captured_calls: list[dict[str, object]] = []
+    captured_runs: list[object] = []
+    handled_cancellations: list[bool] = []
+    cancellation = asyncio.CancelledError("superseded speculative prefetch")
+
+    class FakeTraceRun:
+        def __init__(self) -> None:
+            self.outputs: dict[str, object] = {}
+            self.error: str | None = None
+            self.end_calls: list[dict[str, object | None]] = []
+
+        def end(self, *, outputs=None, error=None) -> None:
+            self.end_calls.append({"outputs": outputs, "error": error})
+            self.outputs.update(dict(outputs or {}))
+            if error is not None:
+                self.error = str(error)
+
+    @contextmanager
+    def fake_tracing_context(**_kwargs):
+        yield None
+
+    @contextmanager
+    def fake_langsmith_trace_run(**kwargs):
+        run = FakeTraceRun()
+        captured_calls.append(dict(kwargs))
+        captured_runs.append(run)
+        try:
+            yield run
+        except BaseException as exc:
+            handled = isinstance(exc, kwargs.get("exceptions_to_handle") or ())
+            handled_cancellations.append(handled)
+            run.end(error=None if handled else repr(exc))
+            raise
+
+    @contextmanager
+    def fake_runtime_snapshot(snapshot):
+        yield snapshot
+
+    async def fake_extract_knowledge_graph_section_records_async(**_kwargs):
+        with trace_module.langsmith_trace(name="nested prefetch llm", run_type="llm"):
+            raise cancellation
+
+    monkeypatch.setattr(trace_module, "langsmith_tracing_enabled", lambda: True)
+    monkeypatch.setattr(trace_module, "tracing_context", fake_tracing_context)
+    monkeypatch.setattr(trace_module, "langsmith_trace_run", fake_langsmith_trace_run)
+    monkeypatch.setattr(prefetch, "tracing_context", fake_tracing_context)
+    monkeypatch.setattr(prefetch, "use_llm_runtime_snapshot", fake_runtime_snapshot)
+    monkeypatch.setattr(
+        prefetch,
+        "extract_knowledge_graph_section_records_async",
+        fake_extract_knowledge_graph_section_records_async,
+    )
+
+    with pytest.raises(asyncio.CancelledError) as exc_info:
+        await prefetch._extract_prefetch_records_with_trace(
+            course_id="course_prefetch_cancel",
+            build_session_id="build_prefetch_cancel",
+            markdown="# chapter",
+            chapters=[{"chapter_index": 1, "title": "chapter"}],
+            course_context="",
+            structured_context={},
+            docgen_manifest={"kg_prefetch_phase": "enhanced_chapters"},
+            snapshot=object(),
+            concurrency=1,
+            configured_concurrency=1,
+            llm_concurrency_cap=4,
+            incremental=False,
+            on_record=lambda _record: None,
+        )
+
+    assert exc_info.value is cancellation
+    assert [call["name"] for call in captured_calls] == [
+        "KG：DocGen 预取",
+        "nested prefetch llm",
+    ]
+    assert all(
+        call.get("exceptions_to_handle") == (asyncio.CancelledError,)
+        for call in captured_calls
+    )
+    assert handled_cancellations == [True, True]
+    expected_outputs = {
+        "trace_outcome": "cancelled_expected",
+        "cancellation_scope": "kg_docgen_prefetch_sidecar",
+    }
+    assert all(
+        isinstance(run, FakeTraceRun) and run.outputs == expected_outputs
+        for run in captured_runs
+    )
+    assert all(
+        isinstance(run, FakeTraceRun)
+        and run.error is None
+        and len(run.end_calls) == 2
+        for run in captured_runs
+    )

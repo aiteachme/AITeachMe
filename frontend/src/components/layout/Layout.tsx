@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Outlet, useLocation } from "react-router-dom";
 import type { ChatPageContext } from "../../api/generated/model";
@@ -48,6 +48,7 @@ export function Layout() {
   const isExamFocusPage = /^\/courses?\/[^/]+\/exams\/\d+$/.test(pathname);
   const isAssistantPage = pathname === "/assistant";
   const isHomePage = pathname === "/";
+  const isSharePage = pathname.startsWith("/share/");
   const courseId = useMemo(() => getCourseIdFromPathname(pathname), [pathname]);
   const routeSegment = getCourseRouteSegmentFromPathname(pathname);
   const isKnowledgeDocsPage = !!courseId && routeSegment === "knowledge-docs";
@@ -115,6 +116,7 @@ export function Layout() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [hasLoadedSettingsDialog, setHasLoadedSettingsDialog] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const mainScrollRef = useRef<HTMLElement | null>(null);
   const courseTopNavMeta = routeSegment ? COURSE_TOP_NAV_META[routeSegment] : null;
   const shouldShowCourseTopNav = Boolean(
     ENABLE_PERSISTENT_COURSE_NAV &&
@@ -123,7 +125,9 @@ export function Layout() {
     hasCoursePageTopNavigation &&
     !isExamFocusPage,
   );
-  const shouldShowTopBar = !isExamFocusPage && !isAssistantPage && !hasCoursePageTopNavigation;
+  const shouldShowTopBar = !isExamFocusPage && !isAssistantPage && !isSharePage && !hasCoursePageTopNavigation;
+  const shouldInsetMainForCourseTopNav =
+    shouldShowCourseTopNav && (routeSegment === "exams" || routeSegment === "profile");
   const routeOutlet = <Outlet key={pathname} />;
   const contentContainerClassName = shouldShowTopBar
     ? cn(
@@ -170,15 +174,22 @@ export function Layout() {
                 label={courseTopNavMeta.label}
                 href={buildCoursePath(courseId, "nav")}
                 placement="layout"
+                scrollRootRef={mainScrollRef}
               />
             ) : null}
 
-            <main className="relative flex min-h-0 w-full flex-1 flex-col overflow-x-hidden overflow-y-auto bg-transparent">
-              {isFullBleed || pathname === "/" || isAssistantPage ? (
+            <main
+              ref={mainScrollRef}
+              className={cn(
+                "relative flex min-h-0 w-full flex-1 flex-col overflow-x-hidden overflow-y-auto bg-transparent [scrollbar-gutter:stable]",
+                shouldInsetMainForCourseTopNav && "pt-16",
+              )}
+            >
+              {isFullBleed || pathname === "/" || isAssistantPage || isSharePage ? (
                 <div
                   className={cn(
                     "flex min-h-0 w-full flex-1 flex-col",
-                    !isElectron && "min-h-[calc(100dvh-4rem)]",
+                    !isElectron && (isSharePage ? "min-h-dvh" : "min-h-[calc(100dvh-4rem)]"),
                   )}
                 >
                   {routeOutlet}
@@ -194,6 +205,7 @@ export function Layout() {
             defaultPageContext={defaultAiPageContext}
             suppressFloatingTrigger={
               (isMobileSidebarOpen && !isExamFocusPage) ||
+              isSharePage ||
               isHomePage ||
               isCourseDashboardOrBuild ||
               isKnowledgeDocBuildActive

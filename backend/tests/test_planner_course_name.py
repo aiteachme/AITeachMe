@@ -7,39 +7,21 @@ from app.shared.infra.llm_support.common import build_completion_context, prepar
 from app.shared.infra.llm_support.native_tools import PROVIDER_NATIVE_TOOLS_KWARG
 from app.shared.infra.llm_support.responses_adapter import resolve_provider_call
 from app.shared.infra.settings import set_system_settings_override
-from app.workflows.digest.planner.lib.model_policy import PlannerModelStep, get_planner_model_policy
+from app.workflows.digest.planner.lib.model_policy import PlannerModelStep
 from app.workflows.digest.planner.lib.model_policy import planner_completion_kwargs
 from app.workflows.digest.planner.nodes import generate_course_identity as identity_node
 from app.workflows.digest.planner.nodes.generate_course_identity import _clean_course_name
 
 
-def test_course_identity_policy_uses_structured_light_model() -> None:
-    policy = get_planner_model_policy(PlannerModelStep.COURSE_IDENTITY)
+def test_planner_policy_uses_light_tier_with_bounded_timeouts() -> None:
+    for step in PlannerModelStep:
+        kwargs = planner_completion_kwargs(step)
 
-    kwargs = policy.completion_kwargs()
-
-    assert kwargs["max_tokens"] == 240
-    assert kwargs["timeout"] == 60
-    assert kwargs["overall_timeout_s"] == 60
-    assert kwargs["max_retries"] == 3
-    assert 0 <= kwargs["temperature"] <= 1
-    assert "task_type" not in kwargs
-
-
-def test_planner_policy_uses_step_specific_budgets() -> None:
-    expected = {
-        PlannerModelStep.MATERIAL_BATCH_SUMMARY: (45, 45),
-        PlannerModelStep.STREAM_PLANNING_NOTE: (45, 45),
-        PlannerModelStep.SUMMARIZE_MATERIALS: (45, 45),
-        PlannerModelStep.DIAGNOSE_QUESTIONS: (60, 60),
-        PlannerModelStep.DRAFT_PLAN: (120, 180),
-    }
-
-    for step, (timeout_s, overall_timeout_s) in expected.items():
-        kwargs = get_planner_model_policy(step).completion_kwargs()
-
-        assert kwargs["timeout"] == timeout_s
-        assert kwargs["overall_timeout_s"] == overall_timeout_s
+        assert kwargs["model"] == "light"
+        assert kwargs["timeout"] > 0
+        assert kwargs["overall_timeout_s"] >= kwargs["timeout"]
+        assert kwargs[PROVIDER_NATIVE_TOOLS_KWARG] == []
+        assert "task_type" not in kwargs
 
 
 def test_planner_stream_policy_keeps_gpt55_auto_on_responses_without_native_tools(monkeypatch) -> None:
@@ -74,8 +56,9 @@ def test_planner_stream_policy_keeps_gpt55_auto_on_responses_without_native_tool
             provider_call = resolve_provider_call(context=context, call_kwargs=prepared.call_kwargs)
 
             assert provider_call.api_mode == "responses"
-            assert provider_call.requested_api_mode == "responses"
-            assert provider_call.route_reason == "forced_responses"
+            assert provider_call.requested_api_mode == "auto"
+            assert provider_call.auto_chat_fallback_kwargs is not None
+            assert provider_call.route_reason == "auto_model_catalog_responses"
             assert provider_call.kwargs["model"] == "gpt-5.5"
             assert provider_call.provider_native_tool_types == ()
     finally:

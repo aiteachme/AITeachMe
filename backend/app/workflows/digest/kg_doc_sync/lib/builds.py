@@ -12,12 +12,17 @@ import structlog
 from sqlmodel import Session
 
 from app.models.course import Course
+from app.repositories.knowledge.docgen_repo import get_current_published_docs
 from app.schemas.knowledge import KnowledgeGraphBuildData
-from app.shared.infra.exceptions import AITeachMeError
+from app.shared.infra.database import managed_session
+from app.shared.infra.exceptions import AITeachMeError, CourseBuildLockConflictError
 from app.shared.infra.knowledge.build_store import (
+    KnowledgeBuildLock,
     KnowledgeBuildRuntimeStatus,
+    acquire_knowledge_build_lock,
+    is_knowledge_build_lock_owner,
     read_knowledge_build_runtime,
-    read_knowledge_manifest,
+    release_knowledge_build_lock,
     sanitize_knowledge_build_error_message,
     update_knowledge_build_lane_status,
 )
@@ -30,6 +35,7 @@ from app.shared.infra.storage import CourseStorageScope, build_course_storage_sc
 from app.utils.time import ensure_utc_datetime, utcnow
 from app.workflows.digest.common.build_lifecycle import (
     ACTIVE_KNOWLEDGE_BUILD_STATUSES,
+    maintain_knowledge_build_lock_lease,
 )
 from app.workflows.digest.kg_doc_sync.lib.inputs import (
     build_knowledge_doc_sync_input_from_docgen_state,
@@ -89,15 +95,14 @@ def _spawn_graph_build_task(
     *,
     course_id: str,
     name: str,
-) -> None:
+) -> Any:
     if background_task_registry is not None:
-        background_task_registry.spawn(
+        return background_task_registry.spawn(
             coro,
             kind="knowledge.build.graph",
             course_id=course_id,
             name=name,
         )
-        return
 
     task = asyncio.create_task(coro, name=name)
 
@@ -116,6 +121,29 @@ def _spawn_graph_build_task(
             )
 
     task.add_done_callback(_log_graph_task_result)
+    return task
+
+
+def _still_owns_knowledge_build_lock(
+    *,
+    course_id: str,
+    build_group_id: str,
+    course_scope: CourseStorageScope,
+) -> bool:
+    try:
+        return is_knowledge_build_lock_owner(
+            course_id,
+            build_group_id=build_group_id,
+            course_scope=course_scope,
+        )
+    except Exception as exc:
+        logger.warning(
+            "knowledge_graph_build_lock_owner_check_failed",
+            course_id=course_id,
+            build_group_id=build_group_id,
+            error=str(exc),
+        )
+        return False
 
 
 def _write_graph_status(
@@ -143,8 +171,10 @@ def _current_doc_version_no(
     *,
     course_scope: CourseStorageScope | None = None,
 ) -> int:
-    manifest = read_knowledge_manifest(course_id, course_scope=course_scope)
-    return int(manifest.version_no or 0) if manifest is not None else 0
+    del course_scope
+    with managed_session() as session:
+        docs = get_current_published_docs(session, course_id)
+    return max((int(doc.version_no or doc.version or 0) for doc in docs), default=0)
 
 
 def _schedule_exam_prewarm_after_completed_graph(
@@ -380,39 +410,50 @@ def trigger_graph_docs_sync_manual_build(
             status_code=422,
         )
 
-    manifest = read_knowledge_manifest(course.id, course_scope=course_scope)
-    manifest_source_file_ids = list(manifest.source_file_ids) if manifest is not None else []
-    source_file_ids = manifest_source_file_ids or _collect_graph_source_file_ids(sync_input.structured_context)
-    prompt = manifest.prompt if manifest is not None else None
+    source_file_ids = _collect_graph_source_file_ids(sync_input.structured_context)
+    prompt = docgen_status.prompt if docgen_status is not None else None
     requested_at = utcnow()
     build_group_id = uuid.uuid4().hex
     build_session_id = uuid.uuid4().hex
     doc_version_no = int(sync_input.structured_context.get("doc_version_no") or 0)
     chapters = sync_input.structured_context.get("chapters")
     chapter_count = len(chapters) if isinstance(chapters, list) else 0
-    _write_graph_status(
-        course.id,
+    build_lock = KnowledgeBuildLock(
         requested_at=requested_at,
         build_group_id=build_group_id,
-        course_scope=course_scope,
-        status="accepted",
-        stage="manual_graph_requested",
-        build_session_id=build_session_id,
-        error_message=None,
         source_file_ids=source_file_ids,
         prompt=prompt,
-        metrics={
-            "knowledge_doc_source": sync_input.source,
-            "knowledge_doc_chapter_count": chapter_count,
-            "last_synced_doc_version_no": doc_version_no,
-            "graph_input_paths": ["knowledge_doc"] + (["source_files"] if source_file_ids else []),
-        },
-        current_stage_description="已接收图谱重建请求，准备读取当前知识文档。",
     )
-    llm_snapshot = capture_llm_runtime_snapshot()
-    _spawn_graph_build_task(
-        background_task_registry,
-        run_graph_docs_sync_manual_build(
+    if not acquire_knowledge_build_lock(
+        course.id,
+        build_lock,
+        course_scope=course_scope,
+    ):
+        raise CourseBuildLockConflictError(course.id)
+
+    background_coro = None
+    try:
+        _write_graph_status(
+            course.id,
+            requested_at=requested_at,
+            build_group_id=build_group_id,
+            course_scope=course_scope,
+            status="accepted",
+            stage="manual_graph_requested",
+            build_session_id=build_session_id,
+            error_message=None,
+            source_file_ids=source_file_ids,
+            prompt=prompt,
+            metrics={
+                "knowledge_doc_source": sync_input.source,
+                "knowledge_doc_chapter_count": chapter_count,
+                "last_synced_doc_version_no": doc_version_no,
+                "graph_input_paths": ["knowledge_doc"] + (["source_files"] if source_file_ids else []),
+            },
+            current_stage_description="已接收图谱重建请求，准备读取当前知识文档。",
+        )
+        llm_snapshot = capture_llm_runtime_snapshot()
+        background_coro = run_graph_docs_sync_manual_build(
             course_id=course.id,
             requested_at=requested_at,
             build_group_id=build_group_id,
@@ -422,10 +463,38 @@ def trigger_graph_docs_sync_manual_build(
             llm_snapshot=llm_snapshot,
             course_scope=course_scope,
             background_task_registry=background_task_registry,
-        ),
-        course_id=course.id,
-        name=f"knowledge.build.graph:{course.id}",
-    )
+            manage_build_lock=True,
+        )
+        spawned_task = _spawn_graph_build_task(
+            background_task_registry,
+            background_coro,
+            course_id=course.id,
+            name=f"knowledge.build.graph:{course.id}:{build_group_id}",
+        )
+    except BaseException:
+        close = getattr(background_coro, "close", None)
+        if callable(close):
+            close()
+        release_knowledge_build_lock(
+            course.id,
+            build_group_id=build_group_id,
+            course_scope=course_scope,
+        )
+        raise
+
+    add_done_callback = getattr(spawned_task, "add_done_callback", None)
+    if callable(add_done_callback):
+
+        def _release_if_cancelled_before_cleanup(finished_task) -> None:
+            if not finished_task.cancelled():
+                return
+            release_knowledge_build_lock(
+                course.id,
+                build_group_id=build_group_id,
+                course_scope=course_scope,
+            )
+
+        add_done_callback(_release_if_cancelled_before_cleanup)
     logger.info(
         "knowledge_graph_build_request_accepted",
         course_id=course.id,
@@ -459,6 +528,7 @@ async def run_graph_docs_sync_after_doc_build(
     course_scope: CourseStorageScope | None = None,
     early_units_callback: object | None = None,
     embedded_in_parent_trace: bool = False,
+    enforce_build_lock: bool = False,
 ) -> dict[str, int | str]:
     """Re-sync knowledge units and knowledge images from the latest knowledge document."""
 
@@ -491,6 +561,15 @@ async def run_graph_docs_sync_after_doc_build(
             build_session_id=build_session_id,
         )
         base_metrics.update(prefetch_metrics)
+    if enforce_build_lock and (
+        course_scope is None
+        or not _still_owns_knowledge_build_lock(
+            course_id=course_id,
+            build_group_id=build_group_id,
+            course_scope=course_scope,
+        )
+    ):
+        raise asyncio.CancelledError
     if not knowledge_doc_markdown.strip():
         return base_metrics
 
@@ -516,6 +595,8 @@ async def run_graph_docs_sync_after_doc_build(
     with use_llm_runtime_snapshot(llm_snapshot):
         sync_result = await run_graph_docs_sync_workflow(
             course_id=course_id,
+            build_group_id=build_group_id,
+            build_lock_phase="active" if enforce_build_lock else "published",
             markdown=knowledge_doc_markdown,
             build_revision_no=doc_version_no,
             build_session_id=build_session_id,
@@ -561,31 +642,73 @@ async def run_graph_docs_sync_manual_build(
     llm_snapshot: LLMRuntimeSnapshot | None = None,
     course_scope: CourseStorageScope | None = None,
     background_task_registry: Any | None = None,
+    manage_build_lock: bool = False,
 ) -> None:
     """Run a user-triggered graph rebuild from the latest persisted knowledge docs."""
 
-    graph_status = await _run_graph_docs_sync_build(
-        course_id=course_id,
-        requested_at=requested_at,
-        build_group_id=build_group_id,
-        build_session_id=build_session_id,
-        file_ids=file_ids,
-        prompt=prompt,
-        llm_snapshot=llm_snapshot,
-        docgen_state=None,
-        completed_description="知识图谱已同步完成。",
-        cancelled_description="图谱构建已停止。",
-        failure_log_event="knowledge_graph_manual_build_failed",
-        course_scope=course_scope,
-        embedded_in_parent_trace=False,
-    )
-    if graph_status == "completed":
-        _schedule_exam_prewarm_after_completed_graph(
+    if manage_build_lock and course_scope is None:
+        raise ValueError("course_scope is required when managing a knowledge build lock")
+
+    build_lock_heartbeat: asyncio.Task[None] | None = None
+    if manage_build_lock and course_scope is not None:
+        owner_task = asyncio.current_task()
+        if owner_task is not None:
+            build_lock_heartbeat = asyncio.create_task(
+                maintain_knowledge_build_lock_lease(
+                    course_id=course_id,
+                    build_group_id=build_group_id,
+                    course_scope=course_scope,
+                    owner_task=owner_task,
+                ),
+                name=f"knowledge.build.lock:{course_id}:{build_group_id}",
+            )
+
+    try:
+        if build_lock_heartbeat is not None:
+            await asyncio.sleep(0)
+        if manage_build_lock and course_scope is not None and not _still_owns_knowledge_build_lock(
             course_id=course_id,
-            build_revision_no=_current_doc_version_no(course_id, course_scope=course_scope),
+            build_group_id=build_group_id,
+            course_scope=course_scope,
+        ):
+            return
+
+        graph_status = await _run_graph_docs_sync_build(
+            course_id=course_id,
+            requested_at=requested_at,
+            build_group_id=build_group_id,
+            build_session_id=build_session_id,
+            file_ids=file_ids,
+            prompt=prompt,
             llm_snapshot=llm_snapshot,
-            background_task_registry=background_task_registry,
+            docgen_state=None,
+            completed_description="知识图谱已同步完成。",
+            cancelled_description="图谱构建已停止。",
+            failure_log_event="knowledge_graph_manual_build_failed",
+            course_scope=course_scope,
+            embedded_in_parent_trace=False,
+            enforce_build_lock=manage_build_lock,
         )
+        if graph_status == "completed":
+            _schedule_exam_prewarm_after_completed_graph(
+                course_id=course_id,
+                build_revision_no=_current_doc_version_no(course_id, course_scope=course_scope),
+                llm_snapshot=llm_snapshot,
+                background_task_registry=background_task_registry,
+            )
+    finally:
+        if build_lock_heartbeat is not None:
+            build_lock_heartbeat.cancel()
+            try:
+                await build_lock_heartbeat
+            except asyncio.CancelledError:
+                pass
+        if manage_build_lock and course_scope is not None:
+            release_knowledge_build_lock(
+                course_id,
+                build_group_id=build_group_id,
+                course_scope=course_scope,
+            )
 
 
 async def run_graph_docs_sync_auto_build(
@@ -599,53 +722,30 @@ async def run_graph_docs_sync_auto_build(
     llm_snapshot: LLMRuntimeSnapshot | None = None,
     docgen_state: dict[str, object] | None = None,
     course_scope: CourseStorageScope | None = None,
-    background_task_registry: Any | None = None,
 ) -> str:
-    """Run an automatic graph sync after DocGen and return the final graph status."""
+    """Run the DocGen-owned graph sync and return its final status.
 
-    exam_prewarm_tasks: list[Any] = []
+    The enclosing DocGen lifecycle schedules the initial exam after this node
+    returns, so the automatic path has one scheduling owner. Manual graph
+    rebuilds continue to schedule only after their graph reaches ``completed``.
+    """
 
-    try:
-        graph_status = await _run_graph_docs_sync_build(
-            course_id=course_id,
-            requested_at=requested_at,
-            build_group_id=build_group_id,
-            build_session_id=build_session_id,
-            file_ids=file_ids,
-            prompt=prompt,
-            llm_snapshot=llm_snapshot,
-            docgen_state=docgen_state,
-            completed_description="知识图谱已自动同步完成。",
-            cancelled_description="自动图谱同步已停止。",
-            failure_log_event="knowledge_graph_auto_build_failed",
-            course_scope=course_scope,
-            early_units_callback=None,
-            embedded_in_parent_trace=True,
-        )
-        if graph_status != "completed":
-            for task in exam_prewarm_tasks:
-                if not task.done():
-                    task.cancel()
-            logger.info(
-                "knowledge_graph_auto_build_not_completed_after_exam_prewarm_dispatched",
-                course_id=course_id,
-                graph_status=graph_status,
-                exam_prewarm_task_count=len(exam_prewarm_tasks),
-            )
-        if graph_status == "completed":
-            _schedule_exam_prewarm_after_completed_graph(
-                course_id=course_id,
-                build_revision_no=_current_doc_version_no(course_id, course_scope=course_scope),
-                llm_snapshot=llm_snapshot,
-                background_task_registry=background_task_registry,
-                scheduled_tasks=exam_prewarm_tasks,
-            )
-        return graph_status
-    except asyncio.CancelledError:
-        for task in exam_prewarm_tasks:
-            if not task.done():
-                task.cancel()
-        raise
+    return await _run_graph_docs_sync_build(
+        course_id=course_id,
+        requested_at=requested_at,
+        build_group_id=build_group_id,
+        build_session_id=build_session_id,
+        file_ids=file_ids,
+        prompt=prompt,
+        llm_snapshot=llm_snapshot,
+        docgen_state=docgen_state,
+        completed_description="知识图谱已自动同步完成。",
+        cancelled_description="自动图谱同步已停止。",
+        failure_log_event="knowledge_graph_auto_build_failed",
+        course_scope=course_scope,
+        early_units_callback=None,
+        embedded_in_parent_trace=True,
+    )
 
 
 async def _run_graph_docs_sync_build(
@@ -664,6 +764,7 @@ async def _run_graph_docs_sync_build(
     course_scope: CourseStorageScope | None = None,
     early_units_callback: object | None = None,
     embedded_in_parent_trace: bool = False,
+    enforce_build_lock: bool = False,
 ) -> str:
     doc_sync_metrics = _base_doc_sync_metrics(
         knowledge_doc_source="not_synced",
@@ -683,6 +784,7 @@ async def _run_graph_docs_sync_build(
             course_scope=course_scope,
             early_units_callback=early_units_callback,
             embedded_in_parent_trace=embedded_in_parent_trace,
+            enforce_build_lock=enforce_build_lock,
         )
         failed_section_count = int(doc_sync_metrics.get("doc_sync_failed_section_count") or 0)
         completion_status = "partial_failed" if failed_section_count > 0 else "completed"
@@ -691,6 +793,21 @@ async def _run_graph_docs_sync_build(
             if failed_section_count > 0
             else completed_description
         )
+        if enforce_build_lock and (
+            course_scope is None
+            or not _still_owns_knowledge_build_lock(
+                course_id=course_id,
+                build_group_id=build_group_id,
+                course_scope=course_scope,
+            )
+        ):
+            logger.warning(
+                "knowledge_graph_terminal_status_skipped_after_lock_loss",
+                course_id=course_id,
+                build_group_id=build_group_id,
+                status=completion_status,
+            )
+            return "cancelled"
         _write_graph_status(
             course_id,
             requested_at=requested_at,
@@ -706,20 +823,43 @@ async def _run_graph_docs_sync_build(
         )
         return completion_status
     except asyncio.CancelledError:
-        _write_graph_status(
-            course_id,
-            requested_at=requested_at,
-            build_group_id=build_group_id,
-            course_scope=course_scope,
-            status="cancelled",
-            stage="cancelled",
-            error_message="build_cancelled",
-            processed_chunks=0,
-            current_stage_description=cancelled_description,
-            metrics={"processed_chunks": 0, **doc_sync_metrics},
-        )
+        if not enforce_build_lock or (
+            course_scope is not None
+            and _still_owns_knowledge_build_lock(
+                course_id=course_id,
+                build_group_id=build_group_id,
+                course_scope=course_scope,
+            )
+        ):
+            _write_graph_status(
+                course_id,
+                requested_at=requested_at,
+                build_group_id=build_group_id,
+                course_scope=course_scope,
+                status="cancelled",
+                stage="cancelled",
+                error_message="build_cancelled",
+                processed_chunks=0,
+                current_stage_description=cancelled_description,
+                metrics={"processed_chunks": 0, **doc_sync_metrics},
+            )
         raise
     except Exception as exc:
+        if enforce_build_lock and (
+            course_scope is None
+            or not _still_owns_knowledge_build_lock(
+                course_id=course_id,
+                build_group_id=build_group_id,
+                course_scope=course_scope,
+            )
+        ):
+            logger.warning(
+                "knowledge_graph_failure_status_skipped_after_lock_loss",
+                course_id=course_id,
+                build_group_id=build_group_id,
+                error=str(exc),
+            )
+            return "failed"
         graph_error_message = sanitize_knowledge_build_error_message(str(exc), build_kind="graph")
         _write_graph_status(
             course_id,
@@ -744,25 +884,22 @@ async def _trigger_default_exam_prewarm_when_units_ready(
     wait_for_units_timeout_s: float = 1800.0,
     llm_snapshot: LLMRuntimeSnapshot | None = None,
 ) -> None:
-    """本轮知识点一可见，就请求默认隐藏考卷生成。"""
+    """知识点就绪后唤醒课程级、仅一次的首次测验任务。"""
 
     try:
-        from app.workflows.examine.prewarm import trigger_default_exam_prewarm_for_course
+        from app.workflows.examine.initial_exam import run_course_initial_exam_job
 
         with use_llm_runtime_snapshot(llm_snapshot):
-            result = await trigger_default_exam_prewarm_for_course(
+            await run_course_initial_exam_job(
                 course_id=course_id,
-                min_build_revision_no=min_build_revision_no,
-                wait_for_units_timeout_s=wait_for_units_timeout_s,
-                poll_interval_s=1.0,
+                build_session_id=f"knowledge-revision-{min_build_revision_no}",
             )
         logger.info(
             "knowledge_graph_auto_exam_prewarm_result",
             course_id=course_id,
-            status=result.status,
-            reason=result.reason,
-            exam_mode=result.exam_mode,
-            num_questions=result.num_questions,
+            status="dispatched",
+            min_build_revision_no=min_build_revision_no,
+            wait_for_units_timeout_s=wait_for_units_timeout_s,
         )
     except Exception as exc:
         logger.warning(

@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from app.shared.infra.exceptions import LLMTimeoutError
 from app.shared.infra.llm_support import (
     run_llm_tasks,
     get_llm_concurrency_limit,
@@ -15,7 +16,6 @@ from app.shared.infra.llm_support import (
 from app.shared.infra.llm_support import common as llm_common
 from app.shared.infra.llm_support import scheduler as scheduler_module
 from app.shared.infra.llm_support.defaults import DEFAULT_LLM_CONCURRENCY_LIMIT
-from app.shared.infra.llm_support.model_catalog import PRIMARY_GATEWAY_MODEL_ALLOWLIST
 from app.shared.infra.llm_support.scheduler import get_llm_scheduler
 from app.shared.infra.settings import (
     get_settings,
@@ -24,7 +24,10 @@ from app.shared.infra.settings import (
 )
 from app.workflows.digest.kg_doc_sync.lib.incremental_sync import _graph_llm_concurrency_cap
 from app.workflows.ingest.parsing.strategy import build_parse_plan
-from app.workflows.support.system.settings import build_settings_overview_data
+from app.workflows.support.system.settings import (
+    build_settings_overview_data,
+    get_model_reasoning_capabilities,
+)
 
 
 def _reset_settings_state() -> None:
@@ -38,11 +41,6 @@ def reset_settings_after_test():
     _reset_settings_state()
     yield
     _reset_settings_state()
-
-
-def test_llm_concurrency_uses_code_default() -> None:
-    assert get_settings().llm.concurrency_limit == DEFAULT_LLM_CONCURRENCY_LIMIT
-    assert get_llm_concurrency_limit() == DEFAULT_LLM_CONCURRENCY_LIMIT
 
 
 def test_llm_concurrency_runtime_settings_override_default() -> None:
@@ -89,30 +87,143 @@ def test_llm_concurrency_is_exposed_in_model_connection_settings() -> None:
     assert unified_keys.index("llm.concurrency_limit") < unified_keys.index("llm.api_mode")
 
 
-def test_primary_model_allowlist_uses_code_default() -> None:
-    exposed_keys = {
-        entry.key
-        for section in build_settings_overview_data().sections
-        for entry in section.entries
+def test_fallback_models_default_to_inheriting_main_slots_and_are_exposed() -> None:
+    overview = build_settings_overview_data()
+    models_section = next(section for section in overview.sections if section.id == "models")
+    fallback_entries = {
+        entry.key: entry
+        for entry in models_section.entries
+        if entry.key.startswith("fallback_models.")
     }
 
-    assert get_settings().llm.primary_model_allowlist == PRIMARY_GATEWAY_MODEL_ALLOWLIST
-    assert "llm.primary_model_allowlist" not in exposed_keys
+    assert get_settings().fallback_models.model_dump() == {
+        "light": None,
+        "primary": None,
+        "reason": None,
+    }
+    assert set(fallback_entries) == {
+        "fallback_models.light",
+        "fallback_models.primary",
+        "fallback_models.reason",
+    }
+    assert all(entry.value is None for entry in fallback_entries.values())
+    assert all(entry.editable is True for entry in fallback_entries.values())
 
 
-def test_primary_model_allowlist_remains_supported_as_hidden_override() -> None:
+def test_legacy_llm_routing_settings_are_upgraded_without_overriding_new_slots() -> None:
     set_system_settings_override({
-        "llm": {"primary_model_allowlist": ["gpt-5.4-mini", "gpt-5.5"]},
+        "llm": {
+            "reasoning_effort": "high",
+            "reasoning_efforts": {"reason": "xhigh"},
+            "primary_model_allowlist": ["gpt-5.4-mini"],
+        },
     })
 
-    exposed_keys = {
-        entry.key
-        for section in build_settings_overview_data().sections
-        for entry in section.entries
+    settings = get_settings()
+    assert settings.llm.reasoning_efforts.model_dump() == {
+        "light": "high",
+        "primary": "high",
+        "reason": "xhigh",
     }
+    assert not hasattr(settings.llm, "primary_model_allowlist")
 
-    assert get_settings().llm.primary_model_allowlist == ("gpt-5.4-mini", "gpt-5.5")
-    assert "llm.primary_model_allowlist" not in exposed_keys
+
+def test_reasoning_effort_selects_are_derived_from_each_effective_model() -> None:
+    set_system_settings_override({
+        "models": {
+            "light": "gpt-4.1",
+            "primary": "gpt-5.3-codex-spark",
+            "reason": "gpt-5.6-sol",
+        },
+        "llm": {
+            "reasoning_efforts": {
+                "primary": "low",
+                "reason": "max",
+            },
+        },
+    })
+
+    overview = build_settings_overview_data()
+    models_section = next(section for section in overview.sections if section.id == "models")
+    entries = {entry.key: entry for entry in models_section.entries}
+
+    assert entries["llm.reasoning_efforts.light"].options == []
+    assert entries["llm.reasoning_efforts.light"].ui_parent_key == "models.light"
+    assert [option.value for option in entries["llm.reasoning_efforts.primary"].options] == [
+        None,
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+    ]
+    assert [option.value for option in entries["llm.reasoning_efforts.reason"].options] == [
+        None,
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+    ]
+    assert entries["llm.reasoning_efforts.primary"].value == "low"
+    assert entries["llm.reasoning_efforts.reason"].value == "max"
+    assert entries["llm.reasoning_efforts.primary"].ui_parent_key == "models.primary"
+    assert entries["llm.reasoning_efforts.reason"].ui_parent_key == "models.reason"
+
+
+def test_known_non_reasoning_model_clears_stale_overview_effort() -> None:
+    set_system_settings_override({
+        "models": {"primary": "gpt-5.2-chat-latest"},
+        "llm": {"reasoning_efforts": {"primary": "high"}},
+    })
+
+    overview = build_settings_overview_data()
+    models_section = next(section for section in overview.sections if section.id == "models")
+    entry = next(
+        entry
+        for entry in models_section.entries
+        if entry.key == "llm.reasoning_efforts.primary"
+    )
+
+    assert entry.options == []
+    assert entry.value is None
+
+
+def test_model_reasoning_capabilities_preserve_known_unknown_distinction() -> None:
+    assert get_model_reasoning_capabilities(" gpt-5.5 ").reasoning_efforts == [
+        "none",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+    ]
+    assert get_model_reasoning_capabilities("gpt-5.2-chat-latest").reasoning_efforts == []
+    assert get_model_reasoning_capabilities("custom-gateway-model").reasoning_efforts is None
+
+
+def test_cloud_settings_overview_does_not_read_database_runtime_overrides(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.workflows.support.system.settings.is_local_mode",
+        lambda: False,
+    )
+
+    def fail_if_read(_session):
+        raise AssertionError("cloud settings overview must not read database runtime overrides")
+
+    monkeypatch.setattr(
+        "app.workflows.support.system.settings.get_system_runtime_settings_payload",
+        fail_if_read,
+    )
+
+    overview = build_settings_overview_data(session=object())
+    model_entry = next(
+        entry
+        for section in overview.sections
+        for entry in section.entries
+        if entry.key == "models.primary"
+    )
+
+    assert model_entry.editable is False
 
 
 def test_rpm_rate_limit_is_treated_as_local_throttle() -> None:
@@ -177,12 +288,12 @@ async def test_llm_limiter_uses_live_runtime_limit() -> None:
     second_inside = asyncio.Event()
 
     async def first_call() -> None:
-        async with limiter:
+        async with limiter.slot():
             first_inside.set()
             await release_first.wait()
 
     async def second_call() -> None:
-        async with limiter:
+        async with limiter.slot():
             second_inside.set()
 
     first_task = asyncio.create_task(first_call())
@@ -223,12 +334,12 @@ async def test_llm_limiter_traces_wait_for_concurrency_slot(monkeypatch) -> None
     second_inside = asyncio.Event()
 
     async def first_call() -> None:
-        async with limiter:
+        async with limiter.slot():
             first_inside.set()
             await release_first.wait()
 
     async def second_call() -> None:
-        async with limiter:
+        async with limiter.slot():
             second_inside.set()
 
     first_task = asyncio.create_task(first_call())
@@ -257,6 +368,57 @@ async def test_llm_limiter_traces_wait_for_concurrency_slot(monkeypatch) -> None
 
 
 @pytest.mark.anyio
+async def test_llm_overall_timeout_pauses_while_retry_reacquires_slot() -> None:
+    set_system_settings_override({"llm": {"concurrency_limit": 1}})
+    limiter = get_llm_concurrency_limiter()
+    first_attempt_active = asyncio.Event()
+    allow_retry = asyncio.Event()
+    blocker_active = asyncio.Event()
+    release_blocker = asyncio.Event()
+
+    async def retried_call() -> str:
+        async with limiter.slot() as lease:
+            first_attempt_active.set()
+            await allow_retry.wait()
+            await lease.sleep_without_holding_slot(0.02)
+            return "ok"
+
+    async def blocker() -> None:
+        await first_attempt_active.wait()
+        async with limiter.slot():
+            blocker_active.set()
+            await release_blocker.wait()
+
+    call_task = asyncio.create_task(
+        llm_common.wait_for_overall_timeout(retried_call(), timeout_s=0.1)
+    )
+    await asyncio.wait_for(first_attempt_active.wait(), timeout=1)
+    blocker_task = asyncio.create_task(blocker())
+    await asyncio.sleep(0.01)
+    allow_retry.set()
+    await asyncio.wait_for(blocker_active.wait(), timeout=1)
+
+    await asyncio.sleep(0.15)
+    assert not call_task.done()
+
+    release_blocker.set()
+    assert await asyncio.wait_for(call_task, timeout=1) == "ok"
+    await blocker_task
+
+
+@pytest.mark.anyio
+async def test_llm_overall_timeout_still_counts_active_execution() -> None:
+    limiter = get_llm_concurrency_limiter()
+
+    async def slow_call() -> None:
+        async with limiter.slot():
+            await asyncio.sleep(0.05)
+
+    with pytest.raises(LLMTimeoutError):
+        await llm_common.wait_for_overall_timeout(slow_call(), timeout_s=0.01)
+
+
+@pytest.mark.anyio
 async def test_llm_limiter_releases_slot_when_holder_is_cancelled() -> None:
     set_system_settings_override({"llm": {"concurrency_limit": 1}})
     limiter = get_llm_concurrency_limiter()
@@ -264,7 +426,7 @@ async def test_llm_limiter_releases_slot_when_holder_is_cancelled() -> None:
     never_release = asyncio.Event()
 
     async def holder() -> None:
-        async with limiter:
+        async with limiter.slot():
             first_inside.set()
             await never_release.wait()
 
@@ -275,7 +437,49 @@ async def test_llm_limiter_releases_slot_when_holder_is_cancelled() -> None:
         await holder_task
 
     async def next_call() -> bool:
-        async with limiter:
+        async with limiter.slot():
+            return True
+
+    assert await asyncio.wait_for(next_call(), timeout=1)
+
+
+@pytest.mark.anyio
+async def test_llm_limiter_lease_can_be_released_from_another_task() -> None:
+    set_system_settings_override({"llm": {"concurrency_limit": 1}})
+    limiter = get_llm_concurrency_limiter()
+    lease = limiter.slot()
+
+    await asyncio.create_task(lease.__aenter__())
+    assert limiter._active == 1
+
+    await lease.__aexit__(None, None, None)
+    assert limiter._active == 0
+
+    async def next_call() -> bool:
+        async with limiter.slot():
+            return True
+
+    assert await asyncio.wait_for(next_call(), timeout=1)
+
+
+@pytest.mark.anyio
+async def test_llm_limiter_releases_cross_task_closed_stream() -> None:
+    set_system_settings_override({"llm": {"concurrency_limit": 1}})
+    limiter = get_llm_concurrency_limiter()
+
+    async def limited_stream():
+        async with limiter.slot():
+            yield "first"
+
+    stream = limited_stream()
+    assert await asyncio.create_task(anext(stream)) == "first"
+    assert limiter._active == 1
+
+    await stream.aclose()
+    assert limiter._active == 0
+
+    async def next_call() -> bool:
+        async with limiter.slot():
             return True
 
     assert await asyncio.wait_for(next_call(), timeout=1)
@@ -294,7 +498,7 @@ async def test_llm_limiter_temporarily_reduces_after_concurrency_rate_limit() ->
 
     async def worker() -> None:
         nonlocal active, max_active
-        async with limiter:
+        async with limiter.slot():
             active += 1
             max_active = max(max_active, active)
             if active == 2:
@@ -328,11 +532,15 @@ async def test_retry_backoff_does_not_hold_limiter_slot(monkeypatch) -> None:
     monkeypatch.setattr(llm_common.asyncio, "sleep", fake_sleep)
 
     async def retrying_call() -> None:
-        async with limiter:
-            await llm_common.sleep_before_retry(1, error=RuntimeError("retryable"))
+        async with limiter.slot() as lease:
+            await llm_common.sleep_before_retry(
+                1,
+                error=RuntimeError("retryable"),
+                lease=lease,
+            )
 
     async def second_call() -> None:
-        async with limiter:
+        async with limiter.slot():
             second_inside.set()
 
     retry_task = asyncio.create_task(retrying_call())
@@ -362,12 +570,16 @@ async def test_retry_backoff_reacquires_slot_before_returning(monkeypatch) -> No
     monkeypatch.setattr(llm_common.asyncio, "sleep", fake_sleep)
 
     async def retrying_call() -> None:
-        async with limiter:
-            await llm_common.sleep_before_retry(1, error=RuntimeError("retryable"))
+        async with limiter.slot() as lease:
+            await llm_common.sleep_before_retry(
+                1,
+                error=RuntimeError("retryable"),
+                lease=lease,
+            )
             retry_returned.set()
 
     async def blocker_call() -> None:
-        async with limiter:
+        async with limiter.slot():
             blocker_inside.set()
             await blocker_can_finish.wait()
 
@@ -400,8 +612,12 @@ async def test_retry_backoff_cancelled_while_sleeping_leaves_slot_available(monk
     monkeypatch.setattr(llm_common.asyncio, "sleep", fake_sleep)
 
     async def retrying_call() -> None:
-        async with limiter:
-            await llm_common.sleep_before_retry(1, error=RuntimeError("retryable"))
+        async with limiter.slot() as lease:
+            await llm_common.sleep_before_retry(
+                1,
+                error=RuntimeError("retryable"),
+                lease=lease,
+            )
 
     retry_task = asyncio.create_task(retrying_call())
     await asyncio.wait_for(sleep_started.wait(), timeout=1)
@@ -410,7 +626,7 @@ async def test_retry_backoff_cancelled_while_sleeping_leaves_slot_available(monk
         await retry_task
 
     async def next_call() -> bool:
-        async with limiter:
+        async with limiter.slot():
             return True
 
     assert await asyncio.wait_for(next_call(), timeout=1)
@@ -435,19 +651,23 @@ async def test_retry_backoff_nested_limiter_releases_only_current_slot(monkeypat
     monkeypatch.setattr(llm_common.asyncio, "sleep", fake_sleep)
 
     async def retrying_call() -> None:
-        async with limiter:
-            async with limiter:
-                await llm_common.sleep_before_retry(1, error=RuntimeError("retryable"))
+        async with limiter.slot():
+            async with limiter.slot() as inner_lease:
+                await llm_common.sleep_before_retry(
+                    1,
+                    error=RuntimeError("retryable"),
+                    lease=inner_lease,
+                )
                 retry_returned.set()
                 await retry_can_finish.wait()
 
     async def blocker_call() -> None:
-        async with limiter:
+        async with limiter.slot():
             blocker_inside.set()
             await blocker_can_finish.wait()
 
     async def third_call() -> None:
-        async with limiter:
+        async with limiter.slot():
             third_inside.set()
 
     retry_task = asyncio.create_task(retrying_call())
@@ -492,7 +712,7 @@ async def test_retry_backoff_child_task_does_not_release_parent_slot(monkeypatch
         await llm_common.sleep_before_retry(1, error=RuntimeError("retryable"))
 
     async def parent_call() -> None:
-        async with limiter:
+        async with limiter.slot():
             parent_inside.set()
             child_task = asyncio.create_task(child_retry())
             await asyncio.wait_for(sleep_started.wait(), timeout=1)
@@ -501,7 +721,7 @@ async def test_retry_backoff_child_task_does_not_release_parent_slot(monkeypatch
             await parent_can_finish.wait()
 
     async def second_call() -> None:
-        async with limiter:
+        async with limiter.slot():
             second_inside.set()
 
     parent_task = asyncio.create_task(parent_call())
@@ -528,13 +748,13 @@ async def test_llm_limiter_is_process_wide_across_event_loops() -> None:
     thread_done = threading.Event()
 
     async def holder() -> None:
-        async with limiter:
+        async with limiter.slot():
             holder_inside.set()
             await release_holder.wait()
 
     def run_in_thread() -> None:
         async def attempt() -> None:
-            async with limiter:
+            async with limiter.slot():
                 thread_entered.set()
 
         asyncio.run(attempt())

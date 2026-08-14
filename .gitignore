@@ -18,6 +18,7 @@ Thumbs.db
 /env/
 /venv/
 /data/
+/.codex-tmp/
 .coverage*
 coverage.json
 *.log
@@ -70,6 +71,7 @@ settings.private.yaml
 /frontend/.npm-cache*/
 /.tmp-*/
 /.tmp-*.exe
+.codex-tmp/
 pytest-tmp/
 __pycache__/
 *.py[cod]

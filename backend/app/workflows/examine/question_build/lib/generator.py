@@ -15,6 +15,7 @@ from typing import Literal, TypeVar
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.models.knowledge_unit import KnowledgeUnit
+from app.shared.kernel.question_types import QuestionTypeLiteral
 from app.shared.infra.exceptions import LLMTimeoutError
 from app.shared.infra.llm_support import acompletion_with_fallback, run_llm_tasks
 from app.workflows.examine.question_build.lib.model_policy import (
@@ -30,13 +31,6 @@ from app.workflows.examine.question_build.prompts import (
     build_text_exam_messages,
 )
 
-QuestionTypeLiteral = Literal[
-    "single_choice",
-    "multiple_choice",
-    "true_false",
-    "fill_blank",
-    "short_answer",
-]
 DifficultyLiteral = Literal["easy", "medium", "hard"]
 T = TypeVar("T")
 
@@ -50,6 +44,40 @@ _DUPLICATE_ORDERED_LIST_MARKER_RE = re.compile(
 _UNIT_REF_ID_RE = re.compile(r"\bknowledge_unit_id\s*[:=]\s*(\d+)\b", re.IGNORECASE)
 _UNIT_REF_WEIGHT_RE = re.compile(
     r"\b(?:coverage_weight|weight)\s*[:=]\s*([0-9]+(?:\.[0-9]+)?)\b",
+    re.IGNORECASE,
+)
+_CHOICE_EXPLANATION_DECLARATION_PREFIX = (
+    r"(?:(?<![不非])正确(?:答案|选项)|参考答案|标准答案|"
+    r"(?<!错误)(?<!错误的)(?<!不正确)(?<!非正确)"
+    r"答案\s*(?:(?:应该|应当)?\s*(?:是|为|选择)|[:：=])|"
+    r"应(?:为|选择)|应该(?:为|是|选择)|应当(?:为|是|选择)|"
+    r"(?<![A-Za-z])correct\s+(?:answer|option))"
+)
+_CHOICE_EXPLANATION_DECLARATION_CONNECTOR = (
+    r"\s*(?:(?:应该|应当)?\s*(?:是|为|选择|选)|"
+    r"is|should\s+(?:be|select))?\s*"
+)
+_CHOICE_EXPLANATION_LABEL_SEPARATOR = r"(?:[,，、/&]|和|及|与|\band\b)"
+_CHOICE_EXPLANATION_LABEL_RE = re.compile(
+    rf"{_CHOICE_EXPLANATION_DECLARATION_PREFIX}"
+    rf"{_CHOICE_EXPLANATION_DECLARATION_CONNECTOR}(?:选项|option)?\s*"
+    rf"([A-Da-d](?:\s*{_CHOICE_EXPLANATION_LABEL_SEPARATOR}\s*[A-Da-d])*)",
+    re.IGNORECASE,
+)
+_CHOICE_EXPLANATION_ORDINAL_RE = re.compile(
+    rf"{_CHOICE_EXPLANATION_DECLARATION_PREFIX}"
+    rf"{_CHOICE_EXPLANATION_DECLARATION_CONNECTOR}(?:选项|option)\s*([1-4])",
+    re.IGNORECASE,
+)
+_CHOICE_EXPLANATION_INDEX_RE = re.compile(
+    rf"{_CHOICE_EXPLANATION_DECLARATION_PREFIX}"
+    rf"{_CHOICE_EXPLANATION_DECLARATION_CONNECTOR}(?:index|索引)\s*\[?\s*([0-3])\s*\]?",
+    re.IGNORECASE,
+)
+_NEGATED_CHOICE_EXPLANATION_DECLARATION_RE = re.compile(
+    r"(?:不|非|未)(?:一定|必然|必)?(?:是|为)?\s*$|"
+    r"(?:不|非)正确(?:答案|选项)?的?\s*$|"
+    r"错误(?:答案|选项)?的?\s*$",
     re.IGNORECASE,
 )
 _QUESTION_GENERATION_TOTAL_TIMEOUT_S = 120.0
@@ -151,6 +179,62 @@ def _contains_blank_token_inside_latex(value: str) -> bool:
             continue
         index += 1
     return False
+
+
+def _text_without_fenced_code(value: str) -> str:
+    lines: list[str] = []
+    in_code_fence = False
+    for line in value.split("\n"):
+        if line.lstrip().startswith("```"):
+            in_code_fence = not in_code_fence
+            continue
+        if not in_code_fence:
+            lines.append(line)
+    return "\n".join(lines)
+
+
+def _choice_indices_declared_in_explanation(explanation: str, *, option_count: int) -> list[int]:
+    """Return only explicit answer declarations from an explanation.
+
+    This is a narrow local audit, not semantic grading: it only catches phrases
+    that directly state the correct answer/option/index.
+    """
+
+    cleaned = _text_without_fenced_code(explanation)
+    indices: list[int] = []
+
+    def add_index(index: int) -> None:
+        if 0 <= index < option_count and index not in indices:
+            indices.append(index)
+
+    def declaration_is_negated(match: re.Match[str]) -> bool:
+        prefix = cleaned[max(0, match.start() - 24):match.start()]
+        return _NEGATED_CHOICE_EXPLANATION_DECLARATION_RE.search(prefix) is not None
+
+    for match in _CHOICE_EXPLANATION_LABEL_RE.finditer(cleaned):
+        if declaration_is_negated(match):
+            continue
+        labels = re.split(
+            rf"\s*{_CHOICE_EXPLANATION_LABEL_SEPARATOR}\s*",
+            match.group(1).strip(),
+            flags=re.IGNORECASE,
+        )
+        for label in labels:
+            normalized = label.strip().casefold()
+            if len(normalized) == 1 and normalized in "abcd":
+                add_index(ord(normalized) - ord("a"))
+
+    for match in _CHOICE_EXPLANATION_ORDINAL_RE.finditer(cleaned):
+        if declaration_is_negated(match):
+            continue
+        add_index(int(match.group(1)) - 1)
+
+    for match in _CHOICE_EXPLANATION_INDEX_RE.finditer(cleaned):
+        if declaration_is_negated(match):
+            continue
+        add_index(int(match.group(1)))
+
+    return indices
 
 
 class ExamQuestionUnitRef(BaseModel):
@@ -618,6 +702,7 @@ class ExamQuestionDraft(BaseModel):
             if any(index < 0 or index >= len(options) for index in indices):
                 raise ValueError("single_choice correct_indices must be in range 0..3")
             self._validate_choice_option_judgements(indices, expected_count=len(options))
+            self._validate_choice_explanation_alignment(indices, expected_count=len(options))
             self.correct_indices = indices
             self.correct_answer = _choice_label(indices[0])
             return self
@@ -635,6 +720,7 @@ class ExamQuestionDraft(BaseModel):
                 raise ValueError("multiple_choice correct_indices must be in range 0..3")
             sorted_indices = sorted(indices)
             self._validate_choice_option_judgements(sorted_indices, expected_count=len(options))
+            self._validate_choice_explanation_alignment(sorted_indices, expected_count=len(options))
             self.correct_indices = sorted_indices
             self.correct_answer = ",".join(_choice_label(index) for index in self.correct_indices)
             return self
@@ -677,6 +763,21 @@ class ExamQuestionDraft(BaseModel):
         judged_indices = [index for index, is_correct in enumerate(judgements) if is_correct]
         if judged_indices != sorted(indices):
             raise ValueError("choice option_judgements must match correct_indices")
+
+    def _validate_choice_explanation_alignment(self, indices: list[int], *, expected_count: int) -> None:
+        declared_indices = _choice_indices_declared_in_explanation(
+            self.explanation,
+            option_count=expected_count,
+        )
+        if not declared_indices:
+            return
+
+        expected = sorted(indices)
+        declared = sorted(declared_indices)
+        if self.question_type == "single_choice" and declared != expected:
+            raise ValueError("choice explanation must match correct_indices")
+        if self.question_type == "multiple_choice" and declared != expected:
+            raise ValueError("choice explanation must match correct_indices")
 
 
 class ExamQuestionBatch(BaseModel):

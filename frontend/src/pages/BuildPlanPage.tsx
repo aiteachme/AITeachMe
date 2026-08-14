@@ -785,6 +785,22 @@ function plannerTerminalMessage(status: string): string {
   return "方案生成已完成。";
 }
 
+function appendPlannerTerminalMessageIfNeeded(
+  messages: ChatMessage[],
+  status: string | null | undefined,
+  latestPlan: BuildPlannerPlanResponse | null,
+): ChatMessage[] {
+  const normalizedStatus = String(status ?? "").trim().toLowerCase();
+  if ((normalizedStatus !== "failed" && normalizedStatus !== "cancelled") || latestPlan) {
+    return messages;
+  }
+  const terminalMessage = plannerTerminalMessage(normalizedStatus);
+  if (messages.some((message) => message.role === "system" && message.content === terminalMessage)) {
+    return messages;
+  }
+  return [...messages, createMessage("system", terminalMessage)];
+}
+
 function planFromSsePreviewPayload(payload: unknown): BuildPlannerPlanResponse | null {
   if (!isRecord(payload)) {
     return null;
@@ -2226,35 +2242,43 @@ export function BuildPlanPage() {
     // 先尝试恢复本地缓存，但只有存在真实 planner session 时才信任。
     const persisted = readPersistedPlannerState(courseId);
     if (persisted?.plannerSessionId && persisted.messages?.length) {
-      logPlannerDebug("restore_from_local_storage", {
-        courseId,
-        plannerSessionId: persisted.plannerSessionId,
-        messageCount: persisted.messages.length,
-        hasCurrentPlan: Boolean(persisted.currentPlan),
-      });
       const persistedPlan = usablePlannerPlan(persisted.currentPlan);
       const hasPersistedStreamingMessage = persisted.messages.some((message) => message.streaming);
-      const restoredGate = createPlannerDiagnosisGate(persisted.plannerSessionId, persistedPlan);
-      setMessages(sanitizePlannerMessages(persisted.messages));
-      setPlannerSessionId(persisted.plannerSessionId);
-      setCurrentPlan(persistedPlan);
-      setPlannerServerStatus(hasPersistedStreamingMessage ? "planning" : planStatus(persistedPlan) || null);
-      setInputValue(persisted.inputValue ?? navState?.initialPrompt ?? "");
-      setPlannerNeedsRefresh(Boolean(persisted.plannerNeedsRefresh));
-      setDiagnosisGate(
-        restoredGate
-          ? {
-            ...restoredGate,
-            answers: {
-              ...restoredGate.answers,
-              ...normalizePlannerDiagnosticAnswers(persisted.diagnosisGate?.answers),
-            },
-          }
-          : null,
-      );
-      setHasAutoUploaded(false);
-      hydratedCourseRef.current = courseId;
-      return;
+      if (!persistedPlan && !hasPersistedStreamingMessage && !persisted.plannerNeedsRefresh) {
+        logPlannerDebug("ignore_local_storage_without_plan", {
+          courseId,
+          plannerSessionId: persisted.plannerSessionId,
+          messageCount: persisted.messages.length,
+        });
+      } else {
+        logPlannerDebug("restore_from_local_storage", {
+          courseId,
+          plannerSessionId: persisted.plannerSessionId,
+          messageCount: persisted.messages.length,
+          hasCurrentPlan: Boolean(persisted.currentPlan),
+        });
+        const restoredGate = createPlannerDiagnosisGate(persisted.plannerSessionId, persistedPlan);
+        setMessages(sanitizePlannerMessages(persisted.messages));
+        setPlannerSessionId(persisted.plannerSessionId);
+        setCurrentPlan(persistedPlan);
+        setPlannerServerStatus(hasPersistedStreamingMessage ? "planning" : planStatus(persistedPlan) || null);
+        setInputValue(persisted.inputValue ?? navState?.initialPrompt ?? "");
+        setPlannerNeedsRefresh(Boolean(persisted.plannerNeedsRefresh));
+        setDiagnosisGate(
+          restoredGate
+            ? {
+              ...restoredGate,
+              answers: {
+                ...restoredGate.answers,
+                ...normalizePlannerDiagnosticAnswers(persisted.diagnosisGate?.answers),
+              },
+            }
+            : null,
+        );
+        setHasAutoUploaded(false);
+        hydratedCourseRef.current = courseId;
+        return;
+      }
     }
 
     // 本地没有可用缓存时，从后端恢复最近一次 planner 会话。
@@ -2267,7 +2291,15 @@ export function BuildPlanPage() {
         });
         if (cancelled || localInteractionCourseRef.current === courseId) return;
         const session = response.data;
-        if (!session || !session.turns?.length) {
+        const latestPlan = usablePlannerPlan(session?.latest_plan);
+        const status = plannerSessionStatus(session);
+        const shouldRenderTerminalOnly = Boolean(
+          session &&
+          !session.turns?.length &&
+          (status === "failed" || status === "cancelled") &&
+          !latestPlan,
+        );
+        if (!session || (!session.turns?.length && !shouldRenderTerminalOnly)) {
           logPlannerDebug("restore_latest_empty", {
             courseId,
             found: Boolean(session),
@@ -2289,16 +2321,19 @@ export function BuildPlanPage() {
         logPlannerDebug("restore_latest_success", {
           courseId,
           plannerSessionId: session.session_id,
-          turnCount: session.turns.length,
+          turnCount: session.turns?.length ?? 0,
           hasLatestPlan: Boolean(session.latest_plan),
           chapterCount: plannerChapters(session.latest_plan).length,
           status: session.status,
         });
-        const latestPlan = usablePlannerPlan(session.latest_plan);
         setPlannerSessionId(session.session_id);
         setCurrentPlan(latestPlan);
-        setPlannerServerStatus(plannerSessionStatus(session));
-        setMessages(buildPlannerMessagesFromSession(session));
+        setPlannerServerStatus(status);
+        setMessages(appendPlannerTerminalMessageIfNeeded(
+          buildPlannerMessagesFromSession(session),
+          status,
+          latestPlan,
+        ));
         setInputValue(navState?.initialPrompt ?? "");
         setPlannerNeedsRefresh(false);
         setDiagnosisGate(createPlannerDiagnosisGate(session.session_id, latestPlan));
@@ -2359,17 +2394,10 @@ export function BuildPlanPage() {
           setPlannerNeedsRefresh(false);
           setDiagnosisGate(createPlannerDiagnosisGate(session.session_id, latestPlan));
         }
-        if (session.turns?.length) {
+        if (session.turns?.length || isPlannerServerStatusTerminal(status)) {
           setMessages(() => {
             const restoredMessages = buildPlannerMessagesFromSession(session);
-            if (
-              (status === "failed" || status === "cancelled") &&
-              !latestPlan &&
-              !restoredMessages.some((message) => message.role === "system" && message.content === plannerTerminalMessage(status))
-            ) {
-              return [...restoredMessages, createMessage("system", plannerTerminalMessage(status))];
-            }
-            return restoredMessages;
+            return appendPlannerTerminalMessageIfNeeded(restoredMessages, status, latestPlan);
           });
         }
         if (isPlannerServerStatusTerminal(status)) {
@@ -3648,7 +3676,7 @@ export function BuildPlanPage() {
         <div className="relative z-10 flex min-h-0 w-full flex-1 flex-col">
           <CoursePagePillTitle icon={Sparkles} label="方案规划" href={courseId ? buildCoursePath(courseId, "nav") : undefined} />
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-6 md:px-8 md:pt-8 lg:px-16">
+        <div className="course-page-scroll-container min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-[5.5rem] md:px-8 md:pt-24 lg:px-16">
           <div className="mx-auto max-w-3xl space-y-5">
             {shouldShowPlannerEmptyState ? (
               <div className="flex min-h-[calc(100dvh-18rem)] items-center justify-center py-12">

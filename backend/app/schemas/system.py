@@ -66,6 +66,7 @@ class SettingEntry(BaseModel):
     derived: bool = Field(default=False, description="是否为运行时派生值，只读展示。")
     ui_group: str = Field(default="", description="设置页内的展示分组。")
     ui_order: int = Field(default=0, description="设置页内的稳定排序值。")
+    ui_parent_key: str | None = Field(default=None, description="可选的同一行父设置键。")
     description: str = Field(default="", description="说明。")
     options: list[SettingOption] = Field(default_factory=list, description="Selectable values.")
 
@@ -86,6 +87,15 @@ class SettingsOverviewData(BaseModel):
     mode: str = Field(description="运行模式。")
     sections: list[SettingSection] = Field(default_factory=list, description="设置分组。")
     notes: list[str] = Field(default_factory=list, description="设置说明。")
+
+
+class ModelReasoningCapabilitiesResult(BaseModel):
+    """已知模型的 reasoning effort 能力。"""
+
+    model: str = Field(description="完成首尾空白清理后的模型名。")
+    reasoning_efforts: list[str] | None = Field(
+        description="支持的 reasoning effort；空列表表示已知不支持，null 表示模型能力未知。",
+    )
 
 
 class UpdateUserSettingsRequest(BaseModel):

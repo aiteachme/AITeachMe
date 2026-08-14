@@ -115,6 +115,9 @@ load_context
   -> sync_knowledge_graph
 ```
 
+`generate_cover` 写入 `assets/docgen/cover.<build-fingerprint>.<ext>` 构建隔离不可变资产；
+只有数据库当前发布记录所指向的 versioned manifest 中的 `cover_artifact` 才决定当前封面。
+
 KG 候选不是等 `publish_document` 之后才开始生成。`build_document_backbone`
 会先基于章节 seed、资料分配和 guideline 产出第一版规则型 `preliminary_kg`，
 `build_chapter_execution_briefs` fan-in 后会把 brief、证据和分配表压成紧凑 Markdown，
@@ -127,12 +130,11 @@ KG 候选不是等 `publish_document` 之后才开始生成。`build_document_ba
 会在整本合并和锁定标题同步后、`publish_document` 前等待候选尽量完成，如果缓存缺失或最终标题改变导致章节 hash 变化，则用最终章节兜底启动或刷新一次；
 并产出带 `quality_audit`、`quality_status`、`chapter_coverage_ratio` 和
 `fast_visible_ready` 的 `docgen_kg_draft`。质量门会检查章节覆盖、边端点唯一性、关系方向、可考核/画像节点、
-诊断型节点和结构关系；当质量门通过时，DocGen 会在
-`publish_document` 前先写入可查询的 KnowledgeUnit 和端点唯一、方向合法的候选边；
-source_ref、补抽和废弃收口仍由后续 `kg_doc_sync` 固化；如果发布前失败，则回滚本轮早写候选。
+诊断型节点和结构关系；它只决定草稿能否供发布后的 fast-finalize 复用。
+发布前不会写入可查询的 KnowledgeUnit、KnowledgeEdge 或 source_ref；
 `sync_knowledge_graph` 位于发布之后，
 负责在同一条 DocGen trace 下运行 `kg_doc_sync`，校验最终文档 hash、复用命中的预抽取结果、
-补抽缺失或变更 section，并把结果固化到正式图谱表。关闭
+补抽缺失或变更 section，并统一把节点、边和 source_ref 固化到正式图谱表。关闭
 `knowledge_graph.sync_after_docgen` 时只记录跳过状态，仍可在知识图谱面板手动重建。
 
 权威文档：`backend/app/workflows/digest/docgen/README.md`
@@ -150,7 +152,7 @@ DocGen 会写：
 ```text
 knowledge_markdowns/_build/
 knowledge_markdowns/
-knowledge_markdowns/versions/vXXXX/
+knowledge_markdowns/versions/vXXXX/<publish-token-hash>/
 ```
 
 同时写：
@@ -159,6 +161,13 @@ knowledge_markdowns/versions/vXXXX/
 - `docgen_manifest.json`
 - chapter metadata
 - evidence / claim / review / asset / practice 等结构化字段
+
+发布时，当前 `KnowledgeDoc` 数据库行是权威发布指针；同一版本的不可变
+Markdown 与 DocGen artifact 按 publish token 隔离归档，根目录下的当前
+别名和 manifest 是提交后的派生投影。读取端会在投影缺失或版本落后时从
+当前数据库行恢复版本、来源与归档 manifest，避免数据库已发布但页面或
+图谱仍误判为未就绪。发布事务、发布后投影以及发布后的 KG 固化都受
+build owner fence 约束。
 
 ## 6. Search 与资料读取
 
@@ -185,7 +194,7 @@ Search 层只负责找来源和读来源，不直接生成最终答案。
 API-facing 的图谱查询、总览、来源解释和手动重建入口都通过
 `app.workflows.digest.kg_doc_sync` 暴露稳定用例，不再另建 support 影子模块。
 
-自动同步支持 DocGen sidecar 预抽取：章节 brief fan-in 后先生成早期 section 级候选缓存，章节增强完成后用完整正文刷新，review fan-in 后用 reviewed 正文刷新，repair 后用最新 review/repair 上下文再次刷新，review/repair 同步写出 `kg_refinement_items`；`prepare_knowledge_graph` 会在 merge/title 后、publish 前显式等待缓存尽量就绪并写出带覆盖率和质量审计指标的 `docgen_kg_draft`。如果最终标题改变导致章节 hash 变化，会用最终章节 metadata 刷新一次预抽取。如果质量门通过，会在发布前早写 KnowledgeUnit 和候选 KnowledgeEdge，让图谱骨架先可见；如果 KnowledgeDoc 发布前失败，会回滚本轮早写的新建候选并恢复本轮更新过的旧实体；发布成功后 `kg_doc_sync` 优先用 quality-ready 且覆盖最终章节的 `docgen_kg_draft` 直接构造最终 payload，只补上已发布章节来源、正式 source_ref 和废弃收口；不满足质量/覆盖条件时再用最终 Markdown 的 hash 复用命中的缓存，对变更章节补抽。手动图谱重建仍只读取已发布 KnowledgeDoc，不依赖预抽取缓存。
+自动同步支持 DocGen sidecar 预抽取：章节 brief fan-in 后先生成早期 section 级候选缓存，章节增强完成后用完整正文刷新，review fan-in 后用 reviewed 正文刷新，repair 后用最新 review/repair 上下文再次刷新，review/repair 同步写出 `kg_refinement_items`；`prepare_knowledge_graph` 会在 merge/title 后、publish 前显式等待缓存尽量就绪并写出带覆盖率和质量审计指标的 `docgen_kg_draft`。如果最终标题改变导致章节 hash 变化，会用最终章节 metadata 刷新一次预抽取。该阶段无论质量门结果如何都不写 query-visible 图谱实体；发布成功后 `kg_doc_sync` 优先用 quality-ready 且覆盖最终章节的 `docgen_kg_draft` 直接构造最终 payload，再补上已发布章节来源、正式 source_ref 和废弃收口并一次性固化；不满足质量/覆盖条件时再用最终 Markdown 的 hash 复用命中的缓存，对变更章节补抽。手动图谱重建仍只读取已发布 KnowledgeDoc，不依赖预抽取缓存。
 
 `kg_doc_sync` 在抽取和写库之间会执行低成本关系缝合：不额外调用 LLM，只基于同小节节点和正文显式引用补少量保守边，并输出孤立率、连通分量和平均度等健康指标。
 

@@ -207,6 +207,7 @@ def build_review_chapter_node(*, context: WorkflowContext):
         update_knowledge_build_status(
             state["course_id"],
             requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
             status="running",
             stage="reviewing_content",
             digest_mode=state.get("digest_mode") or None,
@@ -215,11 +216,13 @@ def build_review_chapter_node(*, context: WorkflowContext):
         upsert_knowledge_build_chapter_progress(
             state["course_id"],
             requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
             chapter_progress={"chapter_index": draft.chapter_index, "title": draft.title, "status": "reviewing"},
         )
         upsert_knowledge_build_chapter_preview(
             state["course_id"],
             requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
             chapter_preview={
                 "chapter_index": draft.chapter_index,
                 "title": draft.title,
@@ -243,11 +246,13 @@ def build_review_chapter_node(*, context: WorkflowContext):
         upsert_knowledge_build_chapter_progress(
             state["course_id"],
             requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
             chapter_progress={"chapter_index": draft.chapter_index, "title": draft.title, "status": "reviewed"},
         )
         upsert_knowledge_build_chapter_preview(
             state["course_id"],
             requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
             chapter_preview={
                 "chapter_index": draft.chapter_index,
                 "title": reviewed.title,
@@ -261,6 +266,7 @@ def build_review_chapter_node(*, context: WorkflowContext):
         append_knowledge_build_recent_event(
             state["course_id"],
             requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
             event={
                 "stage": "chapter_reviewed",
                 "chapter_index": draft.chapter_index,
@@ -389,6 +395,7 @@ def build_document_consistency_review_node(*, context: WorkflowContext):
         update_knowledge_build_status(
             state["course_id"],
             requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
             status="running",
             stage="content_reviewed",
             digest_mode=state.get("digest_mode") or None,
@@ -397,6 +404,7 @@ def build_document_consistency_review_node(*, context: WorkflowContext):
         append_knowledge_build_recent_event(
             state["course_id"],
             requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
             event={
                 "stage": "content_reviewed",
                 "summary": f"章节复核和整本一致性检查完成，决策 {review_decision}，回流建议 {len(actions)} 条。",

@@ -48,6 +48,7 @@ def build_lock_titles_for_chapters_node(*, context: WorkflowContext):
             append_knowledge_build_recent_event(
                 state["course_id"],
                 requested_at=state["requested_at"],
+                build_group_id=state.get("build_group_id") or None,
                 event={
                     "stage": "chapter_title_locked",
                     "chapter_index": locked.chapter_index,
@@ -58,6 +59,7 @@ def build_lock_titles_for_chapters_node(*, context: WorkflowContext):
             upsert_knowledge_build_chapter_progress(
                 state["course_id"],
                 requested_at=state["requested_at"],
+                build_group_id=state.get("build_group_id") or None,
                 chapter_progress={
                     "chapter_index": locked.chapter_index,
                     "title": locked.enhanced_title,

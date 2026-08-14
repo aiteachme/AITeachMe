@@ -1,4 +1,5 @@
 import { useEffect, useId, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { X, type LucideIcon } from "lucide-react";
 
 import { cn } from "../../lib/utils";
@@ -44,8 +45,8 @@ export function CourseOperationModal({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
 
-  return (
-    <div className="fixed inset-0 z-[120]">
+  const content = (
+    <div className="fixed inset-0 z-[10000]">
       <div className="absolute inset-0 modal-backdrop" onClick={onClose} />
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-3 sm:p-6">
         <section
@@ -92,4 +93,6 @@ export function CourseOperationModal({
       </div>
     </div>
   );
+
+  return typeof document === "undefined" ? content : createPortal(content, document.body);
 }

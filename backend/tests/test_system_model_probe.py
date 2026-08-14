@@ -22,7 +22,7 @@ def reset_settings_after_test():
 
 
 @pytest.mark.anyio
-async def test_settings_model_probe_tests_primary_reason_slot_with_responses_api_mode(monkeypatch) -> None:
+async def test_settings_model_probe_tests_primary_reason_slot_with_runtime_api_routing(monkeypatch) -> None:
     captured: dict[str, object] = {}
     monkeypatch.setenv("LLM_API_KEY", "primary-key")
     monkeypatch.setenv("LLM_BASE_URL", "https://primary-gateway.example.com")
@@ -32,7 +32,7 @@ async def test_settings_model_probe_tests_primary_reason_slot_with_responses_api
             "primary": "gpt-5.4-mini",
             "light": "gpt-5.4-mini",
         },
-        "llm": {"primary_model_allowlist": ["gpt-5.4-mini"]},
+        "llm": {"api_mode": "responses"},
     })
 
     async def fake_completion(*_args, **kwargs):
@@ -52,7 +52,7 @@ async def test_settings_model_probe_tests_primary_reason_slot_with_responses_api
     assert result.provider == "openai_compatible"
     assert result.api_mode == "responses"
     assert captured["model"] == "reason"
-    assert captured["api_mode"] == "responses"
+    assert "api_mode" not in captured
     assert captured["max_tokens"] == 16
     assert captured["timeout"] == 20
     assert captured["overall_timeout_s"] == 25
@@ -60,7 +60,7 @@ async def test_settings_model_probe_tests_primary_reason_slot_with_responses_api
 
 
 @pytest.mark.anyio
-async def test_settings_model_probe_tests_fallback_light_slot_with_chat_completions(monkeypatch) -> None:
+async def test_settings_model_probe_tests_fallback_light_slot_with_runtime_api_routing(monkeypatch) -> None:
     captured: dict[str, object] = {}
     monkeypatch.setenv("LLM_API_KEY", "primary-key")
     monkeypatch.setenv("LLM_BASE_URL", "https://primary-gateway.example.com")
@@ -72,7 +72,6 @@ async def test_settings_model_probe_tests_fallback_light_slot_with_chat_completi
             "primary": "gpt-5.4-mini",
             "light": "gpt-5.4-mini",
         },
-        "llm": {"primary_model_allowlist": ["gpt-5.4-mini"]},
     })
 
     async def fake_completion(*_args, **kwargs):
@@ -90,9 +89,9 @@ async def test_settings_model_probe_tests_fallback_light_slot_with_chat_completi
     assert result.endpoint_role == "fallback"
     assert result.model == "gpt-5.4-mini"
     assert result.provider == "openai_compatible"
-    assert result.api_mode == "chat_completions"
+    assert result.api_mode == "auto"
     assert captured["model"] == "light"
-    assert captured["api_mode"] == "chat_completions"
+    assert "api_mode" not in captured
     assert captured["max_tokens"] == 16
     assert captured["timeout"] == 20
     assert captured["overall_timeout_s"] == 25
@@ -100,7 +99,7 @@ async def test_settings_model_probe_tests_fallback_light_slot_with_chat_completi
 
 
 @pytest.mark.anyio
-async def test_settings_model_probe_keeps_configured_fallback_model(monkeypatch) -> None:
+async def test_settings_model_probe_uses_explicit_fallback_model(monkeypatch) -> None:
     captured: dict[str, object] = {}
     monkeypatch.setenv("LLM_API_KEY", "primary-key")
     monkeypatch.setenv("LLM_BASE_URL", "https://primary-gateway.example.com")
@@ -110,9 +109,9 @@ async def test_settings_model_probe_keeps_configured_fallback_model(monkeypatch)
         "models": {
             "reason": "gpt-5.4-mini",
             "primary": "gpt-5.4-mini",
-            "light": "gemini-3.1-flash-lite",
+            "light": "gpt-5.4-mini",
         },
-        "llm": {"primary_model_allowlist": ["gpt-5.4-mini"]},
+        "fallback_models": {"light": "gemini-3.1-flash-lite"},
     })
 
     async def fake_completion(*_args, **kwargs):
@@ -128,9 +127,9 @@ async def test_settings_model_probe_keeps_configured_fallback_model(monkeypatch)
     assert result.ok is True
     assert result.model == "gemini-3.1-flash-lite"
     assert result.provider == "gemini"
-    assert result.api_mode == "chat_completions"
+    assert result.api_mode == "auto"
     assert captured["model"] == "light"
-    assert captured["api_mode"] == "chat_completions"
+    assert "api_mode" not in captured
 
 
 @pytest.mark.anyio
@@ -147,5 +146,20 @@ async def test_settings_model_probe_reports_missing_fallback_endpoint(monkeypatc
     assert result.ok is False
     assert result.model_slot == "primary"
     assert result.endpoint_role == "fallback"
-    assert result.api_mode == "chat_completions"
+    assert result.api_mode == "auto"
     assert "备用模型网关未配置" in result.message
+
+
+def test_settings_model_probe_failure_message_does_not_expose_upstream_details() -> None:
+    message = system_settings._model_probe_failure_message(
+        label="推理模型",
+        payload=ModelProbeRequest(model_slot="reason", endpoint_role="primary"),
+        error=RuntimeError(
+            "401 from https://gateway.example.com/v1: invalid api key sk-secret-value"
+        ),
+    )
+
+    assert "测试失败" in message
+    assert "后端日志已记录错误类型" in message
+    assert "gateway.example.com" not in message
+    assert "sk-secret-value" not in message

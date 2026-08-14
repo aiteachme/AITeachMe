@@ -7,8 +7,9 @@ import uuid
 from datetime import datetime, timezone
 
 import structlog
-from fastapi import APIRouter, Body, Depends, HTTPException, Path, Request, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request, Response
 from fastapi.responses import StreamingResponse
+from starlette.concurrency import run_in_threadpool
 from sqlmodel import Session
 
 from app.api.deps import (
@@ -35,8 +36,10 @@ from app.schemas.knowledge import (
     DocGenBuildRequest,
     DocGenGetResponse,
     KnowledgeBuildRuntimeResponse,
+    KnowledgeDocPublishedChunkResponse,
     KnowledgeDocInteractiveSelectionRequest,
     KnowledgeDocInteractiveSelectionResponse,
+    KnowledgeDocsPublishedManifestResponse,
     KnowledgeGraphBuildData,
     KnowledgeOverviewRequest,
     KnowledgeOverviewResponse,
@@ -52,9 +55,15 @@ from app.workflows.digest.planner.lib.store import mark_planner_session_cancelle
 from app.workflows.support.auth import set_guest_cookie_for_user
 from app.workflows.digest.common.build_lifecycle import cancel_knowledge_build
 from app.workflows.digest.docgen import (
+    PublishedDocumentBoundaryError,
+    PublishedDocumentChunkNotFoundError,
+    PublishedDocumentStaleError,
+    PublishedDocumentUnavailableError,
     clear_course_knowledge,
     get_docgen_result,
     get_knowledge_build_runtime_result,
+    get_published_doc_chunk,
+    get_published_doc_manifest,
     run_docgen_background,
     trigger_docgen_build,
 )
@@ -67,7 +76,11 @@ from app.workflows.interact.chat.lib.streaming import SSEEventEmitter
 from app.shared.infra.database import managed_session
 from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.analytics.posthog import capture_course_build_event_later
-from app.shared.infra.knowledge.build_store import read_knowledge_build_runtime
+from app.shared.infra.knowledge.build_store import (
+    read_knowledge_build_runtime,
+    sanitize_knowledge_build_error_message,
+    release_knowledge_build_lock,
+)
 from app.shared.infra.llm_support import run_llm_tasks
 from app.shared.infra.llm_support.model_choices import normalize_runtime_model_override, use_runtime_model_override
 from app.shared.infra.observability.trace import (
@@ -95,6 +108,29 @@ from app.workflows.digest.docgen.lib.published_manifest import ensure_published_
 
 router = APIRouter(tags=["knowledge"])
 logger = structlog.get_logger(__name__)
+
+
+def _release_docgen_build_lock_safely(
+    *,
+    course_id: str,
+    user_id: str,
+    build_group_id: str,
+) -> None:
+    try:
+        release_knowledge_build_lock(
+            course_id,
+            build_group_id=build_group_id,
+            course_scope=build_course_storage_scope(
+                user_id=user_id,
+                course_id=course_id,
+            ),
+        )
+    except Exception:
+        logger.exception(
+            "knowledge_build_lock_release_after_handoff_failure_failed",
+            course_id=course_id,
+            build_group_id=build_group_id,
+        )
 
 
 def _interactive_generation_origin(client_reference_id: str | None) -> str:
@@ -275,6 +311,21 @@ def _capture_home_course_build_requested(
     )
 
 
+_PLANNER_STREAM_ERROR_FALLBACK = "构建方案生成失败，请稍后重试。"
+
+
+def _sanitize_planner_stream_error_detail(error: object) -> str:
+    raw = str(error or "").strip()
+    if not raw:
+        return _PLANNER_STREAM_ERROR_FALLBACK
+    sanitized = sanitize_knowledge_build_error_message(raw, build_kind="docgen")
+    if sanitized and sanitized != raw:
+        if sanitized.startswith("知识文档构建"):
+            return _PLANNER_STREAM_ERROR_FALLBACK
+        return sanitized
+    return _PLANNER_STREAM_ERROR_FALLBACK
+
+
 def _planner_stream_response(
     *,
     request: Request,
@@ -328,7 +379,10 @@ def _planner_stream_response(
             pass
         except Exception as exc:
             logger.exception("planner_stream_task_failed", user_id=user_id, error=str(exc))
-            await emitter.emit_error(detail=str(exc), error_code="planner_stream_failed")
+            await emitter.emit_error(
+                detail=_sanitize_planner_stream_error_detail(exc),
+                error_code="planner_stream_failed",
+            )
         finally:
             logger.info("planner_stream_task_closed", user_id=user_id)
             await emitter.close()
@@ -781,36 +835,37 @@ async def knowledge_build(
         embedding_resolution=body.embedding_resolution,
         confirmed_plan_id=body.confirmed_plan_id,
     )
-    _capture_course_build_event(
-        "knowledge_build_submitted",
-        course_id=normalized,
-        user_id=user.user_id,
-        insert_id_parts=[
-            _request_id(request),
-            data.confirmed_plan_id or "",
-            data.requested_at.isoformat(),
-            "submitted",
-        ],
-        properties={
-            "build_type": body.build_type,
-            "confirmed_plan_id_suffix": _suffix(data.confirmed_plan_id),
-            "file_count": len(body.file_ids or []),
-            "has_confirmed_plan": bool(data.confirmed_plan_id),
-            "has_prompt": bool((body.prompt or "").strip()),
-            "embedding_resolution": body.embedding_resolution,
-        },
-    )
+    background_task = None
+    try:
+        _capture_course_build_event(
+            "knowledge_build_submitted",
+            course_id=normalized,
+            user_id=user.user_id,
+            insert_id_parts=[
+                _request_id(request),
+                data.confirmed_plan_id or "",
+                data.requested_at.isoformat(),
+                "submitted",
+            ],
+            properties={
+                "build_type": body.build_type,
+                "confirmed_plan_id_suffix": _suffix(data.confirmed_plan_id),
+                "file_count": len(body.file_ids or []),
+                "has_confirmed_plan": bool(data.confirmed_plan_id),
+                "has_prompt": bool((body.prompt or "").strip()),
+                "embedding_resolution": body.embedding_resolution,
+            },
+        )
 
-    logger.info(
-        "knowledge_build_docs_background_spawning",
-        course_id=normalized,
-        user_id=user.user_id,
-        confirmed_plan_id=data.confirmed_plan_id,
-        accepted_file_count=len(accepted_file_ids),
-        requested_at=data.requested_at.isoformat(),
-    )
-    request.app.state.background_task_registry.spawn(
-        run_docgen_background(
+        logger.info(
+            "knowledge_build_docs_background_spawning",
+            course_id=normalized,
+            user_id=user.user_id,
+            confirmed_plan_id=data.confirmed_plan_id,
+            accepted_file_count=len(accepted_file_ids),
+            requested_at=data.requested_at.isoformat(),
+        )
+        background_task = run_docgen_background(
             course_id=normalized,
             course_name=course_record.name,
             file_ids=accepted_file_ids,
@@ -822,11 +877,36 @@ async def knowledge_build(
             model_override=data.model_override,
             user_id=user.user_id,
             background_task_registry=getattr(request.app.state, "background_task_registry", None),
-        ),
-        kind="knowledge.build.docs",
-        course_id=normalized,
-        name=f"knowledge.build.docs:{normalized}",
-    )
+        )
+        spawned_task = request.app.state.background_task_registry.spawn(
+            background_task,
+            kind="knowledge.build.docs",
+            course_id=normalized,
+            name=f"knowledge.build.docs:{normalized}:{build_group_id}",
+        )
+    except BaseException:
+        close = getattr(background_task, "close", None)
+        if callable(close):
+            close()
+        _release_docgen_build_lock_safely(
+            course_id=normalized,
+            user_id=user.user_id,
+            build_group_id=build_group_id,
+        )
+        raise
+
+    add_done_callback = getattr(spawned_task, "add_done_callback", None)
+    if callable(add_done_callback):
+        def _release_if_cancelled_before_cleanup(finished_task) -> None:
+            if not finished_task.cancelled():
+                return
+            _release_docgen_build_lock_safely(
+                course_id=normalized,
+                user_id=user.user_id,
+                build_group_id=build_group_id,
+            )
+
+        add_done_callback(_release_if_cancelled_before_cleanup)
     _capture_course_build_event(
         "knowledge_build_started",
         course_id=normalized,
@@ -1104,13 +1184,101 @@ async def knowledge_docs(
     request: Request,
     response: Response,
     course_id: str = Path(...),
+    include_markdown: bool = Query(
+        default=True,
+        description="Include the full published Markdown in the response.",
+    ),
+    include_draft: bool = Query(
+        default=True,
+        description="Include the current staging draft Markdown in the response.",
+    ),
 ) -> ApiResponse[DocGenGetResponse]:
     normalized = normalize_course_id(course_id)
     with managed_session() as session:
         user = get_current_user_context(request, response, session)
         course_record = get_course_record(session, normalized, owner_user_id=user.user_id)
         course_scope = _storage_scope_for_course_record(course_record)
-    return ok_response(get_docgen_result(course_id=normalized, course_scope=course_scope))
+    result = await run_in_threadpool(
+        get_docgen_result,
+        course_id=normalized,
+        course_scope=course_scope,
+        include_markdown=include_markdown,
+        include_draft=include_draft,
+    )
+    return ok_response(result)
+
+
+@router.get(
+    "/docs/manifest",
+    response_model=ApiResponse[KnowledgeDocsPublishedManifestResponse],
+    summary="Fetch the current published knowledge-doc manifest",
+    responses=build_error_responses([400, 404, 409, 500, 503]),
+)
+async def knowledge_docs_manifest(
+    request: Request,
+    response: Response,
+    course_id: str = Path(...),
+) -> ApiResponse[KnowledgeDocsPublishedManifestResponse]:
+    normalized = normalize_course_id(course_id)
+    with managed_session() as session:
+        user = get_current_user_context(request, response, session)
+        course_record = get_course_record(session, normalized, owner_user_id=user.user_id)
+        course_scope = _storage_scope_for_course_record(course_record)
+    try:
+        return ok_response(
+            get_published_doc_manifest(course_id=normalized, course_scope=course_scope)
+        )
+    except PublishedDocumentStaleError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="知识文档发布版本刚刚发生变化，请刷新后重试。",
+        ) from exc
+    except (PublishedDocumentBoundaryError, PublishedDocumentUnavailableError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="当前知识文档无法安全分块，请稍后重试或重新构建。",
+        ) from exc
+
+
+@router.get(
+    "/docs/publications/{publication_id}/chunks/{chunk_index}",
+    response_model=ApiResponse[KnowledgeDocPublishedChunkResponse],
+    summary="Fetch one chunk from an exact current knowledge-doc publication",
+    responses=build_error_responses([400, 404, 409, 422, 500, 503]),
+)
+async def knowledge_docs_publication_chunk(
+    request: Request,
+    response: Response,
+    course_id: str = Path(...),
+    publication_id: str = Path(..., min_length=1, max_length=96),
+    chunk_index: int = Path(..., ge=0),
+) -> ApiResponse[KnowledgeDocPublishedChunkResponse]:
+    normalized = normalize_course_id(course_id)
+    with managed_session() as session:
+        user = get_current_user_context(request, response, session)
+        course_record = get_course_record(session, normalized, owner_user_id=user.user_id)
+        course_scope = _storage_scope_for_course_record(course_record)
+    try:
+        return ok_response(
+            get_published_doc_chunk(
+                course_id=normalized,
+                course_scope=course_scope,
+                publication_id=publication_id,
+                chunk_index=chunk_index,
+            )
+        )
+    except PublishedDocumentStaleError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="请求的知识文档发布版本已过期，请刷新后重试。",
+        ) from exc
+    except PublishedDocumentChunkNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="知识文档分块不存在。") from exc
+    except (PublishedDocumentBoundaryError, PublishedDocumentUnavailableError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="当前知识文档无法安全分块，请稍后重试或重新构建。",
+        ) from exc
 
 
 @router.post(

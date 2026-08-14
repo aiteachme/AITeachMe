@@ -5,6 +5,7 @@ param(
     [switch]$SkipInstall,
     [string]$BackendPort = "",
     [string]$ApiUrl = $env:AITEACHME_REMOTE_API_URL,
+    [string]$PublicAppUrl = $env:AITEACHME_REMOTE_FRONTEND_URL,
     [switch]$ImportBundledEnv,
     [string]$BundledEnvConfigPath = "packaging\desktop\private\bundled-env.json",
     [string]$BundledEnvArtifactSuffix = "bundled",
@@ -300,6 +301,9 @@ if ($Flavor -eq "remote") {
     if ($ApiUrl -notmatch "^https?://") {
         throw "Remote API URL must start with http:// or https://: $ApiUrl"
     }
+    if (-not [string]::IsNullOrWhiteSpace($PublicAppUrl) -and $PublicAppUrl -notmatch "^https?://") {
+        throw "Remote public frontend URL must start with http:// or https://: $PublicAppUrl"
+    }
 }
 
 $normalizedBackendPort = if ($null -eq $BackendPort) { "" } else { $BackendPort.Trim() }
@@ -307,6 +311,11 @@ $apiBaseUrl = if ($Flavor -eq "local") {
     if ([string]::IsNullOrWhiteSpace($normalizedBackendPort)) { "" } else { "http://127.0.0.1:$normalizedBackendPort" }
 } else {
     $ApiUrl.TrimEnd("/")
+}
+$publicAppBaseUrl = if ($Flavor -eq "remote" -and -not [string]::IsNullOrWhiteSpace($PublicAppUrl)) {
+    $PublicAppUrl.TrimEnd("/")
+} else {
+    ""
 }
 
 $python = Resolve-PythonCommand $repoRoot
@@ -345,6 +354,7 @@ Write-Host "Product: $productName"
 Write-Host "Python: $($python.File) $($python.PrefixArgs -join ' ')"
 Write-Host "npm: $npm"
 Write-Host "API base URL: $apiBaseUrl"
+Write-Host "Public app URL: $publicAppBaseUrl"
 Write-AITeachMeWindowsSigningSummary -Signing $windowsSigning
 if ($Flavor -eq "local") {
     if ([string]::IsNullOrWhiteSpace($normalizedBackendPort)) {
@@ -399,6 +409,7 @@ Write-ElectronBuildConfig `
 
 $envNames = @(
     "VITE_API_URL",
+    "VITE_PUBLIC_APP_URL",
     "AITEACHME_ELECTRON_FLAVOR",
     "AITEACHME_ELECTRON_PRODUCT_NAME",
     "AITEACHME_ELECTRON_APP_ID"
@@ -410,6 +421,7 @@ foreach ($name in $envNames) {
 
 try {
     Set-ProcessEnv -Name "VITE_API_URL" -Value $apiBaseUrl
+    Set-ProcessEnv -Name "VITE_PUBLIC_APP_URL" -Value $publicAppBaseUrl
     Set-ProcessEnv -Name "AITEACHME_ELECTRON_FLAVOR" -Value $Flavor
     Set-ProcessEnv -Name "AITEACHME_ELECTRON_PRODUCT_NAME" -Value $productName
     Set-ProcessEnv -Name "AITEACHME_ELECTRON_APP_ID" -Value $appId

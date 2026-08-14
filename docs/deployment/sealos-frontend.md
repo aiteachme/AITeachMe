@@ -19,7 +19,7 @@ Browser
 - `infra/deployment/nginx/default.conf.template`：容器运行时模板，通过 `AITEACHME_API_UPSTREAM` 指向后端内网服务。
 - `infra/deployment/nginx/default.conf`：本地 Compose 或手动 Nginx 默认配置。
 - `frontend/public/_headers`：Cloudflare Pages 静态资源缓存配置。
-- `.github/workflows/deploy.yml`：保留可选 Cloudflare Pages deploy hook，并部署 Sealos 前端/后端；非敏感部署常量可直接维护在 workflow，真实凭证必须放 GitHub Secrets。
+- `.github/workflows/deploy.yml`：可把已验证 SHA 构建出的前端产物直接上传到 Cloudflare Pages，并部署 Sealos 前端/后端；非敏感部署常量可直接维护在 workflow，真实凭证必须放 GitHub Secrets。
 
 ## Sealos App 配置
 
@@ -43,6 +43,8 @@ Environment:
 前端 App 不要配置 `VITE_API_URL`。Sealos 前端应该走同源 `/api`，再由 Nginx 反代到后端内网服务。
 
 前端 Web 镜像默认使用 `VITE_BASE_PATH=/` 构建静态资源路径，避免深链页面把 JS/CSS 错误解析成相对路径。只有部署到子路径时才需要覆盖这个值。
+
+`FRONTEND_PUBLIC_URL` 会在容器启动时写入前端运行时配置，用于生成课程分享链接；桌面 remote 包使用对应的 `AITEACHME_REMOTE_FRONTEND_URL`。
 
 PostHog 这类浏览器端配置由容器启动脚本写入 `/runtime-config.js`，所以 Sealos 的运行时环境变量会在页面加载时生效；不需要把这些值作为 Docker build args 重新构建镜像。注意优先在前端 App 配置 `VITE_POSTHOG_*` 这组公开浏览器变量。脚本也会兼容读取同一前端容器里的 `POSTHOG_ENABLED`、`POSTHOG_TOKEN`、`POSTHOG_HOST`、`POSTHOG_DEBUG` 作为兜底；后端 App 如需采集服务端事件则仍应单独配置 `POSTHOG_*`。
 

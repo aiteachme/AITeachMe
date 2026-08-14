@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-06-29T03:37:54.750137",
-  "total_commits_analyzed": 2016,
+  "generated_at": "2026-08-10T01:25:39.504655",
+  "total_commits_analyzed": 2075,
   "stats": [
     {
       "date": "2026-03-11",
@@ -16129,6 +16129,478 @@
       "code_lines": 235616,
       "other_lines": 43074,
       "message": "fix: 撤回文档引导动图并精简首页"
+    },
+    {
+      "date": "2026-06-29",
+      "commit": "8d1d95d",
+      "total_lines": 278690,
+      "code_lines": 235616,
+      "other_lines": 43074,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-07-06",
+      "commit": "23436eb",
+      "total_lines": 278690,
+      "code_lines": 235616,
+      "other_lines": 43074,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-07-06",
+      "commit": "87f3c0d",
+      "total_lines": 278690,
+      "code_lines": 235616,
+      "other_lines": 43074,
+      "message": "chore: release v0.1.4"
+    },
+    {
+      "date": "2026-07-06",
+      "commit": "80a1f3c",
+      "total_lines": 278995,
+      "code_lines": 235852,
+      "other_lines": 43143,
+      "message": "feat: 增加飞书交流群与全局反馈入口"
+    },
+    {
+      "date": "2026-07-13",
+      "commit": "2589ab1",
+      "total_lines": 278995,
+      "code_lines": 235852,
+      "other_lines": 43143,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-07-14",
+      "commit": "900f56c",
+      "total_lines": 279594,
+      "code_lines": 236388,
+      "other_lines": 43206,
+      "message": "fix: 加固 Markdown 渲染与认证 SSE"
+    },
+    {
+      "date": "2026-07-14",
+      "commit": "6e00989",
+      "total_lines": 279930,
+      "code_lines": 236666,
+      "other_lines": 43264,
+      "message": "fix: 确保反馈送达并限制接口输入规模"
+    },
+    {
+      "date": "2026-07-14",
+      "commit": "9be6847",
+      "total_lines": 280468,
+      "code_lines": 237097,
+      "other_lines": 43371,
+      "message": "fix: 防止用户画像并发更新覆盖"
+    },
+    {
+      "date": "2026-07-14",
+      "commit": "0e8a443",
+      "total_lines": 282279,
+      "code_lines": 238722,
+      "other_lines": 43557,
+      "message": "fix: 为知识构建增加所有权租约"
+    },
+    {
+      "date": "2026-07-14",
+      "commit": "e57e3b0",
+      "total_lines": 282568,
+      "code_lines": 238956,
+      "other_lines": 43612,
+      "message": "fix: 拒绝非法云端配置并收紧发布门禁"
+    },
+    {
+      "date": "2026-07-14",
+      "commit": "060fef3",
+      "total_lines": 283455,
+      "code_lines": 239748,
+      "other_lines": 43707,
+      "message": "fix: 原子派发并安全恢复摄取任务"
+    },
+    {
+      "date": "2026-07-15",
+      "commit": "213dfd8",
+      "total_lines": 288356,
+      "code_lines": 244098,
+      "other_lines": 44258,
+      "message": "fix: 强化知识文档发布的原子性与并发隔离"
+    },
+    {
+      "date": "2026-07-15",
+      "commit": "20f771d",
+      "total_lines": 290624,
+      "code_lines": 245959,
+      "other_lines": 44665,
+      "message": "feat: 优化知识文档渐进加载与阅读交互"
+    },
+    {
+      "date": "2026-07-15",
+      "commit": "499fefc",
+      "total_lines": 291062,
+      "code_lines": 246364,
+      "other_lines": 44698,
+      "message": "fix: 修复知识文档交互与运行时边界"
+    },
+    {
+      "date": "2026-07-15",
+      "commit": "accc5e1",
+      "total_lines": 291286,
+      "code_lines": 246568,
+      "other_lines": 44718,
+      "message": "fix: 恢复超时的摄取增强排队任务"
+    },
+    {
+      "date": "2026-07-15",
+      "commit": "c9b0468",
+      "total_lines": 291288,
+      "code_lines": 246571,
+      "other_lines": 44717,
+      "message": "fix: 优化课程顶部导航滚动显隐"
+    },
+    {
+      "date": "2026-07-15",
+      "commit": "0b31d86",
+      "total_lines": 291288,
+      "code_lines": 246571,
+      "other_lines": 44717,
+      "message": "Merge remote-tracking branch 'origin/main'"
+    },
+    {
+      "date": "2026-07-16",
+      "commit": "7037cc4",
+      "total_lines": 291288,
+      "code_lines": 246571,
+      "other_lines": 44717,
+      "message": "chore: release v0.1.5"
+    },
+    {
+      "date": "2026-07-20",
+      "commit": "26b6aa2",
+      "total_lines": 291288,
+      "code_lines": 246571,
+      "other_lines": 44717,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-07-27",
+      "commit": "1ddb2f0",
+      "total_lines": 291288,
+      "code_lines": 246571,
+      "other_lines": 44717,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-08-02",
+      "commit": "e2d8c63",
+      "total_lines": 291288,
+      "code_lines": 246571,
+      "other_lines": 44717,
+      "message": "update gitignore"
+    },
+    {
+      "date": "2026-08-02",
+      "commit": "b9b0817",
+      "total_lines": 291288,
+      "code_lines": 246571,
+      "other_lines": 44717,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-06-30",
+      "commit": "c937f81",
+      "total_lines": 278084,
+      "code_lines": 234870,
+      "other_lines": 43214,
+      "message": "feat: 支持课程分享链接与只读工作台"
+    },
+    {
+      "date": "2026-06-30",
+      "commit": "6783ab5",
+      "total_lines": 282493,
+      "code_lines": 238746,
+      "other_lines": 43747,
+      "message": "Merge branch 'main' into dev_ywl_t"
+    },
+    {
+      "date": "2026-06-30",
+      "commit": "ffcc80e",
+      "total_lines": 282493,
+      "code_lines": 238746,
+      "other_lines": 43747,
+      "message": "docs: 清理用户指南末尾空行"
+    },
+    {
+      "date": "2026-07-01",
+      "commit": "c16aeeb",
+      "total_lines": 283634,
+      "code_lines": 239732,
+      "other_lines": 43902,
+      "message": "feat: 加固公开分享与安全边界"
+    },
+    {
+      "date": "2026-07-14",
+      "commit": "988cca0",
+      "total_lines": 286946,
+      "code_lines": 242699,
+      "other_lines": 44247,
+      "message": "feat: 完善课程共享安全与并发一致性"
+    },
+    {
+      "date": "2026-07-14",
+      "commit": "51d1775",
+      "total_lines": 287060,
+      "code_lines": 242795,
+      "other_lines": 44265,
+      "message": "fix: 补全课程共享发布与删课清理边界"
+    },
+    {
+      "date": "2026-07-14",
+      "commit": "a96aa63",
+      "total_lines": 287127,
+      "code_lines": 242852,
+      "other_lines": 44275,
+      "message": "fix: 优化模型探针错误反馈与敏感信息保护"
+    },
+    {
+      "date": "2026-07-14",
+      "commit": "c5120aa",
+      "total_lines": 287155,
+      "code_lines": 242879,
+      "other_lines": 44276,
+      "message": "fix: 修复规划会话终态恢复"
+    },
+    {
+      "date": "2026-07-14",
+      "commit": "2b49465",
+      "total_lines": 287141,
+      "code_lines": 242865,
+      "other_lines": 44276,
+      "message": "fix: 同步 Android 课程命名端点清单"
+    },
+    {
+      "date": "2026-07-14",
+      "commit": "f671d2f",
+      "total_lines": 287289,
+      "code_lines": 242992,
+      "other_lines": 44297,
+      "message": "fix: 修复考试答案与解析一致性校验"
+    },
+    {
+      "date": "2026-07-14",
+      "commit": "acc9998",
+      "total_lines": 287289,
+      "code_lines": 242992,
+      "other_lines": 44297,
+      "message": "chore: 忽略本地 Codex 临时产物"
+    },
+    {
+      "date": "2026-07-14",
+      "commit": "99942bf",
+      "total_lines": 287594,
+      "code_lines": 243228,
+      "other_lines": 44366,
+      "message": "chore: 合并 origin/main 最新改动"
+    },
+    {
+      "date": "2026-07-15",
+      "commit": "4cccc28",
+      "total_lines": 299868,
+      "code_lines": 253930,
+      "other_lines": 45938,
+      "message": "chore: 合并 origin/main 最新改动"
+    },
+    {
+      "date": "2026-07-15",
+      "commit": "014e1f8",
+      "total_lines": 299910,
+      "code_lines": 253965,
+      "other_lines": 45945,
+      "message": "fix: 修复课程分享资产打包与导入恢复"
+    },
+    {
+      "date": "2026-08-03",
+      "commit": "4a818b6",
+      "total_lines": 291288,
+      "code_lines": 246571,
+      "other_lines": 44717,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-08-04",
+      "commit": "bdc3f1f",
+      "total_lines": 290312,
+      "code_lines": 245792,
+      "other_lines": 44520,
+      "message": "test: 精简重复测试并清理无效辅助代码"
+    },
+    {
+      "date": "2026-08-04",
+      "commit": "e6b564f",
+      "total_lines": 290593,
+      "code_lines": 246008,
+      "other_lines": 44585,
+      "message": "feat: 完善分层模型与备用网关路由"
+    },
+    {
+      "date": "2026-08-04",
+      "commit": "8b9cc4b",
+      "total_lines": 290879,
+      "code_lines": 246274,
+      "other_lines": 44605,
+      "message": "feat: 优化模型推理强度设置交互"
+    },
+    {
+      "date": "2026-08-04",
+      "commit": "876574c",
+      "total_lines": 290926,
+      "code_lines": 246319,
+      "other_lines": 44607,
+      "message": "fix: 修复推理强度展示并完善追踪"
+    },
+    {
+      "date": "2026-08-04",
+      "commit": "050550c",
+      "total_lines": 291016,
+      "code_lines": 246392,
+      "other_lines": 44624,
+      "message": "fix: 修复兼容模型推理强度配置"
+    },
+    {
+      "date": "2026-08-04",
+      "commit": "eddaee9",
+      "total_lines": 291032,
+      "code_lines": 246417,
+      "other_lines": 44615,
+      "message": "refactor: 按配置分层驱动模型模式"
+    },
+    {
+      "date": "2026-08-04",
+      "commit": "c9d15f2",
+      "total_lines": 291048,
+      "code_lines": 246428,
+      "other_lines": 44620,
+      "message": "fix: 修复流式调用并发槽泄漏"
+    },
+    {
+      "date": "2026-08-04",
+      "commit": "86dc023",
+      "total_lines": 291144,
+      "code_lines": 246510,
+      "other_lines": 44634,
+      "message": "fix: 提前识别云端配置版本不兼容"
+    },
+    {
+      "date": "2026-08-04",
+      "commit": "720ab7c",
+      "total_lines": 299411,
+      "code_lines": 253776,
+      "other_lines": 45635,
+      "message": "feat: 完善课程测验与闯关训练闭环"
+    },
+    {
+      "date": "2026-08-04",
+      "commit": "9fd7aac",
+      "total_lines": 291328,
+      "code_lines": 246661,
+      "other_lines": 44667,
+      "message": "fix: 修复 LLM 并发租约与兼容网关流式输出"
+    },
+    {
+      "date": "2026-08-04",
+      "commit": "91116e7",
+      "total_lines": 299595,
+      "code_lines": 253927,
+      "other_lines": 45668,
+      "message": "Merge remote-tracking branch 'origin/dev_mzp'"
+    },
+    {
+      "date": "2026-08-05",
+      "commit": "8ff41b9",
+      "total_lines": 299897,
+      "code_lines": 254217,
+      "other_lines": 45680,
+      "message": "fix: 完善首次诊断考卷与闯关历史流程"
+    },
+    {
+      "date": "2026-08-05",
+      "commit": "32593a6",
+      "total_lines": 299958,
+      "code_lines": 254276,
+      "other_lines": 45682,
+      "message": "fix: 修复闯关完成状态与失败重试"
+    },
+    {
+      "date": "2026-08-05",
+      "commit": "018da2f",
+      "total_lines": 299968,
+      "code_lines": 254285,
+      "other_lines": 45683,
+      "message": "fix: 修复闯关完成结果保存重试"
+    },
+    {
+      "date": "2026-08-05",
+      "commit": "a620166",
+      "total_lines": 299986,
+      "code_lines": 254302,
+      "other_lines": 45684,
+      "message": "fix: 修复闯关完成请求生命周期竞态"
+    },
+    {
+      "date": "2026-08-07",
+      "commit": "d68fbbc",
+      "total_lines": 308548,
+      "code_lines": 261651,
+      "other_lines": 46897,
+      "message": "chore: 合并 origin/main 并统一迁移分支"
+    },
+    {
+      "date": "2026-08-07",
+      "commit": "87decc4",
+      "total_lines": 308759,
+      "code_lines": 261852,
+      "other_lines": 46907,
+      "message": "fix: 修复课程分享入口与公网链接安全问题"
+    },
+    {
+      "date": "2026-08-07",
+      "commit": "f4c4fe8",
+      "total_lines": 308776,
+      "code_lines": 261867,
+      "other_lines": 46909,
+      "message": "fix: 严格校验多选题解析答案一致性"
+    },
+    {
+      "date": "2026-08-08",
+      "commit": "7fd1b3b",
+      "total_lines": 309079,
+      "code_lines": 262135,
+      "other_lines": 46944,
+      "message": "fix: 修复知识文档目录跟随与题目渲染"
+    },
+    {
+      "date": "2026-08-08",
+      "commit": "4afe9e3",
+      "total_lines": 309110,
+      "code_lines": 262162,
+      "other_lines": 46948,
+      "message": "fix: 修复否定答案表述的校验误判"
+    },
+    {
+      "date": "2026-08-08",
+      "commit": "83583b3",
+      "total_lines": 309154,
+      "code_lines": 262188,
+      "other_lines": 46966,
+      "message": "fix: 修复云端后端启动与就绪判定"
+    },
+    {
+      "date": "2026-08-08",
+      "commit": "1c1b187",
+      "total_lines": 309299,
+      "code_lines": 262306,
+      "other_lines": 46993,
+      "message": "fix: 修复 LLM 排队误触整体超时"
     }
   ]
 }

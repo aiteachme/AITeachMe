@@ -51,6 +51,69 @@ from .responses_adapter import (
 )
 
 
+def _ensure_native_responses_streaming(litellm: Any, provider_call: ProviderCall) -> bool:
+    """Prevent LiteLLM from faking streams for compatible Responses gateways."""
+
+    if provider_call.api_mode != "responses" or provider_call.kwargs.get("stream") is not True:
+        return False
+
+    api_base = str(provider_call.kwargs.get("api_base") or "").strip().lower()
+    if not api_base or "api.openai.com" in api_base:
+        return False
+
+    model = str(provider_call.kwargs.get("model") or "").strip()
+    provider = str(provider_call.kwargs.get("custom_llm_provider") or "openai").strip()
+    supports_native_streaming = getattr(
+        getattr(litellm, "utils", None),
+        "supports_native_streaming",
+        None,
+    )
+    register_model = getattr(litellm, "register_model", None)
+    if not model or not callable(supports_native_streaming) or not callable(register_model):
+        return False
+
+    try:
+        if hasattr(litellm, "suppress_debug_info"):
+            litellm.suppress_debug_info = True
+        if supports_native_streaming(
+            model=model,
+            custom_llm_provider=provider,
+        ) is False:
+            registry_key = (
+                model
+                if model.lower().startswith(f"{provider.lower()}/")
+                else f"{provider}/{model}"
+            )
+            existing_info: dict[str, Any] = {}
+            model_cost = getattr(litellm, "model_cost", None)
+            if isinstance(model_cost, Mapping):
+                current_info = model_cost.get(registry_key) or model_cost.get(model)
+                if isinstance(current_info, Mapping):
+                    existing_info.update(current_info)
+            register_model({
+                registry_key: {
+                    **existing_info,
+                    "litellm_provider": provider,
+                    "mode": "responses",
+                    "supports_native_streaming": True,
+                }
+            })
+            logger.info(
+                "llm_responses_native_streaming_registered",
+                model=model,
+                api_base=api_base,
+            )
+        return True
+    except Exception as exc:
+        logger.warning(
+            "llm_responses_native_streaming_registration_failed",
+            model=model,
+            api_base=api_base,
+            error=str(exc),
+        )
+        return False
+
+
 def _is_stream_usage_calculation_error(exc: Exception) -> bool:
     """Return whether LiteLLM failed only while calculating final stream usage."""
 
@@ -219,7 +282,7 @@ async def _acompletion_stream_impl(
     last_error: Exception | None = None
 
     attempt_number = 0
-    async with get_llm_concurrency_limiter():
+    async with get_llm_concurrency_limiter().slot() as lease:
         for group_index, context_group in enumerate(completion_context_groups(contexts)):
             if (
                 group_index > 0
@@ -260,16 +323,23 @@ async def _acompletion_stream_impl(
                         initial_api_mode = provider_call.api_mode
                         route_reason = provider_call.route_reason
                         auto_responses_chat_fallback = False
+                        native_responses_streaming = _ensure_native_responses_streaming(
+                            litellm,
+                            provider_call,
+                        )
                         trace_metadata = {
                             **dict(extra_metadata or {}),
                             **provider_call_metadata(provider_call),
                         }
+                        if native_responses_streaming:
+                            trace_metadata["llm_native_responses_streaming"] = True
                         streamed_chunks: list[str] = []
                         provider_tool_events: list[dict[str, str]] = []
                         usage = (0, 0, 0)
                         with langsmith_trace(
                             name="LLM：流式生成",
                             run_type="llm",
+                            expected_exceptions=(GeneratorExit,),
                             **_langsmith_trace_kwargs(
                                 task_type=context.task_type,
                                 call_model=prepared.call_model,
@@ -467,7 +537,7 @@ async def _acompletion_stream_impl(
                             raise LLMCallError(reason=str(exc)) from exc
 
                 if retry_round < group_max_retries:
-                    await sleep_before_retry(retry_round, error=last_error)
+                    await sleep_before_retry(retry_round, error=last_error, lease=lease)
 
         track_call(
             task_type=primary_context.task_type,

@@ -17,6 +17,7 @@ from app.schemas.knowledge import (
     BuildPlannerPlanResponse,
     BuildPlannerSessionResponse,
     DocGenBuildData,
+    DocGenGetResponse,
     DocGenBuildRequest,
     KnowledgeDocInteractiveSelectionRequest,
     KnowledgeGraphBuildData,
@@ -46,6 +47,14 @@ def _request(*, request_id: str = "request-1", registry=None):
         state=SimpleNamespace(request_id=request_id),
         app=SimpleNamespace(state=SimpleNamespace(background_task_registry=registry)),
     )
+
+
+class _ConnectedRequest:
+    state = SimpleNamespace(request_id="request-stream-error")
+    app = SimpleNamespace(state=SimpleNamespace(background_task_registry=None))
+
+    async def is_disconnected(self) -> bool:
+        return False
 
 
 def _capture_course_build_event_inline(
@@ -95,7 +104,7 @@ def _planner_session_response() -> BuildPlannerSessionResponse:
             status="draft",
             planner_session_id="planner-session-12345678",
         ),
-        model_override="model-a",
+        model_override="primary",
         turns=[],
         created_at=now,
         updated_at=now,
@@ -111,7 +120,7 @@ def _confirm_response() -> BuildPlannerConfirmResponse:
         course_id=COURSE_ID,
         status="confirmed",
         digest_mode="sprint",
-        model_override="model-a",
+        model_override="primary",
         selected_file_ids=["file-a"],
         user_prompt="learn",
         course_name="API 课程规划",
@@ -161,14 +170,45 @@ def test_interactive_overlay_helpers_normalize_cached_response() -> None:
     assert "/preview/asset.html" in response.link_markdown
 
 
+@pytest.mark.anyio
+async def test_planner_stream_error_payload_hides_upstream_provider_details() -> None:
+    async def failing_runner(_progress_callback, _token_callback):
+        raise RuntimeError(
+            "上游模型调用失败。litellm.AuthenticationError: AuthenticationError: "
+            'OpenAIException - {"error":{"message":"Failed to retrieve token",'
+            '"type":"Aihubmix_api_error"}}'
+        )
+
+    response = api._planner_stream_response(
+        request=_ConnectedRequest(),
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        runner=failing_runner,
+    )
+
+    chunks: list[str] = []
+    async for chunk in response.body_iterator:
+        chunks.append(chunk.decode("utf-8") if isinstance(chunk, bytes) else str(chunk))
+    payload = "".join(chunks)
+
+    assert "event: error" in payload
+    assert "模型服务认证失败，当前无法生成内容。请检查模型服务密钥或稍后重试。" in payload
+    assert "litellm" not in payload
+    assert "Aihubmix" not in payload
+    assert "Failed to retrieve token" not in payload
+
+
 def test_knowledge_build_spawns_background_docgen_with_accepted_files(monkeypatch) -> None:
     spawned: list[dict[str, object]] = []
     run_kwargs: dict[str, object] = {}
     captured: list[tuple[str, str, dict[str, object]]] = []
+    callbacks: list[object] = []
+    released: list[tuple[str, str, str]] = []
 
     class Registry:
         def spawn(self, task, **kwargs):
             spawned.append({"task": task, **kwargs})
+            return SimpleNamespace(add_done_callback=lambda callback: callbacks.append(callback))
 
     request = _request(request_id="req-build", registry=Registry())
     build_data = DocGenBuildData(
@@ -179,7 +219,7 @@ def test_knowledge_build_spawns_background_docgen_with_accepted_files(monkeypatc
         planner_session_id="planner-1",
         confirmed_plan_id="plan-1",
         digest_mode="sprint",
-        model_override="model-a",
+        model_override="primary",
     )
 
     def fake_trigger_docgen_build(_session, **kwargs):
@@ -194,6 +234,13 @@ def test_knowledge_build_spawns_background_docgen_with_accepted_files(monkeypatc
     monkeypatch.setattr(api, "get_course_record", lambda _session, course_id, owner_user_id: _course(course_id))
     monkeypatch.setattr(api, "trigger_docgen_build", fake_trigger_docgen_build)
     monkeypatch.setattr(api, "run_docgen_background", fake_run_docgen_background)
+    monkeypatch.setattr(
+        api,
+        "_release_docgen_build_lock_safely",
+        lambda **kwargs: released.append(
+            (kwargs["course_id"], kwargs["user_id"], kwargs["build_group_id"])
+        ),
+    )
     monkeypatch.setattr(api, "capture_course_build_event_later", _capture_course_build_event_inline)
     monkeypatch.setattr(
         posthog_analytics,
@@ -220,7 +267,7 @@ def test_knowledge_build_spawns_background_docgen_with_accepted_files(monkeypatc
             "task": "docgen-task",
             "kind": "knowledge.build.docs",
             "course_id": COURSE_ID,
-            "name": f"knowledge.build.docs:{COURSE_ID}",
+            "name": f"knowledge.build.docs:{COURSE_ID}:group-1",
         }
     ]
     assert run_kwargs["course_id"] == COURSE_ID
@@ -228,6 +275,9 @@ def test_knowledge_build_spawns_background_docgen_with_accepted_files(monkeypatc
     assert run_kwargs["file_ids"] == ["file-a"]
     assert run_kwargs["build_group_id"] == "group-1"
     assert run_kwargs["background_task_registry"] is request.app.state.background_task_registry
+    assert len(callbacks) == 1
+    callbacks[0](SimpleNamespace(cancelled=lambda: True))
+    assert released == [(COURSE_ID, USER_ID, "group-1")]
     assert [event for event, _distinct_id, _properties in captured] == [
         "knowledge_build_submitted",
         "knowledge_build_started",
@@ -236,6 +286,108 @@ def test_knowledge_build_spawns_background_docgen_with_accepted_files(monkeypatc
     assert all(properties["analytics_source"] == "backend" for _event, _distinct_id, properties in captured)
     assert captured[0][2]["has_confirmed_plan"] is True
     assert captured[1][2]["build_group_id_suffix"] == "group-1"
+
+
+def test_knowledge_docs_offloads_blocking_docgen_read(monkeypatch) -> None:
+    calls: list[dict[str, object]] = []
+    expected = DocGenGetResponse(exists=True, markdown="# Ready")
+    course_scope = SimpleNamespace(course_id=COURSE_ID)
+
+    @contextmanager
+    def fake_managed_session():
+        yield object()
+
+    async def fake_run_in_threadpool(func, *args, **kwargs):
+        calls.append({"func": func, "args": args, "kwargs": kwargs})
+        return func(*args, **kwargs)
+
+    def fake_get_docgen_result(**kwargs):
+        assert kwargs["course_id"] == COURSE_ID
+        assert kwargs["course_scope"] is course_scope
+        return expected
+
+    monkeypatch.setattr(api, "managed_session", fake_managed_session)
+    monkeypatch.setattr(api, "get_current_user_context", lambda _request, _response, _session: _user())
+    monkeypatch.setattr(api, "get_course_record", lambda _session, course_id, owner_user_id: _course(course_id))
+    monkeypatch.setattr(api, "_storage_scope_for_course_record", lambda _course_record: course_scope)
+    monkeypatch.setattr(api, "get_docgen_result", fake_get_docgen_result)
+    monkeypatch.setattr(api, "run_in_threadpool", fake_run_in_threadpool)
+
+    response = asyncio.run(
+        api.knowledge_docs(
+            request=_request(),
+            response=SimpleNamespace(),
+            course_id=COURSE_ID,
+            include_markdown=True,
+            include_draft=True,
+        )
+    )
+
+    assert response.data is expected
+    assert calls == [
+        {
+            "func": fake_get_docgen_result,
+            "args": (),
+            "kwargs": {
+                "course_id": COURSE_ID,
+                "course_scope": course_scope,
+                "include_markdown": True,
+                "include_draft": True,
+            },
+        }
+    ]
+
+
+def test_knowledge_build_releases_lock_when_registry_spawn_fails(monkeypatch) -> None:
+    released: list[tuple[str, str, str]] = []
+
+    class FailingRegistry:
+        @staticmethod
+        def spawn(task, **_kwargs):
+            raise RuntimeError("registry unavailable")
+
+    request = _request(request_id="req-spawn-failure", registry=FailingRegistry())
+    build_data = DocGenBuildData(
+        accepted_file_ids=["file-a"],
+        prompt="learn matrices",
+        ready_file_count=1,
+        requested_at=datetime(2026, 5, 13, tzinfo=timezone.utc),
+        planner_session_id="planner-1",
+        confirmed_plan_id="plan-1",
+        digest_mode="sprint",
+    )
+
+    async def fake_run_docgen_background(**_kwargs):
+        return None
+
+    monkeypatch.setattr(api, "get_course_record", lambda _session, course_id, owner_user_id: _course(course_id))
+    monkeypatch.setattr(
+        api,
+        "trigger_docgen_build",
+        lambda _session, **_kwargs: (build_data, ["file-a"], "group-spawn-failure"),
+    )
+    monkeypatch.setattr(api, "run_docgen_background", fake_run_docgen_background)
+    monkeypatch.setattr(api, "capture_course_build_event_later", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        api,
+        "_release_docgen_build_lock_safely",
+        lambda **kwargs: released.append(
+            (kwargs["course_id"], kwargs["user_id"], kwargs["build_group_id"])
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="registry unavailable"):
+        asyncio.run(
+            api.knowledge_build(
+                request=request,
+                course_id=COURSE_ID,
+                body=DocGenBuildRequest(file_ids=["file-a"], confirmed_plan_id="plan-1"),
+                user=_user(),
+                session=object(),
+            )
+        )
+
+    assert released == [(COURSE_ID, USER_ID, "group-spawn-failure")]
 
 
 def test_build_planner_create_and_confirm_capture_backend_analytics(monkeypatch) -> None:
@@ -470,7 +622,7 @@ def test_interactive_selection_generation_persists_overlay_without_handle_leak(m
     monkeypatch.setattr(
         api,
         "get_confirmed_plan",
-        lambda *_args, **_kwargs: SimpleNamespace(plan_json={"model_override": "gpt-5.4-mini"}),
+        lambda *_args, **_kwargs: SimpleNamespace(plan_json={"model_override": "primary"}),
     )
     monkeypatch.setattr(api, "interactive_overlay_reference_guard", guard)
     monkeypatch.setattr(api, "find_interactive_overlay_by_client_reference", fake_find_overlay)
@@ -494,7 +646,7 @@ def test_interactive_selection_generation_persists_overlay_without_handle_leak(m
     )
 
     assert response.data.title == "Generated Demo"
-    assert overrides == ["gpt-5.4-mini"]
+    assert overrides == ["primary"]
     assert response.data.version_no == 9
     assert response.data.overlay_id.startswith("interactive-")
     assert "selection-ref" in response.data.preview_url

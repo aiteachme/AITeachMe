@@ -28,10 +28,14 @@ from app.models.enums import (
     validate_status_transition,
 )
 from app.models.email_confirmation import EmailConfirmation
+from app.models.course_initial_exam import CourseInitialExamJob
 from app.models.exam import (
     ExamPaper,
     ExamPaperItem,
+    ExamProfileSync,
     ExamStudyGuideCache,
+    MasteryDrillAttempt,
+    MasteryDrillSession,
     QuestionKnowledgeUnitLink,
     QuestionTemplate,
     QuestionTypeRegistry,
@@ -44,6 +48,8 @@ from app.models.knowledge_unit import KnowledgeAlias, KnowledgeRevision, Knowled
 from app.models.profile import UserKnowledgeState
 from app.models.raw_file import RawFile, RawFileAsset, CourseFileLink
 from app.models.course import Course
+from app.models.course_share import CourseShare
+from app.models.course_share_import import CourseShareImport
 from app.models.system import SystemRuntimeSettings
 from app.models.user import User
 
@@ -62,7 +68,10 @@ __all__ = [
     "ExamPaper",
     "ExamPaperItem",
     "ExamPaperStatus",
+    "ExamProfileSync",
     "ExamStudyGuideCache",
+    "MasteryDrillAttempt",
+    "MasteryDrillSession",
     "IngestStatus",
     "KnowledgeDoc",
     "KnowledgeDocument",
@@ -89,6 +98,9 @@ __all__ = [
     "ReviewTaskStatus",
     "ReviewTaskType",
     "Course",
+    "CourseShare",
+    "CourseShareImport",
+    "CourseInitialExamJob",
     "CourseFileLink",
     "SystemRuntimeSettings",
     "TaskStatus",

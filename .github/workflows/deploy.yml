@@ -9,6 +9,12 @@ on:
     types:
       - completed
   workflow_dispatch:
+    inputs:
+      force:
+        description: Deploy current main even when it has no successful CI run
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   actions: read
@@ -39,8 +45,10 @@ env:
 
 concurrency:
   group: deploy-main
-  # Keep only the newest main deployment; older in-progress runs may appear as canceled.
-  cancel-in-progress: true
+  # `workflow_run` also fires for failed and stale CI completions. Never let
+  # those guard-only runs cancel an in-progress production rollout. The guard
+  # below reconciles whichever run remains pending to the latest green main.
+  cancel-in-progress: false
 
 jobs:
   verify-latest:
@@ -49,25 +57,20 @@ jobs:
     outputs:
       should_deploy: ${{ steps.guard.outputs.should_deploy }}
       source_sha: ${{ steps.guard.outputs.source_sha }}
+      release_mode: ${{ steps.guard.outputs.release_mode }}
 
     steps:
-      - name: Skip stale CI runs
+      - name: Reconcile latest green main
         id: guard
         env:
           EVENT_NAME: ${{ github.event_name }}
           GH_TOKEN: ${{ github.token }}
-          SOURCE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          MANUAL_FORCE: ${{ inputs.force || false }}
           WORKFLOW_RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          WORKFLOW_RUN_EVENT: ${{ github.event.workflow_run.event }}
+          WORKFLOW_RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
-
-          echo "source_sha=${SOURCE_SHA}" >> "$GITHUB_OUTPUT"
-
-          if [ "${EVENT_NAME}" = "workflow_run" ] && [ "${WORKFLOW_RUN_CONCLUSION}" != "success" ]; then
-            echo "Skipping deploy because CI conclusion is ${WORKFLOW_RUN_CONCLUSION}."
-            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
 
           latest_sha="$(
             curl -fsSL \
@@ -81,13 +84,62 @@ jobs:
             echo "Could not resolve latest main SHA." >&2
             exit 1
           fi
+          echo "source_sha=${latest_sha}" >> "$GITHUB_OUTPUT"
 
-          if [ "${SOURCE_SHA}" = "${latest_sha}" ]; then
-            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "Skipping stale deploy: source SHA ${SOURCE_SHA} is not current main ${latest_sha}."
+          if [ "${EVENT_NAME}" = "workflow_run" ] && [ "${WORKFLOW_RUN_EVENT}" != "push" ]; then
+            echo "Skipping non-push CI event ${WORKFLOW_RUN_EVENT:-unknown}."
+            echo "release_mode=skip" >> "$GITHUB_OUTPUT"
             echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ] && [ "${MANUAL_FORCE}" = "true" ]; then
+            echo "Forced manual dispatch will deploy current main ${latest_sha}."
+            echo "release_mode=manual-force" >> "$GITHUB_OUTPUT"
+            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "${WORKFLOW_RUN_HEAD_SHA}" = "${latest_sha}" ] && [ "${WORKFLOW_RUN_CONCLUSION}" = "success" ]; then
+            echo "Current main CI succeeded; deploying ${latest_sha}."
+            echo "release_mode=normal" >> "$GITHUB_OUTPUT"
+            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          latest_green_sha="$(
+            curl -fsSL \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?branch=main&event=push&status=success&per_page=100" \
+              | jq -r --arg latest_sha "${latest_sha}" '
+                  .workflow_runs
+                  | map(select(.head_sha == $latest_sha and .conclusion == "success"))
+                  | .[0].head_sha // empty
+                '
+          )"
+
+          if [ "${latest_green_sha}" != "${latest_sha}" ]; then
+            echo "Skipping deploy because current main ${latest_sha} has no successful CI run yet."
+            echo "release_mode=skip" >> "$GITHUB_OUTPUT"
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
+            echo "Manual dispatch will deploy green main ${latest_sha}."
+            echo "release_mode=manual" >> "$GITHUB_OUTPUT"
+            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # A failed or stale workflow_run may replace the one pending run in
+          # this concurrency group. Reconcile it to current green main so that
+          # replacement still performs the full release instead of losing it.
+          echo "Current main ${latest_sha} has successful CI; deploying both components."
+          echo "release_mode=reconcile" >> "$GITHUB_OUTPUT"
+          echo "should_deploy=true" >> "$GITHUB_OUTPUT"
 
   classify_changes:
     name: Classify deploy changes
@@ -100,75 +152,21 @@ jobs:
       reason: ${{ steps.classify.outputs.reason }}
 
     steps:
-      - name: Checkout deploy target
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.verify-latest.outputs.source_sha }}
-          fetch-depth: 2
-
-      - name: Classify changed paths
+      # A successful CI SHA is not a successful deployment marker. Path
+      # filtering against CI history can strand one component forever after a
+      # failed rollout, so releases stay full until a durable deploy marker
+      # exists.
+      - name: Plan fail-safe full release
         id: classify
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          GH_TOKEN: ${{ github.token }}
-          SOURCE_SHA: ${{ needs.verify-latest.outputs.source_sha }}
+          RELEASE_MODE: ${{ needs.verify-latest.outputs.release_mode }}
         shell: bash
         run: |
           set -euo pipefail
 
-          deploy_backend=false
-          deploy_frontend=false
-          reason="path-filtered"
-
-          if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
-            deploy_backend=true
-            deploy_frontend=true
-            reason="manual-dispatch"
-          else
-            base_sha="$(
-              curl -fsSL \
-                -H "Authorization: Bearer ${GH_TOKEN}" \
-                -H "Accept: application/vnd.github+json" \
-                -H "X-GitHub-Api-Version: 2022-11-28" \
-                "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?branch=main&event=push&status=success&per_page=20" \
-                | jq -r --argjson current_run_id "${{ github.event.workflow_run.id || 0 }}" --arg source_sha "${SOURCE_SHA}" '
-                    .workflow_runs
-                    | map(select(.id != $current_run_id and .head_sha != $source_sha))
-                    | .[0].head_sha // empty
-                  '
-            )"
-            if [ -z "${base_sha}" ]; then
-              deploy_backend=true
-              deploy_frontend=true
-              reason="missing-previous-success"
-            elif ! git fetch --no-tags --depth=1 origin "${base_sha}"; then
-              deploy_backend=true
-              deploy_frontend=true
-              reason="missing-base-sha"
-            else
-              changed_files="$(git diff --name-only "${base_sha}" "${SOURCE_SHA}")"
-              echo "Changed files:"
-              if [ -n "${changed_files}" ]; then
-                printf '%s\n' "${changed_files}"
-              else
-                echo "(none)"
-              fi
-
-              while IFS= read -r path; do
-                [ -n "${path}" ] || continue
-                case "${path}" in
-                  backend/*|infra/deployment/docker/backend*.Dockerfile|.github/workflows/deploy.yml)
-                    deploy_backend=true
-                    ;;
-                esac
-                case "${path}" in
-                  frontend/*|docs/*|infra/deployment/docker/frontend.Dockerfile|infra/deployment/docker/frontend-*|infra/deployment/nginx/*|.github/workflows/deploy.yml)
-                    deploy_frontend=true
-                    ;;
-                esac
-              done <<< "${changed_files}"
-            fi
-          fi
+          deploy_backend=true
+          deploy_frontend=true
+          reason="${RELEASE_MODE:-normal}-full-release"
 
           echo "deploy_backend=${deploy_backend}" >> "$GITHUB_OUTPUT"
           echo "deploy_frontend=${deploy_frontend}" >> "$GITHUB_OUTPUT"
@@ -186,38 +184,77 @@ jobs:
     needs:
       - verify-latest
       - classify_changes
-    if: always() && needs.verify-latest.outputs.should_deploy == 'true' && needs.classify_changes.outputs.deploy_frontend == 'true'
+      - deploy-backend
+    if: >-
+      always() &&
+      needs.verify-latest.outputs.should_deploy == 'true' &&
+      needs.classify_changes.outputs.deploy_frontend == 'true' &&
+      (
+        needs.classify_changes.outputs.deploy_backend != 'true' ||
+        (
+          needs.deploy-backend.result == 'success' &&
+          (
+            needs.deploy-backend.outputs.enabled != 'true' ||
+            needs.deploy-backend.outputs.deployed == 'true'
+          )
+        )
+      )
+    env:
+      SOURCE_SHA: ${{ needs.verify-latest.outputs.source_sha }}
 
     steps:
-      - name: Check Cloudflare deploy hook opt-in
+      - name: Check Cloudflare direct-upload opt-in
         id: optin
         env:
-          CLOUDFLARE_DEPLOY_KEY: ${{ secrets.CLOUDFLARE_DEPLOY_KEY }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_PAGES_PROJECT_NAME: ${{ vars.CLOUDFLARE_PAGES_PROJECT_NAME }}
         run: |
           set -euo pipefail
-          if [ -z "$CLOUDFLARE_DEPLOY_KEY" ]; then
+          if [ -z "${CLOUDFLARE_ACCOUNT_ID}" ] || [ -z "${CLOUDFLARE_API_TOKEN}" ] || [ -z "${CLOUDFLARE_PAGES_PROJECT_NAME}" ]; then
             echo "enabled=false" >> "$GITHUB_OUTPUT"
             {
               echo "Cloudflare Pages deploy skipped."
               echo
-              echo "Set GitHub secret CLOUDFLARE_DEPLOY_KEY to enable it."
+              echo "Set CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN, and CLOUDFLARE_PAGES_PROJECT_NAME to enable pinned direct uploads."
             } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           echo "enabled=true" >> "$GITHUB_OUTPUT"
 
-      - name: Trigger Cloudflare Pages build
+      - name: Checkout pinned frontend source
         if: steps.optin.outputs.enabled == 'true'
-        env:
-          CLOUDFLARE_DEPLOY_KEY: ${{ secrets.CLOUDFLARE_DEPLOY_KEY }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+
+      - name: Set up Node.js
+        if: steps.optin.outputs.enabled == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build pinned frontend artifact
+        if: steps.optin.outputs.enabled == 'true'
+        working-directory: frontend
         run: |
-          set -euo pipefail
-          curl -fsS -X POST "$CLOUDFLARE_DEPLOY_KEY"
+          npm ci
+          npm run build
+
+      - name: Deploy pinned artifact to Cloudflare Pages
+        if: steps.optin.outputs.enabled == 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy frontend/dist --project-name=${{ vars.CLOUDFLARE_PAGES_PROJECT_NAME }} --branch=main --commit-hash=${{ env.SOURCE_SHA }}
 
       - name: Frontend summary
         if: steps.optin.outputs.enabled == 'true'
         run: |
-          echo "Frontend: Cloudflare Pages deploy hook triggered." >> "$GITHUB_STEP_SUMMARY"
+          echo "Frontend: pinned Cloudflare Pages artifact deployed from ${SOURCE_SHA}." >> "$GITHUB_STEP_SUMMARY"
 
   deploy-frontend-sealos:
     name: Deploy frontend to Sealos
@@ -226,15 +263,21 @@ jobs:
       - verify-latest
       - classify_changes
       - deploy-backend
-    # The frontend Sealos smoke test exercises proxied /api upload traffic, so
-    # wait for the backend rollout only when this commit actually changes backend.
+    # The frontend proxy smoke exercises /api traffic, so wait for the backend
+    # only when its Sealos deployment is enabled for this release.
     if: >-
       always() &&
       needs.verify-latest.outputs.should_deploy == 'true' &&
       needs.classify_changes.outputs.deploy_frontend == 'true' &&
       (
         needs.classify_changes.outputs.deploy_backend != 'true' ||
-        needs.deploy-backend.result == 'success'
+        (
+          needs.deploy-backend.result == 'success' &&
+          (
+            needs.deploy-backend.outputs.enabled != 'true' ||
+            needs.deploy-backend.outputs.deployed == 'true'
+          )
+        )
       )
     permissions:
       contents: read
@@ -242,7 +285,7 @@ jobs:
     env:
       SEALOS_KUBECONFIG_B64: ${{ secrets.SEALOS_KUBECONFIG_B64 }}
       SOURCE_SHA: ${{ needs.verify-latest.outputs.source_sha }}
-      STRICT_API_SMOKE: ${{ needs.classify_changes.outputs.deploy_backend == 'true' }}
+      STRICT_API_SMOKE: ${{ needs.classify_changes.outputs.deploy_backend == 'true' && needs.deploy-backend.outputs.enabled == 'true' }}
       ALIYUN_ACR_USERNAME: ${{ secrets.ALIYUN_ACR_USERNAME }}
       ALIYUN_ACR_PASSWORD: ${{ secrets.ALIYUN_ACR_PASSWORD }}
 
@@ -440,6 +483,7 @@ jobs:
           kubectl -n "${SEALOS_NAMESPACE}" set env \
             "deployment/${SEALOS_FRONTEND_DEPLOYMENT}" \
             "AITEACHME_API_UPSTREAM=${AITEACHME_API_UPSTREAM}" \
+            "FRONTEND_PUBLIC_URL=${FRONTEND_PUBLIC_URL}" \
             "AITEACHME_NGINX_UPLOAD_CLIENT_MAX_BODY_SIZE=${AITEACHME_NGINX_IMPORT_CLIENT_MAX_BODY_SIZE}" \
             "AITEACHME_NGINX_IMPORT_CLIENT_MAX_BODY_SIZE=${AITEACHME_NGINX_IMPORT_CLIENT_MAX_BODY_SIZE}"
 
@@ -562,7 +606,7 @@ jobs:
 
       - name: Smoke test Sealos frontend proxy in cluster
         id: smoke_frontend_proxy
-        if: steps.optin.outputs.enabled == 'true'
+        if: steps.optin.outputs.enabled == 'true' && env.STRICT_API_SMOKE == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -662,6 +706,9 @@ jobs:
       - verify-latest
       - classify_changes
     if: always() && needs.verify-latest.outputs.should_deploy == 'true' && needs.classify_changes.outputs.deploy_backend == 'true'
+    outputs:
+      enabled: ${{ steps.optin.outputs.enabled }}
+      deployed: ${{ steps.result.outputs.deployed }}
     permissions:
       contents: read
       packages: write
@@ -834,18 +881,9 @@ jobs:
           echo "Deploying backend image: ${{ steps.image.outputs.image }}"
           echo "Rollout timeout: ${BACKEND_ROLLOUT_TIMEOUT_SECONDS}s"
 
-          kubectl -n "${SEALOS_NAMESPACE}" patch \
-            "deployment/${SEALOS_BACKEND_DEPLOYMENT}" \
-            --type=merge \
-            -p "{\"spec\":{\"progressDeadlineSeconds\":${BACKEND_ROLLOUT_TIMEOUT_SECONDS}}}"
-
           kubectl -n "${SEALOS_NAMESPACE}" get \
             "secret/${SEALOS_IMAGE_PULL_SECRET}" \
             >/dev/null
-
-          kubectl -n "${SEALOS_NAMESPACE}" patch \
-            "deployment/${SEALOS_BACKEND_DEPLOYMENT}" \
-            -p "{\"spec\":{\"template\":{\"spec\":{\"imagePullSecrets\":[{\"name\":\"${SEALOS_IMAGE_PULL_SECRET}\"}]}}}}"
 
           backend_container_name="$(
             kubectl -n "${SEALOS_NAMESPACE}" get \
@@ -857,12 +895,25 @@ jobs:
             exit 1
           fi
 
-          security_patch="$(
+          deployment_patch="$(
             cat <<JSON
           {
             "spec": {
+              "progressDeadlineSeconds": ${BACKEND_ROLLOUT_TIMEOUT_SECONDS},
+              "strategy": {
+                "type": "RollingUpdate",
+                "rollingUpdate": {
+                  "maxUnavailable": 0,
+                  "maxSurge": 1
+                }
+              },
               "template": {
                 "spec": {
+                  "imagePullSecrets": [
+                    {
+                      "name": "${SEALOS_IMAGE_PULL_SECRET}"
+                    }
+                  ],
                   "securityContext": {
                     "runAsNonRoot": true,
                     "runAsUser": 10001,
@@ -875,11 +926,39 @@ jobs:
                   "containers": [
                     {
                       "name": "${backend_container_name}",
+                      "image": "${{ steps.image.outputs.image }}",
                       "securityContext": {
                         "allowPrivilegeEscalation": false,
                         "capabilities": {
                           "drop": ["ALL"]
                         }
+                      },
+                      "ports": [
+                        {
+                          "name": "http",
+                          "containerPort": 9020,
+                          "protocol": "TCP"
+                        }
+                      ],
+                      "startupProbe": {
+                        "httpGet": {
+                          "path": "/api/health",
+                          "port": "http",
+                          "scheme": "HTTP"
+                        },
+                        "periodSeconds": 10,
+                        "timeoutSeconds": 5,
+                        "failureThreshold": 330
+                      },
+                      "readinessProbe": {
+                        "httpGet": {
+                          "path": "/api/health",
+                          "port": "http",
+                          "scheme": "HTTP"
+                        },
+                        "periodSeconds": 5,
+                        "timeoutSeconds": 3,
+                        "failureThreshold": 3
                       }
                     }
                   ]
@@ -892,11 +971,7 @@ jobs:
           kubectl -n "${SEALOS_NAMESPACE}" patch \
             "deployment/${SEALOS_BACKEND_DEPLOYMENT}" \
             --type=strategic \
-            -p "${security_patch}"
-
-          kubectl -n "${SEALOS_NAMESPACE}" set image \
-            "deployment/${SEALOS_BACKEND_DEPLOYMENT}" \
-            "*=${{ steps.image.outputs.image }}"
+            -p "${deployment_patch}"
 
           kubectl -n "${SEALOS_NAMESPACE}" rollout status \
             "deployment/${SEALOS_BACKEND_DEPLOYMENT}" \
@@ -924,20 +999,6 @@ jobs:
             | grep -E "^${SEALOS_BACKEND_DEPLOYMENT}-|^NAME" || true
 
           echo
-          echo "## Deployment describe"
-          kubectl -n "${SEALOS_NAMESPACE}" describe \
-            "deployment/${SEALOS_BACKEND_DEPLOYMENT}" || true
-
-          echo
-          echo "## Pod describe"
-          for pod in $(kubectl -n "${SEALOS_NAMESPACE}" get pods --no-headers 2>/dev/null \
-            | awk -v prefix="${SEALOS_BACKEND_DEPLOYMENT}-" '$1 ~ "^" prefix { print $1 }'); do
-            echo
-            echo "### ${pod}"
-            kubectl -n "${SEALOS_NAMESPACE}" describe pod "${pod}" || true
-          done
-
-          echo
           echo "## Pod logs"
           for pod in $(kubectl -n "${SEALOS_NAMESPACE}" get pods --no-headers 2>/dev/null \
             | awk -v prefix="${SEALOS_BACKEND_DEPLOYMENT}-" '$1 ~ "^" prefix { print $1 }'); do
@@ -956,6 +1017,7 @@ jobs:
             | tail -n 80 || true
 
       - name: Smoke test backend in cluster
+        id: smoke_backend
         if: steps.optin.outputs.enabled == 'true'
         shell: bash
         run: |
@@ -985,10 +1047,27 @@ jobs:
           echo "Backend in-cluster health/upload check did not pass." >&2
           exit 1
 
+      - name: Show Sealos backend logs after failed smoke
+        if: always() && steps.optin.outputs.enabled == 'true' && steps.smoke_backend.outcome == 'failure'
+        shell: bash
+        run: |
+          set +e
+
+          for pod in $(kubectl -n "${SEALOS_NAMESPACE}" get pods --no-headers 2>/dev/null \
+            | awk -v prefix="${SEALOS_BACKEND_DEPLOYMENT}-" '$1 ~ "^" prefix { print $1 }'); do
+            echo "### ${pod} logs after failed smoke"
+            kubectl -n "${SEALOS_NAMESPACE}" logs "${pod}" --all-containers --tail=240 || true
+            echo
+            echo "### ${pod} previous logs"
+            kubectl -n "${SEALOS_NAMESPACE}" logs "${pod}" --all-containers --previous --tail=240 || true
+          done
+
       - name: Backend summary
+        id: result
         if: steps.optin.outputs.enabled == 'true'
         shell: bash
         run: |
+          echo "deployed=true" >> "$GITHUB_OUTPUT"
           {
             echo "Backend image: ${{ steps.image.outputs.image }}"
             echo "Sealos namespace: ${SEALOS_NAMESPACE}"

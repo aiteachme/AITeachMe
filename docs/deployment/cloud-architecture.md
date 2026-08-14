@@ -38,6 +38,7 @@ AITeachMe 同时支持：
 
 ## 固定规则
 
+- 云端专用启动入口必须显式校验 cloud 模式、PostgreSQL、S3 和鉴权配置，配置不完整时拒绝启动。
 - 云端启动不能自动 `create_all`、删表或删列。
 - 云端 schema 变化必须走 Alembic。
 - 业务代码统一通过 ContentStore 访问文件，不手拼本地路径或 S3 URL。

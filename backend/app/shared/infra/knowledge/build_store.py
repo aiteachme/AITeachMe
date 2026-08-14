@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import os
+import secrets
 import shutil
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 from threading import Lock, RLock
@@ -198,6 +201,12 @@ class KnowledgeBuildLock(BaseModel):
 
     requested_at: datetime
     build_group_id: str | None = None
+    heartbeat_at: datetime | None = None
+    cancel_requested_at: datetime | None = None
+    phase: Literal["active", "publishing_claimed", "published"] = "active"
+    publish_started_at: datetime | None = None
+    publish_completed_at: datetime | None = None
+    publish_token: str | None = None
     source_file_ids: list[str] = Field(default_factory=list)
     prompt: str | None = None
 
@@ -292,6 +301,35 @@ def sanitize_knowledge_build_error_message(
         return "当前没有可用于图谱构建的输入来源。"
     if text == "confirmed_plan_required":
         return "知识文档构建必须基于已确认的构建方案执行，请先完成 planner 确认。"
+
+    lower_text = text.lower()
+    if any(
+        snippet in lower_text
+        for snippet in (
+            "authenticationerror",
+            "401 unauthorized",
+            "failed to retrieve token",
+            "incorrect api key",
+            "invalid api key",
+            "invalid_api_key",
+            "apikey-error",
+            "llm_api_key",
+            "api key is not configured",
+            "aihubmix_api_error",
+        )
+    ):
+        return "模型服务认证失败，当前无法生成内容。请检查模型服务密钥或稍后重试。"
+    if any(
+        snippet in lower_text
+        for snippet in (
+            "upstream model call failed",
+            "上游模型调用失败",
+            "litellm.",
+            "litellm_",
+            "model call",
+        )
+    ):
+        return "模型服务暂时不可用，当前无法生成内容。请稍后重试。"
     if (
         "Dimension mismatch" in text
         or "sqlite3.OperationalError" in text
@@ -1053,6 +1091,25 @@ def _read_build_lock_path(path: Path) -> KnowledgeBuildLock | None:
         return None
 
 
+def _write_build_lock_path_atomically(path: Path, lock: KnowledgeBuildLock) -> None:
+    temp_path = path.with_name(f"{path.name}.{os.getpid()}.{id(lock)}.tmp")
+    try:
+        temp_path.write_text(lock.model_dump_json(indent=2), encoding="utf-8")
+        os.replace(temp_path, path)
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+
+def _build_lock_lease_at(lock: KnowledgeBuildLock) -> datetime:
+    return lock.heartbeat_at or lock.requested_at
+
+
+def _build_lock_is_stale(lock: KnowledgeBuildLock, *, now: datetime | None = None) -> bool:
+    lease_at = _build_lock_lease_at(lock)
+    current_time = now or datetime.now(lease_at.tzinfo)
+    return current_time - lease_at > STALE_BUILD_LOCK_TTL
+
+
 def read_knowledge_build_lock(
     course_id: str,
     *,
@@ -1064,7 +1121,9 @@ def read_knowledge_build_lock(
     if is_cloud_mode():
         return _cloud_read_build_lock(course_id, session=session)
     resolved_scope = _course_scope_or_resolve(course_id, course_scope, session=session)
-    return _read_build_lock_path(_local_build_lock_path(resolved_scope))
+    with _get_status_lock(course_id):
+        lock = _read_build_lock_path(_local_build_lock_path(resolved_scope))
+        return None if lock is not None and _build_lock_is_stale(lock) else lock
 
 
 def acquire_knowledge_build_lock(
@@ -1082,33 +1141,203 @@ def acquire_knowledge_build_lock(
     path = _local_build_lock_path(resolved_scope)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    existing = _read_build_lock_path(path)
-    if existing is not None and datetime.now(existing.requested_at.tzinfo) - existing.requested_at > STALE_BUILD_LOCK_TTL:
-        path.unlink(missing_ok=True)
+    with _get_status_lock(course_id):
+        existing = _read_build_lock_path(path)
+        if existing is not None and _build_lock_is_stale(existing):
+            path.unlink(missing_ok=True)
 
-    try:
-        with path.open("x", encoding="utf-8") as handle:
-            handle.write(lock.model_dump_json(indent=2))
-    except FileExistsError:
+        try:
+            with path.open("x", encoding="utf-8") as handle:
+                handle.write(lock.model_dump_json(indent=2))
+        except FileExistsError:
+            return False
+    return True
+
+
+def renew_knowledge_build_lock(
+    course_id: str,
+    *,
+    build_group_id: str,
+    course_scope: CourseStorageScope | None = None,
+) -> bool:
+    """Refresh a build lease only while ``build_group_id`` still owns it."""
+
+    owner = str(build_group_id or "").strip()
+    if not owner:
         return False
+    if is_cloud_mode():
+        return _cloud_renew_build_lock(course_id, build_group_id=owner)
+
+    resolved_scope = _course_scope_or_resolve(course_id, course_scope)
+    path = _local_build_lock_path(resolved_scope)
+    with _get_status_lock(course_id):
+        existing = _read_build_lock_path(path)
+        if (
+            existing is None
+            or existing.build_group_id != owner
+            or existing.cancel_requested_at is not None
+            or _build_lock_is_stale(existing)
+        ):
+            return False
+        renewed = existing.model_copy(update={"heartbeat_at": utcnow()})
+        _write_build_lock_path_atomically(path, renewed)
+    return True
+
+
+def claim_knowledge_build_publish(
+    course_id: str,
+    *,
+    build_group_id: str,
+    course_scope: CourseStorageScope | None = None,
+) -> str | None:
+    """Atomically claim the live-publish boundary for one active owner."""
+
+    owner = str(build_group_id or "").strip()
+    if not owner:
+        return None
+    if is_cloud_mode():
+        return _cloud_claim_build_publish(course_id, build_group_id=owner)
+
+    resolved_scope = _course_scope_or_resolve(course_id, course_scope)
+    path = _local_build_lock_path(resolved_scope)
+    with _get_status_lock(course_id):
+        existing = _read_build_lock_path(path)
+        if (
+            existing is None
+            or existing.build_group_id != owner
+            or existing.cancel_requested_at is not None
+            or existing.phase != "active"
+            or existing.publish_started_at is not None
+            or _build_lock_is_stale(existing)
+        ):
+            return None
+        now = utcnow()
+        publish_token = secrets.token_urlsafe(32)
+        claimed = existing.model_copy(
+            update={
+                "heartbeat_at": now,
+                "phase": "publishing_claimed",
+                "publish_started_at": now,
+                "publish_token": publish_token,
+            }
+        )
+        _write_build_lock_path_atomically(path, claimed)
+    return publish_token
+
+
+def finish_knowledge_build_publish(
+    course_id: str,
+    *,
+    build_group_id: str,
+    publish_token: str,
+    session: Session | None = None,
+    course_scope: CourseStorageScope | None = None,
+) -> bool:
+    """Finish a claimed publication, optionally inside the caller's DB transaction."""
+
+    owner = str(build_group_id or "").strip()
+    token = str(publish_token or "").strip()
+    if not owner or not token:
+        return False
+    if is_cloud_mode():
+        return _cloud_finish_build_publish(
+            course_id,
+            build_group_id=owner,
+            publish_token=token,
+            session=session,
+        )
+
+    resolved_scope = _course_scope_or_resolve(course_id, course_scope, session=session)
+    path = _local_build_lock_path(resolved_scope)
+    with _get_status_lock(course_id):
+        existing = _read_build_lock_path(path)
+        if existing is None or existing.build_group_id != owner or existing.publish_token != token:
+            return False
+        if existing.phase == "published" and existing.publish_completed_at is not None:
+            return True
+        if (
+            existing.phase != "publishing_claimed"
+            or existing.publish_started_at is None
+            or existing.cancel_requested_at is not None
+            or _build_lock_is_stale(existing)
+        ):
+            return False
+        now = utcnow()
+        finished = existing.model_copy(
+            update={
+                "heartbeat_at": now,
+                "phase": "published",
+                "publish_completed_at": now,
+            }
+        )
+        _write_build_lock_path_atomically(path, finished)
+    return True
+
+
+def request_knowledge_build_cancellation(
+    course_id: str,
+    *,
+    build_group_id: str,
+    course_scope: CourseStorageScope | None = None,
+) -> bool:
+    """Persist a cancellation request without making the lease acquirable."""
+
+    owner = str(build_group_id or "").strip()
+    if not owner:
+        return False
+    if is_cloud_mode():
+        return _cloud_request_build_cancellation(
+            course_id,
+            build_group_id=owner,
+        )
+
+    resolved_scope = _course_scope_or_resolve(course_id, course_scope)
+    path = _local_build_lock_path(resolved_scope)
+    with _get_status_lock(course_id):
+        existing = _read_build_lock_path(path)
+        if (
+            existing is None
+            or existing.build_group_id != owner
+            or _build_lock_is_stale(existing)
+        ):
+            return False
+        if existing.cancel_requested_at is not None:
+            return True
+        if existing.phase == "publishing_claimed":
+            return False
+        now = utcnow()
+        cancelled = existing.model_copy(
+            update={
+                "heartbeat_at": now,
+                "cancel_requested_at": now,
+            }
+        )
+        _write_build_lock_path_atomically(path, cancelled)
     return True
 
 
 def release_knowledge_build_lock(
     course_id: str,
     *,
+    build_group_id: str,
     course_scope: CourseStorageScope | None = None,
-) -> None:
-    """Remove the course-level build lock if it exists."""
+) -> bool:
+    """Remove a course-level build lock only when the expected owner matches."""
 
+    owner = str(build_group_id or "").strip()
+    if not owner:
+        return False
     if is_cloud_mode():
-        _cloud_release_build_lock(course_id)
-        return
+        return _cloud_release_build_lock(course_id, build_group_id=owner)
 
     resolved_scope = _course_scope_or_resolve(course_id, course_scope)
     path = _local_build_lock_path(resolved_scope)
-    if path.exists():
-        path.unlink()
+    with _get_status_lock(course_id):
+        existing = _read_build_lock_path(path)
+        if existing is None or existing.build_group_id != owner:
+            return False
+        path.unlink(missing_ok=True)
+    return True
 
 
 def is_knowledge_build_locked(
@@ -1120,8 +1349,178 @@ def is_knowledge_build_locked(
 
     if is_cloud_mode():
         return _cloud_read_build_lock(course_id) is not None
-    resolved_scope = _course_scope_or_resolve(course_id, course_scope)
-    return _local_build_lock_path(resolved_scope).exists()
+    return read_knowledge_build_lock(course_id, course_scope=course_scope) is not None
+
+
+def is_knowledge_build_lock_owner(
+    course_id: str,
+    *,
+    build_group_id: str,
+    session: Session | None = None,
+    course_scope: CourseStorageScope | None = None,
+) -> bool:
+    """Return whether one non-stale lease is still owned by ``build_group_id``."""
+
+    owner = str(build_group_id or "").strip()
+    if not owner:
+        return False
+    lock = read_knowledge_build_lock(
+        course_id,
+        session=session,
+        course_scope=course_scope,
+    )
+    return (
+        lock is not None
+        and lock.build_group_id == owner
+        and lock.cancel_requested_at is None
+    )
+
+
+def lock_knowledge_build_owner_for_update(
+    session: Session,
+    course_id: str,
+    *,
+    build_group_id: str,
+    publish_token: str | None = None,
+    allowed_phases: tuple[str, ...] | None = None,
+    allow_cancel_requested: bool = False,
+    course_scope: CourseStorageScope | None = None,
+) -> bool:
+    """Validate one owner while holding its cloud Course row until transaction end."""
+
+    owner = str(build_group_id or "").strip()
+    token = str(publish_token or "").strip() or None
+    if not owner:
+        return False
+    if is_cloud_mode():
+        return _lock_cloud_build_owner_for_update(
+            session,
+            course_id,
+            build_group_id=owner,
+            publish_token=token,
+            allowed_phases=allowed_phases,
+            allow_cancel_requested=allow_cancel_requested,
+        ) is not None
+    lock = read_knowledge_build_lock(
+        course_id,
+        session=session,
+        course_scope=course_scope,
+    )
+    return bool(
+        lock is not None
+        and lock.build_group_id == owner
+        and (allow_cancel_requested or lock.cancel_requested_at is None)
+        and (token is None or (lock.phase == "publishing_claimed" and lock.publish_token == token))
+        and (allowed_phases is None or lock.phase in allowed_phases)
+    )
+
+
+@contextmanager
+def managed_knowledge_build_owner_transaction(
+    course_id: str,
+    *,
+    build_group_id: str,
+    publish_token: str | None = None,
+    allowed_phases: tuple[str, ...] | None = None,
+    allow_cancel_requested: bool = False,
+    course_scope: CourseStorageScope | None = None,
+    finish_publish: bool = False,
+    ownership_error: str = "knowledge_build_lock_lost",
+) -> Iterator[Session]:
+    """Hold the build-owner fence until the guarded database commit completes."""
+
+    from app.shared.infra.database import managed_session
+
+    if finish_publish and not str(publish_token or "").strip():
+        raise ValueError("knowledge_build_publish_claim_required")
+
+    def _managed_transaction() -> Iterator[Session]:
+        with managed_session() as session:
+            if not lock_knowledge_build_owner_for_update(
+                session,
+                course_id,
+                build_group_id=build_group_id,
+                publish_token=publish_token,
+                allowed_phases=allowed_phases,
+                allow_cancel_requested=allow_cancel_requested,
+                course_scope=course_scope,
+            ):
+                raise RuntimeError(ownership_error)
+            yield session
+            if finish_publish and is_cloud_mode():
+                if not finish_knowledge_build_publish(
+                    course_id,
+                    build_group_id=build_group_id,
+                    publish_token=str(publish_token),
+                    session=session,
+                    course_scope=course_scope,
+                ):
+                    raise RuntimeError("knowledge_build_publish_claim_lost")
+        if finish_publish and not is_cloud_mode():
+            if not finish_knowledge_build_publish(
+                course_id,
+                build_group_id=build_group_id,
+                publish_token=str(publish_token),
+                course_scope=course_scope,
+            ):
+                raise RuntimeError("knowledge_build_publish_claim_lost")
+
+    if is_cloud_mode():
+        yield from _managed_transaction()
+        return
+
+    # Local lock state lives outside SQLite. Keep its process lock until the
+    # managed session has committed so cancellation cannot pass the fence and
+    # return before an older worker finishes its database write.
+    with _get_status_lock(course_id):
+        yield from _managed_transaction()
+
+
+def _cloud_record_lock_is_stale(record: Any, *, now: datetime | None = None) -> bool:
+    lock_at = ensure_utc_datetime(getattr(record, "build_lock_at", None))
+    if lock_at is None:
+        return True
+    return (now or utcnow()) - lock_at > STALE_BUILD_LOCK_TTL
+
+
+def _lock_cloud_build_owner_for_update(
+    session: Session,
+    course_id: str,
+    *,
+    build_group_id: str,
+    publish_token: str | None = None,
+    allowed_phases: tuple[str, ...] | None = None,
+    allow_cancel_requested: bool = False,
+) -> tuple[Any, KnowledgeBuildLock] | None:
+    from sqlmodel import select
+
+    from app.models.course import Course
+
+    record = session.exec(
+        select(Course).where(Course.id == course_id).with_for_update()
+    ).first()
+    raw_holder = record.build_lock_holder if record is not None else None
+    if not raw_holder or _cloud_record_lock_is_stale(record):
+        return None
+    try:
+        existing = KnowledgeBuildLock.model_validate_json(raw_holder)
+    except Exception:
+        return None
+    if (
+        existing.build_group_id != build_group_id
+        or (not allow_cancel_requested and existing.cancel_requested_at is not None)
+        or (
+            publish_token is not None
+            and (existing.phase != "publishing_claimed" or existing.publish_token != publish_token)
+        )
+        or (allowed_phases is not None and existing.phase not in allowed_phases)
+    ):
+        return None
+    now = utcnow()
+    record.build_lock_at = now
+    session.add(record)
+    session.flush()
+    return record, existing
 
 
 def _read_cloud_build_lock_from_session(session: Session, course_id: str) -> KnowledgeBuildLock | None:
@@ -1132,14 +1531,8 @@ def _read_cloud_build_lock_from_session(session: Session, course_id: str) -> Kno
     record = session.exec(select(Course).where(Course.id == course_id)).first()
     if record is None or record.build_lock_holder is None:
         return None
-    if record.build_lock_at is not None:
-        now = datetime.now(record.build_lock_at.tzinfo) if record.build_lock_at.tzinfo else datetime.utcnow()
-        if now - record.build_lock_at > STALE_BUILD_LOCK_TTL:
-            record.build_lock_holder = None
-            record.build_lock_at = None
-            session.add(record)
-            session.commit()
-            return None
+    if _cloud_record_lock_is_stale(record):
+        return None
     try:
         return KnowledgeBuildLock.model_validate_json(record.build_lock_holder)
     except Exception:
@@ -1161,6 +1554,35 @@ def _cloud_read_build_lock(
 
 
 def _cloud_acquire_build_lock(course_id: str, lock: KnowledgeBuildLock) -> bool:
+    import sqlalchemy as sa
+
+    from app.models.course import Course
+    from app.shared.infra.database import managed_session
+
+    now = utcnow()
+    stale_before = now - STALE_BUILD_LOCK_TTL
+    with managed_session() as session:
+        result = session.exec(
+            sa.update(Course)
+            .where(
+                Course.id == course_id,
+                sa.or_(
+                    Course.build_lock_holder.is_(None),
+                    Course.build_lock_at.is_(None),
+                    Course.build_lock_at <= stale_before,
+                ),
+            )
+            .values(
+                build_lock_holder=lock.model_dump_json(),
+                build_lock_at=now,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        return int(getattr(result, "rowcount", 0) or 0) == 1
+
+
+def _cloud_renew_build_lock(course_id: str, *, build_group_id: str) -> bool:
+    import sqlalchemy as sa
     from sqlmodel import select
 
     from app.models.course import Course
@@ -1168,35 +1590,251 @@ def _cloud_acquire_build_lock(course_id: str, lock: KnowledgeBuildLock) -> bool:
 
     with managed_session() as session:
         record = session.exec(select(Course).where(Course.id == course_id)).first()
-        if record is None:
+        raw_holder = record.build_lock_holder if record is not None else None
+        if not raw_holder or _cloud_record_lock_is_stale(record):
+            return False
+        try:
+            existing = KnowledgeBuildLock.model_validate_json(raw_holder)
+        except Exception:
+            return False
+        if (
+            existing.build_group_id != build_group_id
+            or existing.cancel_requested_at is not None
+        ):
             return False
 
-        if record.build_lock_holder is not None:
-            if record.build_lock_at is not None:
-                now = datetime.now(record.build_lock_at.tzinfo) if record.build_lock_at.tzinfo else datetime.utcnow()
-                if now - record.build_lock_at <= STALE_BUILD_LOCK_TTL:
-                    return False
+        now = utcnow()
+        renewed = existing.model_copy(update={"heartbeat_at": now})
+        result = session.exec(
+            sa.update(Course)
+            .where(
+                Course.id == course_id,
+                Course.build_lock_holder == raw_holder,
+                Course.build_lock_at > now - STALE_BUILD_LOCK_TTL,
+            )
+            .values(
+                build_lock_holder=renewed.model_dump_json(),
+                build_lock_at=now,
+            )
+            .execution_options(synchronize_session=False)
+        )
+        return int(getattr(result, "rowcount", 0) or 0) == 1
 
-        record.build_lock_holder = lock.model_dump_json()
-        record.build_lock_at = utcnow()
-        session.add(record)
-        session.commit()
+
+def _cloud_claim_build_publish(course_id: str, *, build_group_id: str) -> str | None:
+    import sqlalchemy as sa
+    from sqlmodel import select
+
+    from app.models.course import Course
+    from app.shared.infra.database import managed_session
+
+    publish_token = secrets.token_urlsafe(32)
+    for _attempt in range(3):
+        with managed_session() as session:
+            record = session.exec(select(Course).where(Course.id == course_id)).first()
+            raw_holder = record.build_lock_holder if record is not None else None
+            if not raw_holder or _cloud_record_lock_is_stale(record):
+                return None
+            try:
+                existing = KnowledgeBuildLock.model_validate_json(raw_holder)
+            except Exception:
+                return None
+            if (
+                existing.build_group_id != build_group_id
+                or existing.cancel_requested_at is not None
+                or existing.phase != "active"
+                or existing.publish_started_at is not None
+            ):
+                return None
+
+            now = utcnow()
+            claimed = existing.model_copy(
+                update={
+                    "heartbeat_at": now,
+                    "phase": "publishing_claimed",
+                    "publish_started_at": now,
+                    "publish_token": publish_token,
+                }
+            )
+            result = session.exec(
+                sa.update(Course)
+                .where(
+                    Course.id == course_id,
+                    Course.build_lock_holder == raw_holder,
+                    Course.build_lock_at > now - STALE_BUILD_LOCK_TTL,
+                )
+                .values(
+                    build_lock_holder=claimed.model_dump_json(),
+                    build_lock_at=now,
+                )
+                .execution_options(synchronize_session=False)
+            )
+            if int(getattr(result, "rowcount", 0) or 0) == 1:
+                return publish_token
+    return None
+
+
+def _cloud_finish_build_publish_in_session(
+    session: Session,
+    course_id: str,
+    *,
+    build_group_id: str,
+    publish_token: str,
+) -> bool:
+    from sqlmodel import select
+
+    from app.models.course import Course
+
+    record = session.exec(
+        select(Course).where(Course.id == course_id).with_for_update()
+    ).first()
+    raw_holder = record.build_lock_holder if record is not None else None
+    if not raw_holder:
+        return False
+    try:
+        existing = KnowledgeBuildLock.model_validate_json(raw_holder)
+    except Exception:
+        return False
+    if existing.build_group_id != build_group_id or existing.publish_token != publish_token:
+        return False
+    if existing.phase == "published" and existing.publish_completed_at is not None:
+        return True
+    if (
+        _cloud_record_lock_is_stale(record)
+        or existing.phase != "publishing_claimed"
+        or existing.publish_started_at is None
+        or existing.cancel_requested_at is not None
+    ):
+        return False
+
+    now = utcnow()
+    finished = existing.model_copy(
+        update={
+            "heartbeat_at": now,
+            "phase": "published",
+            "publish_completed_at": now,
+        }
+    )
+    record.build_lock_holder = finished.model_dump_json()
+    record.build_lock_at = now
+    session.add(record)
+    session.flush()
     return True
 
 
-def _cloud_release_build_lock(course_id: str) -> None:
+def _cloud_finish_build_publish(
+    course_id: str,
+    *,
+    build_group_id: str,
+    publish_token: str,
+    session: Session | None = None,
+) -> bool:
+    from app.shared.infra.database import managed_session
+
+    if session is not None:
+        return _cloud_finish_build_publish_in_session(
+            session,
+            course_id,
+            build_group_id=build_group_id,
+            publish_token=publish_token,
+        )
+    with managed_session() as managed:
+        return _cloud_finish_build_publish_in_session(
+            managed,
+            course_id,
+            build_group_id=build_group_id,
+            publish_token=publish_token,
+        )
+
+
+def _cloud_request_build_cancellation(
+    course_id: str,
+    *,
+    build_group_id: str,
+) -> bool:
+    import sqlalchemy as sa
     from sqlmodel import select
 
     from app.models.course import Course
     from app.shared.infra.database import managed_session
 
-    with managed_session() as session:
-        record = session.exec(select(Course).where(Course.id == course_id)).first()
-        if record is not None and record.build_lock_holder is not None:
-            record.build_lock_holder = None
-            record.build_lock_at = None
-            session.add(record)
-            session.commit()
+    for _attempt in range(3):
+        with managed_session() as session:
+            record = session.exec(select(Course).where(Course.id == course_id)).first()
+            raw_holder = record.build_lock_holder if record is not None else None
+            if not raw_holder or _cloud_record_lock_is_stale(record):
+                return False
+            try:
+                existing = KnowledgeBuildLock.model_validate_json(raw_holder)
+            except Exception:
+                return False
+            if existing.build_group_id != build_group_id:
+                return False
+            if existing.cancel_requested_at is not None:
+                return True
+            if existing.phase == "publishing_claimed":
+                return False
+
+            now = utcnow()
+            cancelled = existing.model_copy(
+                update={
+                    "heartbeat_at": now,
+                    "cancel_requested_at": now,
+                }
+            )
+            result = session.exec(
+                sa.update(Course)
+                .where(
+                    Course.id == course_id,
+                    Course.build_lock_holder == raw_holder,
+                    Course.build_lock_at > now - STALE_BUILD_LOCK_TTL,
+                )
+                .values(
+                    build_lock_holder=cancelled.model_dump_json(),
+                    build_lock_at=now,
+                )
+                .execution_options(synchronize_session=False)
+            )
+            if int(getattr(result, "rowcount", 0) or 0) == 1:
+                return True
+    return False
+
+
+def _cloud_release_build_lock(course_id: str, *, build_group_id: str) -> bool:
+    import sqlalchemy as sa
+    from sqlmodel import select
+
+    from app.models.course import Course
+    from app.shared.infra.database import managed_session
+
+    for _attempt in range(3):
+        with managed_session() as session:
+            record = session.exec(select(Course).where(Course.id == course_id)).first()
+            raw_holder = record.build_lock_holder if record is not None else None
+            if not raw_holder:
+                return False
+            try:
+                existing = KnowledgeBuildLock.model_validate_json(raw_holder)
+            except Exception:
+                return False
+            if existing.build_group_id != build_group_id:
+                return False
+
+            result = session.exec(
+                sa.update(Course)
+                .where(
+                    Course.id == course_id,
+                    Course.build_lock_holder == raw_holder,
+                )
+                .values(
+                    build_lock_holder=None,
+                    build_lock_at=None,
+                )
+                .execution_options(synchronize_session=False)
+            )
+            if int(getattr(result, "rowcount", 0) or 0) == 1:
+                return True
+    return False
 
 
 def read_knowledge_build_runtime(
@@ -1300,11 +1938,21 @@ def update_knowledge_build_lane_status(
         normalized_requested_at = ensure_utc_datetime(requested_at) if isinstance(requested_at, datetime) else None
         build_group_id = str(kwargs.get("build_group_id") or "").strip() or None
 
-        should_reset = (
-            existing is None
-            or (normalized_requested_at is not None and existing.requested_at != normalized_requested_at)
-            or (build_group_id is not None and existing is not None and existing.build_group_id != build_group_id)
-        )
+        should_reset = existing is None
+        if existing is not None:
+            existing_requested_at = ensure_utc_datetime(existing.requested_at) or existing.requested_at
+            if normalized_requested_at is not None and normalized_requested_at < existing_requested_at:
+                return existing
+            if (
+                build_group_id is not None
+                and existing.build_group_id is not None
+                and build_group_id != existing.build_group_id
+            ):
+                if normalized_requested_at is None or normalized_requested_at <= existing_requested_at:
+                    return existing
+                should_reset = True
+            elif normalized_requested_at is not None and normalized_requested_at > existing_requested_at:
+                should_reset = True
         if should_reset:
             existing = KnowledgeBuildRuntimeStatus(
                 requested_at=normalized_requested_at or utcnow(),
@@ -1327,6 +1975,14 @@ def update_knowledge_build_lane_status(
                     payload.pop(key, None)
 
         previous_status = str(existing.status or "").strip()
+        incoming_status = str(payload.get("status") or "").strip()
+        if (
+            not should_reset
+            and previous_status in _TERMINAL_BUILD_STATUSES
+            and incoming_status
+            and incoming_status != previous_status
+        ):
+            return existing
         updated = existing.model_copy(update=payload)
         updated = _hydrate_runtime_status(updated)
         setattr(runtime, attr_name, updated)
@@ -1371,20 +2027,47 @@ def update_knowledge_build_status(course_id: str, **kwargs: object) -> Knowledge
     return update_knowledge_build_lane_status(course_id, lane=lane, **kwargs)
 
 
+def _matches_active_docgen_generation(
+    existing: KnowledgeBuildRuntimeStatus | None,
+    *,
+    requested_at: datetime,
+    build_group_id: str | None,
+) -> bool:
+    """Return whether a leaf update still belongs to the active DocGen run."""
+
+    if existing is None or str(existing.status or "").strip() in _TERMINAL_BUILD_STATUSES:
+        return False
+    existing_requested_at = ensure_utc_datetime(existing.requested_at)
+    normalized_requested_at = ensure_utc_datetime(requested_at)
+    existing_owner = str(existing.build_group_id or "").strip() or None
+    requested_owner = str(build_group_id or "").strip() or None
+    return (
+        existing_requested_at is not None
+        and normalized_requested_at is not None
+        and existing_requested_at == normalized_requested_at
+        and existing_owner == requested_owner
+    )
+
+
 def upsert_knowledge_build_chapter_progress(
     course_id: str,
     *,
     chapter_progress: dict[str, object],
-    requested_at: datetime | None = None,
+    requested_at: datetime,
+    build_group_id: str | None,
     course_scope: CourseStorageScope | None = None,
-) -> KnowledgeBuildRuntimeStatus:
+) -> KnowledgeBuildRuntimeStatus | None:
     """Merge one chapter progress entry into the runtime build status."""
 
     with _get_status_lock(course_id):
         runtime = read_knowledge_build_runtime(course_id, course_scope=course_scope) or KnowledgeBuildRuntimeEnvelope()
         existing = runtime.docgen_runtime
-        if existing is None:
-            existing = KnowledgeBuildRuntimeStatus(requested_at=requested_at or utcnow())
+        if not _matches_active_docgen_generation(
+            existing,
+            requested_at=requested_at,
+            build_group_id=build_group_id,
+        ):
+            return existing
         normalized = _normalize_chapter_progress_entry(chapter_progress)
         current = {
             int(item.get("chapter_index", 0) or 0): _normalize_chapter_progress_entry(dict(item))
@@ -1408,16 +2091,21 @@ def upsert_knowledge_build_chapter_preview(
     course_id: str,
     *,
     chapter_preview: dict[str, object],
-    requested_at: datetime | None = None,
+    requested_at: datetime,
+    build_group_id: str | None,
     course_scope: CourseStorageScope | None = None,
-) -> KnowledgeBuildRuntimeStatus:
+) -> KnowledgeBuildRuntimeStatus | None:
     """Merge one chapter preview entry into the runtime build status."""
 
     with _get_status_lock(course_id):
         runtime = read_knowledge_build_runtime(course_id, course_scope=course_scope) or KnowledgeBuildRuntimeEnvelope()
         existing = runtime.docgen_runtime
-        if existing is None:
-            existing = KnowledgeBuildRuntimeStatus(requested_at=requested_at or utcnow())
+        if not _matches_active_docgen_generation(
+            existing,
+            requested_at=requested_at,
+            build_group_id=build_group_id,
+        ):
+            return existing
         chapter_index = int(chapter_preview.get("chapter_index", 0) or 0)
         if chapter_index <= 0:
             existing = _hydrate_runtime_status(existing)
@@ -1448,17 +2136,22 @@ def append_knowledge_build_recent_event(
     course_id: str,
     *,
     event: dict[str, object],
-    requested_at: datetime | None = None,
+    requested_at: datetime,
+    build_group_id: str | None,
     limit: int = 24,
     course_scope: CourseStorageScope | None = None,
-) -> KnowledgeBuildRuntimeStatus:
+) -> KnowledgeBuildRuntimeStatus | None:
     """Append one recent event into the runtime build status."""
 
     with _get_status_lock(course_id):
         runtime = read_knowledge_build_runtime(course_id, course_scope=course_scope) or KnowledgeBuildRuntimeEnvelope()
         existing = runtime.docgen_runtime
-        if existing is None:
-            existing = KnowledgeBuildRuntimeStatus(requested_at=requested_at or utcnow())
+        if not _matches_active_docgen_generation(
+            existing,
+            requested_at=requested_at,
+            build_group_id=build_group_id,
+        ):
+            return existing
         normalized = _normalize_recent_event_entry(event)
         existing.recent_events = [normalized, *list(existing.recent_events or [])][: max(1, int(limit))]
         existing.build_kind = "docgen"
@@ -1475,16 +2168,21 @@ def update_knowledge_build_merge_preview(
     course_id: str,
     *,
     merge_preview: dict[str, object],
-    requested_at: datetime | None = None,
+    requested_at: datetime,
+    build_group_id: str | None,
     course_scope: CourseStorageScope | None = None,
-) -> KnowledgeBuildRuntimeStatus:
+) -> KnowledgeBuildRuntimeStatus | None:
     """Merge whole-document preview content into the runtime build status."""
 
     with _get_status_lock(course_id):
         runtime = read_knowledge_build_runtime(course_id, course_scope=course_scope) or KnowledgeBuildRuntimeEnvelope()
         existing = runtime.docgen_runtime
-        if existing is None:
-            existing = KnowledgeBuildRuntimeStatus(requested_at=requested_at or utcnow())
+        if not _matches_active_docgen_generation(
+            existing,
+            requested_at=requested_at,
+            build_group_id=build_group_id,
+        ):
+            return existing
         current = dict(existing.merge_preview or {})
         current.update(dict(merge_preview))
         current["updated_at"] = merge_preview.get("updated_at") if "updated_at" in merge_preview else utcnow()
@@ -1629,8 +2327,6 @@ def clear_knowledge_runtime_artifacts(
     run_store_sync(cs.delete, resolved_scope.build_manifest_key(), default=None)
     run_store_sync(cs.delete, _staged_build_manifest_key(resolved_scope), default=None)
 
-    release_knowledge_build_lock(course_id, course_scope=resolved_scope)
-
 
 __all__ = [
     "KnowledgeBuildLock",
@@ -1646,13 +2342,20 @@ __all__ = [
     "clear_knowledge_build_status",
     "clear_knowledge_runtime_artifacts",
     "clear_published_knowledge_docs_files",
+    "claim_knowledge_build_publish",
+    "finish_knowledge_build_publish",
     "is_knowledge_build_locked",
+    "is_knowledge_build_lock_owner",
+    "lock_knowledge_build_owner_for_update",
+    "managed_knowledge_build_owner_transaction",
     "read_knowledge_build_lock",
     "read_knowledge_build_runtime",
     "read_knowledge_build_aggregate_status",
     "read_knowledge_build_status",
     "read_knowledge_manifest",
     "release_knowledge_build_lock",
+    "request_knowledge_build_cancellation",
+    "renew_knowledge_build_lock",
     "sanitize_knowledge_build_error_message",
     "update_knowledge_build_lane_status",
     "update_knowledge_build_merge_preview",

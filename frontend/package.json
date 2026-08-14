@@ -1,6 +1,6 @@
 {
   "name": "aiteachme-frontend",
-  "version": "0.1.3",
+  "version": "0.1.5",
   "private": true,
   "license": "AGPL-3.0-only",
   "type": "module",
@@ -25,6 +25,8 @@
     "tauri:build:local:raw": "tauri build --config src-tauri/tauri.local.conf.json --features local-backend",
     "build": "tsc && vite build",
     "build:desktop": "tsc && vite build --base=./",
+    "test:security": "node --experimental-strip-types tests/markdown-security.test.mjs",
+    "test:sse": "node --experimental-strip-types tests/sse.test.mjs",
     "preview": "vite preview"
   },
   "devDependencies": {

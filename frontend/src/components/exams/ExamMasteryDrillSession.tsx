@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import {
   ArrowLeft,
   ArrowRight,
+  AlertTriangle,
   Bookmark,
   CheckCircle2,
   Loader2,
@@ -25,6 +26,7 @@ import {
   splitMultiChoiceAnswer,
 } from "./examDisplay";
 import { isAiGradedQuestionType, type QuestionTemplateGradeResult } from "./questionTemplateGrading";
+import { isSupportedQuestionType } from "./questionTypes";
 
 export interface MasteryDrillCompletionSummary {
   totalAttemptCount: number;
@@ -40,8 +42,10 @@ interface ExamMasteryDrillSessionProps {
   onComplete: (finalAnswers: Record<number, string>, summary: MasteryDrillCompletionSummary) => void;
   onBack?: () => void;
   onRestart?: () => void;
+  onRetryComplete?: () => void;
   completionDescription?: string;
-  onGradeSubjectiveAnswer?: (item: ExamPaperItemResponse, answer: string) => Promise<QuestionTemplateGradeResult>;
+  completionError?: string | null;
+  onGradeAnswer: (item: ExamPaperItemResponse, answer: string) => Promise<QuestionTemplateGradeResult>;
   onQuestionAi?: (item: ExamPaperItemResponse, isReviewStage: boolean, answerValue: string) => void;
   onQuestionMarkToggle?: (item: ExamPaperItemResponse, isMarked: boolean) => void;
   markingQuestionTemplateId?: number | null;
@@ -94,20 +98,6 @@ function getChoiceOptions(item: ExamPaperItemResponse) {
   return item.options ?? [];
 }
 
-function isAnswerCorrect(item: ExamPaperItemResponse, answer: string) {
-  const questionType = item.question_type;
-  if (questionType === "multiple_choice" || questionType === "multi_choice") {
-    const expected = splitMultiChoiceAnswer(item.correct_answer);
-    const actual = splitMultiChoiceAnswer(answer);
-    if (!expected.size || expected.size !== actual.size) return false;
-    return Array.from(expected).every((value) => actual.has(value));
-  }
-  if (questionType === "true_false") {
-    return isTrueFalseAnswerMatch(item.correct_answer, answer);
-  }
-  return normalizeTextAnswer(item.correct_answer) === normalizeTextAnswer(answer);
-}
-
 function formatAnswerForDisplay(questionType: string, value?: string | null) {
   return formatAnswerDisplayValue(questionType, value);
 }
@@ -131,8 +121,10 @@ export function ExamMasteryDrillSession({
   onComplete,
   onBack,
   onRestart,
+  onRetryComplete,
   completionDescription = "本轮闯关已完成，训练记录会同步到历史记录。",
-  onGradeSubjectiveAnswer,
+  completionError,
+  onGradeAnswer,
   onQuestionAi,
   onQuestionMarkToggle,
   markingQuestionTemplateId,
@@ -147,40 +139,74 @@ export function ExamMasteryDrillSession({
     () => new Map(orderedItems.map((item) => [item.id, item])),
     [orderedItems],
   );
-  const [queue, setQueue] = useState<number[]>(orderedItemIds);
-  const [completedIds, setCompletedIds] = useState<Set<number>>(() => new Set());
-  const [attemptStats, setAttemptStats] = useState<Record<number, AttemptStats>>({});
+  const persistedAttempts = useMemo(
+    () => (paper.mastery_drill?.attempts ?? []).filter((attempt) => attempt.status === "graded"),
+    [paper.mastery_drill?.attempts],
+  );
+  const persistedAttemptSignature = persistedAttempts
+    .map((attempt) => `${attempt.id}:${attempt.is_correct === true ? 1 : 0}`)
+    .join(",");
+  const buildPersistedState = () => {
+    const stats: Record<number, AttemptStats> = {};
+    persistedAttempts.forEach((attempt) => {
+      const previous = stats[attempt.exam_paper_item_id] ?? { attempts: 0, wrong: 0, correct: false };
+      stats[attempt.exam_paper_item_id] = {
+        attempts: previous.attempts + 1,
+        wrong: previous.wrong + (attempt.is_correct === true ? 0 : 1),
+        correct: previous.correct || attempt.is_correct === true,
+      };
+    });
+    const completed = new Set(
+      orderedItems
+        .filter((item) => item.is_correct === true || stats[item.id]?.correct === true)
+        .map((item) => item.id),
+    );
+    return {
+      stats,
+      completed,
+      queue: orderedItemIds.filter((itemId) => !completed.has(itemId)),
+    };
+  };
+  const initialPersistedState = buildPersistedState();
+  const [queue, setQueue] = useState<number[]>(initialPersistedState.queue);
+  const [completedIds, setCompletedIds] = useState<Set<number>>(initialPersistedState.completed);
+  const [attemptStats, setAttemptStats] = useState<Record<number, AttemptStats>>(initialPersistedState.stats);
   const [feedback, setFeedback] = useState<DrillFeedback | null>(null);
   const [checkingItemId, setCheckingItemId] = useState<number | null>(null);
+  const completionNotifiedPaperIdRef = useRef<number | null>(null);
 
   useEffect(() => {
-    setQueue(orderedItemIds);
-    setCompletedIds(new Set());
-    setAttemptStats({});
+    const persisted = buildPersistedState();
+    setQueue(persisted.queue);
+    setCompletedIds(persisted.completed);
+    setAttemptStats(persisted.stats);
     setFeedback(null);
     setCheckingItemId(null);
-  }, [paper.id, itemIdsKey]);
+    completionNotifiedPaperIdRef.current = null;
+  }, [paper.id, itemIdsKey, persistedAttemptSignature]);
 
   const currentItem = queue.length ? itemById.get(queue[0]) ?? null : null;
   const answerValue = currentItem ? answers[currentItem.item_order] ?? "" : "";
   const completedCount = completedIds.size;
   const wrongAttemptCount = Object.values(attemptStats).reduce((total, item) => total + item.wrong, 0);
   const isCurrentAnswered = answerValue.trim().length > 0;
+  const isCurrentSupported = currentItem ? isSupportedQuestionType(currentItem.question_type) : false;
   const isCheckingAnswer = currentItem ? checkingItemId === currentItem.id : false;
+  const checkingAnswerLabel = currentItem && isAiGradedQuestionType(currentItem.question_type)
+    ? "AI 判题中"
+    : "判题中";
 
   const setCurrentAnswer = (item: ExamPaperItemResponse, value: string) => {
     setAnswers((current) => ({ ...current, [item.item_order]: value }));
   };
 
   const handleCheckAnswer = async () => {
-    if (!currentItem || feedback || !isCurrentAnswered || isCheckingAnswer) return;
+    if (!currentItem || !isCurrentSupported || feedback || !isCurrentAnswered || isCheckingAnswer) return;
     const submittedAnswer = answerValue.trim();
     setCheckingItemId(currentItem.id);
     let gradeResult: Partial<QuestionTemplateGradeResult> | null = null;
     try {
-      gradeResult = isAiGradedQuestionType(currentItem.question_type) && onGradeSubjectiveAnswer
-        ? await onGradeSubjectiveAnswer(currentItem, submittedAnswer)
-        : { is_correct: isAnswerCorrect(currentItem, submittedAnswer) };
+      gradeResult = await onGradeAnswer(currentItem, submittedAnswer);
     } catch {
       return;
     } finally {
@@ -236,6 +262,7 @@ export function ExamMasteryDrillSession({
           .filter((templateId): templateId is number => (
             typeof templateId === "number" && Number.isFinite(templateId) && templateId > 0
           ));
+        completionNotifiedPaperIdRef.current = paper.id;
         onComplete(finalAnswers, {
           totalAttemptCount: Object.values(finalAttemptStats).reduce((total, item) => total + item.attempts, 0),
           wrongAttemptCount: Object.values(finalAttemptStats).reduce((total, item) => total + item.wrong, 0),
@@ -249,6 +276,29 @@ export function ExamMasteryDrillSession({
     setQueue([...remainingQueue, currentItem.id]);
     setFeedback(null);
   };
+
+  useEffect(() => {
+    if (
+      orderedItems.length === 0 ||
+      queue.length > 0 ||
+      completedIds.size !== orderedItems.length ||
+      completionNotifiedPaperIdRef.current === paper.id
+    ) {
+      return;
+    }
+    completionNotifiedPaperIdRef.current = paper.id;
+    const wrongQuestionTemplateIds = Object.entries(attemptStats)
+      .filter(([, stats]) => stats.wrong > 0)
+      .map(([itemId]) => itemById.get(Number(itemId))?.question_template_id)
+      .filter((templateId): templateId is number => (
+        typeof templateId === "number" && Number.isFinite(templateId) && templateId > 0
+      ));
+    onComplete(answers, {
+      totalAttemptCount: Object.values(attemptStats).reduce((total, item) => total + item.attempts, 0),
+      wrongAttemptCount: Object.values(attemptStats).reduce((total, item) => total + item.wrong, 0),
+      wrongQuestionTemplateIds,
+    });
+  }, [answers, attemptStats, completedIds, itemById, onComplete, orderedItems.length, paper.id, queue.length]);
 
   if (!orderedItems.length) {
     return (
@@ -264,10 +314,21 @@ export function ExamMasteryDrillSession({
         <Trophy className="mx-auto h-10 w-10" />
         <h2 className="mt-3 text-xl font-semibold">{orderedItems.length} 题全部答对</h2>
         <p className="mt-2 text-sm leading-6 text-emerald-800 dark:text-emerald-200">
-          {isCompleting ? "正在保存本次训练记录..." : completionDescription}
+          {isCompleting
+            ? "正在保存本次训练记录..."
+            : completionError ?? completionDescription}
         </p>
         {isCompleting ? <Loader2 className="mx-auto mt-4 h-5 w-5 animate-spin" /> : null}
-        {!isCompleting && onRestart ? (
+        {!isCompleting && completionError && onRetryComplete ? (
+          <Button
+            className="mt-5 h-10 rounded-full bg-amber-700 px-5 text-sm font-semibold text-white hover:bg-amber-600"
+            onClick={onRetryComplete}
+          >
+            <RotateCcw className="h-4 w-4" />
+            重试保存
+          </Button>
+        ) : null}
+        {!isCompleting && !completionError && onRestart ? (
           <Button
             className="mt-5 h-10 rounded-full bg-emerald-950 px-5 text-sm font-semibold text-white hover:bg-emerald-900 dark:bg-emerald-100 dark:text-emerald-950 dark:hover:bg-white"
             onClick={onRestart}
@@ -301,6 +362,9 @@ export function ExamMasteryDrillSession({
         ? "回答正确！请阅读解析并点击“下一题”继续。"
         : "回答错误。点击“重新入队”可稍后再次挑战该题。";
     }
+    if (!isCurrentSupported) {
+      return `当前版本不支持题型「${currentItem.question_type || "未指定"}」，请返回训练中心重新选择题目。`;
+    }
     if (!isCurrentAnswered) {
       if (isMultipleChoice) {
         return "多选题，请选择你的选项。";
@@ -311,7 +375,7 @@ export function ExamMasteryDrillSession({
       return "请在上方输入你的作答。";
     }
     return "已选定答案，点击“确认答案”提交。";
-  }, [activeFeedback, isCurrentAnswered, isMultipleChoice, isTrueFalse, currentItem]);
+  }, [activeFeedback, isCurrentAnswered, isCurrentSupported, isMultipleChoice, isTrueFalse, currentItem]);
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-4">
@@ -427,7 +491,12 @@ export function ExamMasteryDrillSession({
             <ExamMarkdown content={currentItem.stem} />
           </div>
 
-          {choiceOptions.length > 0 ? (
+          {!isCurrentSupported ? (
+            <div className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200" role="alert">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>该题型尚未在当前客户端发布，已停止本题作答和判分。</span>
+            </div>
+          ) : choiceOptions.length > 0 ? (
             <div
               className={cn(
                 "mt-6 grid gap-3 max-w-[720px]",
@@ -586,10 +655,10 @@ export function ExamMasteryDrillSession({
             <Button
               className="h-11 w-full rounded-full bg-black px-5 text-sm font-semibold dark:bg-slate-100 dark:text-slate-900 sm:w-auto"
               onClick={handleCheckAnswer}
-              disabled={!isCurrentAnswered || isCompleting || isCheckingAnswer}
+              disabled={!isCurrentSupported || !isCurrentAnswered || isCompleting || isCheckingAnswer}
             >
               {isCheckingAnswer ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              {isCheckingAnswer ? "AI 判题中" : "确认答案"}
+              {isCheckingAnswer ? checkingAnswerLabel : "确认答案"}
             </Button>
           )}
         </footer>

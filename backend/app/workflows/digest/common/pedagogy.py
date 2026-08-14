@@ -368,20 +368,6 @@ def ensure_chapter_learning_scaffold(
     return cleaned.rstrip() + "\n"
 
 
-def _build_mode_sections(
-    *,
-    title: str,
-    objective: str,
-    required_elements: list[str],
-    digest_mode: str,
-    chapter_index: int | None = None,
-    chapter_count: int | None = None,
-    headings: Mapping[str, str] | None = None,
-) -> list[tuple[str, str, str]]:
-    del title, objective, required_elements, digest_mode, chapter_index, chapter_count, headings
-    return []
-
-
 def _normalize_mode(digest_mode: str) -> str:
     return (digest_mode or "systematic").strip().lower()
 

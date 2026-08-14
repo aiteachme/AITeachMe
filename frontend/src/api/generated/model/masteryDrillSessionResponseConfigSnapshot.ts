@@ -5,7 +5,4 @@
  * 本地优先的 AI 助教后端服务。
  */
 
-export interface CourseNameSuggestionResponse {
-  /** AI-generated course name. */
-  name: string;
-}
+export type MasteryDrillSessionResponseConfigSnapshot = { [key: string]: unknown };

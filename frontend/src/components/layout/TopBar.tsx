@@ -1,8 +1,8 @@
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
-import { BarChart3, Github, Loader2, LogIn, LogOut, User } from "lucide-react";
-import { apiClient, getApiErrorMessage } from "../../api/client";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { BarChart3, Github, Loader2, LogIn, LogOut, MessageSquareText, User } from "lucide-react";
+import { abortActiveApiRequests, apiClient, getApiErrorMessage, notifyApiAuthChanged } from "../../api/client";
 import { listCoursesApiApiV1CoursesListPost } from "../../api/generated/courses";
 import { examHistoryApiV1CoursesCourseIdExamsHistoryGet } from "../../api/generated/exams";
 import { listChatApiApiV1CoursesCourseIdChatsListPost } from "../../api/generated/chats";
@@ -23,6 +23,7 @@ import {
 import { cn } from "../../lib/utils";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { Modal } from "../ui/Modal";
+import { FeedbackModal } from "../ui/FeedbackModal";
 
 type SendEmailCodeData = {
   expires_in_s: number;
@@ -51,6 +52,23 @@ interface LearningActivityPanelProps {
   latestActivity: LearningActivityEvent | null;
   isLoading: boolean;
   isError: boolean;
+}
+
+function getSafeInternalReturnTo(value: string | null): string | null {
+  const normalized = value?.trim() ?? "";
+  if (!normalized.startsWith("/") || normalized.startsWith("//") || normalized.includes("\\")) {
+    return null;
+  }
+  try {
+    const base = "https://aiteachme.local";
+    const parsed = new URL(normalized, base);
+    if (parsed.origin !== base) {
+      return null;
+    }
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return null;
+  }
 }
 
 function getDisplayName(user: RuntimeUser | null): string {
@@ -151,6 +169,8 @@ function LearningActivityPanel({
 
 export function TopBar({ className }: TopBarProps) {
   const queryClient = useQueryClient();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [authUser, setAuthUser] = useState<RuntimeUser | null>(null);
   const [authEnabled, setAuthEnabled] = useState<boolean | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
@@ -167,6 +187,7 @@ export function TopBar({ className }: TopBarProps) {
   const [codeSentToEmail, setCodeSentToEmail] = useState<string | null>(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
   const authSessionQuery = useQuery({
     queryKey: AUTH_SESSION_QUERY_KEY,
     queryFn: ({ signal }) => fetchAuthSession(signal),
@@ -176,6 +197,8 @@ export function TopBar({ className }: TopBarProps) {
 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
+  const authEntryRequestRef = useRef("");
+  const authReturnToRef = useRef<string | null>(null);
 
   const isLoggedIn = Boolean(authUser?.is_authenticated);
   const canUseAuth = authEnabled === true;
@@ -260,7 +283,11 @@ export function TopBar({ className }: TopBarProps) {
       const currentUser = authSessionQuery.data?.current_user ?? null;
       setAuthEnabled(Boolean(authSessionQuery.data?.auth_enabled));
       if (!currentUser?.is_authenticated) {
+        const hadAccessToken = Boolean(localStorage.getItem("token"));
         localStorage.removeItem("token");
+        if (hadAccessToken) {
+          abortActiveApiRequests();
+        }
       }
       setAuthUser(currentUser);
       syncAnalyticsUserIdentity({
@@ -323,6 +350,7 @@ export function TopBar({ className }: TopBarProps) {
 
   const closeAuthModal = () => {
     if (isAuthSubmitting || isSendCodeSubmitting) return;
+    authReturnToRef.current = null;
     setIsAuthModalOpen(false);
     setAuthError(null);
     setAuthPassword("");
@@ -338,8 +366,55 @@ export function TopBar({ className }: TopBarProps) {
       closeMenus();
       return;
     }
+    authReturnToRef.current = null;
     closeMenus();
     openAuthModal(mode);
+  };
+
+  useEffect(() => {
+    if (authEnabled === null) {
+      return;
+    }
+    const searchParams = new URLSearchParams(location.search);
+    if (searchParams.get("auth") !== "login") {
+      authEntryRequestRef.current = "";
+      return;
+    }
+    const requestKey = `${location.pathname}${location.search}`;
+    if (authEntryRequestRef.current === requestKey) {
+      return;
+    }
+    authEntryRequestRef.current = requestKey;
+    authReturnToRef.current = getSafeInternalReturnTo(searchParams.get("returnTo"));
+
+    if (authEnabled) {
+      setAuthMode("login");
+      setAuthError(null);
+      setAuthPassword("");
+      setAuthVerificationCode("");
+      setSendCodeCooldownS(0);
+      setCodeExpiresInS(null);
+      setSendCodeInfo(null);
+      setCodeSentToEmail(null);
+      setIsAuthModalOpen(true);
+    }
+
+    searchParams.delete("auth");
+    searchParams.delete("returnTo");
+    const nextSearch = searchParams.toString();
+    navigate(
+      {
+        pathname: location.pathname,
+        search: nextSearch ? `?${nextSearch}` : "",
+        hash: location.hash,
+      },
+      { replace: true },
+    );
+  }, [authEnabled, location.hash, location.pathname, location.search, navigate]);
+
+  const openFeedbackModal = () => {
+    closeMenus();
+    setIsFeedbackModalOpen(true);
   };
 
   const handleLogout = async () => {
@@ -350,6 +425,7 @@ export function TopBar({ className }: TopBarProps) {
         data: {},
       });
       localStorage.removeItem("token");
+      abortActiveApiRequests();
       const currentUser = response.data.current_user ?? null;
       queryClient.setQueryData(AUTH_SESSION_QUERY_KEY, response.data);
       trackAnalyticsEvent("auth_logout_succeeded", {
@@ -364,6 +440,7 @@ export function TopBar({ className }: TopBarProps) {
       setAuthUser(currentUser);
     } catch {
       localStorage.removeItem("token");
+      abortActiveApiRequests();
       resetAnalyticsIdentity();
       setAuthUser(null);
     }
@@ -448,6 +525,7 @@ export function TopBar({ className }: TopBarProps) {
       if (token) {
         localStorage.setItem("token", token);
       }
+      notifyApiAuthChanged();
       const currentUser = response.data.current_user ?? null;
       queryClient.setQueryData(AUTH_SESSION_QUERY_KEY, response.data);
       syncAnalyticsUserIdentity({
@@ -467,6 +545,11 @@ export function TopBar({ className }: TopBarProps) {
       setSendCodeInfo(null);
       setCodeSentToEmail(null);
       closeMenus();
+      const returnTo = authReturnToRef.current;
+      authReturnToRef.current = null;
+      if (returnTo) {
+        navigate(returnTo, { replace: true });
+      }
     } catch (error) {
       setAuthError(
         getApiErrorMessage(
@@ -582,6 +665,14 @@ export function TopBar({ className }: TopBarProps) {
                 </div>
 
                 <div className="border-t border-slate-100 py-1 dark:border-slate-800/80">
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-slate-700 transition-colors hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800/50"
+                    onClick={openFeedbackModal}
+                  >
+                    <MessageSquareText className="h-4 w-4 text-slate-400 dark:text-slate-500" />
+                    <span>意见反馈</span>
+                  </button>
                   <a
                     href="https://github.com/aiteachme/AiTeachMe"
                     target="_blank"
@@ -690,6 +781,14 @@ export function TopBar({ className }: TopBarProps) {
             <div className="my-1 border-t border-slate-100 dark:border-slate-800/80" />
 
             <div className="py-1">
+              <button
+                type="button"
+                className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-slate-700 transition-colors hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800/50"
+                onClick={openFeedbackModal}
+              >
+                <MessageSquareText className="h-4 w-4 text-slate-400 dark:text-slate-500" />
+                <span>意见反馈</span>
+              </button>
               <a
                 href="https://github.com/aiteachme/AiTeachMe"
                 target="_blank"
@@ -704,6 +803,8 @@ export function TopBar({ className }: TopBarProps) {
           </div>
         )}
       </div>
+
+      <FeedbackModal open={isFeedbackModalOpen} onClose={() => setIsFeedbackModalOpen(false)} />
 
       <Modal
         open={canUseAuth && isAuthModalOpen}

@@ -1,4 +1,7 @@
-import axios, { AxiosHeaders, AxiosRequestConfig, AxiosResponse } from "axios";
+import axios, { AxiosHeaders } from "axios";
+import type { AxiosRequestConfig, AxiosResponse } from "axios";
+
+import { parseSseEventBlock } from "./sseParser.ts";
 
 const DEFAULT_ELECTRON_LOCAL_API_BASE_URL = "http://127.0.0.1:19020";
 
@@ -20,7 +23,7 @@ function resolveDesktopApiBaseUrl(): string {
     return runtimeBase;
   }
 
-  const buildTimeBase = (import.meta.env.VITE_API_URL ?? "").trim();
+  const buildTimeBase = (import.meta.env?.VITE_API_URL ?? "").trim();
   if (window.location.protocol === "file:") {
     return buildTimeBase || DEFAULT_ELECTRON_LOCAL_API_BASE_URL;
   }
@@ -33,7 +36,7 @@ function resolveDesktopApiBaseUrl(): string {
 
 const API_BASE_URL = shouldUseMockApi()
   ? ""
-  : resolveDesktopApiBaseUrl() || (import.meta.env.VITE_API_URL ?? "").trim();
+  : resolveDesktopApiBaseUrl() || (import.meta.env?.VITE_API_URL ?? "").trim();
 const DEVICE_KEY_STORAGE_KEY = "device_key";
 const DEVICE_KEY_RE = /^[A-Za-z0-9._:-]{8,128}$/;
 export const DEFAULT_API_TIMEOUT_MS = 60_000;
@@ -43,6 +46,7 @@ const BACKEND_RECOVERY_POLL_INTERVAL_MS = 1_500;
 const BACKEND_RECOVERY_POLL_MAX_INTERVAL_MS = 10_000;
 export const BACKEND_OFFLINE_EVENT = "aiteachme:backend-offline";
 export const BACKEND_ONLINE_EVENT = "aiteachme:backend-online";
+export const API_AUTH_CHANGED_EVENT = "aiteachme:api-auth-changed";
 
 const instance = axios.create({
   baseURL: API_BASE_URL,
@@ -83,23 +87,39 @@ type AbortSignalLike = {
 };
 
 const activeRequestControllers = new Set<AbortController>();
-const activeEventSources = new Set<EventSource>();
+const activeSseSubscriptions = new Set<{ close: () => void }>();
+let apiAuthGeneration = 0;
 let backendOffline = false;
 let recoveryProbeTimer: number | null = null;
 let recoveryProbeAttempt = 0;
-let connectionIssueProbeInFlight = false;
+let connectionIssueProbe: Promise<boolean> | null = null;
 
 function getAccessToken(): string | null {
-  return localStorage.getItem("token");
+  try {
+    return localStorage.getItem("token");
+  } catch {
+    return null;
+  }
+}
+
+export function hasStoredAccessToken(): boolean {
+  return Boolean(getAccessToken());
 }
 
 function generateDeviceKey(): string {
-  const randomPart =
-    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-      ? crypto.randomUUID()
-      : `${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+  let randomPart: string;
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    randomPart = crypto.randomUUID();
+  } else if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    randomPart = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  } else {
+    randomPart = `${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+  }
   return `dk_${randomPart}`;
 }
+
+const IN_MEMORY_DEVICE_KEY = generateDeviceKey();
 
 export function getDeviceKey(): string {
   try {
@@ -111,7 +131,7 @@ export function getDeviceKey(): string {
     localStorage.setItem(DEVICE_KEY_STORAGE_KEY, generated);
     return generated;
   } catch {
-    return "dk_fallback_local";
+    return IN_MEMORY_DEVICE_KEY;
   }
 }
 
@@ -192,19 +212,36 @@ function createApiFetchHeaders(headers?: HeadersInit): Headers {
   return nextHeaders;
 }
 
+function closeActiveSseSubscriptions(): void {
+  for (const subscription of Array.from(activeSseSubscriptions)) {
+    subscription.close();
+  }
+}
+
 export function abortActiveApiRequests(): void {
+  closeActiveSseSubscriptions();
+  abortTrackedApiRequests();
+}
+
+export function getApiAuthGeneration(): number {
+  return apiAuthGeneration;
+}
+
+/** Rotate mounted SSE subscriptions after the authentication identity changes. */
+export function notifyApiAuthChanged(): void {
+  closeActiveSseSubscriptions();
+  apiAuthGeneration += 1;
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(API_AUTH_CHANGED_EVENT));
+  }
+}
+
+function abortTrackedApiRequests(): void {
   for (const controller of Array.from(activeRequestControllers)) {
     if (!controller.signal.aborted) {
       controller.abort();
     }
   }
-}
-
-function closeActiveEventSources(): void {
-  for (const source of Array.from(activeEventSources)) {
-    source.close();
-  }
-  activeEventSources.clear();
 }
 
 async function checkBackendHealthOnce(): Promise<boolean> {
@@ -276,15 +313,13 @@ export function markBackendOnline(): void {
 
 export function markBackendOffline(reason = "network_error"): void {
   if (backendOffline) {
-    abortActiveApiRequests();
-    closeActiveEventSources();
+    abortTrackedApiRequests();
     return;
   }
 
   backendOffline = true;
   recoveryProbeAttempt = 0;
-  abortActiveApiRequests();
-  closeActiveEventSources();
+  abortTrackedApiRequests();
   startBackendRecoveryProbe();
   dispatchBackendConnectionEvent(BACKEND_OFFLINE_EVENT, { reason });
 }
@@ -293,33 +328,27 @@ export function isBackendOffline(): boolean {
   return backendOffline;
 }
 
-export function reportBackendConnectionIssue(reason = "stream_error"): void {
-  if (backendOffline || connectionIssueProbeInFlight) {
-    return;
+export function reportBackendConnectionIssue(reason = "stream_error"): Promise<boolean> {
+  if (backendOffline) {
+    return Promise.resolve(false);
   }
-  connectionIssueProbeInFlight = true;
-  void checkBackendHealthOnce()
+  if (connectionIssueProbe) {
+    return connectionIssueProbe;
+  }
+  const probe = checkBackendHealthOnce()
     .then((isHealthy) => {
       if (isHealthy) {
         markBackendOnline();
-        return;
+        return true;
       }
       markBackendOffline(reason);
+      return false;
     })
     .finally(() => {
-      connectionIssueProbeInFlight = false;
+      connectionIssueProbe = null;
     });
-}
-
-export function registerBackendEventSource(source: EventSource): () => void {
-  if (backendOffline) {
-    source.close();
-    return () => undefined;
-  }
-  activeEventSources.add(source);
-  return () => {
-    activeEventSources.delete(source);
-  };
+  connectionIssueProbe = probe;
+  return probe;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -363,6 +392,7 @@ export async function runTrackedApiFetch<T>(
   init: RequestInit,
   consume: (response: Response) => Promise<T>,
   disconnectReason = "fetch_disconnect",
+  markOfflineOnDisconnect = true,
 ): Promise<T> {
   if (backendOffline) {
     throw createBackendOfflineError();
@@ -374,6 +404,42 @@ export async function runTrackedApiFetch<T>(
       ...init,
       credentials: init.credentials ?? "include",
       headers: createApiFetchHeaders(init.headers),
+      signal: trackedSignal.signal,
+    });
+    return await consume(response);
+  } catch (error) {
+    if (isBackendDisconnectError(error)) {
+      if (markOfflineOnDisconnect) {
+        markBackendOffline(disconnectReason);
+      }
+    }
+    throw error;
+  } finally {
+    trackedSignal.cleanup();
+  }
+}
+
+export async function runAnonymousApiFetch<T>(
+  url: string,
+  init: RequestInit,
+  consume: (response: Response) => Promise<T>,
+  disconnectReason = "anonymous_fetch_disconnect",
+): Promise<T> {
+  if (backendOffline) {
+    throw createBackendOfflineError();
+  }
+
+  const headers = new Headers(init.headers);
+  headers.delete("Authorization");
+  headers.delete("Cookie");
+  headers.delete("X-Device-Key");
+  const trackedSignal = createTrackedAbortSignal(init.signal ?? null);
+  try {
+    const response = await fetch(buildApiUrl(url), {
+      ...init,
+      credentials: "omit",
+      headers,
+      referrerPolicy: "no-referrer",
       signal: trackedSignal.signal,
     });
     return await consume(response);
@@ -421,6 +487,291 @@ async function parseErrorResponse(response: Response): Promise<string> {
   } catch {
     return extractErrorMessage(rawText, `请求失败（${response.status}）`);
   }
+}
+
+export async function anonymousApiClient<T>(url: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers);
+  if (!headers.has("Accept")) {
+    headers.set("Accept", "application/json");
+  }
+  return runAnonymousApiFetch(
+    url,
+    {
+      ...init,
+      headers,
+    },
+    async (response) => {
+      if (!response.ok) {
+        throw new Error(await parseErrorResponse(response));
+      }
+      return response.json() as Promise<T>;
+    },
+    "anonymous_api_disconnect",
+  );
+}
+
+const SSE_CONNECTING = 0;
+const SSE_OPEN = 1;
+const SSE_CLOSED = 2;
+const DEFAULT_SSE_MAX_RECONNECT_ATTEMPTS = 6;
+const DEFAULT_SSE_RECONNECT_DELAY_MS = 750;
+const MAX_SSE_RECONNECT_DELAY_MS = 10_000;
+
+type SseConnectionError = Error & { status?: number; retryable?: boolean };
+
+export interface AuthenticatedSseOptions {
+  disconnectReason?: string;
+  maxReconnectAttempts?: number;
+  reconnectDelayMs?: number;
+}
+
+export interface AuthenticatedSseStream extends EventTarget {
+  onopen: ((event: Event) => void) | null;
+  onerror: ((event: Event) => void) | null;
+  readonly readyState: number;
+  close(): void;
+}
+
+class FetchAuthenticatedSseStream extends EventTarget implements AuthenticatedSseStream {
+  onopen: ((event: Event) => void) | null = null;
+  onerror: ((event: Event) => void) | null = null;
+  readyState = SSE_CONNECTING;
+
+  private readonly controller = new AbortController();
+  private readonly disconnectReason: string;
+  private readonly maxReconnectAttempts: number;
+  private reconnectDelayMs: number;
+  private reconnectAttempts = 0;
+  private lastEventId = "";
+  private closed = false;
+  private readonly url: string;
+
+  constructor(
+    url: string,
+    options: AuthenticatedSseOptions,
+  ) {
+    super();
+    this.url = url;
+    this.disconnectReason = options.disconnectReason ?? "get_sse_disconnect";
+    this.maxReconnectAttempts = Math.max(
+      0,
+      Math.min(20, options.maxReconnectAttempts ?? DEFAULT_SSE_MAX_RECONNECT_ATTEMPTS),
+    );
+    this.reconnectDelayMs = Math.max(
+      250,
+      Math.min(MAX_SSE_RECONNECT_DELAY_MS, options.reconnectDelayMs ?? DEFAULT_SSE_RECONNECT_DELAY_MS),
+    );
+    activeSseSubscriptions.add(this);
+    void this.connectLoop();
+  }
+
+  close(): void {
+    if (this.closed) return;
+    this.closed = true;
+    this.readyState = SSE_CLOSED;
+    activeSseSubscriptions.delete(this);
+    this.controller.abort();
+  }
+
+  private emitOpen(): void {
+    const event = new Event("open");
+    this.dispatchEvent(event);
+    this.onopen?.(event);
+  }
+
+  private emitError(): void {
+    const event = new Event("error");
+    this.dispatchEvent(event);
+    this.onerror?.(event);
+  }
+
+  private dispatchBlock(block: string): void {
+    const parsed = parseSseEventBlock(block);
+    if (parsed.retryMs !== null) {
+      this.reconnectDelayMs = Math.max(
+        250,
+        Math.min(MAX_SSE_RECONNECT_DELAY_MS, parsed.retryMs),
+      );
+    }
+    if (parsed.lastEventId !== null) this.lastEventId = parsed.lastEventId;
+    if (!parsed.message) return;
+
+    this.reconnectAttempts = 0;
+    this.dispatchEvent(
+      new MessageEvent(parsed.message.type, {
+        data: parsed.message.data,
+        lastEventId: this.lastEventId,
+      }),
+    );
+  }
+
+  private async consumeBody(body: ReadableStream<Uint8Array>): Promise<void> {
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    try {
+      while (!this.closed) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true }).replace(/\r/g, "");
+
+        let boundaryIndex = buffer.indexOf("\n\n");
+        while (boundaryIndex !== -1) {
+          this.dispatchBlock(buffer.slice(0, boundaryIndex));
+          buffer = buffer.slice(boundaryIndex + 2);
+          if (this.closed) return;
+          boundaryIndex = buffer.indexOf("\n\n");
+        }
+      }
+
+      buffer += decoder.decode().replace(/\r/g, "");
+      if (!this.closed && buffer.trim()) this.dispatchBlock(buffer);
+    } finally {
+      reader.releaseLock();
+    }
+  }
+
+  private async connectOnce(): Promise<void> {
+    const headers = new Headers({
+      Accept: "text/event-stream",
+      "Cache-Control": "no-cache",
+    });
+    if (this.lastEventId) headers.set("Last-Event-ID", this.lastEventId);
+
+    await runTrackedApiFetch(
+      this.url,
+      {
+        method: "GET",
+        headers,
+        cache: "no-store",
+        signal: this.controller.signal,
+      },
+      async (response) => {
+        if (!response.ok) {
+          const error = new Error(await parseErrorResponse(response)) as SseConnectionError;
+          error.status = response.status;
+          throw error;
+        }
+        const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+        if (!contentType.includes("text/event-stream")) {
+          const error = new Error("SSE 响应类型无效。");
+          (error as SseConnectionError).retryable = false;
+          throw error;
+        }
+        if (!response.body) throw new Error("SSE 响应流不可用。");
+
+        this.readyState = SSE_OPEN;
+        this.emitOpen();
+        await this.consumeBody(response.body);
+      },
+      this.disconnectReason,
+      false,
+    );
+  }
+
+  private shouldReconnect(error: unknown): boolean {
+    if (isBackendOfflineError(error)) return false;
+    const connectionError = error as SseConnectionError | null;
+    if (connectionError?.retryable === false) return false;
+    const status = connectionError?.status;
+    return !(typeof status === "number" && status >= 400 && status < 500);
+  }
+
+  private waitForBackendOnline(): Promise<void> {
+    return new Promise((resolve) => {
+      if (this.closed || !backendOffline) {
+        resolve();
+        return;
+      }
+      const onOnline = () => done();
+      const onAbort = () => done();
+      const signal = this.controller.signal;
+      window.addEventListener(BACKEND_ONLINE_EVENT, onOnline, { once: true });
+      signal.addEventListener("abort", onAbort, { once: true });
+
+      function done() {
+        window.removeEventListener(BACKEND_ONLINE_EVENT, onOnline);
+        signal.removeEventListener("abort", onAbort);
+        resolve();
+      }
+    });
+  }
+
+  private waitForReconnect(delayMs: number): Promise<"retry" | "offline" | "closed"> {
+    return new Promise((resolve) => {
+      if (this.closed) {
+        resolve("closed");
+        return;
+      }
+      if (backendOffline) {
+        resolve("offline");
+        return;
+      }
+      const timer = window.setTimeout(() => done("retry"), delayMs);
+      const onOffline = () => done("offline");
+      const onAbort = () => done("closed");
+      const signal = this.controller.signal;
+      window.addEventListener(BACKEND_OFFLINE_EVENT, onOffline, { once: true });
+      signal.addEventListener("abort", onAbort, { once: true });
+
+      function done(result: "retry" | "offline" | "closed") {
+        window.clearTimeout(timer);
+        window.removeEventListener(BACKEND_OFFLINE_EVENT, onOffline);
+        signal.removeEventListener("abort", onAbort);
+        resolve(result);
+      }
+    });
+  }
+
+  private async connectLoop(): Promise<void> {
+    while (!this.closed) {
+      if (backendOffline) {
+        this.readyState = SSE_CONNECTING;
+        await this.waitForBackendOnline();
+        continue;
+      }
+      try {
+        await this.connectOnce();
+        if (this.closed) return;
+        throw new Error("SSE connection closed before a terminal event.");
+      } catch (error) {
+        if (!this.closed) this.emitError();
+        if (this.closed) return;
+        if (isBackendDisconnectError(error)) {
+          await reportBackendConnectionIssue(this.disconnectReason);
+          if (this.closed) return;
+        }
+        if (backendOffline || isBackendOfflineError(error)) {
+          this.readyState = SSE_CONNECTING;
+          await this.waitForBackendOnline();
+          continue;
+        }
+        if (!this.shouldReconnect(error) || this.reconnectAttempts >= this.maxReconnectAttempts) {
+          this.close();
+          return;
+        }
+
+        const delayMs = Math.min(
+          MAX_SSE_RECONNECT_DELAY_MS,
+          this.reconnectDelayMs * 2 ** this.reconnectAttempts,
+        );
+        this.reconnectAttempts += 1;
+        this.readyState = SSE_CONNECTING;
+        const waitResult = await this.waitForReconnect(delayMs);
+        if (waitResult === "offline") {
+          this.reconnectAttempts = Math.max(0, this.reconnectAttempts - 1);
+          await this.waitForBackendOnline();
+        }
+      }
+    }
+  }
+}
+
+export function openAuthenticatedSse(
+  url: string,
+  options: AuthenticatedSseOptions = {},
+): AuthenticatedSseStream {
+  return new FetchAuthenticatedSseStream(url, options);
 }
 
 export interface SseTokenPayload {
@@ -781,6 +1132,9 @@ export function getApiErrorMessage(
   error: unknown,
   fallback = "请求失败，请稍后重试",
 ): string {
+  if (!isRecord(error)) {
+    return fallback;
+  }
   const apiError = error as ApiErrorShape;
   if (apiError.code === "BACKEND_OFFLINE") {
     return "后端服务已断开，正在尝试重连。";
@@ -814,6 +1168,9 @@ export function getApiErrorMessage(
 }
 
 export function getApiErrorCode(error: unknown): string | null {
+  if (!isRecord(error)) {
+    return null;
+  }
   const apiError = error as ApiErrorShape;
   const errorCode = apiError.response?.data?.error_code;
 
@@ -821,6 +1178,9 @@ export function getApiErrorCode(error: unknown): string | null {
 }
 
 export function getApiErrorData<T>(error: unknown): T | null {
+  if (!isRecord(error)) {
+    return null;
+  }
   const apiError = error as ApiErrorShape;
   const data = apiError.response?.data?.data;
 

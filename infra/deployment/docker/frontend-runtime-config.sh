@@ -53,5 +53,6 @@ write_config_entry() {
   write_config_entry VITE_POSTHOG_SESSION_REPLAY VITE_POSTHOG_SESSION_REPLAY
   write_config_entry VITE_POSTHOG_DEBUG VITE_POSTHOG_DEBUG POSTHOG_DEBUG
   write_config_entry VITE_APP_VERSION VITE_APP_VERSION
+  write_config_entry VITE_PUBLIC_APP_URL VITE_PUBLIC_APP_URL FRONTEND_PUBLIC_URL
   printf '});\n'
 } > "$runtime_config_path"

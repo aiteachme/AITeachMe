@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from sqlmodel import Session
@@ -28,7 +29,7 @@ def preview_course_delete(
     return build_course_delete_preview(session, course=course)
 
 
-def delete_course_record(
+async def delete_course_record(
     session: Session,
     *,
     owner_user_id: str,
@@ -45,15 +46,23 @@ def delete_course_record(
         if preview.has_content and not force:
             raise CourseInUseError(course.id)
         detail_counts = preview.detail_counts
+    await _cancel_course_background_work(
+        session,
+        course=course,
+        owner_user_id=owner_user_id,
+        background_task_registry=background_task_registry,
+    )
     deleted_counts = (
-        delete_course_with_all_content(
+        await asyncio.to_thread(
+            delete_course_with_all_content,
             session,
             course=course,
             background_task_registry=background_task_registry,
             counts=detail_counts,
         )
         if force
-        else _delete_empty_course(
+        else await asyncio.to_thread(
+            _delete_empty_course,
             session,
             course,
             background_task_registry=background_task_registry,
@@ -90,6 +99,34 @@ def _delete_empty_course(
         background_task_registry=background_task_registry,
         counts=counts,
     )
+
+
+async def _cancel_course_background_work(
+    session: Session,
+    *,
+    course: Course,
+    owner_user_id: str,
+    background_task_registry: Any | None,
+) -> None:
+    try:
+        from app.workflows.digest.common.build_lifecycle import cancel_knowledge_build
+
+        await cancel_knowledge_build(
+            session,
+            course=course,
+            user_id=owner_user_id,
+            background_task_registry=background_task_registry,
+        )
+    except Exception:
+        # Deletion must still proceed; stale runtime/tasks are best-effort cleanup.
+        pass
+
+    if background_task_registry is None:
+        return
+    try:
+        await background_task_registry.cancel_matching(course_id=course.id)
+    except Exception:
+        pass
 
 
 __all__ = [

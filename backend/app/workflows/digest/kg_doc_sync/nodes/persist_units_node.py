@@ -8,11 +8,14 @@ from time import perf_counter
 
 import structlog
 
-from app.shared.infra.database import managed_session
 from app.shared.infra.workflow.live_stream import publish_workflow_stream_event
 from app.utils.time import utcnow
 from app.workflows.digest.kg_doc_sync.lib.incremental_sync import persist_knowledge_graph_units_early
-from app.workflows.digest.kg_doc_sync.nodes.node_state import with_node_error, with_node_metrics
+from app.workflows.digest.kg_doc_sync.nodes.node_state import (
+    managed_build_owner_transaction,
+    with_node_error,
+    with_node_metrics,
+)
 from app.workflows.digest.kg_doc_sync.state import DocsSyncState
 
 logger = structlog.get_logger()
@@ -30,7 +33,7 @@ async def persist_units_node(state: DocsSyncState) -> DocsSyncState:
         return with_node_error(state, "persist_units", "docs_sync_extraction_payload_missing")
 
     try:
-        with managed_session() as session:
+        with managed_build_owner_transaction(state) as session:
             metrics = persist_knowledge_graph_units_early(
                 session,
                 run_context=run_context,

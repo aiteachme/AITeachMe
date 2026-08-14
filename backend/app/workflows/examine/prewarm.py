@@ -29,6 +29,7 @@ class ExamPrewarmTriggerResult:
     exam_mode: str
     num_questions: int
     reason: str = ""
+    exam_paper_id: int | None = None
 
 
 async def trigger_default_exam_prewarm_for_course(
@@ -47,6 +48,7 @@ async def trigger_default_exam_prewarm_for_course(
         _exam_mastery_fingerprint,
         _list_exam_eligible_units,
         _run_exam_prewarm_background,
+        _visible_active_exam_candidate,
         default_auto_prewarm_exam_config,
     )
 
@@ -112,13 +114,20 @@ async def trigger_default_exam_prewarm_for_course(
                     paper_layout_mode=paper_layout_mode,
                 )
                 config_hash = _exam_config_hash(config_snapshot)
-                if exams_repo.has_active_prepared_exam(
+                existing = _visible_active_exam_candidate(
                     session,
                     course_id=course_id,
                     user_id=owner_user_id,
                     config_hash=config_hash,
                     question_count=question_count,
-                ):
+                ) or exams_repo.get_prepared_exam_candidate(
+                    session,
+                    course_id=course_id,
+                    user_id=owner_user_id,
+                    config_hash=config_hash,
+                    question_count=question_count,
+                )
+                if existing is not None and existing.status in {"ready", "generating"}:
                     return ExamPrewarmTriggerResult(
                         status="exists",
                         course_id=course_id,
@@ -126,6 +135,7 @@ async def trigger_default_exam_prewarm_for_course(
                         exam_mode=exam_mode,
                         num_questions=question_count,
                         reason="active_prepared_exam_exists",
+                        exam_paper_id=int(existing.id or 0) or None,
                     )
                 break
 
@@ -140,7 +150,7 @@ async def trigger_default_exam_prewarm_for_course(
             )
         await asyncio.sleep(max(0.5, float(poll_interval_s or 5.0)))
 
-    await _run_exam_prewarm_background(
+    paper_id = await _run_exam_prewarm_background(
         course_id=course_id,
         user_id=owner_user_id,
         exam_mode=exam_mode,
@@ -164,6 +174,7 @@ async def trigger_default_exam_prewarm_for_course(
         user_id=owner_user_id,
         exam_mode=exam_mode,
         num_questions=question_count,
+        exam_paper_id=paper_id,
     )
 
 

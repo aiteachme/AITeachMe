@@ -20,6 +20,7 @@ _DIFFICULTY_WEIGHT = {
     "hard": 1.2,
 }
 _CONSUMED_EXAM_PAPER_IDS_KEY = "consumed_exam_paper_ids"
+_MAX_STATE_WRITE_ATTEMPTS = 5
 
 
 @dataclass(frozen=True)
@@ -305,68 +306,76 @@ def _upsert_state_from_attempts(
     if knowledge_unit_id is None:
         raise ValueError("knowledge_unit_id must be provided.")
 
-    existing = profile_repo.get_knowledge_state(
-        session,
-        user_id=user_id,
-        course_id=course_id,
-        knowledge_unit_id=knowledge_unit_id,
-    )
-    if _state_has_consumed_exam(existing, source_exam_paper_id):
-        return None
+    for _attempt in range(_MAX_STATE_WRITE_ATTEMPTS):
+        existing = profile_repo.get_knowledge_state(
+            session,
+            user_id=user_id,
+            course_id=course_id,
+            knowledge_unit_id=knowledge_unit_id,
+        )
+        if _state_has_consumed_exam(existing, source_exam_paper_id):
+            return None
 
-    current_exam_score = _compute_weighted_mastery_score(attempts=attempts, now=now)
-    current_exam_weight = sum(max(0.0, item.coverage_weight) for item in attempts)
-    mastery_score = _merge_mastery_score(
-        existing=existing,
-        current_exam_score=current_exam_score,
-        current_exam_weight=current_exam_weight,
-    )
-
-    delta_total = len(attempts)
-    delta_correct = sum(1 for item in attempts if item.is_correct)
-    total_attempts = (existing.total_attempts if existing is not None else 0) + delta_total
-    correct_attempts = (existing.correct_attempts if existing is not None else 0) + delta_correct
-
-    consecutive_correct = _compute_consecutive_correct(
-        existing_stability_score=(existing.stability_score if existing is not None else 0.0),
-        new_attempts=attempts,
-    )
-    confidence_score = compute_confidence_score(total_attempts=total_attempts)
-    stability_score = compute_stability_score(consecutive_correct=consecutive_correct)
-    last_attempt_at = max(_to_utc(item.answered_at) for item in attempts)
-
-    state = UserKnowledgeState(
-        user_id=user_id,
-        course_id=course_id,
-        knowledge_unit_id=knowledge_unit_id,
-        mastery_score=mastery_score,
-        confidence_score=confidence_score,
-        stability_score=stability_score,
-        forgetting_due_at=(existing.forgetting_due_at if existing is not None else None),
-        review_priority=1.0 - mastery_score,
-        total_attempts=total_attempts,
-        correct_attempts=correct_attempts,
-        last_attempt_at=last_attempt_at,
-        review_status=(existing.review_status if existing is not None else "idle"),
-        scheduled_review_at=(existing.scheduled_review_at if existing is not None else None),
-        review_interval_days=(existing.review_interval_days if existing is not None else 1),
-        review_ease_factor=(existing.review_ease_factor if existing is not None else 2.5),
-        review_repetition_count=(existing.review_repetition_count if existing is not None else 0),
-        review_reason=(existing.review_reason if existing is not None else None),
-        source_exam_paper_id=source_exam_paper_id,
-        state_version=((existing.state_version + 1) if existing is not None else 1),
-        last_recomputed_at=now,
-        stats_json=_merge_attempt_stats(
+        current_exam_score = _compute_weighted_mastery_score(attempts=attempts, now=now)
+        current_exam_weight = sum(max(0.0, item.coverage_weight) for item in attempts)
+        mastery_score = _merge_mastery_score(
             existing=existing,
-            attempts=attempts,
+            current_exam_score=current_exam_score,
+            current_exam_weight=current_exam_weight,
+        )
+
+        delta_total = len(attempts)
+        delta_correct = sum(1 for item in attempts if item.is_correct)
+        total_attempts = (existing.total_attempts if existing is not None else 0) + delta_total
+        correct_attempts = (existing.correct_attempts if existing is not None else 0) + delta_correct
+
+        consecutive_correct = _compute_consecutive_correct(
+            existing_stability_score=(existing.stability_score if existing is not None else 0.0),
+            new_attempts=attempts,
+        )
+        confidence_score = compute_confidence_score(total_attempts=total_attempts)
+        stability_score = compute_stability_score(consecutive_correct=consecutive_correct)
+        last_attempt_at = max(_to_utc(item.answered_at) for item in attempts)
+
+        state = UserKnowledgeState(
+            user_id=user_id,
+            course_id=course_id,
+            knowledge_unit_id=knowledge_unit_id,
+            mastery_score=mastery_score,
+            confidence_score=confidence_score,
+            stability_score=stability_score,
+            forgetting_due_at=(existing.forgetting_due_at if existing is not None else None),
+            review_priority=1.0 - mastery_score,
+            total_attempts=total_attempts,
+            correct_attempts=correct_attempts,
+            last_attempt_at=last_attempt_at,
+            review_status=(existing.review_status if existing is not None else "idle"),
+            scheduled_review_at=(existing.scheduled_review_at if existing is not None else None),
+            review_interval_days=(existing.review_interval_days if existing is not None else 1),
+            review_ease_factor=(existing.review_ease_factor if existing is not None else 2.5),
+            review_repetition_count=(existing.review_repetition_count if existing is not None else 0),
+            review_reason=(existing.review_reason if existing is not None else None),
             source_exam_paper_id=source_exam_paper_id,
-        ),
-        updated_at=now,
-    )
-    return profile_repo.upsert_knowledge_state(
-        session,
-        state,
-        auto_commit=auto_commit,
+            state_version=((existing.state_version + 1) if existing is not None else 1),
+            last_recomputed_at=now,
+            stats_json=_merge_attempt_stats(
+                existing=existing,
+                attempts=attempts,
+                source_exam_paper_id=source_exam_paper_id,
+            ),
+            updated_at=now,
+        )
+        persisted = profile_repo.compare_and_set_knowledge_state(
+            session,
+            state,
+            expected_state_version=(existing.state_version if existing is not None else None),
+            auto_commit=auto_commit,
+        )
+        if persisted is not None:
+            return persisted
+
+    raise RuntimeError(
+        "UserKnowledgeState changed repeatedly while applying one exam; please retry the profile update."
     )
 
 
@@ -386,43 +395,70 @@ def update_mastery_from_exam(
     links_by_item_id = exams_repo.list_links_for_exam_items(session, [int(item.id or 0) for item in items])
 
     node_attempts: dict[int, list[_WeightedAttempt]] = {}
+    item_by_id = {int(item.id or 0): item for item in items}
+    drill_attempts = (
+        exams_repo.list_mastery_drill_attempts_by_paper(session, paper_id=exam_paper_id)
+        if exam_paper.exam_mode == "mastery_drill"
+        else []
+    )
 
-    for item in items:
-        if item.is_correct is None:
-            continue
-        answered_at = item.answered_at or item.updated_at or item.created_at
-        knowledge_unit_links = _normalize_knowledge_unit_links(links_by_item_id.get(int(item.id or 0), []))
-        for node_id, normalized_weight in knowledge_unit_links:
-            node_attempts.setdefault(node_id, []).append(
-                _WeightedAttempt(
-                    is_correct=item.is_correct,
-                    difficulty=item.difficulty,
-                    answered_at=answered_at,
-                    score_ratio=_score_ratio(item.score_obtained, item.score_max, item.is_correct),
-                    coverage_weight=normalized_weight,
-                    question_type=item.question_type,
-                    time_spent_seconds=item.time_spent_seconds,
-                    hint_used=item.hint_used,
-                    confidence_self_report=item.confidence_self_report,
-                    error_cause_label=item.error_cause_label,
-                )
+    if drill_attempts:
+        for attempt in drill_attempts:
+            if attempt.status != "graded" or attempt.is_correct is None:
+                continue
+            item = item_by_id.get(int(attempt.exam_paper_item_id or 0))
+            if item is None:
+                continue
+            answered_at = attempt.answered_at or attempt.updated_at or attempt.created_at
+            knowledge_unit_links = _normalize_knowledge_unit_links(
+                links_by_item_id.get(int(item.id or 0), [])
             )
+            for node_id, normalized_weight in knowledge_unit_links:
+                node_attempts.setdefault(node_id, []).append(
+                    _WeightedAttempt(
+                        is_correct=attempt.is_correct,
+                        difficulty=item.difficulty,
+                        answered_at=answered_at,
+                        score_ratio=_score_ratio(
+                            attempt.score_obtained,
+                            attempt.score_max,
+                            attempt.is_correct,
+                        ),
+                        coverage_weight=normalized_weight,
+                        question_type=item.question_type,
+                        time_spent_seconds=attempt.time_spent_seconds,
+                        hint_used=attempt.hint_used,
+                        confidence_self_report=attempt.confidence_self_report,
+                        error_cause_label=attempt.error_cause_label,
+                    )
+                )
+    else:
+        for item in items:
+            if item.is_correct is None:
+                continue
+            answered_at = item.answered_at or item.updated_at or item.created_at
+            knowledge_unit_links = _normalize_knowledge_unit_links(links_by_item_id.get(int(item.id or 0), []))
+            for node_id, normalized_weight in knowledge_unit_links:
+                node_attempts.setdefault(node_id, []).append(
+                    _WeightedAttempt(
+                        is_correct=item.is_correct,
+                        difficulty=item.difficulty,
+                        answered_at=answered_at,
+                        score_ratio=_score_ratio(item.score_obtained, item.score_max, item.is_correct),
+                        coverage_weight=normalized_weight,
+                        question_type=item.question_type,
+                        time_spent_seconds=item.time_spent_seconds,
+                        hint_used=item.hint_used,
+                        confidence_self_report=item.confidence_self_report,
+                        error_cause_label=item.error_cause_label,
+                    )
+                )
 
     now = utcnow()
     updated_state_ids: list[int] = []
     consumed_state_count = 0
 
-    for target_id, target_attempts in node_attempts.items():
-        existing = profile_repo.get_knowledge_state(
-            session,
-            user_id=exam_paper.user_id,
-            course_id=exam_paper.course_id,
-            knowledge_unit_id=target_id,
-        )
-        if _state_has_consumed_exam(existing, exam_paper_id):
-            consumed_state_count += 1
-            continue
-
+    for target_id, target_attempts in sorted(node_attempts.items()):
         persisted = _upsert_state_from_attempts(
             session,
             user_id=exam_paper.user_id,
@@ -433,7 +469,9 @@ def update_mastery_from_exam(
             source_exam_paper_id=exam_paper_id,
             auto_commit=auto_commit,
         )
-        if persisted is not None and persisted.id is not None:
+        if persisted is None:
+            consumed_state_count += 1
+        elif persisted.id is not None:
             updated_state_ids.append(persisted.id)
 
     return MasteryUpdateResult(

@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import posixpath
+import re
 import tempfile
 import uuid
 import zipfile
@@ -14,6 +16,7 @@ from dataclasses import dataclass, field as dc_field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, unquote, urlsplit
 
 import structlog
 from pydantic import BaseModel, ConfigDict, Field
@@ -35,6 +38,8 @@ from app.models import (
     KnowledgeGraphSourceRef,
     KnowledgeGraphSyncRun,
     KnowledgeUnit,
+    MasteryDrillAttempt,
+    MasteryDrillSession,
     QuestionKnowledgeUnitLink,
     QuestionTypeRegistry,
     QuestionTemplate,
@@ -64,6 +69,13 @@ logger = structlog.get_logger()
 SUPPORTED_FORMAT_VERSIONS = {"1.0"}
 MANIFEST_SCHEMA = "aiteachme.atmx.manifest"
 PACKAGE_KIND = "course_export"
+SHARE_ASSET_ROOT = "share_assets"
+_DOCGEN_COVER_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+_DOCGEN_COVER_MARKDOWN_RE = re.compile(
+    r"!\[[^\]\r\n]*\]\(\s*\.\./assets/docgen/"
+    r"(?P<filename>cover(?:\.[^\s\\/()<>{}]+)+)\s*\)",
+    re.IGNORECASE,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -106,7 +118,7 @@ class _ManifestPackage(BaseModel):
     package_id: str
     kind: str = PACKAGE_KIND
     manifest_schema: str = MANIFEST_SCHEMA
-    content_roots: list[str] = Field(default_factory=lambda: ["db", "files", "knowledge"])
+    content_roots: list[str] = Field(default_factory=lambda: ["db", "files", "knowledge", SHARE_ASSET_ROOT])
     capabilities: list[str] = Field(default_factory=list)
     min_reader_format_version: str = "1.0"
 
@@ -224,6 +236,12 @@ TABLE_REGISTRY: list[_TableSpec] = [
         optional_group="exam",
     ),
     _TableSpec(
+        "mastery_drill_session",
+        MasteryDrillSession,
+        fk_remap={"exam_paper_id": "exam_paper"},
+        optional_group="exam",
+    ),
+    _TableSpec(
         "exam_paper_item",
         ExamPaperItem,
         course_field=None,
@@ -231,6 +249,19 @@ TABLE_REGISTRY: list[_TableSpec] = [
         parent_table="exam_paper",
         fk_remap={
             "exam_paper_id": "exam_paper",
+            "question_template_id": "question_template",
+        },
+        optional_group="exam",
+    ),
+    _TableSpec(
+        "mastery_drill_attempt",
+        MasteryDrillAttempt,
+        course_field=None,
+        parent_fk="mastery_drill_session_id",
+        parent_table="mastery_drill_session",
+        fk_remap={
+            "mastery_drill_session_id": "mastery_drill_session",
+            "exam_paper_item_id": "exam_paper_item",
             "question_template_id": "question_template",
         },
         optional_group="exam",
@@ -363,7 +394,13 @@ def export_course(
                 )
 
             raw_files = list_all_raw_files_by_course(session, course_id)
-            _pack_files(zf, course_scope.namespace, options, raw_files=raw_files)
+            _pack_files(
+                zf,
+                course_scope.namespace,
+                options,
+                raw_files=raw_files,
+                knowledge_documents=exported.get("knowledge_document", []),
+            )
 
             manifest = _build_manifest(course, exported, options)
             zf.writestr("manifest.json", manifest.model_dump_json(indent=2))
@@ -1029,40 +1066,247 @@ def _pack_files(
     options: ExportOptions,
     *,
     raw_files: list[RawFile],
+    knowledge_documents: list[dict[str, Any]],
 ) -> None:
     """Read files from ContentStore and pack them into the zip archive."""
     cs = get_content_store()
 
     def _pack_latest_docgen_cover() -> None:
-        cover_keys = run_store_sync(cs.list_prefix, f"{namespace}/assets/docgen/", default=[]) or []
-        latest_cover_key = next(
-            (
-                key
-                for key in sorted(cover_keys)
-                if key.rsplit("/", 1)[-1].startswith("cover.")
-            ),
-            "",
-        )
-        for key in sorted(cover_keys, reverse=True):
-            if latest_cover_key:
-                break
-            filename = key.rsplit("/", 1)[-1]
-            if filename.startswith("docgen_cover_"):
-                latest_cover_key = key
-                break
+        cover_prefix = f"{namespace}/assets/docgen/"
+
+        def valid_cover_key(value: object) -> str:
+            key = str(value or "").strip()
+            if not key.startswith(cover_prefix):
+                return ""
+            filename = key.removeprefix(cover_prefix)
+            if (
+                not filename.startswith("cover.")
+                or "/" in filename
+                or "\\" in filename
+                or Path(filename).suffix.lower() not in _DOCGEN_COVER_IMAGE_EXTENSIONS
+            ):
+                return ""
+            return key
+
+        current_published_docs = [
+            record
+            for record in knowledge_documents
+            if bool(record.get("is_current"))
+            and str(record.get("status") or "").strip() == "published"
+        ]
+        if not current_published_docs:
+            return
+
+        markdown_paths = [
+            str(record.get("markdown_path") or "").strip()
+            for record in current_published_docs
+        ]
+        versioned_marker = "/knowledge_markdowns/versions"
+        versioned_prefix = f"{namespace}/knowledge_markdowns/versions/"
+        if any(versioned_marker in path for path in markdown_paths):
+            versioned_parents: set[str] = set()
+            for path in markdown_paths:
+                if not path.startswith(versioned_prefix) or "\\" in path:
+                    return
+                relative_path = path.removeprefix(versioned_prefix)
+                receipt_path, separator, filename = relative_path.rpartition("/")
+                if (
+                    not separator
+                    or not receipt_path
+                    or not filename
+                    or any(part in {"", ".", ".."} for part in receipt_path.split("/"))
+                ):
+                    return
+                versioned_parents.add(f"{versioned_prefix}{receipt_path}")
+            if len(versioned_parents) != 1:
+                return
+            docgen_manifest_key = f"{next(iter(versioned_parents))}/docgen_manifest.json"
+            docgen_manifest = run_store_sync(cs.read_json_raw, docgen_manifest_key, default=None)
+            if not isinstance(docgen_manifest, dict):
+                return
+            cover_artifact = docgen_manifest.get("cover_artifact")
+            if not isinstance(cover_artifact, dict):
+                return
+            latest_cover_key = valid_cover_key(cover_artifact.get("storage_key"))
+            if not latest_cover_key:
+                return
+        else:
+            legacy_prefix = f"{namespace}/knowledge_markdowns/"
+            if any(path and not path.startswith(legacy_prefix) for path in markdown_paths):
+                return
+            referenced_cover_keys = {
+                valid_cover_key(f"{cover_prefix}{match.group('filename')}")
+                for record in current_published_docs
+                for match in _DOCGEN_COVER_MARKDOWN_RE.finditer(
+                    str(
+                        record.get("markdown_content")
+                        or record.get("content_markdown")
+                        or ""
+                    ),
+                )
+            }
+            referenced_cover_keys.discard("")
+            if len(referenced_cover_keys) != 1:
+                return
+            latest_cover_key = next(iter(referenced_cover_keys))
         if not latest_cover_key:
             return
         data = run_store_sync(cs.read_bytes, latest_cover_key, default=None)
         if data is None:
             return
-        guessed_type, _ = mimetypes.guess_type(latest_cover_key)
-        extension = mimetypes.guess_extension(guessed_type or "") or Path(latest_cover_key).suffix or ".png"
-        zf.writestr(f"knowledge/cover{extension}", data)
+        filename = latest_cover_key.rsplit("/", 1)[-1]
+        zf.writestr(f"knowledge/cover{Path(filename).suffix.lower()}", data)
 
     # KnowledgeDocument rows already carry the published markdown content. The package only
-    # needs non-DB docgen assets such as the cover image.
+    # needs non-DB docgen assets such as the cover image and referenced public assets.
     if options.include_knowledge_docs:
         _pack_latest_docgen_cover()
+        _pack_referenced_share_assets(zf, cs, namespace, knowledge_documents)
+
+
+def _pack_referenced_share_assets(
+    zf: zipfile.ZipFile,
+    cs,
+    namespace: str,
+    knowledge_documents: list[dict[str, Any]],
+) -> None:
+    packed: set[str] = set()
+    for asset_path in extract_referenced_asset_paths(knowledge_documents):
+        if asset_path in packed:
+            continue
+        data = run_store_sync(cs.read_bytes, f"{namespace}/assets/{asset_path}", default=None)
+        if data is None:
+            logger.warning("course_export_share_asset_missing", namespace=namespace, asset_path=asset_path)
+            continue
+        zf.writestr(f"{SHARE_ASSET_ROOT}/{asset_path}", data)
+        packed.add(asset_path)
+
+
+def extract_referenced_asset_paths(
+    knowledge_documents: list[dict[str, Any]],
+    *,
+    local_only: bool = False,
+) -> list[str]:
+    found: set[str] = set()
+    for record in knowledge_documents:
+        if not isinstance(record, dict):
+            continue
+        for field_name in ("content_markdown", "markdown_content", "summary"):
+            text = str(record.get(field_name) or "")
+            if not text:
+                continue
+            for reference in _iter_potential_asset_references(
+                text,
+                structured_only=local_only,
+            ):
+                normalized = _normalize_referenced_asset_path(
+                    reference,
+                    local_only=local_only,
+                )
+                if normalized:
+                    found.add(normalized)
+    return sorted(found)
+
+
+def _iter_potential_asset_references(
+    text: str,
+    *,
+    structured_only: bool = False,
+):
+    structured_patterns = (
+        r"!\[[^\]]*]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)",
+        r"\[[^\]]+]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)",
+        r"(?:src|href)=['\"]([^'\"]+)['\"]",
+    )
+    fallback_patterns = (
+        r"(/api/v1/courses/[^)\s\"'<>]+/files/assets/[^)\s\"'<>]+)",
+        r"((?:\.\./|\./)?assets/[^)\s\"'<>]+)",
+        r"(/courses/[^)\s\"'<>]+/knowledge-docs/(?:interactive|html-figure)[^)\s\"'<>]*)",
+    )
+    patterns = structured_patterns if structured_only else structured_patterns + fallback_patterns
+    for pattern in patterns:
+        for match in re.finditer(pattern, text):
+            yield match.group(1)
+
+
+def _normalize_referenced_asset_path(
+    reference: str,
+    *,
+    local_only: bool = False,
+) -> str | None:
+    raw = unquote(str(reference or "")).replace("\\", "/").strip().strip("'\"")
+    if not raw or raw.lower().startswith("data:") or raw.lower().startswith("javascript:"):
+        return None
+    try:
+        parsed = urlsplit(raw)
+    except ValueError:
+        parsed = None
+
+    if parsed is not None:
+        if local_only and (parsed.scheme or parsed.netloc):
+            return None
+        path = parsed.path or raw.split("?", 1)[0]
+        if local_only and path.startswith("../assets/"):
+            path = path.removeprefix("../")
+        if local_only and _contains_dot_path_segment(path):
+            return None
+        for asset in parse_qs(parsed.query).get("asset", []):
+            if local_only and not re.search(
+                r"/knowledge-docs/(?:interactive|html-figure)(?:/|$)",
+                path,
+            ):
+                continue
+            normalized = _normalize_asset_path(
+                asset,
+                reject_dot_segments=local_only,
+            )
+            if normalized:
+                return normalized
+    else:
+        path = raw.split("?", 1)[0]
+
+    if local_only:
+        if path.startswith("assets/"):
+            candidate = path.removeprefix("assets/")
+        elif path.startswith("/assets/"):
+            candidate = path.removeprefix("/assets/")
+        elif path.startswith("/api/v1/courses/") and "/files/assets/" in path:
+            candidate = path.split("/files/assets/", 1)[1]
+        else:
+            return None
+        return _normalize_asset_path(candidate, reject_dot_segments=True)
+
+    for marker in ("/files/assets/", "/assets/", "assets/"):
+        if marker in path:
+            return _normalize_asset_path(path.split(marker, 1)[1])
+    return None
+
+
+def _contains_dot_path_segment(path: str) -> bool:
+    normalized = unquote(str(path or "")).replace("\\", "/")
+    return any(part in {".", ".."} for part in normalized.split("/"))
+
+
+def _normalize_asset_path(
+    path: str,
+    *,
+    reject_dot_segments: bool = False,
+) -> str | None:
+    raw = unquote(str(path or "")).replace("\\", "/").split("#", 1)[0].split("?", 1)[0].lstrip("/")
+    if reject_dot_segments and _contains_dot_path_segment(raw):
+        return None
+    normalized = posixpath.normpath(raw)
+    if (
+        not normalized
+        or normalized in {".", ".."}
+        or normalized.startswith("../")
+        or normalized.startswith("/")
+        or "\x00" in normalized
+    ):
+        return None
+    return normalized
+
+
 # ===================================================================
 # Internal: Manifest
 # ===================================================================

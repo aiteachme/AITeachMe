@@ -4,13 +4,13 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
-import type { CourseNameSuggestionResponse } from './courseNameSuggestionResponse.ts';
+import type { KnowledgeDocsPublishedManifestResponse } from './knowledgeDocsPublishedManifestResponse.ts';
 
-export interface ApiResponseCourseNameSuggestionResponse {
+export interface ApiResponseKnowledgeDocsPublishedManifestResponse {
   /** 业务码，0 表示成功。 */
   code?: number;
   /** 响应消息。 */
   message?: string;
   /** 业务数据。 */
-  data?: CourseNameSuggestionResponse | null;
+  data?: KnowledgeDocsPublishedManifestResponse | null;
 }

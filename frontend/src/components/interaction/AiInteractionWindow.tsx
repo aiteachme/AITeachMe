@@ -15,6 +15,7 @@ import { useResizablePanel } from "../../hooks/useResizablePanel";
 import { buildCoursePath, getCourseIdFromPathname } from "../../lib/courseNavigation";
 import { cn } from "../../lib/utils";
 import type { ChatPageContext } from "../../api/generated/model";
+import { FloatingToolTrigger } from "../ui/FloatingToolTrigger";
 import { useAiInteraction } from "./AiInteractionProvider";
 import type { AiConversationScope, AiInteractionOpenRequest, OpenAiInteractionOptions } from "./types";
 
@@ -504,17 +505,19 @@ export function AiInteractionWindow({
   return (
     <>
       {shouldShowFloatingTrigger ? (
-        <button
-          type="button"
-          className="fixed bottom-6 right-6 z-[80] inline-flex h-10 w-10 items-center justify-center gap-2 rounded-xl border border-slate-200/70 bg-white/90 text-[13px] font-medium text-slate-700 shadow-[0_12px_32px_-24px_rgba(15,23,42,0.55)] backdrop-blur-md transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/30 active:translate-y-0 active:scale-[0.98] sm:w-[9.25rem] sm:justify-start sm:px-3 dark:border-slate-800/80 dark:bg-slate-950/88 dark:text-slate-300 dark:shadow-[0_18px_44px_-28px_rgba(0,0,0,0.9)] dark:hover:border-slate-700 dark:hover:bg-slate-950 dark:hover:text-slate-100"
+        <FloatingToolTrigger
+          stackIndex={0}
+          label="AI 交互窗口"
+          icon={<Bot className="h-4 w-4" />}
+          className="z-[80]"
           onClick={handleOpenSidebar}
           aria-label="打开 AI 交互窗口"
-        >
-          <Bot className="h-4 w-4 shrink-0" />
-          <span className="hidden truncate sm:inline">AI 交互窗口</span>
-        </button>
+          aria-controls="ai-interaction-window-panel"
+          aria-expanded={isWindowOpen}
+        />
       ) : null}
       <div
+        id="ai-interaction-window-panel"
         ref={panelShellRef}
         data-ai-interaction-window="true"
         data-ai-interaction-display={displayMode}

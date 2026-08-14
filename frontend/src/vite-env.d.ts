@@ -9,6 +9,7 @@ interface ImportMetaEnv {
   readonly VITE_POSTHOG_HOST?: string;
   readonly VITE_POSTHOG_SESSION_REPLAY?: string;
   readonly VITE_POSTHOG_TOKEN?: string;
+  readonly VITE_PUBLIC_APP_URL?: string;
 }
 
 interface ImportMeta {

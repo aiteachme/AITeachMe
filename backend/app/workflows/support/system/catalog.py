@@ -8,6 +8,7 @@ from typing import Literal
 from app.shared.infra.settings import DEFAULT_INGEST_MAX_UPLOAD_SIZE_MB
 
 CatalogEntryKind = Literal["setting", "env", "runtime"]
+ReasoningModelSlot = Literal["light", "primary", "reason"]
 SettingOption = tuple[str | None, str]
 
 
@@ -27,6 +28,8 @@ class SettingsCatalogEntry:
     editable_in_cloud: bool = False
     value_path: str | None = None
     options: tuple[SettingOption, ...] = ()
+    reasoning_model_slot: ReasoningModelSlot | None = None
+    ui_parent_key: str | None = None
 
     @property
     def env_names(self) -> tuple[str, ...]:
@@ -55,6 +58,8 @@ def setting(
     editable_in_local: bool = True,
     editable_in_cloud: bool = False,
     options: tuple[SettingOption, ...] = (),
+    reasoning_model_slot: ReasoningModelSlot | None = None,
+    ui_parent_key: str | None = None,
 ) -> SettingsCatalogEntry:
     return SettingsCatalogEntry(
         kind="setting",
@@ -67,6 +72,8 @@ def setting(
         editable_in_cloud=editable_in_cloud,
         restart_required=False,
         options=tuple(options),
+        reasoning_model_slot=reasoning_model_slot,
+        ui_parent_key=ui_parent_key,
     )
 
 
@@ -186,29 +193,13 @@ SETTINGS_CATALOG: tuple[SettingsCatalogSection, ...] = (
             setting(
                 "llm.api_mode",
                 "接口模式",
-                description="Auto 会对支持 OpenAI Responses 的推理模型优先使用 Responses；不支持时自动回退一次 Chat Completions。",
+                description="Auto 对代码名单内的文本模型优先使用 Responses，名单外使用 Chat Completions；Responses 不受网关支持时自动回退一次。",
                 ui_group="统一模型接入",
                 ui_order=30,
                 options=(
                     ("auto", "Auto"),
                     ("chat_completions", "Chat Completions"),
                     ("responses", "Responses API"),
-                ),
-            ),
-            setting(
-                "llm.reasoning_effort",
-                "推理强度",
-                description="Responses reasoning.effort；留空使用模型默认值，不同模型和网关支持范围可能不同。",
-                ui_group="统一模型接入",
-                ui_order=35,
-                options=(
-                    (None, "Model default"),
-                    ("none", "none"),
-                    ("minimal", "minimal"),
-                    ("low", "low"),
-                    ("medium", "medium"),
-                    ("high", "high"),
-                    ("xhigh", "xhigh"),
                 ),
             ),
             setting(
@@ -275,7 +266,7 @@ SETTINGS_CATALOG: tuple[SettingsCatalogSection, ...] = (
     SettingsCatalogSection(
         id="models",
         label="模型配置",
-        description="配置不同任务使用的模型，包括对话生成、深度推理、轻量任务、视觉理解、文档解析和检索能力。",
+        description="配置主网关与备用网关的文本模型，以及视觉理解、文档解析和检索能力。",
         entries=(
             setting(
                 "models.primary",
@@ -285,6 +276,15 @@ SETTINGS_CATALOG: tuple[SettingsCatalogSection, ...] = (
                 ui_order=10,
             ),
             setting(
+                "llm.reasoning_efforts.primary",
+                "主模型推理强度",
+                description="按主文本模型支持范围设置 reasoning effort；留空使用模型默认值。",
+                ui_group="文本生成",
+                ui_order=11,
+                reasoning_model_slot="primary",
+                ui_parent_key="models.primary",
+            ),
+            setting(
                 "models.reason",
                 "推理模型",
                 description="深度推理与规划使用。留空时回退到主模型。",
@@ -292,11 +292,50 @@ SETTINGS_CATALOG: tuple[SettingsCatalogSection, ...] = (
                 ui_order=20,
             ),
             setting(
+                "llm.reasoning_efforts.reason",
+                "推理模型强度",
+                description="按推理模型支持范围设置 reasoning effort；留空使用模型默认值。",
+                ui_group="文本生成",
+                ui_order=21,
+                reasoning_model_slot="reason",
+                ui_parent_key="models.reason",
+            ),
+            setting(
                 "models.light",
                 "轻量模型",
                 description="分类、摘要和批量轻任务使用。留空时回退到主模型。",
                 ui_group="文本生成",
                 ui_order=30,
+            ),
+            setting(
+                "llm.reasoning_efforts.light",
+                "轻量模型推理强度",
+                description="按轻量模型支持范围设置 reasoning effort；留空使用模型默认值。",
+                ui_group="文本生成",
+                ui_order=31,
+                reasoning_model_slot="light",
+                ui_parent_key="models.light",
+            ),
+            setting(
+                "fallback_models.light",
+                "备用轻量模型",
+                description="备用网关处理轻量任务时使用。留空继承 models.light；若主轻量模型也为空，则最终使用 models.primary。",
+                ui_group="备用网关文本模型",
+                ui_order=31,
+            ),
+            setting(
+                "fallback_models.primary",
+                "备用主文本模型",
+                description="备用网关处理主要生成、对话与批改任务时使用。留空继承 models.primary。",
+                ui_group="备用网关文本模型",
+                ui_order=32,
+            ),
+            setting(
+                "fallback_models.reason",
+                "备用推理模型",
+                description="备用网关处理深度推理与规划时使用。留空继承 models.reason；若主推理模型也为空，则最终使用 models.primary。",
+                ui_group="备用网关文本模型",
+                ui_order=33,
             ),
             setting(
                 "models.vision",
@@ -769,7 +808,7 @@ def build_settings_notes() -> list[str]:
     return [
         "本地模式下，设置页修改会保存到 system_runtime_settings，并在下一次调用生效。",
         "本地模式下，.env 只作为首次启动或数据库未覆盖某个 key 时的默认来源；设置页不会再写回 .env。",
-        "云端模式下，普通用户只能查看状态，不能修改任何服务端配置。",
+        "云端模式下，普通用户只能查看状态；项目策略以代码默认值和 PROJECT_SETTINGS_PATH 为准，数据库历史设置不参与覆盖。",
         "APP_MODE、DATABASE_URL、对象存储等部署级变量不在设置页修改，请通过 .env 或部署平台环境变量管理。",
     ]
 

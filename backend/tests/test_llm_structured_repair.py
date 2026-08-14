@@ -45,31 +45,24 @@ def test_structured_repair_prompt_carries_validation_context() -> None:
     assert '"chapters":[{"title":"函数","key_points":["定义"]},-1]' in repair_prompt
 
 
-def test_structured_parser_repairs_invalid_latex_json_escapes() -> None:
-    result = _parse_structured_response_text(
-        _FormulaPayload,
-        r'{"text":"极限公式为 $\lim_{x \to 0} \frac{1-\cos x}{x \tan x}$。"}',
-    )
+def test_structured_parser_repairs_latex_escapes_without_breaking_json_newlines() -> None:
+    cases = [
+        (
+            r'{"text":"极限公式为 $\lim_{x \to 0} \frac{1-\cos x}{x \tan x}$。"}',
+            r"极限公式为 $\lim_{x \to 0} \frac{1-\cos x}{x \tan x}$。",
+        ),
+        (
+            r'{"text":"使用 $\frac{a}{b}$、$\tan x$ 和 $\nabla f$，矩阵为 $\begin{bmatrix}1\\\\0\end{bmatrix}$，向量 $\langle x \rangle$。"}',
+            r"使用 $\frac{a}{b}$、$\tan x$ 和 $\nabla f$，矩阵为 "
+            r"$\begin{bmatrix}1\\0\end{bmatrix}$，向量 $\langle x \rangle$。",
+        ),
+        (r'{"text":"第一行\n第二行"}', "第一行\n第二行"),
+    ]
 
-    assert result.text == r"极限公式为 $\lim_{x \to 0} \frac{1-\cos x}{x \tan x}$。"
+    for payload, expected in cases:
+        result = _parse_structured_response_text(_FormulaPayload, payload)
 
-
-def test_structured_parser_repairs_latex_commands_that_look_like_json_escapes() -> None:
-    result = _parse_structured_response_text(
-        _FormulaPayload,
-        r'{"text":"使用 $\frac{a}{b}$、$\tan x$ 和 $\nabla f$，矩阵为 $\begin{bmatrix}1\\\\0\end{bmatrix}$，向量 $\langle x \rangle$。"}',
-    )
-
-    assert result.text == (
-        r"使用 $\frac{a}{b}$、$\tan x$ 和 $\nabla f$，矩阵为 "
-        r"$\begin{bmatrix}1\\0\end{bmatrix}$，向量 $\langle x \rangle$。"
-    )
-
-
-def test_structured_parser_keeps_intentional_json_newlines() -> None:
-    result = _parse_structured_response_text(_FormulaPayload, r'{"text":"第一行\n第二行"}')
-
-    assert result.text == "第一行\n第二行"
+        assert result.text == expected, payload
 
 
 def test_structured_failure_feedback_extracts_instructor_failed_completion() -> None:

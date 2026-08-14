@@ -12,6 +12,7 @@ import {
   ExamMarkdown,
 } from "./ExamMarkdown";
 import { PaperExamCanvasSheet } from "./PaperExamCanvasSheet";
+import { isSupportedQuestionType } from "./questionTypes";
 import { buildExamQuestionAnchorId } from "../interaction";
 import {
   formatAnswerDisplayValue,
@@ -399,7 +400,7 @@ export function ExamPaperSheet({
                     const correctMultiChoice = splitMultiChoiceAnswer(item.correct_answer);
                     const isGraded = paper.status === "graded";
                     const isReviewStage = isGraded && activeStage === 2;
-                    const isReadonly = isGraded;
+                    const isReadonly = isGraded || paper.status === "grading_failed";
                     const isCorrect = item.is_correct === true;
                     const isSelectedReviewItem = isReviewStage && selectedItemId === item.id;
                     const isQuestionHighlighted = highlightedQuestionOrder === item.item_order;
@@ -523,7 +524,12 @@ export function ExamPaperSheet({
                             <div className={EXAM_QUESTION_TEXT_CLASS}>
                               <ExamMarkdown content={item.stem} />
                             </div>
-                          {isChoice ? (
+                          {!isSupportedQuestionType(item.question_type) ? (
+                            <div className="mt-6 flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200" role="alert">
+                              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                              <span>当前版本不支持题型「{item.question_type || "未指定"}」，请重新生成试卷。</span>
+                            </div>
+                          ) : isChoice ? (
                             <div
                               className={cn(
                                 "mt-6 grid gap-3 max-w-[720px]",

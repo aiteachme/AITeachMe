@@ -5,13 +5,15 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Iterable
 
+import sqlalchemy as sa
 import structlog
 from sqlmodel import Session
 
 from app.shared.infra.exceptions import InvalidRawFileStateError
 from app.models import IngestStatus, RawFile, TaskStatus
-from app.repositories.files_repo import update_raw_file
+from app.shared.infra.database import managed_session
 from app.utils.presenters import require_id
+from app.utils.time import utcnow
 from app.workflows.ingest.intake.catalog import get_course_files_or_raise, get_user_files_or_raise
 from app.workflows.ingest.parsing.lib.defaults import DEFAULT_PARSE_CONCURRENCY
 
@@ -181,14 +183,35 @@ def _start_parse_for_files(
         if raw_file.status != TaskStatus.PENDING.value:
             raise InvalidRawFileStateError(file_id, raw_file.status, TaskStatus.PENDING.value)
 
-        update_raw_file(
-            session,
-            raw_file,
-            status=TaskStatus.PROCESSING.value,
-            error_message=None,
-            ingest_status=IngestStatus.CLASSIFYING.value,
-            digest_current_step="ingest.parse.queued",
+    claimed_at = utcnow()
+    for raw_file in sorted(raw_files, key=lambda item: require_id(item.id, "RawFile.id")):
+        file_id = require_id(raw_file.id, "RawFile.id")
+        claimed = session.exec(
+            sa.update(RawFile)
+            .where(
+                RawFile.id == file_id,
+                RawFile.user_id == owner_user_id,
+                RawFile.status == TaskStatus.PENDING.value,
+                RawFile.updated_at == raw_file.updated_at,
+            )
+            .values(
+                status=TaskStatus.PROCESSING.value,
+                error_message=None,
+                ingest_status=IngestStatus.CLASSIFYING.value,
+                current_step="ingest.parse.queued",
+                updated_at=claimed_at,
+            )
+            .execution_options(synchronize_session=False)
         )
+        if int(getattr(claimed, "rowcount", 0) or 0) != 1:
+            session.rollback()
+            current = session.get(RawFile, file_id)
+            current_state = current.status if current is not None else "missing"
+            if current_state == TaskStatus.PENDING.value:
+                current_state = "concurrent_update"
+            raise InvalidRawFileStateError(file_id, current_state, TaskStatus.PENDING.value)
+    session.commit()
+    session.expire_all()
 
     logger.info(
         "file_parse_state_transition_completed",
@@ -202,6 +225,95 @@ def _start_parse_for_files(
         if course_id
         else get_user_files_or_raise(session, owner_user_id=owner_user_id, file_ids=file_ids)
     )
+
+
+def mark_parse_files_retry_pending(
+    *,
+    user_id: str,
+    file_ids: list[str],
+    reason: str,
+) -> int:
+    """Return unfinished Phase 1 files to a durable, retryable state."""
+
+    normalized_file_ids = _normalize_file_ids(file_ids)
+    if not normalized_file_ids:
+        return 0
+    try:
+        with managed_session() as session:
+            result = session.exec(
+                sa.update(RawFile)
+                .where(
+                    RawFile.user_id == user_id,
+                    RawFile.id.in_(normalized_file_ids),  # type: ignore[attr-defined]
+                    RawFile.status == TaskStatus.PROCESSING.value,
+                    RawFile.ingest_status.in_(  # type: ignore[attr-defined]
+                        [
+                            IngestStatus.CLASSIFYING.value,
+                            IngestStatus.FAST_PARSING.value,
+                        ]
+                    ),
+                )
+                .values(
+                    status=TaskStatus.PENDING.value,
+                    ingest_status=IngestStatus.RETRY_PENDING.value,
+                    current_step="ingest.parse.retry_pending",
+                    error_message=reason,
+                    updated_at=utcnow(),
+                )
+                .execution_options(synchronize_session=False)
+            )
+            return int(getattr(result, "rowcount", 0) or 0)
+    except Exception:
+        logger.exception(
+            "file_parse_retry_pending_update_failed",
+            user_id=user_id,
+            file_ids=normalized_file_ids,
+            reason=reason,
+        )
+        return 0
+
+
+def spawn_parse_files_background(
+    background_task_registry,
+    *,
+    user_id: str,
+    file_ids: list[str],
+    course_id: str | None = None,
+):
+    """Spawn Phase 1 parsing and roll back admission failures to retry_pending."""
+
+    normalized_file_ids = _normalize_file_ids(file_ids)
+    registry_course = str(course_id or "").strip() or f"files:{user_id}"
+    parse_coro = run_parse_files_background(
+        user_id=user_id,
+        course_id=course_id,
+        file_ids=normalized_file_ids,
+        background_task_registry=background_task_registry,
+    )
+    try:
+        if background_task_registry is None:
+            raise RuntimeError("background_task_registry unavailable")
+        task = background_task_registry.spawn(
+            parse_coro,
+            kind="files.parse",
+            course_id=registry_course,
+            name=f"files.parse:{registry_course}",
+            dedupe_key=f"files.parse:{registry_course}:{':'.join(sorted(normalized_file_ids))}",
+            cancel_cleanup=lambda: mark_parse_files_retry_pending(
+                user_id=user_id,
+                file_ids=normalized_file_ids,
+                reason="parse_worker_cancelled",
+            ),
+        )
+        return task
+    except Exception:
+        parse_coro.close()
+        mark_parse_files_retry_pending(
+            user_id=user_id,
+            file_ids=normalized_file_ids,
+            reason="parse_dispatch_failed",
+        )
+        raise
 
 
 async def run_parse_files_background(
@@ -306,7 +418,9 @@ async def run_parse_files_background(
 __all__ = [
     "_start_parse_for_files",
     "ready_file_ids_for_course_indexing",
+    "mark_parse_files_retry_pending",
     "run_index_course_files_background",
     "run_parse_files_background",
     "spawn_index_course_files_background",
+    "spawn_parse_files_background",
 ]

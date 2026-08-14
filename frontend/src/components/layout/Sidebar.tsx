@@ -10,12 +10,14 @@ import {
   FolderOpen,
   Loader2,
   Menu,
+  MessageSquareText,
   MoreVertical,
   PackagePlus,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
   Settings,
+  Share2,
   Trash2,
   MessageCircle,
 } from "lucide-react";
@@ -34,10 +36,12 @@ import { cn } from "../../lib/utils";
 import { publicAssetPath } from "../../lib/publicAsset";
 import { buildPreferredCourseEntryPath, getCourseIdFromPathname } from "../../lib/courseNavigation";
 import { isElectronRuntime } from "../../lib/electronRuntime";
+import { useCanManageCourseShares } from "../../hooks/useCourseShareCapability";
 
 import { CourseExportModal } from "../course/CourseExportModal";
 import { CourseImportModal } from "../course/CourseImportModal";
 import { CourseOperationModal } from "../course/CourseOperationModal";
+import { CourseShareModal } from "../course/CourseShareModal";
 import { CourseDeleteConfirmModal } from "./CourseDeleteConfirmModal";
 import { CommunityModal, ensureCommunityQrPreloaded } from "./CommunityPanel";
 import { AiConversationSidebarSection } from "../interaction/AiConversationSidebarSection";
@@ -258,14 +262,17 @@ export function Sidebar({
   const [isCommunityModalOpen, setIsCommunityModalOpen] = useState(false);
   const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
   const [exportCourseId, setExportCourseId] = useState<string | null>(null);
+  const [shareCourseId, setShareCourseId] = useState<string | null>(null);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [showDocsHint, setShowDocsHint] = useState(false);
+  const canManageCourseShares = useCanManageCourseShares();
 
   const menuRef = useRef<HTMLDivElement>(null);
   const menuButtonRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const shouldShowSidebarFeedback = location.pathname === "/assistant";
 
   const {
     activeScope,
@@ -457,7 +464,7 @@ export function Sidebar({
 
     const rect = trigger.getBoundingClientRect();
     const width = Math.min(COURSE_ACTION_MENU_WIDTH, Math.max(180, window.innerWidth - COURSE_ACTION_MENU_MARGIN * 2));
-    const menuHeight = menuRef.current?.offsetHeight ?? 168;
+    const menuHeight = menuRef.current?.offsetHeight ?? 216;
     const spaceBelow = window.innerHeight - rect.bottom - COURSE_ACTION_MENU_MARGIN;
     const spaceAbove = rect.top - COURSE_ACTION_MENU_MARGIN;
     const placement = spaceBelow < menuHeight && spaceAbove > spaceBelow ? "top" : "bottom";
@@ -835,7 +842,7 @@ export function Sidebar({
 
           <div
             className={cn(
-              "min-h-0 flex-1 space-y-2 overflow-y-auto overflow-x-hidden pb-3 scrollbar-thin scrollbar-webkit",
+              "min-h-0 flex-1 space-y-2 overflow-y-auto overflow-x-hidden pb-3 scrollbar-thin scrollbar-webkit [scrollbar-gutter:stable]",
                renderCollapsedChrome ? "w-[56px] self-start px-2" : isMobileOpen ? "px-4" : "px-3",
              )}
           >
@@ -1143,6 +1150,20 @@ export function Sidebar({
               ) : null}
             </AnimatePresence>
           </div>
+          {shouldShowSidebarFeedback ? (
+            <button
+              type="button"
+              onClick={() => setIsFeedbackModalOpen(true)}
+              className={cn(
+                "flex items-center text-slate-500 transition-colors hover:bg-[#eef3f8] hover:text-slate-900 focus:outline-none focus-visible:outline-none dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200",
+                renderCollapsedChrome ? "mx-auto h-8 w-8 justify-center rounded-md" : isMobileOpen ? "h-10 w-full rounded-md px-2 gap-2.5" : "h-8 w-full rounded-md px-2 gap-2",
+              )}
+              title="意见反馈"
+            >
+              <MessageSquareText className={cn("shrink-0", isMobileOpen ? "h-5 w-5" : "h-4 w-4")} />
+              {!renderCollapsedChrome ? <span className={cn("whitespace-nowrap", isMobileOpen ? "text-sm" : "text-xs")}>意见反馈</span> : null}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => setIsCommunityModalOpen(true)}
@@ -1199,6 +1220,24 @@ export function Sidebar({
                     transformOrigin: menuPosition.placement === "top" ? "bottom right" : "top right",
                   }}
                 >
+                  {canManageCourseShares ? (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setOpenMenuId(null);
+                        setCourseActionError(undefined);
+                        setShareCourseId(openMenuCourse.course_id);
+                      }}
+                      className="group flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                    >
+                      <Share2 className="h-4 w-4 shrink-0 text-slate-400 transition group-hover:text-slate-700 dark:text-slate-500 dark:group-hover:text-slate-200" />
+                      <span className="min-w-0">
+                        <span className="block font-medium text-slate-900 dark:text-slate-100">分享课程</span>
+                        <span className="block text-[11px] leading-4 text-slate-500 dark:text-slate-400">生成可浏览链接</span>
+                      </span>
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     role="menuitem"
@@ -1291,6 +1330,10 @@ export function Sidebar({
         <CourseExportModal courseId={exportCourseId} onClose={() => setExportCourseId(null)} />
       ) : null}
 
+      {shareCourseId && canManageCourseShares ? (
+        <CourseShareModal courseId={shareCourseId} onClose={() => setShareCourseId(null)} />
+      ) : null}
+
       {isImportModalOpen ? (
         <CourseImportModal onClose={() => setIsImportModalOpen(false)} />
       ) : null}
@@ -1298,10 +1341,6 @@ export function Sidebar({
       <CommunityModal
         isOpen={isCommunityModalOpen}
         onClose={() => setIsCommunityModalOpen(false)}
-        onOpenFeedback={() => {
-          setIsCommunityModalOpen(false);
-          setIsFeedbackModalOpen(true);
-        }}
       />
       <FeedbackModal open={isFeedbackModalOpen} onClose={() => setIsFeedbackModalOpen(false)} />
     </>

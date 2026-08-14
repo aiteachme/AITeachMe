@@ -11,16 +11,24 @@ from app.workflows.digest.docgen.lib.model_policy import (
 )
 
 
-def test_docgen_model_policy_sets_step_timeouts() -> None:
-    kwargs = docgen_completion_kwargs(DocGenModelStep.WRITER, digest_mode="systematic")
+def test_docgen_model_policy_routes_tiers_and_bounds_noncritical_steps() -> None:
+    systematic_writer = docgen_completion_kwargs(DocGenModelStep.WRITER, digest_mode="systematic")
+    sprint_writer = docgen_completion_kwargs(DocGenModelStep.WRITER, digest_mode="sprint")
+    intent_core = docgen_completion_kwargs(DocGenModelStep.INTENT_CORE)
 
-    assert kwargs["timeout"] == 120
-    assert kwargs["max_tokens"] == 12000
-    assert kwargs["model"] == "reason"
-    assert kwargs["max_retries"] == 5
-    assert kwargs["overall_timeout_s"] == 180
-    assert kwargs[PROVIDER_NATIVE_TOOLS_KWARG] == []
-    assert "task_type" not in kwargs
+    assert systematic_writer["model"] == "reason"
+    assert sprint_writer["model"] == "primary"
+    assert intent_core["overall_timeout_s"] >= intent_core["timeout"]
+    assert systematic_writer[PROVIDER_NATIVE_TOOLS_KWARG] == []
+    assert "task_type" not in systematic_writer
+
+    for step in (DocGenModelStep.RESEARCH_PURIFY, DocGenModelStep.HEADING_REPAIR):
+        kwargs = docgen_completion_kwargs(step, digest_mode="sprint")
+
+        assert kwargs["model"] == "light"
+        assert kwargs["timeout"] < systematic_writer["timeout"]
+        assert kwargs["overall_timeout_s"] < systematic_writer["overall_timeout_s"]
+        assert kwargs["max_retries"] < systematic_writer["max_retries"]
 
 
 def test_docgen_writer_model_slot_still_follows_digest_mode() -> None:

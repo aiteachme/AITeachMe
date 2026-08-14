@@ -393,7 +393,7 @@ async def _stream_one_tool_iteration(
     tracked_model = contexts[0].model
     last_error: Exception | None = None
 
-    async with get_llm_concurrency_limiter():
+    async with get_llm_concurrency_limiter().slot():
         for attempt_number, context in enumerate(contexts, start=1):
             prepared = prepare_completion_attempt(
                 context=context,
@@ -627,10 +627,6 @@ def _streaming_assistant_msg_to_dict(iteration: StreamingToolIteration) -> dict:
             for item in iteration.tool_calls
         ]
     return msg
-
-
-def _tool_stream_override_kwargs(tools: list[dict]) -> dict[str, Any]:
-    return _tool_stream_override_kwargs_with_choice(tools)
 
 
 def _tool_stream_override_kwargs_with_choice(

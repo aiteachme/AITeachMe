@@ -16,7 +16,7 @@ from typing import Any, AsyncGenerator
 import uuid
 
 import structlog
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -31,9 +31,11 @@ from app.shared.infra.logger import (
     bind_logging_context,
     clear_logging_context,
     configure_logging,
+    redact_course_share_tokens,
 )
 from app.shared.infra.runtime import get_runtime_data_dir
 from app.shared.infra.runtime import (
+    collect_cloud_runtime_config_errors,
     get_app_version,
     resolve_auth_enabled,
     resolve_app_mode,
@@ -66,6 +68,18 @@ _SENSITIVE_SETTING_KEY_RE = re.compile(
     r"(api[_-]?key|secret|token|password|access[_-]?key|private[_-]?key|credential)",
     re.IGNORECASE,
 )
+
+
+def _ensure_cloud_runtime_config_valid() -> None:
+    """Reject incomplete cloud configuration before any database work starts."""
+
+    if resolve_app_mode() != "cloud":
+        return
+    errors = collect_cloud_runtime_config_errors()
+    if not errors:
+        return
+    logger.critical("cloud_runtime_configuration_invalid", errors=errors)
+    raise RuntimeError("cloud runtime configuration is invalid: " + "; ".join(errors))
 
 
 def _redact_for_logs(value: Any) -> Any:
@@ -389,6 +403,7 @@ def _log_infra_diagnostics(settings) -> None:
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """应用生命周期。"""
 
+    _ensure_cloud_runtime_config_valid()
     app.state.background_task_registry = BackgroundTaskRegistry()
     init_db()
 
@@ -397,17 +412,38 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     _log_infra_diagnostics(settings)
     _maybe_export_openapi_schema(app)
 
-    from app.workflows.ingest import recover_stalled_enhancements
-    from app.workflows.support.system import refresh_community_wechat_qr_cache
+    from app.workflows.ingest import run_ingest_recovery_loop
+    from app.workflows.support.system import refresh_community_qr_cache
+    from app.api.exams import run_exam_grading_recovery_loop
+    from app.workflows.profile.sync import run_exam_profile_sync_recovery_loop
+    from app.workflows.examine.initial_exam import run_course_initial_exam_recovery_loop
 
     app.state.background_task_registry.spawn(
-        recover_stalled_enhancements(task_registry=app.state.background_task_registry),
+        run_ingest_recovery_loop(task_registry=app.state.background_task_registry),
         kind="ingest.recovery",
         name="ingest.recovery",
         dedupe_key="ingest.recovery",
     )
     app.state.background_task_registry.spawn(
-        refresh_community_wechat_qr_cache(),
+        run_exam_grading_recovery_loop(task_registry=app.state.background_task_registry),
+        kind="exam.grading.recovery",
+        name="exam.grading.recovery",
+        dedupe_key="exam.grading.recovery",
+    )
+    app.state.background_task_registry.spawn(
+        run_course_initial_exam_recovery_loop(task_registry=app.state.background_task_registry),
+        kind="exam.initial.recovery",
+        name="exam.initial.recovery",
+        dedupe_key="exam.initial.recovery",
+    )
+    app.state.background_task_registry.spawn(
+        run_exam_profile_sync_recovery_loop(task_registry=app.state.background_task_registry),
+        kind="exam.profile_sync.recovery",
+        name="exam.profile_sync.recovery",
+        dedupe_key="exam.profile_sync.recovery",
+    )
+    app.state.background_task_registry.spawn(
+        refresh_community_qr_cache(),
         kind="system.community_qr_warmup",
         name="system.community_qr_warmup",
     )
@@ -432,7 +468,29 @@ def _build_app_metadata() -> dict[str, object]:
     }
 
 
+_COURSE_SHARE_SECURITY_HEADERS = {
+    "Cache-Control": "private, no-store, max-age=0",
+    "Pragma": "no-cache",
+    "Expires": "0",
+    "Referrer-Policy": "no-referrer",
+    "X-Robots-Tag": "noindex, nofollow, noarchive",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Cross-Origin-Resource-Policy": "same-origin",
+    "Content-Security-Policy": (
+        "default-src 'none'; base-uri 'none'; "
+        "frame-ancestors 'none'; sandbox"
+    ),
+}
+
+
+def _apply_course_share_security_headers(request: Request, response: Response) -> None:
+    if request.url.path.startswith("/api/v1/course-shares/"):
+        response.headers.update(_COURSE_SHARE_SECURITY_HEADERS)
+
+
 def _register_middlewares(app: FastAPI) -> None:
+
     @app.middleware("http")
     async def request_logging_middleware(request: Request, call_next):
         clear_logging_context()
@@ -440,10 +498,11 @@ def _register_middlewares(app: FastAPI) -> None:
         request_id = (request.headers.get("x-request-id") or "").strip() or uuid.uuid4().hex
         request.state.request_id = request_id
         client_ip = request.client.host if request.client is not None else None
+        log_path = redact_course_share_tokens(request.url.path)
         bind_logging_context(
             request_id=request_id,
             method=request.method,
-            path=request.url.path,
+            path=log_path,
             client_ip=client_ip,
         )
 
@@ -453,6 +512,7 @@ def _register_middlewares(app: FastAPI) -> None:
             response = await call_next(request)
             elapsed_ms = int((perf_counter() - started_at) * 1000)
             response.headers.setdefault("x-request-id", request_id)
+            _apply_course_share_security_headers(request, response)
 
             if request.url.path == "/api/health":
                 access_logger.debug(
@@ -471,7 +531,7 @@ def _register_middlewares(app: FastAPI) -> None:
         except Exception:
             elapsed_ms = int((perf_counter() - started_at) * 1000)
             access_logger.exception("request_failed", elapsed_ms=elapsed_ms)
-            return JSONResponse(
+            response = JSONResponse(
                 status_code=500,
                 headers={"x-request-id": request_id},
                 content={
@@ -481,6 +541,8 @@ def _register_middlewares(app: FastAPI) -> None:
                     "data": None,
                 },
             )
+            _apply_course_share_security_headers(request, response)
+            return response
         finally:
             clear_logging_context()
 
@@ -493,6 +555,9 @@ def _register_middlewares(app: FastAPI) -> None:
         "http://127.0.0.1:5180",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        "http://tauri.localhost",
+        "https://tauri.localhost",
+        "tauri://localhost",
     ]
     configured = get_env("CORS_ALLOWED_ORIGINS", "")
     origins = [o.strip() for o in configured.split(",") if o.strip()] if configured else default_origins
@@ -514,8 +579,7 @@ def _register_exception_handlers(app: FastAPI) -> None:
         request: Request,
         exc: KernelAITeachMeError | InfraAITeachMeError,
     ) -> JSONResponse:
-        del request
-        return JSONResponse(
+        response = JSONResponse(
             status_code=exc.status_code,
             content={
                 "code": exc.status_code,
@@ -524,11 +588,13 @@ def _register_exception_handlers(app: FastAPI) -> None:
                 "data": exc.data,
             },
         )
+        _apply_course_share_security_headers(request, response)
+        return response
 
     @app.exception_handler(Exception)
     async def unhandled_error_handler(request: Request, exc: Exception) -> JSONResponse:
-        logger.exception("unhandled_error", path=request.url.path)
-        return JSONResponse(
+        logger.exception("unhandled_error", path=redact_course_share_tokens(request.url.path))
+        response = JSONResponse(
             status_code=500,
             content={
                 "code": 500,
@@ -537,6 +603,8 @@ def _register_exception_handlers(app: FastAPI) -> None:
                 "data": None,
             },
         )
+        _apply_course_share_security_headers(request, response)
+        return response
 
 
 def _register_routers(app: FastAPI) -> None:
@@ -544,6 +612,7 @@ def _register_routers(app: FastAPI) -> None:
     from app.api.chats import global_router as global_chats_router
     from app.api.chats import router as chats_router
     from app.api.exams import router as exams_router
+    from app.api.course_shares import router as course_shares_router
     from app.api.export_import import router as export_import_router
     from app.api.files import router as files_router
     from app.api.health import router as health_router
@@ -564,6 +633,7 @@ def _register_routers(app: FastAPI) -> None:
     app.include_router(chats_router)
     app.include_router(exams_router)
     app.include_router(profile_router)
+    app.include_router(course_shares_router)
     app.include_router(export_import_router)
 
 

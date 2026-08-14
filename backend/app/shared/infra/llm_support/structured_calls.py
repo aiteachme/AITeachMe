@@ -356,7 +356,7 @@ async def _acompletion_structured_impl(
             **trace_log_fields(),
         )
 
-    async with get_llm_concurrency_limiter():
+    async with get_llm_concurrency_limiter().slot() as lease:
         for group_index, context_group in enumerate(completion_context_groups(contexts)):
             if (
                 group_index > 0
@@ -727,7 +727,7 @@ async def _acompletion_structured_impl(
                         )
 
                 if retry_round < group_max_retries:
-                    await sleep_before_retry(retry_round, error=last_error)
+                    await sleep_before_retry(retry_round, error=last_error, lease=lease)
 
     track_call(
         task_type=primary_context.task_type,

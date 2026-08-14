@@ -18,6 +18,7 @@ from app.shared.infra.agent_loop import run_agent_loop_stream
 from app.shared.infra.llm_support import acompletion_stream
 from app.shared.infra.llm_support.model_choices import normalize_runtime_model_override
 from app.shared.infra.workflow.context import WorkflowContext
+from app.workflows.interact.chat.lib.errors import sanitize_interact_error_detail
 from app.workflows.interact.chat.state import InteractWorkflowState
 from app.workflows.interact.chat.lib.execution import InteractExecutionMode
 from app.workflows.interact.chat.lib.home_intake import (
@@ -321,7 +322,7 @@ def build_stream_answer_node(
                 return _build_stream_state(
                     state,
                     collected_tokens,
-                    error=str(exc),
+                    error=sanitize_interact_error_detail(exc),
                 )
 
         model_selector = INTERACT_MODEL_SELECTOR
@@ -381,7 +382,7 @@ def build_stream_answer_node(
             return _build_stream_state(
                 state,
                 collected_tokens,
-                error=str(exc),
+                error=sanitize_interact_error_detail(exc),
             )
 
         assistant_response = "".join(collected_tokens)

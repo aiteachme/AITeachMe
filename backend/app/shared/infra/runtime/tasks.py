@@ -6,7 +6,7 @@ import asyncio
 from dataclasses import dataclass
 import inspect
 from threading import RLock
-from typing import Any
+from typing import Any, Callable
 from uuid import uuid4
 
 import structlog
@@ -27,12 +27,19 @@ class ManagedTaskRecord:
     name: str
     created_at: object
     dedupe_key: str | None = None
+    cancel_cleanup: Callable[[], Any] | None = None
 
 
 _DEFAULT_KIND_LIMITS: dict[str, int] = {
     "courses.delete.cleanup": 1,
     "courses.icon_refine": 2,
     "exam.generate": 2,
+    "exam.grading": 2,
+    "exam.grading.recovery": 1,
+    "exam.initial": 1,
+    "exam.initial.recovery": 1,
+    "exam.profile_sync": 2,
+    "exam.profile_sync.recovery": 1,
     "exam.prewarm": 1,
     "exam.study_guide": 2,
     "files.index": 2,
@@ -63,6 +70,7 @@ class BackgroundTaskRegistry:
         name: str | None = None,
         dedupe_key: str | None = None,
         max_concurrency: int | None = None,
+        cancel_cleanup: Callable[[], Any] | None = None,
     ) -> asyncio.Task[Any]:
         """Create and register a tracked task with optional local admission control."""
 
@@ -97,6 +105,7 @@ class BackgroundTaskRegistry:
             name=task_name,
             created_at=utcnow(),
             dedupe_key=normalized_dedupe_key,
+            cancel_cleanup=cancel_cleanup,
         )
         with self._lock:
             self._tasks[record.task_id] = record
@@ -191,9 +200,10 @@ class BackgroundTaskRegistry:
         *,
         kind: str | None = None,
         course_id: str | None = None,
+        name: str | None = None,
         timeout_s: float = 3.0,
     ) -> int:
-        """Cancel active tasks matching kind and course, returning task count."""
+        """Cancel active tasks matching kind, course, and exact name."""
 
         with self._lock:
             records = [
@@ -201,6 +211,7 @@ class BackgroundTaskRegistry:
                 for record in self._tasks.values()
                 if (kind is None or record.kind == kind)
                 and (course_id is None or record.course_id == course_id)
+                and (name is None or record.name == name)
             ]
         if not records:
             return 0
@@ -212,11 +223,13 @@ class BackgroundTaskRegistry:
             [record.task for record in records],
             timeout=max(0.1, float(timeout_s)),
         )
+        await self._run_confirmed_cancel_cleanups(records, done=done)
         if pending:
             logger.warning(
                 "background_task_cancel_timeout",
                 kind=kind,
                 course_id=course_id,
+                name=name,
                 completed=len(done),
                 pending=len(pending),
             )
@@ -242,6 +255,7 @@ class BackgroundTaskRegistry:
             [record.task for record in records],
             timeout=cancel_timeout_s,
         )
+        await self._run_confirmed_cancel_cleanups(records, done=done)
         if pending:
             logger.warning(
                 "background_task_shutdown_timeout",
@@ -249,6 +263,31 @@ class BackgroundTaskRegistry:
                 pending=len(pending),
             )
         logger.info("background_task_shutdown_completed", completed=len(done), pending=len(pending))
+
+    async def _run_confirmed_cancel_cleanups(
+        self,
+        records: list[ManagedTaskRecord],
+        *,
+        done: set[asyncio.Task[Any]],
+    ) -> None:
+        """Run owner cleanup only after cancellation has fully completed."""
+
+        for record in records:
+            cleanup = record.cancel_cleanup
+            if cleanup is None or record.task not in done or not record.task.cancelled():
+                continue
+            try:
+                result = cleanup()
+                if inspect.isawaitable(result):
+                    await result
+            except Exception:
+                logger.exception(
+                    "background_task_cancel_cleanup_failed",
+                    task_id=record.task_id,
+                    kind=record.kind,
+                    course_id=record.course_id,
+                    name=record.name,
+                )
 
 
 def _normalize_kind_limit(kind: str, *, max_concurrency: int | None) -> int | None:

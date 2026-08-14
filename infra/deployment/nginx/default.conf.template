@@ -3,11 +3,34 @@ map $http_upgrade $connection_upgrade {
     "" "";
 }
 
+map $uri $aiteachme_safe_request_uri {
+    ~*cshr_[^/?]+.*cshr_ /:redacted;
+    ~^/api/v1/course-shares/cshr_[^/?]+(?<share_api_suffix>/.*)?$ /api/v1/course-shares/:shareToken$share_api_suffix;
+    ~^/share/courses/cshr_[^/?]+(?<share_page_suffix>/.*)?$ /share/courses/:shareToken$share_page_suffix;
+    ~*cshr_ /:redacted;
+    default $uri;
+}
+
+map $http_referer $aiteachme_safe_referer {
+    ~*cshr_ "-";
+    default $http_referer;
+}
+
+map $http_user_agent $aiteachme_safe_user_agent {
+    ~*cshr_ "-";
+    default $http_user_agent;
+}
+
+log_format aiteachme_safe '$remote_addr - $remote_user [$time_local] '
+                          '"$request_method $aiteachme_safe_request_uri $server_protocol" '
+                          '$status $body_bytes_sent "$aiteachme_safe_referer" "$aiteachme_safe_user_agent"';
+
 server {
     listen 80;
     server_name localhost;
     root /usr/share/nginx/html;
     index index.html;
+    access_log /var/log/nginx/access.log aiteachme_safe;
     resolver ${AITEACHME_NGINX_RESOLVER} valid=10s ipv6=off;
     set $aiteachme_api_upstream "${AITEACHME_API_UPSTREAM}";
 
@@ -77,6 +100,20 @@ server {
     location = /docs {
         try_files /docs/index.html =404;
         add_header Cache-Control "no-cache" always;
+    }
+
+    location ^~ /share/courses/ {
+        try_files $uri $uri/ @course_share_spa;
+        add_header Cache-Control "no-cache" always;
+        add_header Referrer-Policy "no-referrer" always;
+        add_header X-Robots-Tag "noindex, nofollow, noarchive" always;
+    }
+
+    location @course_share_spa {
+        try_files /index.html =404;
+        add_header Cache-Control "no-cache" always;
+        add_header Referrer-Policy "no-referrer" always;
+        add_header X-Robots-Tag "noindex, nofollow, noarchive" always;
     }
 
     location = /api/v1/files/upload {

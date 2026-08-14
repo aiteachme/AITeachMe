@@ -125,7 +125,7 @@ async def rerank_chunks(
         litellm = load_litellm()
 
         documents = [chunk.content[:2000] for chunk in chunks]
-        async with get_llm_concurrency_limiter():
+        async with get_llm_concurrency_limiter().slot():
             response = await litellm.arerank(
                 model=model,
                 query=query,

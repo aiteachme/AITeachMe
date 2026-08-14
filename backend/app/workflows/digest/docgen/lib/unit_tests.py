@@ -207,6 +207,13 @@ class ChapterUnitTestItem(DocGenBaseModel):
         self.type = _normalize_question_type(self.type)
         self.difficulty = _normalize_difficulty(self.difficulty)
         self.options = _normalize_choice_options(self.options)
+        if not _is_choice_unit_test_type(self.type):
+            answer_label = re.fullmatch(r"(?:选项\s*)?([A-Da-d])(?:[.、:：])?", self.answer.strip())
+            if answer_label is not None:
+                answer_index = ord(answer_label.group(1).upper()) - ord("A")
+                if 0 <= answer_index < len(self.options):
+                    self.answer = self.options[answer_index]
+            self.options = []
         return self
 
 
@@ -361,7 +368,7 @@ def _render_unit_test_item_markdown(item: ChapterUnitTestItem, *, index: int) ->
         ">",
         f"> {_markdown_text(item.stem, limit=720)}",
     ]
-    if item.options:
+    if _is_choice_unit_test_type(question_type) and item.options:
         lines.extend([">", "> **选项**", ">"])
         lines.extend([f"> - {label}. {_markdown_text(option, limit=160)}" for label, option in zip("ABCD", item.options)])
     explanation_lines = _markdown_explanation_lines(item.basis, limit=720)

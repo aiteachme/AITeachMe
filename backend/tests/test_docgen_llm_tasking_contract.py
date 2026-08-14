@@ -112,30 +112,43 @@ async def test_core_docgen_single_llm_calls_use_run_llm_tasks(monkeypatch) -> No
     ]
 
 
-def test_chapter_execution_brief_prompt_requires_object_level_graph_targets() -> None:
-    messages = chapter_execution_brief.build_chapter_execution_brief_messages(
-        course_name="初中函数",
-        digest_mode="sprint",
-        chapter={
-            "chapter_index": 1,
-            "objective": "掌握函数基础。",
-            "required_elements": ["图示", "方法步骤", "单元测试"],
-        },
-        locked_title="函数概念与图像",
-        intent_core={},
-        glossary_terms=["函数"],
+@pytest.mark.anyio
+async def test_chapter_brief_queue_wait_is_outside_llm_timeout(monkeypatch) -> None:
+    captured_overall_timeout: float | None = None
+
+    async def delayed_scheduler(items, worker, *, max_concurrent=None, on_result=None):
+        await asyncio.sleep(0.03)
+        return [await worker(item) for item in items]
+
+    async def fake_completion(*args, **kwargs):
+        nonlocal captured_overall_timeout
+        captured_overall_timeout = float(kwargs["overall_timeout_s"])
+        return ChapterExecutionBrief(
+            chapter_index=1,
+            teaching_outline=["先讲变量关系，再讲图像变化"],
+            content_role_targets={"concept": ["函数图像"]},
+            example_coverage_plan=[{"target": "函数图像", "purpose": "连接概念和题型"}],
+            concept_targets=["函数图像"],
+            retrieval_queries=["函数图像变化"],
+        )
+
+    monkeypatch.setattr(chapter_execution_brief, "_chapter_brief_timeout_seconds", lambda: 0.01)
+    monkeypatch.setattr(chapter_execution_brief, "run_llm_tasks", delayed_scheduler)
+    monkeypatch.setattr(chapter_execution_brief, "acompletion_with_fallback", fake_completion)
+
+    result = await chapter_execution_brief.build_chapter_execution_brief(
+        course_name="数学",
+        digest_mode="systematic",
+        chapter={"chapter_index": 1, "title": "函数基础"},
+        locked_title="函数变化与图像",
+        intent_core={"learning_goal_text": "掌握函数图像"},
+        glossary_terms=[],
         claim_targets=[],
         confusion_targets=[],
     )
-    prompt_text = "\n".join(message["content"] for message in messages)
 
-    assert "每一项都必须是具体课程对象、方法名、题型名或错因名" in prompt_text
-    assert "不要输出“图示”“方法步骤”“单元测试”" in prompt_text
-    assert "整理”“判定题”“图表分析" in prompt_text
-    assert "统计数据整理方法" in prompt_text
-    assert "几何判定条件识别" in prompt_text
-    assert "函数图像读图" in prompt_text
-    assert "函数值求解例题" in prompt_text
+    assert result.retrieval_queries == ["函数图像变化"]
+    assert captured_overall_timeout == 0.01
 
 
 @pytest.mark.anyio

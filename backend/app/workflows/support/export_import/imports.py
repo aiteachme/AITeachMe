@@ -17,8 +17,9 @@ from langsmith import tracing_context
 from pydantic import ValidationError
 from sqlmodel import Session, select
 
-from app.models import ChatSession, RawFile, RetrievalChunk, Course
+from app.models import ChatSession, Course, KnowledgeDocument, RawFile, RetrievalChunk
 from app.repositories.knowledge import knowledge_repo
+from app.repositories import initial_exam_repo
 from app.schemas.export_import import ImportOptions, ImportResultData
 from app.shared.infra.embedding import aembed_texts
 from app.shared.infra.course import (
@@ -28,6 +29,7 @@ from app.shared.infra.course import (
 from app.shared.infra.llm_support import get_llm_concurrency_limit
 from app.shared.infra.observability.trace import langsmith_trace, llm_trace_scope
 from app.shared.infra.storage import (
+    CourseStorageScope,
     build_file_storage_segment,
     build_course_storage_scope,
     get_content_store,
@@ -36,10 +38,18 @@ from app.shared.infra.storage import (
 from app.shared.infra.exceptions import (
     ImportPackageTooLargeError,
     InvalidImportPackageError,
+    LLMCallError,
+    MissingLLMApiKeyError,
+)
+from app.shared.kernel.question_types import (
+    UnsupportedQuestionTypeError,
+    require_supported_question_type_key,
 )
 from app.workflows.digest.docgen.lib.published_manifest import ensure_published_knowledge_manifest
+from app.shared.infra.llm_support.common import build_completion_contexts
 from app.workflows.support.export_import.exports import (
     TABLE_REGISTRY,
+    _DOCGEN_COVER_MARKDOWN_RE,
     _create_unique_course_id,
     _import_table,
     _read_manifest,
@@ -53,10 +63,33 @@ from app.workflows.support.export_import.limits import (
 logger = structlog.get_logger()
 
 _DOCGEN_COVER_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+_SHARE_ASSET_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+_SHARE_ASSET_ROOT = "share_assets"
+MAX_IMPORTED_SHARE_ASSET_BYTES = 16 * 1024 * 1024
 _IMPORT_EMBEDDING_BATCH_SIZE = 1
 _IMPORT_EMBEDDING_MAX_CONCURRENCY = 1
 _IMPORT_EMBEDDING_FOREGROUND_SLOT_RESERVE = 2
 _IMPORT_EMBEDDING_GLOBAL_FRACTION_DIVISOR = 3
+
+
+def _validate_imported_question_types(table_name: str, records: list[dict[str, Any]]) -> None:
+    """Reject runtime records whose question type is not implemented."""
+
+    if table_name not in {"question_template", "exam_paper_item", "question_type_registry"}:
+        return
+
+    for record in records:
+        if table_name == "question_type_registry" and not bool(record.get("is_active", True)):
+            continue
+        field_name = "type_key" if table_name == "question_type_registry" else "question_type"
+        try:
+            record[field_name] = require_supported_question_type_key(record.get(field_name))
+        except UnsupportedQuestionTypeError as exc:
+            record_id = record.get("id", "unknown")
+            question_type = exc.question_type or "<empty>"
+            raise InvalidImportPackageError(
+                f"数据表 `{table_name}` 的记录 `{record_id}` 包含不支持的题型 `{question_type}`。"
+            ) from exc
 
 
 def _import_embedding_rebuild_concurrency_limit(global_limit: int | None = None) -> int:
@@ -78,14 +111,37 @@ def _import_embedding_rebuild_concurrency_limit(global_limit: int | None = None)
     )
 
 
+def _import_embedding_rebuild_route_unavailable_reason() -> str | None:
+    """Return a reason when imported-course embedding rebuild cannot be routed."""
+
+    try:
+        runtime = get_runtime_embedding_config()
+        model = (runtime.embedding_model or "").strip()
+        if not model:
+            return "embedding_model_not_configured"
+        build_completion_contexts(task_type="embedding", model=model)
+    except (LLMCallError, MissingLLMApiKeyError) as exc:
+        return str(exc)
+    except Exception as exc:  # pragma: no cover - defensive config guard
+        logger.warning("course_import_embedding_route_preflight_failed", error=str(exc))
+        return str(exc)
+    return None
+
+
 def import_course(
     session: Session,
     *,
     file_path: Path,
     options: ImportOptions | None = None,
     user_id: str = "local",
+    commit: bool = True,
 ) -> ImportResultData:
-    """Import one course from an ``.atmx`` archive."""
+    """Import one course from an ``.atmx`` archive.
+
+    ``commit=False`` leaves the imported rows in the caller's transaction so
+    an outer use case can atomically persist related records. The caller must
+    clean the imported course storage if that outer transaction later fails.
+    """
 
     options = options or ImportOptions()
 
@@ -120,6 +176,7 @@ def import_course(
                 records = _read_table_records(db_file, spec.name)
                 if not records:
                     continue
+                _validate_imported_question_types(spec.name, records)
                 count = _import_table(
                     session,
                     spec,
@@ -165,10 +222,24 @@ def import_course(
                 course_id=new_course_id,
                 id_map=id_map,
             )
-            session.commit()
+            initial_exam_repo.ensure_course_initial_exam_job(
+                session,
+                course_id=new_course_id,
+                user_id=user_id,
+                status="completed",
+                last_error_code="imported_course_backfill",
+                auto_commit=False,
+            )
+            if commit:
+                session.commit()
+            else:
+                session.flush()
         except Exception:
             session.rollback()
-            _cleanup_import_artifacts(new_course_id, user_id=user_id)
+            cleanup_imported_course_artifacts(
+                new_course_id,
+                user_id=user_id,
+            )
             raise
 
         if options.rebuild_embeddings:
@@ -500,7 +571,14 @@ def _unpack_files(
                 relative = asset_file.relative_to(asset_dir).as_posix()
                 run_store_sync(cs.write_bytes, f"{asset_prefix}{relative}", asset_file.read_bytes())
 
+    _restore_share_assets(
+        extract_dir,
+        course_scope=course_scope,
+        content_store=cs,
+    )
+
     src_knowledge = extract_dir / "knowledge"
+    restored_cover_name = ""
     if src_knowledge.exists():
         # Published chapter markdown is imported from KnowledgeDocument rows; only
         # non-DB docgen assets need to be restored.
@@ -510,17 +588,101 @@ def _unpack_files(
             if item.stem == "cover" and item.suffix.lower() in _DOCGEN_COVER_IMAGE_EXTENSIONS:
                 key = f"{course_scope.namespace}/assets/docgen/{item.name}"
                 run_store_sync(cs.write_bytes, key, item.read_bytes())
+                restored_cover_name = item.name
+                break
+
+    if not restored_cover_name:
+        return
+
+    first_published_doc = session.exec(
+        select(KnowledgeDocument)
+        .where(
+            KnowledgeDocument.course_id == new_course_id,
+            KnowledgeDocument.is_current.is_(True),
+            KnowledgeDocument.status == "published",
+        )
+        .order_by(
+            KnowledgeDocument.order_index,
+            KnowledgeDocument.chapter_index,
+            KnowledgeDocument.id,
+        )
+    ).first()
+    if first_published_doc is None:
+        return
+
+    cover_markdown = f"![](../assets/docgen/{restored_cover_name})"
+
+    def restore_cover_reference(markdown: str | None) -> str:
+        body = str(markdown or "").strip()
+        if _DOCGEN_COVER_MARKDOWN_RE.search(body):
+            return _DOCGEN_COVER_MARKDOWN_RE.sub(cover_markdown, body)
+        return f"{cover_markdown}\n\n{body}".strip()
+
+    effective_markdown = (
+        str(first_published_doc.markdown_content or "").strip()
+        or str(first_published_doc.content_markdown or "").strip()
+    )
+    first_published_doc.markdown_content = restore_cover_reference(effective_markdown)
+    session.add(first_published_doc)
 
 
-def _cleanup_import_artifacts(course_id: str, *, user_id: str) -> None:
-    """Best-effort cleanup when import fails after files have been written."""
+def _restore_share_assets(
+    extract_dir: Path,
+    *,
+    course_scope: CourseStorageScope,
+    content_store: Any,
+) -> None:
+    """Restore only bounded, signature-verified passive image assets."""
+
+    asset_root = (extract_dir / _SHARE_ASSET_ROOT).resolve()
+    if not asset_root.exists():
+        return
+
+    for candidate in sorted(asset_root.rglob("*")):
+        if not candidate.is_file():
+            continue
+        if candidate.is_symlink():
+            raise InvalidImportPackageError("分享资产包含不安全的符号链接。")
+
+        resolved = candidate.resolve()
+        try:
+            relative = resolved.relative_to(asset_root)
+        except ValueError as exc:
+            raise InvalidImportPackageError("分享资产路径超出允许目录。") from exc
+
+        suffix = resolved.suffix.lower()
+        if suffix not in _SHARE_ASSET_IMAGE_EXTENSIONS:
+            continue
+        if resolved.stat().st_size > MAX_IMPORTED_SHARE_ASSET_BYTES:
+            raise InvalidImportPackageError("单个分享图片资产不能超过 16 MiB。")
+
+        data = resolved.read_bytes()
+        if not _share_asset_magic_matches(suffix, data):
+            continue
+        key = f"{course_scope.namespace}/assets/{relative.as_posix()}"
+        run_store_sync(content_store.write_bytes, key, data)
+
+
+def _share_asset_magic_matches(suffix: str, data: bytes) -> bool:
+    if suffix == ".png":
+        return data.startswith(b"\x89PNG\r\n\x1a\n")
+    if suffix in {".jpg", ".jpeg"}:
+        return data.startswith(b"\xff\xd8\xff")
+    if suffix == ".gif":
+        return data.startswith((b"GIF87a", b"GIF89a"))
+    if suffix == ".webp":
+        return len(data) >= 12 and data.startswith(b"RIFF") and data[8:12] == b"WEBP"
+    return False
+
+
+def cleanup_imported_course_artifacts(course_id: str, *, user_id: str) -> None:
+    """Best-effort storage cleanup after an import transaction fails."""
 
     cs = get_content_store()
     try:
         run_store_sync(
             cs.delete_prefix,
             build_course_storage_scope(user_id=user_id, course_id=course_id).course_prefix(),
-            default=0,
         )
     except Exception as exc:  # pragma: no cover - best-effort cleanup
         logger.warning(
@@ -723,6 +885,14 @@ def spawn_imported_embedding_rebuild_background(
             course_id=course_id,
         )
         return False
+    route_unavailable_reason = _import_embedding_rebuild_route_unavailable_reason()
+    if route_unavailable_reason:
+        logger.info(
+            "course_import_embedding_background_skipped",
+            course_id=course_id,
+            reason=route_unavailable_reason,
+        )
+        return False
 
     coroutine = rebuild_imported_embeddings_background(
         course_id=course_id,
@@ -758,6 +928,7 @@ def _run_async(coro):
 
 
 __all__ = [
+    "cleanup_imported_course_artifacts",
     "import_course",
     "rebuild_imported_embeddings_background",
     "spawn_imported_embedding_rebuild_background",

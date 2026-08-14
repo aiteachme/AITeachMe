@@ -48,6 +48,30 @@ data class ExamSubmitAnswerItem(
 
 data class ExamSubmitRequest(
     val answers: List<ExamSubmitAnswerItem> = emptyList(),
+    @SerializedName("submission_key")
+    val submissionKey: String? = null,
+)
+
+data class ExamProfileSyncResponse(
+    @SerializedName("exam_paper_id")
+    val examPaperId: Int = 0,
+    val status: String = "not_tracked",
+    @SerializedName("attempt_count")
+    val attemptCount: Int = 0,
+    @SerializedName("manual_retry_count")
+    val manualRetryCount: Int = 0,
+    @SerializedName("next_attempt_at")
+    val nextAttemptAt: String? = null,
+    @SerializedName("last_error_code")
+    val lastErrorCode: String? = null,
+    @SerializedName("states_updated")
+    val statesUpdated: Int = 0,
+    @SerializedName("review_task_count")
+    val reviewTaskCount: Int = 0,
+    @SerializedName("can_retry")
+    val canRetry: Boolean = false,
+    @SerializedName("updated_at")
+    val updatedAt: String? = null,
 )
 
 data class ExamGradeResponse(
@@ -68,6 +92,8 @@ data class ExamGradeResponse(
     val tasksCreated: Int = 0,
     @SerializedName("mastery_consumed")
     val masteryConsumed: Boolean = false,
+    @SerializedName("profile_sync")
+    val profileSync: ExamProfileSyncResponse? = null,
 )
 
 data class ExamStudyGuideFocusUnit(
@@ -200,6 +226,108 @@ data class QuestionTemplateGradeResponse(
     val correctAnswer: String = "",
 )
 
+data class MasteryDrillStartRequest(
+    @SerializedName("session_key")
+    val sessionKey: String,
+    @SerializedName("question_template_ids")
+    val questionTemplateIds: List<Int>,
+    @SerializedName("configured_question_count")
+    val configuredQuestionCount: Int,
+    @SerializedName("configured_question_types")
+    val configuredQuestionTypes: List<String> = emptyList(),
+)
+
+data class MasteryDrillAttemptRequest(
+    @SerializedName("exam_paper_item_id")
+    val examPaperItemId: Int,
+    val answer: String,
+    @SerializedName("attempt_key")
+    val attemptKey: String,
+    @SerializedName("time_spent_seconds")
+    val timeSpentSeconds: Int? = null,
+    @SerializedName("hint_used")
+    val hintUsed: Boolean = false,
+    @SerializedName("confidence_self_report")
+    val confidenceSelfReport: Int? = null,
+)
+
+data class MasteryDrillCompleteRequest(
+    @SerializedName("completion_key")
+    val completionKey: String,
+    @SerializedName("duration_seconds")
+    val durationSeconds: Int? = null,
+)
+
+data class MasteryDrillAttemptResponse(
+    val id: Int = 0,
+    @SerializedName("mastery_drill_session_id")
+    val masteryDrillSessionId: Int = 0,
+    @SerializedName("exam_paper_item_id")
+    val examPaperItemId: Int = 0,
+    @SerializedName("question_template_id")
+    val questionTemplateId: Int = 0,
+    @SerializedName("attempt_no")
+    val attemptNo: Int = 1,
+    @SerializedName("attempt_key")
+    val attemptKey: String = "",
+    val status: String = "",
+    val answer: String = "",
+    @SerializedName("is_correct")
+    val isCorrect: Boolean? = null,
+    @SerializedName("score_obtained")
+    val scoreObtained: Double? = null,
+    @SerializedName("score_max")
+    val scoreMax: Double? = null,
+    @SerializedName("feedback_text")
+    val feedbackText: String? = null,
+    @SerializedName("error_cause_label")
+    val errorCauseLabel: String? = null,
+    @SerializedName("grading_mode")
+    val gradingMode: String? = null,
+    @SerializedName("time_spent_seconds")
+    val timeSpentSeconds: Int? = null,
+    @SerializedName("hint_used")
+    val hintUsed: Boolean = false,
+    @SerializedName("confidence_self_report")
+    val confidenceSelfReport: Int? = null,
+    @SerializedName("error_code")
+    val errorCode: String? = null,
+    @SerializedName("answered_at")
+    val answeredAt: String? = null,
+    @SerializedName("created_at")
+    val createdAt: String = "",
+    @SerializedName("updated_at")
+    val updatedAt: String = "",
+)
+
+data class MasteryDrillSessionResponse(
+    val id: Int = 0,
+    @SerializedName("exam_paper_id")
+    val examPaperId: Int = 0,
+    val status: String = "",
+    @SerializedName("config_snapshot")
+    val configSnapshot: Map<String, Any?> = emptyMap(),
+    @SerializedName("total_attempts")
+    val totalAttempts: Int = 0,
+    @SerializedName("wrong_attempts")
+    val wrongAttempts: Int = 0,
+    @SerializedName("started_at")
+    val startedAt: String = "",
+    @SerializedName("completed_at")
+    val completedAt: String? = null,
+    val attempts: List<MasteryDrillAttemptResponse> = emptyList(),
+)
+
+data class MasteryDrillHistorySummary(
+    val status: String = "",
+    @SerializedName("total_attempts")
+    val totalAttempts: Int = 0,
+    @SerializedName("wrong_attempts")
+    val wrongAttempts: Int = 0,
+    @SerializedName("attempt_accuracy")
+    val attemptAccuracy: Double? = null,
+)
+
 data class QuestionTypeRegistryItemResponse(
     val id: Int = 0,
     @SerializedName("type_key")
@@ -273,6 +401,8 @@ data class ExamHistoryItem(
     val gradedAt: String? = null,
     @SerializedName("paper_preview")
     val paperPreview: PaperPreview = PaperPreview(),
+    @SerializedName("mastery_drill")
+    val masteryDrill: MasteryDrillHistorySummary? = null,
 )
 
 data class ExamNodeLinkResponse(
@@ -341,6 +471,10 @@ data class ExamPaperDetailResponse(
     val createdAt: String = "",
     @SerializedName("selection_context")
     val selectionContext: Map<String, Any?> = emptyMap(),
+    @SerializedName("profile_sync")
+    val profileSync: ExamProfileSyncResponse? = null,
+    @SerializedName("mastery_drill")
+    val masteryDrill: MasteryDrillSessionResponse? = null,
     @SerializedName("paper_preview")
     val paperPreview: PaperPreview = PaperPreview(),
     val items: List<ExamPaperItemResponse> = emptyList(),

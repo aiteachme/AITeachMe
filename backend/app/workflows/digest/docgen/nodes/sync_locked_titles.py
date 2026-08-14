@@ -183,6 +183,7 @@ def build_sync_locked_titles_node(*, context: WorkflowContext):
         update_knowledge_build_status(
             state["course_id"],
             requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
             status="running",
             stage="titles_finalized",
             digest_mode=state.get("digest_mode") or None,
@@ -193,6 +194,7 @@ def build_sync_locked_titles_node(*, context: WorkflowContext):
         update_knowledge_build_merge_preview(
             state["course_id"],
             requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
             merge_preview={
                 "latest_chapter_titles": [chapter["title"] for chapter in updated_chapters],
                 "draft_excerpt": build_draft_excerpt(merged_markdown, max_chars=1600),
@@ -201,6 +203,7 @@ def build_sync_locked_titles_node(*, context: WorkflowContext):
         append_knowledge_build_recent_event(
             state["course_id"],
             requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
             event={
                 "stage": "titles_finalized",
                 "summary": "章节标题已按前置执行合同同步，未进行二次生成。",

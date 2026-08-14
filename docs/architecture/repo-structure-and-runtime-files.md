@@ -190,7 +190,12 @@ backend/data/<course>/
 | `knowledge_markdowns/_build/manifest.json` | 构建中间 manifest |
 | `knowledge_markdowns/.build.lock` | 构建锁 |
 | `knowledge_markdowns/docgen_manifest.json` | 发布 manifest |
-| `knowledge_markdowns/versions/vXXXX/` | 历史版本 |
+| `knowledge_markdowns/versions/vXXXX/<publish-token-hash>/` | 按发布令牌隔离的不可变历史版本 |
+| `assets/docgen/cover.<build-fingerprint>.<ext>` | 构建隔离的不可变封面；当前发布记录对应 versioned manifest 的 `cover_artifact` 决定当前封面 |
+
+当前 `KnowledgeDoc` 数据库行是知识文档的权威发布指针；根目录下的章节、
+合并文档和 manifest 是提交后的派生投影。投影缺失或版本落后时，运行时
+会从数据库当前行及其版本归档恢复，不能仅凭根目录 manifest 判断是否已发布。
 
 演示课程主源：
 
@@ -230,7 +235,7 @@ frontend/dist/
 - 环境变量由 `backend/app/shared/infra/env_support.py` 读取。
 - `.env.sample` 作为本地用户与设置页主入口；开发 / 部署 / 验证码 / 通知变量放在额外 sample 中供人工合并。
 - 本地默认不需要额外 settings 文件；非敏感项目默认配置由代码默认值提供，本地用户可通过设置页写入本地数据库。
-- 线上如需固定 `models.reason / primary / light` 等策略，可通过 `PROJECT_SETTINGS_PATH` 指向根目录 `settings.private.yaml` 或 Render 同名 Secret File；私有 YAML 应写全当前 `Settings` schema。
+- 线上如需固定 `models.* / fallback_models.*` 等策略，可通过 `PROJECT_SETTINGS_PATH` 指向根目录 `settings.private.yaml` 或 Render 同名 Secret File；私有 YAML 应写全当前 `Settings` schema，云端数据库历史设置不参与覆盖。
 - 用户级非敏感 settings 覆盖存用户数据库。
 - 密钥、连接串、SMTP、对象存储等敏感配置不写用户 settings 数据库。
 

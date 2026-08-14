@@ -17,7 +17,11 @@ from app.shared.infra.llm_support.common import (
     capture_llm_runtime_snapshot,
     use_llm_runtime_snapshot,
 )
-from app.shared.infra.observability.trace import langsmith_trace, llm_trace_scope
+from app.shared.infra.observability.trace import (
+    langsmith_expected_cancellation_scope,
+    langsmith_trace,
+    llm_trace_scope,
+)
 from app.shared.infra.settings import get_settings
 from app.workflows.digest.kg_doc_sync.lib.incremental_sync import (
     _graph_llm_concurrency_cap,
@@ -137,7 +141,10 @@ async def _extract_prefetch_records_with_trace(
     lane = "background"
     phase = _prefetch_trace_phase(docgen_manifest)
     trace_name = "KG：DocGen 增量预取" if incremental else "KG：DocGen 预取"
-    with use_llm_runtime_snapshot(snapshot):
+    with (
+        langsmith_expected_cancellation_scope("kg_docgen_prefetch_sidecar"),
+        use_llm_runtime_snapshot(snapshot),
+    ):
         with llm_trace_scope(
             course_id=course_id,
             build_session_id=build_session_id,

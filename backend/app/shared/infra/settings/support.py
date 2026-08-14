@@ -505,6 +505,19 @@ def upgrade_legacy_settings_payload(raw_payload: Any) -> dict[str, Any]:
         if legacy_extract is not None and not str(models.get("light") or "").strip():
             models["light"] = legacy_extract
 
+    llm = upgraded.get("llm")
+    if isinstance(llm, dict):
+        legacy_reasoning_effort = llm.pop("reasoning_effort", None)
+        llm.pop("primary_model_allowlist", None)
+        if legacy_reasoning_effort is not None:
+            reasoning_efforts = llm.get("reasoning_efforts")
+            if reasoning_efforts is None:
+                reasoning_efforts = {}
+                llm["reasoning_efforts"] = reasoning_efforts
+            if isinstance(reasoning_efforts, dict):
+                for slot in ("light", "primary", "reason"):
+                    reasoning_efforts.setdefault(slot, legacy_reasoning_effort)
+
     rag = upgraded.get("rag")
     if isinstance(rag, dict):
         legacy_rerank_model = rag.pop("rerank_model", None)

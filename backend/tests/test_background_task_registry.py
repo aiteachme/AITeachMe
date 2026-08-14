@@ -98,6 +98,50 @@ async def test_background_task_registry_limits_are_scoped_by_course() -> None:
 
 
 @pytest.mark.anyio
+async def test_background_task_registry_cancel_matching_exact_name_preserves_new_owner() -> None:
+    registry = BackgroundTaskRegistry()
+    old_started = asyncio.Event()
+    new_started = asyncio.Event()
+    release_new = asyncio.Event()
+
+    async def old_job() -> None:
+        old_started.set()
+        await asyncio.Future()
+
+    async def new_job() -> None:
+        new_started.set()
+        await release_new.wait()
+
+    old_task = registry.spawn(
+        old_job(),
+        kind="test.registry.owner",
+        course_id="course_a",
+        name="test.registry.owner:course_a:old-owner",
+    )
+    new_task = registry.spawn(
+        new_job(),
+        kind="test.registry.owner",
+        course_id="course_a",
+        name="test.registry.owner:course_a:new-owner",
+    )
+    await asyncio.gather(old_started.wait(), new_started.wait())
+
+    cancelled_count = await registry.cancel_matching(
+        kind="test.registry.owner",
+        course_id="course_a",
+        name="test.registry.owner:course_a:old-owner",
+    )
+
+    assert cancelled_count == 1
+    assert old_task.cancelled()
+    assert not new_task.done()
+
+    release_new.set()
+    await new_task
+    await registry.shutdown()
+
+
+@pytest.mark.anyio
 async def test_background_task_registry_shutdown_preserves_timeout_for_stubborn_task() -> None:
     registry = BackgroundTaskRegistry()
     started = asyncio.Event()

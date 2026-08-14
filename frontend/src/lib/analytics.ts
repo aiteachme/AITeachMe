@@ -20,6 +20,7 @@ const SENSITIVE_PROPERTY_RE =
   /(^|[_\-$])(api[_-]?key|authorization|content|device[_-]?key|email|file(name)?|markdown|message|password|prompt|secret|text|token)([_\-$]|$)/i;
 const URL_PROPERTY_RE = /(^|[_\-$])(current[_-]?url|href|pathname|referrer|url)([_\-$]|$)/i;
 const MAX_PROPERTY_DEPTH = 4;
+const COURSE_SHARE_TOKEN_RE = /cshr_[A-Za-z0-9_-]+/gi;
 const POSTHOG_TRANSPORT_PROPERTY_KEYS = ["api_key", "token"] as const;
 const BACKEND_OWNED_EVENTS = new Set([
   "auth_login_succeeded",
@@ -125,6 +126,8 @@ function getEmailDomain(email?: string | null): string | undefined {
 function normalizeRoutePath(pathname: string): string {
   const path = pathname.startsWith("/") ? pathname : `/${pathname}`;
   return path
+    .replace(/\/share\/courses\/[^/]+/i, "/share/courses/:shareToken")
+    .replace(/\/api\/v1\/course-shares\/[^/]+/i, "/api/v1/course-shares/:shareToken")
     .replace(/\/courses\/[^/]+/i, "/courses/:courseId")
     .replace(/\/course\/[^/]+/i, "/course/:courseId")
     .replace(/\/exams\/question-templates\/[^/]+\/answer-history/i, "/exams/question-templates/:templateId/answer-history")
@@ -142,17 +145,24 @@ function buildSafeRouteUrl(routePath: string): string {
   return `${origin}${routePath}`;
 }
 
+function redactCourseShareTokens(value: string): string {
+  return value.replace(COURSE_SHARE_TOKEN_RE, ":shareToken");
+}
+
 function sanitizeUrl(value: string): string {
   if (!value) {
     return value;
   }
 
   try {
-    const parsed = new URL(value, typeof window !== "undefined" ? window.location.origin : "https://aiteachme.local");
+    const parsed = new URL(
+      redactCourseShareTokens(value),
+      typeof window !== "undefined" ? window.location.origin : "https://aiteachme.local",
+    );
     const routePath = normalizeRoutePath(parsed.pathname);
     return parsed.origin === "null" ? routePath : `${parsed.origin}${routePath}`;
   } catch {
-    return value.split(/[?#]/, 1)[0] ?? value;
+    return redactCourseShareTokens(value.split(/[?#]/, 1)[0] ?? value);
   }
 }
 
@@ -161,13 +171,20 @@ function sanitizeValue(key: string, value: unknown, depth = 0): unknown {
     return undefined;
   }
   if (typeof value === "string") {
-    return URL_PROPERTY_RE.test(key) ? sanitizeUrl(value) : value;
+    const redacted = redactCourseShareTokens(value);
+    return URL_PROPERTY_RE.test(key) ? sanitizeUrl(redacted) : redacted;
   }
-  if (value == null || typeof value !== "object" || depth >= MAX_PROPERTY_DEPTH) {
+  if (value == null || typeof value !== "object") {
     return value;
   }
+  if (depth >= MAX_PROPERTY_DEPTH) {
+    return undefined;
+  }
   if (Array.isArray(value)) {
-    return value.slice(0, 20).map((item) => sanitizeValue(key, item, depth + 1));
+    return value
+      .slice(0, 20)
+      .map((item) => sanitizeValue(key, item, depth + 1))
+      .filter((item) => item !== undefined);
   }
 
   const sanitized: Record<string, unknown> = {};

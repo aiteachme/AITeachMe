@@ -5,14 +5,73 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import sqlalchemy as sa
+import pytest
 from sqlmodel import Session, select
 
 import app.shared.infra.database.core as db_core
-from app.models import QuestionKnowledgeUnitLink, SystemRuntimeSettings
+from app.models import (
+    Course,
+    CourseInitialExamJob,
+    ExamPaper,
+    ExamProfileSync,
+    MasteryDrillAttempt,
+    MasteryDrillSession,
+    QuestionKnowledgeUnitLink,
+    SystemRuntimeSettings,
+)
 
 
 def _file_sqlite_engine(tmp_path: Path, name: str) -> sa.Engine:
     return sa.create_engine(f"sqlite:///{tmp_path / name}")
+
+
+def test_exam_profile_sync_is_part_of_runtime_schema() -> None:
+    assert ExamProfileSync in db_core._SCHEMA_MODELS
+    assert "exam_profile_sync" in {table.name for table in db_core._SCHEMA_TABLES}
+
+
+def test_course_initial_exam_job_is_part_of_runtime_schema() -> None:
+    assert CourseInitialExamJob in db_core._SCHEMA_MODELS
+    assert "course_initial_exam_job" in {table.name for table in db_core._SCHEMA_TABLES}
+
+
+def test_new_sqlite_initial_exam_table_backfills_existing_courses_once(tmp_path: Path) -> None:
+    engine = _file_sqlite_engine(tmp_path, "initial-exam-backfill.db")
+    db_core.SQLModel.metadata.create_all(
+        engine,
+        tables=[Course.__table__, ExamPaper.__table__, CourseInitialExamJob.__table__],
+    )
+    with Session(engine, expire_on_commit=False) as session:
+        session.add(Course(id="legacy-course", user_id="legacy-user", name="Legacy course"))
+        paper = ExamPaper(
+            course_id="legacy-course",
+            user_id="legacy-user",
+            exam_mode="web_practice",
+            status="ready",
+            generation_origin="prewarm",
+        )
+        session.add(paper)
+        session.commit()
+        session.refresh(paper)
+        paper_id = int(paper.id or 0)
+
+    db_core._backfill_new_sqlite_course_initial_exam_table(engine)
+    db_core._backfill_new_sqlite_course_initial_exam_table(engine)
+
+    with Session(engine) as session:
+        jobs = session.exec(select(CourseInitialExamJob)).all()
+    assert len(jobs) == 1
+    assert jobs[0].course_id == "legacy-course"
+    assert jobs[0].status == "completed"
+    assert jobs[0].exam_paper_id == paper_id
+    assert jobs[0].last_error_code == "legacy_course_backfill"
+
+
+def test_mastery_drill_tables_are_part_of_runtime_schema() -> None:
+    assert MasteryDrillSession in db_core._SCHEMA_MODELS
+    assert MasteryDrillAttempt in db_core._SCHEMA_MODELS
+    table_names = {table.name for table in db_core._SCHEMA_TABLES}
+    assert {"mastery_drill_session", "mastery_drill_attempt"} <= table_names
 
 
 def test_schema_drift_ignores_runtime_tables_and_reports_real_mismatches(tmp_path: Path) -> None:
@@ -31,6 +90,59 @@ def test_schema_drift_ignores_runtime_tables_and_reports_real_mismatches(tmp_pat
     assert "runtime_settings_json" in drift["missing_columns"]["user"]
     assert "atm_vec_course_shadow" not in drift["unexpected_tables"]
     assert "memory_entries" not in drift["unexpected_tables"]
+
+
+def test_sqlite_exam_grading_columns_and_recovery_index_are_added(tmp_path: Path) -> None:
+    engine = _file_sqlite_engine(tmp_path, "exam-grading-upgrade.db")
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                """
+                CREATE TABLE exam_paper (
+                    id INTEGER PRIMARY KEY,
+                    status TEXT NOT NULL DEFAULT 'ready',
+                    updated_at DATETIME NOT NULL
+                )
+                """
+            )
+        )
+
+    db_core._apply_sqlite_additive_schema_updates(engine)
+    db_core._apply_sqlite_additive_index_updates(engine)
+
+    inspector = sa.inspect(engine)
+    column_names = {str(column["name"]) for column in inspector.get_columns("exam_paper")}
+    index_names = {str(index["name"]) for index in inspector.get_indexes("exam_paper")}
+    assert {
+        "submission_key",
+        "submission_hash",
+        "grading_claim_token",
+        "grading_lease_expires_at",
+        "grading_attempts",
+        "grading_last_error",
+    } <= column_names
+    assert "ix_exam_paper_grading_lease_expires_at" in index_names
+    assert "ix_exam_paper_grading_recovery" in index_names
+
+
+def test_sqlite_initial_exam_model_override_column_is_added(tmp_path: Path) -> None:
+    engine = _file_sqlite_engine(tmp_path, "initial-exam-model-upgrade.db")
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                "CREATE TABLE course_initial_exam_job "
+                "(id INTEGER PRIMARY KEY, course_id TEXT NOT NULL)"
+            )
+        )
+
+    db_core._apply_sqlite_additive_schema_updates(engine)
+
+    columns = {
+        str(column["name"]): column
+        for column in sa.inspect(engine).get_columns("course_initial_exam_job")
+    }
+    assert columns["model_override"]["nullable"] is False
+    assert columns["model_override"]["default"] == "''"
 
 
 def test_sqlite_question_link_migration_normalizes_legacy_refs(tmp_path: Path) -> None:
@@ -300,6 +412,72 @@ def test_additive_schema_updates_backfill_parse_signatures_and_indexes(tmp_path:
     assert "uq_raw_file_user_hash_size_type_signature_active" in indexes
 
 
+def test_course_share_additive_index_deduplicates_active_rows_once(tmp_path: Path) -> None:
+    engine = _file_sqlite_engine(tmp_path, "course-share-index.db")
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                """
+                CREATE TABLE course_share (
+                    id TEXT PRIMARY KEY,
+                    source_course_id TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL,
+                    revoked_at DATETIME NULL
+                )
+                """
+            )
+        )
+        connection.execute(
+            sa.text(
+                """
+                INSERT INTO course_share
+                    (id, source_course_id, status, created_at, updated_at, revoked_at)
+                VALUES
+                    ('share-old', 'course-a', 'active', '2026-01-01', '2026-01-01', NULL),
+                    ('share-new', 'course-a', 'active', '2026-01-02', '2026-01-02', NULL),
+                    ('share-other', 'course-b', 'active', '2026-01-01', '2026-01-01', NULL)
+                """
+            )
+        )
+
+    db_core._deduplicate_sqlite_active_course_shares(engine)
+    db_core._apply_sqlite_additive_index_updates(engine)
+    db_core._deduplicate_sqlite_active_course_shares(engine)
+
+    with engine.connect() as connection:
+        rows = {
+            row.id: (row.status, row.revoked_at)
+            for row in connection.execute(
+                sa.text("SELECT id, status, revoked_at FROM course_share")
+            ).mappings()
+        }
+        indexes = {
+            index["name"]: index
+            for index in sa.inspect(connection).get_indexes("course_share")
+        }
+
+    assert rows["share-old"][0] == "revoked"
+    assert rows["share-old"][1] is not None
+    assert rows["share-new"][0] == "active"
+    assert rows["share-other"][0] == "active"
+    assert indexes["uq_course_share_active_source_course"]["unique"] == 1
+
+    with pytest.raises(sa.exc.IntegrityError):
+        with engine.begin() as connection:
+            connection.execute(
+                sa.text(
+                    """
+                    INSERT INTO course_share
+                        (id, source_course_id, status, created_at, updated_at, revoked_at)
+                    VALUES
+                        ('share-conflict', 'course-a', 'active', '2026-01-03', '2026-01-03', NULL)
+                    """
+                )
+            )
+
+
 def test_vector_table_helpers_and_pool_config(monkeypatch, tmp_path: Path) -> None:
     engine = _file_sqlite_engine(tmp_path, "vector.db")
     with engine.begin() as connection:
@@ -346,7 +524,35 @@ def test_settings_snapshot_and_override_refresh(monkeypatch, tmp_path: Path) -> 
         session.add(row)
         session.commit()
 
-    db_core._refresh_system_settings_override(engine)
+    db_core._load_local_runtime_settings_override(engine)
 
     assert captured["env"] == {"LLM_API_KEY": "secret"}
     assert captured["settings"] == {"models": {"primary": "override"}}
+
+
+def test_cloud_settings_snapshot_clears_runtime_overrides(monkeypatch, tmp_path: Path) -> None:
+    engine = _file_sqlite_engine(tmp_path, "cloud-settings.db")
+    SQLModel = db_core.SQLModel
+    SQLModel.metadata.create_all(engine, tables=[SystemRuntimeSettings.__table__])
+    settings = SimpleNamespace(
+        model_dump=lambda mode: {"models": {"primary": "yaml-model"}},
+    )
+
+    monkeypatch.setattr(db_core, "describe_project_settings_source", lambda: "settings.private.yaml")
+    with Session(engine) as session:
+        session.add(
+            SystemRuntimeSettings(
+                id="runtime",
+                settings_json={"models": {"primary": "stale-db-model"}},
+            )
+        )
+        session.commit()
+
+    db_core._upsert_settings_snapshot(engine, settings, clear_runtime_overrides=True)
+
+    with Session(engine) as session:
+        row = session.get(SystemRuntimeSettings, "runtime")
+        assert row is not None
+        assert row.settings_json == {}
+        assert row.effective_settings_json == {"models": {"primary": "yaml-model"}}
+        assert row.settings_source == "settings.private.yaml"

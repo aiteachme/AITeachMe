@@ -24,7 +24,6 @@ from app.workflows.digest.common.markdown_knowledge_anchors import (
     MarkdownKnowledgeUnit,
     MarkdownSectionChunk,
     extract_markdown_chapter_chunks,
-    extract_markdown_section_chunks,
 )
 from app.workflows.digest.kg_doc_sync.lib.models import (
     ChapterSourceContext,
@@ -261,16 +260,12 @@ def test_context_payloads_build_chapter_hints_and_backbone() -> None:
     payloads = sync._docgen_chapter_payloads_by_index(structured_context)
     digest_mode, hints = sync._chapter_docgen_hints(payloads[1])
     contexts = sync._chapter_context_lookup(structured_context)
-    backbone = sync._document_backbone_payload(structured_context)
-
     assert digest_mode == "sprint"
     assert any("Limit" in hint and "Derivative" in hint and "Continuity" in hint for hint in hints)
     assert any("统一符号" in hint for hint in hints)
     assert contexts[1].knowledge_document_id == 101
     assert contexts[1].source_file_ids == ["file-a", "file-b", "file-c"]
     assert sync._chapter_context_for_index(contexts, 99).chapter_index == 99
-    assert backbone["canonical_glossary"][0]["term"] == "GuidelineLimit"
-    assert backbone["concept_dependency_graph"][0]["from"] == "GuidelineLimit"
 
 
 def test_guideline_backbone_does_not_create_rule_seed_units_and_edges() -> None:

@@ -26,13 +26,14 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import { getApiErrorMessage, runTrackedApiFetch } from "../../api/client";
+import { getApiErrorMessage, runAnonymousApiFetch, runTrackedApiFetch } from "../../api/client";
 import {
   ChatModelSelect,
   toChatRequestModel,
   useGlobalChatModelChoice,
 } from "../chat/ChatModelSelect";
 import { parseInteractivePreviewHref, patchHtmlForIframe, type InteractiveHtmlPreview } from "../../lib/interactiveHtml";
+import { rehypeMarkdownSanitize } from "../../lib/markdownSanitize";
 import { cn } from "../../lib/utils";
 import { MermaidBlock } from "./MermaidBlock";
 
@@ -65,7 +66,7 @@ const BLANK_TOKEN = "{{blank}}";
 const BLANK_NODE_CLASS =
   "mx-1 inline-block h-[0.9em] min-w-16 border-b-2 border-current align-baseline";
 const HIGHLIGHT_MARK_CLASS =
-  "rounded-[3px] bg-amber-100 px-1 py-0.5 text-inherit shadow-[inset_0_-0.35em_rgba(251,191,36,0.22)] dark:bg-amber-300/20 dark:shadow-[inset_0_-0.35em_rgba(251,191,36,0.18)]";
+  "rounded-[2px] bg-[#FFF1B8] px-0.5 py-[0.08em] text-inherit dark:bg-amber-300/20";
 const BARE_LATEX_TEXT_COMMANDS: Record<string, string> = {
   times: "×",
   cdot: "·",
@@ -133,6 +134,8 @@ interface MarkdownViewerProps {
   content: string;
   assetBaseUrl?: string;
   assetCourse?: string;
+  publicMode?: boolean;
+  allowRawHtml?: boolean;
   variant?: MarkdownViewerVariant;
   headingAnchors?: boolean;
   headingNumbering?: boolean;
@@ -238,39 +241,39 @@ const CALLOUT_STYLES: Record<MarkdownViewerVariant, Record<CalloutKind, { shell:
   },
   document: {
     note: {
-      shell: "my-6 rounded-md border-0 bg-[#EEF6FF] px-4 py-4 text-[#1F2329] dark:bg-blue-500/10 dark:text-slate-200 sm:px-6 sm:py-5",
+      shell: "my-5 rounded-lg border border-[#E1ECFA] bg-[#F5F9FF] px-4 py-3.5 text-[#1F2329] dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-slate-200",
       badge: "text-[#245FD6] dark:text-blue-300",
     },
     tip: {
-      shell: "my-6 rounded-md border-0 bg-[#ECFDF5] px-4 py-4 text-[#1F2329] dark:bg-emerald-500/10 dark:text-slate-200 sm:px-6 sm:py-5",
+      shell: "my-5 rounded-lg border border-[#DFEFE7] bg-[#F4FAF7] px-4 py-3.5 text-[#1F2329] dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-slate-200",
       badge: "text-[#087A4A] dark:text-emerald-300",
     },
     important: {
-      shell: "my-6 rounded-md border-0 bg-[#E6F7F8] px-4 py-4 text-[#1F2329] dark:bg-cyan-500/10 dark:text-slate-200 sm:px-6 sm:py-5",
+      shell: "my-5 rounded-lg border border-[#DCEDEF] bg-[#F3FAFB] px-4 py-3.5 text-[#1F2329] dark:border-cyan-500/20 dark:bg-cyan-500/10 dark:text-slate-200",
       badge: "text-[#0891B2] dark:text-cyan-300",
     },
     warning: {
-      shell: "my-6 rounded-md border-0 bg-[#FFF7E6] px-4 py-4 text-[#1F2329] dark:bg-amber-500/10 dark:text-slate-200 sm:px-6 sm:py-5",
+      shell: "my-5 rounded-lg border border-[#F3E8CD] bg-[#FFF9ED] px-4 py-3.5 text-[#1F2329] dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-slate-200",
       badge: "text-[#B45309] dark:text-amber-300",
     },
     caution: {
-      shell: "my-6 rounded-md border-0 bg-[#FFF1F2] px-4 py-4 text-[#1F2329] dark:bg-rose-500/10 dark:text-slate-200 sm:px-6 sm:py-5",
+      shell: "my-5 rounded-lg border border-[#F1DEDE] bg-[#FFF6F6] px-4 py-3.5 text-[#1F2329] dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-slate-200",
       badge: "text-[#C81E1E] dark:text-rose-300",
     },
     example: {
-      shell: "my-6 rounded-md border-0 bg-[#F2ECFF] px-4 py-4 text-[#1F2329] dark:bg-violet-500/10 dark:text-slate-200 sm:px-6 sm:py-5",
+      shell: "my-5 rounded-lg border border-[#E7E1F4] bg-[#F7F5FC] px-4 py-3.5 text-[#1F2329] dark:border-violet-500/20 dark:bg-violet-500/10 dark:text-slate-200",
       badge: "text-[#6D28D9] dark:text-violet-300",
     },
     practice: {
-      shell: "my-6 rounded-md border-0 bg-[#ECFDF8] px-4 py-4 text-[#1F2329] dark:bg-teal-500/10 dark:text-slate-200 sm:px-6 sm:py-5",
+      shell: "my-5 rounded-lg border border-[#DCEDE7] bg-[#F3FAF8] px-4 py-3.5 text-[#1F2329] dark:border-teal-500/20 dark:bg-teal-500/10 dark:text-slate-200",
       badge: "text-[#0F766E] dark:text-teal-300",
     },
     question: {
-      shell: "my-6 rounded-md border border-[#DEE3EA] bg-[#F7F9FC] px-4 py-4 text-[#1F2329] shadow-[0_8px_24px_rgba(15,23,42,0.04)] dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 sm:px-6 sm:py-5",
-      badge: "text-[#172033] dark:text-slate-100",
+      shell: "my-6 rounded-lg border border-[#DDE3EC] border-l-[3px] border-l-[#3370FF] bg-[#FBFCFE] px-4 py-4 text-[#1F2329] dark:border-slate-700 dark:border-l-blue-400 dark:bg-slate-950/80 dark:text-slate-100 sm:px-5",
+      badge: "text-[#245BDB] dark:text-blue-300",
     },
     answer: {
-      shell: "my-4 rounded-md border border-[#DEE3EA] bg-white px-4 py-4 text-[#1F2329] dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 sm:px-6",
+      shell: "my-4 rounded-lg border border-[#DDE3EC] bg-white px-4 py-4 text-[#1F2329] dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 sm:px-5",
       badge: "text-[#245FD6] dark:text-blue-300",
     },
   },
@@ -350,27 +353,27 @@ const VIEWER_STYLES: Record<MarkdownViewerVariant, ViewerStyles> = {
   },
   document: {
     heading: {
-      1: "mt-4 mb-8 text-[32px] font-semibold leading-[1.24] text-[#1F2329] [overflow-wrap:anywhere] dark:text-slate-100 sm:mt-5 sm:mb-9 sm:text-[40px] sm:leading-[1.18]",
-      2: "mt-11 mb-4 text-[25px] font-semibold leading-[1.34] text-[#1F2329] [overflow-wrap:anywhere] dark:text-slate-100 sm:mt-12 sm:mb-5 sm:text-[29px] sm:leading-[1.3]",
-      3: "mt-8 mb-3 text-[20px] font-semibold leading-[1.42] text-[#1F2329] [overflow-wrap:anywhere] dark:text-slate-100 sm:mt-9 sm:mb-4 sm:text-[22px]",
-      4: "mt-7 mb-2.5 text-[18px] font-semibold leading-[1.5] text-[#242933] [overflow-wrap:anywhere] dark:text-slate-100 sm:text-[19px]",
+      1: "mb-7 mt-4 text-[30px] font-semibold leading-[1.28] tracking-[-0.015em] text-[#1F2329] [overflow-wrap:anywhere] dark:text-slate-100 sm:mb-8 sm:mt-5 sm:text-[36px] sm:leading-[1.22]",
+      2: "mb-4 mt-10 text-[24px] font-semibold leading-[1.38] tracking-[-0.01em] text-[#1F2329] [overflow-wrap:anywhere] dark:text-slate-100 sm:mt-11 sm:text-[27px]",
+      3: "mb-3 mt-8 text-[19px] font-semibold leading-[1.48] text-[#1F2329] [overflow-wrap:anywhere] dark:text-slate-100 sm:text-[21px]",
+      4: "mb-2.5 mt-7 text-[17px] font-semibold leading-[1.55] text-[#242933] [overflow-wrap:anywhere] dark:text-slate-100 sm:text-[18px]",
       5: "mt-5 mb-2 text-[16px] font-semibold leading-[1.58] text-[#373C43] [overflow-wrap:anywhere] dark:text-slate-300",
       6: "mt-4 mb-1.5 text-[14px] font-semibold leading-[1.58] text-[#646A73] [overflow-wrap:anywhere] dark:text-slate-400",
     },
-    paragraph: "mb-4 text-[16px] leading-[1.82] text-[#2F343D] dark:text-slate-300 sm:text-[17px]",
-    list: "my-4 list-disc space-y-2 pl-[1.55rem] text-[16px] leading-[1.8] text-[#2F343D] marker:text-[#8F959E] dark:text-slate-300 dark:marker:text-slate-500 sm:text-[17px]",
-    orderedList: "my-4 list-decimal space-y-2 pl-[1.55rem] text-[16px] leading-[1.8] text-[#2F343D] marker:font-medium marker:text-[#8F959E] dark:text-slate-300 dark:marker:text-slate-500 sm:text-[17px]",
-    listItem: "pl-1.5 leading-[1.8] [&>ol]:mt-2 [&>p]:mb-1 [&>p]:block [&>ul]:mt-2",
-    blockquote: "my-6 border-l-[3px] border-[#BBBFC4] bg-[#F7F8FA] px-5 py-3.5 text-[16px] leading-[1.78] text-[#4E5969] dark:border-slate-600 dark:bg-slate-900/50 dark:text-slate-300 sm:text-[17px]",
-    codeInline: "rounded-[4px] border border-[#DEE0E3] bg-[#F5F6F7] px-1.5 py-0.5 font-mono text-[0.88em] text-[#24292F] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100",
-    codeShell: "my-7 overflow-hidden rounded-lg border border-[#DEE0E3] bg-[#F7F8FA] dark:border-slate-800 dark:bg-slate-950",
-    codeLanguageBadge: "border-b border-[#DEE0E3] bg-[#F2F3F5] px-4 py-2 text-[11px] font-medium uppercase tracking-[0.08em] text-[#646A73] dark:border-slate-800 dark:bg-slate-900/95 dark:text-slate-400",
-    codePre: "overflow-x-auto bg-[#F7F8FA] px-4 py-4 font-mono text-[13px] leading-6 text-[#24292F] dark:bg-slate-950 dark:text-slate-100",
-    tableShell: "my-7 overflow-x-auto rounded-lg border border-[#DEE0E3] bg-white dark:border-slate-800 dark:bg-slate-950/60",
-    table: "min-w-full border-collapse text-[14px] sm:text-[15px]",
-    thead: "bg-transparent",
-    th: "border border-[#DEE0E3] bg-[#F5F6F7] px-3 py-2.5 text-left text-[13px] font-semibold leading-6 text-[#1F2329] dark:border-slate-800 dark:bg-slate-900/80 dark:text-slate-100 sm:px-4 sm:py-3 sm:text-[14px]",
-    td: "border border-[#DEE0E3] px-3 py-2.5 leading-6 text-[#2F343D] dark:border-slate-800 dark:text-slate-300 sm:px-4 sm:py-3",
+    paragraph: "mb-4 text-[16px] leading-[1.76] text-[#2F343D] dark:text-slate-300",
+    list: "my-4 list-disc space-y-1.5 pl-[1.5rem] text-[16px] leading-[1.76] text-[#2F343D] marker:text-[#8F959E] dark:text-slate-300 dark:marker:text-slate-500",
+    orderedList: "my-4 list-decimal space-y-1.5 pl-[1.5rem] text-[16px] leading-[1.76] text-[#2F343D] marker:font-medium marker:text-[#8F959E] dark:text-slate-300 dark:marker:text-slate-500",
+    listItem: "pl-1 leading-[1.76] [&>ol]:mt-2 [&>p]:mb-1 [&>p]:block [&>ul]:mt-2",
+    blockquote: "my-6 rounded-r-md border-l-2 border-[#8F959E] bg-[#F7F8FA]/80 px-4 py-3 text-[16px] leading-[1.74] text-[#4E5969] dark:border-slate-500 dark:bg-slate-900/45 dark:text-slate-300",
+    codeInline: "whitespace-normal break-words rounded-[3px] bg-[#F2F3F5] px-1.5 py-0.5 font-mono text-[0.86em] text-[#24292F] [overflow-wrap:anywhere] dark:bg-slate-800 dark:text-slate-100",
+    codeShell: "relative my-6 overflow-hidden rounded-md border border-[#E1E4E8] bg-[#F6F8FA] dark:border-slate-800 dark:bg-slate-950",
+    codeLanguageBadge: "absolute right-3 top-2 z-10 text-[10px] font-medium uppercase tracking-[0.08em] text-[#8F959E] dark:text-slate-500",
+    codePre: "overflow-x-auto bg-[#F6F8FA] px-4 py-3.5 font-mono text-[13px] leading-[1.65] text-[#24292F] dark:bg-slate-950 dark:text-slate-100",
+    tableShell: "my-6 overflow-x-auto rounded-md border border-[#DDE1E6] bg-white dark:border-slate-800 dark:bg-slate-950/60",
+    table: "w-full min-w-[560px] border-collapse text-[14px] sm:text-[15px]",
+    thead: "bg-[#F5F6F7] dark:bg-slate-900/80",
+    th: "border-r border-[#E1E4E8] px-3 py-2.5 text-left text-[13px] font-semibold leading-6 text-[#1F2329] last:border-r-0 dark:border-slate-800 dark:text-slate-100 sm:px-4 sm:text-[14px]",
+    td: "border-t border-[#E1E4E8] px-3 py-2.5 leading-6 text-[#2F343D] dark:border-slate-800 dark:text-slate-300 sm:px-4",
     hr: "my-9 border-[#DEE0E3] dark:border-slate-800",
     link: "text-[#2563EB] transition-colors hover:text-[#1D4ED8] hover:underline underline-offset-2 dark:text-blue-300 dark:hover:text-blue-200",
     strong: "font-semibold text-[#1F2329] dark:text-slate-100",
@@ -638,6 +641,12 @@ function normalizeHighlightSyntaxForRender(markdown: string): string {
   let activeFence: string | null = null;
   let inDisplayMath = false;
 
+  const normalizeHighlightBody = (body: string) => {
+    const text = String(body || "").trim();
+    const emphasis = text.match(/^(\*\*|__)\s*([^\n]+?)\s*\1$/);
+    return (emphasis?.[2] ?? text).trim();
+  };
+
   const normalizeLine = (line: string) => {
     const parts = line.split(/(`+[^`]*`+)/g);
     return parts
@@ -645,11 +654,11 @@ function normalizeHighlightSyntaxForRender(markdown: string): string {
         if (part.startsWith("`") && part.endsWith("`")) return part;
         return part
           .replace(/<mark\b[^>]*>\s*([^<>\n]{1,160}?)\s*<\/mark>/gi, (_match, body: string) => {
-            const text = String(body || "").trim();
+            const text = normalizeHighlightBody(body);
             return text ? `==${text}==` : "";
           })
           .replace(/==\s*([^=\n]{1,160}?)\s*==/g, (_match, body: string) => {
-            const text = String(body || "").trim();
+            const text = normalizeHighlightBody(body);
             return text ? `==${text}==` : "";
           });
       })
@@ -1661,6 +1670,64 @@ function repairMalformedMermaidFencesForRender(markdown: string): string {
   return output.join("\n");
 }
 
+function normalizeLegacyNonChoiceUnitTestsForRender(markdown: string): string {
+  const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
+  const output: string[] = [];
+  let legacyOptions: string[] | null = null;
+  let awaitingAnswerValue = false;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const questionHeader = line.match(
+      /^\s*>\s*\[!QUESTION\]\s+\*\*Q\d+\s*[｜|]\s*([^｜|]+)\s*[｜|]/i,
+    );
+    if (questionHeader) {
+      const questionType = questionHeader[1].trim();
+      legacyOptions = /^(填空题|短答题)$/.test(questionType) ? [] : null;
+      awaitingAnswerValue = false;
+      output.push(line);
+      continue;
+    }
+
+    if (legacyOptions && /^\s*>\s*\*\*选项\*\*\s*$/.test(line)) {
+      if (/^\s*>\s*$/.test(output[output.length - 1] ?? "")) output.pop();
+      for (index += 1; index < lines.length; index += 1) {
+        const optionLine = lines[index];
+        if (/^\s*>\s*$/.test(optionLine)) continue;
+        const option = optionLine.match(/^\s*>\s*-\s*([A-D])[.、:：]\s*(.+?)\s*$/i);
+        if (!option) {
+          index -= 1;
+          break;
+        }
+        legacyOptions[option[1].toUpperCase().charCodeAt(0) - 65] = option[2].trim();
+      }
+      continue;
+    }
+
+    if (legacyOptions && /^\s*>\s*\*\*答案\*\*\s*$/.test(line)) {
+      awaitingAnswerValue = true;
+      output.push(line);
+      continue;
+    }
+
+    if (legacyOptions && awaitingAnswerValue && !/^\s*>\s*$/.test(line)) {
+      const answer = line.match(/^(\s*>\s*)(?:选项\s*)?([A-D])(?:[.、:：])?\s*$/i);
+      if (answer) {
+        const resolved = legacyOptions[answer[2].toUpperCase().charCodeAt(0) - 65];
+        output.push(resolved ? `${answer[1]}${resolved}` : line);
+      } else {
+        output.push(line);
+      }
+      awaitingAnswerValue = false;
+      continue;
+    }
+
+    output.push(line);
+  }
+
+  return output.join("\n");
+}
+
 export function preprocessMarkdownForRender(content: string): string {
   return repairMalformedMermaidFencesForRender(
     normalizeListEmbeddedHeadingsForRender(
@@ -1669,7 +1736,9 @@ export function preprocessMarkdownForRender(content: string): string {
           preprocessLaTeX(
             normalizeHighlightSyntaxForRender(
               preprocessCalloutSyntax(
-                normalizeDuplicateOrderedListMarkersForRender(content.replace(INTERACTIVE_MARKER_RE, "")),
+                normalizeDuplicateOrderedListMarkersForRender(
+                  normalizeLegacyNonChoiceUnitTestsForRender(content.replace(INTERACTIVE_MARKER_RE, "")),
+                ),
               ),
             ),
           ),
@@ -2189,7 +2258,13 @@ function renderGitConflictLines(codeText: string): ReactNode[] {
 }
 
 function isAbsoluteAssetUrl(value: string): boolean {
-  return /^(https?:)?\/\//i.test(value) || value.startsWith("/") || value.startsWith("data:");
+  const normalized = value.trim();
+  return /^[a-z][a-z0-9+.-]*:/i.test(normalized) || normalized.startsWith("//") || normalized.startsWith("/");
+}
+
+function isSafeRelativeAssetPath(value: string): boolean {
+  const segments = value.replace(/\\/g, "/").split("/").filter(Boolean);
+  return segments.length > 0 && segments.every((segment) => segment !== "." && segment !== "..");
 }
 
 function encodePathSegments(path: string): string {
@@ -2201,10 +2276,21 @@ function encodePathSegments(path: string): string {
 }
 
 function extractCourseAssetPath(src: string): string | null {
-  const normalized = src.split("#")[0]?.split("?")[0]?.replace(/\\/g, "/").trim() ?? "";
-  if (!normalized || /^(https?:)?\/\//i.test(normalized) || normalized.startsWith("data:")) {
+  const normalizedRaw = src.replace(/\\/g, "/").trim();
+  if (!normalizedRaw || /^[a-z][a-z0-9+.-]*:/i.test(normalizedRaw) || normalizedRaw.startsWith("//")) {
     return null;
   }
+  try {
+    const url = new URL(normalizedRaw, "http://localhost");
+    const assetParam = url.searchParams.get("asset");
+    if (assetParam) {
+      return assetParam.replace(/^\/+/, "");
+    }
+  } catch {
+    // Fall through to path-based extraction.
+  }
+
+  const normalized = normalizedRaw.split("#")[0]?.split("?")[0]?.trim() ?? "";
 
   const assetMatch = normalized.match(/(?:^|\/)assets\/(.+)$/);
   if (!assetMatch?.[1]) {
@@ -2219,19 +2305,34 @@ function resolveMarkdownImageSrc(
   {
     assetBaseUrl,
     assetCourse,
+    publicMode = false,
   }: {
   assetBaseUrl?: string;
   assetCourse?: string;
+  publicMode?: boolean;
 }): string | undefined {
   if (!src) {
     return src;
   }
 
-  if (assetCourse) {
-    const assetPath = extractCourseAssetPath(src);
+  const assetPath = extractCourseAssetPath(src);
+  if (publicMode && assetPath && !isSafeRelativeAssetPath(assetPath)) {
+    return undefined;
+  }
+  if (publicMode && !assetBaseUrl) {
+    return undefined;
+  }
+  if (assetCourse && !publicMode) {
     if (assetPath) {
       return `/api/v1/courses/${encodeURIComponent(assetCourse)}/files/assets/${encodePathSegments(assetPath)}`;
     }
+  }
+  if (assetBaseUrl && assetPath) {
+    return `${assetBaseUrl.replace(/\/$/, "")}/${encodePathSegments(assetPath)}`;
+  }
+
+  if (publicMode && isAbsoluteAssetUrl(src)) {
+    return undefined;
   }
 
   if (!assetBaseUrl || isAbsoluteAssetUrl(src)) {
@@ -2244,7 +2345,7 @@ function resolveMarkdownImageSrc(
   const filename = pathParts[pathParts.length - 1];
 
   if (!filename) {
-    return src;
+    return publicMode ? undefined : src;
   }
 
   const looksLikeAssetPath =
@@ -2255,10 +2356,65 @@ function resolveMarkdownImageSrc(
     normalized.startsWith("../");
 
   if (!looksLikeAssetPath) {
-    return src;
+    return publicMode ? undefined : src;
   }
 
-  return `${assetBaseUrl.replace(/\/$/, "")}/${encodeURIComponent(filename)}`;
+  const publicAssetPath = normalized
+    .replace(/^(\.\/)+/, "")
+    .replace(/^(\.\.\/)+assets\//, "")
+    .replace(/^assets\//, "");
+  if (publicMode && !isSafeRelativeAssetPath(publicAssetPath)) {
+    return undefined;
+  }
+  const resolvedPath = publicMode ? publicAssetPath : filename;
+
+  return `${assetBaseUrl.replace(/\/$/, "")}/${encodePathSegments(resolvedPath)}`;
+}
+
+function resolvePublicMarkdownAssetHref(
+  href: string | undefined,
+  assetBaseUrl: string | undefined,
+): string | undefined {
+  if (!href || !assetBaseUrl) {
+    return href;
+  }
+  const assetPath = extractCourseAssetPath(href);
+  if (!assetPath) {
+    return href;
+  }
+  if (!isSafeRelativeAssetPath(assetPath)) {
+    return undefined;
+  }
+  return `${assetBaseUrl.replace(/\/$/, "")}/${encodePathSegments(assetPath)}`;
+}
+
+function toPublicInteractivePreview(
+  preview: InteractiveHtmlPreview,
+  assetBaseUrl: string | undefined,
+): InteractiveHtmlPreview | null {
+  if (!assetBaseUrl || preview.mode !== "asset" || !preview.assetPath) {
+    return null;
+  }
+  const assetUrl = `${assetBaseUrl.replace(/\/$/, "")}/${encodePathSegments(preview.assetPath)}`;
+  return {
+    ...preview,
+    previewUrl: assetUrl,
+    assetUrl,
+  };
+}
+
+function patchPublicHtmlForIframe(html: string): string {
+  const sanitized = html
+    .replace(/<script\b[\s\S]*?<\/script>/gi, "")
+    .replace(/\s+on[a-z]+\s*=\s*(['"])[\s\S]*?\1/gi, "")
+    .replace(/\s+srcdoc\s*=\s*(['"])[\s\S]*?\1/gi, "")
+    .replace(/\s+(href|src)\s*=\s*(['"])\s*(?:javascript:|data:text\/html)[\s\S]*?\2/gi, ' $1="#"');
+  const csp =
+    '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src data: blob:; style-src \'unsafe-inline\'; font-src data:; base-uri \'none\'; form-action \'none\'">';
+  const htmlWithCsp = /<head(?:\s[^>]*)?>/i.test(sanitized)
+    ? sanitized.replace(/<head(?:\s[^>]*)?>/i, (match) => `${match}${csp}`)
+    : `${csp}${sanitized}`;
+  return patchHtmlForIframe(htmlWithCsp);
 }
 
 function shouldFetchAuthorizedAsset(src: string | undefined): src is string {
@@ -2282,43 +2438,56 @@ function MarkdownImage({
   alt,
   styles,
   onOpenPreview,
+  publicMode = false,
 }: {
   src: string | undefined;
   alt: string | undefined;
   styles: ViewerStyles;
   onOpenPreview: (preview: ImagePreviewState) => void;
+  publicMode?: boolean;
 }) {
   const [blobSrc, setBlobSrc] = useState("");
   const isCover = isDocgenCoverAsset(src);
-  const displaySrc = blobSrc || src || "";
+  const isPublicShareAsset =
+    publicMode && typeof src === "string" && src.startsWith("/api/v1/course-shares/");
+  const displaySrc = blobSrc || (publicMode ? "" : src || "");
 
   useEffect(() => {
-    if (!shouldFetchAuthorizedAsset(src)) {
+    if (publicMode && !isPublicShareAsset) {
       setBlobSrc("");
       return;
     }
-    const token = getBearerToken();
-    if (!token) {
+    if (!isPublicShareAsset && !shouldFetchAuthorizedAsset(src)) {
+      setBlobSrc("");
+      return;
+    }
+    if (!isPublicShareAsset && !getBearerToken()) {
       setBlobSrc("");
       return;
     }
 
     const controller = new AbortController();
     let objectUrl = "";
-    runTrackedApiFetch(
-      src,
-      {
-        method: "GET",
-        signal: controller.signal,
-      },
-      async (response) => {
-        if (!response.ok) {
-          throw new Error(`asset fetch failed: ${response.status}`);
-        }
-        return response.blob();
-      },
-      "markdown_asset_disconnect",
-    )
+    const consumeAsset = async (response: Response) => {
+      if (!response.ok) {
+        throw new Error(`asset fetch failed: ${response.status}`);
+      }
+      return response.blob();
+    };
+    const request = isPublicShareAsset
+      ? runAnonymousApiFetch(
+          src,
+          { method: "GET", signal: controller.signal, cache: "no-store" },
+          consumeAsset,
+          "public_markdown_asset_disconnect",
+        )
+      : runTrackedApiFetch(
+          src,
+          { method: "GET", signal: controller.signal },
+          consumeAsset,
+          "markdown_asset_disconnect",
+        );
+    request
       .then((blob) => {
         if (controller.signal.aborted) {
           return;
@@ -2338,7 +2507,7 @@ function MarkdownImage({
         URL.revokeObjectURL(objectUrl);
       }
     };
-  }, [src]);
+  }, [isPublicShareAsset, publicMode, src]);
 
   return (
     <figure className={styles.imageShell}>
@@ -2357,7 +2526,7 @@ function MarkdownImage({
         )}
       >
         <img
-          src={displaySrc}
+          src={displaySrc || undefined}
           alt={alt ?? ""}
           className={cn(
             styles.image,
@@ -2365,6 +2534,7 @@ function MarkdownImage({
           )}
           loading="lazy"
           decoding="async"
+          referrerPolicy={publicMode ? "no-referrer" : undefined}
         />
         {displaySrc ? (
           <span className="pointer-events-none absolute right-3 top-3 inline-flex h-8 items-center gap-1.5 rounded-full border border-white/70 bg-slate-950/70 px-2.5 text-xs font-medium text-white opacity-0 shadow-sm backdrop-blur transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
@@ -2378,12 +2548,79 @@ function MarkdownImage({
   );
 }
 
+function PublicMarkdownAssetLink({
+  href,
+  className,
+  children,
+}: {
+  href: string;
+  className: string;
+  children: ReactNode;
+}) {
+  const [blobHref, setBlobHref] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let objectUrl = "";
+    runAnonymousApiFetch(
+      href,
+      { method: "GET", signal: controller.signal, cache: "no-store" },
+      async (response) => {
+        if (!response.ok) {
+          throw new Error(`asset fetch failed: ${response.status}`);
+        }
+        return response.blob();
+      },
+      "public_markdown_link_asset_disconnect",
+    )
+      .then((blob) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+        objectUrl = URL.createObjectURL(blob);
+        setBlobHref(objectUrl);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setBlobHref("");
+        }
+      });
+
+    return () => {
+      controller.abort();
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [href]);
+
+  return (
+    <a
+      href={blobHref || undefined}
+      className={className}
+      target="_blank"
+      rel="noopener noreferrer"
+      referrerPolicy="no-referrer"
+      aria-disabled={!blobHref}
+      onClick={(event) => {
+        if (!blobHref) {
+          event.preventDefault();
+        }
+      }}
+    >
+      {children}
+    </a>
+  );
+}
+
 function InteractiveHtmlEmbed({
   preview,
   label,
+  publicMode = false,
 }: {
   preview: InteractiveHtmlPreview;
   label: ReactNode;
+  publicMode?: boolean;
 }) {
   const isStaticFigure = preview.kind === "figure";
   const [expanded, setExpanded] = useState(true);
@@ -2400,7 +2637,7 @@ function InteractiveHtmlEmbed({
   const [interactiveModel, setInteractiveModel] = useGlobalChatModelChoice();
   const regenerateControllerRef = useRef<AbortController | null>(null);
   const activePreview = generatedPreview ?? preview;
-  const canRegenerate = !isStaticFigure && Boolean(preview.anchorId && (preview.selectedText || preview.title));
+  const canRegenerate = !publicMode && !isStaticFigure && Boolean(preview.anchorId && (preview.selectedText || preview.title));
   const isAutoPending = !isStaticFigure && preview.mode === "auto" && !generatedPreview && !html && !loading && !error;
   const canSubmitRegeneratePrompt = regeneratePrompt.trim().length > 0;
   const loadingStepLabel = isStaticFigure ? "正在读取静态图示资产" : INTERACTIVE_LOADING_STEPS[loadingStepIndex % INTERACTIVE_LOADING_STEPS.length];
@@ -2504,6 +2741,9 @@ function InteractiveHtmlEmbed({
     const loadInteractiveHtml = async () => {
       let resolvedPreview = generatedPreview ?? preview;
       if (preview.mode === "auto" && !generatedPreview) {
+        if (publicMode) {
+          throw new Error("公开分享不支持自动生成交互页。");
+        }
         const parsed = await requestInteractiveAsset({
           signal: controller.signal,
           prompt: preview.prompt,
@@ -2514,18 +2754,24 @@ function InteractiveHtmlEmbed({
         setLoadingLabel("正在加载交互页...");
       }
 
+      const consumeAsset = async (response: Response) => {
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        return response.text();
+      };
+      if (publicMode) {
+        return runAnonymousApiFetch(
+          resolvedPreview.assetUrl,
+          { method: "GET", signal: controller.signal, cache: "no-store" },
+          consumeAsset,
+          "public_interactive_asset_disconnect",
+        );
+      }
       return runTrackedApiFetch(
         resolvedPreview.assetUrl,
-        {
-          method: "GET",
-          signal: controller.signal,
-        },
-        async (response) => {
-          if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-          }
-          return response.text();
-        },
+        { method: "GET", signal: controller.signal },
+        consumeAsset,
         "interactive_asset_disconnect",
       );
     };
@@ -2560,10 +2806,14 @@ function InteractiveHtmlEmbed({
     preview.prompt,
     preview.selectedText,
     preview.title,
+    publicMode,
     retryKey,
   ]);
 
-  const patchedHtml = useMemo(() => (html ? patchHtmlForIframe(html) : ""), [html]);
+  const patchedHtml = useMemo(
+    () => (html ? (publicMode ? patchPublicHtmlForIframe(html) : patchHtmlForIframe(html)) : ""),
+    [html, publicMode],
+  );
 
   const runGenerateInteractive = useCallback(async (options: {
     prompt?: string;
@@ -2733,6 +2983,7 @@ function InteractiveHtmlEmbed({
                 sandbox=""
                 loading="lazy"
                 scrolling="auto"
+                referrerPolicy={publicMode ? "no-referrer" : undefined}
                 style={sandboxFrameStyle}
                 className="absolute inset-0 block h-full w-full border-0 bg-white"
               />
@@ -2997,9 +3248,10 @@ function InteractiveHtmlEmbed({
               <iframe
                 title={preview.title || "交互演示"}
                 srcDoc={patchedHtml}
-                sandbox="allow-scripts allow-forms allow-popups"
+                sandbox={publicMode ? "" : "allow-scripts allow-forms allow-popups"}
                 loading="lazy"
                 scrolling="auto"
+                referrerPolicy={publicMode ? "no-referrer" : undefined}
                 style={sandboxFrameStyle}
                 className="absolute inset-0 block h-full w-full border-0 bg-white"
               />
@@ -3015,6 +3267,7 @@ function InteractiveHtmlEmbed({
             href={activePreview.previewUrl}
             target="_blank"
             rel="noopener noreferrer"
+            referrerPolicy="no-referrer"
             className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline dark:text-indigo-300 dark:hover:text-indigo-200 sm:hidden"
           >
             <ExternalLink className="h-3.5 w-3.5" />
@@ -3084,10 +3337,49 @@ function parseCallout(children: ReactNode): { kind: CalloutKind; body: ReactNode
   };
 }
 
+interface UnitTestQuestionCallout {
+  number: string;
+  type: string;
+  difficulty: string;
+  target: string;
+  body: ReactNode[];
+}
+
+function parseUnitTestQuestionCallout(body: ReactNode[]): UnitTestQuestionCallout | null {
+  const nodes = Children.toArray(body).filter((item) => item !== "\n");
+  const metadata = extractText(nodes[0]).trim().match(
+    /^(Q\d+)\s*[｜|]\s*([^｜|]+)\s*[｜|]\s*([^｜|]+)\s*[｜|]\s*考点\s*[：:]\s*(.+)$/,
+  );
+  if (!metadata) return null;
+
+  const content = nodes.slice(1).filter((node) => {
+    const text = extractText(node).trim();
+    return text !== "题目" && text !== "选项";
+  });
+
+  return {
+    number: metadata[1].trim(),
+    type: metadata[2].trim(),
+    difficulty: metadata[3].trim(),
+    target: metadata[4].trim(),
+    body: content,
+  };
+}
+
+function getDocumentParagraphSemanticClass(children: ReactNode): string | undefined {
+  const text = extractText(children).trim();
+  if (/^任务\s*\d+\s*[：:]/.test(text)) return "atm-doc-task-heading";
+  if (/^(解析|易错边界|易错点|思路)\s*[：:]/.test(text)) return "atm-doc-explanation-line";
+  if (/^(题目|选项|答案|解析步骤)$/.test(text)) return "atm-doc-field-label";
+  return undefined;
+}
+
 export function MarkdownViewer({
   content,
   assetBaseUrl,
   assetCourse,
+  publicMode = false,
+  allowRawHtml = true,
   variant = "default",
   headingAnchors = false,
   headingNumbering = false,
@@ -3201,11 +3493,12 @@ export function MarkdownViewer({
 
   const rehypePlugins = useMemo(
     () => [
-      variant === "document" && hasRawHtmlContent ? rehypeRaw : noopMarkdownPlugin,
+      !publicMode && allowRawHtml && variant === "document" && hasRawHtmlContent ? rehypeRaw : noopMarkdownPlugin,
+      variant === "document" ? rehypeMarkdownSanitize : noopMarkdownPlugin,
       hasMathContent ? [rehypeKatex, { throwOnError: false, strict: false, errorColor: "#1F2329", output: "html" }] : noopMarkdownPlugin,
       shouldHighlightCode ? rehypeHighlight : noopMarkdownPlugin,
     ] as any[],
-    [hasMathContent, hasRawHtmlContent, shouldHighlightCode, variant],
+    [allowRawHtml, hasMathContent, hasRawHtmlContent, publicMode, shouldHighlightCode, variant],
   );
 
   const components = useMemo(() => {
@@ -3308,11 +3601,19 @@ export function MarkdownViewer({
           </section>
         );
       },
-      p: ({ children }: ComponentPropsWithoutRef<"p">) => (
-        containsInteractiveEmbed(children, assetCourse)
-          ? <div className="my-4">{children}</div>
-          : <p className={styles.paragraph}>{children}</p>
-      ),
+      p: ({ children }: ComponentPropsWithoutRef<"p">) => {
+        if (containsInteractiveEmbed(children, assetCourse)) {
+          return <div className="my-4">{children}</div>;
+        }
+        return (
+          <p className={cn(
+            styles.paragraph,
+            variant === "document" && getDocumentParagraphSemanticClass(children),
+          )}>
+            {children}
+          </p>
+        );
+      },
       ul: ({ children }: ComponentPropsWithoutRef<"ul">) => <ul className={styles.list}>{children}</ul>,
       ol: ({ children }: ComponentPropsWithoutRef<"ol">) => <ol className={styles.orderedList}>{children}</ol>,
       li: ({ children }: ComponentPropsWithoutRef<"li">) => <li className={styles.listItem}>{children}</li>,
@@ -3339,6 +3640,27 @@ export function MarkdownViewer({
           );
         }
 
+        const unitTestQuestion = callout.kind === "question" && variant === "document"
+          ? parseUnitTestQuestionCallout(callout.body)
+          : null;
+        if (unitTestQuestion) {
+          return (
+            <section className="atm-unit-test-card" aria-label={`${unitTestQuestion.number} ${unitTestQuestion.type}`}>
+              <header className="atm-unit-test-card__head">
+                <span className="atm-unit-test-card__number">{unitTestQuestion.number}</span>
+                <span className="atm-unit-test-card__type">{unitTestQuestion.type}</span>
+                <span className="atm-unit-test-card__difficulty">{unitTestQuestion.difficulty}</span>
+                <span className="atm-unit-test-card__target" title={unitTestQuestion.target}>
+                  考点 · {unitTestQuestion.target}
+                </span>
+              </header>
+              <div className="atm-unit-test-card__prompt">
+                {unitTestQuestion.body}
+              </div>
+            </section>
+          );
+        }
+
         const tone = CALLOUT_STYLES[variant][callout.kind];
         const calloutMeta = CALLOUT_META[callout.kind];
         const CalloutIcon = calloutMeta.Icon;
@@ -3350,7 +3672,7 @@ export function MarkdownViewer({
                 className={cn(
                   "inline-flex items-center gap-1.5 font-semibold",
                   isDocumentCallout
-                    ? "text-[13px] leading-5"
+                    ? "text-[13px] font-medium leading-5"
                     : "rounded-full px-2.5 py-1 text-[11px] tracking-[0.08em]",
                   tone.badge,
                 )}
@@ -3362,7 +3684,7 @@ export function MarkdownViewer({
             <div
               className={cn(
                 "[&>*:last-child]:mb-0",
-                variant === "document" && "[&_ol]:my-3 [&_ul]:my-3 [&_p]:mb-3 [&_strong]:text-current",
+                variant === "document" && "[&_ol]:my-2.5 [&_ul]:my-2.5 [&_p]:mb-2.5 [&_strong]:text-current",
               )}
             >
               {callout.body}
@@ -3380,7 +3702,7 @@ export function MarkdownViewer({
         const normalizedCodeText = codeText.trim().replace(/^(maymaid|mermaind|mermaide)\b/i, "mermaid");
         const looksLikeMermaid = /^(mermaid|mindmap|flowchart|graph|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|journey|timeline|gitGraph)\b/i.test(normalizedCodeText);
 
-        if (MERMAID_LANGUAGE_ALIASES.has(language) || (!language && looksLikeMermaid)) {
+        if (!publicMode && (MERMAID_LANGUAGE_ALIASES.has(language) || (!language && looksLikeMermaid))) {
           const mermaidChart = normalizedCodeText.replace(/^mermaid\s*/i, "").trimStart() || codeText;
           return <MermaidBlock chart={mermaidChart} variant={variant === "planner" ? "default" : variant} />;
         }
@@ -3393,7 +3715,11 @@ export function MarkdownViewer({
               {language ? (
                 <div className={styles.codeLanguageBadge}>{language}</div>
               ) : null}
-              <pre className={cn(styles.codePre, shouldRenderConflictBlock ? "px-0 py-3" : "")}>
+              <pre className={cn(
+                styles.codePre,
+                variant === "document" && language && "pt-9",
+                shouldRenderConflictBlock ? "px-0 py-3" : "",
+              )}>
                 <code className={cn("font-mono", className)}>
                   {shouldRenderConflictBlock ? renderGitConflictLines(codeText) : children}
                 </code>
@@ -3415,12 +3741,40 @@ export function MarkdownViewer({
       td: ({ children }: ComponentPropsWithoutRef<"td">) => <td className={styles.td}>{children}</td>,
       hr: () => <hr className={styles.hr} />,
       a: ({ href, children }: ComponentPropsWithoutRef<"a">) => {
-        const preview = parseInteractivePreviewHref(href, { fallbackCourseId: assetCourse });
-        if (preview) {
-          return <InteractiveHtmlEmbed preview={preview} label={children} />;
+        const parsedPreview = parseInteractivePreviewHref(href, { fallbackCourseId: assetCourse });
+        if (parsedPreview) {
+          const preview = publicMode
+            ? toPublicInteractivePreview(parsedPreview, assetBaseUrl)
+            : parsedPreview;
+          if (preview) {
+            return <InteractiveHtmlEmbed preview={preview} label={children} publicMode={publicMode} />;
+          }
+          return <span className={styles.link}>{children}</span>;
+        }
+        const resolvedHref = publicMode
+          ? resolvePublicMarkdownAssetHref(href, assetBaseUrl)
+          : href;
+        if (
+          publicMode &&
+          resolvedHref?.startsWith("/api/v1/course-shares/")
+        ) {
+          return (
+            <PublicMarkdownAssetLink
+              href={resolvedHref}
+              className={styles.link}
+            >
+              {children}
+            </PublicMarkdownAssetLink>
+          );
         }
         return (
-          <a href={href} className={styles.link} target="_blank" rel="noopener noreferrer">
+          <a
+            href={resolvedHref}
+            className={styles.link}
+            target="_blank"
+            rel="noopener noreferrer"
+            referrerPolicy={publicMode ? "no-referrer" : undefined}
+          >
             {children}
           </a>
         );
@@ -3432,6 +3786,7 @@ export function MarkdownViewer({
         const resolvedSrc = resolveMarkdownImageSrc(src, {
           assetBaseUrl,
           assetCourse,
+          publicMode,
         });
 
         return (
@@ -3440,6 +3795,7 @@ export function MarkdownViewer({
             alt={alt}
             styles={styles}
             onOpenPreview={setImagePreview}
+            publicMode={publicMode}
           />
         );
       },
@@ -3453,6 +3809,7 @@ export function MarkdownViewer({
     toggleHeadingCollapse,
     assetCourse,
     assetBaseUrl,
+    publicMode,
     nextHeadingId,
   ]);
 
@@ -3511,6 +3868,7 @@ export function MarkdownViewer({
                   href={imagePreview.src}
                   target="_blank"
                   rel="noopener noreferrer"
+                  referrerPolicy={publicMode ? "no-referrer" : undefined}
                   className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-300 transition hover:bg-white/10 hover:text-white"
                   aria-label="在新窗口打开图片"
                   title="新窗口打开"
@@ -3540,6 +3898,7 @@ export function MarkdownViewer({
                     maxHeight: imagePreviewZoom === 1 ? "100%" : "none",
                   }}
                   decoding="async"
+                  referrerPolicy={publicMode ? "no-referrer" : undefined}
                 />
               </div>
             </div>

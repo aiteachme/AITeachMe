@@ -153,7 +153,9 @@ async function waitForBackendReady() {
 }
 
 async function prepare() {
-  const shouldUseMock = window.location.search.includes("mock=1");
+  const shouldUseMock =
+    (import.meta.env.DEV || import.meta.env.MODE === "test") &&
+    window.location.search.includes("mock=1");
 
   if (shouldUseMock) {
     setStartupStatus(STARTUP_MESSAGES.startingMockData);

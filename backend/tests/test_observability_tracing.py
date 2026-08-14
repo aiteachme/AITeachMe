@@ -4,6 +4,8 @@ import asyncio
 from contextlib import contextmanager
 from typing import Any
 
+import pytest
+
 from app.shared.infra.observability import trace as trace_module
 from app.shared.infra.llm_support import observability as llm_observability
 from app.shared.infra.tools.definition import ToolDefinition
@@ -139,60 +141,149 @@ def test_traceable_with_context_defaults_to_traceable_io(monkeypatch) -> None:
     assert process_outputs({"content": "private explanation"}) == {"content": "private explanation"}
 
 
-def test_langsmith_capture_text_defaults_to_redacted_outside_local(monkeypatch) -> None:
-    monkeypatch.setattr(trace_module, "is_local_mode", lambda: False)
-    monkeypatch.delenv("LANGSMITH_TRACING", raising=False)
-    monkeypatch.delenv("LANGSMITH_API_KEY", raising=False)
-    monkeypatch.delenv("LANGSMITH_CAPTURE_INPUTS", raising=False)
-    monkeypatch.delenv("LANGSMITH_CAPTURE_OUTPUTS", raising=False)
+def test_expected_trace_exceptions_are_forwarded_and_not_swallowed(monkeypatch) -> None:
+    trace_calls: list[dict[str, Any]] = []
+    trace_runs: list[Any] = []
 
-    assert not trace_module.langsmith_capture_inputs_enabled()
-    assert not trace_module.langsmith_capture_outputs_enabled()
-    assert trace_module.sanitize_langsmith_input({"content": "student answer"}) == {
-        "content": "[redacted]"
+    class FakeTraceRun:
+        def __init__(self) -> None:
+            self.outputs: dict[str, Any] = {}
+            self.error: str | None = None
+            self.end_calls: list[dict[str, Any]] = []
+
+        def end(self, *, outputs=None, error=None) -> None:
+            self.end_calls.append({"outputs": outputs, "error": error})
+            self.outputs.update(dict(outputs or {}))
+            if error is not None:
+                self.error = str(error)
+
+    @contextmanager
+    def fake_tracing_context(**_kwargs):
+        yield
+
+    @contextmanager
+    def fake_langsmith_trace_run(**kwargs):
+        run = FakeTraceRun()
+        trace_calls.append(dict(kwargs))
+        trace_runs.append(run)
+        try:
+            yield run
+        except BaseException as exc:
+            handled = isinstance(exc, kwargs.get("exceptions_to_handle") or ())
+            run.end(error=None if handled else repr(exc))
+            raise
+
+    monkeypatch.setattr(trace_module, "langsmith_tracing_enabled", lambda: True)
+    monkeypatch.setattr(trace_module, "tracing_context", fake_tracing_context)
+    monkeypatch.setattr(trace_module, "langsmith_trace_run", fake_langsmith_trace_run)
+
+    with trace_module.langsmith_trace(name="before", run_type="chain"):
+        pass
+
+    cancellation = asyncio.CancelledError("expected sidecar stop")
+    with pytest.raises(asyncio.CancelledError) as exc_info:
+        with trace_module.langsmith_expected_cancellation_scope(
+            "kg_docgen_prefetch_sidecar"
+        ):
+            with trace_module.langsmith_trace(name="sidecar", run_type="chain"):
+                raise cancellation
+
+    ordinary_cancellation = asyncio.CancelledError("user cancellation")
+    with pytest.raises(asyncio.CancelledError) as ordinary_exc_info:
+        with trace_module.langsmith_trace(name="after", run_type="chain"):
+            raise ordinary_cancellation
+
+    with pytest.raises(GeneratorExit):
+        with trace_module.langsmith_trace(
+            name="stream closed",
+            run_type="llm",
+            expected_exceptions=(GeneratorExit,),
+        ):
+            raise GeneratorExit()
+
+    assert exc_info.value is cancellation
+    assert ordinary_exc_info.value is ordinary_cancellation
+    assert [call.get("exceptions_to_handle") for call in trace_calls] == [
+        None,
+        (asyncio.CancelledError,),
+        None,
+        (GeneratorExit,),
+    ]
+    assert trace_runs[1].outputs == {
+        "trace_outcome": "cancelled_expected",
+        "cancellation_scope": "kg_docgen_prefetch_sidecar",
     }
-    assert trace_module.sanitize_langsmith_output({"content": "private explanation"}) == {
-        "content": "[redacted]"
-    }
+    assert trace_runs[1].error is None
+    assert trace_runs[1].end_calls == [
+        {
+            "outputs": {
+                "trace_outcome": "cancelled_expected",
+                "cancellation_scope": "kg_docgen_prefetch_sidecar",
+            },
+            "error": None,
+        },
+        {"outputs": None, "error": None},
+    ]
+    assert trace_runs[2].outputs == {}
+    assert trace_runs[2].error == repr(ordinary_cancellation)
+    assert trace_runs[3].error is None
 
 
-def test_langsmith_capture_text_defaults_to_enabled_when_langsmith_configured(monkeypatch) -> None:
+def test_langsmith_capture_text_follows_cloud_defaults_and_explicit_overrides(monkeypatch) -> None:
     monkeypatch.setattr(trace_module, "is_local_mode", lambda: False)
-    monkeypatch.setenv("LANGSMITH_TRACING", "true")
-    monkeypatch.setenv("LANGSMITH_API_KEY", "test-key")
-    monkeypatch.delenv("LANGSMITH_CAPTURE_INPUTS", raising=False)
-    monkeypatch.delenv("LANGSMITH_CAPTURE_OUTPUTS", raising=False)
+    cases = [
+        ({}, False, False, "[redacted]", "[redacted]"),
+        (
+            {"LANGSMITH_TRACING": "true", "LANGSMITH_API_KEY": "test-key"},
+            True,
+            True,
+            "student answer",
+            "private explanation",
+        ),
+        (
+            {
+                "LANGSMITH_TRACING": "true",
+                "LANGSMITH_API_KEY": "test-key",
+                "LANGSMITH_CAPTURE_INPUTS": "false",
+                "LANGSMITH_CAPTURE_OUTPUTS": "false",
+            },
+            False,
+            False,
+            "[redacted]",
+            "[redacted]",
+        ),
+        (
+            {
+                "LANGSMITH_TRACING": "true",
+                "LANGSMITH_API_KEY": "test-key",
+                "LANGSMITH_CAPTURE_OUTPUTS": "false",
+            },
+            True,
+            False,
+            "student answer",
+            "[redacted]",
+        ),
+    ]
 
-    assert trace_module.langsmith_capture_inputs_enabled()
-    assert trace_module.langsmith_capture_outputs_enabled()
-    assert trace_module.sanitize_langsmith_input({"content": "student answer"}) == {
-        "content": "student answer"
-    }
-    assert trace_module.sanitize_langsmith_output({"content": "private explanation"}) == {
-        "content": "private explanation"
-    }
+    for env, capture_inputs, capture_outputs, expected_input, expected_output in cases:
+        for name in (
+            "LANGSMITH_TRACING",
+            "LANGSMITH_API_KEY",
+            "LANGSMITH_CAPTURE_INPUTS",
+            "LANGSMITH_CAPTURE_OUTPUTS",
+        ):
+            monkeypatch.delenv(name, raising=False)
+        for name, value in env.items():
+            monkeypatch.setenv(name, value)
 
-
-def test_langsmith_capture_text_can_be_disabled_when_langsmith_configured(monkeypatch) -> None:
-    monkeypatch.setattr(trace_module, "is_local_mode", lambda: False)
-    monkeypatch.setenv("LANGSMITH_TRACING", "true")
-    monkeypatch.setenv("LANGSMITH_API_KEY", "test-key")
-    monkeypatch.setenv("LANGSMITH_CAPTURE_INPUTS", "false")
-    monkeypatch.setenv("LANGSMITH_CAPTURE_OUTPUTS", "false")
-
-    assert not trace_module.langsmith_capture_inputs_enabled()
-    assert not trace_module.langsmith_capture_outputs_enabled()
-
-
-def test_langsmith_capture_specific_env_overrides_default_capture(monkeypatch) -> None:
-    monkeypatch.setattr(trace_module, "is_local_mode", lambda: False)
-    monkeypatch.setenv("LANGSMITH_TRACING", "true")
-    monkeypatch.setenv("LANGSMITH_API_KEY", "test-key")
-    monkeypatch.setenv("LANGSMITH_CAPTURE_OUTPUTS", "false")
-    monkeypatch.delenv("LANGSMITH_CAPTURE_INPUTS", raising=False)
-
-    assert trace_module.langsmith_capture_inputs_enabled()
-    assert not trace_module.langsmith_capture_outputs_enabled()
+        assert trace_module.langsmith_capture_inputs_enabled() is capture_inputs
+        assert trace_module.langsmith_capture_outputs_enabled() is capture_outputs
+        assert trace_module.sanitize_langsmith_input({"content": "student answer"}) == {
+            "content": expected_input
+        }
+        assert trace_module.sanitize_langsmith_output({"content": "private explanation"}) == {
+            "content": expected_output
+        }
 
 
 def test_llm_trace_kwargs_record_api_mode_and_provider_native_tools(monkeypatch) -> None:
@@ -207,6 +298,7 @@ def test_llm_trace_kwargs_record_api_mode_and_provider_native_tools(monkeypatch)
         messages=[{"role": "user", "content": "hello"}],
         call_kwargs={
             "model": "gpt-5.5",
+            "reasoning": {"effort": "high"},
             "tools": [
                 {"type": "web_search"},
                 {"type": "file_search", "vector_store_ids": ["vs_test"]},
@@ -216,6 +308,8 @@ def test_llm_trace_kwargs_record_api_mode_and_provider_native_tools(monkeypatch)
 
     metadata = kwargs["extra_metadata"]
     assert metadata["llm_initial_api_mode"] == "responses"
+    assert metadata["ls_invocation_params"]["reasoning"] == {"effort": "high"}
+    assert metadata["ls_reasoning_effort"] == "high"
     assert metadata["llm_tool_types"] == ["web_search", "file_search"]
     assert metadata["llm_provider_native_tool_types"] == ["web_search", "file_search"]
 

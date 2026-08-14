@@ -67,6 +67,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Run frontend security tests
+        run: npm run test:security
+
+      - name: Run SSE parser tests
+        run: npm run test:sse
+
       - name: Build
         run: npm run build
 

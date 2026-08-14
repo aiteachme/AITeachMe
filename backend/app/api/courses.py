@@ -13,8 +13,6 @@ from app.schemas.course import (
     CourseDeleteRequest,
     CourseItem,
     CourseListRequest,
-    CourseNameSuggestionRequest,
-    CourseNameSuggestionResponse,
     CourseUpdateRequest,
 )
 from app.shared.infra.analytics.posthog import capture_product_event_later
@@ -136,7 +134,7 @@ async def delete_course_api(
     session: Session = Depends(get_db),
 ) -> ApiResponse[CourseDeleteData]:
     return ok_response(
-        delete_course_record(
+        await delete_course_record(
             session,
             owner_user_id=user.user_id,
             course_id=body.course_id,
@@ -181,49 +179,3 @@ async def update_course_api(
 
 def _get_background_task_registry(request: Request):
     return getattr(request.app.state, "background_task_registry", None)
-
-
-@router.post(
-    "/suggest-name",
-    response_model=ApiResponse[CourseNameSuggestionResponse],
-    summary="根据用户输入快速生成课程名称",
-    responses=build_error_responses([400, 500]),
-)
-async def suggest_course_name(
-    body: CourseNameSuggestionRequest = Body(...),
-) -> ApiResponse[CourseNameSuggestionResponse]:
-    from app.shared.infra.llm_support.text import acompletion
-    from app.schemas.llm import ChatMessage
-
-    prompt_text = (body.prompt or "").strip()
-    filenames = body.filenames or []
-
-    # Build a minimal LLM prompt
-    hints = []
-    if prompt_text:
-        hints.append(f"用户输入：{prompt_text}")
-    if filenames:
-        hints.append(f"文件名：{', '.join(filenames[:5])}")
-
-    if not hints:
-        return ok_response(CourseNameSuggestionResponse(name="新课程"))
-
-    messages: list[ChatMessage] = [
-        {"role": "system", "content": (
-            "你是一个课程名称生成器。根据用户输入的学习目标和文件名，生成一个简短的课程名称（2-8个字）。"
-            "只输出名称，不要其他内容。例如：高等数学、Python编程、机器学习、电路分析、英语写作。"
-        )},
-        {"role": "user", "content": "\n".join(hints)},
-    ]
-
-    try:
-        result = await acompletion(messages, max_tokens=30, temperature=0.3)
-        name = result.strip().strip('"\'').strip()
-        # Ensure reasonable length
-        if not name or len(name) > 20:
-            name = prompt_text[:20] if prompt_text else "新课程"
-    except Exception:
-        # Fallback: truncate prompt
-        name = prompt_text[:20] if prompt_text else "新课程"
-
-    return ok_response(CourseNameSuggestionResponse(name=name))

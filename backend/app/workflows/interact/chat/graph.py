@@ -30,6 +30,7 @@ from app.workflows.interact.chat.lib.events import (
     InteractFailedEvent,
     InteractRequestedEvent,
 )
+from app.workflows.interact.chat.lib.errors import sanitize_interact_error_detail
 from app.workflows.interact.chat.lib.home_intake import should_use_home_intake_flow
 from app.workflows.interact.chat.lib.streaming import SSEEventEmitter
 from app.workflows.interact.chat.nodes import (
@@ -605,26 +606,32 @@ async def run_interact_workflow(
             context=context,
         )
     if result.failed:
+        sanitized_error = sanitize_interact_error_detail(result.error.detail)
         await bus.publish(
             InteractFailedEvent(
                 course_id=course_id,
-                error_message=result.error.detail,
+                error_message=sanitized_error,
             )
         )
-        return result
+        return err_result(
+            result.error.code,
+            sanitized_error,
+            metadata=result.error.metadata,
+        )
 
     final_state = result.require_value()
     error_message = final_state.get("error")
     if error_message:
+        sanitized_error = sanitize_interact_error_detail(error_message)
         await bus.publish(
             InteractFailedEvent(
                 course_id=course_id,
-                error_message=error_message,
+                error_message=sanitized_error,
             )
         )
         return err_result(
             "interact_workflow_failed",
-            error_message,
+            sanitized_error,
             metadata={"course_id": course_id},
         )
 
@@ -726,7 +733,7 @@ async def _execute_interact_workflow(
         )
         if result.failed:
             await emitter.emit_error(
-                detail=result.error.detail,
+                detail=sanitize_interact_error_detail(result.error.detail),
                 error_code=result.error.code,
             )
             return
@@ -746,7 +753,7 @@ async def _execute_interact_workflow(
         raise
     except Exception as exc:
         await emitter.emit_error(
-            detail=str(exc),
+            detail=sanitize_interact_error_detail(exc),
             error_code="interact_runtime_failed",
         )
     finally:

@@ -56,10 +56,12 @@ APP_VERSION = get_app_version()
 
 
 def resolve_app_mode() -> str:
-    raw_value = (get_env("APP_MODE", "local") or "local").strip().lower()
+    raw_value = (get_env("APP_MODE") or "").strip().lower()
+    if not raw_value:
+        return "local"
     if raw_value in {"local", "cloud"}:
         return raw_value
-    return "local"
+    raise ValueError("APP_MODE must be either 'local' or 'cloud'.")
 
 
 def is_cloud_mode() -> bool:

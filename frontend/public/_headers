@@ -1,2 +1,7 @@
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
+
+/share/courses/*
+  Cache-Control: no-cache
+  Referrer-Policy: no-referrer
+  X-Robots-Tag: noindex, nofollow, noarchive

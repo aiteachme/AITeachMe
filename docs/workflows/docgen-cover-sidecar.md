@@ -1,6 +1,6 @@
 # 19. DocGen 封面 Sidecar
 
-最后更新：2026-04-27
+最后更新：2026-07-14
 
 本文是 DocGen 封面能力的当前事实源。封面是可选增强资产，不是正文生成的成功条件。
 
@@ -40,10 +40,10 @@ load_context / prepare_global_seed
 
 ## 4. 产物
 
-稳定图片路径：
+构建专属不可变图片路径：
 
 ```text
-users/<user>/courses/<course>/assets/docgen/cover.<ext>
+users/<user>/courses/<course>/assets/docgen/cover.<build-fingerprint><ext>
 ```
 
 构建元数据：
@@ -55,10 +55,10 @@ knowledge_markdowns/_build/cover_artifact.json
 文档 Markdown：
 
 ```md
-![](../assets/docgen/cover.png)
+![](../assets/docgen/cover.0123456789abcdef.png)
 ```
 
-导出 `.atmx` 时只打包当前稳定封面；导入时恢复到目标用户和目标 course 的 `assets/docgen/` 下。
+导出 `.atmx` 时通过当前数据库发布记录定位 versioned manifest，再精确选择封面内容，并按包内兼容名称 `knowledge/cover<ext>` 写入；导入时只恢复一个兼容封面到目标用户和目标 course 的 `assets/docgen/` 下，并把对应 Markdown 引用前置到首个当前已发布知识文档。未发布或已取消构建生成的封面不会覆盖、删除或被误导出为当前封面。
 
 ## 5. 文档顺序
 
@@ -75,7 +75,7 @@ knowledge_markdowns/_build/cover_artifact.json
 
 - 不支持单次构建覆盖开关。
 - 不开放自由 prompt。
-- 不做封面版本管理。
-- 生成成功后清理旧的 `docgen_cover_*` / `cover.*` 文件，只保留当前稳定封面。
+- 每次构建使用不可变封面文件名，发布 Markdown 直接引用对应版本。
+- 生成阶段不清理旧封面，避免删除仍被已发布文档引用的资产；孤立资产后续只能按已发布 manifest 可达性做安全回收。
 
 后续如果要扩展，优先顺序是：单次构建覆盖字段、封面风格枚举、manifest 封面元数据、统一资产 sidecar 编排。

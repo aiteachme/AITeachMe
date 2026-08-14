@@ -4,7 +4,13 @@ import { AlertTriangle, Loader2, MoreVertical, Sparkles, Trash2 } from "lucide-r
 import type { ExamHistoryItem, PaperPreview, PaperPreviewRow } from "../../api/generated/model";
 import { Button } from "../ui/Button";
 import type { ExamResultDisplayMode } from "../../lib/examResultDisplayPreference";
-import { buildExamTitle, formatMonthDayTime, formatModeLabel, parseBackendDateTime } from "./examDisplay";
+import {
+  buildExamTitle,
+  formatMonthDayTime,
+  formatModeLabel,
+  MASTERY_DRILL_EXAM_MODE,
+  parseBackendDateTime,
+} from "./examDisplay";
 
 type PreviewShape = PaperPreviewRow["shape"];
 type PreviewResultStatus = "ungraded" | "correct" | "incorrect";
@@ -174,6 +180,25 @@ function ExamPaperPassMark() {
         PASS
         <span className="absolute inset-1 rounded-[6px] border border-current opacity-55" />
       </div>
+    </div>
+  );
+}
+
+function MasteryDrillResultMark({ item }: { item: ExamHistoryItem }) {
+  const totalAttempts = toSafeCount(item.mastery_drill?.total_attempts);
+  const rawAccuracy = Number(item.mastery_drill?.attempt_accuracy);
+  const accuracy = Number.isFinite(rawAccuracy)
+    ? Math.max(0, Math.min(100, Math.round(rawAccuracy * 100)))
+    : null;
+  const detail = totalAttempts > 0 && accuracy !== null ? `${accuracy}% · ${totalAttempts} 次尝试` : "持续练习已记录";
+
+  return (
+    <div
+      className="pointer-events-none absolute right-9 top-[54%] z-20 -rotate-[8deg] select-none rounded-[12px] border-[3px] border-emerald-600/85 bg-white/90 px-3 py-2 text-center text-emerald-700 shadow-sm dark:border-emerald-400/80 dark:bg-slate-950/90 dark:text-emerald-300"
+      aria-label={`闯关完成，${detail}`}
+    >
+      <div className="text-sm font-black tracking-[0.18em]">闯关完成</div>
+      <div className="mt-1 border-t border-current/35 pt-1 text-[10px] font-bold tracking-normal">{detail}</div>
     </div>
   );
 }
@@ -589,18 +614,18 @@ function PaperFingerprintPreview({
   );
 }
 
-function FailedPaperPreview() {
+function FailedPaperPreview({ grading = false }: { grading?: boolean }) {
   return (
     <div
       className="relative z-10 mt-3 flex flex-1 flex-col items-center justify-center overflow-hidden rounded-md border border-rose-100 bg-rose-50/60 px-4 text-center text-rose-600 dark:border-rose-900/60 dark:bg-rose-950/20 dark:text-rose-300"
-      aria-label="内容生成失败"
+      aria-label={grading ? "判卷失败" : "内容生成失败"}
     >
       <div className="grid h-12 w-12 place-items-center rounded-full bg-white shadow-sm ring-1 ring-rose-100 dark:bg-rose-950/40 dark:ring-rose-900/70">
         <AlertTriangle className="h-6 w-6" />
       </div>
-      <div className="mt-3 text-sm font-semibold">生成失败</div>
+      <div className="mt-3 text-sm font-semibold">{grading ? "判卷失败" : "生成失败"}</div>
       <div className="mt-1 max-w-[9rem] text-[11px] leading-5 text-rose-500/80 dark:text-rose-300/75">
-        这份内容没有生成完成
+        {grading ? "答卷已保存，可手动重新批改" : "这份内容没有生成完成"}
       </div>
       <div className="mt-4 h-px w-full bg-rose-100 dark:bg-rose-900/70" />
       <div className="mt-3 grid w-full gap-1.5 text-rose-300/80 dark:text-rose-700">
@@ -667,11 +692,15 @@ export function ExamPaperCard({
 }) {
   const preview = getPaperPreview(item);
   const isGraded = item.status === "graded";
+  const isMasteryDrill = item.exam_mode === MASTERY_DRILL_EXAM_MODE;
   const isGenerating = item.status === "generating";
   const isFailed = item.status === "failed";
+  const isGradingFailed = item.status === "grading_failed";
+  const hasFailed = isFailed || isGradingFailed;
   const isGrading = item.status === "submitted" || item.status === "grading";
-  const showDetailedResult = isGraded && resultDisplayMode === "score";
-  const showPassMark = isGraded && resultDisplayMode === "completed";
+  const showDetailedResult = isGraded && !isMasteryDrill && resultDisplayMode === "score";
+  const showPassMark = isGraded && !isMasteryDrill && resultDisplayMode === "completed";
+  const showMasteryResult = isGraded && isMasteryDrill;
   const scorePercent = getExamScorePercent(item);
   const generationProgress = getExamGenerationProgress(item, preview);
 
@@ -691,14 +720,14 @@ export function ExamPaperCard({
     >
       <div
         className={`relative mx-auto aspect-[300/230] w-full max-w-[300px] transition-all duration-300 ${
-          isFailed
+          hasFailed
             ? "drop-shadow-[0_16px_24px_rgba(190,18,60,0.14)] group-hover:drop-shadow-[0_22px_34px_rgba(190,18,60,0.18)]"
             : "drop-shadow-[0_16px_24px_rgba(15,23,42,0.08)] group-hover:drop-shadow-[0_22px_34px_rgba(15,23,42,0.12)] dark:drop-shadow-[0_16px_24px_rgba(0,0,0,0.4)] dark:group-hover:drop-shadow-[0_24px_36px_rgba(0,0,0,0.55)]"
         }`}
       >
         <div
           className={`absolute inset-0 flex flex-col overflow-hidden rounded-[18px] border bg-white px-4 py-4 text-slate-950 dark:bg-slate-900 dark:text-slate-100 ${
-            isFailed
+            hasFailed
               ? "border-rose-200 dark:border-rose-900/70"
               : isGenerating
                 ? "border-indigo-200 bg-indigo-50/30 dark:border-indigo-500/30 dark:bg-indigo-500/5"
@@ -721,7 +750,7 @@ export function ExamPaperCard({
 
         <div
           className={`relative z-10 mt-3 border-y px-1 py-1.5 text-center text-xs font-semibold ${
-            isFailed
+            hasFailed
               ? "border-rose-100 text-rose-600 dark:border-rose-900/60 dark:text-rose-300"
               : isGenerating
                 ? "border-indigo-100 text-indigo-700 dark:border-indigo-500/20 dark:text-indigo-300"
@@ -730,10 +759,10 @@ export function ExamPaperCard({
                 : "border-slate-100 text-slate-600 dark:border-slate-800 dark:text-slate-300"
           }`}
         >
-          {isFailed ? (
+          {hasFailed ? (
             <span className="inline-flex items-center justify-center gap-1">
               <AlertTriangle className="h-3.5 w-3.5" />
-               内容生成失败
+              {isGradingFailed ? "判卷失败，可重试" : "内容生成失败"}
             </span>
           ) : isGenerating ? (
             <div
@@ -764,8 +793,8 @@ export function ExamPaperCard({
           )}
         </div>
 
-        {isFailed ? (
-          <FailedPaperPreview />
+        {hasFailed ? (
+          <FailedPaperPreview grading={isGradingFailed} />
         ) : isGrading ? (
           <PaperGradingPreview submittedAt={item.submitted_at} />
         ) : (
@@ -778,6 +807,7 @@ export function ExamPaperCard({
 
         {showDetailedResult && scorePercent !== null ? <ExamPaperScoreMark score={scorePercent} /> : null}
         {showPassMark ? <ExamPaperPassMark /> : null}
+        {showMasteryResult ? <MasteryDrillResultMark item={item} /> : null}
 
         <div className="absolute bottom-4 right-4 z-20 flex items-center gap-2 opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 pointer-events-none group-hover:pointer-events-auto transition-all duration-300">
             <Button

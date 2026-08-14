@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Any
 
 from pydantic import ValidationError
@@ -23,6 +23,7 @@ from app.repositories.user_settings_repo import (
 )
 from app.schemas.llm import SYSTEM, USER, ChatMessage
 from app.schemas.system import (
+    ModelReasoningCapabilitiesResult,
     ModelProbeEndpointRole,
     ModelProbeRequest,
     ModelProbeResult,
@@ -42,14 +43,17 @@ from app.shared.infra.llm_support.common import (
     LLMRuntimeSnapshot,
     build_completion_context,
     get_llm_runtime_snapshot,
+    resolve_settings_model,
     use_llm_runtime_snapshot,
 )
+from app.shared.infra.llm_support.model_catalog import reasoning_efforts_for_model
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.llm_support.text import acompletion
 from app.shared.infra.runtime import is_local_mode, resolve_app_mode
 from app.shared.infra.settings import (
     Settings,
     get_project_settings,
+    get_settings,
     get_system_settings_override_payload,
     merge_settings_values,
     set_system_settings_override,
@@ -292,6 +296,7 @@ def _editable_settings_entry(
     editable_in_cloud: bool = True,
     ui_group: str = "",
     ui_order: int = 0,
+    ui_parent_key: str | None = None,
     options: tuple[tuple[str | None, str], ...] = (),
 ) -> SettingEntry:
     has_system_value, _ = _lookup_path(system_payload, key)
@@ -318,6 +323,7 @@ def _editable_settings_entry(
         restart_required=False,
         ui_group=ui_group,
         ui_order=ui_order,
+        ui_parent_key=ui_parent_key,
         description=description,
         options=[{"value": value, "label": label} for value, label in options],
     )
@@ -405,21 +411,52 @@ def _runtime_entry(
     )
 
 
-def _build_catalog_entry(entry: SettingsCatalogEntry, context: _OverviewContext) -> SettingEntry:
+def _build_catalog_entry(
+    entry: SettingsCatalogEntry,
+    context: _OverviewContext,
+) -> SettingEntry | None:
     if entry.kind == "setting":
+        options = entry.options
+        value = _require_path(context.settings_payload, entry.key)
+        default_value = _require_path(context.base_payload, entry.key)
+        description = entry.description
+        if entry.reasoning_model_slot is not None:
+            model, _ = resolve_settings_model(
+                context.settings,
+                entry.reasoning_model_slot,
+            )
+            supported_efforts = reasoning_efforts_for_model(model)
+            if supported_efforts is not None:
+                options = (
+                    (
+                        (None, "模型默认"),
+                        *((effort, effort) for effort in supported_efforts),
+                    )
+                    if supported_efforts
+                    else ()
+                )
+                if value not in supported_efforts:
+                    value = None
+                if default_value not in supported_efforts:
+                    default_value = None
+            else:
+                # 保留依赖项，让前端可针对尚未保存的模型草稿实时查询能力；
+                # 空 options 本身不会渲染出下拉框。
+                options = ()
         return _editable_settings_entry(
             entry.key,
             entry.label,
-            _require_path(context.settings_payload, entry.key),
-            _require_path(context.base_payload, entry.key),
+            value,
+            default_value,
             context.system_payload,
             context.user_payload,
-            entry.description,
+            description,
             editable_in_local=entry.editable_in_local,
             editable_in_cloud=entry.editable_in_cloud,
             ui_group=entry.ui_group,
             ui_order=entry.ui_order,
-            options=entry.options,
+            ui_parent_key=entry.ui_parent_key,
+            options=options,
         )
 
     if entry.kind == "env":
@@ -455,16 +492,38 @@ def _build_catalog_entry(entry: SettingsCatalogEntry, context: _OverviewContext)
     raise RuntimeError(f"Unsupported settings catalog entry kind: {entry.kind}")
 
 
+def get_model_reasoning_capabilities(model: str) -> ModelReasoningCapabilitiesResult:
+    """Return code-catalog reasoning capabilities without contacting the provider."""
+
+    normalized_model = str(model or "").strip()
+    supported_efforts = reasoning_efforts_for_model(normalized_model)
+    return ModelReasoningCapabilitiesResult(
+        model=normalized_model,
+        reasoning_efforts=(
+            list(supported_efforts)
+            if supported_efforts is not None
+            else None
+        ),
+    )
+
+
 def _build_sections(context: _OverviewContext) -> list[SettingSection]:
-    return [
-        SettingSection(
-            id=section.id,
-            label=section.label,
-            description=section.description,
-            entries=[_build_catalog_entry(entry, context) for entry in section.entries],
+    sections: list[SettingSection] = []
+    for section in SETTINGS_CATALOG:
+        entries: list[SettingEntry] = []
+        for catalog_entry in section.entries:
+            built_entry = _build_catalog_entry(catalog_entry, context)
+            if built_entry is not None:
+                entries.append(built_entry)
+        sections.append(
+            SettingSection(
+                id=section.id,
+                label=section.label,
+                description=section.description,
+                entries=entries,
+            )
         )
-        for section in SETTINGS_CATALOG
-    ]
+    return sections
 
 
 def build_settings_overview_data(
@@ -474,22 +533,27 @@ def build_settings_overview_data(
 ) -> SettingsOverviewData:
     """Build a safe overview of env, project defaults, and runtime overrides."""
 
+    local_mode = is_local_mode()
     base_settings = get_project_settings()
     raw_system_payload = (
-        get_system_runtime_settings_payload(session)
-        if session is not None
-        else get_system_settings_override_payload()
+        (
+            get_system_runtime_settings_payload(session)
+            if session is not None
+            else get_system_settings_override_payload()
+        )
+        if local_mode
+        else {}
     )
     raw_system_settings_payload, env_overrides = split_runtime_settings_payload(raw_system_payload)
     raw_user_payload = (
         get_user_runtime_settings_payload(session, user_id)
-        if session is not None and user_id and is_local_mode()
+        if session is not None and user_id and local_mode
         else {}
     )
     system_payload = _safe_user_settings_payload(raw_system_settings_payload)
     user_payload = _safe_user_settings_payload(raw_user_payload)
 
-    if session is not None:
+    if session is not None and local_mode:
         if raw_system_settings_payload != system_payload:
             combined_payload = combine_runtime_settings_payload(system_payload, env_overrides)
             if system_payload:
@@ -506,7 +570,7 @@ def build_settings_overview_data(
             else:
                 clear_user_runtime_settings(session, user_id=user_id)
 
-    if is_local_mode() and session is not None and not system_payload and user_payload:
+    if local_mode and session is not None and not system_payload and user_payload:
         upsert_system_runtime_settings_payload(
             session,
             payload=combine_runtime_settings_payload(user_payload, env_overrides),
@@ -604,14 +668,9 @@ def _model_probe_endpoint_snapshot(endpoint_role: ModelProbeEndpointRole) -> LLM
     if not endpoints:
         return None
 
-    endpoint = replace(endpoints[0], use_default_models=False)
-    api_keys = tuple(item.api_key for item in endpoints if item.api_key is not None)
+    endpoint = endpoints[0]
     return LLMRuntimeSnapshot(
         settings=snapshot.settings,
-        base_url=endpoint.base_url,
-        api_keys=api_keys,
-        provider=endpoint.provider,
-        api_version=endpoint.api_version,
         primary_endpoints=(endpoint,),
         fallback_endpoints=(),
     )
@@ -623,11 +682,28 @@ def _model_probe_missing_message(endpoint_role: ModelProbeEndpointRole) -> str:
     return "主模型网关未配置。请先配置 LLM_BASE_URL 和 LLM_API_KEY。"
 
 
+def _model_probe_failure_message(
+    *,
+    label: str,
+    payload: ModelProbeRequest,
+    error: Exception,
+) -> str:
+    del payload, error
+    return (
+        f"{label}测试失败。请检查所选模型、网关地址、API Key 和接口模式；"
+        "后端日志已记录错误类型。"
+    )
+
+
 async def test_settings_model_connection(payload: ModelProbeRequest) -> ModelProbeResult:
     """Run a small settings-page LLM probe against one explicit endpoint route."""
 
     snapshot = _model_probe_endpoint_snapshot(payload.endpoint_role)
-    requested_api_mode = "chat_completions" if payload.endpoint_role == "fallback" else "responses"
+    requested_api_mode = (
+        "auto"
+        if payload.endpoint_role == "fallback"
+        else (snapshot.settings if snapshot is not None else get_settings()).llm.api_mode
+    )
     if snapshot is None:
         return ModelProbeResult(
             ok=False,
@@ -659,7 +735,6 @@ async def test_settings_model_connection(payload: ModelProbeRequest) -> ModelPro
                 timeout=_MODEL_PROBE_TIMEOUT_S,
                 overall_timeout_s=_MODEL_PROBE_OVERALL_TIMEOUT_S,
                 max_retries=_MODEL_PROBE_MAX_RETRIES,
-                api_mode=requested_api_mode,
                 extra_metadata={
                     "settings_model_probe": True,
                     "model_probe_slot": payload.model_slot,
@@ -685,7 +760,7 @@ async def test_settings_model_connection(payload: ModelProbeRequest) -> ModelPro
             endpoint_role=payload.endpoint_role,
             model=model,
             provider=provider,
-            error=str(exc),
+            error_type=exc.__class__.__name__,
         )
         return ModelProbeResult(
             ok=False,
@@ -695,7 +770,7 @@ async def test_settings_model_connection(payload: ModelProbeRequest) -> ModelPro
             provider=provider,
             api_mode=requested_api_mode,
             elapsed_ms=elapsed_ms,
-            message=f"{label}测试失败：{str(exc)[:240]}",
+            message=_model_probe_failure_message(label=label, payload=payload, error=exc),
         )
 
 

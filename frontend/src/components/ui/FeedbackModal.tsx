@@ -9,7 +9,7 @@ interface FeedbackModalProps {
   onClose: () => void;
 }
 
-const CONTACT_EMAIL = "aiteachme_test1@163.com";
+const CONTACT_EMAIL = "aiteachme@163.com";
 const CONTACT_MAILTO = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent("AITeachMe 意见反馈")}`;
 
 export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
@@ -43,7 +43,11 @@ export function FeedbackModal({ open, onClose }: FeedbackModalProps) {
         onClose();
       }, 1500);
     } catch (error) {
-      setErrorStatus(getApiErrorMessage(error, "反馈发送失败，请稍后重试"));
+      const message = getApiErrorMessage(
+        error,
+        "反馈未送达，请稍后重试或通过下方邮箱联系我们。",
+      );
+      setErrorStatus(`${message} 内容和截图已保留，可直接重试。`);
     } finally {
       setIsSubmitting(false);
     }

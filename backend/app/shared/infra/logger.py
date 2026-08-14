@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import sys
 from collections.abc import Mapping
 from typing import Any
@@ -26,6 +27,8 @@ _SENSITIVE_KEY_MARKERS = (
     "webhook",
 )
 _REDACTED = "***"
+_COURSE_SHARE_TOKEN_RE = re.compile(r"cshr_[A-Za-z0-9_-]+", re.IGNORECASE)
+_COURSE_SHARE_TOKEN_PLACEHOLDER = ":shareToken"
 _NOISY_LOGGER_LEVELS: dict[str, int] = {
     "uvicorn.access": logging.WARNING,
     "httpx": logging.WARNING,
@@ -47,6 +50,12 @@ def _looks_sensitive_key(key: str) -> bool:
     return any(marker in normalized for marker in _SENSITIVE_KEY_MARKERS)
 
 
+def redact_course_share_tokens(value: str) -> str:
+    """Remove course-share bearer tokens from text before it reaches logs."""
+
+    return _COURSE_SHARE_TOKEN_RE.sub(_COURSE_SHARE_TOKEN_PLACEHOLDER, str(value))
+
+
 def _redact_value(value: Any) -> Any:
     if isinstance(value, Mapping):
         return {
@@ -61,6 +70,8 @@ def _redact_value(value: Any) -> Any:
         return tuple(_redact_value(item) for item in value)
     if isinstance(value, set):
         return {_redact_value(item) for item in value}
+    if isinstance(value, str):
+        return redact_course_share_tokens(value)
     return value
 
 
@@ -110,8 +121,8 @@ def configure_logging() -> None:
         structlog.stdlib.PositionalArgumentsFormatter(),
         structlog.processors.StackInfoRenderer(),
         structlog.processors.TimeStamper(fmt="%H:%M:%S" if use_colors else "iso", utc=not use_colors),
-        _redact_event_dict,
         structlog.processors.format_exc_info,
+        _redact_event_dict,
     ]
     structlog_processors = [
         structlog.stdlib.filter_by_level,
@@ -158,4 +169,5 @@ __all__ = [
     "bind_logging_context",
     "clear_logging_context",
     "configure_logging",
+    "redact_course_share_tokens",
 ]

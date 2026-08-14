@@ -27,9 +27,11 @@ import type {
   ApiResponseBool,
   ApiResponseInitData,
   ApiResponseModelProbeResult,
+  ApiResponseModelReasoningCapabilitiesResult,
   ApiResponseSettingsOverviewData,
   ErrorResponse,
   FeedbackRequest,
+  GetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetParams,
   HTTPValidationError,
   InitRequest,
   ModelProbeRequest,
@@ -278,6 +280,131 @@ export function useGetCommunityWechatQrApiV1SystemCommunityWechatQrGet<TData = A
 
 
 
+export type getCommunityFeishuQrApiV1SystemCommunityFeishuQrGetResponse200 = {
+  data: unknown
+  status: 200
+}
+
+export type getCommunityFeishuQrApiV1SystemCommunityFeishuQrGetResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type getCommunityFeishuQrApiV1SystemCommunityFeishuQrGetResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type getCommunityFeishuQrApiV1SystemCommunityFeishuQrGetResponseSuccess = (getCommunityFeishuQrApiV1SystemCommunityFeishuQrGetResponse200) & {
+  headers: Headers;
+};
+export type getCommunityFeishuQrApiV1SystemCommunityFeishuQrGetResponseError = (getCommunityFeishuQrApiV1SystemCommunityFeishuQrGetResponse404 | getCommunityFeishuQrApiV1SystemCommunityFeishuQrGetResponse500) & {
+  headers: Headers;
+};
+
+export type getCommunityFeishuQrApiV1SystemCommunityFeishuQrGetResponse = (getCommunityFeishuQrApiV1SystemCommunityFeishuQrGetResponseSuccess | getCommunityFeishuQrApiV1SystemCommunityFeishuQrGetResponseError)
+
+export const getGetCommunityFeishuQrApiV1SystemCommunityFeishuQrGetUrl = () => {
+
+
+
+
+  return `/api/v1/system/community/feishu-qr`
+}
+
+/**
+ * 从项目公开 assets 仓库的远程图片直链读取社区飞书二维码，并以 no-store 返回给前端。
+ * @summary 读取社区飞书二维码
+ */
+export const getCommunityFeishuQrApiV1SystemCommunityFeishuQrGet = async ( options?: RequestInit): Promise<getCommunityFeishuQrApiV1SystemCommunityFeishuQrGetResponse> => {
+
+  return orvalApiClient<getCommunityFeishuQrApiV1SystemCommunityFeishuQrGetResponse>(getGetCommunityFeishuQrApiV1SystemCommunityFeishuQrGetUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCommunityFeishuQrApiV1SystemCommunityFeishuQrGetQueryKey = () => {
+    return [
+    `/api/v1/system/community/feishu-qr`
+    ] as const;
+    }
+
+
+export const getGetCommunityFeishuQrApiV1SystemCommunityFeishuQrGetQueryOptions = <TData = Awaited<ReturnType<typeof getCommunityFeishuQrApiV1SystemCommunityFeishuQrGet>>, TError = ErrorResponse>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCommunityFeishuQrApiV1SystemCommunityFeishuQrGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCommunityFeishuQrApiV1SystemCommunityFeishuQrGetQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCommunityFeishuQrApiV1SystemCommunityFeishuQrGet>>> = ({ signal }) => getCommunityFeishuQrApiV1SystemCommunityFeishuQrGet({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCommunityFeishuQrApiV1SystemCommunityFeishuQrGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetCommunityFeishuQrApiV1SystemCommunityFeishuQrGetQueryResult = NonNullable<Awaited<ReturnType<typeof getCommunityFeishuQrApiV1SystemCommunityFeishuQrGet>>>
+export type GetCommunityFeishuQrApiV1SystemCommunityFeishuQrGetQueryError = ErrorResponse
+
+
+export function useGetCommunityFeishuQrApiV1SystemCommunityFeishuQrGet<TData = Awaited<ReturnType<typeof getCommunityFeishuQrApiV1SystemCommunityFeishuQrGet>>, TError = ErrorResponse>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCommunityFeishuQrApiV1SystemCommunityFeishuQrGet>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getCommunityFeishuQrApiV1SystemCommunityFeishuQrGet>>,
+          TError,
+          Awaited<ReturnType<typeof getCommunityFeishuQrApiV1SystemCommunityFeishuQrGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetCommunityFeishuQrApiV1SystemCommunityFeishuQrGet<TData = Awaited<ReturnType<typeof getCommunityFeishuQrApiV1SystemCommunityFeishuQrGet>>, TError = ErrorResponse>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCommunityFeishuQrApiV1SystemCommunityFeishuQrGet>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getCommunityFeishuQrApiV1SystemCommunityFeishuQrGet>>,
+          TError,
+          Awaited<ReturnType<typeof getCommunityFeishuQrApiV1SystemCommunityFeishuQrGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetCommunityFeishuQrApiV1SystemCommunityFeishuQrGet<TData = Awaited<ReturnType<typeof getCommunityFeishuQrApiV1SystemCommunityFeishuQrGet>>, TError = ErrorResponse>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCommunityFeishuQrApiV1SystemCommunityFeishuQrGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary 读取社区飞书二维码
+ */
+
+export function useGetCommunityFeishuQrApiV1SystemCommunityFeishuQrGet<TData = Awaited<ReturnType<typeof getCommunityFeishuQrApiV1SystemCommunityFeishuQrGet>>, TError = ErrorResponse>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getCommunityFeishuQrApiV1SystemCommunityFeishuQrGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetCommunityFeishuQrApiV1SystemCommunityFeishuQrGetQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 export type getSystemSettingsApiV1SystemSettingsPostResponse200 = {
   data: ApiResponseSettingsOverviewData
   status: 200
@@ -466,7 +593,139 @@ export const useUpdateSystemSettingsApiV1SystemSettingsPatch = <TError = ErrorRe
       > => {
       return useMutation(getUpdateSystemSettingsApiV1SystemSettingsPatchMutationOptions(options), queryClient);
     }
-    export type probeSystemSettingsModelApiV1SystemSettingsModelProbePostResponse200 = {
+    export type getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetResponse200 = {
+  data: ApiResponseModelReasoningCapabilitiesResult
+  status: 200
+}
+
+export type getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetResponse422 = {
+  data: ErrorResponse
+  status: 422
+}
+
+export type getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetResponseSuccess = (getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetResponse200) & {
+  headers: Headers;
+};
+export type getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetResponseError = (getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetResponse422 | getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetResponse500) & {
+  headers: Headers;
+};
+
+export type getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetResponse = (getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetResponseSuccess | getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetResponseError)
+
+export const getGetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetUrl = (params: GetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/system/settings/model-capabilities/reasoning?${stringifiedParams}` : `/api/v1/system/settings/model-capabilities/reasoning`
+}
+
+/**
+ * 按代码能力目录解析模型支持的 reasoning effort，不请求外部模型网关。
+ * @summary 读取模型推理强度能力
+ */
+export const getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet = async (params: GetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetParams, options?: RequestInit): Promise<getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetResponse> => {
+
+  return orvalApiClient<getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetResponse>(getGetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetQueryKey = (params?: GetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetParams,) => {
+    return [
+    `/api/v1/system/settings/model-capabilities/reasoning`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetQueryOptions = <TData = Awaited<ReturnType<typeof getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet>>, TError = ErrorResponse>(params: GetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet>>> = ({ signal }) => getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetQueryResult = NonNullable<Awaited<ReturnType<typeof getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet>>>
+export type GetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetQueryError = ErrorResponse
+
+
+export function useGetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet<TData = Awaited<ReturnType<typeof getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet>>, TError = ErrorResponse>(
+ params: GetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet>>,
+          TError,
+          Awaited<ReturnType<typeof getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet<TData = Awaited<ReturnType<typeof getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet>>, TError = ErrorResponse>(
+ params: GetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet>>,
+          TError,
+          Awaited<ReturnType<typeof getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet<TData = Awaited<ReturnType<typeof getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet>>, TError = ErrorResponse>(
+ params: GetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary 读取模型推理强度能力
+ */
+
+export function useGetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet<TData = Awaited<ReturnType<typeof getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet>>, TError = ErrorResponse>(
+ params: GetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetSystemModelReasoningCapabilitiesApiV1SystemSettingsModelCapabilitiesReasoningGetQueryOptions(params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+export type probeSystemSettingsModelApiV1SystemSettingsModelProbePostResponse200 = {
   data: ApiResponseModelProbeResult
   status: 200
 }
@@ -499,7 +758,7 @@ export const getProbeSystemSettingsModelApiV1SystemSettingsModelProbePostUrl = (
 }
 
 /**
- * 按 reason / primary / light 槽位测试主模型网关或备用模型网关。主网关按当前主模型路由测试，备用网关强制 Chat Completions 并快速失败。
+ * 按 reason / primary / light 槽位测试主模型网关或备用模型网关，并复用真实运行时的模型与接口路由。
  * @summary 测试设置页模型连通性
  */
 export const probeSystemSettingsModelApiV1SystemSettingsModelProbePost = async (modelProbeRequest: ModelProbeRequest, options?: RequestInit): Promise<probeSystemSettingsModelApiV1SystemSettingsModelProbePostResponse> => {
@@ -565,6 +824,11 @@ export const useProbeSystemSettingsModelApiV1SystemSettingsModelProbePost = <TEr
   status: 200
 }
 
+export type submitFeedbackApiV1SystemFeedbackPostResponse401 = {
+  data: ErrorResponse
+  status: 401
+}
+
 export type submitFeedbackApiV1SystemFeedbackPostResponse422 = {
   data: HTTPValidationError
   status: 422
@@ -575,10 +839,20 @@ export type submitFeedbackApiV1SystemFeedbackPostResponse500 = {
   status: 500
 }
 
+export type submitFeedbackApiV1SystemFeedbackPostResponse502 = {
+  data: ErrorResponse
+  status: 502
+}
+
+export type submitFeedbackApiV1SystemFeedbackPostResponse503 = {
+  data: ErrorResponse
+  status: 503
+}
+
 export type submitFeedbackApiV1SystemFeedbackPostResponseSuccess = (submitFeedbackApiV1SystemFeedbackPostResponse200) & {
   headers: Headers;
 };
-export type submitFeedbackApiV1SystemFeedbackPostResponseError = (submitFeedbackApiV1SystemFeedbackPostResponse422 | submitFeedbackApiV1SystemFeedbackPostResponse500) & {
+export type submitFeedbackApiV1SystemFeedbackPostResponseError = (submitFeedbackApiV1SystemFeedbackPostResponse401 | submitFeedbackApiV1SystemFeedbackPostResponse422 | submitFeedbackApiV1SystemFeedbackPostResponse500 | submitFeedbackApiV1SystemFeedbackPostResponse502 | submitFeedbackApiV1SystemFeedbackPostResponse503) & {
   headers: Headers;
 };
 
@@ -610,7 +884,7 @@ export const submitFeedbackApiV1SystemFeedbackPost = async (feedbackRequest: Fee
 
 
 
-export const getSubmitFeedbackApiV1SystemFeedbackPostMutationOptions = <TError = HTTPValidationError | ErrorResponse,
+export const getSubmitFeedbackApiV1SystemFeedbackPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitFeedbackApiV1SystemFeedbackPost>>, TError,{data: FeedbackRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
 ): UseMutationOptions<Awaited<ReturnType<typeof submitFeedbackApiV1SystemFeedbackPost>>, TError,{data: FeedbackRequest}, TContext> => {
 
@@ -639,12 +913,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type SubmitFeedbackApiV1SystemFeedbackPostMutationResult = NonNullable<Awaited<ReturnType<typeof submitFeedbackApiV1SystemFeedbackPost>>>
     export type SubmitFeedbackApiV1SystemFeedbackPostMutationBody = FeedbackRequest
-    export type SubmitFeedbackApiV1SystemFeedbackPostMutationError = HTTPValidationError | ErrorResponse
+    export type SubmitFeedbackApiV1SystemFeedbackPostMutationError = ErrorResponse | HTTPValidationError
 
     /**
  * @summary 提交意见反馈
  */
-export const useSubmitFeedbackApiV1SystemFeedbackPost = <TError = HTTPValidationError | ErrorResponse,
+export const useSubmitFeedbackApiV1SystemFeedbackPost = <TError = ErrorResponse | HTTPValidationError,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof submitFeedbackApiV1SystemFeedbackPost>>, TError,{data: FeedbackRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
  , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof submitFeedbackApiV1SystemFeedbackPost>>,

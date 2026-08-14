@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
@@ -52,6 +53,7 @@ from app.workflows.digest.docgen.nodes import (
     build_document_backbone,
     build_chapter_execution_briefs,
     enhance_chapters,
+    generate_cover,
     lock_titles_for_chapters,
     prepare_knowledge_graph,
     repair_or_route,
@@ -1018,7 +1020,7 @@ async def test_chapter_brief_node_stops_without_fallback_when_llm_fails(monkeypa
     async def fake_publish(*args, **kwargs):
         return None
 
-    def fake_append_event(course_id, *, requested_at, event):
+    def fake_append_event(course_id, *, requested_at, build_group_id, event):
         captured_events.append(dict(event))
 
     monkeypatch.setattr(build_chapter_execution_briefs, "build_chapter_execution_brief", failing_build_chapter_execution_brief)
@@ -1038,6 +1040,7 @@ async def test_chapter_brief_node_stops_without_fallback_when_llm_fails(monkeypa
             {
                 "course_id": "course_state_contract",
                 "requested_at": datetime(2026, 4, 29, tzinfo=timezone.utc),
+                "build_group_id": "group-brief-fallback",
                 "build_session_id": "build-brief-fallback",
                 "docgen_context": DocGenContext(
                     course_id="course_state_contract",
@@ -1225,6 +1228,7 @@ def test_generation_sends_include_docgen_pipeline_artifacts() -> None:
         {
             "course_id": "course_state_contract",
             "requested_at": datetime(2026, 4, 29, tzinfo=timezone.utc),
+            "build_group_id": "group-generation-scope",
             "build_session_id": "build_generation_scope",
             "chapter_tasks": [
                 {"chapter_index": 1, "confirmed_title": "矩阵基础"},
@@ -1246,12 +1250,75 @@ def test_generation_sends_include_docgen_pipeline_artifacts() -> None:
     assert sends != "fail"
     first = sends[0].arg
     assert first["chapter_task"]["chapter_index"] == 1
+    assert first["build_group_id"] == "group-generation-scope"
     assert first["guideline"]["writing_rules"] == ["先定义再举例"]
     assert first["dispatch_table"]["items"][0]["preferred_sources"] == ["local://file/f1/section/s1"]
     assert first["summary_enhanced"]["high_confidence_evidence_units"][0]["evidence_id"] == "e1"
     assert first["chapters_enhanced"][0]["evidence_ids"] == ["e1"]
     assert first["user_profile"]["prompt_addendum"] == "关注易错点。"
     assert "chapter_tasks" not in first
+
+
+def test_chapter_preview_buffer_forwards_build_generation(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: list[tuple[str, str | None]] = []
+
+    monkeypatch.setattr(
+        generate_chapters,
+        "upsert_knowledge_build_chapter_progress",
+        lambda _course_id, **kwargs: captured.append(("progress", kwargs.get("build_group_id"))),
+    )
+    monkeypatch.setattr(
+        generate_chapters,
+        "upsert_knowledge_build_chapter_preview",
+        lambda _course_id, **kwargs: captured.append(("preview", kwargs.get("build_group_id"))),
+    )
+
+    buffer = generate_chapters._ChapterPreviewPersistBuffer(
+        course_id="course_state_contract",
+        requested_at=datetime(2026, 4, 29, tzinfo=timezone.utc),
+        build_group_id="group-preview-buffer",
+        chapter_index=1,
+    )
+    buffer._persist_once(
+        chapter_progress={"chapter_index": 1, "status": "drafting"},
+        chapter_preview={"chapter_index": 1, "excerpt": "draft"},
+    )
+
+    assert captured == [
+        ("progress", "group-preview-buffer"),
+        ("preview", "group-preview-buffer"),
+    ]
+
+
+@pytest.mark.anyio
+async def test_generate_cover_node_forwards_build_generation(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    async def fake_generate_cover(**kwargs):
+        captured.update(kwargs)
+        return None
+
+    async def fake_publish_progress(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(generate_cover, "generate_docgen_cover_artifact", fake_generate_cover)
+    monkeypatch.setattr(generate_cover, "publish_docgen_progress", fake_publish_progress)
+
+    node = generate_cover.build_generate_cover_node(
+        context=WorkflowContext(workflow_name="digest.docgen", course_id="course_state_contract")
+    )
+    await node(
+        {
+            "course_id": "course_state_contract",
+            "requested_at": datetime(2026, 4, 29, tzinfo=timezone.utc),
+            "build_group_id": "group-cover",
+            "build_session_id": "session-cover",
+            "document_context": {"course_name": "线性代数"},
+        }
+    )
+
+    assert captured["build_group_id"] == "group-cover"
+    assert captured["build_session_id"] == "session-cover"
 
 
 @pytest.mark.anyio
@@ -1333,6 +1400,7 @@ def test_review_sends_only_single_chapter_payload() -> None:
         {
             "course_id": "course_state_contract",
             "requested_at": datetime(2026, 4, 29, tzinfo=timezone.utc),
+            "build_group_id": "group-review-scope",
             "build_session_id": "build_review_scope",
             "enhanced_chapter_drafts": [
                 {"chapter_index": 1, "title": "第一章", "markdown": "# 第一章\n\n正文"},
@@ -1367,6 +1435,7 @@ def test_review_sends_only_single_chapter_payload() -> None:
     )
 
     assert sends != "fail"
+    assert [item.arg["build_group_id"] for item in sends] == ["group-review-scope", "group-review-scope"]
     assert [item.arg["review_chapter_task"]["chapter_index"] for item in sends] == [1, 2]
     assert [item.arg["review_claim_ledger"]["chapter_index"] for item in sends] == [1, 2]
     assert sends[0].arg["guideline"]["writing_rules"] == ["先定义再例题"]
@@ -1863,7 +1932,7 @@ async def test_repair_node_refreshes_kg_prefetch_even_without_patch(monkeypatch)
 
 
 @pytest.mark.anyio
-async def test_prepare_knowledge_graph_node_starts_missing_prefetch_from_reviewed_chapters(monkeypatch) -> None:
+async def test_prepare_knowledge_graph_starts_missing_prefetch_but_defers_quality_ready_draft(monkeypatch) -> None:
     await_calls = 0
     captured: dict[str, object] = {}
 
@@ -1891,20 +1960,6 @@ async def test_prepare_knowledge_graph_node_starts_missing_prefetch_from_reviewe
     async def fake_publish_docgen_progress(*args, **kwargs):
         captured["progress_payload"] = kwargs.get("payload")
 
-    def fake_persist_draft_graph_before_publish(**kwargs):
-        captured["early_persist_draft"] = kwargs.get("draft")
-        return {
-            "ok": True,
-            "skipped": False,
-            "build_revision_no": 7,
-            "unit_count": 2,
-            "created_unit_count": 2,
-            "updated_unit_count": 0,
-            "edge_count": 1,
-            "created_edge_count": 1,
-            "updated_edge_count": 0,
-        }
-
     monkeypatch.setattr(
         prepare_knowledge_graph,
         "get_settings",
@@ -1917,8 +1972,6 @@ async def test_prepare_knowledge_graph_node_starts_missing_prefetch_from_reviewe
     monkeypatch.setattr(prepare_knowledge_graph, "update_knowledge_build_status", lambda *args, **kwargs: None)
     monkeypatch.setattr(prepare_knowledge_graph, "append_knowledge_build_recent_event", lambda *args, **kwargs: None)
     monkeypatch.setattr(prepare_knowledge_graph, "publish_docgen_progress", fake_publish_docgen_progress)
-    monkeypatch.setattr(prepare_knowledge_graph, "_persist_draft_graph_before_publish", fake_persist_draft_graph_before_publish)
-    monkeypatch.setattr(prepare_knowledge_graph, "publish_workflow_stream_event", lambda *args, **kwargs: captured.setdefault("graph_delta", kwargs))
 
     node = prepare_knowledge_graph.build_prepare_knowledge_graph_node(
         context=WorkflowContext(workflow_name="digest.docgen", course_id="course_state_contract")
@@ -1970,20 +2023,123 @@ async def test_prepare_knowledge_graph_node_starts_missing_prefetch_from_reviewe
     assert result["kg_prefetch_metrics"]["docgen_kg_profile_ready_unit_count"] >= 1
     assert result["kg_prefetch_metrics"]["docgen_kg_structure_edge_count"] >= 1
     assert result["kg_prefetch_metrics"]["docgen_kg_examine_profile_ready"] == 1
-    assert result["kg_draft_early_persist_metrics"]["unit_count"] == 2
-    assert result["kg_prefetch_metrics"]["docgen_kg_pre_publish_unit_count"] == 2
-    assert result["kg_prefetch_metrics"]["docgen_kg_pre_publish_edge_count"] == 1
+    assert result["kg_draft_early_persist_metrics"] == {
+        "ok": True,
+        "skipped": True,
+        "skip_reason": "deferred_until_document_publish",
+        "persisted": 0,
+        "unit_count": 0,
+        "created_unit_count": 0,
+        "updated_unit_count": 0,
+        "edge_count": 0,
+        "created_edge_count": 0,
+        "updated_edge_count": 0,
+    }
+    assert result["kg_prefetch_metrics"]["docgen_kg_pre_publish_unit_count"] == 0
+    assert result["kg_prefetch_metrics"]["docgen_kg_pre_publish_edge_count"] == 0
+    assert result["kg_prefetch_metrics"]["docgen_kg_pre_publish_persisted"] == 0
     assert await_calls == 2
     assert "修补后的章节内容。" in captured["chapters"][0]["markdown"]
     assert captured["docgen_manifest"]["preliminary_kg"]["nodes"][0]["name"] == "矩阵乘法"
-    assert captured["early_persist_draft"]["quality_status"] == "ready"
     assert captured["progress_payload"]["kg_prefetch_ready"] is True
     assert captured["progress_payload"]["docgen_kg_draft_node_count"] >= 2
     assert captured["progress_payload"]["docgen_kg_quality_status"] == "ready"
     assert captured["progress_payload"]["docgen_kg_quality_audit"]["missing_chapter_count"] == 0
     assert captured["progress_payload"]["docgen_kg_examine_profile_ready"] is True
-    assert captured["progress_payload"]["docgen_kg_pre_publish_unit_count"] == 2
-    assert captured["progress_payload"]["docgen_kg_pre_publish_edge_count"] == 1
+    assert captured["progress_payload"]["docgen_kg_pre_publish_unit_count"] == 0
+    assert captured["progress_payload"]["docgen_kg_pre_publish_edge_count"] == 0
+    assert captured["progress_payload"]["docgen_kg_pre_publish_persisted"] == 0
+
+
+def _prepare_knowledge_graph_finalize_failure_case(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    progress_failure: BaseException,
+):
+    prefetch_metrics = {
+        "prefetch_status": "completed",
+        "prefetch_section_count": 1,
+        "prefetch_failed_section_count": 0,
+        "prefetch_ready": 1,
+    }
+    draft = {
+        "node_count": 1,
+        "edge_count": 0,
+        "chapter_coverage_ratio": 1.0,
+        "fast_visible_ready": True,
+        "quality_ready": True,
+        "quality_status": "ready",
+        "quality_score": 1.0,
+        "quality_audit": {},
+    }
+
+    async def fake_await_prefetch(*_args, **_kwargs):
+        return dict(prefetch_metrics)
+
+    async def fail_progress(*_args, **_kwargs):
+        raise progress_failure
+
+    monkeypatch.setattr(
+        prepare_knowledge_graph,
+        "get_settings",
+        lambda: SimpleNamespace(
+            knowledge_graph=SimpleNamespace(sync_after_docgen=True, prefetch_during_docgen=True)
+        ),
+    )
+    monkeypatch.setattr(prepare_knowledge_graph, "_await_prefetch", fake_await_prefetch)
+    monkeypatch.setattr(
+        prepare_knowledge_graph,
+        "snapshot_docgen_kg_prefetch",
+        lambda **_kwargs: ([], dict(prefetch_metrics)),
+    )
+    monkeypatch.setattr(prepare_knowledge_graph, "build_docgen_kg_draft", lambda **_kwargs: dict(draft))
+    monkeypatch.setattr(prepare_knowledge_graph, "update_knowledge_build_status", lambda *args, **kwargs: None)
+    monkeypatch.setattr(prepare_knowledge_graph, "append_knowledge_build_recent_event", lambda *args, **kwargs: None)
+    monkeypatch.setattr(prepare_knowledge_graph, "publish_docgen_progress", fail_progress)
+
+    node = prepare_knowledge_graph.build_prepare_knowledge_graph_node(
+        context=WorkflowContext(workflow_name="digest.docgen", course_id="course_state_contract")
+    )
+    state = {
+        "course_id": "course_state_contract",
+        "requested_at": datetime(2026, 4, 29, tzinfo=timezone.utc),
+        "build_group_id": "build-group-finalize",
+        "build_session_id": "build-session-finalize",
+        "digest_mode": "systematic",
+    }
+    return node, state
+
+
+@pytest.mark.anyio
+async def test_prepare_knowledge_graph_routes_finalize_failure_to_rollback(monkeypatch) -> None:
+    node, state = _prepare_knowledge_graph_finalize_failure_case(
+        monkeypatch,
+        progress_failure=RuntimeError("progress store unavailable"),
+    )
+
+    result = await node(state)
+
+    assert result["error"] == "knowledge_graph_prepare_finalize_failed"
+    assert result["cancel_after_rollback"] is False
+    assert result["kg_draft_early_persist_metrics"]["skip_reason"] == "deferred_until_document_publish"
+    assert result["kg_draft_early_persist_metrics"]["persisted"] == 0
+    assert graph.route_after_step(result) == "fail"
+
+
+@pytest.mark.anyio
+async def test_prepare_knowledge_graph_routes_cancellation_to_rollback_state(monkeypatch) -> None:
+    node, state = _prepare_knowledge_graph_finalize_failure_case(
+        monkeypatch,
+        progress_failure=asyncio.CancelledError(),
+    )
+
+    result = await node(state)
+
+    assert result["error"] == "knowledge_build_cancelled"
+    assert result["cancel_after_rollback"] is True
+    assert result["kg_draft_early_persist_metrics"]["skip_reason"] == "deferred_until_document_publish"
+    assert result["kg_draft_early_persist_metrics"]["persisted"] == 0
+    assert graph.route_after_step(result) == "fail"
 
 
 @pytest.mark.anyio
@@ -2012,20 +2168,6 @@ async def test_prepare_knowledge_graph_refreshes_after_locked_title_changes(monk
     async def fake_publish_docgen_progress(*args, **kwargs):
         captured["progress_payload"] = kwargs.get("payload")
 
-    def fake_persist_draft_graph_before_publish(**kwargs):
-        captured["early_persist_draft"] = kwargs.get("draft")
-        return {
-            "ok": True,
-            "skipped": False,
-            "build_revision_no": 9,
-            "unit_count": 2,
-            "created_unit_count": 1,
-            "updated_unit_count": 1,
-            "edge_count": 1,
-            "created_edge_count": 1,
-            "updated_edge_count": 0,
-        }
-
     monkeypatch.setattr(
         prepare_knowledge_graph,
         "get_settings",
@@ -2038,8 +2180,6 @@ async def test_prepare_knowledge_graph_refreshes_after_locked_title_changes(monk
     monkeypatch.setattr(prepare_knowledge_graph, "update_knowledge_build_status", lambda *args, **kwargs: None)
     monkeypatch.setattr(prepare_knowledge_graph, "append_knowledge_build_recent_event", lambda *args, **kwargs: None)
     monkeypatch.setattr(prepare_knowledge_graph, "publish_docgen_progress", fake_publish_docgen_progress)
-    monkeypatch.setattr(prepare_knowledge_graph, "_persist_draft_graph_before_publish", fake_persist_draft_graph_before_publish)
-    monkeypatch.setattr(prepare_knowledge_graph, "publish_workflow_stream_event", lambda *args, **kwargs: captured.setdefault("graph_delta", kwargs))
 
     node = prepare_knowledge_graph.build_prepare_knowledge_graph_node(
         context=WorkflowContext(workflow_name="digest.docgen", course_id="course_state_contract")
@@ -2094,7 +2234,9 @@ async def test_prepare_knowledge_graph_refreshes_after_locked_title_changes(monk
     assert prefetch_kwargs["docgen_manifest"]["kg_prefetch_phase"] == "final_locked_markdown"
     assert prefetch_kwargs["docgen_manifest"]["title_review_report"]["changed_count"] == 1
     assert result["docgen_kg_draft"]["covered_chapter_indices"] == [1]
-    assert captured["early_persist_draft"]["fast_visible_ready"] is True
+    assert result["docgen_kg_draft"]["fast_visible_ready"] is True
+    assert result["kg_draft_early_persist_metrics"]["skip_reason"] == "deferred_until_document_publish"
+    assert result["kg_prefetch_metrics"]["docgen_kg_pre_publish_persisted"] == 0
 
 
 @pytest.mark.anyio
@@ -2232,20 +2374,6 @@ async def test_prepare_knowledge_graph_uses_ready_draft_when_prefetch_is_still_r
     async def fake_publish_docgen_progress(*args, **kwargs):
         captured["progress_payload"] = kwargs.get("payload")
 
-    def fake_persist_draft_graph_before_publish(**kwargs):
-        captured["early_persist_draft"] = kwargs.get("draft")
-        return {
-            "ok": True,
-            "skipped": False,
-            "build_revision_no": 12,
-            "unit_count": 3,
-            "created_unit_count": 3,
-            "updated_unit_count": 0,
-            "edge_count": 2,
-            "created_edge_count": 2,
-            "updated_edge_count": 0,
-        }
-
     monkeypatch.setattr(
         prepare_knowledge_graph,
         "get_settings",
@@ -2258,8 +2386,6 @@ async def test_prepare_knowledge_graph_uses_ready_draft_when_prefetch_is_still_r
     monkeypatch.setattr(prepare_knowledge_graph, "update_knowledge_build_status", lambda *args, **kwargs: None)
     monkeypatch.setattr(prepare_knowledge_graph, "append_knowledge_build_recent_event", lambda *args, **kwargs: None)
     monkeypatch.setattr(prepare_knowledge_graph, "publish_docgen_progress", fake_publish_docgen_progress)
-    monkeypatch.setattr(prepare_knowledge_graph, "_persist_draft_graph_before_publish", fake_persist_draft_graph_before_publish)
-    monkeypatch.setattr(prepare_knowledge_graph, "publish_workflow_stream_event", lambda *args, **kwargs: None)
 
     node = prepare_knowledge_graph.build_prepare_knowledge_graph_node(
         context=WorkflowContext(workflow_name="digest.docgen", course_id="course_state_contract")
@@ -2298,8 +2424,10 @@ async def test_prepare_knowledge_graph_uses_ready_draft_when_prefetch_is_still_r
     assert result["kg_prefetch_ready"] is False
     assert result["docgen_kg_draft"]["quality_ready"] is True
     assert result["docgen_kg_draft"]["quality_status"] == "ready"
-    assert result["kg_prefetch_metrics"]["docgen_kg_pre_publish_unit_count"] == 3
-    assert captured["early_persist_draft"]["quality_ready"] is True
+    assert result["kg_prefetch_metrics"]["docgen_kg_pre_publish_unit_count"] == 0
+    assert result["kg_prefetch_metrics"]["docgen_kg_pre_publish_edge_count"] == 0
+    assert result["kg_prefetch_metrics"]["docgen_kg_pre_publish_persisted"] == 0
+    assert result["kg_draft_early_persist_metrics"]["skip_reason"] == "deferred_until_document_publish"
     assert captured["progress_payload"]["docgen_kg_quality_status"] == "ready"
 
 

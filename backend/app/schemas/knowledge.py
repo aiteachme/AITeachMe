@@ -453,6 +453,60 @@ class DocGenGetResponse(BaseModel):
     digest_mode: str | None = Field(default=None, description="Digest mode frozen in the confirmed build plan.")
 
 
+class KnowledgeDocPublishedHeadingResponse(BaseModel):
+    """One root-level heading in the published Markdown."""
+
+    id: str = Field(description="Stable heading id matching the frontend Markdown renderer.")
+    text: str = Field(description="Rendered heading text used to derive the id.")
+    level: int = Field(ge=1, le=6, description="Markdown heading level.")
+    chunk_index: int = Field(ge=0, description="Zero-based chunk containing this heading.")
+
+
+class KnowledgeDocPublishedChunkSummary(BaseModel):
+    """Lightweight metadata for one published Markdown chunk."""
+
+    chunk_index: int = Field(ge=0, description="Zero-based chunk index.")
+    chapter_index: int = Field(description="DocGen chapter index represented by this chunk.")
+    title: str = Field(description="Published chapter title.")
+    heading_id: str = Field(description="Stable id of the chapter H1 heading.")
+    char_count: int = Field(ge=0, description="Exact number of Markdown characters in this chunk.")
+
+
+class KnowledgeDocsPublishedManifestResponse(BaseModel):
+    """Version-pinned table of contents for the current published document."""
+
+    exists: bool = Field(default=False, description="Whether a current publication exists.")
+    publication_id: str | None = Field(
+        default=None,
+        description="Opaque id for the exact current publication and overlay snapshot.",
+    )
+    version_no: int = Field(default=0, ge=0, description="Published DocGen version number.")
+    updated_at: datetime | None = Field(default=None, description="Publication update timestamp.")
+    chunks: list[KnowledgeDocPublishedChunkSummary] = Field(
+        default_factory=list,
+        description="Ordered chapter chunks; concatenating their Markdown preserves the source exactly.",
+    )
+    headings: list[KnowledgeDocPublishedHeadingResponse] = Field(
+        default_factory=list,
+        description="Ordered root-level heading index across all chunks.",
+    )
+
+
+class KnowledgeDocPublishedChunkResponse(BaseModel):
+    """One chunk from an exact current publication snapshot."""
+
+    publication_id: str = Field(description="Publication id supplied by the manifest.")
+    version_no: int = Field(ge=1, description="Published DocGen version number.")
+    chunk_index: int = Field(ge=0, description="Zero-based chunk index.")
+    chapter_index: int = Field(description="DocGen chapter index represented by this chunk.")
+    title: str = Field(description="Published chapter title.")
+    markdown: str = Field(description="Unmodified Markdown slice for this chunk.")
+    headings: list[KnowledgeDocPublishedHeadingResponse] = Field(
+        default_factory=list,
+        description="Root-level headings contained in this chunk.",
+    )
+
+
 class KnowledgeDocSelectionContext(BaseModel):
     """Context captured around one selected knowledge-doc fragment."""
 
