@@ -5,13 +5,14 @@ from __future__ import annotations
 import html
 import mimetypes
 import re
+import uuid
 from html.parser import HTMLParser
 from pathlib import Path as FilePath
 from urllib.parse import quote
 
-from fastapi import APIRouter, Body, Depends, File, Form, Path, Query, Request, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Path, Query, Request, UploadFile
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlmodel import Session
 
 from app.api.deps import CurrentUserContext, get_current_user_context, get_db
@@ -19,7 +20,18 @@ from app.api.openapi import build_error_responses
 from app.repositories.files_repo import get_raw_file_by_id_for_user
 from app.schemas.common import ApiResponse, ok_response
 from app.schemas.files import FileDeleteData, FileDeleteRequest, FilesData, FilesUploadData
+from app.shared.infra.execution import TracedExecutionContext
+from app.shared.infra.llm_support import run_llm_tasks
+from app.shared.infra.llm_support.model_choices import normalize_runtime_model_override, use_runtime_model_override
+from app.shared.infra.observability.trace import (
+    langsmith_trace,
+    llm_trace_scope,
+    sanitize_langsmith_input,
+    sanitize_langsmith_output,
+)
 from app.shared.infra.storage import get_content_store
+from app.shared.infra.workflow.context import WorkflowContext
+from app.workflows.digest.docgen.lib.interactive_html import generate_selection_interactive_html
 from app.workflows.ingest.intake import (
     delete_user_files,
     list_user_files,
@@ -535,22 +547,56 @@ async def delete_highlight(
 
 
 class InteractiveGenerateRequest(BaseModel):
-    selected_text: str
-    description: str | None = None
-    segments: list[dict[str, float]] | None = None
+    selected_text: str = Field(min_length=1, max_length=2000)
+    description: str | None = Field(default=None, max_length=1000)
+    model: str | None = Field(default=None, max_length=120)
+    replace_highlight_id: int | None = Field(default=None, ge=1)
+    segments: list[dict[str, float]] | None = Field(default=None, max_length=200)
 
 
 class InteractiveGenerateData(BaseModel):
     html: str
     highlight_id: int | None = None
     highlight: HighlightData | None = None
+    title: str | None = None
+    widget_type: str | None = None
+    widget_outline: dict[str, object] | None = None
+    widget_config: dict[str, object] | None = None
+    language_directive: str | None = None
+
+
+def _library_selection_excerpt(markdown_content: str, *, selected_text: str, limit: int = 5000) -> tuple[str, str, str]:
+    context_before = ""
+    context_after = ""
+    idx = markdown_content.find(selected_text)
+    if idx >= 0:
+        half = max(400, limit // 2)
+        start = max(0, idx - half)
+        end = min(len(markdown_content), idx + len(selected_text) + half)
+        context_before = markdown_content[start:idx]
+        context_after = markdown_content[idx + len(selected_text) : end]
+        excerpt = markdown_content[start:end]
+    else:
+        excerpt = markdown_content[:limit]
+    return context_before, context_after, excerpt[:limit]
+
+
+def _library_anchor_title(markdown_content: str, *, selected_text: str) -> str:
+    idx = markdown_content.find(selected_text)
+    if idx < 0:
+        return "资料库选区"
+    headings = list(re.finditer(r"^(?P<marks>#{1,6})\s+(?P<title>.+?)\s*$", markdown_content[:idx], re.MULTILINE))
+    if not headings:
+        return "资料库选区"
+    title = re.sub(r"\s+", " ", headings[-1].group("title")).strip()
+    return title or "资料库选区"
 
 
 @router.post(
     "/{file_id}/interactive",
     response_model=ApiResponse[InteractiveGenerateData],
     summary="Generate interactive content from selected text",
-    responses=build_error_responses([400, 404, 500]),
+    responses=build_error_responses([400, 404, 422, 500, 503]),
 )
 async def generate_interactive(
     file_id: str = Path(...),
@@ -558,6 +604,9 @@ async def generate_interactive(
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[InteractiveGenerateData]:
+    from sqlmodel import select
+    from app.models.chat import Highlight
+
     raw_file = get_raw_file_by_id_for_user(session, user_id=user.user_id, file_id=file_id)
     if raw_file is None:
         return Response(status_code=404, content=b"Not found")
@@ -571,76 +620,163 @@ async def generate_interactive(
     if not selected_text:
         return Response(status_code=400, content=b"Selected text is required")
 
-    context_before = ""
-    context_after = ""
-    idx = markdown_content.find(selected_text)
-    if idx >= 0:
-        start = max(0, idx - 500)
-        end = min(len(markdown_content), idx + len(selected_text) + 500)
-        context_before = markdown_content[start:idx]
-        context_after = markdown_content[idx + len(selected_text) : end]
-
-    # 使用 LLM 生成交互式内容
-    from app.shared.infra.llm_support import acompletion
-    system_prompt = """你是一个教学内容生成助手。根据用户选中的文本和可选的描述，生成一个交互式的学习内容。
-
-要求：
-1. 生成一个完整的 HTML 片段（不需要 html/head/body 标签）
-2. 内容要有趣、交互性强，可以是：测验题、填空题、对比表格、思维导图、代码示例等
-3. 使用内联 CSS 样式，不要依赖外部资源
-4. 不要输出 script 标签、on* 事件属性、iframe、外部资源或 javascript: 链接；交互优先用 details/summary、checkbox/radio + CSS 等无脚本结构
-5. 风格简洁现代，适合暗色和亮色主题
-6. 直接输出 HTML，不要加 markdown 代码块标记"""
-
-    user_message = f"""选中的文本：
-{selected_text}
-
-上下文（选中前）：
-{context_before[-200:] if context_before else "无"}
-
-上下文（选中后）：
-{context_after[:200] if context_after else "无"}"""
-
-    if body.description:
-        user_message += f"\n\n用户要求：{body.description}"
-
-    try:
-        html_content = await acompletion(
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_message},
-            ],
-            model="primary",
-            temperature=0.7,
-            max_tokens=2000,
-            extra_metadata={"substep": "library_file_interactive"},
+    context_before, context_after, section_excerpt = _library_selection_excerpt(
+        markdown_content,
+        selected_text=selected_text,
+    )
+    user_prompt = body.description.strip() if body.description else ""
+    model_override = normalize_runtime_model_override(body.model)
+    anchor_title = _library_anchor_title(markdown_content, selected_text=selected_text)
+    heading_path = [item for item in [raw_file.filename, anchor_title] if item]
+    replace_highlight: Highlight | None = None
+    if body.replace_highlight_id is not None:
+        stmt = select(Highlight).where(
+            Highlight.id == body.replace_highlight_id,
+            Highlight.user_id == user.user_id,
+            Highlight.file_id == file_id,
         )
-        html_content = html_content.strip()
-        # 清理 markdown 代码块标记
-        if html_content.startswith("```"):
-            html_content = html_content.split("\n", 1)[1] if "\n" in html_content else html_content[3:]
-        if html_content.endswith("```"):
-            html_content = html_content[:-3]
-        html_content = html_content.strip()
-        html_content = _sanitize_interactive_html(html_content)
+        replace_highlight = session.exec(stmt).first()
+        if replace_highlight is None:
+            return Response(status_code=404, content=b"Highlight not found")
+
+    build_session_id = f"library-selection-{uuid.uuid4().hex[:12]}"
+    trace_course_id = f"library:{user.user_id}"
+    workflow_context = WorkflowContext(
+        workflow_name="library.selection_interactive",
+        course_id=trace_course_id,
+        metadata={
+            "lane": "library",
+            "user_id": user.user_id,
+            "file_id": file_id,
+            "filename": raw_file.filename,
+            "asset_kind": "interactive_html",
+            "model_override": model_override or "",
+        },
+    )
+    traced_context = TracedExecutionContext(
+        course_id=trace_course_id,
+        build_session_id=build_session_id,
+        workflow_context=workflow_context,
+        digest_mode="systematic",
+        teaching_action="library_selection_interactive_html",
+        asset_kind="interactive_html",
+        extra_metadata={
+            "user_id": user.user_id,
+            "file_id": file_id,
+            "filename": raw_file.filename,
+            "model_override": model_override or "",
+        },
+    )
+    try:
+        trace_metadata = traced_context.trace_metadata(
+            docgen_stage="interactive_html_generation",
+            selected_chars=len(selected_text),
+            prompt_chars=len(user_prompt),
+            context_before_chars=len(context_before),
+            context_after_chars=len(context_after),
+            model_override=model_override or "",
+        )
+        trace_inputs = sanitize_langsmith_input(
+            {
+                "file_id": file_id,
+                "filename": raw_file.filename,
+                "anchor_title": anchor_title,
+                "heading_path": heading_path,
+                "selected_text_preview": selected_text[:800],
+                "prompt": user_prompt,
+                "model_override": model_override or "",
+            },
+            field_name="library_interactive_html_generation_inputs",
+        )
+        with llm_trace_scope(
+            course_id=trace_course_id,
+            build_session_id=build_session_id,
+            workflow=workflow_context.workflow_name,
+            lane="library",
+            node="library_files.interactive_html_generation",
+        ):
+            with langsmith_trace(
+                name="资料库：划选交互 HTML 生成",
+                run_type="chain",
+                inputs=trace_inputs,
+                course_id=trace_course_id,
+                build_session_id=build_session_id,
+                workflow=workflow_context.workflow_name,
+                lane="library",
+                node="library_files.interactive_html_generation",
+                extra_metadata=trace_metadata,
+                extra_tags=["library:interactive_html"],
+            ) as trace_run:
+                with use_runtime_model_override(model_override):
+                    generated = (
+                        await run_llm_tasks(
+                            [None],
+                            lambda _item: generate_selection_interactive_html(
+                                traced_context=traced_context,
+                                anchor_title=anchor_title,
+                                heading_path=heading_path,
+                                selected_text=selected_text,
+                                user_prompt=user_prompt,
+                                section_excerpt=section_excerpt,
+                                docgen_stage="library_interactive_html_selection",
+                                extra_metadata={
+                                    "library_file_id": file_id,
+                                    "library_filename": raw_file.filename,
+                                    "model_override": model_override or "",
+                                },
+                            ),
+                        )
+                    )[0]
+                if trace_run is not None:
+                    trace_run.end(
+                        outputs=sanitize_langsmith_output(
+                            {
+                                "title": generated.title,
+                                "html_chars": len(generated.html),
+                                "validation_issue_count": len(generated.validation_issues),
+                                "quality_issue_count": len(generated.quality_issues),
+                                "widget_type": generated.widget_type,
+                            },
+                            field_name="library_interactive_html_generation_outputs",
+                        )
+                    )
+        html_content = generated.html
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
         import structlog
         logger = structlog.get_logger()
-        logger.error("interactive_generation_failed", error=str(exc))
-        return Response(status_code=500, content=b"Generation failed")
+        logger.warning(
+            "library_interactive_generation_failed",
+            user_id=user.user_id,
+            file_id=file_id,
+            error=str(exc)[:240],
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="交互页生成暂时失败，可能是模型服务连接中断。请稍后重试或换一段选区再生成。",
+        ) from exc
 
-    # 创建高亮记录
-    from app.models.chat import Highlight
-    highlight = Highlight(
-        user_id=user.user_id,
-        file_id=file_id,
-        selected_text=selected_text,
-        color="sky",
-        description=body.description.strip() if body.description else None,
-        interactive_html=html_content,
-        segments_json=_clean_highlight_segments(body.segments),
-    )
-    session.add(highlight)
+    cleaned_segments = _clean_highlight_segments(body.segments)
+    if replace_highlight is not None:
+        highlight = replace_highlight
+        highlight.selected_text = selected_text
+        highlight.color = "sky"
+        highlight.description = body.description.strip() if body.description else highlight.description
+        highlight.interactive_html = html_content
+        if cleaned_segments is not None:
+            highlight.segments_json = cleaned_segments
+    else:
+        highlight = Highlight(
+            user_id=user.user_id,
+            file_id=file_id,
+            selected_text=selected_text,
+            color="sky",
+            description=body.description.strip() if body.description else None,
+            interactive_html=html_content,
+            segments_json=cleaned_segments,
+        )
+        session.add(highlight)
     session.commit()
     session.refresh(highlight)
 
@@ -648,4 +784,9 @@ async def generate_interactive(
         html=html_content,
         highlight_id=highlight.id,
         highlight=_highlight_data(highlight),
+        title=generated.title,
+        widget_type=generated.widget_type or None,
+        widget_outline=generated.widget_outline or None,
+        widget_config=generated.widget_config or None,
+        language_directive=generated.language_directive or None,
     ))

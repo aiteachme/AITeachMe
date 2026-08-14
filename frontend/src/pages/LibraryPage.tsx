@@ -2,6 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as R
 import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
+import {
+  ChatModelSelect,
+  toChatRequestModel,
+  useGlobalChatModelChoice,
+} from "../components/chat/ChatModelSelect";
 import { LibraryMarkdownViewer } from "../components/knowledge-docs/LibraryMarkdownViewer";
 import {
   AlertCircle,
@@ -18,7 +23,9 @@ import {
   HardDrive,
   Highlighter,
   Loader2,
+  Maximize2,
   MessageSquare,
+  Minimize2,
   MoreHorizontal,
   Search,
   RefreshCw,
@@ -40,6 +47,7 @@ import {
   IMAGE_UPLOAD_PARSER_UNAVAILABLE_TITLE,
   partitionUploadFilesForRuntime,
 } from "../lib/fileUpload";
+import { patchHtmlForIframe } from "../lib/interactiveHtml";
 import { cn } from "../lib/utils";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
 
@@ -69,6 +77,9 @@ const FILE_SORT_OPTIONS: Array<SelectOption<FileSortKey>> = [
   { value: "name_asc", label: "文件名 A-Z" },
   { value: "size_desc", label: "文件大小" },
 ];
+
+// Backend owns the LLM timeouts; axios should not abort while generation keeps running server-side.
+const LIBRARY_INTERACTIVE_API_TIMEOUT_MS = 0;
 
 const fileNameCollator = new Intl.Collator("zh-Hans-CN", {
   numeric: true,
@@ -144,6 +155,8 @@ interface LibraryHighlight {
   color: string;
   description?: string | null;
   interactive_html?: string | null;
+  interactive_status?: "generating" | "failed" | null;
+  interactive_error?: string | null;
   segments?: HighlightSegment[] | null;
   created_at: string;
 }
@@ -169,6 +182,84 @@ interface TextSearchPosition {
 interface TextSearchIndex {
   text: string;
   positions: Array<TextSearchPosition | null>;
+}
+
+function getInteractiveHighlightStatus(highlight: LibraryHighlight): "ready" | "generating" | "failed" | null {
+  if (highlight.interactive_status === "generating") return "generating";
+  if (highlight.interactive_status === "failed") return "failed";
+  if (highlight.interactive_html) return "ready";
+  return null;
+}
+
+function isInteractiveHighlight(highlight: LibraryHighlight): boolean {
+  return getInteractiveHighlightStatus(highlight) !== null;
+}
+
+function patchLibraryInteractivePreviewHtml(html: string, scale: number): string {
+  const patched = patchHtmlForIframe(html);
+  const safeScale = Math.max(0.45, Math.min(1, Number.isFinite(scale) ? scale : 0.72));
+  const fitCss = `<style data-aiteachme-library-fit-preview>
+  html {
+    overflow: hidden !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+  }
+  body {
+    overflow: auto !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    min-width: 100% !important;
+    box-sizing: border-box;
+    zoom: ${safeScale} !important;
+    transform-origin: top left;
+    overscroll-behavior: contain;
+  }
+</style>`;
+  const fitScript = `<script data-aiteachme-library-fit-script>
+(function () {
+  var scale = ${JSON.stringify(safeScale)};
+  function applyFit() {
+    try {
+      document.documentElement.style.setProperty('overflow', 'hidden', 'important');
+      document.documentElement.style.setProperty('width', '100%', 'important');
+      document.documentElement.style.setProperty('height', '100%', 'important');
+      document.documentElement.style.setProperty('min-height', '0', 'important');
+      document.documentElement.style.setProperty('min-width', '100%', 'important');
+      document.body.style.setProperty('overflow', 'auto', 'important');
+      document.body.style.setProperty('box-sizing', 'border-box', 'important');
+      document.body.style.setProperty('zoom', String(scale), 'important');
+      document.body.style.setProperty('width', '100%', 'important');
+      document.body.style.setProperty('height', '100%', 'important');
+      document.body.style.setProperty('min-height', '0', 'important');
+      document.body.style.setProperty('min-width', '100%', 'important');
+      document.body.style.setProperty('overscroll-behavior', 'contain', 'important');
+    } catch (e) {}
+  }
+  applyFit();
+  window.addEventListener('load', applyFit);
+  window.setTimeout(applyFit, 120);
+  window.setTimeout(applyFit, 600);
+})();
+</script>`;
+  const withCss = (() => {
+    const closingHeadIndex = patched.search(/<\/head\s*>/i);
+    if (closingHeadIndex >= 0) {
+      return patched.slice(0, closingHeadIndex) + `\n${fitCss}\n` + patched.slice(closingHeadIndex);
+    }
+    const headWithAttrs = patched.match(/<head(?:\s[^>]*)?>/i);
+    if (headWithAttrs?.index !== undefined) {
+      const insertPos = headWithAttrs.index + headWithAttrs[0].length;
+      return patched.slice(0, insertPos) + `\n${fitCss}` + patched.slice(insertPos);
+    }
+    return `${fitCss}\n${patched}`;
+  })();
+  const closingBodyIndex = withCss.search(/<\/body\s*>/i);
+  if (closingBodyIndex >= 0) {
+    return withCss.slice(0, closingBodyIndex) + `\n${fitScript}\n` + withCss.slice(closingBodyIndex);
+  }
+  return `${withCss}\n${fitScript}`;
 }
 
 async function fetchHighlights(fileId: string): Promise<LibraryHighlight[]> {
@@ -200,12 +291,19 @@ async function deleteHighlight(fileId: string, highlightId: number): Promise<voi
 
 async function generateInteractive(
   fileId: string,
-  payload: { selected_text: string; description?: string; segments?: HighlightSegment[] },
+  payload: {
+    selected_text: string;
+    description?: string;
+    model?: string;
+    replace_highlight_id?: number;
+    segments?: HighlightSegment[];
+  },
 ): Promise<{ html: string; highlight_id?: number | null; highlight?: LibraryHighlight | null }> {
   const response = await apiClient<ApiResponse<{ html: string; highlight_id?: number | null; highlight?: LibraryHighlight | null }>>({
     method: "POST",
     url: `/api/v1/files/${encodeURIComponent(fileId)}/interactive`,
     data: payload,
+    timeout: LIBRARY_INTERACTIVE_API_TIMEOUT_MS,
   });
   return response.data;
 }
@@ -372,118 +470,6 @@ function shouldIgnoreLibrarySelectionTextNode(textNode: Text): boolean {
   } catch {
     return false;
   }
-}
-
-const INTERACTIVE_HTML_BLOCKED_TAGS = new Set([
-  "base",
-  "embed",
-  "iframe",
-  "img",
-  "link",
-  "meta",
-  "object",
-  "script",
-  "style",
-  "svg",
-  "template",
-]);
-const INTERACTIVE_HTML_UNWRAPPED_TAGS = new Set(["form"]);
-
-function sanitizeInteractiveStyle(value: string): string {
-  return value
-    .split(";")
-    .map((declaration) => declaration.trim())
-    .filter((declaration) => {
-      const [rawProperty, ...rawValueParts] = declaration.split(":");
-      const property = rawProperty?.trim().toLowerCase();
-      const styleValue = rawValueParts.join(":").trim().toLowerCase();
-      if (!property || !styleValue) {
-        return false;
-      }
-      if (property === "behavior" || property === "-moz-binding") {
-        return false;
-      }
-      return !/(?:expression\s*\(|url\s*\(|javascript:|data:)/i.test(styleValue);
-    })
-    .join("; ");
-}
-
-function isSafeInteractiveUrl(value: string): boolean {
-  const cleaned = value.replace(/[\u0000-\u001F\u007F\s]+/g, "").trim();
-  if (!cleaned) {
-    return false;
-  }
-  return /^(?:https?:|mailto:|#|\/(?!\/))/i.test(cleaned);
-}
-
-function sanitizeInteractiveHtml(html: string): string {
-  if (typeof window === "undefined" || !html.trim()) {
-    return "";
-  }
-
-  const document = new DOMParser().parseFromString(`<div>${html}</div>`, "text/html");
-  const container = document.body.firstElementChild;
-  if (!container) {
-    return "";
-  }
-
-  Array.from(container.querySelectorAll("*")).forEach((element) => {
-    const tagName = element.tagName.toLowerCase();
-    if (INTERACTIVE_HTML_BLOCKED_TAGS.has(tagName)) {
-      element.remove();
-      return;
-    }
-    if (INTERACTIVE_HTML_UNWRAPPED_TAGS.has(tagName)) {
-      element.replaceWith(...Array.from(element.childNodes));
-      return;
-    }
-
-    Array.from(element.attributes).forEach((attribute) => {
-      const name = attribute.name.toLowerCase();
-      const value = attribute.value;
-
-      if (
-        name.startsWith("on") ||
-        name === "action" ||
-        name === "enctype" ||
-        name === "form" ||
-        name === "formaction" ||
-        name === "formenctype" ||
-        name === "formmethod" ||
-        name === "formnovalidate" ||
-        name === "formtarget" ||
-        name === "method" ||
-        name === "srcdoc" ||
-        name === "nonce"
-      ) {
-        element.removeAttribute(attribute.name);
-        return;
-      }
-
-      if (name === "style") {
-        const safeStyle = sanitizeInteractiveStyle(value);
-        if (safeStyle) {
-          element.setAttribute("style", safeStyle);
-        } else {
-          element.removeAttribute(attribute.name);
-        }
-        return;
-      }
-
-      if (name === "href" || name === "src" || name.endsWith(":href")) {
-        if (!isSafeInteractiveUrl(value)) {
-          element.removeAttribute(attribute.name);
-        }
-      }
-    });
-
-    if (tagName === "a" && element.hasAttribute("href")) {
-      element.setAttribute("target", "_blank");
-      element.setAttribute("rel", "noreferrer noopener");
-    }
-  });
-
-  return container.innerHTML;
 }
 
 function appendLibrarySearchTextNode(index: TextSearchIndex, textNode: Text) {
@@ -1300,6 +1286,7 @@ export function LibraryFilePage() {
   const navigate = useNavigate();
   const decodedFileId = decodeURIComponent(fileId);
   const { openAiInteraction } = useAiInteraction();
+  const [interactiveModel, setInteractiveModel] = useGlobalChatModelChoice();
   const { toast } = useToast();
   const contentRef = useRef<HTMLDivElement>(null);
   const markdownBodyRef = useRef<HTMLDivElement>(null);
@@ -1337,6 +1324,37 @@ export function LibraryFilePage() {
   const selectionDragStartRef = useRef<{ x: number; y: number } | null>(null);
   const selectedViewportBandRef = useRef<ViewportBand | null>(null);
   const pendingInteractiveSegmentsRef = useRef<Record<string, HighlightSegment[]>>({});
+  const interactivePreviewStageRef = useRef<HTMLDivElement>(null);
+  const interactivePreviewFrameRef = useRef<HTMLIFrameElement>(null);
+  const [interactivePreviewScale, setInteractivePreviewScale] = useState(0.72);
+  const [interactivePreviewRuntimeError, setInteractivePreviewRuntimeError] = useState<string | null>(null);
+  const [interactiveModal, setInteractiveModal] = useState<{
+    visible: boolean;
+    highlightId: number | null;
+    selectedText: string;
+    selectionSegments: HighlightSegment[];
+    description: string;
+    improvePrompt: string;
+    improveFormOpen: boolean;
+    loading: boolean;
+    resultHtml: string | null;
+    error: string | null;
+    expanded: boolean;
+    mode: "create" | "view";
+  }>({
+    visible: false,
+    highlightId: null,
+    selectedText: "",
+    selectionSegments: [],
+    description: "",
+    improvePrompt: "",
+    improveFormOpen: false,
+    loading: false,
+    resultHtml: null,
+    error: null,
+    expanded: false,
+    mode: "create",
+  });
 
   const segmentFromViewportRect = useCallback((rect: DOMRect): HighlightSegment => {
     const container = contentRef.current;
@@ -1510,9 +1528,19 @@ export function LibraryFilePage() {
       let changed = false;
       const next: Record<number, HighlightSegment[]> = {};
       for (const highlight of highlights) {
-        const preferredSegments = prev[highlight.id]?.length
-          ? prev[highlight.id]
-          : highlight.segments ?? [];
+        const storedSegments = highlight.segments?.length ? highlight.segments : [];
+        const previousSegments = prev[highlight.id]?.length ? prev[highlight.id] : [];
+        const isInteractive = isInteractiveHighlight(highlight);
+        const preferredSegments = isInteractive
+          ? storedSegments.length > 0 ? storedSegments : previousSegments
+          : previousSegments.length > 0 ? previousSegments : storedSegments;
+        if (isInteractive && preferredSegments.length > 0) {
+          next[highlight.id] = preferredSegments;
+          if (!highlightSegmentsEqual(prev[highlight.id] ?? [], preferredSegments)) {
+            changed = true;
+          }
+          continue;
+        }
         const rebuiltSegments = buildHighlightSegmentsFromText(highlight.selected_text, preferredSegments);
         const segments = rebuiltSegments.length > 0 ? rebuiltSegments : preferredSegments;
         next[highlight.id] = segments;
@@ -1677,6 +1705,49 @@ export function LibraryFilePage() {
     setActiveHighlightMenu((prev) => ({ ...prev, visible: false }));
   }, []);
 
+  const resetInteractiveModal = useCallback(() => {
+    setInteractiveModal({
+      visible: false,
+      highlightId: null,
+      selectedText: "",
+      selectionSegments: [],
+      description: "",
+      improvePrompt: "",
+      improveFormOpen: false,
+      loading: false,
+      resultHtml: null,
+      error: null,
+      expanded: false,
+      mode: "create",
+    });
+  }, []);
+
+  const closeInteractiveModal = useCallback(() => {
+    resetInteractiveModal();
+  }, [resetInteractiveModal]);
+
+  const openInteractiveHighlight = useCallback((highlight: LibraryHighlight) => {
+    const status = getInteractiveHighlightStatus(highlight);
+    if (!status) return;
+    closeHighlightMenu();
+    setInteractiveModal({
+      visible: true,
+      highlightId: highlight.id,
+      selectedText: highlight.selected_text,
+      selectionSegments: highlight.segments?.length
+        ? highlight.segments
+        : highlightSegmentsById[highlight.id] ?? [],
+      description: highlight.description ?? "",
+      improvePrompt: "",
+      improveFormOpen: false,
+      loading: status === "generating",
+      resultHtml: status === "ready" ? highlight.interactive_html ?? "" : null,
+      error: status === "failed" ? highlight.interactive_error || "生成交互失败，请重新划选后再试。" : null,
+      expanded: false,
+      mode: "view",
+    });
+  }, [closeHighlightMenu, highlightSegmentsById]);
+
   useEffect(() => {
     if (!activeHighlightMenu.visible) return;
     const handlePointerDown = (event: MouseEvent) => {
@@ -1690,6 +1761,10 @@ export function LibraryFilePage() {
   }, [activeHighlightMenu.visible]);
 
   const handleHighlightClick = useCallback((highlight: LibraryHighlight, event: ReactMouseEvent<HTMLElement>) => {
+    if (isInteractiveHighlight(highlight)) {
+      openInteractiveHighlight(highlight);
+      return;
+    }
     const rect = event.currentTarget.getBoundingClientRect();
     hideSelectionToolbar();
     setActiveHighlightMenu({
@@ -1698,7 +1773,7 @@ export function LibraryFilePage() {
       left: Math.max(8, Math.min(rect.left + rect.width / 2, window.innerWidth - 8)),
       highlight,
     });
-  }, [hideSelectionToolbar]);
+  }, [hideSelectionToolbar, openInteractiveHighlight]);
 
   /* ========== Highlight actions ========== */
   const handleHighlight = useCallback(async () => {
@@ -1734,6 +1809,18 @@ export function LibraryFilePage() {
   const handleDeleteHighlight = useCallback(
     async (highlightId: number) => {
       if (!decodedFileId) return;
+      if (highlightId < 0) {
+        setHighlights((prev) => prev.filter((h) => h.id !== highlightId));
+        setHighlightSegmentsById((prev) => {
+          const next = { ...prev };
+          delete next[highlightId];
+          return next;
+        });
+        setActiveHighlightMenu((prev) => (
+          prev.highlight?.id === highlightId ? { visible: false, top: 0, left: 0, highlight: null } : prev
+        ));
+        return;
+      }
       try {
         await deleteHighlight(decodedFileId, highlightId);
         setHighlights((prev) => prev.filter((h) => h.id !== highlightId));
@@ -1768,27 +1855,6 @@ export function LibraryFilePage() {
     });
   }, [selectionToolbar.selectedText, decodedFileId, hideSelectionToolbar, openAiInteraction]);
 
-  /* ========== Generate interaction modal ========== */
-  const [interactiveModal, setInteractiveModal] = useState<{
-    visible: boolean;
-    selectedText: string;
-    selectionSegments: HighlightSegment[];
-    description: string;
-    loading: boolean;
-    resultHtml: string | null;
-    error: string | null;
-    mode: "create" | "view";
-  }>({
-    visible: false,
-    selectedText: "",
-    selectionSegments: [],
-    description: "",
-    loading: false,
-    resultHtml: null,
-    error: null,
-    mode: "create",
-  });
-
   const openInteractiveModal = useCallback(() => {
     const text = selectionToolbar.selectedText;
     if (!text) return;
@@ -1807,94 +1873,294 @@ export function LibraryFilePage() {
     hideSelectionToolbar();
     setInteractiveModal({
       visible: true,
+      highlightId: null,
       selectedText: text,
       selectionSegments,
       description: "",
+      improvePrompt: "",
+      improveFormOpen: false,
       loading: false,
       resultHtml: null,
       error: null,
+      expanded: false,
       mode: "create",
     });
   }, [captureRangeSegments, selectionToolbar.selectedText, hideSelectionToolbar, toast]);
 
-  const resetInteractiveModal = useCallback(() => {
-    setInteractiveModal({
-      visible: false,
-      selectedText: "",
-      selectionSegments: [],
-      description: "",
-      loading: false,
-      resultHtml: null,
-      error: null,
-      mode: "create",
-    });
-  }, []);
-
-  const closeInteractiveModal = useCallback(() => {
-    resetInteractiveModal();
-  }, [resetInteractiveModal]);
-
-  const openStoredInteractive = useCallback((highlight: LibraryHighlight) => {
-    if (!highlight.interactive_html) return;
-    closeHighlightMenu();
-    setInteractiveModal({
-      visible: true,
-      selectedText: highlight.selected_text,
-      selectionSegments: [],
-      description: highlight.description ?? "",
-      loading: false,
-      resultHtml: highlight.interactive_html,
-      error: null,
-      mode: "view",
-    });
-  }, [closeHighlightMenu]);
-
   const handleGenerateInteractive = useCallback(async () => {
-    if (!decodedFileId || !interactiveModal.selectedText) return;
+    if (!decodedFileId || !interactiveModal.selectedText || interactiveModal.loading) return;
     const selectedText = interactiveModal.selectedText;
-    const description = interactiveModal.description;
+    const isViewMode = interactiveModal.mode === "view";
+    const currentHighlightId = interactiveModal.highlightId;
+    const replaceHighlightId = isViewMode && currentHighlightId && currentHighlightId > 0
+      ? currentHighlightId
+      : undefined;
+    const existingTempHighlightId = isViewMode && currentHighlightId && currentHighlightId < 0
+      ? currentHighlightId
+      : null;
+    const shouldKeepModalOpen = isViewMode;
+    const prompt = (isViewMode ? interactiveModal.improvePrompt : interactiveModal.description).trim();
+    if (isViewMode && !prompt) {
+      toast({ title: "请输入改进要求", description: "写下想调整的方向后再生成。", variant: "error" });
+      return;
+    }
+    const description = prompt;
     const selectionSegments = interactiveModal.selectionSegments;
+    const previousHtml = interactiveModal.resultHtml;
+    const tempHighlightId = replaceHighlightId ? null : (existingTempHighlightId ?? -Date.now());
     if (selectionSegments.length > 0) {
       pendingInteractiveSegmentsRef.current[selectedText] = selectionSegments;
     }
-    resetInteractiveModal();
-    toast({ title: "生成已开始", description: "生成完成后会提醒。", variant: "info" });
+    if (replaceHighlightId) {
+      setHighlights((prev) => prev.map((item) => (
+        item.id === replaceHighlightId
+          ? {
+              ...item,
+              description: description || item.description,
+              interactive_status: "generating",
+              interactive_error: null,
+            }
+          : item
+      )));
+    } else if (tempHighlightId !== null) {
+      const tempHighlight: LibraryHighlight = {
+        id: tempHighlightId,
+        file_id: decodedFileId,
+        selected_text: selectedText,
+        anchor_id: null,
+        color: "sky",
+        description: description || null,
+        interactive_html: null,
+        interactive_status: "generating",
+        interactive_error: null,
+        segments: selectionSegments,
+        created_at: new Date().toISOString(),
+      };
+      setHighlights((prev) => (
+        existingTempHighlightId
+          ? prev.map((item) => (item.id === existingTempHighlightId ? tempHighlight : item))
+          : [...prev, tempHighlight]
+      ));
+      setHighlightSegmentsById((prev) => ({
+        ...prev,
+        [tempHighlightId]: selectionSegments,
+      }));
+    }
+    if (shouldKeepModalOpen) {
+      setInteractiveModal((prev) => ({
+        ...prev,
+        highlightId: currentHighlightId ?? tempHighlightId,
+        description: description || prev.description,
+        loading: true,
+        resultHtml: null,
+        error: null,
+        mode: "view",
+      }));
+      toast({ title: "已按要求开始生成", description: "完成后会更新当前交互内容。", variant: "info" });
+    } else {
+      resetInteractiveModal();
+      toast({ title: "生成已开始", description: "生成完成后会通知，可点击划线内容查看进度。", variant: "info" });
+    }
     try {
       const result = await generateInteractive(decodedFileId, {
         selected_text: selectedText,
         description: description || undefined,
+        model: toChatRequestModel(interactiveModel),
+        replace_highlight_id: replaceHighlightId,
         segments: selectionSegments,
       });
       if (result.highlight) {
         const nextHighlight = result.highlight;
-        setHighlights((prev) => [...prev.filter((item) => item.id !== nextHighlight.id), nextHighlight]);
         const savedSegments = nextHighlight.segments?.length
           ? nextHighlight.segments
-          : pendingInteractiveSegmentsRef.current[selectedText] ?? [];
+          : selectionSegments.length > 0
+            ? selectionSegments
+            : pendingInteractiveSegmentsRef.current[selectedText] ?? [];
+        const nextHighlightWithSegments: LibraryHighlight = {
+          ...nextHighlight,
+          segments: savedSegments,
+        };
+        setHighlights((prev) => [
+          ...prev.filter((item) => item.id !== nextHighlight.id && item.id !== tempHighlightId),
+          nextHighlightWithSegments,
+        ]);
         delete pendingInteractiveSegmentsRef.current[selectedText];
         setHighlightSegmentsById((prev) => ({
-          ...prev,
+          ...Object.fromEntries(
+            Object.entries(prev).filter(([key]) => tempHighlightId === null || Number(key) !== tempHighlightId),
+          ),
           [nextHighlight.id]: savedSegments,
         }));
+        setInteractiveModal((prev) => (
+          prev.visible && prev.selectedText === selectedText
+            ? {
+                ...prev,
+                highlightId: nextHighlight.id,
+                selectionSegments: savedSegments,
+                description: nextHighlightWithSegments.description ?? description,
+                improvePrompt: "",
+                loading: false,
+                resultHtml: nextHighlightWithSegments.interactive_html ?? result.html,
+                error: null,
+                mode: "view",
+              }
+            : prev
+        ));
+      } else {
+        if (tempHighlightId !== null) {
+          setHighlights((prev) => prev.map((item) => (
+            item.id === tempHighlightId
+              ? {
+                  ...item,
+                  interactive_html: result.html,
+                  interactive_status: null,
+                  segments: item.segments?.length ? item.segments : selectionSegments,
+                }
+              : item
+          )));
+        }
+        setInteractiveModal((prev) => (
+          prev.visible && prev.selectedText === selectedText
+            ? {
+                ...prev,
+                highlightId: prev.highlightId ?? tempHighlightId,
+                description,
+                improvePrompt: "",
+                loading: false,
+                resultHtml: result.html,
+                error: null,
+                mode: "view",
+              }
+            : prev
+        ));
       }
       toast({ title: "交互已生成", description: "已为选中内容生成交互内容。", variant: "success" });
-    } catch {
+    } catch (err) {
       delete pendingInteractiveSegmentsRef.current[selectedText];
-      toast({ title: "生成交互失败", description: "请稍后重试。", variant: "error" });
+      const message = getApiErrorMessage(err, "请稍后重试。");
+      if (replaceHighlightId) {
+        setHighlights((prev) => prev.map((item) => (
+          item.id === replaceHighlightId
+            ? { ...item, interactive_status: null, interactive_error: message }
+            : item
+        )));
+      } else if (tempHighlightId !== null) {
+        setHighlights((prev) => prev.map((item) => (
+          item.id === tempHighlightId
+            ? { ...item, interactive_status: "failed", interactive_error: message }
+            : item
+        )));
+      }
+      setInteractiveModal((prev) => (
+        prev.visible && prev.selectedText === selectedText
+          ? {
+              ...prev,
+              loading: false,
+              resultHtml: replaceHighlightId ? previousHtml : prev.resultHtml,
+              error: message,
+              mode: "view",
+            }
+          : prev
+      ));
+      toast({ title: "生成交互失败", description: message, variant: "error" });
     }
   }, [
     decodedFileId,
+    interactiveModal.highlightId,
     interactiveModal.selectedText,
     interactiveModal.selectionSegments,
     interactiveModal.description,
+    interactiveModal.improvePrompt,
+    interactiveModal.loading,
+    interactiveModal.mode,
+    interactiveModal.resultHtml,
+    interactiveModel,
     resetInteractiveModal,
     toast,
   ]);
 
-  const sanitizedInteractiveHtml = useMemo(
-    () => sanitizeInteractiveHtml(interactiveModal.resultHtml ?? ""),
-    [interactiveModal.resultHtml],
+  const patchedInteractiveHtml = useMemo(
+    () => (
+      interactiveModal.resultHtml
+        ? patchLibraryInteractivePreviewHtml(interactiveModal.resultHtml, interactivePreviewScale)
+        : ""
+    ),
+    [interactiveModal.resultHtml, interactivePreviewScale],
   );
+  const canImproveInteractive =
+    interactiveModal.mode === "view" &&
+    Boolean(interactiveModal.resultHtml || interactiveModal.error) &&
+    !interactiveModal.loading;
+  const canSubmitInteractiveImprove = interactiveModal.improvePrompt.trim().length > 0 && !interactiveModal.loading;
+
+  useEffect(() => {
+    if (!interactiveModal.visible || !interactiveModal.resultHtml) {
+      setInteractivePreviewRuntimeError(null);
+      return;
+    }
+    setInteractivePreviewRuntimeError(null);
+  }, [interactiveModal.resultHtml, interactiveModal.visible]);
+
+  useEffect(() => {
+    if (!interactiveModal.visible || !interactiveModal.resultHtml) return;
+    const handleMessage = (event: MessageEvent) => {
+      if (event.source !== interactivePreviewFrameRef.current?.contentWindow) return;
+      const data = event.data as {
+        __aiteachmeInteractive?: boolean;
+        kind?: string;
+        errorKind?: string;
+        message?: unknown;
+      } | undefined;
+      if (!data || data.__aiteachmeInteractive !== true || data.kind !== "runtime-error") return;
+      const kind = typeof data.errorKind === "string" ? data.errorKind : "error";
+      const message = typeof data.message === "string" ? data.message : String(data.message ?? "");
+      setInteractivePreviewRuntimeError(`[${kind}] ${message}`);
+    };
+    window.addEventListener("message", handleMessage);
+    window.setTimeout(() => {
+      interactivePreviewFrameRef.current?.contentWindow?.postMessage({ __aiteachmeErrorReplayRequest: true }, "*");
+    }, 0);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [interactiveModal.resultHtml, interactiveModal.visible]);
+
+  const updateInteractivePreviewScale = useCallback(() => {
+    if (!interactiveModal.resultHtml) return;
+    const nextScale = interactiveModal.expanded ? 0.78 : 0.68;
+    setInteractivePreviewScale((prev) => {
+      const scale = Number(nextScale.toFixed(3));
+      return Math.abs(prev - scale) < 0.01 ? prev : scale;
+    });
+  }, [interactiveModal.expanded, interactiveModal.resultHtml]);
+
+  useEffect(() => {
+    if (!interactiveModal.visible || !interactiveModal.resultHtml || interactiveModal.loading) return;
+    updateInteractivePreviewScale();
+    const stage = interactivePreviewStageRef.current;
+    const observer = typeof ResizeObserver !== "undefined" && stage
+      ? new ResizeObserver(updateInteractivePreviewScale)
+      : null;
+    if (observer && stage) {
+      observer.observe(stage);
+    }
+    const timers = [
+      window.setTimeout(updateInteractivePreviewScale, 120),
+      window.setTimeout(updateInteractivePreviewScale, 420),
+      window.setTimeout(updateInteractivePreviewScale, 900),
+      window.setTimeout(updateInteractivePreviewScale, 1600),
+    ];
+    window.addEventListener("resize", updateInteractivePreviewScale);
+    return () => {
+      observer?.disconnect();
+      timers.forEach((timer) => window.clearTimeout(timer));
+      window.removeEventListener("resize", updateInteractivePreviewScale);
+    };
+  }, [
+    interactiveModal.expanded,
+    interactiveModal.loading,
+    interactiveModal.visible,
+    interactiveModal.resultHtml,
+    updateInteractivePreviewScale,
+  ]);
 
   return (
     <div className="min-h-full pb-24 sm:pb-12">
@@ -1981,13 +2247,13 @@ export function LibraryFilePage() {
                     )}
                   >
                     <span className="min-w-0 flex-1 truncate text-slate-700 dark:text-slate-300">{h.selected_text}</span>
-                    {h.interactive_html ? (
+                    {isInteractiveHighlight(h) ? (
                       <button
                         type="button"
-                        onClick={() => openStoredInteractive(h)}
+                        onClick={() => openInteractiveHighlight(h)}
                         className="shrink-0 rounded px-2 py-0.5 text-xs font-medium text-sky-700 transition hover:bg-white dark:text-sky-300 dark:hover:bg-slate-800"
                       >
-                        交互
+                        {h.interactive_status === "generating" ? "生成中" : h.interactive_status === "failed" ? "失败" : "交互"}
                       </button>
                     ) : null}
                     <button
@@ -2049,7 +2315,8 @@ export function LibraryFilePage() {
                       {highlights.map((highlight) => (
                         <div key={highlight.id}>
                           {(highlightSegmentsById[highlight.id] ?? []).map((segment, index) => {
-                            const isInteractive = Boolean(highlight.interactive_html);
+                            const interactiveStatus = getInteractiveHighlightStatus(highlight);
+                            const isInteractive = Boolean(interactiveStatus);
                             return (
                               <button
                                 key={`${highlight.id}-${index}`}
@@ -2070,8 +2337,8 @@ export function LibraryFilePage() {
                                     ? "rgba(186, 230, 253, 0.5)"
                                     : "rgba(254, 240, 138, 0.42)",
                                 }}
-                                title={`${isInteractive ? "交互片段" : "高亮片段"}：${highlight.selected_text}`}
-                                aria-label={isInteractive ? "打开交互高亮菜单" : "打开高亮菜单"}
+                                title={`${interactiveStatus === "generating" ? "交互生成中" : isInteractive ? "交互片段" : "高亮片段"}：${highlight.selected_text}`}
+                                aria-label={isInteractive ? "打开交互内容" : "打开高亮菜单"}
                               >
                                 <span
                                   className={cn(
@@ -2163,10 +2430,10 @@ export function LibraryFilePage() {
               transform: "translateX(-50%)",
             }}
           >
-            {activeHighlightMenu.highlight.interactive_html ? (
+            {isInteractiveHighlight(activeHighlightMenu.highlight) ? (
               <button
                 type="button"
-                onClick={() => openStoredInteractive(activeHighlightMenu.highlight!)}
+                onClick={() => openInteractiveHighlight(activeHighlightMenu.highlight!)}
                 className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-sky-50 hover:text-sky-700 dark:text-slate-200 dark:hover:bg-sky-950/40 dark:hover:text-sky-300"
               >
                 <Wand2 className="h-3.5 w-3.5" />
@@ -2188,54 +2455,190 @@ export function LibraryFilePage() {
       {/* ---- Generate interaction modal (Portal) ---- */}
       {interactiveModal.visible &&
         createPortal(
-          <div className="fixed inset-0 z-[10000] flex items-center justify-center">
+          <div className={cn(
+            "fixed inset-0 z-[10000] flex items-center justify-center",
+            interactiveModal.expanded ? "p-0" : "p-4",
+          )}>
             {/* Backdrop */}
             <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={closeInteractiveModal} />
             {/* Dialog */}
-            <div className="relative z-10 mx-4 flex max-h-[86vh] min-h-0 w-full max-w-2xl flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+            <div className={cn(
+              "relative z-10 flex min-h-0 w-full flex-col border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900",
+              interactiveModal.expanded
+                ? "h-screen max-h-screen max-w-none rounded-none"
+                : "max-h-[88vh] max-w-5xl rounded-2xl",
+            )}>
               {/* Header */}
-              <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 dark:border-slate-800">
-                <h2 className="text-base font-semibold text-slate-900 dark:text-slate-100">
-                  {interactiveModal.mode === "view" ? "交互内容" : "生成交互"}
-                </h2>
-                <button
-                  type="button"
-                  onClick={closeInteractiveModal}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
-                >
-                  <X className="h-4 w-4" />
-                </button>
+              <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-6 py-4 dark:border-slate-800">
+                <div className="min-w-0">
+                  <h2 className="truncate text-base font-semibold text-slate-900 dark:text-slate-100">
+                    {interactiveModal.mode === "view" ? "交互内容" : "生成交互"}
+                  </h2>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  {canImproveInteractive ? (
+                    <button
+                      type="button"
+                      onClick={() => setInteractiveModal((prev) => ({
+                        ...prev,
+                        improveFormOpen: !prev.improveFormOpen,
+                      }))}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:text-slate-100"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                      {interactiveModal.improveFormOpen ? "收起改进" : "提出改进"}
+                    </button>
+                  ) : null}
+                  {interactiveModal.mode === "view" ? (
+                    <button
+                      type="button"
+                      onClick={() => setInteractiveModal((prev) => ({ ...prev, expanded: !prev.expanded }))}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:text-slate-100"
+                    >
+                      {interactiveModal.expanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+                      {interactiveModal.expanded ? "还原" : "全屏"}
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={closeInteractiveModal}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
 
               {/* Body */}
-              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-5">
-                {/* Selected text preview */}
-                <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2.5 text-sm leading-6 text-slate-700 dark:border-sky-800/60 dark:bg-sky-950/30 dark:text-slate-300">
-                  <span className="text-xs font-medium text-sky-600 dark:text-sky-400">选中文本：</span>
-                  <span className="ml-1">{interactiveModal.selectedText}</span>
-                </div>
-
+              <div className={cn(
+                "min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-5",
+                interactiveModal.expanded && "overflow-hidden px-4 py-4",
+              )}>
                 {interactiveModal.mode === "create" ? (
-                  <label className="mt-4 block">
-                    <span className="text-xs font-medium text-slate-500 dark:text-slate-400">交互形式描述（可选）</span>
-                    <textarea
-                      value={interactiveModal.description}
-                      onChange={(e) => setInteractiveModal((prev) => ({ ...prev, description: e.target.value }))}
-                      placeholder="例如：做成一个选择题练习"
-                      rows={3}
-                      className="mt-1.5 w-full resize-none rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-slate-300 focus:bg-white focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-950/40 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-slate-600 dark:focus:bg-slate-900 dark:focus:ring-slate-700/60"
-                    />
-                  </label>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-950/40">
+                      <span className="text-xs font-medium text-slate-500 dark:text-slate-400">生成模型</span>
+                      <ChatModelSelect
+                        value={interactiveModel}
+                        onChange={setInteractiveModel}
+                        disabled={interactiveModal.loading}
+                      />
+                    </div>
+                    <label className="block">
+                      <span className="text-xs font-medium text-slate-500 dark:text-slate-400">交互形式描述（可选）</span>
+                      <textarea
+                        value={interactiveModal.description}
+                        onChange={(e) => setInteractiveModal((prev) => ({ ...prev, description: e.target.value }))}
+                        disabled={interactiveModal.loading}
+                        placeholder="例如：做成一个选择题练习"
+                        rows={3}
+                        className="mt-1.5 w-full resize-none rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-slate-300 focus:bg-white focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-950/40 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-slate-600 dark:focus:bg-slate-900 dark:focus:ring-slate-700/60"
+                      />
+                    </label>
+                  </div>
+                ) : null}
+
+                {canImproveInteractive && interactiveModal.improveFormOpen ? (
+                  <form
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void handleGenerateInteractive();
+                    }}
+                    className={cn(
+                      "mt-4 rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950",
+                      interactiveModal.expanded && "mt-0",
+                    )}
+                  >
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+                      <label className="min-w-0 flex-1">
+                        <span className="block text-xs font-medium text-slate-600 dark:text-slate-300">输入改进要求后生成</span>
+                        <textarea
+                          value={interactiveModal.improvePrompt}
+                          onChange={(event) => setInteractiveModal((prev) => ({ ...prev, improvePrompt: event.target.value }))}
+                          placeholder="例如：更像函数图；少一点文字；增加步骤切换；把对比做得更直观"
+                          className="mt-2 min-h-20 w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-indigo-500/60 dark:focus:ring-indigo-500/15"
+                          maxLength={1000}
+                        />
+                      </label>
+                      <div className="flex shrink-0 flex-wrap items-center gap-2 lg:justify-end">
+                        <ChatModelSelect
+                          value={interactiveModel}
+                          onChange={setInteractiveModel}
+                          disabled={interactiveModal.loading}
+                        />
+                        <button
+                          type="submit"
+                          disabled={!canSubmitInteractiveImprove}
+                          className="inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-3 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-55"
+                        >
+                          <RefreshCw className="h-3.5 w-3.5" />
+                          按要求生成
+                        </button>
+                      </div>
+                    </div>
+                  </form>
                 ) : null}
 
                 {/* Result HTML */}
-                {interactiveModal.resultHtml ? (
-                  <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950/40">
-                    <div className="mb-2 text-xs font-medium text-slate-500 dark:text-slate-400">生成结果</div>
+                {interactiveModal.loading ? (
+                  <div className={cn(
+                    "mt-4 flex min-h-[420px] flex-col items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-950/40 dark:text-slate-400",
+                    interactiveModal.expanded && "min-h-[calc(100vh-190px)]",
+                  )}>
+                    <div className="flex items-center">
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      正在生成交互页...
+                    </div>
+                    <div className="mt-2 text-xs text-slate-400 dark:text-slate-500">
+                      正在选择交互类型、生成单文件 HTML 并校验预览安全边界
+                    </div>
+                  </div>
+                ) : patchedInteractiveHtml ? (
+                  <div className={cn(
+                    "mt-4 overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950",
+                    interactiveModal.expanded && "mt-3",
+                  )}>
+                    <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-3 py-2 text-xs font-medium text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                      <span>预览缩放 {Math.round(interactivePreviewScale * 100)}%</span>
+                      <button
+                        type="button"
+                        onClick={() => setInteractiveModal((prev) => ({ ...prev, expanded: !prev.expanded }))}
+                        className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+                      >
+                        {interactiveModal.expanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+                        {interactiveModal.expanded ? "还原" : "全屏展示"}
+                      </button>
+                    </div>
+                    {interactivePreviewRuntimeError ? (
+                      <div className="border-b border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-100">
+                        交互页运行时报错：{interactivePreviewRuntimeError}
+                      </div>
+                    ) : null}
                     <div
-                      className="prose prose-sm dark:prose-invert max-w-none"
-                      dangerouslySetInnerHTML={{ __html: sanitizedInteractiveHtml }}
-                    />
+                      ref={interactivePreviewStageRef}
+                      className={cn(
+                        "relative overflow-hidden bg-slate-50 dark:bg-slate-950",
+                        interactiveModal.expanded
+                          ? interactiveModal.improveFormOpen
+                            ? "h-[calc(100vh-250px)] min-h-[420px]"
+                            : "h-[calc(100vh-96px)] min-h-[520px]"
+                          : interactiveModal.improveFormOpen
+                            ? "h-[min(560px,52vh)] min-h-[340px]"
+                            : "h-[min(720px,72vh)] min-h-[460px]",
+                      )}
+                      style={{ contain: "layout size paint", isolation: "isolate" }}
+                    >
+                      <iframe
+                        ref={interactivePreviewFrameRef}
+                        title="资料库交互预览"
+                        srcDoc={patchedInteractiveHtml}
+                        sandbox="allow-scripts allow-forms"
+                        referrerPolicy="no-referrer"
+                        scrolling="auto"
+                        onLoad={updateInteractivePreviewScale}
+                        className="absolute inset-0 block h-full w-full border-0 bg-white"
+                      />
+                    </div>
                   </div>
                 ) : null}
 
@@ -2248,7 +2651,10 @@ export function LibraryFilePage() {
               </div>
 
               {/* Footer */}
-              <div className="flex items-center justify-end gap-3 border-t border-slate-100 px-6 py-4 dark:border-slate-800">
+              <div className={cn(
+                "flex items-center justify-end gap-3 border-t border-slate-100 px-6 py-4 dark:border-slate-800",
+                interactiveModal.mode === "view" && "hidden",
+              )}>
                 <button
                   type="button"
                   onClick={closeInteractiveModal}
@@ -2264,7 +2670,7 @@ export function LibraryFilePage() {
                     className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
                   >
                     {interactiveModal.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-                    {interactiveModal.resultHtml ? "重新生成" : "生成"}
+                    生成
                   </button>
                 ) : null}
               </div>

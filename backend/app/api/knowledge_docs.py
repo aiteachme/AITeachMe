@@ -138,6 +138,10 @@ def _interactive_generation_origin(client_reference_id: str | None) -> str:
     return "planned_auto" if normalized.startswith("ch") and "_interactive_" in normalized else "selection"
 
 
+def _dict_or_empty(value: object) -> dict[str, object]:
+    return dict(value) if isinstance(value, dict) else {}
+
+
 def _interactive_selection_response_from_overlay(
     overlay: dict[str, object],
     *,
@@ -164,6 +168,10 @@ def _interactive_selection_response_from_overlay(
         preview_url=preview_url,
         link_markdown=link_markdown,
         version_no=int(overlay.get("version_no") or fallback_version_no or 0),
+        widget_type=str(overlay.get("widget_type") or ""),
+        widget_outline=_dict_or_empty(overlay.get("widget_outline")),
+        widget_config=_dict_or_empty(overlay.get("widget_config")),
+        language_directive=str(overlay.get("language_directive") or ""),
     )
 
 
@@ -1288,7 +1296,7 @@ async def knowledge_docs_interactive_selection(
     normalized = normalize_course_id(course_id)
     course_record = get_course_record(session, normalized, owner_user_id=user.user_id)
     course_scope = _storage_scope_for_course_record(course_record)
-    model_override = _resolve_docgen_runtime_model_override(
+    model_override = normalize_runtime_model_override(body.model) or _resolve_docgen_runtime_model_override(
         session,
         course=course_record,
         course_scope=course_scope,
@@ -1498,6 +1506,10 @@ async def knowledge_docs_interactive_selection(
             "title": str(asset["title"]),
             "asset_path": str(asset["asset_path"]),
             "preview_url": preview_url,
+            "widget_type": str(asset.get("widget_type") or ""),
+            "widget_outline": _dict_or_empty(asset.get("widget_outline")),
+            "widget_config": _dict_or_empty(asset.get("widget_config")),
+            "language_directive": str(asset.get("language_directive") or ""),
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
         link_markdown = build_overlay_markdown_block(overlay)
@@ -1517,6 +1529,10 @@ async def knowledge_docs_interactive_selection(
                 preview_url=preview_url,
                 link_markdown=link_markdown,
                 version_no=version_no,
+                widget_type=str(asset.get("widget_type") or ""),
+                widget_outline=_dict_or_empty(asset.get("widget_outline")),
+                widget_config=_dict_or_empty(asset.get("widget_config")),
+                language_directive=str(asset.get("language_directive") or ""),
             )
         )
 

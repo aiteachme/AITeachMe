@@ -10,11 +10,22 @@ import remarkRehype from "remark-rehype";
 import { unified } from "unified";
 
 import { rehypeMarkdownSanitize } from "../src/lib/markdownSanitize.ts";
+import { patchHtmlForIframe } from "../src/lib/interactiveHtml.ts";
 
 function walk(node, visitor) {
   visitor(node);
   for (const child of node.children ?? []) walk(child, visitor);
 }
+
+test("interactive iframe patch blocks active network and navigation channels", () => {
+  const patched = patchHtmlForIframe("<!DOCTYPE html><html><head></head><body><main>demo</main></body></html>");
+
+  assert.match(patched, /http-equiv="Content-Security-Policy"/);
+  assert.match(patched, /connect-src 'none'/);
+  assert.match(patched, /frame-src 'none'/);
+  assert.match(patched, /form-action 'none'/);
+  assert.doesNotMatch(patched, /allow-same-origin/);
+});
 
 async function renderTree(markdown, { math = false } = {}) {
   const processor = unified()

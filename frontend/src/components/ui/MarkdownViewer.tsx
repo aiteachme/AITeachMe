@@ -1,4 +1,4 @@
-import { Children, isValidElement, useCallback, useEffect, useMemo, useRef, useState, type ComponentPropsWithoutRef, type FormEvent, type ReactNode } from "react";
+import { Children, isValidElement, useCallback, useEffect, useMemo, useRef, useState, type ComponentPropsWithoutRef, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -18,7 +18,9 @@ import {
   Maximize2,
   MousePointer2,
   OctagonAlert,
+  Play,
   RefreshCw,
+  Sparkles,
   TriangleAlert,
   X,
   ZoomIn,
@@ -27,6 +29,11 @@ import {
 } from "lucide-react";
 
 import { getApiErrorMessage, runAnonymousApiFetch, runTrackedApiFetch } from "../../api/client";
+import {
+  ChatModelSelect,
+  toChatRequestModel,
+  useGlobalChatModelChoice,
+} from "../chat/ChatModelSelect";
 import { parseInteractivePreviewHref, patchHtmlForIframe, type InteractiveHtmlPreview } from "../../lib/interactiveHtml";
 import { rehypeMarkdownSanitize } from "../../lib/markdownSanitize";
 import { cn } from "../../lib/utils";
@@ -91,6 +98,23 @@ const INTERACTIVE_LOADING_STEPS = [
   "正在校验 HTML 结构与资源边界",
   "正在加载沙箱预览",
 ];
+const staticFigureViewportStyle: CSSProperties = {
+  height: "min(620px, 72vh)",
+  maxHeight: "min(620px, 72vh)",
+  minHeight: 360,
+  contain: "layout size paint",
+  isolation: "isolate",
+};
+const interactiveViewportStyle: CSSProperties = {
+  height: "min(680px, 76vh)",
+  maxHeight: "min(680px, 76vh)",
+  minHeight: 460,
+  contain: "layout size paint",
+  isolation: "isolate",
+};
+const sandboxFrameStyle: CSSProperties = {
+  contain: "layout paint",
+};
 const DUPLICATE_ORDERED_LIST_MARKER_RE = /^(\s{0,3}(?:>\s*)*)\d+[\.)\u3001\uff09]\s+(?=\d+[\.)\u3001\uff09]\s+)/;
 
 function noopMarkdownPlugin() {
@@ -2768,10 +2792,14 @@ function InteractiveHtmlEmbed({
   const [error, setError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const [isRegenerateFormOpen, setIsRegenerateFormOpen] = useState(false);
+  const [isRegenerating, setIsRegenerating] = useState(false);
   const [regeneratePrompt, setRegeneratePrompt] = useState("");
+  const [interactiveModel, setInteractiveModel] = useGlobalChatModelChoice();
   const regenerateControllerRef = useRef<AbortController | null>(null);
   const activePreview = generatedPreview ?? preview;
   const canRegenerate = !publicMode && !isStaticFigure && Boolean(preview.anchorId && (preview.selectedText || preview.title));
+  const isAutoPending = !isStaticFigure && preview.mode === "auto" && !generatedPreview && !html && !loading && !error;
+  const canSubmitRegeneratePrompt = regeneratePrompt.trim().length > 0;
   const loadingStepLabel = isStaticFigure ? "正在读取静态图示资产" : INTERACTIVE_LOADING_STEPS[loadingStepIndex % INTERACTIVE_LOADING_STEPS.length];
 
   const requestInteractiveAsset = useCallback(
@@ -2794,6 +2822,7 @@ function InteractiveHtmlEmbed({
             anchor_id: preview.anchorId,
             selected_text: selectedText,
             prompt: options.prompt?.trim() || undefined,
+            model: toChatRequestModel(interactiveModel),
             client_reference_id: clientReferenceId || undefined,
             force_regenerate: options.forceRegenerate || undefined,
             replace_overlay_id: options.replaceOverlayId || undefined,
@@ -2826,7 +2855,7 @@ function InteractiveHtmlEmbed({
       }
       return parsed;
     },
-    [preview.anchorId, preview.clientReferenceId, preview.courseId, preview.planId, preview.selectedText, preview.title],
+    [interactiveModel, preview.anchorId, preview.clientReferenceId, preview.courseId, preview.planId, preview.selectedText, preview.title],
   );
 
   useEffect(() => {
@@ -2837,6 +2866,7 @@ function InteractiveHtmlEmbed({
     setExpanded(true);
     setLoadingStepIndex(0);
     setIsRegenerateFormOpen(false);
+    setIsRegenerating(false);
   }, [preview.previewUrl]);
 
   useEffect(() => {
@@ -2857,15 +2887,14 @@ function InteractiveHtmlEmbed({
   }, []);
 
   useEffect(() => {
-    if (!expanded || html) return;
+    if (!expanded || html || isRegenerating) return;
+    if (preview.mode === "auto" && !generatedPreview) return;
     const controller = new AbortController();
     setLoading(true);
     setLoadingLabel(
       isStaticFigure
         ? "正在加载图示..."
-        : preview.mode === "auto" && !generatedPreview
-          ? "正在生成交互页..."
-          : "正在加载交互页..."
+        : "正在加载交互页..."
     );
     setError(null);
 
@@ -2925,6 +2954,7 @@ function InteractiveHtmlEmbed({
   }, [
     expanded,
     html,
+    isRegenerating,
     isStaticFigure,
     requestInteractiveAsset,
     preview.anchorId,
@@ -2945,13 +2975,16 @@ function InteractiveHtmlEmbed({
     [html, publicMode],
   );
 
-  const handleRegenerateInteractive = useCallback(async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const runGenerateInteractive = useCallback(async (options: {
+    prompt?: string;
+    forceRegenerate?: boolean;
+    loadingLabel: string;
+    resetPromptOnSuccess?: boolean;
+  }) => {
     if (!canRegenerate || loading) return;
     regenerateControllerRef.current?.abort();
     const controller = new AbortController();
     regenerateControllerRef.current = controller;
-    const prompt = regeneratePrompt.trim() || "请换一种更清晰、更贴合当前内容的交互形式重新生成。";
     const referenceSeed =
       preview.clientReferenceId ||
       preview.planId ||
@@ -2960,17 +2993,21 @@ function InteractiveHtmlEmbed({
       generatedPreview?.assetPath ||
       "interactive";
     const clientReferenceId = referenceSeed.slice(0, 160);
-    const replaceOverlayId = preview.overlayId || generatedPreview?.overlayId;
+    const replaceOverlayId = options.forceRegenerate ? (preview.overlayId || generatedPreview?.overlayId) : undefined;
     setHtml("");
     setError(null);
+    setExpanded(true);
+    setIsRegenerateFormOpen(false);
     setLoading(true);
-    setLoadingLabel("正在按改进要求重新生成交互页...");
+    setIsRegenerating(true);
+    setLoadingStepIndex(0);
+    setLoadingLabel(options.loadingLabel);
     try {
       const parsed = await requestInteractiveAsset({
         signal: controller.signal,
-        prompt,
+        prompt: options.prompt,
         clientReferenceId,
-        forceRegenerate: true,
+        forceRegenerate: options.forceRegenerate,
         replaceOverlayId,
       });
       setGeneratedPreview(parsed);
@@ -2988,18 +3025,22 @@ function InteractiveHtmlEmbed({
       );
       if (!controller.signal.aborted) {
         setHtml(text);
-        setRegeneratePrompt("");
+        if (options.resetPromptOnSuccess) {
+          setRegeneratePrompt("");
+        }
         setIsRegenerateFormOpen(false);
       }
     } catch (err) {
       if (!controller.signal.aborted) {
-        setError(getApiErrorMessage(err, "交互页重新生成失败，请稍后重试。"));
+        setError(getApiErrorMessage(
+          err,
+          options.forceRegenerate ? "按改进要求生成失败，请稍后重试。" : "交互页生成失败，请稍后重试。",
+        ));
       }
     } finally {
-      if (!controller.signal.aborted) {
-        setLoading(false);
-      }
       if (regenerateControllerRef.current === controller) {
+        setLoading(false);
+        setIsRegenerating(false);
         regenerateControllerRef.current = null;
       }
     }
@@ -3013,9 +3054,32 @@ function InteractiveHtmlEmbed({
     preview.clientReferenceId,
     preview.overlayId,
     preview.planId,
-    regeneratePrompt,
     requestInteractiveAsset,
   ]);
+
+  const runInitialInteractive = useCallback(() => {
+    void runGenerateInteractive({
+      prompt: preview.prompt,
+      forceRegenerate: false,
+      loadingLabel: "正在生成交互页...",
+    });
+  }, [preview.prompt, runGenerateInteractive]);
+
+  const runRegenerateInteractive = useCallback((promptOverride?: string) => {
+    const customPrompt = String(promptOverride || "").trim();
+    if (!customPrompt) return;
+    void runGenerateInteractive({
+      prompt: customPrompt,
+      forceRegenerate: true,
+      loadingLabel: "正在按改进要求生成交互页...",
+      resetPromptOnSuccess: true,
+    });
+  }, [runGenerateInteractive]);
+
+  const handleRegenerateInteractive = useCallback((event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    runRegenerateInteractive(regeneratePrompt);
+  }, [regeneratePrompt, runRegenerateInteractive]);
 
   if (isStaticFigure) {
     return (
@@ -3030,7 +3094,7 @@ function InteractiveHtmlEmbed({
               {preview.title || label || "静态图示"}
             </span>
           </span>
-          {activePreview.mode === "asset" && (
+          {!publicMode && activePreview.mode === "asset" && (
             <button
               type="button"
               onClick={() => window.open(activePreview.previewUrl, "_blank", "noopener,noreferrer")}
@@ -3068,14 +3132,22 @@ function InteractiveHtmlEmbed({
               </button>
             </div>
           ) : patchedHtml ? (
-            <iframe
-              title={preview.title || "静态图示"}
-              srcDoc={patchedHtml}
-              sandbox=""
-              loading="lazy"
-              referrerPolicy="no-referrer"
-              className="h-[min(620px,72vh)] min-h-[360px] w-full border border-slate-200 bg-white dark:border-slate-800"
-            />
+            <div
+              data-doc-sandbox-viewport="figure"
+              className="relative w-full shrink-0 overflow-hidden border border-slate-200 bg-white dark:border-slate-800"
+              style={staticFigureViewportStyle}
+            >
+              <iframe
+                title={preview.title || "静态图示"}
+                srcDoc={patchedHtml}
+                sandbox=""
+                loading="lazy"
+                scrolling="auto"
+                referrerPolicy="no-referrer"
+                style={sandboxFrameStyle}
+                className="absolute inset-0 block h-full w-full border-0 bg-white"
+              />
+            </div>
           ) : (
             <div className="flex min-h-[260px] items-center justify-center border border-dashed border-slate-200 bg-white text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
               正在准备图示
@@ -3091,30 +3163,74 @@ function InteractiveHtmlEmbed({
       data-doc-interactive-embed="true"
       data-doc-interactive-asset={preview.assetPath}
       open={expanded}
-      className="group my-5 overflow-hidden rounded-xl border border-indigo-200 bg-white dark:border-indigo-500/25 dark:bg-slate-950"
+      className="group my-5 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950"
       onToggle={(event) => setExpanded(event.currentTarget.open)}
     >
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-left outline-none transition hover:bg-indigo-50/55 focus-visible:ring-2 focus-visible:ring-indigo-500/35 dark:hover:bg-indigo-500/10 [&::-webkit-details-marker]:hidden">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-left outline-none transition hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-indigo-500/35 dark:hover:bg-slate-900/70 [&::-webkit-details-marker]:hidden">
         <span className="flex min-w-0 items-center gap-3">
-          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300">
+          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-indigo-600 dark:bg-slate-800 dark:text-indigo-300">
             <MousePointer2 className="h-4 w-4" />
           </span>
           <span className="min-w-0">
             <span className="flex items-center gap-2 text-[13px] font-semibold text-slate-900 dark:text-slate-100">
               <span className="truncate">{preview.title || label || "交互演示"}</span>
-              <span className="shrink-0 rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300">
-                交互网页
+              <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                {isAutoPending ? "待生成" : "交互网页"}
               </span>
             </span>
             <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">
-              {preview.mode === "auto" && !generatedPreview ? "进入文档后自动生成并加载，不阻塞正文生成。" : "进入文档后自动加载，可折叠保留上下文。"}
+              {isAutoPending ? "交互页尚未创建。" : "沙箱预览，可折叠保留上下文。"}
             </span>
           </span>
         </span>
         <span className="flex shrink-0 items-center gap-2">
-          {canRegenerate && (
+          {canRegenerate && !isAutoPending && (
+            <span
+              className="hidden sm:inline-flex"
+              onMouseDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+              }}
+              onClick={(event) => {
+                event.stopPropagation();
+              }}
+            >
+              <ChatModelSelect
+                value={interactiveModel}
+                onChange={setInteractiveModel}
+                disabled={loading}
+              />
+            </span>
+          )}
+          {canRegenerate && isAutoPending && (
             <button
               type="button"
+              disabled={loading}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+              }}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                runInitialInteractive();
+              }}
+              className="hidden h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-600 transition hover:border-indigo-200 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-55 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-indigo-500/50 dark:hover:text-indigo-200 sm:inline-flex"
+            >
+              {loading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : isAutoPending ? (
+                <Play className="h-3.5 w-3.5" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5" />
+              )}
+              生成
+            </button>
+          )}
+          {canRegenerate && !isAutoPending && (
+            <button
+              type="button"
+              disabled={loading}
               onMouseDown={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
@@ -3124,13 +3240,12 @@ function InteractiveHtmlEmbed({
                 event.stopPropagation();
                 setIsRegenerateFormOpen((value) => !value);
               }}
-              className="hidden h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-600 transition hover:border-indigo-200 hover:text-indigo-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-indigo-500/50 dark:hover:text-indigo-200 sm:inline-flex"
+              className="hidden h-8 items-center rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-500 transition hover:border-indigo-200 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-55 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:border-indigo-500/50 dark:hover:text-indigo-200 sm:inline-flex"
             >
-              <RefreshCw className="h-3.5 w-3.5" />
-              重新生成
+              改进要求
             </button>
           )}
-          {activePreview.mode === "asset" && (
+          {!publicMode && activePreview.mode === "asset" && (
             <button
               type="button"
               onMouseDown={(event) => {
@@ -3151,14 +3266,56 @@ function InteractiveHtmlEmbed({
           <ChevronRight className="h-4 w-4 text-slate-400 transition-transform duration-200 group-open:rotate-90" />
         </span>
       </summary>
-      <div className="border-t border-indigo-100 bg-slate-50/70 p-3 dark:border-indigo-500/20 dark:bg-slate-900/45">
-        {canRegenerate && isRegenerateFormOpen && (
+      <div className="border-t border-slate-100 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-900/45">
+        {canRegenerate && isAutoPending && (
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
+            <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-3 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300">
+                  <Sparkles className="h-4 w-4" />
+                </span>
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">生成交互演示</div>
+                  <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">模型</div>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                <ChatModelSelect
+                  value={interactiveModel}
+                  onChange={setInteractiveModel}
+                  disabled={loading}
+                />
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={runInitialInteractive}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-indigo-600 px-3 text-xs font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-55"
+                >
+                  {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+                  开始生成
+                </button>
+              </div>
+            </div>
+            <div className="flex min-h-[280px] items-center justify-center bg-slate-50 px-5 py-8 text-center dark:bg-slate-900/45">
+              <div className="max-w-sm">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-indigo-600 shadow-sm ring-1 ring-slate-200 dark:bg-slate-950 dark:text-indigo-300 dark:ring-slate-800">
+                  <MousePointer2 className="h-5 w-5" />
+                </div>
+                <p className="mt-4 text-sm font-medium text-slate-800 dark:text-slate-100">这块内容还没有生成交互页</p>
+                <p className="mt-2 text-xs leading-6 text-slate-500 dark:text-slate-400">
+                  {preview.title || "当前段落"}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+        {canRegenerate && !isAutoPending && isRegenerateFormOpen && (
           <form
             onSubmit={handleRegenerateInteractive}
-            className="mb-3 rounded-lg border border-indigo-100 bg-white p-3 dark:border-indigo-500/20 dark:bg-slate-950"
+            className="mb-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-950"
           >
             <label className="block text-xs font-medium text-slate-600 dark:text-slate-300" htmlFor={`interactive-regenerate-${preview.assetPath}`}>
-              输入改进要求后重新生成
+              输入改进要求后生成
             </label>
             <div className="mt-2 flex flex-col gap-2 sm:flex-row">
               <textarea
@@ -3171,55 +3328,101 @@ function InteractiveHtmlEmbed({
               />
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || !canSubmitRegeneratePrompt}
                 className="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-3 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-55 sm:self-end"
               >
                 {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                重新生成
+                按要求生成
               </button>
             </div>
           </form>
         )}
         {loading ? (
-          <div className="flex min-h-[360px] flex-col items-center justify-center rounded-lg border border-dashed border-slate-200 bg-white text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
-            <div className="flex items-center">
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              {loadingLabel}
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
+            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-slate-800">
+              <div className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+                <Loader2 className="h-4 w-4 animate-spin text-indigo-600 dark:text-indigo-300" />
+                {loadingLabel}
+              </div>
+              <ChatModelSelect
+                value={interactiveModel}
+                onChange={setInteractiveModel}
+                disabled
+              />
             </div>
-            <div className="mt-2 text-xs text-slate-400 dark:text-slate-500">{loadingStepLabel}</div>
+            <div className="flex min-h-[360px] flex-col items-center justify-center bg-slate-50 px-5 text-sm text-slate-500 dark:bg-slate-900/45 dark:text-slate-400">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 dark:bg-slate-950 dark:ring-slate-800">
+                <Loader2 className="h-5 w-5 animate-spin text-indigo-600 dark:text-indigo-300" />
+              </div>
+              <div className="mt-4 font-medium text-slate-700 dark:text-slate-200">{loadingStepLabel}</div>
+              <div className="mt-2 text-xs text-slate-400 dark:text-slate-500">生成完成后会自动加载沙箱预览</div>
+            </div>
           </div>
         ) : error ? (
-          <div className="flex min-h-[260px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-amber-200 bg-amber-50/60 px-5 text-center dark:border-amber-500/25 dark:bg-amber-500/10">
-            <p className="text-sm font-medium text-amber-900 dark:text-amber-100">交互页还不能预览</p>
-            <p className="max-w-md text-xs leading-6 text-amber-800/80 dark:text-amber-200/80">{error}</p>
-            <button
-              type="button"
-              onClick={() => {
-                setHtml("");
-                setError(null);
-                setRetryKey((value) => value + 1);
-              }}
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-amber-600 px-3 text-xs font-medium text-white transition hover:bg-amber-700"
-            >
-              <RefreshCw className="h-3.5 w-3.5" />
-              重试加载
-            </button>
+          <div className="overflow-hidden rounded-xl border border-amber-200 bg-white shadow-sm dark:border-amber-500/25 dark:bg-slate-950">
+            <div className="border-b border-amber-100 bg-amber-50/70 px-4 py-3 text-sm font-medium text-amber-900 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-100">
+              交互页还不能预览
+            </div>
+            <div className="flex min-h-[260px] flex-col items-center justify-center gap-3 bg-amber-50/35 px-5 text-center dark:bg-amber-500/5">
+              <p className="max-w-md text-xs leading-6 text-amber-800/80 dark:text-amber-200/80">{error}</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setHtml("");
+                  setError(null);
+                  if (preview.mode === "auto" && !generatedPreview) {
+                    return;
+                  }
+                  setRetryKey((value) => value + 1);
+                }}
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-amber-600 px-3 text-xs font-medium text-white transition hover:bg-amber-700"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                {preview.mode === "auto" && !generatedPreview ? "重新选择后生成" : "重试加载"}
+              </button>
+            </div>
           </div>
         ) : patchedHtml ? (
-          <iframe
-            title={preview.title || "交互演示"}
-            srcDoc={patchedHtml}
-            sandbox={publicMode ? "" : "allow-scripts"}
-            loading="lazy"
-            referrerPolicy={publicMode ? "no-referrer" : undefined}
-            className="h-[min(620px,76vh)] min-h-[420px] w-full rounded-lg border border-slate-200 bg-white dark:border-slate-800"
-          />
-        ) : (
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
+            <div className="flex flex-col gap-2 border-b border-slate-100 px-4 py-3 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                <span className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">沙箱预览已就绪</span>
+              </div>
+              {!publicMode && activePreview.mode === "asset" && (
+                <button
+                  type="button"
+                  onClick={() => window.open(activePreview.previewUrl, "_blank", "noopener,noreferrer")}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-600 transition hover:border-indigo-200 hover:text-indigo-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-indigo-500/50 dark:hover:text-indigo-200"
+                >
+                  <Maximize2 className="h-3.5 w-3.5" />
+                  全屏打开
+                </button>
+              )}
+            </div>
+            <div
+              data-doc-sandbox-viewport="interactive"
+              className="relative w-full shrink-0 overflow-hidden bg-white"
+              style={interactiveViewportStyle}
+            >
+              <iframe
+                title={preview.title || "交互演示"}
+                srcDoc={patchedHtml}
+                sandbox={publicMode ? "" : "allow-scripts allow-forms"}
+                loading="lazy"
+                scrolling="auto"
+                referrerPolicy="no-referrer"
+                style={sandboxFrameStyle}
+                className="absolute inset-0 block h-full w-full border-0 bg-white"
+              />
+            </div>
+          </div>
+        ) : !isAutoPending ? (
           <div className="flex min-h-[260px] items-center justify-center rounded-lg border border-dashed border-slate-200 bg-white text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
             正在准备交互页
           </div>
-        )}
-        {activePreview.mode === "asset" && (
+        ) : null}
+        {!publicMode && activePreview.mode === "asset" && !patchedHtml && (
           <a
             href={activePreview.previewUrl}
             target="_blank"
@@ -3231,14 +3434,23 @@ function InteractiveHtmlEmbed({
             全屏打开
           </a>
         )}
-        {canRegenerate && (
+        {canRegenerate && !isAutoPending && (
+          <span className="ml-4 mt-3 inline-flex sm:hidden">
+            <ChatModelSelect
+              value={interactiveModel}
+              onChange={setInteractiveModel}
+              disabled={loading}
+            />
+          </span>
+        )}
+        {canRegenerate && !isAutoPending && (
           <button
             type="button"
+            disabled={loading}
             onClick={() => setIsRegenerateFormOpen((value) => !value)}
-            className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline dark:text-indigo-300 dark:hover:text-indigo-200 sm:hidden"
+            className="ml-4 mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:text-indigo-700 hover:underline disabled:cursor-not-allowed disabled:opacity-55 dark:text-indigo-300 dark:hover:text-indigo-200 sm:hidden"
           >
-            <RefreshCw className="h-3.5 w-3.5" />
-            重新生成
+            改进要求
           </button>
         )}
       </div>

@@ -16,6 +16,7 @@ def test_docgen_model_policy_routes_tiers_and_bounds_noncritical_steps() -> None
     sprint_writer = docgen_completion_kwargs(DocGenModelStep.WRITER, digest_mode="sprint")
     intent_core = docgen_completion_kwargs(DocGenModelStep.INTENT_CORE)
     backbone = docgen_completion_kwargs(DocGenModelStep.DOCUMENT_BACKBONE)
+    interactive_html = docgen_completion_kwargs(DocGenModelStep.INTERACTIVE_HTML)
 
     assert systematic_writer["model"] == "reason"
     assert sprint_writer["model"] == "primary"
@@ -25,6 +26,10 @@ def test_docgen_model_policy_routes_tiers_and_bounds_noncritical_steps() -> None
     assert backbone[PROVIDER_NATIVE_TOOLS_KWARG] == []
     assert systematic_writer[PROVIDER_NATIVE_TOOLS_KWARG] == []
     assert "task_type" not in systematic_writer
+    assert interactive_html["timeout"] == 210
+    assert interactive_html["overall_timeout_s"] == 460
+    assert "api_mode" not in interactive_html
+
 
 def test_kg_doc_sync_model_policy_disables_provider_native_tools_by_default() -> None:
     kwargs = kg_doc_sync_completion_kwargs(KGDocSyncModelStep.SECTION_GRAPH)

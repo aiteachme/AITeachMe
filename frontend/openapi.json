@@ -1764,6 +1764,16 @@
               }
             }
           },
+          "422": {
+            "description": "业务校验未通过。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "服务内部异常。",
             "content": {
@@ -1774,12 +1784,12 @@
               }
             }
           },
-          "422": {
-            "description": "Validation Error",
+          "503": {
+            "description": "依赖服务当前不可用。",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -16834,6 +16844,63 @@
                 "type": "null"
               }
             ]
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "widget_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Widget Type"
+          },
+          "widget_outline": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Widget Outline"
+          },
+          "widget_config": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Widget Config"
+          },
+          "language_directive": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language Directive"
           }
         },
         "type": "object",
@@ -16846,18 +16913,45 @@
         "properties": {
           "selected_text": {
             "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
             "title": "Selected Text"
           },
           "description": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "maxLength": 1000
               },
               {
                 "type": "null"
               }
             ],
             "title": "Description"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "replace_highlight_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replace Highlight Id"
           },
           "segments": {
             "anyOf": [
@@ -16868,7 +16962,8 @@
                   },
                   "type": "object"
                 },
-                "type": "array"
+                "type": "array",
+                "maxItems": 200
               },
               {
                 "type": "null"
@@ -17432,6 +17527,18 @@
             ],
             "title": "Prompt"
           },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
           "client_reference_id": {
             "anyOf": [
               {
@@ -17510,6 +17617,26 @@
             "type": "integer",
             "title": "Version No",
             "default": 0
+          },
+          "widget_type": {
+            "type": "string",
+            "title": "Widget Type",
+            "default": ""
+          },
+          "widget_outline": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Widget Outline"
+          },
+          "widget_config": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Widget Config"
+          },
+          "language_directive": {
+            "type": "string",
+            "title": "Language Directive",
+            "default": ""
           }
         },
         "type": "object",

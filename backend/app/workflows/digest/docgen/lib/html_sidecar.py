@@ -11,6 +11,10 @@ _HTML_DOC_RE = re.compile(r"<!doctype\s+html[^>]*>.*?</html>", re.IGNORECASE | r
 _HEAD_RE = re.compile(r"<head(?:\s[^>]*)?>(?P<body>.*?)</head>", re.IGNORECASE | re.DOTALL)
 _BODY_RE = re.compile(r"<body(?:\s[^>]*)?>(?P<body>.*?)</body>", re.IGNORECASE | re.DOTALL)
 _TITLE_RE = re.compile(r"<title(?:\s[^>]*)?>.*?</title>", re.IGNORECASE | re.DOTALL)
+_CSP_META_RE = re.compile(
+    r"<meta\b(?=[^>]*\bhttp-equiv\s*=\s*['\"]?content-security-policy['\"]?)[^>]*>",
+    re.IGNORECASE,
+)
 _SCRIPT_STYLE_RE = re.compile(r"<(?P<tag>script|style)\b[^>]*>.*?</(?P=tag)>", re.IGNORECASE | re.DOTALL)
 _COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 
@@ -109,19 +113,72 @@ def _rebuild_single_document(text: str, *, title: str) -> str:
 </html>"""
 
 
+def _inject_content_security_policy(
+    html: str,
+    *,
+    allow_scripts: bool,
+    allowed_resource_hosts: set[str] | None,
+) -> str:
+    cleaned = _CSP_META_RE.sub("", html)
+    remote_sources = " ".join(
+        f"https://{host.strip().lower()}"
+        for host in sorted(allowed_resource_hosts or set())
+        if host.strip()
+    )
+    script_sources = "'unsafe-inline'"
+    if remote_sources:
+        script_sources = f"{script_sources} {remote_sources}"
+    if not allow_scripts:
+        script_sources = "'none'"
+    style_sources = "'unsafe-inline'"
+    font_sources = "data:"
+    image_sources = "data: blob:"
+    if remote_sources:
+        style_sources = f"{style_sources} {remote_sources}"
+        font_sources = f"{font_sources} {remote_sources}"
+        image_sources = f"{image_sources} {remote_sources}"
+    policy = "; ".join(
+        [
+            "default-src 'none'",
+            f"script-src {script_sources}",
+            f"style-src {style_sources}",
+            f"img-src {image_sources}",
+            f"font-src {font_sources}",
+            "connect-src 'none'",
+            "media-src 'none'",
+            "object-src 'none'",
+            "frame-src 'none'",
+            "worker-src blob:",
+            "base-uri 'none'",
+            "form-action 'none'",
+        ]
+    )
+    csp_meta = f'<meta http-equiv="Content-Security-Policy" content="{policy}" />'
+    return re.sub(
+        r"(<head(?:\s[^>]*)?>)",
+        rf"\1\n{csp_meta}",
+        cleaned,
+        count=1,
+        flags=re.IGNORECASE,
+    )
+
+
 def normalize_single_file_html(
     html: str,
     *,
     title: str,
     allow_scripts: bool,
+    allow_external_resources: bool = False,
+    allowed_resource_hosts: set[str] | None = None,
 ) -> str:
     """Normalize a model-produced sidecar into one complete HTML document."""
 
     cleaned = strip_html_fence(html).replace("\r\n", "\n").replace("\r", "\n").strip()
     cleaned = _extract_main_document(cleaned)
-    cleaned = re.sub(r"<script[^>]+src=[\"'][^\"']+[\"'][^>]*>\s*</script>", "", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"<link[^>]+href=[\"']https?://[^\"']+[\"'][^>]*>", "", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"<img[^>]+src=[\"']https?://[^\"']+[\"'][^>]*>", "", cleaned, flags=re.IGNORECASE)
+    if not allow_external_resources:
+        cleaned = re.sub(r"<script[^>]+src=[\"'][^\"']+[\"'][^>]*>\s*</script>", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"<link[^>]+href=[\"']https?://[^\"']+[\"'][^>]*>", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"<img[^>]+src=[\"']https?://[^\"']+[\"'][^>]*>", "", cleaned, flags=re.IGNORECASE)
     if not allow_scripts:
         cleaned = re.sub(r"<script\b[^>]*>.*?</script>", "", cleaned, flags=re.IGNORECASE | re.DOTALL)
         cleaned = re.sub(r"\s+on[a-z]+\s*=\s*(['\"]).*?\1", "", cleaned, flags=re.IGNORECASE | re.DOTALL)
@@ -156,6 +213,12 @@ def normalize_single_file_html(
         or _count_tag(cleaned, "body") != 1
     ):
         cleaned = _rebuild_single_document(cleaned, title=title)
+
+    cleaned = _inject_content_security_policy(
+        cleaned,
+        allow_scripts=allow_scripts,
+        allowed_resource_hosts=allowed_resource_hosts if allow_external_resources else None,
+    )
 
     return cleaned.strip() + "\n"
 

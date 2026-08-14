@@ -7,7 +7,13 @@
 import type { InteractiveGenerateRequestSegments } from './interactiveGenerateRequestSegments.ts';
 
 export interface InteractiveGenerateRequest {
+  /**
+     * @minLength 1
+     * @maxLength 2000
+     */
   selected_text: string;
   description?: string | null;
+  model?: string | null;
+  replace_highlight_id?: number | null;
   segments?: InteractiveGenerateRequestSegments;
 }

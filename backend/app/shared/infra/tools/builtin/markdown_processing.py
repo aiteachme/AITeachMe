@@ -1827,11 +1827,47 @@ def _html_resource_attribute_text(html: str) -> str:
     return _HTML_SCRIPT_STYLE_RE.sub(_keep_shell, text)
 
 
+def _iter_html_remote_resource_hosts(html: str) -> list[str]:
+    """Find remote resource hosts in HTML attributes and import maps."""
+
+    text = str(html or "")
+    resource_text = _html_resource_attribute_text(text)
+    hosts: list[str] = []
+    for match in re.finditer(r"""(?:https?:)?//([A-Za-z0-9.-]+)""", resource_text, re.IGNORECASE):
+        host = match.group(1).lower().strip()
+        if host and host not in hosts:
+            hosts.append(host)
+
+    for script_match in re.finditer(
+        r"<script\b(?=[^>]*\btype\s*=\s*(?:['\"]importmap['\"]|importmap\b))[^>]*>(?P<body>.*?)</script>",
+        text,
+        re.IGNORECASE | re.DOTALL,
+    ):
+        for match in re.finditer(r"""https?://([A-Za-z0-9.-]+)""", script_match.group("body"), re.IGNORECASE):
+            host = match.group(1).lower().strip()
+            if host and host not in hosts:
+                hosts.append(host)
+    for match in re.finditer(
+        r"""(?:@import\b|url\s*\()\s*['"]?(?:https?:)?//([A-Za-z0-9.-]+)""",
+        text,
+        re.IGNORECASE,
+    ):
+        host = match.group(1).lower().strip()
+        if host and host not in hosts:
+            hosts.append(host)
+    return hosts
+
+
 def _html_tag_count(html: str, tag: str) -> int:
     return len(re.findall(rf"<{re.escape(tag)}\b", html, re.IGNORECASE))
 
 
-def validate_single_file_html(html: str) -> list[str]:
+def validate_single_file_html(
+    html: str,
+    *,
+    allow_external_resources: bool = False,
+    allowed_resource_hosts: set[str] | None = None,
+) -> list[str]:
     """Check an interactive sidecar HTML document without executing it."""
 
     text = str(html or "").strip()
@@ -1854,20 +1890,28 @@ def validate_single_file_html(html: str) -> list[str]:
             issues.append(f"HTML sidecar 缺少 {tag}。")
     if not re.search(r"<meta[^>]+name\s*=\s*['\"]viewport['\"]", text, re.IGNORECASE):
         issues.append("HTML sidecar 缺少移动端 viewport meta。")
-    if re.search(r"<script[^>]+src\s*=", text, re.IGNORECASE):
-        issues.append("HTML sidecar 包含外部脚本引用。")
-    if re.search(r"<link[^>]+href\s*=\s*['\"]https?://", text, re.IGNORECASE):
-        issues.append("HTML sidecar 包含外部样式、字体或资源引用。")
-    if re.search(r"<img[^>]+src\s*=\s*['\"]https?://", text, re.IGNORECASE):
-        issues.append("HTML sidecar 包含远程图片资源。")
-    if _HTML_REMOTE_RESOURCE_ATTR_RE.search(resource_text):
-        issues.append("HTML sidecar 包含远程资源 URL。")
-    if re.search(r"@import\b", text, re.IGNORECASE):
-        issues.append("HTML sidecar 包含外部样式 import。")
-    if re.search(r"url\s*\(\s*['\"]?(?:https?:)?//", text, re.IGNORECASE):
-        issues.append("HTML sidecar 包含远程样式资源。")
-    if re.search(r"\b(fetch|XMLHttpRequest|WebSocket)\s*\(", text) or re.search(r"\b(localStorage|sessionStorage)\b", text):
-        issues.append("HTML sidecar 包含不允许的联网或持久化 API。")
+    if allow_external_resources:
+        hosts = allowed_resource_hosts or set()
+        for host in _iter_html_remote_resource_hosts(text):
+            if hosts and host not in hosts:
+                issues.append(f"HTML sidecar 包含未允许的远程资源域名：{host}。")
+        if re.search(r"\b(fetch|XMLHttpRequest|WebSocket)\s*\(", text):
+            issues.append("HTML sidecar 包含不允许的主动联网 API。")
+    else:
+        if re.search(r"<script[^>]+src\s*=", text, re.IGNORECASE):
+            issues.append("HTML sidecar 包含外部脚本引用。")
+        if re.search(r"<link[^>]+href\s*=\s*['\"]https?://", text, re.IGNORECASE):
+            issues.append("HTML sidecar 包含外部样式、字体或资源引用。")
+        if re.search(r"<img[^>]+src\s*=\s*['\"]https?://", text, re.IGNORECASE):
+            issues.append("HTML sidecar 包含远程图片资源。")
+        if _HTML_REMOTE_RESOURCE_ATTR_RE.search(resource_text) or _iter_html_remote_resource_hosts(text):
+            issues.append("HTML sidecar 包含远程资源 URL。")
+        if re.search(r"@import\b", text, re.IGNORECASE):
+            issues.append("HTML sidecar 包含外部样式 import。")
+        if re.search(r"url\s*\(\s*['\"]?(?:https?:)?//", text, re.IGNORECASE):
+            issues.append("HTML sidecar 包含远程样式资源。")
+        if re.search(r"\b(fetch|XMLHttpRequest|WebSocket)\s*\(", text) or re.search(r"\b(localStorage|sessionStorage)\b", text):
+            issues.append("HTML sidecar 包含不允许的联网或持久化 API。")
     return list(dict.fromkeys(issues))
 
 

@@ -910,6 +910,9 @@ def test_normalize_single_file_html_rebuilds_nested_document_shells() -> None:
     assert cleaned.split("<body>", 1)[0].lower().count("<head") == 1
     assert "<main>正文</main>" in cleaned
     assert 'const sample = "<head><body></body></head>";' in cleaned
+    assert 'http-equiv="Content-Security-Policy"' in cleaned
+    assert "connect-src 'none'" in cleaned
+    assert "form-action 'none'" in cleaned
 
 
 def test_normalize_single_file_html_keeps_forbidden_apis_rejectable() -> None:
@@ -931,3 +934,31 @@ def test_normalize_single_file_html_keeps_forbidden_apis_rejectable() -> None:
     assert "fetch(" in cleaned
     assert "localStorage.setItem" in cleaned
     assert "HTML sidecar 包含不允许的联网或持久化 API。" in validate_single_file_html(cleaned)
+
+
+def test_normalize_single_file_html_csp_limits_external_resources_to_allowlist() -> None:
+    raw = """<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://unpkg.com/example/widget.js"></script>
+</head>
+<body><main>交互演示</main></body>
+</html>"""
+
+    cleaned = normalize_single_file_html(
+        raw,
+        title="交互演示",
+        allow_scripts=True,
+        allow_external_resources=True,
+        allowed_resource_hosts={"unpkg.com"},
+    )
+
+    assert "script-src 'unsafe-inline' https://unpkg.com" in cleaned
+    assert "connect-src 'none'" in cleaned
+    assert validate_single_file_html(
+        cleaned,
+        allow_external_resources=True,
+        allowed_resource_hosts={"unpkg.com"},
+    ) == []
