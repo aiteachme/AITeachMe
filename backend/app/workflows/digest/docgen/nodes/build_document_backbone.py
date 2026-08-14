@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+from contextlib import suppress
 from time import perf_counter
 
 from app.shared.infra.workflow.context import WorkflowContext
@@ -26,6 +28,9 @@ from app.workflows.digest.docgen.lib.pipeline_artifacts import (
 )
 from app.workflows.digest.docgen.nodes.common import publish_docgen_progress
 from app.workflows.digest.docgen.state import DocGenState
+
+
+_BACKBONE_PROGRESS_INTERVAL_S = 4.0
 
 
 def _node_type_counts(preliminary_kg: dict[str, object]) -> dict[str, int]:
@@ -58,6 +63,26 @@ def _sample_nodes(preliminary_kg: dict[str, object]) -> list[dict[str, str]]:
     return samples
 
 
+_BACKBONE_SECTION_LABELS = {
+    "canonical_glossary": "统一术语",
+    "concept_dependency_graph": "跨章依赖",
+    "notation_registry": "符号约定",
+    "canonical_claim_pool": "核心主张",
+    "confusion_map": "易混点",
+}
+
+
+def _compact_preview_items(items: object, *, limit: int = 4) -> str:
+    if not isinstance(items, list):
+        return ""
+    visible = [
+        str(item or "").strip().rstrip("。；;")
+        for item in items
+        if str(item or "").strip().rstrip("。；;")
+    ][:limit]
+    return "；".join(visible)
+
+
 def build_document_backbone_node(*, context: WorkflowContext):
     """构建文档级知识骨架节点。
 
@@ -85,6 +110,67 @@ def build_document_backbone_node(*, context: WorkflowContext):
             for item in list(state.get("file_summaries") or [])
         ]
         plan_seed = ChapterGenerationPlanSeed.model_validate(state.get("chapter_generation_plan_seed") or {})
+        title_by_chapter = {
+            int(seed.chapter_index): seed.enhanced_title or seed.confirmed_title
+            for seed in task_seeds
+        }
+        wait_intervals_since_visible_progress = 0
+
+        async def publish_preparation_preview(kind: str, payload: dict[str, object]) -> None:
+            nonlocal wait_intervals_since_visible_progress
+            wait_intervals_since_visible_progress = 0
+            chapter_index: int | None = None
+            title: str | None = None
+            if kind == "backbone_section":
+                section = str(payload.get("section") or "")
+                label = _BACKBONE_SECTION_LABELS.get(section, "骨架内容")
+                item_count = int(payload.get("item_count", 0) or 0)
+                item_preview = _compact_preview_items(payload.get("items"))
+                summary = f"{label}已生成 {item_count} 项"
+                if item_preview:
+                    summary = f"{summary}：{item_preview}。"
+                else:
+                    summary = f"{summary}，本轮无需额外约束。"
+                stage = "document_backbone_section"
+            elif kind == "chapter_execution_brief":
+                chapter_index = int(payload.get("chapter_index", 0) or 0)
+                title = title_by_chapter.get(chapter_index) or f"第 {chapter_index} 章"
+                outline = _compact_preview_items(payload.get("teaching_outline"), limit=4)
+                instructions = _compact_preview_items(payload.get("writing_instructions"), limit=2)
+                queries = _compact_preview_items(payload.get("retrieval_queries"), limit=2)
+                parts = [f"讲解路径：{outline}" if outline else ""]
+                if instructions:
+                    parts.append(f"写作重点：{instructions}")
+                if queries:
+                    parts.append(f"检索：{queries}")
+                summary = f"第 {chapter_index} 章《{title}》执行 brief 已生成：" + "；".join(
+                    part for part in parts if part
+                )
+                summary = summary.rstrip("：") + "。"
+                stage = "chapter_execution_brief_ready"
+            else:
+                summary = "流式骨架草案未通过最终结构校验，正在自动修复并重新校验。"
+                stage = "document_backbone_repairing"
+
+            append_knowledge_build_recent_event(
+                state["course_id"],
+                requested_at=state["requested_at"],
+                build_group_id=state.get("build_group_id") or None,
+                event={
+                    "stage": stage,
+                    "chapter_index": chapter_index,
+                    "title": title,
+                    "summary": summary,
+                    "created_at": utcnow(),
+                },
+            )
+            await publish_docgen_progress(
+                context,
+                state=state,
+                stage=stage,
+                payload={**payload},
+            )
+
         update_knowledge_build_status(
             state["course_id"],
             requested_at=state["requested_at"],
@@ -101,7 +187,8 @@ def build_document_backbone_node(*, context: WorkflowContext):
             event={
                 "stage": "building_document_backbone",
                 "summary": (
-                    f"开始构建整本知识骨架：统一术语和核心主张，并为 {len(task_seeds)} 章生成执行 brief。"
+                    f"已将 {len(task_seeds)} 个章节合同、{len(file_summaries)} 份资料摘要和 "
+                    f"{len(evidence_units)} 个证据单元送入模型，正在统一整本知识骨架。"
                 ),
                 "created_at": utcnow(),
             },
@@ -116,23 +203,69 @@ def build_document_backbone_node(*, context: WorkflowContext):
                 "file_summary_count": len(file_summaries),
             },
         )
-        document_backbone, chapter_briefs, warnings = await generate_document_backbone(
-            course_name=plan_seed.course_name or str(state.get("course_name") or ""),
-            digest_mode=str(state.get("digest_mode") or plan_seed.digest_mode or "systematic"),
-            task_seeds=task_seeds,
-            agenda=agenda,
-            evidence_units=evidence_units,
-            file_summaries=file_summaries,
-            learner_profile_text=str(state.get("learner_profile_text") or ""),
-            max_retrieval_queries_per_chapter=(
-                get_settings().docgen.max_retrieval_queries_per_chapter
+        generation_task = asyncio.create_task(
+            generate_document_backbone(
+                course_name=plan_seed.course_name or str(state.get("course_name") or ""),
+                digest_mode=str(state.get("digest_mode") or plan_seed.digest_mode or "systematic"),
+                task_seeds=task_seeds,
+                agenda=agenda,
+                evidence_units=evidence_units,
+                file_summaries=file_summaries,
+                learner_profile_text=str(state.get("learner_profile_text") or ""),
+                max_retrieval_queries_per_chapter=(
+                    get_settings().docgen.max_retrieval_queries_per_chapter
+                ),
+                extra_metadata={
+                    "build_session_id": state.get("build_session_id") or "",
+                    "planner_session_id": state.get("planner_session_id") or "",
+                    "confirmed_plan_id": state.get("confirmed_plan_id") or "",
+                },
+                progress_callback=publish_preparation_preview,
             ),
-            extra_metadata={
-                "build_session_id": state.get("build_session_id") or "",
-                "planner_session_id": state.get("planner_session_id") or "",
-                "confirmed_plan_id": state.get("confirmed_plan_id") or "",
-            },
+            name=f"docgen.document_backbone:{state['course_id']}",
         )
+        try:
+            while True:
+                try:
+                    document_backbone, chapter_briefs, warnings = await asyncio.wait_for(
+                        asyncio.shield(generation_task),
+                        timeout=_BACKBONE_PROGRESS_INTERVAL_S,
+                    )
+                    break
+                except TimeoutError:
+                    wait_intervals_since_visible_progress += 1
+                    if wait_intervals_since_visible_progress < 2:
+                        continue
+                    wait_intervals_since_visible_progress = 0
+                    elapsed_s = max(1, int(perf_counter() - started_at))
+                    summary = (
+                        f"骨架模型仍在处理 {len(task_seeds)} 个章节：正在统一术语、核心主张和章节执行 brief，"
+                        f"已持续 {elapsed_s} 秒。"
+                    )
+                    append_knowledge_build_recent_event(
+                        state["course_id"],
+                        requested_at=state["requested_at"],
+                        build_group_id=state.get("build_group_id") or None,
+                        event={
+                            "stage": "document_backbone_progress",
+                            "summary": summary,
+                            "created_at": utcnow(),
+                        },
+                    )
+                    await publish_docgen_progress(
+                        context,
+                        state=state,
+                        stage="document_backbone_progress",
+                        payload={
+                            "chapter_count": len(task_seeds),
+                            "elapsed_seconds": elapsed_s,
+                        },
+                    )
+        finally:
+            if not generation_task.done():
+                generation_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await generation_task
 
         guideline = build_guideline(
             document_backbone=document_backbone,

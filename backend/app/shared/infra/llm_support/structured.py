@@ -363,3 +363,15 @@ def _parse_structured_response_text(response_model: type[T], raw_text: str) -> T
 
     reason = errors[0] if errors else "empty_or_non_json_response"
     raise LLMCallError(reason=f"structured_parse_failed: {reason}")
+
+
+def repair_json_string_escapes(raw_text: str) -> str | None:
+    """Repair model-emitted LaTeX backslashes before partial JSON parsing."""
+
+    return _repair_json_string_escapes(raw_text)
+
+
+def parse_structured_response_text(response_model: type[T], raw_text: str) -> T:
+    """Parse and validate raw model JSON using the shared repair policy."""
+
+    return _parse_structured_response_text(response_model, raw_text)

@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
+from typing import Any
 
 import structlog
+from pydantic_core import from_json
 
-from app.shared.infra.llm_support import acompletion_with_fallback
+from app.shared.infra.llm_support import acompletion_stream, acompletion_with_fallback
+from app.shared.infra.llm_support.structured import (
+    parse_structured_response_text,
+    repair_json_string_escapes,
+)
 from app.workflows.digest.docgen.lib.model_policy import (
     DocGenModelStep,
     docgen_completion_kwargs_with_metadata,
@@ -30,6 +36,170 @@ from app.workflows.digest.docgen.prompts.document_backbone import build_document
 
 
 logger = structlog.get_logger(__name__)
+
+DocumentPreparationProgressCallback = Callable[[str, dict[str, Any]], Awaitable[None]]
+_STREAM_PREVIEW_MIN_CHARS = 240
+_BACKBONE_STREAM_SECTIONS = (
+    ("canonical_glossary", "concept_dependency_graph"),
+    ("concept_dependency_graph", "notation_registry"),
+    ("notation_registry", "canonical_claim_pool"),
+    ("canonical_claim_pool", "confusion_map"),
+    ("confusion_map", "source_trust_summary"),
+)
+
+
+def _preview_text(value: object, *, limit: int = 96) -> str:
+    text = str(value or "").strip()
+    if len(text) <= limit:
+        return text
+    return f"{text[: max(1, limit - 1)].rstrip()}…"
+
+
+def _preview_string_list(value: object, *, item_limit: int) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    items: list[str] = []
+    for item in value:
+        text = _preview_text(item, limit=item_limit)
+        if text:
+            items.append(text)
+    return items
+
+
+def _backbone_section_items(section: str, raw_items: object) -> list[str]:
+    if not isinstance(raw_items, list):
+        return []
+    items: list[str] = []
+    for raw_item in raw_items:
+        if not isinstance(raw_item, Mapping):
+            continue
+        if section == "canonical_glossary":
+            text = _preview_text(raw_item.get("term"))
+        elif section == "concept_dependency_graph":
+            source = _preview_text(raw_item.get("from_concept"), limit=44)
+            target = _preview_text(raw_item.get("to_concept"), limit=44)
+            text = f"{source} → {target}" if source and target else source or target
+        elif section == "notation_registry":
+            symbol = _preview_text(raw_item.get("symbol"), limit=28)
+            meaning = _preview_text(raw_item.get("meaning"), limit=60)
+            text = f"{symbol}：{meaning}" if symbol and meaning else symbol or meaning
+        elif section == "canonical_claim_pool":
+            text = _preview_text(raw_item.get("claim_text"))
+        else:
+            topic = _preview_text(raw_item.get("topic"), limit=48)
+            contrast = _preview_text(raw_item.get("contrast"), limit=72)
+            text = f"{topic}：{contrast}" if topic and contrast else topic or contrast
+        if text:
+            items.append(text)
+    return items
+
+
+async def _publish_stream_previews(
+    payload: object,
+    *,
+    callback: DocumentPreparationProgressCallback,
+    published_sections: set[str],
+    published_briefs: set[int],
+    final: bool,
+) -> None:
+    if not isinstance(payload, Mapping):
+        return
+
+    backbone = payload.get("document_backbone")
+    if isinstance(backbone, Mapping):
+        for section, following_section in _BACKBONE_STREAM_SECTIONS:
+            if section in published_sections:
+                continue
+            if not final and following_section not in backbone:
+                continue
+            raw_items = backbone.get(section)
+            items = _backbone_section_items(section, raw_items)
+            await callback(
+                "backbone_section",
+                {
+                    "section": section,
+                    "item_count": len(raw_items) if isinstance(raw_items, list) else 0,
+                    "items": items,
+                },
+            )
+            published_sections.add(section)
+
+    raw_briefs = payload.get("chapter_execution_briefs")
+    if not isinstance(raw_briefs, list):
+        return
+    for position, raw_brief in enumerate(raw_briefs):
+        if not isinstance(raw_brief, Mapping):
+            continue
+        chapter_index = int(raw_brief.get("chapter_index", 0) or 0)
+        if chapter_index <= 0 or chapter_index in published_briefs:
+            continue
+        brief_is_complete = final or position < len(raw_briefs) - 1 or "fallback_used" in raw_brief
+        if not brief_is_complete:
+            continue
+        await callback(
+            "chapter_execution_brief",
+            {
+                "chapter_index": chapter_index,
+                "teaching_outline": _preview_string_list(
+                    raw_brief.get("teaching_outline"), item_limit=100
+                ),
+                "writing_instructions": _preview_string_list(
+                    raw_brief.get("writing_instructions"), item_limit=120
+                ),
+                "retrieval_queries": _preview_string_list(
+                    raw_brief.get("retrieval_queries"), item_limit=100
+                ),
+            },
+        )
+        published_briefs.add(chapter_index)
+
+
+async def _stream_document_preparation_bundle(
+    *,
+    messages: list[dict[str, str]],
+    completion_kwargs: dict[str, object],
+    callback: DocumentPreparationProgressCallback,
+) -> DocumentPreparationBundle:
+    chunks: list[str] = []
+    total_chars = 0
+    buffered_chars = 0
+    published_sections: set[str] = set()
+    published_briefs: set[int] = set()
+
+    async for chunk in acompletion_stream(
+        messages,
+        **completion_kwargs,
+    ):
+        chunks.append(chunk)
+        total_chars += len(chunk)
+        if total_chars - buffered_chars < _STREAM_PREVIEW_MIN_CHARS:
+            continue
+        buffered_chars = total_chars
+        raw_buffer = "".join(chunks)
+        partial_source = repair_json_string_escapes(raw_buffer) or raw_buffer
+        try:
+            partial_payload = from_json(partial_source, allow_partial=True)
+        except ValueError:
+            continue
+        await _publish_stream_previews(
+            partial_payload,
+            callback=callback,
+            published_sections=published_sections,
+            published_briefs=published_briefs,
+            final=False,
+        )
+
+    raw_text = "".join(chunks).strip()
+    bundle = parse_structured_response_text(DocumentPreparationBundle, raw_text)
+    payload = bundle.model_dump(mode="json")
+    await _publish_stream_previews(
+        payload,
+        callback=callback,
+        published_sections=published_sections,
+        published_briefs=published_briefs,
+        final=True,
+    )
+    return bundle
 
 
 def build_document_backbone(
@@ -84,6 +254,7 @@ async def generate_document_backbone(
     learner_profile_text: str = "",
     extra_metadata: dict[str, object] | None = None,
     max_retrieval_queries_per_chapter: int = 2,
+    progress_callback: DocumentPreparationProgressCallback | None = None,
 ) -> tuple[DocumentBackbone, list[ChapterExecutionBrief], list[BackboneConflictWarning]]:
     """Generate one whole-document backbone and every chapter execution brief."""
 
@@ -96,34 +267,64 @@ async def generate_document_backbone(
         file_summaries=file_summaries,
     )
 
+    messages = build_document_backbone_messages(
+        course_name=course_name,
+        digest_mode=digest_mode,
+        task_seeds=[item.model_dump(mode="json") for item in task_seeds],
+        research_agenda=agenda.model_dump(mode="json"),
+        evidence_units=[item.model_dump(mode="json") for item in evidence_units],
+        file_summaries=[item.model_dump(mode="json") for item in file_summaries],
+        learner_profile_text=learner_profile_text,
+        max_retrieval_queries_per_chapter=retrieval_query_limit,
+    )
+    completion_kwargs = docgen_completion_kwargs_with_metadata(
+        DocGenModelStep.DOCUMENT_BACKBONE,
+        digest_mode=digest_mode,
+        extra_metadata=extra_metadata,
+        docgen_stage="build_document_backbone",
+        chapter_count=len(task_seeds),
+        file_summary_count=len(file_summaries),
+        evidence_unit_count=len(evidence_units),
+    )
+
     try:
-        response = await acompletion_with_fallback(
-            build_document_backbone_messages(
-                course_name=course_name,
-                digest_mode=digest_mode,
-                task_seeds=[item.model_dump(mode="json") for item in task_seeds],
-                research_agenda=agenda.model_dump(mode="json"),
-                evidence_units=[item.model_dump(mode="json") for item in evidence_units],
-                file_summaries=[item.model_dump(mode="json") for item in file_summaries],
-                learner_profile_text=learner_profile_text,
-                max_retrieval_queries_per_chapter=retrieval_query_limit,
-            ),
-            **docgen_completion_kwargs_with_metadata(
-                DocGenModelStep.DOCUMENT_BACKBONE,
-                digest_mode=digest_mode,
-                extra_metadata=extra_metadata,
-                docgen_stage="build_document_backbone",
-                chapter_count=len(task_seeds),
-                file_summary_count=len(file_summaries),
-                evidence_unit_count=len(evidence_units),
-            ),
-            response_model=DocumentPreparationBundle,
-        )
-        bundle = (
-            response
-            if isinstance(response, DocumentPreparationBundle)
-            else DocumentPreparationBundle.model_validate(response)
-        )
+        if progress_callback is not None:
+            try:
+                bundle = await _stream_document_preparation_bundle(
+                    messages=messages,
+                    completion_kwargs=completion_kwargs,
+                    callback=progress_callback,
+                )
+            except Exception as stream_exc:
+                logger.warning(
+                    "document_backbone_stream_failed_using_structured_call",
+                    error=str(stream_exc),
+                )
+                await progress_callback(
+                    "stream_repair",
+                    {"reason": "stream_output_not_validated"},
+                )
+                response = await acompletion_with_fallback(
+                    messages,
+                    **completion_kwargs,
+                    response_model=DocumentPreparationBundle,
+                )
+                bundle = (
+                    response
+                    if isinstance(response, DocumentPreparationBundle)
+                    else DocumentPreparationBundle.model_validate(response)
+                )
+        else:
+            response = await acompletion_with_fallback(
+                messages,
+                **completion_kwargs,
+                response_model=DocumentPreparationBundle,
+            )
+            bundle = (
+                response
+                if isinstance(response, DocumentPreparationBundle)
+                else DocumentPreparationBundle.model_validate(response)
+            )
         backbone = bundle.document_backbone
         expected_brief_indices = [int(seed.chapter_index) for seed in task_seeds]
         returned_brief_indices = [int(item.chapter_index) for item in bundle.chapter_execution_briefs]

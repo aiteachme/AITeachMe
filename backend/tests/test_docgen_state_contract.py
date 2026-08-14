@@ -198,6 +198,91 @@ async def test_document_backbone_uses_one_llm_slot_and_preserves_measured_source
 
 
 @pytest.mark.anyio
+async def test_document_backbone_streams_validated_sections_and_chapter_briefs(monkeypatch) -> None:
+    streamed_bundle = DocumentPreparationBundle(
+        document_backbone=DocumentBackbone(
+            canonical_glossary=[
+                CanonicalGlossaryItem(term="极限", definition="函数趋近过程的稳定描述。")
+            ],
+            canonical_claim_pool=[
+                CanonicalClaim(
+                    claim_id="claim_limit",
+                    claim_text=r"\lim_{x\to a}f(x) 描述趋近结果，不等同于直接取值。",
+                    target_chapter=1,
+                )
+            ],
+        ),
+        chapter_execution_briefs=[
+            ChapterExecutionBrief(
+                chapter_index=1,
+                teaching_outline=["极限直观", "极限定义"],
+                writing_instructions=["先直观后形式化。"],
+                retrieval_queries=["函数极限 定义"],
+            ),
+            ChapterExecutionBrief(
+                chapter_index=2,
+                teaching_outline=["导数定义", "求导法则"],
+                writing_instructions=["用割线到切线解释导数。"],
+                retrieval_queries=["导数 几何意义"],
+            ),
+        ],
+    ).model_dump_json().replace(r"\\lim", r"\lim")
+
+    async def fake_stream(*args, **kwargs):
+        del args
+        assert "response_format" not in kwargs
+        for start in range(0, len(streamed_bundle), 71):
+            yield streamed_bundle[start : start + 71]
+
+    async def fail_structured_fallback(*args, **kwargs):
+        del args, kwargs
+        raise AssertionError("valid streamed JSON must not trigger a second LLM call")
+
+    progress_events: list[tuple[str, dict[str, object]]] = []
+
+    async def capture_progress(kind: str, payload: dict[str, object]) -> None:
+        progress_events.append((kind, payload))
+
+    monkeypatch.setattr(document_backbone_lib, "acompletion_stream", fake_stream)
+    monkeypatch.setattr(document_backbone_lib, "acompletion_with_fallback", fail_structured_fallback)
+    monkeypatch.setattr(document_backbone_lib, "_STREAM_PREVIEW_MIN_CHARS", 1)
+
+    backbone, briefs, warnings = await document_backbone_lib.generate_document_backbone(
+        course_name="高数复习",
+        digest_mode="systematic",
+        task_seeds=[
+            ChapterGenerationTaskSeed(chapter_index=1, confirmed_title="极限"),
+            ChapterGenerationTaskSeed(chapter_index=2, confirmed_title="导数"),
+        ],
+        agenda=BackboneResearchAgenda(),
+        evidence_units=[],
+        file_summaries=[],
+        progress_callback=capture_progress,
+    )
+
+    assert backbone.canonical_glossary[0].term == "极限"
+    assert [brief.chapter_index for brief in briefs] == [1, 2]
+    assert warnings[0].warning_id == "bb_no_evidence_units"
+    streamed_sections = {
+        payload["section"]
+        for kind, payload in progress_events
+        if kind == "backbone_section"
+    }
+    assert streamed_sections == {
+        "canonical_glossary",
+        "concept_dependency_graph",
+        "notation_registry",
+        "canonical_claim_pool",
+        "confusion_map",
+    }
+    assert [
+        payload["chapter_index"]
+        for kind, payload in progress_events
+        if kind == "chapter_execution_brief"
+    ] == [1, 2]
+
+
+@pytest.mark.anyio
 async def test_document_preparation_rejects_duplicate_brief_indices_and_falls_back(monkeypatch) -> None:
     async def fake_completion(*args, **kwargs):
         del args, kwargs
@@ -753,6 +838,7 @@ def test_preliminary_kg_does_not_turn_required_elements_into_graph_nodes() -> No
 @pytest.mark.anyio
 async def test_backbone_node_emits_early_dispatch_and_preliminary_kg(monkeypatch) -> None:
     captured: dict[str, object] = {}
+    recent_events: list[dict[str, object]] = []
 
     def fake_update_status(*args, **kwargs):
         del args
@@ -763,10 +849,16 @@ async def test_backbone_node_emits_early_dispatch_and_preliminary_kg(monkeypatch
         captured["progress_payload"] = payload
 
     monkeypatch.setattr(build_document_backbone, "update_knowledge_build_status", fake_update_status)
-    monkeypatch.setattr(build_document_backbone, "append_knowledge_build_recent_event", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        build_document_backbone,
+        "append_knowledge_build_recent_event",
+        lambda *args, **kwargs: recent_events.append(kwargs["event"]),
+    )
     monkeypatch.setattr(build_document_backbone, "publish_docgen_progress", fake_publish_progress)
+    monkeypatch.setattr(build_document_backbone, "_BACKBONE_PROGRESS_INTERVAL_S", 0.01)
 
     async def fake_generate_document_backbone(**kwargs):
+        await asyncio.sleep(0.025)
         captured["backbone_kwargs"] = kwargs
         return (
             DocumentBackbone(
@@ -870,6 +962,7 @@ async def test_backbone_node_emits_early_dispatch_and_preliminary_kg(monkeypatch
     assert status_kwargs["metrics"]["docgen_preliminary_kg_stage"] == "document_backbone_ready"
     assert captured["backbone_kwargs"]["course_name"] == ""
     assert result["llm_calls_total"] == 1
+    assert any(event["stage"] == "document_backbone_progress" for event in recent_events)
 
 
 def test_docgen_kg_draft_merges_preliminary_and_reviewed_headings() -> None:

@@ -118,6 +118,7 @@ export function formatBuildEventTime(value?: string | null): string | null {
   return time.toLocaleTimeString("zh-CN", {
     hour: "2-digit",
     minute: "2-digit",
+    second: "2-digit",
   });
 }
 
