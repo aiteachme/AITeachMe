@@ -2735,6 +2735,48 @@ async def test_repair_appends_unit_test_patch_to_chapter_end(monkeypatch) -> Non
 
 
 @pytest.mark.anyio
+async def test_sprint_repair_still_appends_required_unit_test(monkeypatch) -> None:
+    async def fake_completion(*args, **kwargs):
+        return repair._LocalMarkdownPatch(
+            status="patch",
+            patch_markdown=(
+                "## 单元测试\n\n"
+                "> [!QUESTION]\n"
+                "> **题目/任务**：说明面积计算前为什么要统一单位。\n>\n"
+                "> [!ANSWER]\n"
+                "> **答案/结论**：不同单位的数值不能直接参与同一面积计算。\n"
+            ),
+        )
+
+    monkeypatch.setattr(repair, "acompletion_with_fallback", fake_completion)
+    chapter = ReviewedChapterDraft(
+        chapter_index=1,
+        title="面积",
+        markdown="# 面积\n\n## 核心概念\n\n面积表示平面的大小。\n",
+    )
+    action = ReviewAction(
+        action_id="review_ch01_unit_test",
+        action_type="section_patch",
+        chapter_index=1,
+        reason="缺少固定的章末 `## 单元测试` 模块。",
+        instruction="在本章末尾补齐固定二级标题 `## 单元测试`。",
+        constraints=["`## 单元测试` 必须是本章最后一个二级标题。"],
+    )
+
+    repaired, updated_actions, unresolved, traces = await repair.repair_or_route_review_actions(
+        reviewed_chapters=[chapter],
+        review_actions=[action],
+        allow_llm_patches=False,
+    )
+
+    assert "## 单元测试" in repaired[0].markdown
+    assert updated_actions[0].status == "applied"
+    assert unresolved == []
+    assert traces[0].changed is True
+    assert traces[0].llm_attempted is True
+
+
+@pytest.mark.anyio
 async def test_repair_batches_multiple_actions_into_one_llm_patch(monkeypatch) -> None:
     calls = 0
 

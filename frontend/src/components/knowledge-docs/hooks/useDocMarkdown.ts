@@ -138,6 +138,8 @@ const GRAPH_SYNC_BUILD_STAGES = new Set([
   "queued_after_docgen",
   "graph_docs_sync",
 ]);
+const VECTOR_STATUS_REFRESH_RETRY_DELAY_MS = 5000;
+const VECTOR_STATUS_REFRESH_MAX_ATTEMPTS = 24;
 
 export interface DocMarkdownState {
   courseId: string | undefined;
@@ -210,7 +212,6 @@ export function useDocMarkdown(): DocMarkdownState {
   const [terminalRefreshRetryNonce, setTerminalRefreshRetryNonce] = useState(0);
   const lastTerminalDocRefreshKeyRef = useRef<string | null>(null);
   const lastPublicationMetadataRefreshKeyRef = useRef<string | null>(null);
-  const lastVectorStatusRefreshKeyRef = useRef<string | null>(null);
   const publicationManifestRef = useRef<KnowledgeDocPublicationManifest | undefined>(undefined);
   const publicationChunksRef = useRef<KnowledgeDocPublicationChunk[]>([]);
   const activePublicationIdRef = useRef<string | null>(null);
@@ -233,7 +234,6 @@ export function useDocMarkdown(): DocMarkdownState {
         terminalRefreshRetryTimerRef.current = null;
       }
       lastTerminalDocRefreshKeyRef.current = null;
-      lastVectorStatusRefreshKeyRef.current = null;
       terminalRefreshRetryKeyRef.current = null;
       terminalRefreshAttemptRef.current = 0;
     };
@@ -649,26 +649,39 @@ export function useDocMarkdown(): DocMarkdownState {
       !courseId ||
       !trainingUnlocked ||
       vectorStatus?.mode === "disabled" ||
-      !vectorNotice ||
-      docMarkdownQuery.isFetching
+      !vectorNotice
     ) return;
 
-    const refreshKey = [
-      courseId,
-      runtimeQuery.data?.build_group_id ?? "",
-      graphStatus ?? "",
-      runtimeQuery.data?.graph?.finished_at ?? "",
-    ].join(":");
-    if (lastVectorStatusRefreshKeyRef.current === refreshKey) return;
-    lastVectorStatusRefreshKeyRef.current = refreshKey;
-    void docMarkdownQuery.refetch();
+    let cancelled = false;
+    let attemptCount = 0;
+    let retryTimer: number | null = null;
+    const refreshVectorStatus = async () => {
+      attemptCount += 1;
+      const result = await docMarkdownQuery.refetch();
+      if (cancelled) return;
+      const refreshedStatus = result.data?.vector_status;
+      const shouldRetry = Boolean(
+        result.isError ||
+        (
+          refreshedStatus?.mode !== "disabled" &&
+          refreshedStatus?.notice?.trim()
+        ),
+      );
+      if (shouldRetry && attemptCount < VECTOR_STATUS_REFRESH_MAX_ATTEMPTS) {
+        retryTimer = window.setTimeout(refreshVectorStatus, VECTOR_STATUS_REFRESH_RETRY_DELAY_MS);
+      }
+    };
+
+    void refreshVectorStatus();
+    return () => {
+      cancelled = true;
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
+    };
   }, [
     courseId,
     docMarkdownQuery.data?.vector_status?.mode,
     docMarkdownQuery.data?.vector_status?.notice,
-    docMarkdownQuery.isFetching,
     docMarkdownQuery.refetch,
-    graphStatus,
     runtimeQuery.data?.build_group_id,
     runtimeQuery.data?.graph?.finished_at,
     trainingUnlocked,

@@ -709,7 +709,7 @@ async def repair_or_route_review_actions(
         ]
         remaining_llm_actions: list[tuple[int, ReviewAction]] = []
         if not allow_llm_patches:
-            for action_index, action in llm_actions:
+            for action_index, action in regular_llm_actions:
                 updated_action = action.model_copy(update={"status": "recorded"})
                 results.append(
                     (
@@ -730,7 +730,7 @@ async def repair_or_route_review_actions(
                         _unresolved_message(updated_action, status="recorded"),
                     )
                 )
-            return current_chapter, results
+            regular_llm_actions = []
         repair_round = 1
         for action_batch in (regular_llm_actions, unit_test_llm_actions):
             current_batch = action_batch
