@@ -37,6 +37,7 @@ export * from './apiResponseExamProfileSyncResponse.ts';
 export * from './apiResponseExamStudyGuideResponse.ts';
 export * from './apiResponseExportPreviewData.ts';
 export * from './apiResponseFileDeleteData.ts';
+export * from './apiResponseFileRecord.ts';
 export * from './apiResponseFilesData.ts';
 export * from './apiResponseFilesUploadData.ts';
 export * from './apiResponseFullGraphResponse.ts';

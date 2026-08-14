@@ -6,7 +6,6 @@ The table registry drives export/import order and foreign-key remapping.
 from __future__ import annotations
 
 import json
-import mimetypes
 import posixpath
 import re
 import tempfile

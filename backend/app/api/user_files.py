@@ -17,9 +17,10 @@ from sqlmodel import Session
 
 from app.api.deps import CurrentUserContext, get_current_user_context, get_db
 from app.api.openapi import build_error_responses
+from app.models import TaskStatus
 from app.repositories.files_repo import get_raw_file_by_id_for_user
 from app.schemas.common import ApiResponse, ok_response
-from app.schemas.files import FileDeleteData, FileDeleteRequest, FilesData, FilesUploadData
+from app.schemas.files import FileDeleteData, FileDeleteRequest, FileRecord, FilesData, FilesUploadData
 from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.llm_support import run_llm_tasks
 from app.shared.infra.llm_support.model_choices import normalize_runtime_model_override, use_runtime_model_override
@@ -33,8 +34,11 @@ from app.shared.infra.storage import get_content_store
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.docgen.lib.interactive_html import generate_selection_interactive_html
 from app.workflows.ingest.intake import (
+    build_file_record,
     delete_user_files,
+    get_user_file_or_raise,
     list_user_files,
+    resolve_file_markdown_content,
     save_uploaded_files_and_request_parse,
     spawn_parse_files_background,
 )
@@ -138,7 +142,7 @@ async def upload_user_files(
 @router.get(
     "",
     response_model=ApiResponse[FilesData],
-    summary="Get user library files with full data",
+    summary="Get user library file metadata",
     responses=build_error_responses([400, 500]),
 )
 async def list_user_files_api(
@@ -175,22 +179,44 @@ async def delete_user_files_api(
 
 
 @router.get(
+    "/{file_id}",
+    response_model=ApiResponse[FileRecord],
+    summary="Get one user library file with parsed Markdown",
+    responses=build_error_responses([404, 503]),
+)
+async def get_user_file_api(
+    file_id: str = Path(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[FileRecord]:
+    raw_file = get_user_file_or_raise(session, owner_user_id=user.user_id, file_id=file_id)
+    markdown_content = await resolve_file_markdown_content(raw_file)
+    if (
+        raw_file.status == TaskStatus.COMPLETED.value
+        and raw_file.markdown_path
+        and not markdown_content.strip()
+    ):
+        raise HTTPException(
+            status_code=503,
+            detail="资料正文暂时无法读取，请稍后重试。",
+        )
+    return ok_response(build_file_record(raw_file, markdown_content=markdown_content))
+
+
+@router.get(
     "/{file_id}/download",
     summary="Download parsed markdown file",
-    responses=build_error_responses([404, 500]),
+    responses=build_error_responses([404, 503]),
 )
 async def download_user_file(
     file_id: str = Path(...),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> Response:
-    raw_file = get_raw_file_by_id_for_user(session, user_id=user.user_id, file_id=file_id)
-    if raw_file is None:
-        return Response(status_code=404, content=b"Not found")
-
-    markdown_content = raw_file.markdown_content
+    raw_file = get_user_file_or_raise(session, owner_user_id=user.user_id, file_id=file_id)
+    markdown_content = await resolve_file_markdown_content(raw_file)
     if not markdown_content:
-        return Response(status_code=404, content=b"Markdown content not available")
+        raise HTTPException(status_code=503, detail="资料正文暂时无法读取，请稍后重试。")
 
     # 构建下载文件名：替换扩展名为 .md
     filename = raw_file.filename

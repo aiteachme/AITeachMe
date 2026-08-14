@@ -35,7 +35,7 @@ import {
   X,
 } from "lucide-react";
 
-import { apiClient, getApiErrorMessage } from "../api/client";
+import { apiClient, getApiErrorMessage, isApiErrorStatus, isBackendOfflineError } from "../api/client";
 import { useAiInteraction } from "../components/interaction/AiInteractionProvider";
 import { AI_SCENE_LIBRARY_SELECTION, getLibrarySelectionSource } from "../components/interaction/types";
 import { resolveFileProcessingLabel } from "../components/knowledge-docs/utils";
@@ -101,12 +101,13 @@ async function fetchLibraryFiles(): Promise<FilesData> {
   };
 }
 
-async function fetchLibraryFile(fileId: string): Promise<FileRecord | null> {
-  const response = await apiClient<ApiResponse<FilesData>>({
+async function fetchLibraryFile(fileId: string, signal?: AbortSignal): Promise<FileRecord | null> {
+  const response = await apiClient<ApiResponse<FileRecord>>({
     method: "GET",
-    url: `/api/v1/files?file_ids=${encodeURIComponent(fileId)}`,
+    url: `/api/v1/files/${encodeURIComponent(fileId)}`,
+    signal,
   });
-  return response.data?.items?.[0] ?? null;
+  return response.data ?? null;
 }
 
 async function uploadLibraryFiles(files: File[]): Promise<FilesUploadData> {
@@ -1294,8 +1295,14 @@ export function LibraryFilePage() {
   /* ---- file query ---- */
   const fileQuery = useQuery({
     queryKey: ["files-library-file", decodedFileId],
-    queryFn: () => fetchLibraryFile(decodedFileId),
+    queryFn: ({ signal }) => fetchLibraryFile(decodedFileId, signal),
     enabled: decodedFileId.length > 0,
+    retry: (failureCount, error) => (
+      !isBackendOfflineError(error)
+      && ![401, 403, 404, 422].some((status) => isApiErrorStatus(error, status))
+      && failureCount < 2
+    ),
+    retryDelay: (attemptIndex) => Math.min(800 * 2 ** attemptIndex, 2400),
     refetchInterval: (query) => {
       const file = query.state.data;
       return file && getFileStatusKind(file) === "processing" ? 2000 : false;
@@ -2183,8 +2190,17 @@ export function LibraryFilePage() {
       ) : null}
 
       {fileQuery.isError ? (
-        <div className="mt-6 rounded-xl border border-red-100 bg-red-50 px-4 py-4 text-sm leading-6 text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
-          {getApiErrorMessage(fileQuery.error, "资料加载失败")}
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-100 bg-red-50 px-4 py-3.5 text-sm leading-6 text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
+          <span>{getApiErrorMessage(fileQuery.error, "资料加载失败")}</span>
+          <button
+            type="button"
+            onClick={() => void fileQuery.refetch()}
+            disabled={fileQuery.isFetching}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-red-200 bg-white/80 px-3 text-xs font-medium text-red-700 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200 dark:hover:bg-red-950/70"
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5", fileQuery.isFetching && "animate-spin")} />
+            重新加载
+          </button>
         </div>
       ) : null}
 

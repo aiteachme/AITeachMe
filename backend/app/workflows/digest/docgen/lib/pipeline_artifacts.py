@@ -158,8 +158,6 @@ def build_preliminary_kg(
     nodes: list[dict[str, Any]] = []
     edges: list[dict[str, Any]] = []
     seen_nodes: set[tuple[str, str]] = set()
-    seen_edges: set[tuple[str, str, str]] = set()
-
     for fallback_index, chapter in enumerate(chapters_enhanced, start=1):
         chapter_index = _safe_int(chapter.get("chapter_index"))
         chapter_index = chapter_index or fallback_index

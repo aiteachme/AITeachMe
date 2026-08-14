@@ -13,7 +13,7 @@ from __future__ import annotations
 from typing import Any
 
 from llama_index.core.embeddings import BaseEmbedding
-from pydantic import Field, PrivateAttr
+from pydantic import PrivateAttr
 
 from app.shared.infra.settings import get_settings
 

@@ -232,12 +232,16 @@ async def append_to_learner_section(
     lines = current.split("\n") if current else []
 
     # 去重
-    if line.strip() in [l.strip() for l in lines]:
+    if line.strip() in [existing_line.strip() for existing_line in lines]:
         return
 
     lines.append(line)
     # 过滤空行和模板占位
-    lines = [l for l in lines if l.strip() and not l.strip().startswith("（")]
+    lines = [
+        existing_line
+        for existing_line in lines
+        if existing_line.strip() and not existing_line.strip().startswith("（")
+    ]
     await update_learner_section(user_id, section_name, "\n".join(lines))
 
 
@@ -309,5 +313,5 @@ async def load_doc_to_context(user_id: str = "default") -> str:
 
     # 去掉文件头的说明注释
     lines = doc.split("\n")
-    filtered = [l for l in lines if not l.strip().startswith(">")]
+    filtered = [line for line in lines if not line.strip().startswith(">")]
     return "\n".join(filtered).strip()

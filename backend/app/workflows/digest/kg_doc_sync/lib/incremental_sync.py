@@ -36,7 +36,6 @@ from app.workflows.digest.common.markdown_knowledge_anchors import (
     MarkdownKnowledgeUnit,
     MarkdownSectionChunk,
     extract_markdown_chapter_chunks,
-    extract_markdown_knowledge_units,
     extract_markdown_section_chunks,
     validate_knowledge_unit_anchors,
 )

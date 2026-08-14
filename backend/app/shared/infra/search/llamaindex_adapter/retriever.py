@@ -12,11 +12,8 @@ Usage::
 
 from __future__ import annotations
 
-from typing import Any, Optional
-
 import structlog
 from llama_index.core import VectorStoreIndex
-from llama_index.core.retrievers import VectorIndexRetriever
 from llama_index.core.schema import NodeWithScore, QueryBundle
 
 from app.models.course import Course

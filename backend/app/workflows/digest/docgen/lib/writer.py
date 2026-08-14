@@ -384,7 +384,7 @@ class DocGenWriterRuntime(BaseTracedExecution):
     ) -> str:
         cleaned = str(markdown or "").replace("\r\n", "\n").replace("\r", "\n")
         cleaned = re.sub(r"```markdown\s*.*?```", "", cleaned, flags=re.IGNORECASE | re.DOTALL)
-        cleaned = re.sub(rf"(?im)^\s*课程：\s*(?:course|subj)_[\w-]+\s*$", "", cleaned)
+        cleaned = re.sub(r"(?im)^\s*课程：\s*(?:course|subj)_[\w-]+\s*$", "", cleaned)
         cleaned = cleaned.replace("```markdown", "")
 
         forbidden_section_patterns = [

@@ -22,6 +22,8 @@ class _FakeContentStore:
     def __init__(self) -> None:
         self.writes: list[tuple[str, bytes]] = []
         self.texts: dict[str, str] = {}
+        self.read_text_calls: list[str] = []
+        self.list_prefix_calls: list[str] = []
 
     @staticmethod
     def user_file_scope(*, user_id: str):
@@ -31,9 +33,11 @@ class _FakeContentStore:
         self.writes.append((key, local_path.read_bytes()))
 
     async def read_text(self, key: str, *, default: str | None = None) -> str | None:
+        self.read_text_calls.append(key)
         return self.texts.get(key, default)
 
     async def list_prefix(self, prefix: str) -> list[str]:
+        self.list_prefix_calls.append(prefix)
         return []
 
 
@@ -175,10 +179,44 @@ def test_storage_only_markdown_marks_file_ready(monkeypatch) -> None:
         ingest_status=IngestStatus.READY_FOR_DIGEST.value,
     )
 
-    record = catalog.build_file_record(raw_file)
+    markdown_content = asyncio.run(catalog.resolve_file_markdown_content(raw_file))
+    record = catalog.build_file_record(raw_file, markdown_content=markdown_content)
 
     assert record.markdown_ready is True
     assert record.markdown_content == "# 已解析内容"
+    assert fake_store.read_text_calls == ["users/user_a/files/file_ready/markdown.md"]
+
+
+def test_user_file_list_is_lightweight_and_does_not_touch_storage(monkeypatch) -> None:
+    fake_store = _install_fake_store(monkeypatch)
+    with _session() as session:
+        session.add(User(id="user_a", username="user_a"))
+        session.add(
+            RawFile(
+                id="file_ready",
+                user_id="user_a",
+                filename="notes.pdf",
+                filetype="pdf",
+                file_path="users/user_a/files/file_ready/source.pdf",
+                markdown_path="users/user_a/files/file_ready/markdown.md",
+                markdown_content="# 已解析内容",
+                asset_dir="users/user_a/files/file_ready/assets",
+                image_count=2,
+                status=TaskStatus.COMPLETED.value,
+                ingest_status=IngestStatus.READY_FOR_DIGEST.value,
+            )
+        )
+        session.commit()
+
+        data = catalog.list_user_files(session, owner_user_id="user_a")
+
+    assert data.total == 1
+    assert data.items[0].markdown_ready is True
+    assert data.items[0].markdown_content == ""
+    assert data.items[0].asset_ready is True
+    assert data.items[0].asset_base_url == "/api/v1/files/assets/file_ready/"
+    assert fake_store.read_text_calls == []
+    assert fake_store.list_prefix_calls == []
 
 
 def test_ready_file_ids_for_course_indexing_includes_completed_markdown_path() -> None:

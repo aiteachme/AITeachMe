@@ -1430,7 +1430,6 @@ def confirm_planner_session(
         model_override=model_override,
         planner_status="confirmed",
     )
-    selected_file_ids = _planner_selected_file_ids(record)
     return BuildPlannerConfirmResponse(
         planner_session_id=record.id,
         confirmed_plan_id=confirmed.id,

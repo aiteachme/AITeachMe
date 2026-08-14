@@ -18,7 +18,7 @@ from app.workflows.digest.common.material_profile import (
 )
 from app.workflows.digest.common.asset_indexer import build_asset_registry
 from app.workflows.digest.common.hint_extractor import extract_fast_topic_hints
-from app.workflows.digest.common.models import ChunkIdentityMap, DigestMaterialContext, SharedInputs, SourcePacket
+from app.workflows.digest.common.models import ChunkIdentityMap, DigestMaterialContext, SourcePacket
 from app.workflows.digest.common.section_splitter import split_into_sections
 from app.workflows.digest.common.course_recognizer import recognize_course_profile
 

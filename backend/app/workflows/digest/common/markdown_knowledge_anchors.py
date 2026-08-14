@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import re
 
-from app.models.knowledge_taxonomy import normalize_generated_knowledge_unit_type, normalize_knowledge_unit_type
+from app.models.knowledge_taxonomy import normalize_generated_knowledge_unit_type
 
 ANCHOR_PREFIX = "ku_"
 ANCHOR_COMMENT_PREFIX = "ATM_KU:"

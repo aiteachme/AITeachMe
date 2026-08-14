@@ -7,11 +7,11 @@ retriever pipeline chain.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Optional
 
 import structlog
 from llama_index.core.postprocessor.types import BaseNodePostprocessor
-from llama_index.core.schema import MetadataMode, NodeWithScore, QueryBundle, TextNode
+from llama_index.core.schema import MetadataMode, NodeWithScore, QueryBundle
 
 from app.shared.infra.settings import get_settings
 from app.shared.infra.search.knowledge import RetrievedChunk, rerank_chunks

@@ -4,9 +4,11 @@ from app.workflows.ingest.intake.catalog import (
     build_file_record,
     get_course_file_or_raise,
     get_course_files_or_raise,
+    get_user_file_or_raise,
     get_user_files_or_raise,
     list_course_files,
     list_user_files,
+    resolve_file_markdown_content,
 )
 from app.workflows.ingest.intake.deletion import delete_files, delete_user_files
 from app.workflows.ingest.intake.parse_dispatch import (
@@ -29,6 +31,7 @@ __all__ = [
     "delete_user_files",
     "get_course_file_or_raise",
     "get_course_files_or_raise",
+    "get_user_file_or_raise",
     "get_user_files_or_raise",
     "list_course_files",
     "list_user_files",
@@ -36,6 +39,7 @@ __all__ = [
     "mark_parse_files_retry_pending",
     "run_index_course_files_background",
     "run_parse_files_background",
+    "resolve_file_markdown_content",
     "save_uploaded_file",
     "save_uploaded_files",
     "save_uploaded_files_and_request_parse",

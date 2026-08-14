@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import base64
-from pathlib import Path
 from typing import Literal
 
 import structlog
 
 from app.shared.infra.settings import get_settings
 from app.shared.infra.env_support import get_env, get_env_choice
-from app.shared.infra.exceptions import FileParseError, LLMCallError, MissingLLMApiKeyError
+from app.shared.infra.exceptions import LLMCallError, MissingLLMApiKeyError
 from app.shared.infra.llm_support import acompletion
 from app.shared.infra.settings.support import llm_provider_requires_api_key
 from app.shared.infra.prompt_loader import populate_prompt
@@ -19,8 +18,6 @@ from app.workflows.ingest.parsing.lib.model_policy import (
     IngestParsingModelStep,
     ingest_parsing_completion_kwargs_with_metadata,
 )
-from app.workflows.ingest.parsing.lib.types import ParserRunOptions
-from app.workflows.ingest.parsing.utils import MIME_MAP, save_image_bytes
 from app.workflows.ingest.parsing.prompts import get_image_parse_prompt
 
 

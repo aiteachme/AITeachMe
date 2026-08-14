@@ -208,7 +208,6 @@ __all__ = [
     "PARSER_REGISTRY",
     "get_available_parsers",
     "is_markitdown_available_for_extension",
-    "log_parser_availability",
     "parse_pdf_with_markitdown",
     "resolve_markitdown_parser_name",
     "resolve_parser_extension",

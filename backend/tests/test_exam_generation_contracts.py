@@ -22,7 +22,6 @@ from app.repositories import exams_repo
 from app.schemas.exams import ExamGenerateRequest, ExamSubmitRequest, PaperPreview
 from app.shared.infra.exceptions import AITeachMeError
 from app.utils.time import utcnow
-from app.workflows.examine.exam_grade.lib import grader
 from app.workflows.examine.exam_grade.lib.grader import ExamItemGradeDecision
 from app.workflows.examine.question_build import prompts as question_prompts
 from app.workflows.examine.question_build.lib import generator

@@ -75,8 +75,6 @@ class ReasoningEngine:
         config: ReasoningConfig | None = None,
         task_type: str = TaskType.REASONING,
     ) -> ReasoningResult:
-        from app.shared.infra.llm_support import acompletion
-
         cfg = config or ReasoningConfig()
         dispatch = {
             ReasoningStrategy.DIRECT: self._direct,
@@ -114,7 +112,7 @@ class ReasoningEngine:
             {"role": SYSTEM, "content": "请制定3-5步解决计划。"},
             {"role": USER, "content": user_msg},
         ], task_type=task_type)
-        steps = [l.strip() for l in plan.split("\n") if l.strip()]
+        steps = [line.strip() for line in plan.split("\n") if line.strip()]
         answer = await acompletion(messages + [
             {"role": USER, "content": "按计划回答：\n" + "\n".join(f"{i+1}. {s}" for i, s in enumerate(steps))},
         ], task_type=task_type)

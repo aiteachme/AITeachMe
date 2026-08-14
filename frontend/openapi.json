@@ -1225,7 +1225,7 @@
         "tags": [
           "files"
         ],
-        "summary": "Get user library files with full data",
+        "summary": "Get user library file metadata",
         "operationId": "list_user_files_api_api_v1_files_get",
         "parameters": [
           {
@@ -1373,6 +1373,68 @@
         }
       }
     },
+    "/api/v1/files/{file_id}": {
+      "get": {
+        "tags": [
+          "files"
+        ],
+        "summary": "Get one user library file with parsed Markdown",
+        "operationId": "get_user_file_api_api_v1_files__file_id__get",
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "File Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_FileRecord_"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "依赖服务当前不可用。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/files/{file_id}/download": {
       "get": {
         "tags": [
@@ -1410,8 +1472,8 @@
               }
             }
           },
-          "500": {
-            "description": "服务内部异常。",
+          "503": {
+            "description": "依赖服务当前不可用。",
             "content": {
               "application/json": {
                 "schema": {
@@ -9547,6 +9609,40 @@
         },
         "type": "object",
         "title": "ApiResponse[FileDeleteData]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_FileRecord_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FileRecord"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[FileRecord]",
         "example": {
           "code": 0,
           "data": {},

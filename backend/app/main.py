@@ -302,7 +302,7 @@ def _log_infra_diagnostics(settings) -> None:
     if is_postgres():
         lines.append(f"    Host                   : {engine.url.host or 'unknown'}")
         lines.append(f"    Database               : {engine.url.database or 'unknown'}")
-        lines.append(f"    pgvector               : ready")
+        lines.append("    pgvector               : ready")
     elif is_sqlite():
         lines.append("    Course Vector Index   : local course-scoped store")
 

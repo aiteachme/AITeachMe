@@ -394,7 +394,6 @@ def build_mermaid(export: WorkflowGraphExport, analysis: dict) -> str:
 
     node_ids = analysis["node_ids"]
     edges = analysis["edges"]
-    is_linear = analysis["is_linear"]
     happy_step = analysis["happy_step"]
     fail_nodes = analysis["fail_nodes"]
     node_labels = analysis["node_labels"]
@@ -511,7 +510,7 @@ def build_node_table(analysis: dict) -> str:
                 )
                 labels = None
             if labels is not None and labels:
-                route_desc = " → ".join(f"`{l}`" for l in labels)
+                route_desc = " → ".join(f"`{label}`" for label in labels)
             elif labels is not None:
                 targets = [node_labels.get(edge.target) or _humanize(edge.target) for edge in outs]
                 route_desc = " / ".join(targets)
@@ -614,7 +613,7 @@ def build_module_md(module: str, exports: list[WorkflowGraphExport]) -> str:
 
         for key, prompt in all_prompts.items():
             display = key.replace("_", " ").title()
-            parts.append(f"<details>")
+            parts.append("<details>")
             parts.append(f"<summary><b>{display}</b> (<code>{key}</code>)</summary>")
             parts.append("")
             parts.append("```")

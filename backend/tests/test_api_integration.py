@@ -13,8 +13,9 @@ from sqlmodel import Session, SQLModel, create_engine
 from app.api import chats as chats_api
 from app.api import deps
 from app.api import export_import as export_import_api
+from app.api import user_files as user_files_api
 from app.api.deps import CurrentUserContext
-from app.models import ChatMessage, ChatSession
+from app.models import ChatMessage, ChatSession, IngestStatus, RawFile, TaskStatus
 from app.repositories.chats_repo import create_chat_message
 from app.schemas.export_import import CoursePackageItem, ImportResultData
 from app.utils.course import GLOBAL_COURSE
@@ -198,3 +199,41 @@ def test_import_course_upload_accepts_atmx_filename(monkeypatch: pytest.MonkeyPa
 
     assert response.status_code == 200
     assert response.json()["data"]["course_id"] == "course_import_api"
+
+
+def test_user_file_detail_returns_single_file_markdown(monkeypatch: pytest.MonkeyPatch) -> None:
+    app = FastAPI()
+    app.include_router(user_files_api.router)
+    raw_file = RawFile(
+        id="file_api_detail",
+        user_id="api-user",
+        filename="线性代数.pdf",
+        filetype="pdf",
+        file_path="users/api-user/files/file_api_detail/source.pdf",
+        markdown_path="users/api-user/files/file_api_detail/markdown.md",
+        asset_dir="users/api-user/files/file_api_detail/assets",
+        status=TaskStatus.COMPLETED.value,
+        ingest_status=IngestStatus.READY_FOR_DIGEST.value,
+    )
+
+    def override_get_db() -> Generator[object, None, None]:
+        yield object()
+
+    def override_current_user_context() -> CurrentUserContext:
+        return CurrentUserContext(user_id="api-user", email=None, is_local=True)
+
+    async def resolve_markdown(_raw_file: RawFile) -> str:
+        return "# 线性代数\n\n矩阵与向量"
+
+    monkeypatch.setattr(user_files_api, "get_user_file_or_raise", lambda *_args, **_kwargs: raw_file)
+    monkeypatch.setattr(user_files_api, "resolve_file_markdown_content", resolve_markdown)
+    app.dependency_overrides[deps.get_db] = override_get_db
+    app.dependency_overrides[deps.get_current_user_context] = override_current_user_context
+
+    with TestClient(app) as client:
+        response = client.get("/api/v1/files/file_api_detail")
+
+    assert response.status_code == 200
+    assert response.json()["data"]["id"] == "file_api_detail"
+    assert response.json()["data"]["markdown_content"].startswith("# 线性代数")
+    assert response.json()["data"]["asset_base_url"] == "/api/v1/files/assets/file_api_detail/"

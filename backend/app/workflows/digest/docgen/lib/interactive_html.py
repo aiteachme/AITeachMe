@@ -336,7 +336,6 @@ def _openmaic_style_validation_issues(
         issues.append("模型输出没有可提取的 HTML 文档。请只返回完整 HTML。")
 
     raw_document = extracted or raw_text
-    raw_structure = _structure_without_script_style(raw_document)
     for tag in ("script", "style"):
         open_count = len(re.findall(rf"<{tag}\b", raw_document, re.IGNORECASE))
         close_count = len(re.findall(rf"</{tag}\s*>", raw_document, re.IGNORECASE))
@@ -922,15 +921,16 @@ async def generate_selection_interactive_html(
         if outline.title and outline.title != "交互演示":
             title = outline.title
 
-    legacy_messages_factory = lambda retry_feedback: build_selection_interactive_html_messages(
-        anchor_title=anchor_title,
-        heading_path=heading_path,
-        selected_text=selected_text,
-        user_prompt=user_prompt,
-        section_excerpt=section_excerpt,
-        design_brief=design_brief.as_prompt_text(),
-        retry_feedback=retry_feedback,
-    )
+    def legacy_messages_factory(retry_feedback: Sequence[str]) -> list[dict[str, str]]:
+        return build_selection_interactive_html_messages(
+            anchor_title=anchor_title,
+            heading_path=heading_path,
+            selected_text=selected_text,
+            user_prompt=user_prompt,
+            section_excerpt=section_excerpt,
+            design_brief=design_brief.as_prompt_text(),
+            retry_feedback=retry_feedback,
+        )
     if outline is not None and outline_decision is not None:
         generated = await _generate_interactive_html_with_retry(
             title=title,
@@ -1115,18 +1115,19 @@ async def maybe_generate_interactive_html_assets(
             if outline.title and outline.title != "交互演示":
                 title = outline.title
 
-        legacy_messages_factory = lambda retry_feedback: build_interactive_html_messages(
-            chapter_title=title,
-            chapter_objective=draft.summary_draft,
-            digest_mode=digest_mode,
-            interaction_mode=interaction_mode,
-            design_brief=design_brief.as_prompt_text(),
-            concept_targets=concept_targets,
-            formula_targets=formula_targets,
-            claim_targets=claim_targets,
-            chapter_context=context,
-            retry_feedback=retry_feedback,
-        )
+        def legacy_messages_factory(retry_feedback: Sequence[str]) -> list[dict[str, str]]:
+            return build_interactive_html_messages(
+                chapter_title=title,
+                chapter_objective=draft.summary_draft,
+                digest_mode=digest_mode,
+                interaction_mode=interaction_mode,
+                design_brief=design_brief.as_prompt_text(),
+                concept_targets=concept_targets,
+                formula_targets=formula_targets,
+                claim_targets=claim_targets,
+                chapter_context=context,
+                retry_feedback=retry_feedback,
+            )
         if outline is not None and outline_decision is not None:
             generated = await _generate_interactive_html_with_retry(
                 title=title,

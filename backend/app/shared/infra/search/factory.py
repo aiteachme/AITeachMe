@@ -12,8 +12,8 @@ time is intentional: those packages auto-register their subclasses through
 
 from __future__ import annotations
 
-import app.shared.infra.search.readers as _reader_registry
-import app.shared.infra.search.retrievers as _retriever_registry
+import app.shared.infra.search.readers as _reader_registry  # noqa: F401  # registration side effect
+import app.shared.infra.search.retrievers as _retriever_registry  # noqa: F401  # registration side effect
 
 from app.shared.infra.settings import get_settings
 from app.shared.infra.search.readers import BS4Reader

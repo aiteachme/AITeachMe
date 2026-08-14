@@ -4,7 +4,6 @@
 用法: cd backend && python -m scripts.test_llm
 """
 import asyncio
-import sys
 import time
 
 from pydantic import BaseModel, Field
