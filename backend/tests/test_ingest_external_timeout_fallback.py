@@ -18,6 +18,12 @@ from app.workflows.ingest.parsing.strategy import ParsePlan
 from app.workflows.ingest.parsing.lib.types import ParserRunOptions
 
 
+def test_external_parse_timeout_defaults_are_60_seconds() -> None:
+    assert DEFAULT_EXTERNAL_PARSE_TIMEOUT_S == 60
+    assert DEFAULT_PADDLE_OCR_PARSE_TIMEOUT_S == 60
+    assert paddle_ocr_cloud.DEFAULT_PADDLE_OCR_DOWNLOAD_DEADLINE_EXTENSION_S == 30.0
+
+
 @pytest.mark.anyio
 async def test_paddle_timeout_falls_back_directly_to_local_parse(monkeypatch, tmp_path) -> None:
     source_path = tmp_path / "source.pdf"
@@ -417,7 +423,7 @@ def test_paddle_ocr_cloud_uses_one_second_default_poll_interval(monkeypatch, tmp
     assert captured["poll_interval_s"] == 1.0
 
 
-def test_paddle_ocr_download_uses_fresh_grace_timeout_after_poll_done(monkeypatch, tmp_path) -> None:
+def test_paddle_ocr_download_extends_original_deadline_after_poll_done(monkeypatch, tmp_path) -> None:
     source_path = tmp_path / "source.pdf"
     source_path.write_bytes(b"fake-pdf")
     captured: dict[str, object] = {}
@@ -436,13 +442,12 @@ def test_paddle_ocr_download_uses_fresh_grace_timeout_after_poll_done(monkeypatc
     def fake_poll_until_done(**kwargs):
         return "https://example.test/result.jsonl"
 
+    initial_deadline = paddle_ocr_cloud.time.monotonic() + 100
+
     def fake_build_deadline(timeout_s):
         captured.setdefault("deadlines", []).append(timeout_s)
-        if timeout_s == 42:
-            return paddle_ocr_cloud.time.monotonic() + 100
-        if timeout_s == 7:
-            return paddle_ocr_cloud.time.monotonic() + 200
-        return None
+        assert timeout_s == 42
+        return initial_deadline
 
     def fake_download_and_materialize_jsonl(**kwargs):
         captured["download_deadline"] = kwargs["deadline"]
@@ -463,12 +468,12 @@ def test_paddle_ocr_download_uses_fresh_grace_timeout_after_poll_done(monkeypatc
         options=paddle_ocr_cloud.PaddleOCRRequestOptions(api_token="token"),
         output_dir=tmp_path / "out",
         total_timeout_s=42,
-        download_grace_timeout_s=7,
+        download_deadline_extension_s=7,
     )
 
-    assert captured["deadlines"] == [42, 7]
-    assert captured["download_deadline"] > paddle_ocr_cloud.time.monotonic()
-    assert captured["download_total_timeout_s"] == 7
+    assert captured["deadlines"] == [42]
+    assert captured["download_deadline"] == initial_deadline + 7
+    assert captured["download_total_timeout_s"] == 49
 
 
 @pytest.mark.anyio

@@ -22,13 +22,15 @@ from pathlib import Path
 import structlog
 
 from app.workflows.ingest.parsing.paddle_ocr_cloud import (
-    DEFAULT_PADDLE_OCR_DOWNLOAD_GRACE_TIMEOUT_S,
+    DEFAULT_PADDLE_OCR_DOWNLOAD_DEADLINE_EXTENSION_S,
     DEFAULT_PADDLE_OCR_JOB_URL,
     DEFAULT_PADDLE_OCR_OPTIONAL_PAYLOAD,
     PaddleOCRExtractedResult,
     PaddleOCRRequestOptions,
     _build_deadline,
     _download_and_materialize_jsonl,
+    _extend_deadline,
+    _extended_timeout_budget_s,
     _get_session,
     _poll_until_done,
     _raise_timeout_if_deadline_exceeded,
@@ -85,7 +87,7 @@ def parse_file_to_dir_parallel(
     poll_interval_s: float = 1.0,
     poll_timeout_s: float = 600.0,
     total_timeout_s: float | None = None,
-    download_grace_timeout_s: float = DEFAULT_PADDLE_OCR_DOWNLOAD_GRACE_TIMEOUT_S,
+    download_deadline_extension_s: float = DEFAULT_PADDLE_OCR_DOWNLOAD_DEADLINE_EXTENSION_S,
     max_pages_per_chunk: int = DEFAULT_PADDLE_OCR_MAX_PAGES_PER_CHUNK,
     max_concurrent_jobs: int = DEFAULT_PADDLE_OCR_CHUNK_CONCURRENCY,
 ) -> PaddleOCRExtractedResult:
@@ -116,7 +118,7 @@ def parse_file_to_dir_parallel(
             poll_interval_s=poll_interval_s,
             poll_timeout_s=poll_timeout_s,
             total_timeout_s=total_timeout_s,
-            download_grace_timeout_s=download_grace_timeout_s,
+            download_deadline_extension_s=download_deadline_extension_s,
         )
 
     try:
@@ -136,7 +138,7 @@ def parse_file_to_dir_parallel(
             poll_interval_s=poll_interval_s,
             poll_timeout_s=poll_timeout_s,
             total_timeout_s=total_timeout_s,
-            download_grace_timeout_s=download_grace_timeout_s,
+            download_deadline_extension_s=download_deadline_extension_s,
         )
     if total_pages <= normalized_chunk_pages:
         logger.info(
@@ -154,7 +156,7 @@ def parse_file_to_dir_parallel(
             poll_interval_s=poll_interval_s,
             poll_timeout_s=poll_timeout_s,
             total_timeout_s=total_timeout_s,
-            download_grace_timeout_s=download_grace_timeout_s,
+            download_deadline_extension_s=download_deadline_extension_s,
         )
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -182,7 +184,7 @@ def parse_file_to_dir_parallel(
             poll_interval_s=poll_interval_s,
             poll_timeout_s=poll_timeout_s,
             total_timeout_s=total_timeout_s,
-            download_grace_timeout_s=download_grace_timeout_s,
+            download_deadline_extension_s=download_deadline_extension_s,
         )
     _raise_timeout_if_deadline_exceeded(
         deadline=deadline,
@@ -215,7 +217,7 @@ def parse_file_to_dir_parallel(
                 poll_timeout_s=poll_timeout_s,
                 deadline=deadline,
                 total_timeout_s=total_timeout_s,
-                download_grace_timeout_s=download_grace_timeout_s,
+                download_deadline_extension_s=download_deadline_extension_s,
                 images_dir=images_dir,
             ): chunk
             for chunk in chunks
@@ -262,7 +264,7 @@ def parse_file_to_dir_parallel(
             "chunk_page_counts": list(chunk_page_counts),
             "max_pages_per_chunk": normalized_chunk_pages,
             "max_concurrent_jobs": worker_count,
-            "download_grace_timeout_s": download_grace_timeout_s,
+            "download_deadline_extension_s": download_deadline_extension_s,
             "submit_elapsed_s_sum": total_submit_elapsed_s,
             "elapsed_s": elapsed_s,
         },
@@ -321,7 +323,7 @@ def _process_chunk(
     poll_timeout_s: float,
     deadline: float | None,
     total_timeout_s: float | None,
-    download_grace_timeout_s: float,
+    download_deadline_extension_s: float,
     images_dir: Path,
 ) -> _ChunkResult:
     session = _get_session()
@@ -396,19 +398,24 @@ def _process_chunk(
             deadline=deadline,
             total_timeout_s=total_timeout_s,
         )
-        download_deadline = _build_deadline(download_grace_timeout_s)
+        download_deadline = _extend_deadline(deadline, download_deadline_extension_s)
+        download_timeout_budget_s = _extended_timeout_budget_s(
+            total_timeout_s,
+            download_deadline_extension_s,
+        )
         logger.info(
             "paddle_ocr_parallel_chunk_download_started",
             chunk=chunk.label,
             job_id=job_id,
-            download_grace_timeout_s=download_grace_timeout_s,
+            download_deadline_extension_s=download_deadline_extension_s,
+            download_timeout_budget_s=download_timeout_budget_s,
         )
         markdown = _download_and_materialize_jsonl(
             session=session,
             jsonl_url=jsonl_url,
             images_dir=images_dir,
             deadline=download_deadline,
-            total_timeout_s=download_grace_timeout_s,
+            total_timeout_s=download_timeout_budget_s,
             image_name_prefix=f"chunk_{chunk.chunk_index + 1:04d}_",
         )
     finally:
