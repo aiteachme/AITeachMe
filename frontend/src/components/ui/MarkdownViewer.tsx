@@ -1841,7 +1841,12 @@ function normalizeLegacyUnitTestAnswersForRender(markdown: string): string {
       }
       if (!answerFence) {
         const candidateHeading = candidate.match(/^\s*(#{1,6})\s+/);
-        if ((candidateHeading && candidateHeading[1].length <= 3) || /^\s*>\s*\[!QUESTION\]/i.test(candidate)) {
+        const isLegacyQuestionStart = /^\s*\d+[.)、]\s+(?:\*\*)?\s*(?:题目|问题|任务)\s*(?:\*\*)?\s*[:：]/.test(candidate);
+        if (
+          (candidateHeading && candidateHeading[1].length <= 3)
+          || /^\s*>\s*\[!QUESTION\]/i.test(candidate)
+          || isLegacyQuestionStart
+        ) {
           break;
         }
       }
