@@ -458,7 +458,7 @@ SETTINGS_CATALOG: tuple[SettingsCatalogSection, ...] = (
                 "paddle_ocr.parse_timeout_s",
                 "PaddleOCR 等待超时",
                 "PADDLE_OCR_PARSE_TIMEOUT_S",
-                description="PaddleOCR 外部解析从上传到结果落地的总等待秒数；默认 25，范围 15-600。",
+                description="PaddleOCR 外部解析默认截止时间为 60 秒，范围 15-600；若截止前进入结果下载，原截止时间再延后 30 秒。",
                 restart_required=False,
                 ui_group="解析服务授权",
                 ui_order=44,

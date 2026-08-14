@@ -29,7 +29,7 @@ DEFAULT_PADDLE_OCR_OPTIONAL_PAYLOAD = {
     "useDocUnwarping": False,
     "useChartRecognition": False,
 }
-DEFAULT_PADDLE_OCR_DOWNLOAD_GRACE_TIMEOUT_S = 10.0
+DEFAULT_PADDLE_OCR_DOWNLOAD_DEADLINE_EXTENSION_S = 30.0
 
 logger = structlog.get_logger(__name__)
 _MARKDOWN_IMAGE_RE = re.compile(r"!\[(?P<alt>[^\]]*)\]\((?P<target>[^)]+)\)")
@@ -68,6 +68,20 @@ def _build_deadline(total_timeout_s: float | None) -> float | None:
     return time.monotonic() + float(total_timeout_s)
 
 
+def _extend_deadline(deadline: float | None, extension_s: float) -> float | None:
+    """Extend the original absolute deadline without replacing its remaining budget."""
+
+    if deadline is None:
+        return None
+    return deadline + max(float(extension_s), 0.0)
+
+
+def _extended_timeout_budget_s(total_timeout_s: float | None, extension_s: float) -> float | None:
+    if total_timeout_s is None or total_timeout_s <= 0:
+        return total_timeout_s
+    return float(total_timeout_s) + max(float(extension_s), 0.0)
+
+
 def _remaining_timeout_s(
     *,
     deadline: float | None,
@@ -102,7 +116,7 @@ def parse_file_to_dir(
     poll_interval_s: float = 1.0,
     poll_timeout_s: float = 600.0,
     total_timeout_s: float | None = None,
-    download_grace_timeout_s: float = DEFAULT_PADDLE_OCR_DOWNLOAD_GRACE_TIMEOUT_S,
+    download_deadline_extension_s: float = DEFAULT_PADDLE_OCR_DOWNLOAD_DEADLINE_EXTENSION_S,
 ) -> PaddleOCRExtractedResult:
     """Submit one PaddleOCR Cloud job and materialize a canonical markdown bundle."""
 
@@ -181,18 +195,23 @@ def parse_file_to_dir(
         deadline=deadline,
         total_timeout_s=total_timeout_s,
     )
-    download_deadline = _build_deadline(download_grace_timeout_s)
+    download_deadline = _extend_deadline(deadline, download_deadline_extension_s)
+    download_timeout_budget_s = _extended_timeout_budget_s(
+        total_timeout_s,
+        download_deadline_extension_s,
+    )
     logger.info(
         "paddle_ocr_cloud_download_started",
         job_id=job_id,
-        download_grace_timeout_s=download_grace_timeout_s,
+        download_deadline_extension_s=download_deadline_extension_s,
+        download_timeout_budget_s=download_timeout_budget_s,
     )
     markdown_text = _download_and_materialize_jsonl(
         session=session,
         jsonl_url=jsonl_url,
         images_dir=images_dir,
         deadline=download_deadline,
-        total_timeout_s=download_grace_timeout_s,
+        total_timeout_s=download_timeout_budget_s,
     )
     markdown_path = output_dir / "full.md"
     markdown_path.write_text(markdown_text, encoding="utf-8")
@@ -206,7 +225,7 @@ def parse_file_to_dir(
         metadata={
             "strategy": "single",
             "job_count": 1,
-            "download_grace_timeout_s": download_grace_timeout_s,
+            "download_deadline_extension_s": download_deadline_extension_s,
         },
     )
 
@@ -553,7 +572,7 @@ def _sanitize_filename(value: str) -> str:
 
 __all__ = [
     "DEFAULT_PADDLE_OCR_JOB_URL",
-    "DEFAULT_PADDLE_OCR_DOWNLOAD_GRACE_TIMEOUT_S",
+    "DEFAULT_PADDLE_OCR_DOWNLOAD_DEADLINE_EXTENSION_S",
     "DEFAULT_PADDLE_OCR_MODEL",
     "PaddleOCRExtractedResult",
     "PaddleOCRRequestOptions",

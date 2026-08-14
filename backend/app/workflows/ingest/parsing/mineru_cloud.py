@@ -24,7 +24,7 @@ from __future__ import annotations
 import json
 import time
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -71,6 +71,8 @@ class MinerUExtractedResult:
     images_dir: Path | None
     batch_id: str
     file_name: str
+    batch_ids: tuple[str, ...] = ()
+    metadata: dict[str, object] = field(default_factory=dict)
 
 
 def _build_deadline(total_timeout_s: float | None) -> float | None:

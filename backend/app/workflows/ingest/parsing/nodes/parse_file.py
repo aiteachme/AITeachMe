@@ -23,7 +23,10 @@ from app.workflows.ingest.parsing.lib.defaults import (
 )
 from app.utils.path_helpers import list_asset_files
 from app.workflows.ingest.parsing.canonicalizer import canonicalize_markdown
-from app.workflows.ingest.parsing.mineru_cloud import MinerURequestOptions, parse_file_to_dir
+from app.workflows.ingest.parsing.mineru_cloud import MinerURequestOptions
+from app.workflows.ingest.parsing.mineru_cloud_parallel import (
+    parse_file_to_dir_parallel as parse_file_to_dir_with_mineru,
+)
 from app.workflows.ingest.parsing.paddle_ocr_cloud import (
     DEFAULT_PADDLE_OCR_MODEL,
     PaddleOCRRequestOptions,
@@ -217,7 +220,7 @@ async def _run_mineru_external_parse(
 ) -> tuple[_ExternalFastParseResult, dict[str, object]]:
     started_at = time.monotonic()
     extracted = await asyncio.to_thread(
-        parse_file_to_dir,
+        parse_file_to_dir_with_mineru,
         file_path=Path(state["file_path"]),
         options=MinerURequestOptions(
             api_token=state.get("mineru_token") or "",
@@ -245,6 +248,18 @@ async def _run_mineru_external_parse(
         asset_gallery_limit=parse_plan.options.asset_gallery_limit if parse_plan else 12,
     )
     elapsed = round(time.monotonic() - started_at, 2)
+    batch_ids = list(extracted.batch_ids or (extracted.batch_id,))
+    provider_metadata: dict[str, object] = {
+        "batch_id": extracted.batch_id,
+        "batch_ids": batch_ids,
+        "batch_count": len(batch_ids),
+        "file_name": extracted.file_name,
+        "copied_assets": copied_assets,
+        "token_source": state.get("mineru_token_source"),
+        "timeout_budget_s": DEFAULT_EXTERNAL_PARSE_TIMEOUT_S,
+        "strategy": "single",
+    }
+    provider_metadata.update(extracted.metadata)
     return (
         _ExternalFastParseResult(
             markdown=canonical_result.markdown,
@@ -256,13 +271,7 @@ async def _run_mineru_external_parse(
             appended_asset_images=canonical_result.appended_asset_images,
             needs_enhance=False,
         ),
-        {
-            "batch_id": extracted.batch_id,
-            "file_name": extracted.file_name,
-            "copied_assets": copied_assets,
-            "token_source": state.get("mineru_token_source"),
-            "timeout_budget_s": DEFAULT_EXTERNAL_PARSE_TIMEOUT_S,
-        },
+        provider_metadata,
     )
 
 

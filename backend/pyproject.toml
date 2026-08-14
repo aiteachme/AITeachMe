@@ -29,6 +29,7 @@ dependencies = [
     "python-multipart>=0.0.31",
     "aiofiles>=23.2.1",
     "requests>=2.32.0",
+    "pypdf>=5.0.0",
     "cryptography>=48.0.1",
     "llama-index-core>=0.12.0",
 ]
