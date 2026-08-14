@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   ArrowUp,
-  Brain,
   BookOpen,
   Check,
   CheckCircle2,
@@ -47,6 +46,11 @@ import {
 import { useDocBuildProgress } from "../components/knowledge-docs/hooks/useDocBuildProgress";
 import { KnowledgeBuildResolutionModal } from "../components/build-plan/KnowledgeBuildResolutionModal";
 import { PlannerPreviewMarkdown } from "../components/build-plan/PlannerPreviewMarkdown";
+import {
+  PLANNER_CARD_CLASSNAME,
+  PlannerPlanCardShell,
+  PlannerPlanSummary,
+} from "../components/build-plan/PlannerPlanCard";
 import { FullPageDropOverlay } from "../components/ui/FullPageDropOverlay";
 import { useToast } from "../components/ui/Toast";
 import {
@@ -108,8 +112,6 @@ const TRANSIENT_PLANNER_ERROR_SNIPPETS = [
   "AuthenticationError",
   "apikey-error",
 ];
-const PLANNER_CARD_CLASSNAME =
-  "rounded-lg rounded-tl-sm bg-white px-5 py-5 shadow-[0_10px_34px_rgba(15,23,42,0.06)] ring-1 ring-zinc-200/65 dark:bg-slate-950 dark:ring-slate-800";
 
 interface BuildPlanLocationState {
   initialFiles?: File[];
@@ -928,6 +930,12 @@ function plannerStreamStepTitle(stage: string): string {
       return "生成前置诊断";
     case "planner.diagnose.ready":
       return "前置诊断就绪";
+    case "planner.llm.connecting":
+      return "连接模型服务";
+    case "planner.llm.retrying":
+      return "重试模型服务";
+    case "planner.llm.fallback":
+      return "切换备用服务";
     case "planner.plan.started":
       return "流式生成 plan";
     case "planner.suggestion.started":
@@ -1174,14 +1182,13 @@ function PlannerOutlineCard({
   const diagnoseItems = plannerDiagnose(plan).slice(0, 5);
   const view = plannerView(plan);
   const planText = plannerPlanText(plan);
-  const planningNoteText = polishPlannerDisplayText(String(view?.planning_note ?? ""));
   const fallbackIntroText = polishPlannerDisplayText(String(contentFallback ?? ""));
   const isDiagnosisIntroFallback =
     /^前置诊断\b/u.test(fallbackIntroText) ||
     /^诊断问题\b/u.test(fallbackIntroText) ||
     fallbackIntroText.includes("先确认这几项选择") ||
     fallbackIntroText.includes("先完成上方前置诊断");
-  const introText = planText || planningNoteText || (isDiagnosisIntroFallback ? "" : fallbackIntroText);
+  const introText = planText || (isDiagnosisIntroFallback ? "" : fallbackIntroText);
   const courseName = String(view?.course_name ?? "").trim();
   const visibleDiagnoseItems = diagnoseItems;
   const diagnoseStatus = plannerDiagnoseStatus(plan);
@@ -1245,68 +1252,24 @@ function PlannerOutlineCard({
       );
 
   return (
-    <article className={PLANNER_CARD_CLASSNAME}>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-zinc-950 text-white dark:bg-slate-100 dark:text-slate-950">
-            <BookOpen className="h-4 w-4" />
-          </span>
-          <div className="min-w-0">
-            <div className="truncate text-sm font-semibold text-zinc-950 dark:text-slate-100">
-              {courseName || "课程方案"}
-            </div>
-            <div className="truncate text-xs leading-5 text-zinc-500 dark:text-slate-400">
-              {stageDescription}
-            </div>
-          </div>
-        </div>
-        {stageBadge}
-      </div>
-
-      {shouldShowPlanIntro ? (
-        <div className="mt-4">
-          {introText ? (
-            planText ? (
-              <p className="text-[16px] font-medium leading-7 text-zinc-950 dark:text-slate-100">
-                {introText}
-              </p>
-            ) : (
-              <div className="planner-stream-preview text-[16px] font-medium leading-7 text-zinc-950 dark:text-slate-100">
-                <PlannerPreviewMarkdown markdown={introText} />
-              </div>
-            )
-          ) : (
-            <p className="text-[16px] font-medium leading-7 text-zinc-950 dark:text-slate-100">
-              我会先整理资料主线，再生成一份可继续调整的初步大纲。
-            </p>
-          )}
-          {shouldShowResolvedPlan && adjustmentQuestions.length ? (
-            <div className="mt-4 rounded-md bg-zinc-50/80 px-3 py-3 text-sm leading-6 text-zinc-700 dark:bg-slate-900/60 dark:text-slate-300">
-              <div className="mb-1.5 flex items-center gap-2 text-xs font-medium text-zinc-500 dark:text-slate-400">
-                <RefreshCw className="h-3.5 w-3.5" />
-                可以继续这样改
-              </div>
-              {adjustmentQuestions.map((item, index) => (
-                <p key={`${index}-${item}`}>{item}</p>
-              ))}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
+    <PlannerPlanCardShell
+      courseName={courseName}
+      stageDescription={stageDescription}
+      stageBadge={stageBadge}
+    >
+      <PlannerPlanSummary
+        introText={introText}
+        introMarkdown={!planText}
+        adjustmentQuestions={shouldShowResolvedPlan ? adjustmentQuestions : []}
+        showIntro={shouldShowPlanIntro}
+      />
 
       {visibleDiagnoseItems.length ? (
-        <div className="mt-5">
+        <section className="mt-5 border-t border-zinc-200/80 pt-5 dark:border-slate-800">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-2">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-zinc-950 text-white dark:bg-slate-100 dark:text-slate-950">
-                <Brain className="h-4 w-4" />
-              </span>
-              <div className="min-w-0">
-                <div className="text-sm font-semibold text-zinc-950 dark:text-slate-100">建课第一步：前置诊断</div>
-                <div className="text-xs text-zinc-500 dark:text-slate-400">
-                  {diagnosisSubtitle}
-                </div>
-              </div>
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-zinc-950 dark:text-slate-100">前置诊断</div>
+              <div className="mt-0.5 text-xs text-zinc-500 dark:text-slate-400">{diagnosisSubtitle}</div>
             </div>
             {inlineStreaming ? (
               <span className="inline-flex items-center gap-1.5 rounded-md bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-700 dark:bg-slate-800 dark:text-slate-300">
@@ -1325,7 +1288,7 @@ function PlannerOutlineCard({
               </span>
             ) : null}
           </div>
-          <div className="mt-4 space-y-4">
+          <div className="mt-3 divide-y divide-zinc-200/80 border-y border-zinc-200/80 dark:divide-slate-800 dark:border-slate-800">
             {visibleDiagnoseItems.map((item, index) => {
               const question = String(item.question ?? "").trim();
               const options = plannerDiagnosticOptions(item);
@@ -1336,10 +1299,10 @@ function PlannerOutlineCard({
               return (
                 <div
                   key={`${index}-${question}`}
-                  className="rounded-xl border border-zinc-200/80 bg-zinc-50/45 p-4 dark:border-slate-800 dark:bg-slate-900/35"
+                  className="py-5"
                 >
                   <div className="flex gap-3">
-                    <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white text-xs font-semibold text-zinc-500 ring-1 ring-zinc-200 dark:bg-slate-950 dark:text-slate-400 dark:ring-slate-800">
+                    <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-zinc-100 text-xs font-semibold text-zinc-500 dark:bg-slate-900 dark:text-slate-400">
                       {index + 1}
                     </span>
                     <div className="min-w-0 flex-1">
@@ -1355,11 +1318,12 @@ function PlannerOutlineCard({
                                   onDiagnosticAnswer(question, answer);
                                 }
                               }}
-                              aria-disabled={!canEditDiagnosis}
+                              disabled={!canEditDiagnosis}
+                              aria-pressed={selectedAnswer === answer}
                               className={
-                                "min-h-11 rounded-lg border px-3 py-2.5 text-left text-xs font-medium leading-5 transition " +
+                                "min-h-11 rounded-md border px-3 py-2.5 text-left text-sm font-medium leading-5 outline-none transition focus-visible:ring-2 focus-visible:ring-blue-500/30 " +
                                 (selectedAnswer === answer
-                                  ? "border-zinc-950 bg-zinc-950 text-white shadow-sm dark:border-slate-100 dark:bg-slate-100 dark:text-slate-950"
+                                  ? "border-blue-500 bg-blue-50 text-blue-700 dark:border-blue-400 dark:bg-blue-500/10 dark:text-blue-300"
                                   : "border-zinc-200 bg-white text-zinc-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300") +
                                 (canEditDiagnosis && selectedAnswer !== answer
                                   ? " hover:border-zinc-300 hover:bg-zinc-50 dark:hover:bg-slate-900"
@@ -1374,15 +1338,17 @@ function PlannerOutlineCard({
                           ))}
                         </div>
                       ) : null}
-                      <textarea
-                        value={manualNote}
-                        onChange={(event) => onDiagnosticNoteChange(question, event.target.value)}
-                        disabled={!canEditDiagnosis}
-                        rows={2}
-                        maxLength={240}
-                        placeholder="补充说明（可选）：例如基础情况、想要的讲解方式或特殊目标"
-                        className="mt-3 w-full resize-none rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs leading-5 text-zinc-800 outline-none transition placeholder:text-zinc-400 focus:border-zinc-400 focus:ring-2 focus:ring-zinc-200 disabled:cursor-default disabled:bg-zinc-50 disabled:text-zinc-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-slate-500 dark:focus:ring-slate-700/50 dark:disabled:bg-slate-900"
-                      />
+                      {canEditDiagnosis || manualNote ? (
+                        <textarea
+                          value={manualNote}
+                          onChange={(event) => onDiagnosticNoteChange(question, event.target.value)}
+                          disabled={!canEditDiagnosis}
+                          rows={2}
+                          maxLength={240}
+                          placeholder="补充说明（可选）：例如基础情况、想要的讲解方式或特殊目标"
+                          className="mt-3 w-full resize-none rounded-md border border-zinc-200 bg-zinc-50/70 px-3 py-2.5 text-sm leading-5 text-zinc-800 outline-none transition placeholder:text-zinc-400 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-500/15 disabled:cursor-default disabled:text-zinc-500 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-blue-500 dark:focus:bg-slate-950 dark:focus:ring-blue-500/20"
+                        />
+                      ) : null}
                     </div>
                   </div>
                 </div>
@@ -1395,7 +1361,7 @@ function PlannerOutlineCard({
                 type="button"
                 onClick={onSkipDiagnostics}
                 disabled={isDisabled}
-                className="inline-flex min-h-10 items-center justify-center rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-900"
+                className="inline-flex min-h-11 items-center justify-center rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:bg-slate-900"
               >
                 跳过诊断
               </button>
@@ -1403,13 +1369,13 @@ function PlannerOutlineCard({
                 type="button"
                 onClick={onSubmitDiagnostics}
                 disabled={isDisabled || !canSubmitDiagnostics}
-                className="inline-flex min-h-10 items-center justify-center rounded-md bg-zinc-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
+                className="inline-flex min-h-11 items-center justify-center rounded-md bg-zinc-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
               >
                 应用诊断
               </button>
             </div>
           ) : null}
-        </div>
+        </section>
       ) : null}
 
       {inlineStreaming ? (
@@ -1428,20 +1394,7 @@ function PlannerOutlineCard({
       ) : null}
 
       {shouldShowResolvedPlan ? (
-        <div className="mt-5 space-y-3">
-          {outlineItems.map((item, index) => (
-            <div key={`${index}-${item.title}`} className="rounded-md px-1 py-1">
-              <div className="min-w-0">
-                <div className="text-[15px] font-semibold leading-6 text-zinc-900 dark:text-slate-100">{item.title}</div>
-                {item.description ? (
-                  <div title={item.tooltip || item.description} className="mt-1 line-clamp-2 text-sm leading-6 text-zinc-600 dark:text-slate-400">
-                    {item.description}
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          ))}
-        </div>
+        <PlannerPlanSummary introText="" outlineItems={outlineItems} showIntro={false} />
       ) : null}
 
       {shouldShowResolvedPlan && showActions ? (
@@ -1493,7 +1446,7 @@ function PlannerOutlineCard({
         </button>
         </div>
       ) : null}
-    </article>
+    </PlannerPlanCardShell>
   );
 }
 
@@ -3646,6 +3599,14 @@ export function BuildPlanPage() {
     !isRestoredPlannerPending &&
     !shouldShowBuildDialog &&
     !knowledgeBuild.errorMessage;
+  const hiddenInitialGoalMessageId = messages.some((message) => message.role === "assistant")
+    ? messages.find(
+      (message) => message.role === "user" && !isInternalPlannerDiagnosisPrompt(message.content),
+    )?.id ?? null
+    : null;
+  const renderedMessages = hiddenInitialGoalMessageId
+    ? messages.filter((message) => message.id !== hiddenInitialGoalMessageId)
+    : messages;
 
   return (
     <>
@@ -3709,7 +3670,7 @@ export function BuildPlanPage() {
               </div>
             ) : null}
 
-            {messages.map((message) => {
+            {renderedMessages.map((message) => {
               const isUserMessage = message.role === "user";
               const isEditingMessage = isUserMessage && editingMessageId === message.id;
               const copyableText = plannerMessageCopyText(message);

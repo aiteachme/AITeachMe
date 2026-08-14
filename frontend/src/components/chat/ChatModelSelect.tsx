@@ -48,7 +48,7 @@ const CHAT_MODEL_META: Record<ChatModelChoice, {
     caption: "按设置页的模型分层自动选择",
     title: "保留各工作流的模型分层策略",
     buildEstimate: {
-      shortLabel: "6-15分钟",
+      shortLabel: "5-10分钟",
     },
   },
   reason: {
@@ -58,7 +58,7 @@ const CHAT_MODEL_META: Record<ChatModelChoice, {
     caption: "复杂规划 · 深入讲解",
     title: "适合复杂推理、规划和讲解",
     buildEstimate: {
-      shortLabel: "15-25分钟",
+      shortLabel: "8-15分钟",
     },
   },
   primary: {
@@ -68,7 +68,7 @@ const CHAT_MODEL_META: Record<ChatModelChoice, {
     caption: "稳定生成 · 日常问答",
     title: "适合快速规划、生成和问答",
     buildEstimate: {
-      shortLabel: "6-15分钟",
+      shortLabel: "5-10分钟",
     },
   },
   light: {
@@ -78,7 +78,7 @@ const CHAT_MODEL_META: Record<ChatModelChoice, {
     caption: "轻量问答 · 快速响应",
     title: "适合轻量问答和快速响应",
     buildEstimate: {
-      shortLabel: "3-6分钟",
+      shortLabel: "4-8分钟",
     },
   },
 };

@@ -137,10 +137,7 @@ const GRAPH_SYNC_BUILD_STAGES = new Set([
   "manual_graph_requested",
   "queued_after_docgen",
   "graph_docs_sync",
-  "graph_ready",
 ]);
-
-const GRAPH_DOC_READY_STATUSES = new Set(["completed", "partial_failed", "failed", "cancelled", "skipped"]);
 
 export interface DocMarkdownState {
   courseId: string | undefined;
@@ -319,12 +316,13 @@ export function useDocMarkdown(): DocMarkdownState {
   publicationManifestRef.current = publicationManifestQuery.data;
   const refetchPublicationManifest = publicationManifestQuery.refetch;
 
-  const buildMeta = runtimeQuery.data?.aggregate ?? runtimeQuery.data?.docgen ?? docMarkdownQuery.data?.build ?? null;
+  const buildMeta = runtimeQuery.data?.docgen ?? docMarkdownQuery.data?.build ?? runtimeQuery.data?.aggregate ?? null;
   const buildPreview = runtimeQuery.data?.docgen_preview ?? docMarkdownQuery.data?.build_preview ?? null;
   const buildMetrics = runtimeQuery.data?.docgen_metrics ?? docMarkdownQuery.data?.build_metrics ?? null;
   const buildStatus = buildMeta?.status ?? null;
   const buildStage = (buildMeta?.stage ?? "").trim();
   const graphStatus = (runtimeQuery.data?.graph_status ?? runtimeQuery.data?.graph?.status ?? null)?.trim() || null;
+  const graphStage = (runtimeQuery.data?.graph?.stage ?? "").trim();
   const graphUnhealthy = Boolean(runtimeQuery.data?.graph_unhealthy);
   const trainingUnlocked = Boolean(runtimeQuery.data?.training_unlocked);
   const draftAvailable = Boolean(
@@ -617,15 +615,19 @@ export function useDocMarkdown(): DocMarkdownState {
     status: buildStatus ?? "",
     targetRequestedAtMs,
   });
-  const isRuntimeDocumentReady =
-    runtimeQuery.data?.docs_ready === true &&
-    (graphStatus === null || GRAPH_DOC_READY_STATUSES.has(graphStatus));
+  const isRuntimeDocumentReady = runtimeQuery.data?.docs_ready === true;
   const isRequestedBuildReady =
-    typeof runtimeQuery.data?.docs_ready === "boolean"
-      ? isRuntimeDocumentReady
-      : fallbackRequestedBuildReady;
+    targetRequestedAtMs !== null
+      ? fallbackRequestedBuildReady
+      : typeof runtimeQuery.data?.docs_ready === "boolean"
+        ? isRuntimeDocumentReady
+        : fallbackRequestedBuildReady;
   const isBuildActive = Boolean(!isRequestedBuildReady && buildStatus && ACTIVE_DOC_BUILD_STATUSES.has(buildStatus));
-  const isGraphSyncActive = Boolean(isBuildActive && GRAPH_SYNC_BUILD_STAGES.has(buildStage));
+  const isGraphSyncActive = Boolean(
+    (graphStatus && (ACTIVE_DOC_BUILD_STATUSES.has(graphStatus) || graphStatus === "pending")) ||
+    GRAPH_SYNC_BUILD_STAGES.has(graphStage) ||
+    GRAPH_SYNC_BUILD_STAGES.has(buildStage),
+  );
   const isBuildFailure = buildStatus === "failed" || buildStatus === "cancelled";
   const isBuildReadyStatus = Boolean(buildStatus && TERMINAL_DOC_BUILD_READY_STATUSES.has(buildStatus));
   const isWaitingForRequestedBuild =

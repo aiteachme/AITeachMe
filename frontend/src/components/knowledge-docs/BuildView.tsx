@@ -33,9 +33,16 @@ const EVENT_STAGE_LABELS: Record<string, string> = {
   build_accepted: "已受理",
   search_only_mode: "联网模式",
   planner_confirmed: "方案确认",
+  preparing_docgen_global_seed: "准备全局上下文",
+  docgen_global_seed_started: "准备全局上下文",
+  docgen_global_seed_ready: "全局上下文就绪",
+  chapter_title_locked: "章节标题锁定",
+  chapter_titles_locked: "章节标题就绪",
   preparing_docgen_context: "理解资料",
   dispatch_ready: "执行合同",
   building_document_backbone: "文档骨架",
+  document_backbone_ready: "骨架就绪",
+  chapter_tasks_ready: "章节任务就绪",
   generating_chapters: "章节写作",
   chapter_generating: "章节启动",
   chapter_research_ready: "检索完成",
@@ -74,9 +81,71 @@ const GRAPH_BUILD_STAGES = new Set([
   "graph_docs_sync",
   "graph_ready",
 ]);
+const BACKBONE_WORKSPACE_STAGES = new Set([
+  "planner_confirmed",
+  "plan_ready",
+  "preparing_docgen_global_seed",
+  "docgen_global_seed_started",
+  "docgen_global_seed_ready",
+  "chapter_title_locked",
+  "chapter_titles_locked",
+  "dispatch_ready",
+  "backbone_seed_ready",
+  "building_document_backbone",
+  "preparing_chapter_execution_briefs",
+  "document_backbone_ready",
+  "chapter_tasks_ready",
+]);
 const ACTIVE_CHAPTER_STATUSES = new Set(["generating", "drafting", "enhancing", "reviewing", "researching"]);
 const DONE_CHAPTER_STATUSES = new Set(["generated", "completed", "enhanced", "reviewed"]);
 const LIVE_MARKDOWN_RENDER_LIMIT = 24000;
+
+function DocumentBackboneWorkspace({
+  chapterCount,
+  sseConnected,
+  stage,
+  statusText,
+  events,
+}: {
+  chapterCount: number;
+  sseConnected: boolean;
+  stage: string;
+  statusText: string;
+  events: BuildEventItem[];
+}) {
+  const latestEvent = events[0];
+  const stageLabel = EVENT_STAGE_LABELS[stage] ?? "文档骨架";
+
+  return (
+    <div className="build-scroll h-full overflow-y-auto bg-white dark:bg-slate-900">
+      <div className="mx-auto w-full max-w-[900px] px-6 py-7 md:px-10 md:py-9">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-zinc-400 dark:text-slate-500">
+          <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", sseConnected ? "build-live-dot bg-blue-500 text-blue-500" : "bg-zinc-300 dark:bg-slate-600")} />
+          <span className="font-medium text-zinc-600 dark:text-slate-300">
+            {sseConnected ? "SSE 实时生成" : "正在恢复实时连接"}
+          </span>
+          <span aria-hidden="true">·</span>
+          <span>{stageLabel}</span>
+          {latestEvent?.created_at ? (
+            <span className="ml-auto tabular-nums">{formatBuildEventTime(latestEvent.created_at)}</span>
+          ) : null}
+        </div>
+
+        <div className="mt-4 max-w-[760px]" aria-live="polite" aria-atomic="true">
+          <p className="text-[14px] font-medium leading-7 text-zinc-800 dark:text-slate-200 md:text-[15px]">
+            {latestEvent?.summary?.trim() || statusText || "正在准备文档结构与章节上下文"}
+            {sseConnected ? <span className="build-stream-caret ml-1 inline-block h-[1em] w-[2px] translate-y-[0.14em] bg-blue-500" aria-hidden="true" /> : null}
+          </p>
+          <p className="mt-1.5 text-[11.5px] leading-5 text-zinc-400 dark:text-slate-500">
+            {chapterCount > 0
+              ? `骨架就绪后，${chapterCount} 个章节将并行写作，正文会直接出现在这里。`
+              : "骨架就绪后，各章节将并行写作，正文会直接出现在这里。"}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
 const LIVE_MARKDOWN_FLUSH_INTERVAL_MS = 320;
 const LIVE_MARKDOWN_IMMEDIATE_LENGTH = 1600;
 const LIVE_MARKDOWN_LARGE_JUMP = 4200;
@@ -90,7 +159,7 @@ type BuildEventItem = {
 };
 
 function shouldOpenDetailsByDefault(): boolean {
-  return true;
+  return false;
 }
 
 const BUILD_MODE_LABELS: Record<string, string> = {
@@ -283,7 +352,6 @@ export function BuildView({
 
   const normalizedBuildStatus = (buildStatus ?? "").trim();
   const normalizedBuildStage = (buildStage ?? "").trim();
-  const isGraphBuildStage = GRAPH_BUILD_STAGES.has(normalizedBuildStage);
   const isBuildActive = Boolean(
     normalizedBuildStatus
       ? normalizedBuildStatus !== "idle" && !TERMINAL_BUILD_STATUSES.has(normalizedBuildStatus)
@@ -293,6 +361,17 @@ export function BuildView({
     courseId: courseId ?? "",
     enabled: Boolean(courseId) && isBuildActive,
   });
+  const liveBuildStage = (
+    sseSnapshot?.docgen?.stage ??
+    sseSnapshot?.aggregate?.stage ??
+    normalizedBuildStage
+  ).trim();
+  const liveIsGraphBuildStage = GRAPH_BUILD_STAGES.has(liveBuildStage);
+  const liveStatusText = (
+    sseSnapshot?.docgen?.current_stage_description ??
+    sseSnapshot?.aggregate?.current_stage_description ??
+    statusText
+  ).trim();
 
   const mergedChapters = useMemo(() => {
     const sseChapters = sseSnapshot?.docgen_preview?.chapter_progress;
@@ -315,16 +394,16 @@ export function BuildView({
     return sseSnapshot?.docgen_preview?.merge_preview ?? buildPreview?.merge_preview ?? null;
   }, [sseSnapshot?.docgen_preview?.merge_preview, buildPreview?.merge_preview]);
 
-  const timelineSteps = useBuildTimelineSteps(buildStage);
+  const timelineSteps = useBuildTimelineSteps(liveBuildStage);
   const chapters = mergedChapters;
   const events = mergedEvents;
   const chapterPreviews = mergedChapterPreviews;
   const streamProgress = sseSnapshot?.aggregate?.progress_pct ?? (
-    isGraphBuildStage ? sseSnapshot?.graph?.progress_pct : sseSnapshot?.docgen?.progress_pct
+    liveIsGraphBuildStage ? sseSnapshot?.graph?.progress_pct : sseSnapshot?.docgen?.progress_pct
   );
   const rawProgress = Math.max(0, Math.min(100, Math.round(streamProgress ?? progress)));
   const isBuildCompleted =
-    isDocumentReady && (buildStage === "completed" || (rawProgress >= 95 && isCompletionStatusText(statusText)));
+    isDocumentReady && (liveBuildStage === "completed" || (rawProgress >= 95 && isCompletionStatusText(liveStatusText)));
   const roundedProgress = isBuildCompleted ? 100 : Math.min(rawProgress, 99);
   const progressIsActive = isBuildActive && !isBuildCompleted;
   const visibleProgress = progressIsActive ? Math.max(6, roundedProgress) : roundedProgress;
@@ -357,6 +436,7 @@ export function BuildView({
 
   const recentEvents = events.slice(0, 8);
   const buildModeLabel = formatBuildModeReason(buildPreview?.mode_reason);
+  const isBackboneWorkspace = BACKBONE_WORKSPACE_STAGES.has(liveBuildStage);
 
   useEffect(() => {
     if (chapters.length === 0) {
@@ -385,12 +465,12 @@ export function BuildView({
         <div className="relative flex flex-col gap-4">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-950 text-white shadow-sm shadow-zinc-900/10 dark:bg-zinc-100 dark:text-slate-950 dark:shadow-none">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-600 ring-1 ring-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500/20">
                 {isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Code2 className="h-4 w-4" />}
               </span>
               <div className="min-w-0">
                 <h2 className="truncate text-[16px] font-semibold leading-6 text-zinc-950 dark:text-zinc-50">
-                  {statusText || "正在准备知识文档..."}
+                  {liveStatusText || "正在准备知识文档..."}
                 </h2>
                 <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-zinc-500 dark:text-slate-400">
                   {(sseConnected || isBuildActive) ? (
@@ -406,12 +486,12 @@ export function BuildView({
                     className={cn(
                       "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] ring-1 transition",
                       detailsOpen
-                        ? "bg-zinc-950 text-white ring-zinc-950 dark:bg-zinc-100 dark:text-slate-950 dark:ring-zinc-100"
+                        ? "bg-blue-50 text-blue-600 ring-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500/20"
                         : "bg-zinc-50 text-zinc-500 ring-zinc-200 hover:bg-white hover:text-zinc-900 dark:bg-slate-900 dark:text-slate-400 dark:ring-slate-800 dark:hover:text-slate-100"
                     )}
                   >
                     {detailsOpen ? <PanelRightClose className="h-3 w-3" /> : <PanelRightOpen className="h-3 w-3" />}
-                    {detailsOpen ? "收起" : "细节"}
+                    {detailsOpen ? "收起" : "动态"}
                   </button>
                 </div>
               </div>
@@ -568,7 +648,7 @@ export function BuildView({
               const isDone = DONE_CHAPTER_STATUSES.has(selectedStatus);
               const streamExcerpt = streamPreview?.text ?? "";
               const previewExcerpt = preview?.excerpt ?? "";
-              const canUseMergeFallback = Boolean(buildStage && MERGE_PREVIEW_STAGES.has(buildStage));
+              const canUseMergeFallback = Boolean(liveBuildStage && MERGE_PREVIEW_STAGES.has(liveBuildStage));
               const selectedExcerpt = streamExcerpt.trim()
                 ? streamExcerpt
                 : previewExcerpt.trim()
@@ -582,18 +662,20 @@ export function BuildView({
                   ? formatBuildEventTime(preview.updated_at)
                   : null;
               const usingSseDelta = Boolean(streamExcerpt.trim());
+              const workspaceTitle = isBackboneWorkspace ? "整本文档知识骨架" : selectedTitle;
+              const workspaceStatus = isBackboneWorkspace ? "跨章节准备" : buildChapterStatusLabel(selectedStatus);
 
               return (
                 <>
                   <div className="flex items-center justify-between gap-4 border-b border-zinc-100 bg-white px-5 py-3 dark:border-slate-800 dark:bg-slate-900 md:px-8">
                     <div className="min-w-0">
                       <div className="truncate text-[13px] font-semibold leading-5 text-zinc-900 dark:text-slate-100">
-                        {selectedTitle}
+                        {workspaceTitle}
                       </div>
                       {detailsOpen ? (
                       <div className="mt-1 flex flex-wrap items-center gap-2">
                         <span className="rounded-md bg-zinc-50 px-2 py-0.5 text-[11px] font-medium text-zinc-500 ring-1 ring-zinc-200 dark:bg-slate-950 dark:text-slate-400 dark:ring-slate-800">
-                          {buildChapterStatusLabel(selectedStatus)}
+                          {workspaceStatus}
                         </span>
                         {previewUpdatedAt ? (
                           <span className="text-[11px] text-zinc-400 dark:text-slate-500">
@@ -634,6 +716,8 @@ export function BuildView({
                         </div>
 
                       </div>
+                    ) : isBackboneWorkspace ? (
+                      <DocumentBackboneWorkspace chapterCount={chapters.length} sseConnected={sseConnected} stage={liveBuildStage} statusText={liveStatusText} events={events} />
                     ) : detailsOpen && selectedChapterEvents.length > 0 ? (
                       <div className="mx-auto w-full max-w-[1120px] space-y-4 pb-10">
                         <div className="flex h-40 items-center justify-center text-[13px] text-zinc-400 dark:text-slate-500">
@@ -654,7 +738,9 @@ export function BuildView({
                   </div>
                 </>
               );
-            })() : (
+            })() : isBackboneWorkspace ? (
+              <DocumentBackboneWorkspace chapterCount={chapters.length} sseConnected={sseConnected} stage={liveBuildStage} statusText={liveStatusText} events={events} />
+            ) : (
               <div className="h-full flex flex-col items-center justify-center text-zinc-300 gap-3">
                 <PlayCircle className="w-10 h-10 text-zinc-200" strokeWidth={1.5} />
                 <span className="text-[12px]">等待章节预览</span>
@@ -674,7 +760,11 @@ export function BuildView({
           <aside className="fixed bottom-0 right-0 top-0 z-[90] flex w-[min(330px,calc(100vw-1rem))] shrink-0 flex-col border-l border-zinc-100 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-950 lg:static lg:z-auto lg:w-[330px] lg:shadow-none">
             <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-4 dark:border-slate-800">
               <div>
-                <p className="text-[12px] font-semibold text-zinc-800 dark:text-slate-100">细节</p>
+                <p className="text-[12px] font-semibold text-zinc-800 dark:text-slate-100">构建动态</p>
+                <p className="mt-0.5 flex items-center gap-1.5 text-[10.5px] text-zinc-400 dark:text-slate-500">
+                  <span className={cn("h-1.5 w-1.5 rounded-full", sseConnected ? "build-live-dot bg-blue-500 text-blue-500" : "bg-zinc-300 dark:bg-slate-600")} />
+                  {sseConnected ? "实时同步" : "等待连接"}
+                </p>
               </div>
               <button
                 type="button"
@@ -687,7 +777,7 @@ export function BuildView({
             </div>
             {planSummary ? (
               <div className="border-b border-zinc-100 px-4 py-4 dark:border-slate-800">
-                <p className="text-[11px] font-medium tracking-[0.18em] text-zinc-400 dark:text-slate-500">方案摘要</p>
+                <p className="text-[11px] font-medium text-zinc-400 dark:text-slate-500">方案摘要</p>
                 <p className="mt-2 line-clamp-6 text-[12px] leading-6 text-zinc-600 dark:text-slate-300">
                   {planSummary}
                 </p>

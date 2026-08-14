@@ -7,8 +7,10 @@ import rehypeKatex from "rehype-katex";
 import rehypeRaw from "rehype-raw";
 import {
   BadgeCheck,
+  Check,
   ChevronRight,
   CircleHelp,
+  Copy,
   ExternalLink,
   Info,
   Lightbulb,
@@ -59,7 +61,7 @@ const BLANK_TOKEN = "{{blank}}";
 const BLANK_NODE_CLASS =
   "mx-1 inline-block h-[0.9em] min-w-16 border-b-2 border-current align-baseline";
 const HIGHLIGHT_MARK_CLASS =
-  "rounded-[2px] bg-[#FFF1B8] px-0.5 py-[0.08em] text-inherit dark:bg-amber-300/20";
+  "rounded-[2px] bg-[#FFF3BF]/80 px-[0.18em] py-[0.04em] text-inherit box-decoration-clone [-webkit-box-decoration-break:clone] dark:bg-amber-300/15";
 const BARE_LATEX_TEXT_COMMANDS: Record<string, string> = {
   times: "×",
   cdot: "·",
@@ -130,6 +132,7 @@ interface ViewerStyles {
   codeInline: string;
   codeShell: string;
   codeLanguageBadge: string;
+  codeCopyButton: string;
   codePre: string;
   tableShell: string;
   table: string;
@@ -158,6 +161,66 @@ type MarkdownBlockquoteComponentProps = ComponentPropsWithoutRef<"blockquote"> &
 type MarkdownSectionComponentProps = ComponentPropsWithoutRef<"section"> & {
   node?: unknown;
 };
+
+function CodeBlockToolbar({
+  language,
+  code,
+  styles,
+}: {
+  language: string;
+  code: string;
+  styles: ViewerStyles;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const copyCode = useCallback(async () => {
+    try {
+      let didCopy = false;
+      if (navigator.clipboard?.writeText) {
+        try {
+          await navigator.clipboard.writeText(code);
+          didCopy = true;
+        } catch {
+          didCopy = false;
+        }
+      }
+      if (!didCopy) {
+        const textarea = document.createElement("textarea");
+        textarea.value = code;
+        textarea.setAttribute("readonly", "true");
+        textarea.style.position = "fixed";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        didCopy = document.execCommand("copy");
+        document.body.removeChild(textarea);
+        if (!didCopy) {
+          throw new Error("copy command unavailable");
+        }
+      }
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      setCopied(false);
+    }
+  }, [code]);
+
+  return (
+    <div className={styles.codeLanguageBadge}>
+      <span>{language || "code"}</span>
+      <button
+        type="button"
+        onClick={() => void copyCode()}
+        className={styles.codeCopyButton}
+        aria-label={copied ? "代码已复制" : "复制代码"}
+        title={copied ? "已复制" : "复制代码"}
+      >
+        {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+        {copied ? "已复制" : "复制"}
+      </button>
+    </div>
+  );
+}
 
 type ImagePreviewState = {
   src: string;
@@ -307,12 +370,13 @@ const VIEWER_STYLES: Record<MarkdownViewerVariant, ViewerStyles> = {
     list: "mb-3 list-inside list-disc space-y-1 pl-2 text-sm text-slate-700 dark:text-slate-300",
     orderedList: "mb-3 list-inside list-decimal space-y-1 pl-2 text-sm text-slate-700 dark:text-slate-300",
     listItem: "leading-relaxed [&>p]:mb-0 [&>p]:inline",
-    blockquote: "my-3 rounded-r-xl border-l-4 border-slate-300 bg-slate-50/70 pl-4 pr-3 py-2.5 italic text-slate-600 dark:border-slate-600 dark:bg-slate-900/70 dark:text-slate-300",
-    codeInline: "rounded bg-slate-100 px-1.5 py-0.5 text-sm font-mono text-slate-800 dark:bg-slate-800 dark:text-slate-100",
-    codeShell: "my-4 overflow-hidden rounded-2xl border border-slate-200 bg-slate-950 shadow-sm dark:border-slate-800",
-    codeLanguageBadge: "border-b border-slate-800/80 bg-slate-900/95 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400",
+    blockquote: "my-3 rounded-r-md border-l-2 border-slate-300 bg-slate-50/60 py-2.5 pl-4 pr-3 text-slate-600 dark:border-slate-600 dark:bg-slate-900/50 dark:text-slate-300",
+    codeInline: "rounded-[4px] bg-slate-100 px-1.5 py-0.5 font-mono text-[0.9em] text-slate-800 dark:bg-slate-800 dark:text-slate-100",
+    codeShell: "group/code my-4 overflow-hidden rounded-lg border border-slate-800 bg-slate-950 dark:border-slate-800",
+    codeLanguageBadge: "flex min-h-9 items-center justify-between border-b border-white/10 bg-slate-900/95 px-3.5 text-[11px] font-medium tracking-[0.04em] text-slate-400",
+    codeCopyButton: "inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium text-slate-400 transition hover:bg-white/10 hover:text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
     codePre: "overflow-x-auto p-4 text-sm leading-6 text-slate-100",
-    tableShell: "my-4 overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950/60",
+    tableShell: "my-4 overflow-x-auto rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950/60",
     table: "min-w-full text-sm",
     thead: "border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900/80",
     th: "px-3 py-2 text-left font-semibold text-slate-700 dark:text-slate-200",
@@ -340,14 +404,15 @@ const VIEWER_STYLES: Record<MarkdownViewerVariant, ViewerStyles> = {
     list: "my-4 list-disc space-y-1.5 pl-[1.5rem] text-[16px] leading-[1.76] text-[#2F343D] marker:text-[#8F959E] dark:text-slate-300 dark:marker:text-slate-500",
     orderedList: "my-4 list-decimal space-y-1.5 pl-[1.5rem] text-[16px] leading-[1.76] text-[#2F343D] marker:font-medium marker:text-[#8F959E] dark:text-slate-300 dark:marker:text-slate-500",
     listItem: "pl-1 leading-[1.76] [&>ol]:mt-2 [&>p]:mb-1 [&>p]:block [&>ul]:mt-2",
-    blockquote: "my-6 rounded-r-md border-l-2 border-[#8F959E] bg-[#F7F8FA]/80 px-4 py-3 text-[16px] leading-[1.74] text-[#4E5969] dark:border-slate-500 dark:bg-slate-900/45 dark:text-slate-300",
-    codeInline: "whitespace-normal break-words rounded-[3px] bg-[#F2F3F5] px-1.5 py-0.5 font-mono text-[0.86em] text-[#24292F] [overflow-wrap:anywhere] dark:bg-slate-800 dark:text-slate-100",
-    codeShell: "relative my-6 overflow-hidden rounded-md border border-[#E1E4E8] bg-[#F6F8FA] dark:border-slate-800 dark:bg-slate-950",
-    codeLanguageBadge: "absolute right-3 top-2 z-10 text-[10px] font-medium uppercase tracking-[0.08em] text-[#8F959E] dark:text-slate-500",
-    codePre: "overflow-x-auto bg-[#F6F8FA] px-4 py-3.5 font-mono text-[13px] leading-[1.65] text-[#24292F] dark:bg-slate-950 dark:text-slate-100",
-    tableShell: "my-6 overflow-x-auto rounded-md border border-[#DDE1E6] bg-white dark:border-slate-800 dark:bg-slate-950/60",
+    blockquote: "my-6 rounded-r-sm border-l-2 border-[#C9CDD4] bg-[#F7F8FA]/65 py-2.5 pl-4 pr-3 text-[16px] leading-[1.74] text-[#4E5969] dark:border-slate-600 dark:bg-slate-900/35 dark:text-slate-300",
+    codeInline: "whitespace-normal break-words rounded-[4px] bg-[#EFF0F2] px-1.5 py-0.5 font-mono text-[0.86em] text-[#1F2329] [overflow-wrap:anywhere] dark:bg-slate-800 dark:text-slate-100",
+    codeShell: "group/code my-6 overflow-hidden rounded-lg border border-[#DEE0E3] bg-[#F7F7F8] dark:border-slate-800 dark:bg-slate-950",
+    codeLanguageBadge: "flex min-h-9 items-center justify-between border-b border-[#E5E6EB] bg-[#F2F3F5]/80 px-3.5 text-[11px] font-medium tracking-[0.03em] text-[#646A73] dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400",
+    codeCopyButton: "inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium text-[#646A73] transition hover:bg-black/[0.05] hover:text-[#1F2329] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/20 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-slate-100",
+    codePre: "overflow-x-auto bg-[#F7F7F8] px-4 py-4 font-mono text-[13px] leading-[1.7] text-[#24292F] dark:bg-slate-950 dark:text-slate-100 sm:px-5",
+    tableShell: "my-6 overflow-x-auto rounded-lg border border-[#DEE0E3] bg-white dark:border-slate-800 dark:bg-slate-950/60",
     table: "w-full min-w-[560px] border-collapse text-[14px] sm:text-[15px]",
-    thead: "bg-[#F5F6F7] dark:bg-slate-900/80",
+    thead: "bg-[#F7F8FA] dark:bg-slate-900/70",
     th: "border-r border-[#E1E4E8] px-3 py-2.5 text-left text-[13px] font-semibold leading-6 text-[#1F2329] last:border-r-0 dark:border-slate-800 dark:text-slate-100 sm:px-4 sm:text-[14px]",
     td: "border-t border-[#E1E4E8] px-3 py-2.5 leading-6 text-[#2F343D] dark:border-slate-800 dark:text-slate-300 sm:px-4",
     hr: "my-9 border-[#DEE0E3] dark:border-slate-800",
@@ -373,12 +438,13 @@ const VIEWER_STYLES: Record<MarkdownViewerVariant, ViewerStyles> = {
     list: "mb-3 list-disc space-y-1.5 pl-5 text-sm leading-6 text-zinc-700 dark:text-slate-300",
     orderedList: "mb-3 list-decimal space-y-1.5 pl-5 text-sm leading-6 text-zinc-700 dark:text-slate-300",
     listItem: "leading-6 [&>p]:mb-0 [&>p]:inline",
-    blockquote: "my-3 rounded-xl border border-blue-100 bg-blue-50/60 px-3 py-2.5 text-sm leading-6 text-zinc-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-slate-300",
-    codeInline: "rounded bg-zinc-100 px-1.5 py-0.5 text-sm font-mono text-zinc-800 dark:bg-slate-800 dark:text-slate-100",
-    codeShell: "my-4 overflow-hidden rounded-xl border border-zinc-200 bg-zinc-950 shadow-sm dark:border-slate-800",
-    codeLanguageBadge: "border-b border-zinc-800/80 bg-zinc-900/95 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-400",
+    blockquote: "my-3 rounded-r-md border-l-2 border-zinc-300 bg-zinc-50/70 py-2.5 pl-3.5 pr-3 text-sm leading-6 text-zinc-700 dark:border-slate-600 dark:bg-slate-900/45 dark:text-slate-300",
+    codeInline: "rounded-[4px] bg-zinc-100 px-1.5 py-0.5 font-mono text-[0.9em] text-zinc-800 dark:bg-slate-800 dark:text-slate-100",
+    codeShell: "group/code my-4 overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950 dark:border-slate-800",
+    codeLanguageBadge: "flex min-h-9 items-center justify-between border-b border-white/10 bg-zinc-900/95 px-3.5 text-[11px] font-medium tracking-[0.04em] text-zinc-400",
+    codeCopyButton: "inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium text-zinc-400 transition hover:bg-white/10 hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20",
     codePre: "overflow-x-auto p-4 text-sm leading-6 text-zinc-100",
-    tableShell: "my-4 overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950/60",
+    tableShell: "my-4 overflow-x-auto rounded-lg border border-zinc-200 bg-white dark:border-slate-800 dark:bg-slate-950/60",
     table: "min-w-full text-sm",
     thead: "border-b border-zinc-200 bg-zinc-50 dark:border-slate-800 dark:bg-slate-900/80",
     th: "px-3 py-2 text-left font-semibold text-zinc-700 dark:text-slate-200",
@@ -1704,6 +1770,91 @@ function normalizeLegacyNonChoiceUnitTestsForRender(markdown: string): string {
   return output.join("\n");
 }
 
+function normalizeMalformedStrongClosersForRender(markdown: string): string {
+  const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
+  let activeFence: string | null = null;
+
+  return lines
+    .map((line) => {
+      const fenceMatch = line.match(/^\s*(```|~~~)/);
+      if (fenceMatch) {
+        activeFence = activeFence === fenceMatch[1] ? null : activeFence ?? fenceMatch[1];
+        return line;
+      }
+      if (activeFence) return line;
+      return line.replace(/(\*\*[^*\n]+?)[ \t]+\*\*(?=\S)/g, "$1** ");
+    })
+    .join("\n");
+}
+
+function normalizeLegacyUnitTestAnswersForRender(markdown: string): string {
+  const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
+  const output: string[] = [];
+  let inUnitTest = false;
+  let activeFence: string | null = null;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const fenceMatch = line.match(/^\s*(```|~~~)/);
+    if (fenceMatch) {
+      activeFence = activeFence === fenceMatch[1] ? null : activeFence ?? fenceMatch[1];
+      output.push(line);
+      continue;
+    }
+    if (activeFence) {
+      output.push(line);
+      continue;
+    }
+
+    const heading = line.match(/^\s*(#{1,6})\s+(.+?)\s*$/);
+    if (heading) {
+      const level = heading[1].length;
+      const title = heading[2].replace(/\s+#+\s*$/, "").trim();
+      if (level === 2 && title === "单元测试") {
+        inUnitTest = true;
+      } else if (inUnitTest && level <= 2) {
+        inUnitTest = false;
+      }
+      output.push(line);
+      continue;
+    }
+
+    const isPlainAnswerStart = inUnitTest
+      && !/^\s*>/.test(line)
+      && /^\s*(?:\*\*)?\s*(?:参考|标准|正确)?答案(?:与解析|\s*[/／]\s*结论)?\s*(?:\*\*)?\s*(?:[:：]|$)/.test(line);
+    if (!isPlainAnswerStart) {
+      output.push(line);
+      continue;
+    }
+
+    const answerLines = [line];
+    let cursor = index + 1;
+    let answerFence: string | null = null;
+    while (cursor < lines.length) {
+      const candidate = lines[cursor];
+      const candidateFence = candidate.match(/^\s*(```|~~~)/);
+      if (candidateFence) {
+        answerFence = answerFence === candidateFence[1] ? null : answerFence ?? candidateFence[1];
+        answerLines.push(candidate);
+        cursor += 1;
+        continue;
+      }
+      if (!answerFence) {
+        const candidateHeading = candidate.match(/^\s*(#{1,6})\s+/);
+        if ((candidateHeading && candidateHeading[1].length <= 3) || /^\s*>\s*\[!QUESTION\]/i.test(candidate)) {
+          break;
+        }
+      }
+      answerLines.push(candidate);
+      cursor += 1;
+    }
+    pushCanonicalCallout(output, "ANSWER", answerLines);
+    index = cursor - 1;
+  }
+
+  return output.join("\n");
+}
+
 export function preprocessMarkdownForRender(content: string): string {
   return repairMalformedMermaidFencesForRender(
     normalizeListEmbeddedHeadingsForRender(
@@ -1713,7 +1864,11 @@ export function preprocessMarkdownForRender(content: string): string {
             normalizeHighlightSyntaxForRender(
               preprocessCalloutSyntax(
                 normalizeDuplicateOrderedListMarkersForRender(
-                  normalizeLegacyNonChoiceUnitTestsForRender(content.replace(INTERACTIVE_MARKER_RE, "")),
+                  normalizeLegacyNonChoiceUnitTestsForRender(
+                    normalizeLegacyUnitTestAnswersForRender(
+                      normalizeMalformedStrongClosersForRender(content.replace(INTERACTIVE_MARKER_RE, "")),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -3500,12 +3655,9 @@ export function MarkdownViewer({
 
           return (
             <div className={styles.codeShell}>
-              {language ? (
-                <div className={styles.codeLanguageBadge}>{language}</div>
-              ) : null}
+              <CodeBlockToolbar language={language} code={codeText} styles={styles} />
               <pre className={cn(
                 styles.codePre,
-                variant === "document" && language && "pt-9",
                 shouldRenderConflictBlock ? "px-0 py-3" : "",
               )}>
                 <code className={cn("font-mono", className)}>

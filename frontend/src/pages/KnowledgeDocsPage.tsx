@@ -7187,12 +7187,15 @@ export function KnowledgeDocsPage() {
   const desktopCommentWidthClass = "w-[clamp(18rem,23vw,26rem)]";
   const pageShellMaxWidthClass = pageWideMode ? "max-w-none" : showDesktopCommentPanel ? "max-w-[1480px]" : "max-w-[1120px]";
   const docColumnMaxWidthClass = pageWideMode ? "max-w-none" : showDesktopCommentPanel ? "max-w-[920px]" : "max-w-[980px]";
+  const shouldShowBuildWorkspace = Boolean(
+    !isRequestedBuildReady &&
+    (isBuildActive || isWaitingForRequestedBuild || showDocGeneratingState)
+  );
   const showFloatingActions = Boolean(courseId && !isBuildActive && !showDocLoadingState && !showDocGeneratingState && !isAssistantOpen && !isGraphDrawerOpen);
 
   if (
-    (!hasRenderedMarkdown || isGraphSyncActive) &&
     (hasRenderedMarkdown || !documentLoadError) &&
-    (isBuildActive || isWaitingForRequestedBuild || showDocGeneratingState)
+    shouldShowBuildWorkspace
   ) {
     return (
       <div className="relative flex h-full min-h-0 flex-1 w-full flex-col overflow-hidden bg-white dark:bg-slate-950">

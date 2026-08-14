@@ -1334,6 +1334,14 @@
     background-color: rgba(30, 41, 59, 0.86);
   }
 
+  .feishu-doc-content table tbody tr:nth-child(even) {
+    background-color: rgba(247, 248, 250, 0.46);
+  }
+
+  .dark .feishu-doc-content table tbody tr:nth-child(even) {
+    background-color: rgba(15, 23, 42, 0.24);
+  }
+
   .feishu-doc-content pre code.hljs {
     display: block;
     min-width: max-content;
@@ -1522,11 +1530,6 @@
   }
 }
 
-@keyframes build-loading-fill-flow {
-  0% { background-position: 0 0; }
-  100% { background-position: 42px 0; }
-}
-
 @keyframes build-loading-fill-pulse {
   0%, 100% {
     filter: saturate(1) brightness(0.98);
@@ -1548,30 +1551,6 @@
     opacity: 1;
     transform: scale(1);
     box-shadow: 0 0 0 5px color-mix(in srgb, currentColor 7%, transparent);
-  }
-}
-
-@keyframes planner-stream-breathing {
-  0%, 100% {
-    box-shadow:
-      0 10px 28px rgba(15, 23, 42, 0.045),
-      inset 0 0 0 1px rgba(24, 24, 27, 0);
-    opacity: 0.96;
-  }
-  50% {
-    box-shadow:
-      0 12px 32px rgba(15, 23, 42, 0.06),
-      inset 0 0 0 1px rgba(24, 24, 27, 0.04);
-    opacity: 1;
-  }
-}
-
-@keyframes planner-stream-content-breathing {
-  0%, 100% {
-    opacity: 0.86;
-  }
-  50% {
-    opacity: 1;
   }
 }
 
@@ -1653,9 +1632,9 @@
   background: linear-gradient(
     90deg,
     transparent 0%,
-    rgba(255, 255, 255, 0.15) 34%,
-    rgba(255, 255, 255, 0.95) 50%,
-    rgba(255, 255, 255, 0.15) 66%,
+    rgba(255, 255, 255, 0.08) 34%,
+    rgba(255, 255, 255, 0.62) 50%,
+    rgba(255, 255, 255, 0.08) 66%,
     transparent 100%
   );
   animation: build-loading-track-sweep 1.35s cubic-bezier(0.22, 0.61, 0.36, 1) infinite;
@@ -1667,25 +1646,16 @@
 }
 
 .build-loading-progress-fill {
-  background-image:
-    linear-gradient(
-      90deg,
-      rgba(255, 255, 255, 0) 0%,
-      rgba(255, 255, 255, 0.62) 48%,
-      rgba(255, 255, 255, 0) 100%
-    ),
-    repeating-linear-gradient(
-      135deg,
-      rgba(255, 255, 255, 0.22) 0,
-      rgba(255, 255, 255, 0.22) 8px,
-      rgba(255, 255, 255, 0.02) 8px,
-      rgba(255, 255, 255, 0.02) 16px
-    );
-  background-size: 180% 100%, 42px 42px;
+  background-image: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.5) 48%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  background-size: 180% 100%;
   will-change: background-position, filter;
   animation:
     progress-shimmer 1.45s linear infinite,
-    build-loading-fill-flow 0.9s linear infinite,
     build-loading-fill-pulse 1.85s ease-in-out infinite;
 }
 
@@ -1702,17 +1672,20 @@
   position: relative;
   isolation: isolate;
   overflow: hidden;
-  will-change: opacity, box-shadow;
-  animation: planner-stream-breathing 3.8s ease-in-out infinite;
+}
+
+.build-stream-caret {
+  animation: build-stream-caret 0.9s steps(1, end) infinite;
+}
+
+@keyframes build-stream-caret {
+  0%, 45% { opacity: 1; }
+  46%, 100% { opacity: 0; }
 }
 
 .planner-stream-bubble > * {
   position: relative;
   z-index: 1;
-}
-
-.planner-stream-preview {
-  animation: planner-stream-content-breathing 2.8s ease-in-out infinite;
 }
 
 .dark .progress-bar-active {
@@ -1749,11 +1722,38 @@
   .build-loading-progress-track::before,
   .build-loading-progress-fill,
   .build-live-dot,
-  .planner-stream-bubble,
-  .planner-stream-preview {
+  .build-stream-caret {
     animation: none !important;
     filter: none !important;
     transform: none !important;
+  }
+
+  .dark .feishu-doc-content pre code.hljs {
+    color: #e5e7eb;
+  }
+
+  .dark .feishu-doc-content pre :where(.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-doctag, .hljs-type) {
+    color: #ff7b72;
+  }
+
+  .dark .feishu-doc-content pre :where(.hljs-string, .hljs-regexp, .hljs-symbol, .hljs-bullet, .hljs-template-variable, .hljs-template-tag) {
+    color: #a5d6ff;
+  }
+
+  .dark .feishu-doc-content pre :where(.hljs-number, .hljs-built_in) {
+    color: #79c0ff;
+  }
+
+  .dark .feishu-doc-content pre :where(.hljs-attr, .hljs-attribute, .hljs-variable, .hljs-variable.language_) {
+    color: #ffa657;
+  }
+
+  .dark .feishu-doc-content pre :where(.hljs-comment, .hljs-quote) {
+    color: #8b949e;
+  }
+
+  .dark .feishu-doc-content pre :where(.hljs-title, .hljs-section, .hljs-function, .hljs-title.function_, .hljs-title.class_) {
+    color: #d2a8ff;
   }
 }
 

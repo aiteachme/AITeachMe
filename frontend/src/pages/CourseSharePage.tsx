@@ -31,6 +31,7 @@ import {
 import { anonymousApiClient, apiClient, getApiErrorMessage, hasStoredAccessToken } from "../api/client";
 import type { ApiResponse } from "../api/types";
 import type { CourseShareDocumentContent, CourseShareDocumentPreview, CourseSharePreviewData, ImportResultData } from "../api/generated/model";
+import { PlannerPlanCardShell, PlannerPlanSummary } from "../components/build-plan/PlannerPlanCard";
 import { CourseSharePillTitle } from "../components/course/CoursePagePillTitle";
 import {
   COURSE_PAGE_CONTENT_CLASS,
@@ -49,8 +50,6 @@ import { cn } from "../lib/utils";
 const FLOATING_ACTION_CLASS =
   "fixed right-6 inline-flex h-10 w-10 items-center justify-center gap-2 rounded-xl border border-slate-200/70 bg-white/90 text-[13px] font-medium text-slate-700 shadow-[0_12px_32px_-24px_rgba(15,23,42,0.55)] backdrop-blur-md transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/30 active:translate-y-0 active:scale-[0.98] sm:w-[9.25rem] sm:justify-start sm:px-3 dark:border-slate-800/80 dark:bg-slate-950/88 dark:text-slate-300 dark:shadow-[0_18px_44px_-28px_rgba(0,0,0,0.9)] dark:hover:border-slate-700 dark:hover:bg-slate-950 dark:hover:text-slate-100";
 const LOGO_SRC = publicAssetPath("logo.svg");
-const SHARE_PLANNER_CARD_CLASSNAME =
-  "rounded-lg rounded-tl-sm bg-white px-5 py-5 shadow-[0_10px_34px_rgba(15,23,42,0.06)] ring-1 ring-zinc-200/65 dark:bg-slate-950 dark:ring-slate-800";
 const SHARE_TRAINING_SECTION_CLASS =
   "rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950/75";
 
@@ -154,15 +153,6 @@ function SaveRequiredButton({
   );
 }
 
-function ShareReadonlyBadge() {
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
-      <Lock className="h-3.5 w-3.5" />
-      只读
-    </span>
-  );
-}
-
 function SharedAssistantAvatar() {
   return (
     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-50 p-1 shadow-sm ring-1 ring-slate-200/50 dark:bg-slate-900 dark:ring-slate-800">
@@ -180,10 +170,17 @@ function SharedReadonlyBuildView({
   documents: CourseShareDocumentPreview[];
   onSaveRequired: (feature: string) => void;
 }) {
-  const knowledgeDocCount = shareStat(preview, "knowledge_document_count") || documents.length;
-  const knowledgeUnitCount = shareStat(preview, "knowledge_unit_count");
-  const edgeCount = shareStat(preview, "knowledge_edge_count");
   const description = preview.course_description?.trim();
+  const outlineItems = useMemo(() => documents.map((doc) => ({
+      title: doc.title,
+      description: formatSharedPreviewText(doc.summary || doc.excerpt),
+  })), [documents]);
+  const readonlyBadge = (
+    <span className="inline-flex items-center gap-1.5 rounded-md bg-zinc-100 px-2.5 py-1 text-xs font-medium text-zinc-600 dark:bg-slate-800 dark:text-slate-300">
+      <Lock className="h-3.5 w-3.5" />
+      只读
+    </span>
+  );
 
   return (
     <div className="relative flex min-h-full w-full flex-col bg-transparent">
@@ -192,77 +189,18 @@ function SharedReadonlyBuildView({
           <div className="flex gap-3">
             <SharedAssistantAvatar />
             <div className="min-w-0 flex-1 space-y-3">
-              <article className={SHARE_PLANNER_CARD_CLASSNAME}>
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <Sparkles className="h-4 w-4 text-indigo-500" />
-                    <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">当前课程方案</p>
-                  </div>
-                  <ShareReadonlyBadge />
-                </div>
-                <h1 className="mt-4 text-2xl font-semibold tracking-normal text-slate-950 dark:text-slate-100">
-                  {preview.course_name}
-                </h1>
-                {description ? (
-                  <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-600 dark:text-slate-300">
-                    {description}
-                  </p>
-                ) : (
-                  <p className="mt-3 text-sm leading-7 text-slate-500 dark:text-slate-400">
-                    这门共享课程已经生成可浏览的知识路径。
-                  </p>
-                )}
-                <div className="mt-5 grid gap-2 sm:grid-cols-3">
-                  {[
-                    ["知识文档", knowledgeDocCount],
-                    ["知识点", knowledgeUnitCount],
-                    ["关系边", edgeCount],
-                  ].map(([label, value]) => (
-                    <div key={label} className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-900/60">
-                      <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">{label}</p>
-                      <p className="mt-1 text-lg font-black tabular-nums text-slate-950 dark:text-slate-100">{formatStat(Number(value))}</p>
-                    </div>
-                  ))}
-                </div>
-              </article>
+              <PlannerPlanCardShell
+                courseName={preview.course_name}
+                stageDescription="共享课程方案 · 只读预览"
+                stageBadge={readonlyBadge}
+              >
+                <PlannerPlanSummary
+                  introText={description || "这门共享课程已经整理成一条可直接浏览的学习路径。"}
+                  outlineItems={outlineItems}
+                />
+              </PlannerPlanCardShell>
             </div>
           </div>
-
-          {documents.length > 0 ? (
-            <div className="flex gap-3">
-              <SharedAssistantAvatar />
-              <div className="min-w-0 flex-1">
-                <article className={SHARE_PLANNER_CARD_CLASSNAME}>
-                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
-                    <BookOpen className="h-4 w-4 text-indigo-500" />
-                    学习路径
-                  </div>
-                  <div className="mt-4 space-y-2">
-                    {documents.map((doc, index) => (
-                      <div
-                        key={doc.doc_id}
-                        className="rounded-lg border border-slate-100 bg-slate-50 px-4 py-3 text-sm dark:border-slate-800 dark:bg-slate-900/60"
-                      >
-                        <div className="flex gap-3">
-                          <span className="w-6 shrink-0 font-semibold tabular-nums text-indigo-600 dark:text-indigo-300">
-                            {index + 1}
-                          </span>
-                          <div className="min-w-0">
-                            <p className="font-semibold text-slate-950 dark:text-slate-100">{doc.title}</p>
-                            {formatSharedPreviewText(doc.summary || doc.excerpt) ? (
-                              <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
-                                {formatSharedPreviewText(doc.summary || doc.excerpt)}
-                              </p>
-                            ) : null}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </article>
-              </div>
-            </div>
-          ) : null}
         </div>
       </div>
 
