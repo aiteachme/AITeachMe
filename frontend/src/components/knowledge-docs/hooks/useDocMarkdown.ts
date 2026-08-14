@@ -210,6 +210,7 @@ export function useDocMarkdown(): DocMarkdownState {
   const [terminalRefreshRetryNonce, setTerminalRefreshRetryNonce] = useState(0);
   const lastTerminalDocRefreshKeyRef = useRef<string | null>(null);
   const lastPublicationMetadataRefreshKeyRef = useRef<string | null>(null);
+  const lastVectorStatusRefreshKeyRef = useRef<string | null>(null);
   const publicationManifestRef = useRef<KnowledgeDocPublicationManifest | undefined>(undefined);
   const publicationChunksRef = useRef<KnowledgeDocPublicationChunk[]>([]);
   const activePublicationIdRef = useRef<string | null>(null);
@@ -232,6 +233,7 @@ export function useDocMarkdown(): DocMarkdownState {
         terminalRefreshRetryTimerRef.current = null;
       }
       lastTerminalDocRefreshKeyRef.current = null;
+      lastVectorStatusRefreshKeyRef.current = null;
       terminalRefreshRetryKeyRef.current = null;
       terminalRefreshAttemptRef.current = 0;
     };
@@ -639,6 +641,38 @@ export function useDocMarkdown(): DocMarkdownState {
       isBuildReadyStatus ||
       targetRequestedAtMs !== null
     );
+
+  useEffect(() => {
+    const vectorStatus = docMarkdownQuery.data?.vector_status;
+    const vectorNotice = vectorStatus?.notice?.trim() ?? "";
+    if (
+      !courseId ||
+      !trainingUnlocked ||
+      vectorStatus?.mode === "disabled" ||
+      !vectorNotice ||
+      docMarkdownQuery.isFetching
+    ) return;
+
+    const refreshKey = [
+      courseId,
+      runtimeQuery.data?.build_group_id ?? "",
+      graphStatus ?? "",
+      runtimeQuery.data?.graph?.finished_at ?? "",
+    ].join(":");
+    if (lastVectorStatusRefreshKeyRef.current === refreshKey) return;
+    lastVectorStatusRefreshKeyRef.current = refreshKey;
+    void docMarkdownQuery.refetch();
+  }, [
+    courseId,
+    docMarkdownQuery.data?.vector_status?.mode,
+    docMarkdownQuery.data?.vector_status?.notice,
+    docMarkdownQuery.isFetching,
+    docMarkdownQuery.refetch,
+    graphStatus,
+    runtimeQuery.data?.build_group_id,
+    runtimeQuery.data?.graph?.finished_at,
+    trainingUnlocked,
+  ]);
 
   useEffect(() => {
     if (!courseId || docMarkdownQuery.isFetching) return;
