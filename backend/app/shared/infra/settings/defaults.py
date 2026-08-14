@@ -70,10 +70,6 @@ DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
         "similarity_threshold": 0.3,
         "rerank_top_k": 3,
     },
-    "local_rag": {
-        "priority": True,
-        "min_results": 2,
-    },
     "knowledge_graph": {
         "sync_after_docgen": True,
         "prefetch_during_docgen": True,

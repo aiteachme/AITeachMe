@@ -584,18 +584,6 @@ SETTINGS_CATALOG: tuple[SettingsCatalogSection, ...] = (
                 ui_group="本地资料检索",
                 ui_order=30,
             ),
-            setting(
-                "local_rag.priority",
-                "本地资料优先",
-                ui_group="本地资料检索",
-                ui_order=40,
-            ),
-            setting(
-                "local_rag.min_results",
-                "本地命中阈值",
-                ui_group="本地资料检索",
-                ui_order=50,
-            ),
             env(
                 "search.tavily_api_key",
                 "Tavily API Key",

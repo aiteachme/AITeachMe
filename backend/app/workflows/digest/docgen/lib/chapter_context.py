@@ -416,7 +416,7 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
                     DEFAULT_EFFECTIVE_LOCAL_SCORE,
                 ),
             )
-            if effective_local_hits < settings.local_rag.min_results:
+            if effective_local_hits == 0:
                 fallback_queries_total.append(query)
                 round_fallback_queries.append(query)
 

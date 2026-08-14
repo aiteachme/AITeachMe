@@ -535,6 +535,11 @@ def upgrade_legacy_settings_payload(raw_payload: Any) -> dict[str, Any]:
             if not str(models_bucket.get("rerank") or "").strip():
                 models_bucket["rerank"] = legacy_rerank_model
 
+    # Local course material is now always included when it exists, while
+    # external retrieval is independently controlled by the caller. The old
+    # priority/min_results block no longer changes runtime behaviour.
+    upgraded.pop("local_rag", None)
+
     planner = upgraded.get("planner")
     if isinstance(planner, dict):
         # Planner chapter/length budgets are now prompt-contract constants in

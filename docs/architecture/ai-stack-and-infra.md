@@ -203,7 +203,7 @@ SearchResult(
 3. fallback
    默认 `duckduckgo`。
 
-如果传入 `course` 或 `local_sections`，`local_rag` 会按 `local_rag.priority` 优先参与；否则自动跳过，避免无上下文本地检索。
+如果传入 `course` 或 `local_sections`，`local_rag` 会自动优先参与；否则自动跳过，避免无上下文本地检索。
 
 当前无额外 key 时的主要 profile：
 
@@ -229,8 +229,7 @@ load_context
 -> confirmed plan 解析 retrieval_profile
 -> generate_chapters
 -> DocGenChapterContextRuntime.execute()
--> LocalRAGRetriever 先跑
--> 本地命中不足时，按 profile 解析外部 retriever
+-> LocalRAGRetriever 与有限外部 retriever 并行
 -> retriever.traced_search()
 -> SourceCurator
 -> read_urls()
@@ -240,8 +239,8 @@ load_context
 
 关键点：
 
-- `local_rag` 总是章节研究第一优先级。
-- 只有 `local_hits < settings.local_rag.min_results` 才触发外部 retriever。
+- 有课程资料时，`local_rag` 总是章节研究第一优先级，不再提供重复的启用开关。
+- 开启 DocGen 联网检索后，有限外部 retriever 会与本地检索并行校准，不再由本地命中数决定是否联网。
 - DocGen 还有一层稳定性 allowlist。广域 Web、学术源、`zh_wikibooks`、`zh_wikiversity`、`zh_wikipedia`、`zh_wiktionary` 已允许参与；`baidu_baike`、`zhihu` 不作为章节正文深读主来源。
 - 外部网页不会直接变成正文，仍会经过读取、过滤、压缩和章节写作。
 

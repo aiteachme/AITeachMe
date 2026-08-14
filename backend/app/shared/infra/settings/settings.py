@@ -133,11 +133,6 @@ class RagSettings(_SettingsModel):
     rerank_top_k: int
 
 
-class LocalRagSettings(_SettingsModel):
-    priority: bool
-    min_results: int
-
-
 class KnowledgeGraphSettings(_SettingsModel):
     sync_after_docgen: bool
     prefetch_during_docgen: bool
@@ -169,7 +164,6 @@ class Settings(_SettingsModel):
     docgen: DocgenSettings
     ingest: IngestSettings
     rag: RagSettings
-    local_rag: LocalRagSettings
     knowledge_graph: KnowledgeGraphSettings
     observability: ObservabilitySettings
 
@@ -248,11 +242,7 @@ class Settings(_SettingsModel):
         ]
         candidate_names = profile_names or [DEFAULT_RETRIEVER_FALLBACK]
 
-        should_include_local_rag = (
-            self.local_rag.priority
-            if include_local_rag is None
-            else include_local_rag
-        )
+        should_include_local_rag = True if include_local_rag is None else include_local_rag
         normalized: list[str] = []
         seen: set[str] = set()
 
@@ -365,7 +355,6 @@ __all__ = [
     "IngestSettings",
     "InteractSettings",
     "KnowledgeGraphSettings",
-    "LocalRagSettings",
     "ModelsSettings",
     "ObservabilitySettings",
     "PlannerSettings",

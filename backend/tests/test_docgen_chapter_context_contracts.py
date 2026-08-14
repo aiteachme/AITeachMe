@@ -394,7 +394,6 @@ async def test_research_round_tracks_local_fallback_and_external_hits(monkeypatc
         query_limit=2,
         settings=SimpleNamespace(
             rag=SimpleNamespace(similarity_threshold=0.6),
-            local_rag=SimpleNamespace(min_results=2),
         ),
         local_retriever=local,
         other_retrievers=[external],
@@ -453,7 +452,6 @@ async def test_research_round_keeps_external_calibration_when_local_is_sufficien
         query_limit=2,
         settings=SimpleNamespace(
             rag=SimpleNamespace(similarity_threshold=0.6),
-            local_rag=SimpleNamespace(min_results=1),
         ),
         local_retriever=local,
         other_retrievers=[external],
@@ -550,7 +548,6 @@ async def test_search_budget_and_execute_return_stable_metadata(monkeypatch: pyt
         lambda: SimpleNamespace(
             docgen=SimpleNamespace(allow_external_search=False),
             rag=SimpleNamespace(similarity_threshold=0.2),
-            local_rag=SimpleNamespace(min_results=1),
         ),
     )
     monkeypatch.setattr(chapter_context_module, "generate_sub_queries", fake_generate_sub_queries)

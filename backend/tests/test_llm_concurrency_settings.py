@@ -214,6 +214,19 @@ def test_legacy_llm_routing_settings_are_upgraded_without_overriding_new_slots()
     assert not hasattr(settings.llm, "primary_model_allowlist")
 
 
+def test_removed_local_rag_tuning_is_accepted_but_not_persisted() -> None:
+    set_system_settings_override({
+        "local_rag": {
+            "priority": False,
+            "min_results": 9,
+        },
+    })
+
+    settings = get_settings()
+    assert not hasattr(settings, "local_rag")
+    assert "local_rag" not in get_system_settings_override_payload()
+
+
 def test_reasoning_effort_selects_are_derived_from_each_effective_model() -> None:
     set_system_settings_override({
         "models": {
@@ -355,7 +368,6 @@ def test_existing_advanced_settings_remain_exposed_in_settings_page() -> None:
         "rag.top_k",
         "rag.similarity_threshold",
         "rag.rerank_top_k",
-        "local_rag.min_results",
         "search.tavily_api_key",
         "search.google_api_key",
         "langsmith.tracing",
