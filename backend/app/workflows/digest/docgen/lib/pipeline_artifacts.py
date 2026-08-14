@@ -128,61 +128,6 @@ def _append_preliminary_node(
     )
 
 
-def _append_preliminary_edge(
-    edges: list[dict[str, Any]],
-    seen: set[tuple[str, str, str]],
-    *,
-    source_name: object,
-    target_name: object,
-    edge_type: str,
-    description: object = "",
-    chapter_index: int = 0,
-    source: str,
-) -> None:
-    source_text = _clean_preliminary_node_name(source_name)
-    target_text = _clean_preliminary_node_name(target_name, max_chars=72)
-    if not source_text or not target_text or source_text == target_text:
-        return
-    normalized_type = normalize_relation_type(edge_type)
-    key = (
-        "".join(source_text.split()).casefold(),
-        "".join(target_text.split()).casefold(),
-        normalized_type,
-    )
-    if not key[0] or not key[1] or key in seen:
-        return
-    seen.add(key)
-    edges.append(
-        {
-            "source_name": source_text,
-            "target_name": target_text,
-            "edge_type": normalized_type,
-            "edge_type_label": relation_type_label(normalized_type),
-            "description": str(description or "").strip(),
-            "chapter_index": max(0, _safe_int(chapter_index)),
-            "source": source,
-        }
-    )
-
-
-def _role_unit_type(role: str) -> str:
-    normalized = str(role or "").strip().lower()
-    return {
-        "definition": "concept",
-        "formula": "formula_model",
-        "formula_model": "formula_model",
-        "method": "procedure",
-        "procedure": "procedure",
-        "example": "application_case",
-        "application": "application_case",
-        "application_case": "application_case",
-        "pitfall": "misconception",
-        "misconception": "misconception",
-        "exercise": "skill",
-        "practice": "skill",
-    }.get(normalized, normalize_knowledge_unit_type(normalized))
-
-
 def _clean_preliminary_node_name(value: object, *, max_chars: int = 42) -> str:
     text = str(value or "").strip()
     text = _KG_MARKDOWN_STYLE_RE.sub("", text)
@@ -201,194 +146,32 @@ def _clean_preliminary_node_name(value: object, *, max_chars: int = 42) -> str:
     return text
 
 
-def _preliminary_target(value: object, *, unit_type: str) -> tuple[str, str] | None:
-    raw = str(value or "").strip()
-    if not raw:
-        return None
-    cleaned = _clean_preliminary_node_name(raw)
-    return (cleaned, unit_type) if cleaned else None
-
-
-def _append_preliminary_items(
-    nodes: list[dict[str, Any]],
-    edges: list[dict[str, Any]],
-    seen_nodes: set[tuple[str, str]],
-    seen_edges: set[tuple[str, str, str]],
-    *,
-    values: Sequence[object],
-    unit_type: str,
-    chapter_index: int,
-    chapter_title: str,
-    source: str,
-) -> None:
-    for value in values:
-        item = _preliminary_target(value, unit_type=unit_type)
-        if item is None:
-            continue
-        item_name, item_type = item
-        if item_name:
-            _append_preliminary_node(
-                nodes,
-                seen_nodes,
-                name=item_name,
-                unit_type=item_type,
-                chapter_index=chapter_index,
-                summary=item_name,
-                source=source,
-            )
-            _append_preliminary_edge(
-                edges,
-                seen_edges,
-                source_name=item_name,
-                target_name=chapter_title,
-                edge_type="part_of",
-                description=f"{item_name} 属于《{chapter_title}》的学习内容。",
-                chapter_index=chapter_index,
-                source=source,
-            )
-
-
-def _plan_target_values(value: object, *, limit: int = 12) -> list[str]:
-    targets: list[str] = []
-    for item in list(value or []) if isinstance(value, Sequence) and not isinstance(value, (str, bytes)) else []:
-        if isinstance(item, Mapping):
-            target = str(item.get("target") or item.get("knowledge_unit") or item.get("topic") or "").strip()
-        else:
-            target = str(item or "").strip()
-        if target:
-            targets.append(target)
-        if len(targets) >= limit:
-            break
-    return clean_string_list(targets, limit=limit)
-
-
 def build_preliminary_kg(
     *,
     chapters_enhanced: Sequence[Mapping[str, Any]],
     dispatch_table: Mapping[str, Any] | None = None,
     guideline: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Build a compact rule-only KG seed from frozen DocGen planning artifacts."""
+    """Build structural chapter topics only; semantic units belong to the KG LLM."""
 
+    del dispatch_table, guideline
     nodes: list[dict[str, Any]] = []
     edges: list[dict[str, Any]] = []
     seen_nodes: set[tuple[str, str]] = set()
     seen_edges: set[tuple[str, str, str]] = set()
-    topic_by_index: dict[int, str] = {}
-    dispatch_by_index = {
-        _safe_int(item.get("chapter_index")): dict(item)
-        for item in list((dispatch_table or {}).get("items") or [])
-        if isinstance(item, Mapping) and _safe_int(item.get("chapter_index")) > 0
-    }
 
     for fallback_index, chapter in enumerate(chapters_enhanced, start=1):
         chapter_index = _safe_int(chapter.get("chapter_index"))
         chapter_index = chapter_index or fallback_index
         title = str(chapter.get("title") or f"第 {chapter_index} 章").strip()
-        topic_by_index[chapter_index] = title
-        dispatch_item = dispatch_by_index.get(chapter_index, {})
         _append_preliminary_node(
             nodes,
             seen_nodes,
             name=title,
             unit_type="topic",
             chapter_index=chapter_index,
-            summary=chapter.get("objective") or dispatch_item.get("title") or title,
+            summary=chapter.get("objective") or title,
             source="docgen_chapter_contract",
-        )
-        role_targets_raw = chapter.get("content_role_targets")
-        role_targets = dict(role_targets_raw) if isinstance(role_targets_raw, Mapping) else {}
-        for role, values in role_targets.items():
-            _append_preliminary_items(
-                nodes,
-                edges,
-                seen_nodes,
-                seen_edges,
-                values=clean_string_list(values, limit=12),
-                unit_type=_role_unit_type(role),
-                chapter_index=chapter_index,
-                chapter_title=title,
-                source="docgen_chapter_contract",
-            )
-        for key, unit_type in (
-            ("concept_targets", "concept"),
-            ("definition_targets", "concept"),
-            ("formula_targets", "formula_model"),
-            ("example_targets", "application_case"),
-            ("pitfall_targets", "misconception"),
-        ):
-            chapter_values = clean_string_list(chapter.get(key), limit=12)
-            dispatch_values = clean_string_list(dispatch_item.get(key), limit=12)
-            _append_preliminary_items(
-                nodes,
-                edges,
-                seen_nodes,
-                seen_edges,
-                values=clean_string_list([*chapter_values, *dispatch_values], limit=12),
-                unit_type=unit_type,
-                chapter_index=chapter_index,
-                chapter_title=title,
-                source="docgen_chapter_contract",
-            )
-        for values, unit_type in (
-            (_plan_target_values(chapter.get("example_coverage_plan"), limit=12), "application_case"),
-            (_plan_target_values(chapter.get("chapter_end_practice_plan"), limit=12), "skill"),
-        ):
-            _append_preliminary_items(
-                nodes,
-                edges,
-                seen_nodes,
-                seen_edges,
-                values=values,
-                unit_type=unit_type,
-                chapter_index=chapter_index,
-                chapter_title=title,
-                source="docgen_chapter_contract",
-            )
-
-    for item in list((guideline or {}).get("canonical_glossary") or []):
-        if not isinstance(item, Mapping):
-            continue
-        term = str(item.get("term") or "").strip()
-        if not term:
-            continue
-        target_chapters = [_safe_int(raw) for raw in list(item.get("target_chapters") or [])]
-        target_chapters = [index for index in target_chapters if index > 0]
-        _append_preliminary_node(
-            nodes,
-            seen_nodes,
-            name=term,
-            unit_type=item.get("knowledge_unit_type") or "concept",
-            chapter_index=target_chapters[0] if target_chapters else 0,
-            summary=item.get("definition") or term,
-            source="docgen_guideline",
-        )
-        for chapter_index in target_chapters:
-            topic = topic_by_index.get(chapter_index)
-            if topic:
-                _append_preliminary_edge(
-                    edges,
-                    seen_edges,
-                    source_name=term,
-                    target_name=topic,
-                    edge_type="part_of",
-                    description=f"{term} 是《{topic}》需要统一口径的知识点。",
-                    chapter_index=chapter_index,
-                    source="docgen_guideline",
-                )
-
-    for item in list((guideline or {}).get("dependency_edges") or []):
-        if not isinstance(item, Mapping):
-            continue
-        _append_preliminary_edge(
-            edges,
-            seen_edges,
-            source_name=item.get("from") or item.get("from_concept"),
-            target_name=item.get("to") or item.get("to_concept"),
-            edge_type="prerequisite_for" if item.get("relation") == "chapter_order" else str(item.get("relation") or ""),
-            description=item.get("reason") or "",
-            chapter_index=0,
-            source="docgen_guideline",
         )
 
     return {

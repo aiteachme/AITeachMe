@@ -13,20 +13,7 @@ from app.workflows.digest.kg_doc_sync.lib.extraction import (
 
 
 @pytest.mark.anyio
-async def test_kg_section_extraction_uses_run_llm_tasks(monkeypatch) -> None:
-    scheduler_calls: list[dict[str, object]] = []
-
-    async def fake_run_llm_tasks(items, worker, *, max_concurrent=None, on_result=None):
-        queued = list(items)
-        scheduler_calls.append({"items": queued, "max_concurrent": max_concurrent})
-        results = []
-        for index, item in enumerate(queued):
-            result = await worker(item)
-            if on_result is not None:
-                await on_result(index, item, result)
-            results.append(result)
-        return results
-
+async def test_kg_section_extraction_calls_single_llm_directly(monkeypatch) -> None:
     async def fake_structured(*args, **kwargs):
         assert kwargs.get("response_model") is ChunkExtractionResult
         return ChunkExtractionResult(
@@ -40,7 +27,6 @@ async def test_kg_section_extraction_uses_run_llm_tasks(monkeypatch) -> None:
             ]
         )
 
-    monkeypatch.setattr(extraction, "run_llm_tasks", fake_run_llm_tasks)
     monkeypatch.setattr(extraction, "acompletion_structured", fake_structured)
 
     result, diagnostics = await extraction.extract_candidates_with_diagnostics(
@@ -53,15 +39,10 @@ async def test_kg_section_extraction_uses_run_llm_tasks(monkeypatch) -> None:
     assert [node.name for node in result.nodes] == ["函数单调性"]
     assert diagnostics.llm_attempted is True
     assert diagnostics.node_count == 1
-    assert scheduler_calls == [{"items": [None], "max_concurrent": 1}]
 
 
 @pytest.mark.anyio
 async def test_kg_section_extraction_keeps_llm_contract_names_and_cleans_display_wrappers(monkeypatch) -> None:
-    async def fake_run_llm_tasks(items, worker, *, max_concurrent=None, on_result=None):
-        del max_concurrent, on_result
-        return [await worker(item) for item in items]
-
     async def fake_structured(*args, **kwargs):
         del args, kwargs
         return ChunkExtractionResult(
@@ -87,7 +68,6 @@ async def test_kg_section_extraction_keeps_llm_contract_names_and_cleans_display
             ],
         )
 
-    monkeypatch.setattr(extraction, "run_llm_tasks", fake_run_llm_tasks)
     monkeypatch.setattr(extraction, "acompletion_structured", fake_structured)
 
     result, diagnostics = await extraction.extract_candidates_with_diagnostics(

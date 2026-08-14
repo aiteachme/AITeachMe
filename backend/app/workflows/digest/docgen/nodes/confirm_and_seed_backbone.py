@@ -6,6 +6,7 @@ from time import perf_counter
 
 from app.shared.infra.workflow.context import WorkflowContext
 from app.shared.infra.knowledge.build_store import append_knowledge_build_recent_event, update_knowledge_build_status
+from app.shared.infra.settings import get_settings
 from app.utils.time import utcnow
 from app.workflows.digest.docgen.lib.chapter_planning import compose_seed_plan_and_backbone_agenda
 from app.workflows.digest.docgen.lib.models import (
@@ -57,6 +58,9 @@ def build_confirm_and_seed_backbone_node(*, context: WorkflowContext):
             source_affinity_by_chapter=source_affinity,
             high_confidence_evidence_units=evidence_units,
             plan_mismatch_warnings=list(state.get("plan_mismatch_warnings") or []),
+            max_retrieval_queries_per_chapter=(
+                get_settings().docgen.max_retrieval_queries_per_chapter
+            ),
         )
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         update_knowledge_build_status(

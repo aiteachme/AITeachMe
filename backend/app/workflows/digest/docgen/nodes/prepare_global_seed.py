@@ -9,7 +9,7 @@ from app.shared.infra.knowledge.build_store import append_knowledge_build_recent
 from app.utils.time import utcnow
 from app.workflows.digest.docgen.lib.file_summaries import (
     derive_source_affinity_and_evidence,
-    summarize_files_deterministically,
+    summarize_files,
 )
 from app.workflows.digest.docgen.lib.models import DocGenContext, DocGenIntentProfile
 from app.workflows.digest.docgen.lib.pipeline_artifacts import (
@@ -56,28 +56,36 @@ def _intent_from_confirmed_plan(
     docgen_context: DocGenContext,
     confirmed_plan: dict,
 ) -> DocGenIntentProfile:
-    """Compile writing intent from the user-confirmed contract without another LLM pass."""
+    """Compile only model-authored Planner semantics and deterministic runtime policy."""
 
-    sprint = docgen_context.digest_mode == "sprint"
     plan_text = docgen_context.plan or str(confirmed_plan.get("plan") or "")
     goal = docgen_context.user_prompt or str(confirmed_plan.get("user_prompt") or "") or plan_text
+    chapters = [item for item in list(confirmed_plan.get("chapters") or []) if isinstance(item, dict)]
+    chapter_writing_strategies = [
+        str(item.get("writing_instructions") or "").strip()
+        for item in chapters
+        if str(item.get("writing_instructions") or "").strip()
+    ]
+    strategy_text = "\n".join(
+        [
+            text
+            for text in [plan_text, *chapter_writing_strategies]
+            if text
+        ]
+    )
     return DocGenIntentProfile(
         learning_goal_text=goal,
-        audience_profile_text=docgen_context.learner_profile_text or "按用户确认的学习目标组织讲解",
-        content_strategy_text=plan_text or "严格按确认章节组织知识、示例与练习",
-        example_practice_policy=(
-            "紧凑讲解后立即用短例题和自测验证"
-            if sprint
-            else "概念、推导、例题和迁移练习逐层展开"
-        ),
+        audience_profile_text=docgen_context.learner_profile_text,
+        content_strategy_text=strategy_text,
+        example_practice_policy="\n".join(chapter_writing_strategies),
         source_usage_policy="本地资料优先；资料不足时明确不确定性，不补写无依据事实",
-        teaching_intent=goal or plan_text,
-        example_ratio=0.32 if sprint else 0.38,
-        practice_ratio=0.28 if sprint else 0.25,
+        teaching_intent=strategy_text or goal,
+        example_ratio=0.0,
+        practice_ratio=0.0,
         evidence_strictness=0.68,
         review_strictness=0.55,
-        depth_level="compact" if sprint else "standard",
-        explanation_depth="standard" if sprint else "detailed",
+        depth_level="compact" if docgen_context.digest_mode == "sprint" else "standard",
+        explanation_depth="standard",
         avoid_list=["脱离确认方案扩展章节", "无资料依据的断言", "重复解释同一知识点"],
         fallback_used=False,
     )
@@ -109,7 +117,7 @@ def build_prepare_global_seed_node(*, context: WorkflowContext):
             build_group_id=state.get("build_group_id") or None,
             event={
                 "stage": "preparing_docgen_global_seed",
-                "summary": "开始准备 DocGen 全局种子：推断文档级意图并摘要文件材料。",
+                "summary": "开始准备 DocGen 全局种子：读取确认方案并语义路由文件材料。",
                 "created_at": utcnow(),
             },
         )
@@ -130,10 +138,18 @@ def build_prepare_global_seed_node(*, context: WorkflowContext):
             confirmed_plan=confirmed_plan,
         )
         intent_core_ms = 0
+        extra = {
+            "build_session_id": state.get("build_session_id") or "",
+            "planner_session_id": state.get("planner_session_id") or "",
+            "confirmed_plan_id": state.get("confirmed_plan_id") or "",
+            "digest_mode": state.get("digest_mode") or "",
+        }
         file_summaries = (
-            summarize_files_deterministically(
+            await summarize_files(
                 shared_inputs,
                 chapters=chapters,
+                digest_mode=docgen_context.digest_mode,
+                extra_metadata=extra,
             )
             if shared_inputs is not None
             else []
@@ -154,7 +170,7 @@ def build_prepare_global_seed_node(*, context: WorkflowContext):
             build_group_id=state.get("build_group_id") or None,
             event={
                 "stage": "docgen_global_seed_ready",
-                "summary": f"DocGen 全局种子准备完成：已复用确认方案，确定性资料路由 {len(file_summaries)} 份。",
+                "summary": f"DocGen 全局种子准备完成：已复用确认方案，语义路由资料 {len(file_summaries)} 份。",
                 "created_at": utcnow(),
             },
         )

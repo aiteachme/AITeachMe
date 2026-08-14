@@ -219,13 +219,13 @@ _SPRINT_PROFILE = DocGenModeProfile(
     max_local_queries=3,
     max_web_queries=2,
     max_opened_urls=3,
-    max_context_chars=4200,
+    max_context_chars=16000,
     query_cap=4,
     queries_per_round=2,
     coverage_target=0.68,
     min_score_gain=0.08,
     max_gap_queries_per_round=2,
-    strategy_context_chars=4200,
+    strategy_context_chars=16000,
     prompt_extra_contract="正文采用考点讲义形态：考点速览表定优先级；每个考点讲清具体方法或判断口径，再接例题、任务、解析结论和错因边界。概念章用短例子和反例，方法章给步骤和检查点，训练章按真实题型或任务差异组织。",
 )
 
@@ -289,13 +289,13 @@ _SYSTEMATIC_PROFILE = DocGenModeProfile(
     max_local_queries=3,
     max_web_queries=4,
     max_opened_urls=5,
-    max_context_chars=6200,
+    max_context_chars=32000,
     query_cap=6,
     queries_per_round=3,
     coverage_target=0.82,
     min_score_gain=0.05,
     max_gap_queries_per_round=3,
-    strategy_context_chars=6000,
+    strategy_context_chars=32000,
 )
 
 _PROFILES: dict[DocGenMode, DocGenModeProfile] = {

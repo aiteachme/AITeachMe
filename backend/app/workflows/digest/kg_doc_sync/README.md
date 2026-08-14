@@ -1,6 +1,6 @@
 # KG Doc Sync 链路
 
-最后更新：2026-08-09
+最后更新：2026-08-13
 
 职责：把已发布知识文档同步成知识图谱。
 
@@ -47,7 +47,7 @@ early_units_callback
 
 输入：DocGen enhanced whole-document markdown, `build_session_id`, `course_id`
 
-动作：全部章节增强完成后，立即用整本增强稿启动一次预抽取，和按章 review、跨章检查及必要修补交织运行。各 section 没有拓扑依赖，统一受 LLM 全局并发上限调度。最终 Markdown 固化时继续使用现有 sidecar；只有缓存缺失才启动整本文档兜底预抽取。正式同步按 section key 与 content hash 复用结果，标题或正文变化的 section 才补抽，因此 repair 不会让未改章节重复占用模型并发。
+动作：全部章节增强完成后，立即用整本增强稿启动一次预抽取，和按章 review、跨章检查及必要修补交织运行。各 section 没有拓扑依赖，通过统一调度器并发，并同时受 `knowledge_graph.prefetch_concurrency` 局部上限与 LLM 全局并发上限约束，为前台 DocGen 复核保留请求槽。最终 Markdown 固化时继续使用现有 sidecar；只有缓存缺失才启动整本文档兜底预抽取。正式同步按 section key 与 content hash 复用结果，标题或正文变化的 section 才补抽，因此 repair 不会让未改章节重复占用模型并发。
 
 输出：`prefetched_sections`
 
@@ -62,6 +62,7 @@ DocGen 的 `prepare_knowledge_graph` 会在 `merge_review / sync_locked_titles` 
 边界：
 
 - `docgen_kg_draft` 保留在 DocGen 状态，并随发布产物传给最终同步。
+- `preliminary_kg` 只提供 confirmed chapter 的结构 topic；正式概念、原理、公式、方法、技能、误区、案例和关系全部来自 section LLM prefetch/catch-up。
 - `KnowledgeUnit`、`KnowledgeEdge`、source_ref、补抽、废弃收口和 sync_run 完成状态只由发布后的 `persist` 权威落库。
 - `kg_draft_early_persist_metrics` 仅作为旧状态兼容字段保留，当前值为 deferred 且所有发布前写入计数为 0。
 
@@ -89,7 +90,7 @@ DocGen 的 `prepare_knowledge_graph` 会在 `merge_review / sync_locked_titles` 
 
 输出：`created_unit_ids`, `updated_unit_ids`, `unit_count`
 
-边界：只提前写可验证的 unit/edge，不写 source ref；DocGen preliminary_kg/backbone 只作为上下文，不再以规则方式生成语义知识点。
+边界：只提前写 hash 命中的 section LLM unit/edge 和章节结构锚点，不写 source ref；DocGen preliminary_kg/backbone 只作为上下文，不以规则、标题二级目录或关键词生成语义知识点。单个 section 的 LLM 抽取最终失败时记录失败并等待后续重试，不用标题造“成功”节点。
 
 ## 4. `extract`
 

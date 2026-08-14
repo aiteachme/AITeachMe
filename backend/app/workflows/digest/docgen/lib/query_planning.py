@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from app.shared.infra.llm_support import acompletion_with_fallback, run_llm_tasks
+from app.shared.infra.llm_support import acompletion_with_fallback
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.prompts.generation import (
     build_docgen_gap_query_messages,
@@ -167,24 +167,21 @@ async def generate_sub_queries(
     serialized_context = _serialize_query_context(context)
     caller = llm_caller or acompletion_with_fallback
 
-    async def _run_sub_query_plan(_: object) -> object:
-        return await caller(
-            build_docgen_sub_query_messages(
-                query=normalized_query,
-                context_summary=serialized_context,
-                max_queries=safe_max_queries,
-                domain=domain,
-            ),
-            **docgen_completion_kwargs_with_metadata(
-                DocGenModelStep.QUERY_PLANNING,
-                extra_metadata=extra_metadata,
-                query_tool="generate_sub_queries",
-                query_domain=domain,
-            ),
-            response_model=ResearchSubQueryPlan,
-        )
-
-    (response,) = await run_llm_tasks([None], _run_sub_query_plan, max_concurrent=1)
+    response = await caller(
+        build_docgen_sub_query_messages(
+            query=normalized_query,
+            context_summary=serialized_context,
+            max_queries=safe_max_queries,
+            domain=domain,
+        ),
+        **docgen_completion_kwargs_with_metadata(
+            DocGenModelStep.QUERY_PLANNING,
+            extra_metadata=extra_metadata,
+            query_tool="generate_sub_queries",
+            query_domain=domain,
+        ),
+        response_model=ResearchSubQueryPlan,
+    )
 
     if isinstance(response, ResearchSubQueryPlan):
         raw_queries = response.queries
@@ -218,24 +215,21 @@ async def generate_gap_queries(
 
     caller = llm_caller or acompletion_with_fallback
 
-    async def _run_gap_query_plan(_: object) -> object:
-        return await caller(
-            build_docgen_gap_query_messages(
-                dense_context=dense_context,
-                required_elements=list(required_elements or []),
-                max_queries=int(max_queries or 2),
-                domain=domain,
-            ),
-            **docgen_completion_kwargs_with_metadata(
-                DocGenModelStep.QUERY_PLANNING,
-                extra_metadata=extra_metadata,
-                query_tool="generate_gap_queries",
-                query_domain=domain,
-            ),
-            response_model=ResearchSubQueryPlan,
-        )
-
-    (response,) = await run_llm_tasks([None], _run_gap_query_plan, max_concurrent=1)
+    response = await caller(
+        build_docgen_gap_query_messages(
+            dense_context=dense_context,
+            required_elements=list(required_elements or []),
+            max_queries=int(max_queries or 2),
+            domain=domain,
+        ),
+        **docgen_completion_kwargs_with_metadata(
+            DocGenModelStep.QUERY_PLANNING,
+            extra_metadata=extra_metadata,
+            query_tool="generate_gap_queries",
+            query_domain=domain,
+        ),
+        response_model=ResearchSubQueryPlan,
+    )
 
     if isinstance(response, ResearchSubQueryPlan):
         raw_queries = response.queries

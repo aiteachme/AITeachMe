@@ -226,25 +226,22 @@ async def _generate_interactive_html_with_retry(
     )
 
     for attempt in range(2):
-        async def _run_interactive_html(_: object) -> str:
-            return str(
-                await acompletion_with_fallback(
-                    messages_factory(last_feedback),
-                    **docgen_completion_kwargs_with_metadata(
-                        DocGenModelStep.INTERACTIVE_HTML,
-                        digest_mode=digest_mode,
-                        extra_metadata={
-                            **dict(base_metadata),
-                            "quality_attempt": attempt + 1,
-                            "quality_retry": attempt > 0,
-                            "quality_retry_issue_count": len(last_feedback),
-                        },
-                    ),
-                )
-                or ""
+        html = str(
+            await acompletion_with_fallback(
+                messages_factory(last_feedback),
+                **docgen_completion_kwargs_with_metadata(
+                    DocGenModelStep.INTERACTIVE_HTML,
+                    digest_mode=digest_mode,
+                    extra_metadata={
+                        **dict(base_metadata),
+                        "quality_attempt": attempt + 1,
+                        "quality_retry": attempt > 0,
+                        "quality_retry_issue_count": len(last_feedback),
+                    },
+                ),
             )
-
-        (html,) = await run_llm_tasks([None], _run_interactive_html, max_concurrent=1)
+            or ""
+        )
         cleaned_html = _sanitize_generated_html(str(html), title=title)
         validation_issues = validate_single_file_html(cleaned_html)
         quality_report = assess_interactive_html_quality(

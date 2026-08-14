@@ -26,6 +26,7 @@ from .settings import (
     get_project_settings,
     get_system_settings_override_payload,
     reset_project_settings_cache,
+    sanitize_settings_override_payload,
     set_system_settings_override,
 )
 from .runtime_payload import (
@@ -66,6 +67,7 @@ __all__ = [
     "merge_settings_values",
     "get_system_settings_override_payload",
     "reset_project_settings_cache",
+    "sanitize_settings_override_payload",
     "set_system_settings_override",
     "RUNTIME_ENV_OVERRIDES_KEY",
     "combine_runtime_settings_payload",

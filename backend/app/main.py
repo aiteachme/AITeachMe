@@ -414,6 +414,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     from app.workflows.ingest import run_ingest_recovery_loop
     from app.workflows.support.system import refresh_community_qr_cache
+    from app.shared.infra.llm_support.litellm_loader import warm_litellm
     from app.api.exams import run_exam_grading_recovery_loop
     from app.workflows.profile.sync import run_exam_profile_sync_recovery_loop
     from app.workflows.examine.initial_exam import run_course_initial_exam_recovery_loop
@@ -446,6 +447,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         refresh_community_qr_cache(),
         kind="system.community_qr_warmup",
         name="system.community_qr_warmup",
+    )
+    app.state.background_task_registry.spawn(
+        warm_litellm(),
+        kind="system.litellm_warmup",
+        name="system.litellm_warmup",
+        dedupe_key="system.litellm_warmup",
     )
 
     logger.info(

@@ -7,7 +7,6 @@ import re
 from typing import Any
 
 from app.shared.infra.tools.builtin.markdown_processing import count_words
-from app.workflows.digest.docgen.lib.chapter_review import measure_chapter_coverage
 from app.workflows.digest.common.pedagogy import resolve_effective_chapter_title
 from app.workflows.digest.docgen.lib.models import (
     BackboneResearchAgenda,
@@ -30,11 +29,6 @@ from app.workflows.digest.docgen.lib.models import (
 from app.workflows.digest.docgen.lib.mode_profiles import get_docgen_mode_profile
 
 _SCOPE_PUNCT_RE = re.compile(r"[\s,，、;；:：/／|｜()（）《》“”\"'`]+")
-_MERMAID_STRUCTURE_HINT_TERMS = ("图", "结构", "流程", "关系", "路径", "层次", "机制", "过程", "框架", "脉络")
-_MERMAID_ROLE_TYPES = ("topic", "concept", "principle", "formula_model", "procedure", "skill", "misconception")
-_MERMAID_LABEL_RE = re.compile(r"[^0-9A-Za-z\u4e00-\u9fff、，。·\- ]+")
-
-
 def _priority_files_for_chapter(
     *,
     chapter_index: int,
@@ -87,50 +81,6 @@ def _briefs_by_index(
     return {int(item.chapter_index): item for item in briefs if int(item.chapter_index or 0) > 0}
 
 
-def _suggest_mermaid_placeholder_requests(
-    *,
-    title: str,
-    required_elements: Sequence[str],
-    concept_targets: Sequence[str],
-    content_role_targets: Mapping[str, Sequence[str]],
-) -> list[dict[str, str]]:
-    """Suggest one chapter-level Mermaid request when the chapter has structure worth drawing."""
-
-    role_items = [
-        item
-        for role in _MERMAID_ROLE_TYPES
-        for item in list(content_role_targets.get(role) or [])
-        if str(item).strip()
-    ]
-    visual_terms = " ".join([title, *required_elements, *concept_targets, *role_items])
-    strong_targets = clean_string_list([*concept_targets, *required_elements, *role_items], limit=8)
-    has_structure_marker = any(marker in visual_terms for marker in _MERMAID_STRUCTURE_HINT_TERMS)
-    has_rich_knowledge_structure = len(strong_targets) >= 4
-    if not has_structure_marker and not has_rich_knowledge_structure:
-        return []
-    def mermaid_label(value: object, *, limit: int) -> str:
-        cleaned = _MERMAID_LABEL_RE.sub("", str(value or ""))
-        cleaned = re.sub(r"\s+", " ", cleaned).strip(" ，。-、")
-        return cleaned[:limit].rstrip(" ，。-、")
-
-    root = mermaid_label(title, limit=18)
-    children = clean_string_list(
-        [mermaid_label(item, limit=20) for item in strong_targets],
-        limit=6,
-    )
-    children = [item for item in children if item and item.casefold() != root.casefold()]
-    if not root or len(children) < 2:
-        return []
-    source = "\n".join(
-        [
-            "mindmap",
-            f"  root(({root}))",
-            *(f"    {item}" for item in children),
-        ]
-    )
-    return [{"kind": "mermaid", "description": source}]
-
-
 def _example_coverage_plan(
     *,
     brief: ChapterExecutionBrief,
@@ -139,9 +89,7 @@ def _example_coverage_plan(
 ) -> list[dict[str, Any]]:
     del required, mode_profile
     plan = clean_example_coverage_plan(brief.example_coverage_plan, limit=16)
-    if plan:
-        return plan
-    raise ValueError("chapter execution brief is missing example_coverage_plan")
+    return plan
 
 
 def _scope_text(value: object) -> str:
@@ -235,6 +183,7 @@ def compose_seed_plan_and_backbone_agenda(
     source_affinity_by_chapter: Sequence[SourceAffinityByChapter] | None = None,
     high_confidence_evidence_units: Sequence[HighConfidenceEvidenceUnit] | None = None,
     plan_mismatch_warnings: Sequence[str] | None = None,
+    max_retrieval_queries_per_chapter: int = 2,
 ) -> tuple[ChapterGenerationPlanSeed, list[ChapterGenerationTaskSeed], BackboneResearchAgenda]:
     locked_by_index = _locked_titles_by_index(locked_titles)
     evidence_units = list(high_confidence_evidence_units or [])
@@ -280,7 +229,10 @@ def compose_seed_plan_and_backbone_agenda(
             confirmed_chapters=confirmed_chapters,
             locked_by_index=locked_by_index,
         )
-        retrieval_queries = clean_string_list([locked.enhanced_title, *required], limit=2)
+        retrieval_queries = clean_string_list(
+            [locked.enhanced_title, *required],
+            limit=max(1, int(max_retrieval_queries_per_chapter)),
+        )
         task_seeds.append(
             ChapterGenerationTaskSeed(
                 chapter_index=chapter_index,
@@ -296,7 +248,10 @@ def compose_seed_plan_and_backbone_agenda(
                 source_slices=source_slices,
                 preferred_sources=preferred_sources,
                 target_length=mode_profile.seed_target_length,
-                style_rules=list(global_rules),
+                style_rules=clean_string_list(
+                    [chapter.get("writing_instructions"), *global_rules],
+                    limit=16,
+                ),
                 allowed_assets=[],
             )
         )
@@ -425,14 +380,10 @@ def assemble_chapter_generation_plan(
             local_scope=local_scope,
             forbidden_scope=forbidden_scope,
         )
-        if not content_role_targets:
-            raise ValueError(f"chapter execution brief is missing role targets for chapter {chapter_index}")
-        placeholder_requests = _suggest_mermaid_placeholder_requests(
-            title=locked.enhanced_title or confirmed_title,
-            required_elements=seed.required_elements,
-            concept_targets=brief.concept_targets,
-            content_role_targets=content_role_targets,
-        )
+        # Mermaid structure is a semantic authoring decision.  The Writer prompt
+        # already asks the LLM to emit one only when it materially helps; a local
+        # keyword rule must not invent a hierarchy between unrelated targets.
+        placeholder_requests: list[dict[str, str]] = []
         example_coverage_plan = _example_coverage_plan(
             brief=brief,
             required=list(seed.required_elements),
@@ -459,7 +410,7 @@ def assemble_chapter_generation_plan(
             chapter_end_practice_plan=chapter_end_practice_plan,
             content_points=clean_string_list(seed.required_elements),
             concept_targets=_filter_scope_items(
-                [*brief.concept_targets, *seed.required_elements],
+                list(brief.concept_targets),
                 local_scope=local_scope,
                 forbidden_scope=forbidden_scope,
                 limit=8,
@@ -497,7 +448,14 @@ def assemble_chapter_generation_plan(
                 forbidden_scope=forbidden_scope,
                 limit=2,
             ),
-            writing_rules=list(global_rules),
+            writing_rules=clean_string_list(
+                [
+                    *brief.writing_instructions,
+                    chapter.get("writing_instructions"),
+                    *global_rules,
+                ],
+                limit=16,
+            ),
             required_elements=list(seed.required_elements),
             forbidden_scope=forbidden_scope,
             preferred_sources=list(seed.preferred_sources),
@@ -549,12 +507,12 @@ def assemble_chapter_generation_plan(
 
 
 def estimate_quality_from_markdown(markdown: str, *, required_points: Sequence[str], min_word_count: int) -> float:
+    del required_points
     if not markdown.strip():
         return 0.0
-    coverage, _missing = measure_chapter_coverage(markdown, list(required_points))
     length = min(1.0, count_words(markdown) / max(1, min_word_count))
     structure = 1.0 if markdown.count("\n## ") >= 4 else 0.65
-    return round((coverage * 0.45) + (length * 0.3) + (structure * 0.25), 4)
+    return round((length * 0.55) + (structure * 0.45), 4)
 
 
 __all__ = [

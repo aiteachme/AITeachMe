@@ -15,88 +15,8 @@ from app.workflows.digest.docgen.lib.models import (
     EnhancedChapterDraft,
     ReviewAction,
     ReviewedChapterDraft,
-    clean_string_list,
 )
 from app.workflows.digest.docgen.lib.quality import evidence_support_score
-
-
-def _normalize_blob(value: str) -> str:
-    return re.sub(r"[^0-9a-z_\u4e00-\u9fff*()+/\[\]&-]+", "", str(value or "").casefold())
-
-
-def _parallel_target_anchors(target: str) -> list[str]:
-    parts = re.split(r"(?:以及|并且|、|，|,|；|;|：|:|与|和|及|\s+)", str(target or ""))
-    anchors: list[str] = []
-    for part in parts:
-        anchor = _normalize_blob(part)
-        if len(anchor) < 2 or anchor in anchors:
-            continue
-        anchors.append(anchor)
-    return anchors
-
-
-def _anchor_covered(normalized_markdown: str, anchor: str) -> bool:
-    if not anchor:
-        return False
-    if anchor in normalized_markdown:
-        return True
-    if len(anchor) < 3:
-        return False
-    trigrams = {anchor[index : index + 3] for index in range(len(anchor) - 2)}
-    overlap = sum(trigram in normalized_markdown for trigram in trigrams) / max(1, len(trigrams))
-    if overlap >= 0.45:
-        return True
-    if 4 <= len(anchor) <= 6:
-        bigrams = {anchor[index : index + 2] for index in range(len(anchor) - 1)}
-        bigram_overlap = sum(bigram in normalized_markdown for bigram in bigrams) / max(1, len(bigrams))
-        if bigram_overlap >= 0.6:
-            return True
-    cjk_chars = {char for char in anchor if "\u4e00" <= char <= "\u9fff"}
-    if len(cjk_chars) < 4:
-        return False
-    return len(cjk_chars.intersection(normalized_markdown)) / len(cjk_chars) >= 0.6
-
-
-def _is_target_covered(normalized_markdown: str, target: str) -> bool:
-    needle = _normalize_blob(target)
-    if not needle:
-        return False
-    if needle in normalized_markdown:
-        return True
-
-    ascii_anchors = {
-        token.casefold()
-        for token in re.findall(r"[A-Za-z][A-Za-z0-9_]*(?:-[A-Za-z0-9_]+)*", str(target or ""))
-        if len(token) >= 2
-    }
-    if any(_normalize_blob(anchor) not in normalized_markdown for anchor in ascii_anchors):
-        return False
-    parallel_anchors = _parallel_target_anchors(target)
-    if len(parallel_anchors) >= 2:
-        covered_count = sum(_anchor_covered(normalized_markdown, anchor) for anchor in parallel_anchors)
-        required_count = (
-            len(parallel_anchors)
-            if len(parallel_anchors) <= 4
-            else (len(parallel_anchors) * 4 + 4) // 5
-        )
-        return covered_count >= required_count
-    if len(ascii_anchors) >= 2:
-        return True
-    return _anchor_covered(normalized_markdown, needle)
-
-
-def measure_chapter_coverage(markdown: str, targets: list[str]) -> tuple[float, list[str]]:
-    if not targets:
-        return 1.0, []
-    normalized = _normalize_blob(markdown)
-    missing: list[str] = []
-    hits = 0
-    for target in targets:
-        if _is_target_covered(normalized, target):
-            hits += 1
-        else:
-            missing.append(target)
-    return round(hits / max(1, len(targets)), 4), missing
 
 
 def _chapter_anchor(draft: EnhancedChapterDraft) -> str:
@@ -128,17 +48,14 @@ def _rule_review_chapter(
 ) -> tuple[ReviewedChapterDraft, ChapterReviewReport, list[ReviewAction]]:
     """执行无需 LLM 的章节复核兜底。
 
-    规则复核只检查合同覆盖、证据支撑、长度和冲突信号。它既是 LLM
-    review 失败时的 fallback，也是 LLM 结果的 guardrail。
+    规则复核只检查确定性的证据、长度、结构、渲染和冲突信号。
+    教学语义覆盖由 Writer 提示词负责，不能用字符片段命中率代替。
     """
 
     del digest_mode
     task = task or ChapterGenerationTask(chapter_index=draft.chapter_index, confirmed_title=draft.title)
-    # ``required_elements`` is the confirmed teaching contract. ``claim_targets``
-    # may contain long source excerpts or OCR fragments and belongs to evidence
-    # support checks; treating it as verbatim coverage creates false LLM repairs.
-    targets = clean_string_list(task.required_elements, limit=18)
-    coverage_score, missing = measure_chapter_coverage(draft.markdown, targets)
+    coverage_score = 0.0
+    missing: list[str] = []
     support_score = evidence_support_score(claim_evidence_map or ClaimEvidenceMap(chapter_index=draft.chapter_index))
     quality_score = draft.quality_signals.quality_score or 0.0
     word_count = count_words(draft.markdown)
@@ -194,37 +111,6 @@ def _rule_review_chapter(
                 expected_effect="每章都有可被 examine/profile 继续利用的章末测试信号，且不影响其它标题由模型按内容自然命名。",
             )
         )
-    coverage_below_threshold = bool(targets and coverage_score < task.coverage_threshold)
-    if missing:
-        warnings.append("章节存在执行合同覆盖提示，需结合正文语义复核判断。")
-        needs_patch = coverage_below_threshold
-        actions.append(
-            ReviewAction(
-                action_id=f"review_ch{draft.chapter_index:02d}_section_patch",
-                action_type="section_patch" if needs_patch else "record_only",
-                chapter_index=draft.chapter_index,
-                severity="warning" if needs_patch else "info",
-                reason="缺少学习大纲项：" + "、".join(missing[:5]),
-                target_anchor=_chapter_anchor(draft),
-                instruction=(
-                    "只使用本章现有正文与执行合同线索，短而具体地补齐这些缺项："
-                    + "、".join(missing[:8])
-                    if needs_patch
-                    else "记录规则覆盖提示：" + "、".join(missing[:8])
-                ),
-                constraints=[
-                    "不得新增、删除或重排 confirmed plan 章节。",
-                    "不得复制整章、重复已有小节或引入本章材料没有支持的新事实。",
-                    "只补实际缺失的知识、例题、方法或边界，不得只复述大纲长短语。",
-                    *scope_constraints,
-                ],
-                expected_effect=(
-                    f"章节覆盖率达到至少 {task.coverage_threshold:.0%}，且保持原有标题与正文结构。"
-                    if needs_patch
-                    else "避免轻微逐字匹配误判，同时让覆盖提示在质量报告中保持可见。"
-                ),
-            )
-        )
     # Example density, training-chapter role, self-check completeness and task
     # taxonomy are semantic judgments. They are handled by the structured LLM
     # review prompt, not by local keyword matching.
@@ -271,7 +157,7 @@ def _rule_review_chapter(
     unresolved_conflicts = int((conflict_report or ConflictReport()).unresolved_count or 0)
     if unresolved_conflicts > 0:
         warnings.append("仍存在未解决的低证据或冲突提示。")
-    passed = not coverage_below_threshold and not any(
+    passed = not any(
         action.action_type in {"section_patch", "evidence_patch", "regenerate_chapter", "re_dispatch", "rebuild_backbone"}
         and action.severity in {"warning", "error"}
         for action in actions
@@ -340,4 +226,4 @@ async def review_chapter(
     return reviewed, report, rule_actions
 
 
-__all__ = ["measure_chapter_coverage", "review_chapter"]
+__all__ = ["review_chapter"]

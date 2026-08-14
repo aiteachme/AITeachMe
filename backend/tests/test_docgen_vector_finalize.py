@@ -50,9 +50,14 @@ def test_vector_finalize_rebuilds_missing_index_and_verifies_queryability(
 
     async def fake_index(**kwargs):
         calls.append(dict(kwargs))
-        return SimpleNamespace(chunk_ids=["chunk-1", "chunk-2"])
+        return SimpleNamespace(chunk_ids=[1, 2])
 
     monkeypatch.setattr(sync_knowledge_graph, "index_course_files_for_retrieval", fake_index)
+    monkeypatch.setattr(
+        sync_knowledge_graph,
+        "_indexed_vector_chunk_ids",
+        lambda **_kwargs: {1, 2},
+    )
 
     result = asyncio.run(
         sync_knowledge_graph._ensure_course_vector_index(
@@ -66,7 +71,54 @@ def test_vector_finalize_rebuilds_missing_index_and_verifies_queryability(
         {
             "course_id": "course-missing",
             "file_ids": ["f1", "f2"],
-            "reason": "digest.docgen.finalize_vector_index.attempt_1",
+            "reason": "digest.docgen.finalize_vector_index.files.attempt_1",
+            "raise_errors": True,
+        }
+    ]
+
+
+def test_vector_finalize_indexes_published_docs_without_uploaded_files(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capabilities = iter(
+        [
+            _capability(queryable=False),
+            _capability(queryable=True),
+        ]
+    )
+    calls: list[dict[str, object]] = []
+
+    monkeypatch.setattr(sync_knowledge_graph, "_vector_capability", lambda _course_id: next(capabilities))
+
+    async def fake_index_published(**kwargs):
+        calls.append(dict(kwargs))
+        return SimpleNamespace(chunk_ids=[11, 12])
+
+    monkeypatch.setattr(
+        sync_knowledge_graph,
+        "index_published_knowledge_docs_for_retrieval",
+        fake_index_published,
+    )
+    monkeypatch.setattr(
+        sync_knowledge_graph,
+        "_indexed_vector_chunk_ids",
+        lambda **_kwargs: {11, 12},
+    )
+
+    result = asyncio.run(
+        sync_knowledge_graph._ensure_course_vector_index(
+            course_id="course-published",
+            file_ids=[],
+            published_markdown="# 第一章\n\n训练数据代表性决定模型输出边界。",
+        )
+    )
+
+    assert result == ("rebuilt", 2)
+    assert calls == [
+        {
+            "course_id": "course-published",
+            "markdown": "# 第一章\n\n训练数据代表性决定模型输出边界。",
+            "reason": "digest.docgen.finalize_vector_index.published_docs.attempt_1",
             "raise_errors": True,
         }
     ]
@@ -82,9 +134,14 @@ def test_vector_finalize_fails_clearly_when_rebuild_never_becomes_queryable(
     )
 
     async def fake_index(**_kwargs):
-        return SimpleNamespace(chunk_ids=[])
+        return SimpleNamespace(chunk_ids=[1])
 
     monkeypatch.setattr(sync_knowledge_graph, "index_course_files_for_retrieval", fake_index)
+    monkeypatch.setattr(
+        sync_knowledge_graph,
+        "_indexed_vector_chunk_ids",
+        lambda **_kwargs: set(),
+    )
 
     with pytest.raises(RuntimeError, match="still not queryable"):
         asyncio.run(

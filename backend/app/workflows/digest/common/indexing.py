@@ -9,13 +9,21 @@ unavailable.
 
 from __future__ import annotations
 
+import hashlib
 from uuid import uuid4
 
 import structlog
 
 from app.workflows.digest.common.materialize import materialize_shared_inputs
-from app.workflows.digest.common.models import MaterializedSections, SharedInputs
-from app.workflows.digest.common.prepare import prepare_shared_inputs
+from app.workflows.digest.common.models import MaterializedSections, SharedInputs, SourcePacket
+from app.workflows.digest.common.prepare import (
+    INLINE_FORMULA_PATTERN,
+    TABLE_PATTERN,
+    extract_image_refs,
+    normalize_markdown_content,
+    prepare_shared_inputs,
+)
+from app.workflows.digest.common.section_splitter import split_into_sections
 
 logger = structlog.get_logger(__name__)
 
@@ -113,7 +121,57 @@ async def index_course_files_for_retrieval(
     )
 
 
+async def index_published_knowledge_docs_for_retrieval(
+    *,
+    course_id: str,
+    markdown: str,
+    reason: str = "",
+    raise_errors: bool = False,
+) -> MaterializedSections | None:
+    """Materialize the current published knowledge docs as a stable RAG source."""
+
+    normalized_course_id = str(course_id or "").strip()
+    normalized_markdown = normalize_markdown_content(str(markdown or ""))
+    if not normalized_course_id or not normalized_markdown:
+        return None
+
+    source_file_id = (
+        "published-knowledge-docs-"
+        + hashlib.sha256(normalized_course_id.encode("utf-8")).hexdigest()[:24]
+    )
+    filename = "课程知识文档.md"
+    image_refs = extract_image_refs(normalized_markdown)
+    source_packet = SourcePacket(
+        file_id=source_file_id,
+        filename=filename,
+        filetype="markdown",
+        markdown_path="",
+        asset_dir="",
+        normalized_content=normalized_markdown,
+        char_count=len(normalized_markdown),
+        has_formulas=bool(INLINE_FORMULA_PATTERN.search(normalized_markdown)),
+        has_tables=bool(TABLE_PATTERN.search(normalized_markdown)),
+        has_images=bool(image_refs),
+        image_refs=image_refs,
+    )
+    shared_inputs = SharedInputs(
+        source_documents=[source_packet],
+        material_sections=split_into_sections(
+            normalized_markdown,
+            file_id=source_file_id,
+            filename=filename,
+        ),
+    )
+    return await materialize_course_inputs_for_retrieval(
+        course_id=normalized_course_id,
+        shared_inputs=shared_inputs,
+        reason=reason,
+        raise_errors=raise_errors,
+    )
+
+
 __all__ = [
     "index_course_files_for_retrieval",
+    "index_published_knowledge_docs_for_retrieval",
     "materialize_course_inputs_for_retrieval",
 ]

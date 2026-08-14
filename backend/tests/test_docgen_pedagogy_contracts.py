@@ -10,7 +10,7 @@ from app.workflows.digest.docgen.lib.chapter_enhancement import (
     _ensure_requested_placeholders,
 )
 from app.workflows.digest.docgen.lib import chapter_review
-from app.workflows.digest.docgen.lib.chapter_review import measure_chapter_coverage, _rule_review_chapter
+from app.workflows.digest.docgen.lib.chapter_review import _rule_review_chapter
 from app.workflows.digest.docgen.lib.chapter_planning import _filter_scope_items
 from app.workflows.digest.docgen.lib.models import (
     ChapterGenerationTask,
@@ -367,7 +367,7 @@ def test_sprint_rule_review_does_not_infer_problem_organization_from_title_keywo
     assert report.passed is False
 
 
-def test_rule_review_routes_material_contract_misses_to_local_patch() -> None:
+def test_rule_review_does_not_use_keyword_matching_to_patch_teaching_semantics() -> None:
     draft = EnhancedChapterDraft(
         chapter_index=1,
         title="函数与极限",
@@ -389,11 +389,10 @@ def test_rule_review_routes_material_contract_misses_to_local_patch() -> None:
         digest_mode="sprint",
     )
 
-    coverage_actions = [action for action in actions if action.action_id == "review_ch01_section_patch"]
-    assert coverage_actions
-    assert coverage_actions[0].action_type == "section_patch"
-    assert coverage_actions[0].severity == "warning"
-    assert report.passed is False
+    assert report.coverage_score == 0.0
+    assert report.missing_elements == []
+    assert not any(action.action_id == "review_ch01_section_patch" for action in actions)
+    assert report.passed is True
 
 
 def test_rule_review_does_not_treat_source_claims_as_verbatim_coverage_contracts() -> None:
@@ -423,7 +422,7 @@ def test_rule_review_does_not_treat_source_claims_as_verbatim_coverage_contracts
         digest_mode="sprint",
     )
 
-    assert report.coverage_score == 1.0
+    assert report.coverage_score == 0.0
     assert report.missing_elements == []
     assert not any(action.action_id == "review_ch01_section_patch" for action in actions)
 
@@ -464,82 +463,6 @@ def test_rule_review_records_low_evidence_without_requesting_model_patch() -> No
     assert report.evidence_support_score == 0.5
     assert evidence_actions[0].action_type == "record_only"
     assert evidence_actions[0].severity == "warning"
-
-
-def test_rule_review_coverage_accepts_reordered_explicit_concepts() -> None:
-    score, missing = measure_chapter_coverage(
-        "CPU 由运算器和控制器组成，内存储器负责保存正在处理的数据。",
-        ["CPU、运算器、控制器与内存储器"],
-    )
-
-    assert score == 1.0
-    assert missing == []
-
-
-def test_rule_review_coverage_rejects_incomplete_parallel_concepts() -> None:
-    target = "CPU、运算器、控制器与内存储器"
-
-    score, missing = measure_chapter_coverage("CPU 由运算器和控制器组成。", [target])
-
-    assert score == 0.0
-    assert missing == [target]
-
-
-def test_rule_review_coverage_accepts_long_parallel_contract_rephrasing() -> None:
-    target = "C 程序入口 main 函数、源程序编译流程、头文件包含、宏定义替换规则的零基础铺垫"
-    markdown = (
-        "程序从 main 函数这个入口开始。源文件先编译再链接，头文件通过 include 引入声明，"
-        "宏定义在预处理阶段完成文本替换。"
-    )
-
-    score, missing = measure_chapter_coverage(markdown, [target])
-
-    assert score == 1.0
-    assert missing == []
-
-
-def test_rule_review_coverage_preserves_symbolic_pointer_expression() -> None:
-    target = "数组名与首元素地址、指针加减及*(p+i)访问关系"
-    markdown = (
-        "数组名 a 在多数表达式中转换为首元素地址 &a[0]。"
-        "p+i 指向第 i 个元素，*(p+i) 访问该元素；指针加减按元素大小移动。"
-    )
-
-    score, missing = measure_chapter_coverage(markdown, [target])
-
-    assert score == 1.0
-    assert missing == []
-
-
-def test_rule_review_coverage_accepts_short_parallel_compounds_across_explanation() -> None:
-    target = "循环变量更新、累加累乘与奇偶数统计题型"
-    markdown = (
-        "循环题要明确循环变量的初始化、条件和更新。"
-        "累加通常从 0 开始，累乘通常从 1 开始；奇偶数统计使用取余判断。"
-    )
-
-    score, missing = measure_chapter_coverage(markdown, [target])
-
-    assert score == 1.0
-    assert missing == []
-
-
-def test_rule_review_coverage_rejects_long_contract_with_multiple_missing_concepts() -> None:
-    target = "标识符命名规则、C 语言关键字、基本数据类型、sizeof 运算结果、变量初始化与赋值语句"
-
-    score, missing = measure_chapter_coverage("本节介绍标识符命名规则、C 语言关键字和基本数据类型。", [target])
-
-    assert score == 0.0
-    assert missing == [target]
-
-
-def test_rule_review_coverage_keeps_genuinely_missing_contract_visible() -> None:
-    target = "函数的基本概念、常见初等函数与图像性质"
-
-    score, missing = measure_chapter_coverage("极限描述变量逼近时的趋势。", [target])
-
-    assert score == 0.0
-    assert missing == [target]
 
 
 def test_chapter_scope_filter_removes_other_chapter_targets_without_title_generation() -> None:

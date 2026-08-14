@@ -12,18 +12,35 @@ auto-discovery before importing LiteLLM.
 
 from __future__ import annotations
 
+import asyncio
 import os
 from functools import lru_cache
+
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 
 @lru_cache(maxsize=1)
 def load_litellm():
-    """Import LiteLLM after disabling python-dotenv auto-discovery."""
+    """Import LiteLLM without request-time environment or network discovery."""
 
     os.environ.setdefault("PYTHON_DOTENV_DISABLED", "1")
+    os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
     import litellm
 
     return litellm
 
 
-__all__ = ["load_litellm"]
+async def warm_litellm() -> None:
+    """Move the blocking LiteLLM import off the first user request."""
+
+    try:
+        await asyncio.to_thread(load_litellm)
+    except Exception:
+        logger.warning("litellm_warmup_failed", exc_info=True)
+    else:
+        logger.info("litellm_warmup_complete")
+
+
+__all__ = ["load_litellm", "warm_litellm"]

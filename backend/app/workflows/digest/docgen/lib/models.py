@@ -483,6 +483,7 @@ class LockedChapterTitle(DocGenBaseModel):
 class ChapterExecutionBrief(DocGenBaseModel):
     chapter_index: int = 1
     teaching_outline: list[str] = Field(default_factory=list)
+    writing_instructions: list[str] = Field(default_factory=list)
     content_role_targets: dict[str, list[str]] = Field(default_factory=dict)
     example_coverage_plan: list[dict[str, Any]] = Field(default_factory=list)
     chapter_end_practice_plan: list[dict[str, Any]] = Field(default_factory=list)
@@ -497,6 +498,7 @@ class ChapterExecutionBrief(DocGenBaseModel):
 
     @field_validator(
         "teaching_outline",
+        "writing_instructions",
         "concept_targets",
         "definition_targets",
         "formula_targets",
@@ -769,36 +771,6 @@ class ChapterGenerationTask(DocGenBaseModel):
                     *self.pitfall_targets,
                 ],
             )
-        if not self.content_role_targets:
-            role_targets: dict[str, list[str]] = {}
-            core_items = clean_string_list(
-                [
-                    *self.content_points,
-                    *self.concept_targets,
-                    *self.definition_targets,
-                    *self.formula_targets,
-                ],
-                limit=10,
-            )
-            if core_items:
-                role_targets["concept"] = core_items
-            method_items = clean_string_list(self.example_targets, limit=8)
-            if method_items:
-                role_targets["application_case"] = method_items
-            support_items = clean_string_list(self.pitfall_targets, limit=8)
-            if support_items:
-                role_targets["misconception"] = support_items
-            self.content_role_targets = role_targets
-        if not self.example_coverage_plan:
-            example_targets = clean_string_list(
-                [
-                    *self.example_targets,
-                    *self.concept_targets[:3],
-                    *self.required_elements[:3],
-                ],
-                limit=8,
-            )
-            self.example_coverage_plan = clean_example_coverage_plan(example_targets, limit=8)
         if not self.style_rules:
             self.style_rules = list(self.writing_rules)
         if not self.claim_targets:
@@ -950,6 +922,13 @@ class DocumentBackbone(DocGenBaseModel):
     confusion_map: list[ConfusionItem] = Field(default_factory=list)
     source_trust_summary: dict[str, Any] = Field(default_factory=dict)
     fallback_used: bool = False
+
+
+class DocumentPreparationBundle(DocGenBaseModel):
+    """One whole-document LLM result consumed before chapter fan-out."""
+
+    document_backbone: DocumentBackbone = Field(default_factory=DocumentBackbone)
+    chapter_execution_briefs: list[ChapterExecutionBrief] = Field(default_factory=list)
 
 
 class ChapterResearchTrace(DocGenBaseModel):
@@ -1335,6 +1314,7 @@ __all__ = [
     "ConflictItem",
     "ConflictReport",
     "DocumentBackbone",
+    "DocumentPreparationBundle",
     "DocumentConsistencyReport",
     "DocGenContext",
     "DocGenIntentProfile",

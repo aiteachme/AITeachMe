@@ -37,7 +37,12 @@ def _configured_runtime_snapshot() -> LLMRuntimeSnapshot:
     reasoning_efforts = settings.llm.reasoning_efforts.model_copy(
         update={"reason": "high", "primary": "medium", "light": "low"},
     )
-    llm = settings.llm.model_copy(update={"reasoning_efforts": reasoning_efforts})
+    llm = settings.llm.model_copy(
+        update={
+            "reasoning_efforts": reasoning_efforts,
+            "text_endpoint_fallback_enabled": True,
+        }
+    )
     configured_settings = settings.model_copy(
         update={
             "models": models,

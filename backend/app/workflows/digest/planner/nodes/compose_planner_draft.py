@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Mapping
 from typing import Any
 
 import structlog
 
-from app.shared.infra.llm_support import acompletion_stream
+from app.shared.infra.llm_support import acompletion_stream, acompletion_with_fallback
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.common.pedagogy import clean_generated_chapter_title
 from app.workflows.digest.planner.lib.model_policy import (
@@ -23,18 +24,50 @@ from app.workflows.digest.planner.lib.plans import (
     normalize_planner_diagnosis_draft,
     normalize_planner_draft,
 )
+from app.workflows.digest.planner.nodes.generate_course_identity import _clean_course_name
 from app.workflows.digest.planner.prompts.build_plan_composer import (
     CHAPTERS_END,
     CHAPTERS_START,
+    COURSE_NAME_END,
+    COURSE_NAME_START,
+    DIAGNOSE_END,
+    DIAGNOSE_START,
     PLAN_END,
     PLAN_START,
     SUGGESTION_END,
     SUGGESTION_START,
+    build_planner_diagnosis_messages,
+    build_planner_diagnosis_repair_messages,
+    build_planner_repair_messages,
     build_planner_stream_messages,
 )
 from app.workflows.digest.planner.state import BuildPlannerState
+from app.workflows.support.courses.icons import infer_course_icon_key, normalize_course_icon_key
 
 logger = structlog.get_logger(__name__)
+
+
+def _planner_attempt_callback(state: BuildPlannerState):
+    async def emit(event: str, payload: Mapping[str, Any]) -> None:
+        event_details = {
+            "connecting": ("planner.llm.connecting", "正在连接模型服务。"),
+            "retrying": ("planner.llm.retrying", "模型服务暂时无响应，正在重试。"),
+            "fallback": ("planner.llm.fallback", "主模型服务连接失败，正在切换备用服务。"),
+        }
+        mapped = event_details.get(event)
+        if mapped is None:
+            return
+        planner_event, detail = mapped
+        if event == "connecting" and payload.get("endpoint_role") == "fallback":
+            detail = "正在连接备用模型服务。"
+        await emit_planner_event(
+            state,
+            event=planner_event,
+            detail=detail,
+            payload=dict(payload),
+        )
+
+    return emit
 
 
 def _course_for_prompt(state: BuildPlannerState) -> str:
@@ -84,6 +117,33 @@ def _partial_suggestion_content(text: str) -> str:
     return _partial_content_between_markers(text, SUGGESTION_START, SUGGESTION_END)
 
 
+def _diagnosis_stream_preview(text: str) -> str:
+    """Render only stable, user-readable fields from the diagnosis protocol."""
+
+    if COURSE_NAME_END not in text:
+        return ""
+    try:
+        course_name = _clean_course_name(_extract_between(text, COURSE_NAME_START, COURSE_NAME_END))
+    except ValueError:
+        return ""
+    if not course_name:
+        return ""
+
+    questions: list[str] = []
+    diagnose_start = text.find(DIAGNOSE_START)
+    if diagnose_start >= 0:
+        diagnose_text = text[diagnose_start + len(DIAGNOSE_START) :]
+        for match in re.finditer(r'"question"\s*:\s*"(?P<question>(?:\\.|[^"\\])*)"', diagnose_text):
+            question = _decode_json_string_fragment(match.group("question"))
+            if question and question not in questions:
+                questions.append(question)
+
+    preview = f"正在为「{course_name}」准备前置诊断"
+    if questions:
+        preview += "\n\n" + "\n".join(f"{index}. {question}" for index, question in enumerate(questions, start=1))
+    return preview
+
+
 def _decode_json_string_fragment(value: str) -> str:
     try:
         decoded = json.loads(f'"{value}"')
@@ -107,22 +167,41 @@ def _partial_chapters(text: str) -> list[dict[str, Any]]:
             continue
         next_start = title_matches[index].start() if index < len(title_matches) else len(content)
         segment = content[match.end() : next_start]
-        points_match = re.search(r'"key_points"\s*:\s*\[(?P<points>.*?)(?:\]|$)', segment, re.S)
-        key_points: list[str] = []
-        if points_match:
-            key_points = _string_list(
+        if "}" not in segment:
+            continue
+        objective_match = re.search(
+            r'"objective"\s*:\s*"(?P<value>(?:\\.|[^"\\])*)"',
+            segment,
+        )
+        elements_match = re.search(
+            r'"required_elements"\s*:\s*\[(?P<items>.*?)(?:\]|$)',
+            segment,
+            re.S,
+        )
+        required_elements: list[str] = []
+        if elements_match:
+            required_elements = _string_list(
                 [
                     _decode_json_string_fragment(item.group("value"))
-                    for item in re.finditer(r'"(?P<value>(?:\\.|[^"\\])*)"', points_match.group("points"))
+                    for item in re.finditer(
+                        r'"(?P<value>(?:\\.|[^"\\])*)"',
+                        elements_match.group("items"),
+                    )
                 ]
             )
+        objective = (
+            _decode_json_string_fragment(objective_match.group("value"))
+            if objective_match
+            else ""
+        )
+        if not objective or not required_elements:
+            continue
         chapters.append(
             {
                 "chapter_index": len(chapters) + 1,
                 "title": title,
-                "objective": "；".join(key_points) if key_points else "正在整理本章重点。",
-                "required_elements": key_points,
-                "writing_instructions": "围绕本章知识点生成清晰讲解。",
+                "objective": objective,
+                "required_elements": required_elements,
             }
         )
     return chapters
@@ -195,24 +274,64 @@ def _parse_chapters(value: str) -> list[dict[str, Any]]:
         if not isinstance(raw, dict):
             raise ValueError(f"chapter #{index} must be an object")
         title = clean_generated_chapter_title(_clean_text(raw.get("title")))
-        key_points = _string_list(raw.get("key_points"))
+        objective = _clean_text(raw.get("objective"))
+        required_elements = _string_list(raw.get("required_elements"))
         if not title:
             raise ValueError(f"chapter #{index} is missing title")
-        if not key_points:
-            raise ValueError(f"chapter `{title}` is missing key_points")
+        if not objective:
+            raise ValueError(f"chapter `{title}` is missing objective")
+        if not required_elements:
+            raise ValueError(f"chapter `{title}` is missing required_elements")
         chapters.append(
             {
                 "chapter_index": index,
                 "title": title,
-                "objective": "；".join(key_points),
-                "required_elements": key_points,
-                "writing_instructions": "围绕本章知识点生成清晰讲解。",
+                "objective": objective,
+                "required_elements": required_elements,
             }
         )
     return chapters
 
 
+def _parse_diagnose(value: str) -> list[dict[str, Any]]:
+    try:
+        decoded = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"diagnose json invalid: {exc}") from exc
+    if not isinstance(decoded, list):
+        raise ValueError("diagnose must be a JSON array")
+    if len(decoded) != 4:
+        raise ValueError("diagnose must contain exactly four questions")
+    diagnose: list[dict[str, Any]] = []
+    for index, raw in enumerate(decoded, start=1):
+        if not isinstance(raw, dict):
+            raise ValueError(f"diagnose question #{index} must be an object")
+        question = _clean_text(raw.get("question") or raw.get("title") or raw.get("prompt"))
+        purpose = _clean_text(raw.get("purpose") or raw.get("diagnosis_target") or raw.get("target"))
+        options = _string_list(raw.get("options") or raw.get("choices"))
+        if not question:
+            raise ValueError(f"diagnose question #{index} is missing question")
+        if not purpose:
+            raise ValueError(f"diagnose question `{question}` is missing purpose")
+        if not purpose.startswith("文档落点："):
+            raise ValueError(f"diagnose question `{question}` purpose must start with 文档落点：")
+        if len(options) != 4:
+            raise ValueError(f"diagnose question `{question}` must contain four distinct options")
+        if any(len(option) > 16 for option in options):
+            raise ValueError(f"diagnose question `{question}` contains an option longer than 16 characters")
+        diagnose.append(
+            {
+                "question": question,
+                "purpose": purpose,
+                "options": options,
+                "answer": "",
+            }
+        )
+    return diagnose
+
+
 def _parse_planner_response(text: str) -> dict[str, Any]:
+    course_name = _parse_generated_course_name(text)
     plan = _clean_text(_extract_between(text, PLAN_START, PLAN_END))
     suggestion = _clean_text(_extract_between(text, SUGGESTION_START, SUGGESTION_END))
     chapters = _parse_chapters(_extract_between(text, CHAPTERS_START, CHAPTERS_END))
@@ -220,7 +339,27 @@ def _parse_planner_response(text: str) -> dict[str, Any]:
         raise ValueError("planner response is missing plan")
     if not suggestion:
         raise ValueError("planner response is missing suggestion")
-    return {"suggestion": suggestion, "plan": plan, "diagnose": [], "chapters": chapters}
+    return {
+        "course_name": course_name,
+        "suggestion": suggestion,
+        "plan": plan,
+        "diagnose": [],
+        "chapters": chapters,
+    }
+
+
+def _parse_diagnosis_response(text: str) -> list[dict[str, Any]]:
+    diagnose = _parse_diagnose(_extract_between(text, DIAGNOSE_START, DIAGNOSE_END))
+    if len(diagnose) != 4:
+        raise ValueError("planner diagnosis response must contain four valid choice questions")
+    return diagnose
+
+
+def _parse_generated_course_name(text: str) -> str:
+    course_name = _clean_course_name(_extract_between(text, COURSE_NAME_START, COURSE_NAME_END))
+    if not course_name:
+        raise ValueError("planner diagnosis response is missing a valid course name")
+    return course_name
 
 
 def _plan_preview_payload(state: BuildPlannerState, payload: dict[str, Any]) -> dict[str, Any]:
@@ -252,12 +391,45 @@ def _plan_preview_payload(state: BuildPlannerState, payload: dict[str, Any]) -> 
     }
 
 
-async def _stream_planner_response(state: BuildPlannerState) -> str:
+def _normalize_generated_plan(state: BuildPlannerState, parsed: dict[str, Any]) -> dict[str, Any]:
+    latest_plan = _latest_plan_with_current_diagnosis(state, dict(state.get("latest_plan") or {}))
+    planning_note = compose_planning_note(
+        state.get("planning_note") or latest_plan.get("planning_note"),
+        state.get("material_note"),
+    )
+    draft_payload = {
+        "planning_note": planning_note,
+        "course_name": str(latest_plan.get("course_name") or ""),
+        "course_icon": str(latest_plan.get("course_icon") or ""),
+        **parsed,
+        "build_constraints": {},
+    }
+    material_context = state["material_context"]
+    digest_mode = (
+        state.get("digest_mode")
+        or latest_plan.get("digest_mode")
+        or material_context.course_mode_decision.mode.value
+    )
+    effective_request_text = compose_effective_planner_request_text(
+        state.get("user_prompt") or latest_plan.get("user_prompt") or "",
+        state.get("feedback_message") or "",
+    )
+    return normalize_planner_draft(
+        draft_payload,
+        course_id=state["course_id"],
+        user_prompt=effective_request_text,
+        requested_digest_mode=digest_mode,
+        shared_inputs=material_context,
+        latest_plan=latest_plan or None,
+    ).model_dump(mode="json")
+
+
+def _planner_stream_messages(state: BuildPlannerState) -> list[dict[str, str]]:
     material_context = state["material_context"]
     latest_plan = _latest_plan_with_current_diagnosis(state, dict(state.get("latest_plan") or {}))
     planning_note = str(state.get("planning_note") or latest_plan.get("planning_note") or "").strip()
     material_note = str(state.get("material_note") or "").strip()
-    messages = build_planner_stream_messages(
+    return build_planner_stream_messages(
         course_name=_course_for_prompt(state),
         user_prompt=state.get("user_prompt") or latest_plan.get("user_prompt") or "",
         digest_mode=state.get("digest_mode") or latest_plan.get("digest_mode") or material_context.course_mode_decision.mode.value,
@@ -268,6 +440,14 @@ async def _stream_planner_response(state: BuildPlannerState) -> str:
         latest_feedback=state.get("feedback_message") or "",
         latest_plan=latest_plan or None,
     )
+
+
+async def _stream_planner_response(
+    state: BuildPlannerState,
+    *,
+    messages: list[dict[str, str]] | None = None,
+) -> str:
+    messages = messages or _planner_stream_messages(state)
     await emit_planner_event(
         state,
         event="planner.plan.started",
@@ -281,6 +461,7 @@ async def _stream_planner_response(state: BuildPlannerState) -> str:
     emitted_chapter_count = 0
     stream = acompletion_stream(
         messages,
+        attempt_callback=_planner_attempt_callback(state),
         **planner_completion_kwargs_with_metadata(
             PlannerModelStep.DRAFT_PLAN,
             model_override=state.get("model_override"),
@@ -336,6 +517,58 @@ async def _stream_planner_response(state: BuildPlannerState) -> str:
     return "".join(raw_tokens).strip()
 
 
+async def _repair_planner_response(
+    state: BuildPlannerState,
+    *,
+    original_messages: list[dict[str, str]],
+    invalid_output: str,
+    error: Exception,
+) -> str:
+    repaired = await acompletion_with_fallback(
+        build_planner_repair_messages(
+            original_messages=original_messages,
+            invalid_output=invalid_output,
+            error=str(error),
+        ),
+        **planner_completion_kwargs_with_metadata(
+            PlannerModelStep.REPAIR_PLAN,
+            model_override=state.get("model_override"),
+            planner_session_id=state.get("planner_session_id") or "",
+            substep="修复方案输出合同",
+            initial_error_type=type(error).__name__,
+        ),
+    )
+    if not isinstance(repaired, str) or not repaired.strip():
+        raise ValueError("planner repair returned empty output")
+    return repaired.strip()
+
+
+async def _repair_diagnosis_response(
+    state: BuildPlannerState,
+    *,
+    original_messages: list[dict[str, str]],
+    invalid_output: str,
+    error: Exception,
+) -> str:
+    repaired = await acompletion_with_fallback(
+        build_planner_diagnosis_repair_messages(
+            original_messages=original_messages,
+            invalid_output=invalid_output,
+            error=str(error),
+        ),
+        **planner_completion_kwargs_with_metadata(
+            PlannerModelStep.REPAIR_DIAGNOSIS,
+            model_override=state.get("model_override"),
+            planner_session_id=state.get("planner_session_id") or "",
+            substep="修复前置诊断输出合同",
+            initial_error_type=type(error).__name__,
+        ),
+    )
+    if not isinstance(repaired, str) or not repaired.strip():
+        raise ValueError("planner diagnosis repair returned empty output")
+    return repaired.strip()
+
+
 def _should_generate_diagnosis_first(state: BuildPlannerState) -> bool:
     if _clean_text(state.get("planner_operation")).casefold() != "create":
         return False
@@ -345,39 +578,46 @@ def _should_generate_diagnosis_first(state: BuildPlannerState) -> bool:
     return not isinstance(latest_plan, dict) or not latest_plan
 
 
-def _build_diagnosis_questions() -> list[dict[str, Any]]:
-    """Return the four stable choices that directly control DocGen output.
-
-    These dimensions are product contracts rather than subject-matter analysis,
-    so another model pass only restates the same choices and adds latency.
-    """
-
-    return [
-        {
-            "question": "基础从哪里起？",
-            "purpose": "文档落点：调整前置概念篇幅、开篇铺垫和首批例题难度。",
-            "options": ["从零补基础", "概念学过但不牢", "能做基础题", "直接查漏冲刺"],
-            "answer": "",
-        },
-        {
-            "question": "讲解先重哪里？",
-            "purpose": "文档落点：调整核心概念、典型方法、例题应用和易错边界的篇幅。",
-            "options": ["核心概念", "典型方法", "例题应用", "易错边界"],
-            "answer": "",
-        },
-        {
-            "question": "练习怎么安排？",
-            "purpose": "文档落点：调整随堂检查、典型题练习、变式练习和章末小测密度。",
-            "options": ["少量随堂检查", "每节配一题", "多练典型题", "增加章末小测"],
-            "answer": "",
-        },
-        {
-            "question": "解析写到多细？",
-            "purpose": "文档落点：调整答案要点、分步依据、错因提醒和补充变式的粒度。",
-            "options": ["只给答案要点", "分步写清依据", "重点解释错因", "答案后补变式"],
-            "answer": "",
-        },
-    ]
+async def _stream_diagnosis_response(state: BuildPlannerState) -> str:
+    material_context = state["material_context"]
+    latest_plan = dict(state.get("latest_plan") or {})
+    messages = build_planner_diagnosis_messages(
+        course_name=_course_for_prompt(state),
+        user_prompt=state.get("user_prompt") or latest_plan.get("user_prompt") or "",
+        digest_mode=(
+            state.get("digest_mode")
+            or latest_plan.get("digest_mode")
+            or material_context.course_mode_decision.mode.value
+        ),
+        material_context=material_context,
+        planning_note=str(state.get("planning_note") or latest_plan.get("planning_note") or "").strip(),
+        material_note=str(state.get("material_note") or "").strip(),
+        message_history=list(state.get("message_history", [])),
+    )
+    await emit_planner_event(
+        state,
+        event="planner.diagnose.started",
+        detail="正在结合课程目标和资料生成前置诊断。",
+    )
+    raw_tokens: list[str] = []
+    emitted_preview_chars = 0
+    stream = acompletion_stream(
+        messages,
+        attempt_callback=_planner_attempt_callback(state),
+        **planner_completion_kwargs_with_metadata(
+            PlannerModelStep.DIAGNOSE_QUESTIONS,
+            model_override=state.get("model_override"),
+            planner_session_id=state.get("planner_session_id") or "",
+            substep="生成个性化前置诊断",
+        ),
+    )
+    async for token in stream:
+        raw_tokens.append(token)
+        visible_preview = _diagnosis_stream_preview("".join(raw_tokens))
+        if len(visible_preview) > emitted_preview_chars:
+            await emit_planner_token(state, visible_preview[emitted_preview_chars:])
+            emitted_preview_chars = len(visible_preview)
+    return "".join(raw_tokens).strip()
 
 
 def build_compose_planner_draft_node(*, context: WorkflowContext):
@@ -396,12 +636,59 @@ def build_compose_planner_draft_node(*, context: WorkflowContext):
             planner_operation=state.get("planner_operation", ""),
         )
         if _should_generate_diagnosis_first(state):
-            await emit_planner_event(
-                state,
-                event="planner.diagnose.started",
-                detail="正在准备前置诊断选择题。",
-            )
-            diagnose_questions = _build_diagnosis_questions()
+            raw_output = ""
+            try:
+                material_context = state["material_context"]
+                latest_plan = dict(state.get("latest_plan") or {})
+                diagnosis_messages = build_planner_diagnosis_messages(
+                    course_name=_course_for_prompt(state),
+                    user_prompt=state.get("user_prompt") or latest_plan.get("user_prompt") or "",
+                    digest_mode=(
+                        state.get("digest_mode")
+                        or latest_plan.get("digest_mode")
+                        or material_context.course_mode_decision.mode.value
+                    ),
+                    material_context=material_context,
+                    planning_note=str(
+                        state.get("planning_note") or latest_plan.get("planning_note") or ""
+                    ).strip(),
+                    material_note=str(state.get("material_note") or "").strip(),
+                    message_history=list(state.get("message_history", [])),
+                )
+                raw_output = await _stream_diagnosis_response(state)
+                try:
+                    generated_course_name = _parse_generated_course_name(raw_output)
+                    diagnose_questions = _parse_diagnosis_response(raw_output)
+                except Exception as initial_error:
+                    await emit_planner_event(
+                        state,
+                        event="planner.diagnose.repairing",
+                        detail="前置诊断结构未满足要求，正在重新整理。",
+                        payload={"error_type": type(initial_error).__name__},
+                    )
+                    repaired_output = await _repair_diagnosis_response(
+                        state,
+                        original_messages=diagnosis_messages,
+                        invalid_output=raw_output,
+                        error=initial_error,
+                    )
+                    generated_course_name = _parse_generated_course_name(repaired_output)
+                    diagnose_questions = _parse_diagnosis_response(repaired_output)
+            except Exception as exc:
+                logger.exception(
+                    "planner_diagnosis_generation_failed",
+                    planner_session_id=state.get("planner_session_id") or "",
+                    course_id=state.get("course_id") or "",
+                    error_type=type(exc).__name__,
+                    error=str(exc),
+                )
+                await emit_planner_event(
+                    state,
+                    event="planner.diagnose.failed",
+                    detail="前置诊断生成失败，请重试。",
+                    payload={"error_type": type(exc).__name__},
+                )
+                raise
             latest_plan = dict(state.get("latest_plan") or {})
             planning_note = compose_planning_note(
                 state.get("planning_note") or latest_plan.get("planning_note"),
@@ -410,8 +697,8 @@ def build_compose_planner_draft_node(*, context: WorkflowContext):
             diagnosis_payload = {
                 "planner_stage": "diagnosis",
                 "planning_note": planning_note,
-                "course_name": str(latest_plan.get("course_name") or ""),
-                "course_icon": str(latest_plan.get("course_icon") or ""),
+                "course_name": generated_course_name,
+                "course_icon": normalize_course_icon_key(infer_course_icon_key(generated_course_name)),
                 "diagnose": diagnose_questions,
                 "diagnose_status": "pending",
                 "build_constraints": {},
@@ -446,12 +733,34 @@ def build_compose_planner_draft_node(*, context: WorkflowContext):
             )
             return {
                 "build_plan_draft": draft_payload,
+                "generated_course_name": generated_course_name,
+                "generated_course_icon_key": str(draft_payload.get("course_icon") or ""),
                 "plan_outline_markdown": "",
             }
 
+        original_messages = _planner_stream_messages(state)
+        raw_output = ""
         try:
-            raw_output = await _stream_planner_response(state)
-            parsed = _parse_planner_response(raw_output)
+            raw_output = await _stream_planner_response(state, messages=original_messages)
+            try:
+                draft_payload = _normalize_generated_plan(state, _parse_planner_response(raw_output))
+            except Exception as initial_error:
+                await emit_planner_event(
+                    state,
+                    event="planner.plan.repairing",
+                    detail="方案结构未满足用户要求，正在重新整理。",
+                    payload={"error_type": type(initial_error).__name__},
+                )
+                repaired_output = await _repair_planner_response(
+                    state,
+                    original_messages=original_messages,
+                    invalid_output=raw_output,
+                    error=initial_error,
+                )
+                draft_payload = _normalize_generated_plan(
+                    state,
+                    _parse_planner_response(repaired_output),
+                )
         except Exception as exc:
             logger.exception(
                 "planner_draft_generation_failed",
@@ -468,33 +777,6 @@ def build_compose_planner_draft_node(*, context: WorkflowContext):
             )
             raise
 
-        latest_plan = _latest_plan_with_current_diagnosis(state, dict(state.get("latest_plan") or {}))
-        planning_note = compose_planning_note(
-            state.get("planning_note") or latest_plan.get("planning_note"),
-            state.get("material_note"),
-        )
-        draft_payload = {
-            "planning_note": planning_note,
-            "course_name": str(latest_plan.get("course_name") or ""),
-            "course_icon": str(latest_plan.get("course_icon") or ""),
-            **parsed,
-            "build_constraints": {},
-        }
-        material_context = state["material_context"]
-        digest_mode = state.get("digest_mode") or latest_plan.get("digest_mode") or material_context.course_mode_decision.mode.value
-        effective_request_text = compose_effective_planner_request_text(
-            state.get("user_prompt") or latest_plan.get("user_prompt") or "",
-            state.get("feedback_message") or "",
-        )
-        normalized_draft = normalize_planner_draft(
-            draft_payload,
-            course_id=state["course_id"],
-            user_prompt=effective_request_text,
-            requested_digest_mode=digest_mode,
-            shared_inputs=material_context,
-            latest_plan=latest_plan or None,
-        )
-        draft_payload = normalized_draft.model_dump(mode="json")
         await emit_planner_event(
             state,
             event="planner.plan.ready",
@@ -507,9 +789,9 @@ def build_compose_planner_draft_node(*, context: WorkflowContext):
         logger.info(
             "planner_draft_node_completed",
             planner_session_id=state.get("planner_session_id", ""),
-            plan_chars=len(str(parsed.get("plan") or "")),
-            suggestion_chars=len(str(parsed.get("suggestion") or "")),
-            chapter_count=len(parsed.get("chapters") or []),
+            plan_chars=len(str(draft_payload.get("plan") or "")),
+            suggestion_chars=len(str(draft_payload.get("suggestion") or "")),
+            chapter_count=len(draft_payload.get("chapters") or []),
         )
         return {
             "build_plan_draft": draft_payload,
@@ -520,7 +802,8 @@ def build_compose_planner_draft_node(*, context: WorkflowContext):
 
 
 __all__ = [
-    "_build_diagnosis_questions",
+    "_parse_diagnosis_response",
+    "_parse_generated_course_name",
     "_parse_planner_response",
     "build_compose_planner_draft_node",
 ]

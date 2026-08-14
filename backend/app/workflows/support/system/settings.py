@@ -56,6 +56,7 @@ from app.shared.infra.settings import (
     get_settings,
     get_system_settings_override_payload,
     merge_settings_values,
+    sanitize_settings_override_payload,
     set_system_settings_override,
     combine_runtime_settings_payload,
     split_runtime_settings_payload,
@@ -179,7 +180,10 @@ def _normalize_user_settings_payload(raw_payload: Mapping[str, Any]) -> dict[str
     """Validate and shrink a settings override payload."""
 
     base_payload = get_project_settings().model_dump(mode="json")
-    known_payload = _project_known_settings_keys(base_payload, raw_payload)
+    known_payload = _project_known_settings_keys(
+        base_payload,
+        sanitize_settings_override_payload(raw_payload),
+    )
     candidate_payload = merge_settings_values(base_payload, known_payload)
     try:
         effective = Settings.model_validate(candidate_payload)

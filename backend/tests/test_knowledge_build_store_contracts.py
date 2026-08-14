@@ -61,6 +61,17 @@ def test_build_error_sanitizer_hides_upstream_provider_auth_details() -> None:
     assert "Failed to retrieve token" not in sanitized
 
 
+def test_build_error_sanitizer_reports_memory_pressure_before_model_failure() -> None:
+    raw = (
+        "LLMCallError: 上游模型调用失败。zstd compress error: "
+        "Allocation error : not enough memory"
+    )
+
+    assert build_store.sanitize_knowledge_build_error_message(raw) == (
+        "构建进程内存不足，已停止本轮任务。请释放部分内存后重试。"
+    )
+
+
 def test_runtime_status_hydration_sanitizes_progress_metrics_and_events() -> None:
     requested_at = datetime.now(timezone.utc) - timedelta(minutes=5)
     status = build_store.KnowledgeBuildRuntimeStatus(

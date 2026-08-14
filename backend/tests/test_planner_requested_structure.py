@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.workflows.digest.planner.lib.requested_structure import (
     extract_explicit_chapter_titles,
+    extract_explicit_course_title,
     extract_explicit_learning_topic,
     extract_requested_chapter_count,
 )
@@ -21,11 +22,24 @@ def test_extract_inline_chapter_list_from_user_requested_structure() -> None:
     ]
 
 
+def test_extract_explicit_course_title_before_coverage_topics() -> None:
+    prompt = "我想构建一门大学高数期末复习课，覆盖极限、导数、中值定理、不定积分、定积分和定积分应用。"
+
+    assert extract_explicit_course_title(prompt) == "大学高数期末复习"
+    assert extract_explicit_learning_topic(prompt) == "大学高数期末复习"
+
+
 def test_learning_plan_phrase_is_not_mistaken_for_course_topic() -> None:
     prompt = "跳过前置诊断。请严格生成三章学习方案，依次覆盖：C语言变量与数据类型、流程控制、指针与数组。不要扩展章节。"
 
-    assert extract_explicit_learning_topic(prompt) == "C语言变量与数据类型"
+    assert extract_explicit_learning_topic(prompt) == ""
     assert extract_requested_chapter_count(prompt) == 3
+
+
+def test_coverage_list_first_item_is_not_mistaken_for_whole_course() -> None:
+    prompt = "请设计课程，覆盖人工智能原理、训练数据偏见、生成式 AI 局限和隐私保护。"
+
+    assert extract_explicit_learning_topic(prompt) == ""
 
 
 def test_ordinal_titles_ignore_negative_extra_chapter_constraint() -> None:

@@ -94,6 +94,7 @@ class LLMSettings(_SettingsModel):
     api_mode: Literal["auto", "chat_completions", "responses"] = "auto"
     responses_api_models: tuple[str, ...]
     fallback_only_models: tuple[str, ...]
+    text_endpoint_fallback_enabled: bool = True
     reasoning_efforts: ReasoningEffortsSettings = Field(default_factory=ReasoningEffortsSettings)
     native_web_search: Literal["off", "auto", "force"] = "auto"
     native_web_search_external_access: bool = True
@@ -115,6 +116,7 @@ class PlannerSettings(_SettingsModel):
 
 class DocgenSettings(_SettingsModel):
     allow_external_search: bool
+    max_retrieval_queries_per_chapter: int = Field(default=2, ge=1, le=8)
     generate_cover_image: bool
     generate_interactive_html: bool
 
@@ -285,6 +287,20 @@ _SYSTEM_SETTINGS_OVERRIDE: dict[str, Any] = {}
 _EFFECTIVE_SETTINGS_CACHE: Settings | None = None
 
 
+def sanitize_settings_override_payload(payload: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Normalize persisted overrides while preserving required project defaults."""
+
+    normalized = deepcopy(upgrade_legacy_settings_payload(payload))
+    models_payload = normalized.get("models")
+    if isinstance(models_payload, dict) and "primary" in models_payload:
+        primary = models_payload.get("primary")
+        if primary is None or (isinstance(primary, str) and not primary.strip()):
+            models_payload.pop("primary", None)
+            if not models_payload:
+                normalized.pop("models", None)
+    return normalized
+
+
 @lru_cache
 def get_project_settings() -> Settings:
     return Settings.model_validate(load_project_settings_values())
@@ -298,7 +314,7 @@ def set_system_settings_override(payload: Mapping[str, Any] | None) -> Settings:
     global _SYSTEM_SETTINGS_OVERRIDE, _EFFECTIVE_SETTINGS_CACHE
 
     base_payload = get_project_settings().model_dump(mode="json")
-    candidate_override = upgrade_legacy_settings_payload(payload)
+    candidate_override = sanitize_settings_override_payload(payload)
     models_payload = candidate_override.get("models")
     if isinstance(models_payload, dict) and "image_generation" in models_payload:
         models_payload["image_generation"] = normalize_openai_compatible_image_model_name(
@@ -361,5 +377,6 @@ __all__ = [
     "get_project_settings",
     "get_system_settings_override_payload",
     "reset_project_settings_cache",
+    "sanitize_settings_override_payload",
     "set_system_settings_override",
 ]

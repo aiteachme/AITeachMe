@@ -6,9 +6,7 @@ from collections.abc import Sequence
 
 import structlog
 
-from app.shared.infra.llm_support import run_llm_tasks
 from app.shared.infra.tools.builtin.markdown_processing import count_words
-from app.workflows.digest.docgen.lib.chapter_review import measure_chapter_coverage
 from app.workflows.digest.docgen.lib.chapter_planning import estimate_quality_from_markdown
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.models import ChapterQualitySignals
@@ -30,9 +28,7 @@ def critique_chapter(
         warnings.append("章节长度低于最低目标。")
     if markdown.count("\n## ") < (2 if str(digest_mode).strip().lower() == "sprint" else 3):
         warnings.append("章节结构不够完整。")
-    coverage_score, missing = measure_chapter_coverage(markdown, list(required_points))
-    if missing:
-        warnings.append("缺少学习大纲项：" + "、".join(missing[:5]))
+    coverage_score = 0.0
     if source_count <= 0:
         warnings.append("缺少可追踪来源。")
     quality_score = estimate_quality_from_markdown(
@@ -64,25 +60,22 @@ async def maybe_rewrite_chapter(
     if max_retries <= 0 or quality.quality_score >= 0.62 or not quality.warnings:
         return markdown, quality
     try:
-        async def _run_chapter_rewrite(_: object) -> object:
-            return await llm(
-                build_chapter_rewrite_messages(
-                    title=title,
-                    digest_mode=digest_mode,
-                    required_points=required_points,
-                    warnings=quality.warnings,
-                    markdown=markdown,
-                    dense_context=dense_context,
-                ),
-                **docgen_completion_kwargs_with_metadata(
-                    DocGenModelStep.CHAPTER_REWRITE,
-                    digest_mode=digest_mode,
-                    extra_metadata=extra_metadata,
-                    substep="chapter_rewrite",
-                ),
-            )
-
-        (rewritten,) = await run_llm_tasks([None], _run_chapter_rewrite, max_concurrent=1)
+        rewritten = await llm(
+            build_chapter_rewrite_messages(
+                title=title,
+                digest_mode=digest_mode,
+                required_points=required_points,
+                warnings=quality.warnings,
+                markdown=markdown,
+                dense_context=dense_context,
+            ),
+            **docgen_completion_kwargs_with_metadata(
+                DocGenModelStep.CHAPTER_REWRITE,
+                digest_mode=digest_mode,
+                extra_metadata=extra_metadata,
+                substep="chapter_rewrite",
+            ),
+        )
     except Exception as exc:
         logger.warning("docgen_chapter_rewrite_failed", title=title, error=str(exc))
         return markdown, quality

@@ -10,6 +10,7 @@ import structlog
 
 from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.env_support import get_env_bounded_float, get_env_bounded_int
+from app.shared.infra.settings import get_settings
 from app.shared.infra.tools.builtin.markdown_processing import build_draft_excerpt, count_words
 from app.shared.infra.knowledge.build_store import (
     append_knowledge_build_recent_event,
@@ -704,76 +705,63 @@ def build_generate_chapters_node(*, context: WorkflowContext):
         research_started_at = perf_counter()
         fallback_used = False
         shared_inputs = state.get("shared_inputs")
+        retrieval_query_limit = get_settings().docgen.max_retrieval_queries_per_chapter
+        max_context_chars = max(2400, int(task.budget_policy.max_context_chars))
         priority_context = build_priority_source_context(
             shared_inputs,
             list(task.source_slices or []),
-            max_total_chars=max(1800, int(task.budget_policy.max_context_chars * 0.45)),
+            max_total_chars=max(1800, int(max_context_chars * 0.55)),
         )
-        use_priority_context_only = bool(priority_context.source_details)
-        if use_priority_context_only:
-            dense_context = priority_context.text.strip()
-            sources = list(priority_context.sources)
-            source_details = list(priority_context.source_details)
-            local_hit_count = priority_context.local_source_count
+        retrieval_context_chars = max(1200, max_context_chars - len(priority_context.text))
+        try:
+            runtime = DocGenChapterContextRuntime(traced_context)
+            research = await runtime.run(
+                queries=task.retrieval_queries[:retrieval_query_limit],
+                local_rag_course_id=state["course_id"],
+                local_sections=list(getattr(shared_inputs, "section_packets", []) or []),
+                chapter_title=title,
+                objective=task.objective,
+                required_elements=task.content_points or task.concept_targets,
+                digest_mode=state.get("digest_mode") or "",
+                retrieval_profile=traced_context.retrieval_profile,
+                max_research_rounds=task.budget_policy.max_research_rounds,
+                max_context_chars=retrieval_context_chars,
+                query_cap=retrieval_query_limit,
+                queries_per_round=max(1, task.budget_policy.max_local_queries),
+                max_gap_queries_per_round=max(1, task.budget_policy.max_web_queries),
+                max_external_queries=min(
+                    retrieval_query_limit,
+                    max(1, task.budget_policy.max_web_queries),
+                ),
+                plan_subqueries=False,
+            )
+            dense_context = research.content.strip()
+            sources = list(research.sources)
+            source_details = list(research.metadata.get("source_details", []) or [])
+            local_hit_count = int(research.metadata.get("local_hits", 0) or 0)
+            web_hit_count = int(research.metadata.get("web_hits", 0) or 0)
             research_trace = ChapterResearchTrace(
                 chapter_index=task.chapter_index,
+                rounds=list(research.metadata.get("research_rounds", []) or []),
+                executed_queries=list(research.metadata.get("executed_queries", []) or []),
                 opened_contexts=source_details[: task.budget_policy.max_opened_urls],
-                stop_reason="priority_source_context_sufficient",
+                stop_reason=str(research.metadata.get("stop_reason") or ""),
                 budget_used={
-                    "query_count": 0,
+                    "query_count": int(research.metadata.get("query_count", 0) or 0),
                     "local_hits": local_hit_count,
-                    "web_hits": 0,
-                    "read_url_count": 0,
-                    "document_count": 0,
-                    "llm_selected_source_slices": priority_context.local_source_count,
+                    "web_hits": web_hit_count,
+                    "read_url_count": int(research.metadata.get("read_url_count", 0) or 0),
+                    "document_count": int(research.metadata.get("document_count", 0) or 0),
                 },
-                coverage_score=0.72,
+                coverage_score=float(research.metadata.get("coverage_score", 0.0) or 0.0),
+                gap_notes=list(research.metadata.get("gaps_remaining", []) or []),
             )
-        else:
-            try:
-                runtime = DocGenChapterContextRuntime(traced_context)
-                research = await runtime.run(
-                    queries=task.retrieval_queries[: max(1, task.budget_policy.max_local_queries + task.budget_policy.max_web_queries)],
-                    local_rag_course_id=state["course_id"],
-                    local_sections=list(getattr(shared_inputs, "section_packets", []) or []),
-                    chapter_title=title,
-                    objective=task.objective,
-                    required_elements=task.content_points or task.concept_targets,
-                    digest_mode=state.get("digest_mode") or "",
-                    retrieval_profile=traced_context.retrieval_profile,
-                    max_research_rounds=task.budget_policy.max_research_rounds,
-                    max_context_chars=task.budget_policy.max_context_chars,
-                    query_cap=max(1, task.budget_policy.max_local_queries + task.budget_policy.max_web_queries),
-                    queries_per_round=max(1, task.budget_policy.max_local_queries),
-                    max_gap_queries_per_round=max(1, task.budget_policy.max_web_queries),
-                )
-                dense_context = research.content.strip()
-                sources = list(research.sources)
-                source_details = list(research.metadata.get("source_details", []) or [])
-                local_hit_count = int(research.metadata.get("local_hits", 0) or 0)
-                web_hit_count = int(research.metadata.get("web_hits", 0) or 0)
-                research_trace = ChapterResearchTrace(
-                    chapter_index=task.chapter_index,
-                    rounds=list(research.metadata.get("research_rounds", []) or []),
-                    executed_queries=list(research.metadata.get("executed_queries", []) or []),
-                    opened_contexts=source_details[: task.budget_policy.max_opened_urls],
-                    stop_reason=str(research.metadata.get("stop_reason") or ""),
-                    budget_used={
-                        "query_count": int(research.metadata.get("query_count", 0) or 0),
-                        "local_hits": local_hit_count,
-                        "web_hits": web_hit_count,
-                        "read_url_count": int(research.metadata.get("read_url_count", 0) or 0),
-                        "document_count": int(research.metadata.get("document_count", 0) or 0),
-                    },
-                    coverage_score=float(research.metadata.get("coverage_score", 0.0) or 0.0),
-                    gap_notes=list(research.metadata.get("gaps_remaining", []) or []),
-                )
-            except Exception as exc:
-                fallback_used = True
-                research_trace.stop_reason = f"research_failed:{str(exc)[:160]}"
+        except Exception as exc:
+            fallback_used = True
+            research_trace.stop_reason = f"research_failed:{str(exc)[:160]}"
         research_ms = int((perf_counter() - research_started_at) * 1000)
 
-        if priority_context.text and not use_priority_context_only:
+        if priority_context.text:
             dense_context = "\n\n".join(item for item in [priority_context.text, dense_context] if item.strip()).strip()
             sources = _unique_strings([*priority_context.sources, *sources])
             source_details = _merge_source_details(priority_context.source_details, source_details)

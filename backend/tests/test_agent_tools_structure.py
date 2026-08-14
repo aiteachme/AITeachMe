@@ -788,7 +788,10 @@ async def test_streaming_tool_loop_falls_back_before_first_token(monkeypatch) ->
     monkeypatch.setenv("LLM_FALLBACK_BASE_URL", "https://api.deepseek.com")
     set_system_settings_override({
         "models": {"primary": "gpt-5.2"},
-        "llm": {"api_mode": "chat_completions"},
+        "llm": {
+            "api_mode": "chat_completions",
+            "text_endpoint_fallback_enabled": True,
+        },
     })
 
     chunks = [

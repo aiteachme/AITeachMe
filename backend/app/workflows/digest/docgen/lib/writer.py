@@ -10,7 +10,7 @@ from typing import Any
 
 from app.shared.infra.env_support import get_env_bounded_float, get_env_bounded_int
 from app.shared.infra.execution import BaseTracedExecution, TracedExecutionResult
-from app.shared.infra.llm_support import acompletion_stream, run_llm_tasks
+from app.shared.infra.llm_support import acompletion_stream
 from app.shared.infra.tools.builtin.markdown_processing import count_words
 from app.workflows.digest.common.pedagogy import (
     analyze_chapter_heading_quality,
@@ -23,7 +23,6 @@ from app.workflows.digest.docgen.lib.asset_requests import (
     has_asset_request,
     strip_asset_requests,
 )
-from app.workflows.digest.docgen.lib.chapter_review import measure_chapter_coverage
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.presentation_policy import (
     find_docgen_presentation_issues,
@@ -154,7 +153,7 @@ class DocGenWriterRuntime(BaseTracedExecution):
             streamed_chars = 0
             stream_soft_limit_logged = False
 
-            async def _run_writer_stream(_: object) -> str:
+            async def _run_writer_stream() -> str:
                 nonlocal streamed_chars, stream_soft_limit_logged
                 chunks: list[str] = []
                 stream_callback_last_at = perf_counter()
@@ -190,8 +189,8 @@ class DocGenWriterRuntime(BaseTracedExecution):
                 return result
 
             try:
-                (markdown,) = await asyncio.wait_for(
-                    run_llm_tasks([None], _run_writer_stream, max_concurrent=1),
+                markdown = await asyncio.wait_for(
+                    _run_writer_stream(),
                     timeout=WRITER_TASK_TIMEOUT_S,
                 )
             except asyncio.TimeoutError as exc:
@@ -215,14 +214,12 @@ class DocGenWriterRuntime(BaseTracedExecution):
 
         if not markdown.strip():
             if not stream_timed_out:
-                async def _run_writer_completion(_: object) -> str:
-                    return str(await llm(messages, **writer_model_kwargs) or "")
-
                 try:
-                    (markdown,) = await asyncio.wait_for(
-                        run_llm_tasks([None], _run_writer_completion, max_concurrent=1),
+                    markdown = await asyncio.wait_for(
+                        llm(messages, **writer_model_kwargs),
                         timeout=WRITER_TASK_TIMEOUT_S,
                     )
+                    markdown = str(markdown or "")
                 except Exception as exc:
                     writer_no_content_reason = f"{type(exc).__name__}: {str(exc)[:180]}"
                     self.logger.warning(
@@ -330,18 +327,9 @@ class DocGenWriterRuntime(BaseTracedExecution):
     ) -> tuple[str, dict[str, Any]]:
         repair_actions: list[str] = []
         repaired = markdown.rstrip() + "\n"
-        coverage_requirements = [
-            str(item).strip()
-            for item in list(execution_contract.get("coverage_requirements") or required_elements)
-            if str(item).strip()
-        ]
         min_word_count = int(execution_contract.get("min_word_count", 0) or 0)
-        coverage_score, missing_requirements = self._measure_coverage(
-            repaired,
-            coverage_requirements=coverage_requirements,
-        )
-        if missing_requirements:
-            repair_actions.append("coverage_unresolved")
+        coverage_score = 0.0
+        missing_requirements: list[str] = []
 
         if min_word_count > 0 and count_words(repaired) < min_word_count:
             repair_actions.append("length_unresolved")
@@ -360,10 +348,6 @@ class DocGenWriterRuntime(BaseTracedExecution):
                 repair_actions.append("presentation")
                 before_presentation_issues = after_presentation_issues
 
-        coverage_score, missing_requirements = self._measure_coverage(
-            repaired,
-            coverage_requirements=coverage_requirements,
-        )
         quality_score = self._estimate_quality_score(
             markdown=repaired,
             coverage_score=coverage_score,
@@ -435,15 +419,13 @@ class DocGenWriterRuntime(BaseTracedExecution):
             cleaned = f"# {title}\n\n{cleaned}".strip()
         return cleaned + "\n"
 
-    def _measure_coverage(self, markdown: str, *, coverage_requirements: list[str]) -> tuple[float, list[str]]:
-        return measure_chapter_coverage(markdown, coverage_requirements)
-
     def _estimate_quality_score(self, *, markdown: str, coverage_score: float, min_word_count: int) -> float:
+        del coverage_score
         word_count = count_words(markdown)
         length_score = 1.0 if min_word_count <= 0 else min(1.0, word_count / max(1, min_word_count))
         heading_score = 1.0 if markdown.count("\n## ") >= 3 else 0.75
         placeholder_bonus = 0.1 if any(token in markdown for token in _PLACEHOLDER_TOKEN_MAP.values()) else 0.0
-        score = (coverage_score * 0.55) + (length_score * 0.3) + (heading_score * 0.15) + placeholder_bonus
+        score = (length_score * 0.6) + (heading_score * 0.4) + placeholder_bonus
         return round(min(1.0, score), 4)
 
 __all__ = ["DocGenWriterNoContentError", "DocGenWriterRuntime"]

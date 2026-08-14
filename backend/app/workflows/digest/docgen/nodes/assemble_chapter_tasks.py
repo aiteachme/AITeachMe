@@ -51,6 +51,15 @@ def build_assemble_chapter_tasks_node(*, context: WorkflowContext):
                 key=lambda raw: int((raw or {}).get("chapter_index", 0) or 0),
             )
         ]
+        if not chapter_briefs:
+            chapter_briefs = [
+                ChapterExecutionBrief(
+                    chapter_index=seed.chapter_index,
+                    retrieval_queries=list(seed.retrieval_queries),
+                    fallback_used=False,
+                )
+                for seed in task_seeds
+            ]
         file_summaries = [
             FileMaterialSummary.model_validate(item)
             for item in list(state.get("file_summaries") or [])

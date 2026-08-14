@@ -19,7 +19,21 @@ from app.shared.infra.llm_support.responses_adapter import (
 from app.shared.infra.llm_support.routing import TaskType
 from app.shared.infra.exceptions import LLMCallError
 from app.shared.infra.settings.defaults import get_default_settings_values
-from app.shared.infra.settings import reset_project_settings_cache, set_system_settings_override
+from app.shared.infra.settings import (
+    reset_project_settings_cache,
+    set_system_settings_override as _set_system_settings_override,
+)
+
+
+def set_system_settings_override(payload: dict) -> None:
+    if not payload:
+        _set_system_settings_override({})
+        return
+    normalized = dict(payload)
+    llm = dict(normalized.get("llm") or {})
+    llm.setdefault("text_endpoint_fallback_enabled", True)
+    normalized["llm"] = llm
+    _set_system_settings_override(normalized)
 
 
 class FakeResponseEventType:
@@ -312,6 +326,20 @@ def test_fallback_endpoint_group_retries_are_capped(monkeypatch):
     assert fallback_context.endpoint_role == "fallback"
     assert effective_endpoint_group_max_retries(primary_context, {"max_retries": 3}) == 3
     assert effective_endpoint_group_max_retries(fallback_context, {"max_retries": 3}) == 1
+
+
+def test_text_endpoint_fallback_can_be_disabled_without_removing_fallback_credentials(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "primary-key")
+    monkeypatch.setenv("LLM_FALLBACK_API_KEY", "embedding-only-key")
+    monkeypatch.setenv("LLM_FALLBACK_BASE_URL", "https://fallback-gateway.example.com/v1")
+    set_system_settings_override({
+        "models": {"primary": "gpt-5.4-mini"},
+        "llm": {"text_endpoint_fallback_enabled": False},
+    })
+
+    contexts = build_completion_contexts(task_type=TaskType.CHAT, model="primary")
+
+    assert [context.endpoint_role for context in contexts] == ["primary"]
 
 
 def test_auto_classifies_gemini_fallback_override_as_chat_completions(monkeypatch):
@@ -1570,7 +1598,7 @@ async def test_text_completion_does_not_fallback_after_empty_primary_exhausted(m
 
 
 @pytest.mark.anyio
-async def test_text_completion_exhausts_primary_retries_before_fallback(monkeypatch):
+async def test_text_completion_advances_immediately_to_fallback_after_endpoint_error(monkeypatch):
     from app.shared.infra.llm_support import text as text_module
 
     calls: list[dict] = []
@@ -1616,7 +1644,6 @@ async def test_text_completion_exhausts_primary_retries_before_fallback(monkeypa
     assert result == "fallback ok"
     assert [call["api_key"] for call in calls] == [
         "primary-key",
-        "primary-key",
         "fallback-key",
     ]
 
@@ -1661,8 +1688,6 @@ async def test_text_completion_caps_unhealthy_fallback_retries(monkeypatch):
 
     assert [call["api_key"] for call in calls] == [
         "primary-key",
-        "primary-key",
-        "primary-key",
         "fallback-key",
     ]
 
@@ -1672,6 +1697,10 @@ async def test_stream_completion_falls_back_before_first_token(monkeypatch):
     from app.shared.infra.llm_support import stream as stream_module
 
     calls: list[dict] = []
+    progress_events: list[tuple[str, dict]] = []
+
+    async def record_progress(event: str, payload) -> None:
+        progress_events.append((event, dict(payload)))
 
     class FakeChatStream:
         def __init__(self) -> None:
@@ -1718,13 +1747,20 @@ async def test_stream_completion_falls_back_before_first_token(monkeypatch):
             [{"role": "user", "content": "hello"}],
             task_type=TaskType.CHAT,
             model="primary",
-            max_retries=1,
+            max_retries=3,
+            attempt_callback=record_progress,
         )
     ]
 
     assert chunks == ["ok"]
     assert [call["api_key"] for call in calls] == ["primary-key", "fallback-key"]
     assert calls[1]["model"] == "gpt-5.4-mini"
+    assert [event for event, _payload in progress_events] == [
+        "connecting",
+        "fallback",
+        "connecting",
+    ]
+    assert progress_events[-1][1]["endpoint_role"] == "fallback"
 
 
 @pytest.mark.anyio

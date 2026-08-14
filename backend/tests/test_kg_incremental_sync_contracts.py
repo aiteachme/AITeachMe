@@ -1349,7 +1349,9 @@ def test_extract_node_uses_quality_ready_docgen_draft_without_section_llm(monkey
     assert result["node_metrics"]["extract"]["llm_section_count"] == 0
 
 
-def test_async_section_record_extraction_recovers_failed_llm_with_rule_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_async_section_record_extraction_marks_failed_llm_without_inventing_rule_nodes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(sync, "_max_parallel_extractions", lambda: 2)
     monkeypatch.setattr(sync, "_graph_llm_concurrency_cap", lambda: 2)
     markdown = "# Chapter\n\n## Parent\nParent body\n\n## Child\nChild body"
@@ -1376,16 +1378,16 @@ def test_async_section_record_extraction_recovers_failed_llm_with_rule_fallback(
     assert [record.title for record in records] == ["Parent", "Child"]
     assert records[0].payload is not None
     assert records[1].payload is not None
-    assert records[1].payload.diagnostics["successful_section_count"] == 1
-    assert records[1].payload.diagnostics["failed_section_count"] == 0
+    assert records[1].payload.diagnostics["successful_section_count"] == 0
+    assert records[1].payload.diagnostics["failed_section_count"] == 1
     assert records[1].payload.diagnostics["llm_error_count"] == 1
-    assert records[1].payload.diagnostics["rule_fallback_attempt_count"] == 1
-    assert records[1].payload.diagnostics["rule_fallback_success_count"] == 1
-    assert records[1].error == ""
-    assert records[1].payload.units[0].source_kind == "rule_fallback_chapter"
+    assert records[1].payload.diagnostics["rule_fallback_attempt_count"] == 0
+    assert records[1].payload.diagnostics["rule_fallback_success_count"] == 0
+    assert records[1].error == "boom"
+    assert records[1].payload.units == []
     assert diagnostics["prefetch_section_count"] == 2
-    assert diagnostics["prefetch_failed_section_count"] == 0
-    assert diagnostics["rule_fallback_success_count"] == 1
+    assert diagnostics["prefetch_failed_section_count"] == 1
+    assert diagnostics["rule_fallback_success_count"] == 0
 
 
 def test_section_record_prefetch_reuses_exact_key_but_reextracts_changed_title(
@@ -1774,15 +1776,10 @@ def test_structural_and_cross_section_semantic_edges_cover_relationship_inferenc
     assert [(edge.source_name, edge.target_name, edge.edge_type) for edge in structural_edges] == [
         ("Child", "Parent", "part_of")
     ]
-    assert sync._infer_relation_from_section_text(body_markdown="", primary_type="concept") is None
-    assert sync._infer_relation_from_section_text(body_markdown="需要先掌握 Parent", primary_type="concept") == "prerequisite_for"
-    assert sync._infer_relation_from_section_text(body_markdown="由 Parent 推出", primary_type="concept") == "derives_to"
-    assert sync._infer_relation_from_section_text(body_markdown="类似 Parent", primary_type="concept") == "similar_to"
     assert {
         (edge.source_name, edge.target_name, edge.edge_type)
         for edge in semantic_edges
     } >= {
         ("Child", "Parent", "part_of"),
-        ("Practice", "Parent", "assesses"),
-        ("Contrast", "Parent", "confuses_with"),
     }
+    assert not any(edge.source_name in {"Practice", "Contrast"} for edge in semantic_edges)

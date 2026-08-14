@@ -7,18 +7,7 @@ from typing import Any
 from app.workflows.digest.common.prompt_tracing import trace_prompt_build
 from app.workflows.digest.docgen.lib.mode_profiles import get_docgen_mode_profile
 
-_MAX_CHAPTERS = 16
-_MAX_MARKDOWN_CHARS_PER_CHAPTER = 2400
 _MAX_LIST_ITEMS = 12
-
-
-def _trim_text(value: object, *, max_chars: int) -> str:
-    text = str(value or "").strip()
-    if len(text) <= max_chars:
-        return text
-    head_len = max_chars * 2 // 3
-    tail_len = max_chars - head_len
-    return f"{text[:head_len].rstrip()}\n\n[...中间内容已截断，复核重点仍是跨章一致性...]\n\n{text[-tail_len:].lstrip()}"
 
 
 def _string_list(value: object, *, limit: int = _MAX_LIST_ITEMS) -> list[str]:
@@ -50,7 +39,7 @@ def _heading_lines(markdown: str) -> list[str]:
 
 def _compact_chapters(chapters: list[dict[str, Any]]) -> list[dict[str, Any]]:
     compacted: list[dict[str, Any]] = []
-    for item in chapters[:_MAX_CHAPTERS]:
+    for item in chapters:
         markdown = str(item.get("markdown") or "")
         compacted.append(
             {
@@ -60,7 +49,7 @@ def _compact_chapters(chapters: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "source_count": len(list(item.get("source_details") or [])),
                 "warnings": _string_list(item.get("warnings"), limit=8),
                 "headings": _heading_lines(markdown),
-                "markdown_excerpt": _trim_text(markdown, max_chars=_MAX_MARKDOWN_CHARS_PER_CHAPTER),
+                "markdown": markdown,
             }
         )
     return compacted
@@ -75,7 +64,7 @@ def _compact_guideline(guideline: dict[str, Any]) -> dict[str, Any]:
                 "definition": item.get("definition"),
                 "target_chapters": item.get("target_chapters"),
             }
-            for item in list(guideline.get("canonical_glossary") or [])[:12]
+            for item in list(guideline.get("canonical_glossary") or [])
             if isinstance(item, dict)
         ],
         "notation_rules": [
@@ -84,7 +73,7 @@ def _compact_guideline(guideline: dict[str, Any]) -> dict[str, Any]:
                 "meaning": item.get("meaning"),
                 "target_chapters": item.get("target_chapters"),
             }
-            for item in list(guideline.get("notation_rules") or [])[:10]
+            for item in list(guideline.get("notation_rules") or [])
             if isinstance(item, dict)
         ],
         "confusion_checks": [
@@ -92,7 +81,7 @@ def _compact_guideline(guideline: dict[str, Any]) -> dict[str, Any]:
                 "pair": item.get("pair") or item.get("terms"),
                 "check": item.get("check") or item.get("risk") or item.get("note"),
             }
-            for item in list(guideline.get("confusion_checks") or [])[:10]
+            for item in list(guideline.get("confusion_checks") or [])
             if isinstance(item, dict)
         ],
     }
@@ -100,7 +89,7 @@ def _compact_guideline(guideline: dict[str, Any]) -> dict[str, Any]:
 
 def _compact_dispatch(dispatch_table: dict[str, Any]) -> list[dict[str, Any]]:
     compacted: list[dict[str, Any]] = []
-    for item in list(dispatch_table.get("items") or [])[:_MAX_CHAPTERS]:
+    for item in list(dispatch_table.get("items") or []):
         if not isinstance(item, dict):
             continue
         compacted.append(
@@ -117,8 +106,11 @@ def _compact_dispatch(dispatch_table: dict[str, Any]) -> list[dict[str, Any]]:
 def _compact_rule_report(rule_report: dict[str, Any]) -> dict[str, Any]:
     return {
         "passed": bool(rule_report.get("passed", True)),
-        "issues": list(rule_report.get("issues") or [])[:16],
-        "glossary_warnings": _string_list(rule_report.get("glossary_warnings"), limit=12),
+        "issues": list(rule_report.get("issues") or []),
+        "glossary_warnings": _string_list(
+            rule_report.get("glossary_warnings"),
+            limit=max(_MAX_LIST_ITEMS, len(list(rule_report.get("glossary_warnings") or []))),
+        ),
         "source_summary": dict(rule_report.get("source_summary") or {}),
     }
 
@@ -139,7 +131,7 @@ def build_document_review_messages(
     compact_guideline = _compact_guideline(dict(guideline or {}))
     compact_dispatch = _compact_dispatch(dict(dispatch_table or {}))
     compact_rule_report = _compact_rule_report(dict(rule_report or {}))
-    learner_excerpt = _trim_text(learner_profile_text, max_chars=1200)
+    learner_context = str(learner_profile_text or "").strip()
     system_prompt = """
 你是 AITeachMe 的整本文档复核器，只做跨章一致性判断。
 你不能改写正文，不能润色措辞，不能要求推翻用户已确认的大纲；只输出确有风险的问题和可执行回流动作。
@@ -160,7 +152,7 @@ def build_document_review_messages(
 {compact_dispatch}
 
 学习者画像补充：
-{learner_excerpt!r}
+{learner_context!r}
 
 章节快照：
 {compact_chapters}

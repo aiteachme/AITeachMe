@@ -346,7 +346,6 @@ async def test_completed_prefetch_refresh_prioritizes_fresh_records(monkeypatch)
             on_record(fresh_record)
         return [fresh_record], {"prefetch_section_count": 1, "prefetch_failed_section_count": 0}
 
-    monkeypatch.setattr(prefetch, "_PREFETCH_START_DELAY_S", 0)
     monkeypatch.setattr(prefetch, "managed_session", fake_managed_session)
     monkeypatch.setattr(prefetch, "load_course_llm_context", lambda *args, **kwargs: "")
     monkeypatch.setattr(
@@ -399,11 +398,11 @@ async def test_completed_prefetch_refresh_prioritizes_fresh_records(monkeypatch)
 @pytest.mark.parametrize(
     ("prefetch_phase", "expected_fanout_mode"),
     [
-        ("enhanced_chapters", "all_independent_enhanced_chapters_sections"),
-        ("final_locked_markdown", "all_independent_final_locked_markdown_sections"),
+        ("enhanced_chapters", "bounded_enhanced_chapters_sections"),
+        ("final_locked_markdown", "bounded_final_locked_markdown_sections"),
     ],
 )
-async def test_whole_document_prefetch_fans_out_to_global_concurrency(
+async def test_whole_document_prefetch_respects_configured_concurrency(
     monkeypatch,
     prefetch_phase: str,
     expected_fanout_mode: str,
@@ -437,7 +436,6 @@ async def test_whole_document_prefetch_fans_out_to_global_concurrency(
         captured_concurrency.append(int(kwargs["concurrency_limit"]))
         return [], {"prefetch_section_count": 0, "prefetch_failed_section_count": 0}
 
-    monkeypatch.setattr(prefetch, "_PREFETCH_START_DELAY_S", 0)
     monkeypatch.setattr(prefetch, "_graph_llm_concurrency_cap", lambda: 10)
     monkeypatch.setattr(prefetch, "managed_session", fake_managed_session)
     monkeypatch.setattr(prefetch, "load_course_llm_context", lambda *args, **kwargs: "")
@@ -476,20 +474,20 @@ async def test_whole_document_prefetch_fans_out_to_global_concurrency(
             wait_timeout_s=1,
         )
 
-        assert captured_concurrency == [10]
+        assert captured_concurrency == [6]
         assert len(captured_traces) == 1
         trace_kwargs = captured_traces[0]["kwargs"]
         assert trace_kwargs["name"] == "KG：DocGen 预取"
-        assert trace_kwargs["inputs"]["concurrency_limit"] == 10
+        assert trace_kwargs["inputs"]["concurrency_limit"] == 6
         assert trace_kwargs["extra_metadata"]["background_sidecar"] == "kg_docgen_prefetch"
         assert metrics["prefetch_configured_concurrency"] == 6
         assert metrics["prefetch_llm_concurrency_cap"] == 10
-        assert metrics["prefetch_effective_concurrency"] == 10
+        assert metrics["prefetch_effective_concurrency"] == 6
         assert metrics["prefetch_fanout_mode"] == expected_fanout_mode
         run = captured_traces[0]["run"]
         assert isinstance(run, FakeTraceRun)
         assert run.outputs is not None
-        assert run.outputs["concurrency_limit"] == 10
+        assert run.outputs["concurrency_limit"] == 6
     finally:
         prefetch.cancel_docgen_kg_prefetch(course_id=key[0], build_session_id=key[1])
         with prefetch._LOCK:

@@ -27,6 +27,7 @@ from .common import (
     pop_overall_timeout_s,
     raise_last_error,
     context_request_timeout_s,
+    should_advance_to_fallback,
     should_try_endpoint_fallback,
     sleep_before_retry,
     track_call,
@@ -84,6 +85,7 @@ async def _acompletion_impl(
     call_started_at = time.monotonic()
     tracked_model = primary_context.model
     attempt_number = 0
+    has_fallback_endpoints = any(context.endpoint_role == "fallback" for context in contexts)
 
     async with get_llm_concurrency_limiter().slot() as lease:
         for group_index, context_group in enumerate(completion_context_groups(contexts)):
@@ -259,6 +261,18 @@ async def _acompletion_impl(
                             error=exc,
                         )
 
+                if should_advance_to_fallback(
+                    context_group,
+                    has_fallback_endpoints=has_fallback_endpoints,
+                    error=last_error,
+                ):
+                    logger.info(
+                        "llm_primary_retries_skipped_for_endpoint_fallback",
+                        task_type=primary_context.task_type,
+                        model=tracked_model,
+                        error_type=last_error.__class__.__name__ if last_error is not None else "",
+                    )
+                    break
                 if retry_round < group_max_retries:
                     await sleep_before_retry(retry_round, error=last_error, lease=lease)
 

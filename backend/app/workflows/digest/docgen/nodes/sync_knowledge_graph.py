@@ -7,6 +7,7 @@ from time import perf_counter
 
 import structlog
 
+import app.repositories.knowledge.knowledge_repo as knowledge_repo
 from app.shared.infra.course import get_course_record_by_id, get_course_vector_capability
 from app.shared.infra.database import managed_session
 from app.shared.infra.knowledge.build_store import read_knowledge_build_runtime
@@ -15,7 +16,10 @@ from app.shared.infra.llm_support.model_choices import build_runtime_model_overr
 from app.shared.infra.settings import get_settings
 from app.shared.infra.storage import build_course_storage_scope
 from app.shared.infra.workflow.context import WorkflowContext
-from app.workflows.digest.common.indexing import index_course_files_for_retrieval
+from app.workflows.digest.common.indexing import (
+    index_course_files_for_retrieval,
+    index_published_knowledge_docs_for_retrieval,
+)
 from app.workflows.digest.docgen.state import DocGenState
 from app.workflows.digest.kg_doc_sync.lib.builds import run_graph_docs_sync_auto_build
 
@@ -28,13 +32,50 @@ def _vector_capability(course_id: str):
         return get_course_vector_capability(session, course) if course is not None else None
 
 
-async def _ensure_course_vector_index(*, course_id: str, file_ids: list[str]) -> tuple[str, int]:
+def _indexed_vector_chunk_ids(*, course_id: str, chunk_ids: list[int]) -> set[int]:
+    normalized_chunk_ids: list[int] = []
+    for item in chunk_ids:
+        try:
+            chunk_id = int(item)
+        except (TypeError, ValueError):
+            continue
+        if chunk_id > 0:
+            normalized_chunk_ids.append(chunk_id)
+    normalized_chunk_ids = sorted(set(normalized_chunk_ids))
+    if not normalized_chunk_ids:
+        return set()
+    with managed_session() as session:
+        course = get_course_record_by_id(session, course_id)
+        if course is None:
+            return set()
+        capability = get_course_vector_capability(session, course)
+        vector_table = str(
+            getattr(getattr(capability, "binding", None), "vector_table", "") or ""
+        ).strip()
+        if not vector_table:
+            return set()
+        return set(
+            knowledge_repo.list_indexed_embedding_chunk_ids(
+                session,
+                table_name=vector_table,
+                chunk_ids=normalized_chunk_ids,
+            )
+        )
+
+
+async def _ensure_course_vector_index(
+    *,
+    course_id: str,
+    file_ids: list[str],
+    published_markdown: str = "",
+) -> tuple[str, int]:
     normalized_file_ids = [
         file_id
         for file_id in dict.fromkeys(str(item or "").strip() for item in file_ids)
         if file_id
     ]
-    if not normalized_file_ids:
+    normalized_published_markdown = str(published_markdown or "").strip()
+    if not normalized_file_ids and not normalized_published_markdown:
         return "skipped_no_sources", 0
 
     capability = _vector_capability(course_id)
@@ -42,23 +83,55 @@ async def _ensure_course_vector_index(*, course_id: str, file_ids: list[str]) ->
         return "skipped_course_missing", 0
     if capability.binding is not None and capability.binding.mode.value == "disabled":
         return "skipped_disabled", 0
-    if capability.queryable:
+    if capability.queryable and not normalized_published_markdown:
         return "ready", 0
     if not capability.writable:
         return "skipped_runtime_unavailable", 0
 
-    last_chunk_count = 0
+    last_chunk_ids: set[int] = set()
     for attempt in range(1, 3):
-        materialized = await index_course_files_for_retrieval(
-            course_id=course_id,
-            file_ids=normalized_file_ids,
-            reason=f"digest.docgen.finalize_vector_index.attempt_{attempt}",
-            raise_errors=True,
-        )
-        last_chunk_count = len(getattr(materialized, "chunk_ids", []) or [])
+        materialized_results = []
+        if normalized_file_ids:
+            materialized_results.append(
+                await index_course_files_for_retrieval(
+                    course_id=course_id,
+                    file_ids=normalized_file_ids,
+                    reason=f"digest.docgen.finalize_vector_index.files.attempt_{attempt}",
+                    raise_errors=True,
+                )
+            )
+        if normalized_published_markdown:
+            materialized_results.append(
+                await index_published_knowledge_docs_for_retrieval(
+                    course_id=course_id,
+                    markdown=normalized_published_markdown,
+                    reason=f"digest.docgen.finalize_vector_index.published_docs.attempt_{attempt}",
+                    raise_errors=True,
+                )
+            )
+        last_chunk_ids = set()
+        for materialized in materialized_results:
+            if materialized is None:
+                continue
+            for chunk_id in getattr(materialized, "chunk_ids", []) or []:
+                try:
+                    parsed_chunk_id = int(chunk_id)
+                except (TypeError, ValueError):
+                    continue
+                if parsed_chunk_id > 0:
+                    last_chunk_ids.add(parsed_chunk_id)
         capability = _vector_capability(course_id)
-        if capability is not None and capability.queryable:
-            return "rebuilt", last_chunk_count
+        indexed_chunk_ids = _indexed_vector_chunk_ids(
+            course_id=course_id,
+            chunk_ids=sorted(last_chunk_ids),
+        )
+        if (
+            capability is not None
+            and capability.queryable
+            and last_chunk_ids
+            and indexed_chunk_ids == last_chunk_ids
+        ):
+            return "rebuilt", len(last_chunk_ids)
 
     notice = str(getattr(getattr(capability, "status", None), "notice", "") or "").strip()
     raise RuntimeError(
@@ -104,6 +177,7 @@ def build_sync_knowledge_graph_node(*, context: WorkflowContext):
             _ensure_course_vector_index(
                 course_id=course_id,
                 file_ids=file_ids,
+                published_markdown=str(state.get("merged_markdown") or ""),
             ),
             return_exceptions=True,
         )

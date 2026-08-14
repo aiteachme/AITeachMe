@@ -36,7 +36,6 @@ from app.workflows.support.courses.learning_context import load_course_llm_conte
 
 logger = structlog.get_logger(__name__)
 
-_PREFETCH_START_DELAY_S = 0.5
 _PREFETCH_AWAIT_GRACE_S = 8.0
 _PREFETCH_EXTRACTION_ATTEMPTS = kg_doc_sync_section_llm_max_retries()
 _PREFETCH_CONSUME_GRACE_S = float(
@@ -387,17 +386,9 @@ def start_docgen_kg_prefetch(
     configured_concurrency = int(settings.knowledge_graph.prefetch_concurrency or 1)
     llm_concurrency_cap = _graph_llm_concurrency_cap()
     prefetch_phase = _prefetch_trace_phase(docgen_manifest)
-    whole_document_phase = prefetch_phase in {
-        "enhanced_chapters",
-        "final_locked_markdown",
-    }
-    concurrency = (
-        llm_concurrency_cap
-        if whole_document_phase
-        else _prefetch_concurrency_limit(
-            configured_concurrency,
-            global_limit=llm_concurrency_cap,
-        )
+    concurrency = _prefetch_concurrency_limit(
+        configured_concurrency,
+        global_limit=llm_concurrency_cap,
     )
     with _LOCK:
         cache.metrics.update(
@@ -405,11 +396,7 @@ def start_docgen_kg_prefetch(
                 "prefetch_configured_concurrency": configured_concurrency,
                 "prefetch_llm_concurrency_cap": llm_concurrency_cap,
                 "prefetch_effective_concurrency": concurrency,
-                "prefetch_fanout_mode": (
-                    f"all_independent_{prefetch_phase}_sections"
-                    if whole_document_phase
-                    else "bounded_speculative_sidecar"
-                ),
+                "prefetch_fanout_mode": f"bounded_{prefetch_phase}_sections",
             }
         )
 
@@ -421,8 +408,6 @@ def start_docgen_kg_prefetch(
 
     async def _run() -> None:
         try:
-            # Let the next DocGen node schedule first, so prefetch does not jump ahead of review work.
-            await asyncio.sleep(_PREFETCH_START_DELAY_S)
             with managed_session() as session:
                 course_context = load_course_llm_context(session, course_id=course_id)
             _records, metrics = await _extract_prefetch_records_with_trace(
@@ -581,7 +566,6 @@ def start_docgen_kg_prefetch_incremental(
 
     async def _run() -> None:
         try:
-            await asyncio.sleep(_PREFETCH_START_DELAY_S)
             with managed_session() as session:
                 course_context = load_course_llm_context(session, course_id=course_id)
             _records, metrics = await _extract_prefetch_records_with_trace(

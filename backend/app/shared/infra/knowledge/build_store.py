@@ -303,6 +303,11 @@ def sanitize_knowledge_build_error_message(
         return "知识文档构建必须基于已确认的构建方案执行，请先完成 planner 确认。"
 
     lower_text = text.lower()
+    if (
+        ("zstd" in lower_text and ("not enough memory" in lower_text or "allocation error" in lower_text))
+        or "0x8007000e" in lower_text
+    ):
+        return "构建进程内存不足，已停止本轮任务。请释放部分内存后重试。"
     if any(
         snippet in lower_text
         for snippet in (

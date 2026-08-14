@@ -33,7 +33,7 @@ from app.workflows.digest.docgen.lib.pipeline_context import (
 )
 from app.workflows.digest.docgen.lib.pipeline_artifacts import build_chapter_kg_refinement_item
 from app.workflows.digest.docgen.nodes.common import extract_markdown_preview_headings, publish_docgen_progress
-from app.workflows.digest.docgen.lib.quality import review_document_consistency
+from app.workflows.digest.docgen.lib.quality import review_document_consistency_with_llm
 from app.workflows.digest.docgen.state import DocGenState
 
 
@@ -299,21 +299,19 @@ def build_document_consistency_review_node(*, context: WorkflowContext):
             for item in list(state.get("review_action_items") or [])
         ]
         kg_prefetch_status = str(state.get("kg_prefetch_status") or "not_started")
-        consistency_report = review_document_consistency(
+        learner_profile_text = learner_profile_text_for_branch(
+            state_profile_text=state.get("learner_profile_text", ""),
+            user_profile=dict(state.get("user_profile") or {}),
+        )
+        consistency_report, document_actions, llm_calls = await review_document_consistency_with_llm(
             reviewed_chapters=reviewed,
             document_backbone=document_backbone,
             expected_chapter_count=len(list(state.get("chapter_tasks") or [])),
+            digest_mode=str(state.get("digest_mode") or ""),
+            guideline=dict(state.get("guideline") or {}),
+            dispatch_table=dict(state.get("dispatch_table") or {}),
+            learner_profile_text=learner_profile_text,
         )
-        consistency_report = consistency_report.model_copy(
-            update={
-                "source_summary": {
-                    **dict(consistency_report.source_summary or {}),
-                    "document_review_mode": "rule_cross_chapter_guardrail",
-                }
-            }
-        )
-        document_actions = []
-        llm_calls = 0
         actions = [*actions, *document_actions]
         review_decision = _review_decision(
             actions,

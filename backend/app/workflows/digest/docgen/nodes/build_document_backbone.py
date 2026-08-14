@@ -6,9 +6,10 @@ from time import perf_counter
 
 from app.shared.infra.workflow.context import WorkflowContext
 from app.shared.infra.knowledge.build_store import append_knowledge_build_recent_event, update_knowledge_build_status
+from app.shared.infra.settings import get_settings
 from app.utils.time import utcnow
 from app.workflows.digest.docgen.lib.document_backbone import (
-    build_document_backbone,
+    generate_document_backbone,
 )
 from app.workflows.digest.docgen.lib.models import (
     BackboneResearchAgenda,
@@ -93,11 +94,44 @@ def build_document_backbone_node(*, context: WorkflowContext):
             digest_mode=state.get("digest_mode") or None,
             current_stage_description="正在统一术语、主张、证据和易混点，构建整本文档知识骨架。",
         )
-        document_backbone, warnings = build_document_backbone(
+        append_knowledge_build_recent_event(
+            state["course_id"],
+            requested_at=state["requested_at"],
+            build_group_id=state.get("build_group_id") or None,
+            event={
+                "stage": "building_document_backbone",
+                "summary": (
+                    f"开始构建整本知识骨架：统一术语和核心主张，并为 {len(task_seeds)} 章生成执行 brief。"
+                ),
+                "created_at": utcnow(),
+            },
+        )
+        await publish_docgen_progress(
+            context,
+            state=state,
+            stage="building_document_backbone",
+            payload={
+                "chapter_count": len(task_seeds),
+                "evidence_unit_count": len(evidence_units),
+                "file_summary_count": len(file_summaries),
+            },
+        )
+        document_backbone, chapter_briefs, warnings = await generate_document_backbone(
+            course_name=plan_seed.course_name or str(state.get("course_name") or ""),
+            digest_mode=str(state.get("digest_mode") or plan_seed.digest_mode or "systematic"),
             task_seeds=task_seeds,
             agenda=agenda,
             evidence_units=evidence_units,
             file_summaries=file_summaries,
+            learner_profile_text=str(state.get("learner_profile_text") or ""),
+            max_retrieval_queries_per_chapter=(
+                get_settings().docgen.max_retrieval_queries_per_chapter
+            ),
+            extra_metadata={
+                "build_session_id": state.get("build_session_id") or "",
+                "planner_session_id": state.get("planner_session_id") or "",
+                "confirmed_plan_id": state.get("confirmed_plan_id") or "",
+            },
         )
 
         guideline = build_guideline(
@@ -137,7 +171,7 @@ def build_document_backbone_node(*, context: WorkflowContext):
                 "docgen_preliminary_kg_edge_count": int(preliminary_kg.get("edge_count", 0) or 0),
                 "docgen_preliminary_kg_stage": "document_backbone_ready",
             },
-            current_stage_description=f"文档知识骨架已生成，开始并行准备 {len(task_seeds)} 个章节的执行 brief。",
+            current_stage_description=f"整本知识骨架和 {len(chapter_briefs)} 个章节执行 brief 已生成，正在装配章节任务。",
         )
         append_knowledge_build_recent_event(
             state["course_id"],
@@ -145,7 +179,10 @@ def build_document_backbone_node(*, context: WorkflowContext):
             build_group_id=state.get("build_group_id") or None,
             event={
                 "stage": "document_backbone_ready",
-                "summary": f"整本文档知识骨架已生成：术语 {len(document_backbone.canonical_glossary)} 个，主张 {len(document_backbone.canonical_claim_pool)} 条。",
+                "summary": (
+                    f"整本文档准备已完成：术语 {len(document_backbone.canonical_glossary)} 个，"
+                    f"主张 {len(document_backbone.canonical_claim_pool)} 条，章节执行 brief {len(chapter_briefs)} 个。"
+                ),
                 "created_at": utcnow(),
             },
         )
@@ -161,16 +198,19 @@ def build_document_backbone_node(*, context: WorkflowContext):
                 "preliminary_kg_edge_count": int(preliminary_kg.get("edge_count", 0) or 0),
                 "warning_count": len(warnings),
                 "fallback_used": document_backbone.fallback_used,
+                "chapter_brief_count": len(chapter_briefs),
             },
         )
         return {
             "document_backbone": document_backbone.model_dump(mode="json"),
+            "chapter_execution_briefs": [item.model_dump(mode="json") for item in chapter_briefs],
             "chapters_enhanced": chapters_enhanced,
             "dispatch_table": dispatch_table,
             "preliminary_kg": preliminary_kg,
             "guideline": guideline,
             "backbone_conflict_warnings": [item.model_dump(mode="json") for item in warnings],
             "backbone_ms": elapsed_ms,
+            "llm_calls_total": 1,
         }
 
     return document_backbone_node

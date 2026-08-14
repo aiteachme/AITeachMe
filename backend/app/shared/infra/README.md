@@ -81,6 +81,7 @@ from app.shared.infra.search import web_search, search_knowledge
 - `file_search` 需要外部 provider vector store，不能默认替代本地课程索引；`auto` 只在课程工具链且本地 RAG 证据不足时补充，`force` 才表示显式强制发送。
 - 全局 `settings.llm.native_*` 只提供默认能力开关；具体 workflow step 是否允许、继承或强制 provider-native tools，应由对应 `model_policy.py` 通过 `ProviderNativeToolPolicy` 声明。
 - 模型默认优先使用主端点，主端点调用失败后可以切换备用端点；`settings.llm.fallback_only_models` 中的模型直接使用备用端点，未配置可用备用端点时立即返回配置错误。
+- `settings.llm.text_endpoint_fallback_enabled=false` 只关闭文本生成的主/备切换，适合备用 key 仅开放 Embedding 等专用模型的环境；Embedding、图片等专用接口仍按 `fallback_only_models` 选择端点。
 - `api_mode=auto` 时，`settings.llm.responses_api_models` 中的文本模型使用 Responses，其余文本模型使用 Chat Completions。该名单不改变端点归属；fallback 文本请求默认使用 Chat Completions。
 - Embedding、文生图、语音、视频等模型使用各自专用接口，只参与主/备用端点选择；图片理解仍属于文本生成，参与 Responses / Chat Completions 判断。
 - `acompletion_stream()` 始终向上游请求真实流式输出。自定义 OpenAI-compatible Responses 网关不采用 LiteLLM 对未知模型名生成的伪流式。

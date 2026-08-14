@@ -92,7 +92,6 @@ async def enhance_chapter_draft(
     traced_context: TracedExecutionContext,
     digest_mode: str,
     claim_ledger: ClaimLedger | None = None,
-    used_static_figure_signatures: set[str] | None = None,
 ) -> tuple[EnhancedChapterDraft, AssetManifest, PracticeManifest]:
     """增强单章草稿的表现层内容。
 

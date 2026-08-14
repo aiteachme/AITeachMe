@@ -133,10 +133,9 @@ def build_priority_source_context(
     material_context: DigestMaterialContext | None,
     source_slices: list[Any],
     *,
-    max_total_chars: int = 3600,
-    max_excerpt_chars: int = 900,
+    max_total_chars: int = 16000,
 ) -> HydratedSourceContext:
-    """Hydrate LLM-selected slices into exact line excerpts plus summaries."""
+    """Hydrate full routed sections in relevance order up to the model-context budget."""
 
     if material_context is None or not source_slices:
         return HydratedSourceContext(text="", sources=[], source_details=[])
@@ -147,16 +146,12 @@ def build_priority_source_context(
     blocks: list[str] = []
     details: list[dict[str, Any]] = []
     sources: list[str] = []
-    used_chars = 0
     seen: set[str] = set()
     total_budget = max(1200, int(max_total_chars))
-    selected_slice_count = max(1, min(4, len(source_slices)))
-    excerpt_budget = max(
-        160,
-        min(int(max_excerpt_chars), (total_budget // selected_slice_count) - 260),
-    )
+    context_header = "## LLM 预选的本地资料切片\n\n"
+    used_chars = len(context_header)
 
-    for raw_slice in source_slices[:selected_slice_count]:
+    for raw_slice in source_slices:
         section_ref = str(_slice_value(raw_slice, "section_ref", "") or "").strip()
         file_id = str(_slice_value(raw_slice, "file_id", "") or "").strip()
         if not section_ref:
@@ -186,30 +181,49 @@ def build_priority_source_context(
                 start_line=start_line,
                 end_line=end_line,
                 context_lines=0,
-                max_chars=excerpt_budget,
             )
         else:
-            excerpt = section.normalized_content[:excerpt_budget].strip()
+            excerpt = section.normalized_content.strip()
 
         summary = str(_slice_value(raw_slice, "summary", "") or "").strip()[:80]
         reason = str(_slice_value(raw_slice, "reason", "") or "").strip()[:80]
         title = str(_slice_value(raw_slice, "section_title", "") or section.title or section.header_path).strip()
         line_label = f"L{start_line}-L{end_line}" if start_line and end_line else "line:unknown"
-        block_lines = [
-            f"### 来源切片：{packet.filename} / {title} ({line_label})",
-        ]
-        if summary:
-            block_lines.append(f"- 切片摘要：{summary}")
-        if reason:
-            block_lines.append(f"- 章节用途：{reason}")
-        if excerpt:
-            block_lines.extend(["", "原文摘录：", number_lines(excerpt, start_line=start_line or 1)])
-        block = "\n".join(block_lines).strip()
+        def _render_block(source_excerpt: str) -> str:
+            block_lines = [f"### 来源切片：{packet.filename} / {title} ({line_label})"]
+            if summary:
+                block_lines.append(f"- 切片摘要：{summary}")
+            if reason:
+                block_lines.append(f"- 章节用途：{reason}")
+            if source_excerpt:
+                block_lines.extend(
+                    ["", "原文摘录：", number_lines(source_excerpt, start_line=start_line or 1)]
+                )
+            return "\n".join(block_lines).strip()
+
+        separator_chars = 2 if blocks else 0
+        remaining_chars = total_budget - used_chars - separator_chars
+        if remaining_chars <= 0:
+            break
+        block = _render_block(excerpt)
+        if len(block) > remaining_chars:
+            empty_block = _render_block("")
+            if remaining_chars <= len(empty_block) + 80:
+                break
+            low = 1
+            high = len(excerpt)
+            while low < high:
+                midpoint = (low + high + 1) // 2
+                candidate = excerpt[:midpoint].rstrip() + ("..." if midpoint < len(excerpt) else "")
+                if len(_render_block(candidate)) <= remaining_chars:
+                    low = midpoint
+                else:
+                    high = midpoint - 1
+            excerpt = excerpt[:low].rstrip() + ("..." if low < len(excerpt) else "")
+            block = _render_block(excerpt)
         if not block:
             continue
-        if used_chars + len(block) > total_budget and blocks:
-            break
-        used_chars += len(block)
+        used_chars += separator_chars + len(block)
 
         url = _source_url(file_id=file_id, section_ref=section_ref, start_line=start_line, end_line=end_line)
         sources.append(url)
@@ -228,10 +242,12 @@ def build_priority_source_context(
             }
         )
         blocks.append(block)
+        if used_chars >= total_budget:
+            break
 
     if not blocks:
         return HydratedSourceContext(text="", sources=[], source_details=[])
-    text = "## LLM 预选的本地资料切片\n\n" + "\n\n".join(blocks)
+    text = context_header + "\n\n".join(blocks)
     return HydratedSourceContext(text=text.strip(), sources=sources, source_details=details)
 
 

@@ -14,7 +14,10 @@ from app.workflows.digest.planner.lib.plans import (
     normalize_planner_diagnosis_draft,
     normalize_planner_draft,
 )
-from app.workflows.digest.planner.lib.requested_structure import extract_explicit_learning_topic
+from app.workflows.digest.planner.lib.requested_structure import (
+    extract_explicit_course_title,
+    extract_explicit_learning_topic,
+)
 from app.workflows.digest.planner.lib.store import save_planner_result
 from app.workflows.digest.planner.nodes.generate_course_identity import _clean_course_name
 from app.workflows.digest.planner.state import BuildPlannerState
@@ -38,6 +41,21 @@ def _diagnose_answer_map(raw_answers: Any) -> dict[str, str]:
         if question and answer:
             answers[question.casefold()] = answer
     return answers
+
+
+def _resolve_effective_course_name(
+    *,
+    raw_draft: Mapping[str, Any],
+    generated_course_name: Any,
+    request_prompt: str,
+) -> str:
+    """Prefer the model's full-scope title; use request parsing only as fallback."""
+
+    draft_course_name = _clean_course_name(str(raw_draft.get("course_name") or ""))
+    generated_name = _clean_course_name(str(generated_course_name or ""))
+    explicit_course_title = _clean_course_name(extract_explicit_course_title(request_prompt))
+    explicit_topic = _clean_course_name(extract_explicit_learning_topic(request_prompt))
+    return draft_course_name or generated_name or explicit_course_title or explicit_topic
 
 
 def _merge_diagnose_resolution(plan: dict[str, Any], state: BuildPlannerState) -> dict[str, Any]:
@@ -107,10 +125,12 @@ def build_save_planner_draft_node(*, context: WorkflowContext):
         )
         is_diagnosis_draft = str(raw_draft.get("planner_stage") or "").strip() == "diagnosis"
         # 上一个节点已经完成“生成”；这里把极简 JSON 合同补齐成 API/DocGen 稳定结构并落库。
-        explicit_topic = _clean_course_name(extract_explicit_learning_topic(request_prompt))
-        generated_course_name = _clean_course_name(str(state.get("generated_course_name") or ""))
         generated_course_icon = str(state.get("generated_course_icon_key") or "").strip()
-        effective_course_name = explicit_topic or generated_course_name
+        effective_course_name = _resolve_effective_course_name(
+            raw_draft=raw_draft,
+            generated_course_name=state.get("generated_course_name"),
+            request_prompt=request_prompt,
+        )
         if is_diagnosis_draft:
             plan = normalize_planner_diagnosis_draft(
                 raw_draft,
@@ -222,4 +242,4 @@ def build_save_planner_draft_node(*, context: WorkflowContext):
     return save_planner_draft_node
 
 
-__all__ = ["build_save_planner_draft_node"]
+__all__ = ["_resolve_effective_course_name", "build_save_planner_draft_node"]

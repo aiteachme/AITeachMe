@@ -7,7 +7,7 @@ from collections import Counter
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from app.shared.infra.llm_support import acompletion_with_fallback, run_llm_tasks
+from app.shared.infra.llm_support import acompletion_with_fallback
 from app.shared.infra.tools.builtin.markdown_processing import count_words
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.models import (
@@ -373,7 +373,7 @@ async def review_document_consistency_with_llm(
         document_backbone=document_backbone,
         expected_chapter_count=expected_chapter_count,
     )
-    async def _run_document_review(_: object) -> LLMDocumentConsistencyReviewResult:
+    async def _run_document_review() -> LLMDocumentConsistencyReviewResult:
         result = await acompletion_with_fallback(
             build_document_review_messages(
                 digest_mode=digest_mode,
@@ -395,7 +395,7 @@ async def review_document_consistency_with_llm(
         return result
 
     try:
-        (llm_result,) = await run_llm_tasks([None], _run_document_review, max_concurrent=1)
+        llm_result = await _run_document_review()
     except Exception as exc:
         fallback_report = rule_report.model_copy(
             update={

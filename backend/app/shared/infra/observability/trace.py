@@ -6,6 +6,7 @@ import asyncio
 import functools
 import inspect
 import json
+import logging
 import os
 import time
 from collections.abc import Callable, Mapping, Sequence
@@ -23,6 +24,8 @@ from app.shared.infra.observability.defaults import DEFAULT_LANGSMITH_MAX_TEXT_C
 from app.shared.infra.settings import get_settings
 from app.shared.infra.env_support import get_env, get_env_bool, get_env_optional_bool
 from app.shared.infra.runtime import get_app_version, is_local_mode
+
+logger = logging.getLogger(__name__)
 
 LangSmithRunType = Literal["tool", "chain", "llm", "retriever", "embedding", "prompt", "parser"]
 LANGSMITH_RUN_TYPES: tuple[LangSmithRunType, ...] = (
@@ -537,32 +540,53 @@ def langsmith_trace(
     if expected_cancellation_scope:
         handled_exceptions = (*handled_exceptions, asyncio.CancelledError)
 
-    with tracing_context(
-        enabled=True,
-        project_name=project_name,
-        metadata=metadata,
-        tags=tags,
-    ):
-        with langsmith_trace_run(
-            name=name,
-            run_type=run_type,
-            inputs=inputs,
+    body_error: BaseException | None = None
+    body_entered = False
+    try:
+        with tracing_context(
+            enabled=True,
             project_name=project_name,
             metadata=metadata,
             tags=tags,
-            exceptions_to_handle=handled_exceptions or None,
-        ) as run:
-            try:
-                yield run
-            except asyncio.CancelledError:
-                if expected_cancellation_scope:
-                    run.end(
-                        outputs={
-                            "trace_outcome": "cancelled_expected",
-                            "cancellation_scope": expected_cancellation_scope,
-                        }
-                    )
+        ):
+            with langsmith_trace_run(
+                name=name,
+                run_type=run_type,
+                inputs=inputs,
+                project_name=project_name,
+                metadata=metadata,
+                tags=tags,
+                exceptions_to_handle=handled_exceptions or None,
+            ) as run:
+                try:
+                    body_entered = True
+                    yield run
+                except asyncio.CancelledError as exc:
+                    body_error = exc
+                    if expected_cancellation_scope:
+                        run.end(
+                            outputs={
+                                "trace_outcome": "cancelled_expected",
+                                "cancellation_scope": expected_cancellation_scope,
+                            }
+                        )
+                    raise
+                except BaseException as exc:
+                    body_error = exc
+                    raise
+    except (KeyboardInterrupt, SystemExit):
+        raise
+    except BaseException as trace_error:
+        if body_error is not None:
+            if trace_error is body_error:
                 raise
+            raise body_error.with_traceback(body_error.__traceback__) from trace_error
+        logger.warning(
+            "LangSmith trace write failed; business result was preserved: %s",
+            trace_error,
+        )
+        if not body_entered:
+            yield None
 
 
 @contextmanager

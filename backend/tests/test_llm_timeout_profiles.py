@@ -1,5 +1,6 @@
 import asyncio
 
+import httpx
 import pytest
 
 from app.shared.infra.exceptions import LLMTimeoutError
@@ -11,6 +12,7 @@ from app.shared.infra.llm_support.common import (
     build_completion_context,
     build_completion_kwargs,
     context_request_timeout_s,
+    effective_call_timeout_s,
     effective_max_retries,
     iter_with_overall_timeout,
 )
@@ -138,6 +140,24 @@ def test_request_timeout_prefers_valid_explicit_value_and_rejects_invalid_values
             context_request_timeout_s(context, {"timeout": invalid_timeout})
             == context.profile.timeout_s + 2
         )
+
+
+def test_completion_timeout_uses_short_connect_timeout_without_shortening_generation(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "test-key")
+    context = build_completion_context(task_type=TaskType.DOCGEN)
+
+    kwargs = build_completion_kwargs(
+        context=context,
+        messages=[{"role": "user", "content": "hello"}],
+        extra_kwargs={"timeout": 420},
+    )
+
+    assert isinstance(kwargs["timeout"], httpx.Timeout)
+    assert kwargs["timeout"].connect == 10
+    assert kwargs["timeout"].pool == 10
+    assert kwargs["timeout"].read == 420
+    assert effective_call_timeout_s(context, kwargs) == 420
+    assert context_request_timeout_s(context, kwargs) == 422
 
 
 @pytest.mark.anyio

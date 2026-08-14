@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import contextmanager
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -227,6 +228,47 @@ def test_expected_trace_exceptions_are_forwarded_and_not_swallowed(monkeypatch) 
     assert trace_runs[2].outputs == {}
     assert trace_runs[2].error == repr(ordinary_cancellation)
     assert trace_runs[3].error is None
+
+
+def test_langsmith_trace_write_failure_does_not_change_business_result(monkeypatch) -> None:
+    @contextmanager
+    def fake_tracing_context(**_kwargs):
+        yield
+
+    @contextmanager
+    def failing_trace_run(**_kwargs):
+        yield SimpleNamespace(end=lambda **_kwargs: None)
+        raise RuntimeError("zstd compress error: Allocation error : not enough memory")
+
+    monkeypatch.setattr(trace_module, "langsmith_tracing_enabled", lambda: True)
+    monkeypatch.setattr(trace_module, "tracing_context", fake_tracing_context)
+    monkeypatch.setattr(trace_module, "langsmith_trace_run", failing_trace_run)
+
+    with trace_module.langsmith_trace(name="memory pressure", run_type="llm"):
+        result = "generated content"
+
+    assert result == "generated content"
+
+
+def test_langsmith_trace_write_failure_preserves_business_error(monkeypatch) -> None:
+    @contextmanager
+    def fake_tracing_context(**_kwargs):
+        yield
+
+    @contextmanager
+    def failing_trace_run(**_kwargs):
+        try:
+            yield SimpleNamespace(end=lambda **_kwargs: None)
+        finally:
+            raise RuntimeError("zstd trace failure")
+
+    monkeypatch.setattr(trace_module, "langsmith_tracing_enabled", lambda: True)
+    monkeypatch.setattr(trace_module, "tracing_context", fake_tracing_context)
+    monkeypatch.setattr(trace_module, "langsmith_trace_run", failing_trace_run)
+
+    with pytest.raises(ValueError, match="business failure"):
+        with trace_module.langsmith_trace(name="preserve error", run_type="llm"):
+            raise ValueError("business failure")
 
 
 def test_langsmith_capture_text_follows_cloud_defaults_and_explicit_overrides(monkeypatch) -> None:

@@ -43,6 +43,12 @@ _NEGATIVE_ORDINAL_PREFIX_RE = re.compile(
     r"(?:不(?:得|要|可|应)?|勿|别|禁止|避免)(?:再|继续)?"
     r"(?:增加|添加|生成|扩展|拆分|安排|设置|写入|写|有)?\s*$"
 )
+_EXPLICIT_COURSE_TITLE_RE = re.compile(
+    r"(?:我想|我要|希望|计划|准备|请帮我|帮我|给我|请)?\s*"
+    r"(?:构建|创建|生成|设计|做)\s*(?:一门|一个)?\s*"
+    r"(?P<title>[^，,。；;：:\n]{2,40}?)(?:课程|课)"
+    r"(?=[，,。；;：:\n]|$)"
+)
 _TOPIC_PATTERNS = (
     re.compile(
         r"(?:基于|根据)\s*(?:用户)?\s*(?:上传|提供|给出)?\s*的?\s*"
@@ -59,10 +65,6 @@ _TOPIC_PATTERNS = (
         r"(?P<topic>[^，,。；;：:\n]{2,40})"
         r"(?:整理|构建|做成|变成)"
     ),
-)
-_COVERAGE_TOPIC_RE = re.compile(
-    r"(?:依次|重点|主要|严格)?\s*(?:覆盖|包括|包含)\s*[:：]?\s*"
-    r"(?P<topics>[^。.!！?？\n]{2,120})"
 )
 _GENERIC_TOPICS = {
     "内容",
@@ -113,12 +115,31 @@ def _clean_heading(value: str) -> str:
     return text[:40].rstrip("，,。；;:：.．、 ")
 
 
+def extract_explicit_course_title(value: Any) -> str:
+    """Return a course title explicitly stated in phrases such as ``构建一门高数复习课``."""
+
+    text = _text(value)
+    if not text:
+        return ""
+    match = _EXPLICIT_COURSE_TITLE_RE.search(text)
+    if not match:
+        return ""
+    title = _clean_heading(match.group("title"))
+    if re.fullmatch(rf"{_NUMBER_TOKEN}\s*{_CHAPTER_UNIT}", title):
+        return ""
+    return title if title not in _GENERIC_TOPICS and 2 <= len(title) <= 16 else ""
+
+
 def extract_explicit_learning_topic(value: Any) -> str:
     """Return a directly stated learning object such as ``初中函数``."""
 
     text = _text(value)
     if not text:
         return ""
+    explicit_course_title = extract_explicit_course_title(text)
+    if explicit_course_title:
+        return explicit_course_title
+
     def normalize_topic(raw_topic: Any) -> str:
         topic = _TOPIC_TAIL_RE.sub("", _text(raw_topic))
         topic = topic.strip().strip("\"'“”‘’`，,。；;:：.．、 ")
@@ -134,15 +155,6 @@ def extract_explicit_learning_topic(value: Any) -> str:
         if topic:
             return topic
 
-    coverage_match = _COVERAGE_TOPIC_RE.search(text)
-    if coverage_match:
-        topics = _text(coverage_match.group("topics"))
-        if topics.startswith("的"):
-            return ""
-        first_topic = _INLINE_TITLE_SPLIT_RE.split(topics, maxsplit=1)[0]
-        topic = normalize_topic(first_topic)
-        if topic:
-            return topic
     return ""
 
 
@@ -211,6 +223,7 @@ def extract_requested_chapter_count(value: Any) -> int | None:
 
 __all__ = [
     "extract_explicit_chapter_titles",
+    "extract_explicit_course_title",
     "extract_explicit_learning_topic",
     "extract_requested_chapter_count",
 ]

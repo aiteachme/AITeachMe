@@ -83,7 +83,6 @@ _DEFAULT_DOCS_SYNC_MAX_PARALLEL_EXTRACTIONS = 16
 _DOCS_SYNC_SPLIT_MIN_CHILD_SECTIONS = 2
 _DOCS_SYNC_SPLIT_MIN_CHAPTER_CHARS = 3000
 _DOCS_SYNC_SPLIT_TARGET_TASK_CHARS = 3200
-_RULE_FALLBACK_MAX_UNITS = 8
 _DEFAULT_EXTRACT_CANDIDATES = extract_candidates
 _ASYNC_BRIDGE_LOCK = threading.Lock()
 _ASYNC_BRIDGE_READY = threading.Event()
@@ -2262,23 +2261,8 @@ async def _collect_section_payloads_async(
                 source_kind=task.source_kind,
                 error_type=type(exc).__name__,
             )
-            fallback_payload = _rule_fallback_section_payload(task, exc)
-            if fallback_payload is not None:
-                logger.info(
-                    "knowledge_docs_sync_section_rule_fallback_used",
-                    task_index=task.task_index,
-                    chunk_title=task.chunk.title,
-                    header_path=task.chunk.header_path,
-                    source_chapter_index=task.source_chapter_index,
-                    source_kind=task.source_kind,
-                    unit_count=len(fallback_payload.units),
-                    error_type=type(exc).__name__,
-                )
-                payload = fallback_payload
-                record = _section_record_for_task(task, payload=payload)
-            else:
-                payload = _empty_failed_section_payload(task, exc, rule_fallback_attempted=True)
-                record = _section_record_for_task(task, payload=payload, error=str(exc))
+            payload = _empty_failed_section_payload(task, exc)
+            record = _section_record_for_task(task, payload=payload, error=str(exc))
         if callable(on_record):
             on_record(record)
         return payload
@@ -2542,151 +2526,6 @@ def _extract_markdown_graph_items(
             course_context=course_context,
             structured_context=structured_context,
         )
-    )
-
-
-def _rule_fallback_source_kind(source_kind: str) -> str:
-    parsed = str(source_kind or "").strip() or "section"
-    return f"rule_fallback_{parsed}"
-
-
-def _fallback_anchor(anchor: str, *, name: str, task: _ExtractionTask, used: set[str]) -> str:
-    parsed = str(anchor or "").strip()
-    if parsed and parsed not in used:
-        used.add(parsed)
-        return parsed
-    seed = f"rule-fallback-ch{task.source_chapter_index}-s{task.task_index}-{name}"
-    return build_knowledge_unit_anchor(seed, used=used)
-
-
-def _rule_fallback_units_for_task(task: _ExtractionTask) -> list[MarkdownKnowledgeUnit]:
-    chunk = task.chunk
-    chapter_context = task.chapter_context
-    resolved_chapter_index = chapter_context.chapter_index or task.source_chapter_index or task.task_index
-    source_file_ids = list(chapter_context.source_file_ids)
-    source_kind = _rule_fallback_source_kind(task.source_kind)
-    body_markdown = str(chunk.body_markdown or "").strip()
-    raw_units = extract_markdown_knowledge_units(body_markdown) if body_markdown else []
-    if not raw_units and str(chunk.title or "").strip():
-        raw_units = [
-            MarkdownKnowledgeUnit(
-                anchor=chunk.anchor,
-                name=chunk.title,
-                knowledge_unit_type="concept",
-                summary=chunk.summary or chunk.title,
-                body_markdown=body_markdown,
-                knowledge_images=list(chunk.knowledge_images),
-                line_no=chunk.line_no,
-                heading_level=chunk.heading_level,
-            )
-        ]
-
-    units: list[MarkdownKnowledgeUnit] = []
-    used_anchors: set[str] = set()
-    for raw_unit in raw_units:
-        name = _clean_docgen_draft_name(raw_unit.name)
-        if not name or not normalize_name(name):
-            continue
-        summary = _source_quote(
-            raw_unit.summary or chunk.summary or raw_unit.body_markdown or body_markdown or name,
-            max_chars=300,
-        )
-        anchor = _fallback_anchor(raw_unit.anchor, name=name, task=task, used=used_anchors)
-        units.append(
-            MarkdownKnowledgeUnit(
-                anchor=anchor,
-                name=name,
-                knowledge_unit_type=normalize_generated_knowledge_unit_type(
-                    raw_unit.knowledge_unit_type or "concept",
-                    name=name,
-                    summary=summary,
-                ),
-                summary=summary or name,
-                body_markdown=raw_unit.body_markdown or body_markdown,
-                knowledge_images=list(raw_unit.knowledge_images or chunk.knowledge_images),
-                prerequisites=list(raw_unit.prerequisites),
-                related=list(raw_unit.related),
-                line_no=raw_unit.line_no or chunk.line_no,
-                heading_level=raw_unit.heading_level or chunk.heading_level,
-                source_kind=source_kind,
-                knowledge_document_id=chapter_context.knowledge_document_id,
-                chapter_index=resolved_chapter_index,
-                source_file_ids=source_file_ids,
-                quote_text=_source_quote(raw_unit.quote_text or summary or name),
-            )
-        )
-        if len(units) >= _RULE_FALLBACK_MAX_UNITS:
-            break
-    return units
-
-
-def _rule_fallback_section_payload(
-    task: _ExtractionTask,
-    exc: Exception,
-) -> SectionExtractionPayload | None:
-    del exc
-    units = _rule_fallback_units_for_task(task)
-    if not units:
-        return None
-
-    chapter_context = task.chapter_context
-    resolved_chapter_index = chapter_context.chapter_index or task.source_chapter_index or task.task_index
-    candidate_id_to_anchor: dict[str, str] = {}
-    anchors_by_name: dict[str, list[str]] = {}
-    anchors_by_normalized_name: dict[str, list[str]] = {}
-    node_contexts_by_anchor: dict[str, dict[str, object]] = {}
-    for index, unit in enumerate(units, start=1):
-        candidate_id = f"rule:{task.task_index}:{index}"
-        candidate_id_to_anchor[candidate_id] = unit.anchor
-        anchors_by_name.setdefault(unit.name, []).append(unit.anchor)
-        normalized_name = normalize_name(unit.name)
-        if normalized_name:
-            anchors_by_normalized_name.setdefault(normalized_name, []).append(unit.anchor)
-        node_contexts_by_anchor[unit.anchor] = {
-            "name": unit.name,
-            "knowledge_unit_type": unit.knowledge_unit_type,
-            "taxonomy_hint": unit.name,
-            "parent_entity_name": "",
-            "section_index": task.task_index,
-            "source_chapter_index": resolved_chapter_index,
-            "knowledge_document_id": chapter_context.knowledge_document_id,
-            "source_file_ids": list(chapter_context.source_file_ids),
-        }
-
-    primary = units[0]
-    return SectionExtractionPayload(
-        units=units,
-        pending_edges=[],
-        candidate_id_to_anchor=candidate_id_to_anchor,
-        anchors_by_name=anchors_by_name,
-        anchors_by_normalized_name=anchors_by_normalized_name,
-        node_contexts_by_anchor=node_contexts_by_anchor,
-        section_context=SectionExtractionContext(
-            section_index=task.task_index,
-            title=task.chunk.title,
-            header_path=task.chunk.header_path,
-            body_markdown=task.chunk.body_markdown or "",
-            primary_anchor=primary.anchor,
-            primary_name=primary.name,
-            primary_type=primary.knowledge_unit_type,
-            knowledge_document_id=chapter_context.knowledge_document_id,
-            source_file_ids=list(chapter_context.source_file_ids),
-        ),
-        diagnostics={
-            "section_count": 0,
-            "successful_section_count": 1,
-            "failed_section_count": 0,
-            "llm_section_count": 1,
-            "markdown_short_circuit_section_count": 0,
-            "llm_error_count": 1,
-            "empty_llm_result_count": 0,
-            "empty_repair_attempt_count": 0,
-            "empty_repair_success_count": 0,
-            "rule_fallback_attempt_count": 1,
-            "rule_fallback_success_count": 1,
-            "total_extracted_node_count": len(units),
-            "total_extracted_edge_count": 0,
-        },
     )
 
 
@@ -3023,30 +2862,6 @@ def _build_chapter_membership_edges(
     return pending_edges
 
 
-def _infer_relation_from_section_text(*, body_markdown: str, primary_type: str) -> str | None:
-    text = normalize_name(body_markdown or "")
-    if not text:
-        return None
-    normalized_primary_type = normalize_knowledge_unit_type(primary_type)
-    if normalized_primary_type == "skill":
-        return "assesses"
-    if normalized_primary_type == "resource":
-        return "explains"
-    if normalized_primary_type == "misconception":
-        return "remediates"
-    if any(token in text for token in ("前提", "基础", "先学", "先掌握", "依赖")):
-        return "prerequisite_for"
-    if any(token in text for token in ("由", "推出", "推得", "可得", "基于", "建立在")):
-        return "derives_to"
-    if any(token in text for token in ("利用", "应用", "借助", "结合", "使用")):
-        return "applies_to"
-    if any(token in text for token in ("区别", "对比", "比较", "不同于", "相反")):
-        return "confuses_with"
-    if any(token in text for token in ("类似", "相似", "同理")):
-        return "similar_to"
-    return None
-
-
 def _build_cross_section_semantic_edges(
     *,
     node_contexts_by_anchor: dict[str, dict[str, object]],
@@ -3056,7 +2871,7 @@ def _build_cross_section_semantic_edges(
 ) -> list[PendingMarkdownExtractedEdge]:
     pending_edges: list[PendingMarkdownExtractedEdge] = []
     seen: set[tuple[str, str, str]] = set()
-    primary_contexts = [ctx for ctx in section_contexts if ctx.primary_anchor and ctx.primary_name]
+    del section_contexts
 
     def _push_edge(
         source_name: str,
@@ -3119,58 +2934,6 @@ def _build_cross_section_semantic_edges(
                 f"{source_name} 通过 {hint_field} 指向跨小节主题 {hint_name}。",
                 source_context=context,
             )
-
-    for context in primary_contexts:
-        body_markdown = context.body_markdown or ""
-        relation = _infer_relation_from_section_text(
-            body_markdown=body_markdown,
-            primary_type=context.primary_type,
-        )
-        if relation is None:
-            continue
-        body_text = normalize_name(body_markdown)
-        for other in primary_contexts:
-            if other.section_index == context.section_index or not other.primary_anchor or not other.primary_name:
-                continue
-            normalized_other_name = normalize_name(other.primary_name)
-            if not normalized_other_name or normalized_other_name not in body_text:
-                continue
-            if relation == "assesses":
-                _push_edge(
-                    context.primary_name,
-                    other.primary_name,
-                    relation,
-                    f"{context.primary_name} 在正文中作为 {other.primary_name} 的训练或评估任务出现。",
-                    source_context={
-                        "knowledge_document_id": context.knowledge_document_id,
-                        "section_index": context.section_index,
-                        "source_file_ids": context.source_file_ids,
-                    },
-                )
-            elif relation in {"similar_to", "confuses_with"}:
-                _push_edge(
-                    context.primary_name,
-                    other.primary_name,
-                    relation,
-                    f"{context.primary_name} 在正文中与 {other.primary_name} 一起讨论。",
-                    source_context={
-                        "knowledge_document_id": context.knowledge_document_id,
-                        "section_index": context.section_index,
-                        "source_file_ids": context.source_file_ids,
-                    },
-                )
-            else:
-                _push_edge(
-                    other.primary_name,
-                    context.primary_name,
-                    relation,
-                    f"{other.primary_name} 支撑小节 {context.primary_name}。",
-                    source_context={
-                        "knowledge_document_id": context.knowledge_document_id,
-                        "section_index": context.section_index,
-                        "source_file_ids": context.source_file_ids,
-                    },
-                )
 
     return pending_edges
 

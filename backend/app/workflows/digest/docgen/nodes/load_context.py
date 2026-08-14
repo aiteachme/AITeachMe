@@ -20,7 +20,7 @@ from app.workflows.digest.docgen.lib.learner_profile import load_docgen_learner_
 from app.workflows.digest.docgen.lib.models import DocGenContext
 from app.workflows.digest.docgen.state import DocGenState
 from app.workflows.digest.common.contracts import build_digest_retrieval_policy
-from app.workflows.digest.common.diagnose_policy import diagnose_answer_action, render_diagnose_action_policy
+from app.workflows.digest.common.diagnose_policy import render_diagnose_action_policy
 from app.workflows.digest.common.indexing import materialize_course_inputs_for_retrieval
 from app.workflows.digest.common.prepare import prepare_shared_inputs
 
@@ -57,10 +57,6 @@ def _render_diagnose_brief(
         if purpose:
             purpose_text = purpose.removeprefix("文档落点：").removeprefix("文档落点:").strip()
             suffix_parts.append(f"文档落点：{purpose_text}")
-        if answer:
-            action = diagnose_answer_action(answer, question=question, purpose=purpose)
-            if action:
-                suffix_parts.append(f"执行策略：{action}")
         if options and not answer:
             suffix_parts.append("可选项：" + " / ".join(options))
         suffix = "；" + "；".join(suffix_parts) if suffix_parts else ""
@@ -69,7 +65,7 @@ def _render_diagnose_brief(
         return ""
     if normalized_status == "answered":
         lines.append("")
-        lines.append("诊断选项执行策略：")
+        lines.append("已确认的诊断选择：")
         lines.append(render_diagnose_action_policy(items, status=normalized_status))
         lines.append(
             "硬性生成约束：每章至少在讲解起点、例题/练习配置、文档内解析方式、错因提醒或章末小测配置中响应上述诊断；"

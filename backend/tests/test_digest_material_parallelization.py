@@ -4,10 +4,9 @@ import pytest
 
 from app.workflows.digest.common import material_digest
 from app.workflows.digest.common.models import DigestMaterialContext, SectionPacket, SourcePacket
-from app.workflows.digest.docgen.lib.file_summaries import (
-    derive_source_affinity_and_evidence,
-    summarize_files_deterministically,
-)
+from app.workflows.digest.docgen.lib import file_summaries
+from app.workflows.digest.docgen.lib.file_summaries import derive_source_affinity_and_evidence
+from app.workflows.digest.docgen.lib.models import ChapterSourceSlice, FileMaterialSummary
 
 
 @pytest.fixture
@@ -59,7 +58,10 @@ def _section(
     )
 
 
-def test_docgen_routes_only_relevant_sections_to_confirmed_chapters() -> None:
+@pytest.mark.anyio
+async def test_docgen_routes_complete_sections_semantically_to_confirmed_chapters(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     sections = [
         _section(
             0,
@@ -87,7 +89,38 @@ def test_docgen_routes_only_relevant_sections_to_confirmed_chapters() -> None:
         },
     ]
 
-    summaries = summarize_files_deterministically(context, chapters=chapters)
+    captured_messages: list[dict[str, str]] = []
+
+    async def fake_completion(messages, **kwargs):
+        del kwargs
+        captured_messages.extend(messages)
+        return FileMaterialSummary(
+            summary="矩阵运算与几何测量资料",
+            chapter_slices=[
+                ChapterSourceSlice(
+                    chapter_index=1,
+                    section_ref=sections[0].digest_chunk_uid,
+                    relevance=0.94,
+                    usage="definition",
+                    summary="矩阵乘法的维度和行列规则",
+                ),
+                ChapterSourceSlice(
+                    chapter_index=2,
+                    section_ref=sections[1].digest_chunk_uid,
+                    relevance=0.91,
+                    usage="example",
+                    summary="面积公式与单位换算",
+                ),
+            ],
+            source_quality=0.9,
+        )
+
+    monkeypatch.setattr(file_summaries, "acompletion_with_fallback", fake_completion)
+    summaries = await file_summaries.summarize_files(
+        context,
+        chapters=chapters,
+        digest_mode="systematic",
+    )
     affinity, evidence = derive_source_affinity_and_evidence(
         context,
         summaries=summaries,
@@ -95,8 +128,12 @@ def test_docgen_routes_only_relevant_sections_to_confirmed_chapters() -> None:
     )
 
     assert len(summaries) == 1
-    assert summaries[0].llm_call_count == 0
+    assert summaries[0].llm_call_count == 1
     assert summaries[0].fallback_used is False
+    prompt = "\n".join(item["content"] for item in captured_messages)
+    assert sections[0].normalized_content.strip() in prompt
+    assert sections[1].normalized_content.strip() in prompt
+    assert '"objective": "掌握矩阵乘法"' in prompt
     refs_by_chapter = {
         item.chapter_index: set(item.section_refs)
         for item in affinity

@@ -30,9 +30,6 @@ from app.workflows.digest.docgen.lib.reporting import build_docgen_lane_summary
 from app.workflows.digest.docgen.nodes.assemble_chapter_tasks import (
     build_assemble_chapter_tasks_node,
 )
-from app.workflows.digest.docgen.nodes.build_chapter_execution_briefs import (
-    build_chapter_execution_briefs_node,
-)
 from app.workflows.digest.docgen.nodes.build_document_backbone import build_document_backbone_node
 from app.workflows.digest.docgen.nodes.confirm_and_seed_backbone import build_confirm_and_seed_backbone_node
 from app.workflows.digest.docgen.nodes.enhance_chapters import build_enhance_chapters_node
@@ -183,7 +180,8 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
     },
     NODE_ASSEMBLE_CHAPTER_TASKS: {
         "description": (
-            "把原本严格串行且都不调用模型的骨架种子确认、全文骨架、章节 brief 和任务组装合并为一个准备节点。"
+            "把严格串行的骨架种子确认、任务组装与一次整本 LLM 准备合并为一个节点；"
+            "同一次模型调用同时生成跨章语义骨架和全部章节执行 brief。"
             "它一次产出最终 ChapterGenerationPlan 与 ChapterGenerationTask；后续章节 fan-out 只消费这里冻结的单章执行合同。"
         ),
         "reads": [
@@ -227,6 +225,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "preliminary_kg",
             "chapter_prepare_ms",
             "assemble_tasks_ms",
+            "llm_calls_total",
             "error",
         ],
         "routing": "next step sends one branch per chapter",
@@ -315,8 +314,8 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
     },
     NODE_DOCUMENT_CONSISTENCY_REVIEW: {
         "description": (
-            "在所有章节复核 fan-in 后执行轻量规则一致性检查，验证章节数量、重复标题和骨架术语覆盖。"
-            "不再把整本正文交给第二次 LLM 重审，只产出 document_consistency_report 和 review_decision。"
+            "在所有章节复核 fan-in 后先执行规则守卫，再用一个局部 LLM 槽做一次整本结构化一致性复核。"
+            "它只输出确有影响的问题与回流动作，不重写正文；同时 KG section prefetch 继续按独立并发上限运行。"
         ),
         "reads": [
             "enhanced_chapter_drafts",
@@ -596,24 +595,26 @@ def _langgraph_node_metadata(node_key: str) -> dict[str, object]:
 
 
 def _build_prepare_chapter_tasks_node(*, context: WorkflowContext):
-    """Collapse the strictly sequential deterministic preparation steps."""
+    """Collapse dependent seed, whole-document preparation and assembly steps."""
 
     handlers = (
         build_confirm_and_seed_backbone_node(context=context),
         build_document_backbone_node(context=context),
-        build_chapter_execution_briefs_node(context=context),
         build_assemble_chapter_tasks_node(context=context),
     )
 
     async def prepare_chapter_tasks(state: DocGenState) -> dict:
         current = dict(state)
         merged: dict[str, Any] = {}
+        llm_calls_total = 0
         for handler in handlers:
             output = await handler(current)
+            llm_calls_total += int(output.get("llm_calls_total", 0) or 0)
             merged.update(output)
             current.update(output)
             if current.get("error"):
                 break
+        merged["llm_calls_total"] = llm_calls_total
         return merged
 
     return prepare_chapter_tasks

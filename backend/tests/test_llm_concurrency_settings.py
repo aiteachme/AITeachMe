@@ -19,10 +19,12 @@ from app.shared.infra.llm_support.defaults import DEFAULT_LLM_CONCURRENCY_LIMIT
 from app.shared.infra.llm_support.scheduler import get_llm_scheduler
 from app.shared.infra.settings import (
     get_default_settings_values,
+    get_system_settings_override_payload,
     get_settings,
     reset_project_settings_cache,
     set_system_settings_override,
 )
+from app.shared.infra.settings.defaults import DEFAULT_KNOWLEDGE_GRAPH_PREFETCH_CONCURRENCY
 from app.workflows.digest.kg_doc_sync.lib.incremental_sync import _graph_llm_concurrency_cap
 from app.workflows.ingest.parsing.strategy import build_parse_plan
 from app.workflows.support.system.settings import (
@@ -49,6 +51,16 @@ def test_llm_concurrency_runtime_settings_override_default() -> None:
 
     assert get_settings().llm.concurrency_limit == 3
     assert get_llm_concurrency_limit() == 3
+
+
+def test_kg_prefetch_default_preserves_capacity_for_docgen_foreground_work() -> None:
+    defaults = get_default_settings_values()
+
+    assert DEFAULT_KNOWLEDGE_GRAPH_PREFETCH_CONCURRENCY == 9
+    assert (
+        defaults["knowledge_graph"]["prefetch_concurrency"]
+        == DEFAULT_KNOWLEDGE_GRAPH_PREFETCH_CONCURRENCY
+    )
 
 
 def test_model_route_lists_follow_project_then_local_runtime_precedence(
@@ -84,6 +96,44 @@ def test_model_route_lists_follow_project_then_local_runtime_precedence(
     finally:
         monkeypatch.delenv("PROJECT_SETTINGS_PATH")
         _reset_settings_state()
+
+
+def test_docgen_retrieval_query_limit_follows_project_then_runtime_precedence(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings_path = tmp_path / "settings.yaml"
+    settings_path.write_text(
+        "docgen:\n"
+        "  max_retrieval_queries_per_chapter: 4\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PROJECT_SETTINGS_PATH", str(settings_path))
+    reset_project_settings_cache()
+    set_system_settings_override({})
+
+    try:
+        assert get_settings().docgen.max_retrieval_queries_per_chapter == 4
+
+        set_system_settings_override(
+            {"docgen": {"max_retrieval_queries_per_chapter": 3}}
+        )
+        assert get_settings().docgen.max_retrieval_queries_per_chapter == 3
+    finally:
+        monkeypatch.delenv("PROJECT_SETTINGS_PATH")
+        _reset_settings_state()
+
+
+def test_blank_primary_runtime_override_inherits_project_model() -> None:
+    project_primary = get_settings().models.primary
+
+    effective = set_system_settings_override(
+        {"models": {"primary": "  ", "light": "custom-light"}}
+    )
+
+    assert effective.models.primary == project_primary
+    assert effective.models.light == "custom-light"
+    assert get_system_settings_override_payload()["models"] == {"light": "custom-light"}
 
 
 def test_kg_graph_cap_uses_full_shared_llm_limit() -> None:
@@ -587,6 +637,22 @@ async def test_retry_backoff_does_not_hold_limiter_slot(monkeypatch) -> None:
 
     sleep_can_finish.set()
     await asyncio.gather(retry_task, second_task)
+
+
+@pytest.mark.anyio
+async def test_endpoint_retry_uses_short_backoff_without_changing_rate_limit_delay(monkeypatch) -> None:
+    delays: list[float] = []
+
+    async def fake_sleep(delay: float) -> None:
+        delays.append(delay)
+
+    monkeypatch.setattr(llm_common.asyncio, "sleep", fake_sleep)
+
+    await llm_common.sleep_before_retry(1, error=RuntimeError("connection timed out"))
+    await llm_common.sleep_before_retry(2, error=RuntimeError("connection timed out"))
+    await llm_common.sleep_before_retry(1, error=RuntimeError("concurrency limit exceeded"))
+
+    assert delays == [0.25, 0.5, 8]
 
 
 @pytest.mark.anyio

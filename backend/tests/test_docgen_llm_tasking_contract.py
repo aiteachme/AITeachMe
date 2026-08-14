@@ -33,20 +33,7 @@ from app.workflows.digest.docgen.lib.writer import DocGenWriterRuntime
 
 
 @pytest.mark.anyio
-async def test_core_docgen_single_llm_calls_use_run_llm_tasks(monkeypatch) -> None:
-    scheduler_calls: list[dict[str, object]] = []
-
-    async def fake_run_llm_tasks(items, worker, *, max_concurrent=None, on_result=None):
-        queued = list(items)
-        scheduler_calls.append({"items": queued, "max_concurrent": max_concurrent})
-        results = []
-        for index, item in enumerate(queued):
-            result = await worker(item)
-            if on_result is not None:
-                await on_result(index, item, result)
-            results.append(result)
-        return results
-
+async def test_core_docgen_single_llm_calls_call_provider_directly(monkeypatch) -> None:
     async def fake_completion(*args, **kwargs):
         response_model = kwargs.get("response_model")
         if response_model is DocGenIntentProfile:
@@ -65,7 +52,6 @@ async def test_core_docgen_single_llm_calls_use_run_llm_tasks(monkeypatch) -> No
         raise AssertionError(f"unexpected response model: {response_model}")
 
     for module in (intent, title_lock, chapter_execution_brief):
-        monkeypatch.setattr(module, "run_llm_tasks", fake_run_llm_tasks)
         monkeypatch.setattr(module, "acompletion_with_fallback", fake_completion)
 
     intent_result = await intent.infer_intent_core(
@@ -97,20 +83,11 @@ async def test_core_docgen_single_llm_calls_use_run_llm_tasks(monkeypatch) -> No
     assert intent_result.learning_goal_text == "掌握函数图像"
     assert title_result.enhanced_title == "函数变化与图像"
     assert brief_result.retrieval_queries == ["函数图像变化"]
-    assert scheduler_calls == [
-        {"items": [None], "max_concurrent": 1},
-        {"items": [None], "max_concurrent": 1},
-        {"items": [None], "max_concurrent": 1},
-    ]
 
 
 @pytest.mark.anyio
-async def test_chapter_brief_queue_wait_is_outside_llm_timeout(monkeypatch) -> None:
+async def test_chapter_brief_passes_configured_overall_timeout(monkeypatch) -> None:
     captured_overall_timeout: float | None = None
-
-    async def delayed_scheduler(items, worker, *, max_concurrent=None, on_result=None):
-        await asyncio.sleep(0.03)
-        return [await worker(item) for item in items]
 
     async def fake_completion(*args, **kwargs):
         nonlocal captured_overall_timeout
@@ -125,7 +102,6 @@ async def test_chapter_brief_queue_wait_is_outside_llm_timeout(monkeypatch) -> N
         )
 
     monkeypatch.setattr(chapter_execution_brief, "_chapter_brief_timeout_seconds", lambda: 0.01)
-    monkeypatch.setattr(chapter_execution_brief, "run_llm_tasks", delayed_scheduler)
     monkeypatch.setattr(chapter_execution_brief, "acompletion_with_fallback", fake_completion)
 
     result = await chapter_execution_brief.build_chapter_execution_brief(
@@ -144,20 +120,7 @@ async def test_chapter_brief_queue_wait_is_outside_llm_timeout(monkeypatch) -> N
 
 
 @pytest.mark.anyio
-async def test_docgen_query_planning_uses_run_llm_tasks(monkeypatch) -> None:
-    scheduler_calls: list[dict[str, object]] = []
-
-    async def fake_run_llm_tasks(items, worker, *, max_concurrent=None, on_result=None):
-        queued = list(items)
-        scheduler_calls.append({"items": queued, "max_concurrent": max_concurrent})
-        results = []
-        for index, item in enumerate(queued):
-            result = await worker(item)
-            if on_result is not None:
-                await on_result(index, item, result)
-            results.append(result)
-        return results
-
+async def test_docgen_query_planning_calls_single_llm_directly(monkeypatch) -> None:
     async def fake_completion(*args, **kwargs):
         query_tool = kwargs.get("extra_metadata", {}).get("query_tool")
         if query_tool == "generate_sub_queries":
@@ -166,7 +129,6 @@ async def test_docgen_query_planning_uses_run_llm_tasks(monkeypatch) -> None:
             return ResearchSubQueryPlan(queries=["函数图像 易错点"])
         raise AssertionError(f"unexpected query tool: {query_tool}")
 
-    monkeypatch.setattr(query_planning, "run_llm_tasks", fake_run_llm_tasks)
     monkeypatch.setattr(query_planning, "acompletion_with_fallback", fake_completion)
 
     sub_queries = await query_planning.generate_sub_queries("函数图像", max_queries=3)
@@ -174,27 +136,11 @@ async def test_docgen_query_planning_uses_run_llm_tasks(monkeypatch) -> None:
 
     assert sub_queries == ["函数图像 单调性", "函数图像 最值"]
     assert gap_queries == ["函数图像 易错点"]
-    assert scheduler_calls == [
-        {"items": [None], "max_concurrent": 1},
-        {"items": [None], "max_concurrent": 1},
-    ]
 
 
 @pytest.mark.anyio
-async def test_docgen_writer_completion_uses_run_llm_tasks(monkeypatch) -> None:
-    scheduler_calls: list[dict[str, object]] = []
+async def test_docgen_writer_calls_single_completion_directly(monkeypatch) -> None:
     captured_completion_kwargs: dict[str, object] = {}
-
-    async def fake_run_llm_tasks(items, worker, *, max_concurrent=None, on_result=None):
-        queued = list(items)
-        scheduler_calls.append({"items": queued, "max_concurrent": max_concurrent})
-        results = []
-        for index, item in enumerate(queued):
-            result = await worker(item)
-            if on_result is not None:
-                await on_result(index, item, result)
-            results.append(result)
-        return results
 
     async def fake_llm(*args, **kwargs):
         captured_completion_kwargs.update(kwargs)
@@ -209,8 +155,6 @@ async def test_docgen_writer_completion_uses_run_llm_tasks(monkeypatch) -> None:
             "## 单元测试\n\n"
             "1. State one feature of a linear graph.\n"
         )
-
-    monkeypatch.setattr(writer, "run_llm_tasks", fake_run_llm_tasks)
 
     runtime = DocGenWriterRuntime(
         TracedExecutionContext(
@@ -235,8 +179,6 @@ async def test_docgen_writer_completion_uses_run_llm_tasks(monkeypatch) -> None:
 
     assert "Function Graphs" in result.content
     assert captured_completion_kwargs["max_tokens"] <= 4080
-    assert scheduler_calls
-    assert all(call == {"items": [None], "max_concurrent": 1} for call in scheduler_calls)
 
 
 def test_docgen_writer_caps_unreasonable_target_word_budget(monkeypatch) -> None:
@@ -251,17 +193,8 @@ def test_docgen_writer_caps_unreasonable_target_word_budget(monkeypatch) -> None
 
 @pytest.mark.anyio
 async def test_docgen_writer_raises_when_primary_completion_fails(monkeypatch) -> None:
-    scheduler_calls: list[dict[str, object]] = []
-
-    async def fake_run_llm_tasks(items, worker, *, max_concurrent=None, on_result=None):
-        queued = list(items)
-        scheduler_calls.append({"items": queued, "max_concurrent": max_concurrent})
-        return [await worker(item) for item in queued]
-
     async def failing_llm(*args, **kwargs):
         raise RuntimeError("primary concurrency exhausted")
-
-    monkeypatch.setattr(writer, "run_llm_tasks", fake_run_llm_tasks)
 
     runtime = DocGenWriterRuntime(
         TracedExecutionContext(
@@ -286,32 +219,22 @@ async def test_docgen_writer_raises_when_primary_completion_fails(monkeypatch) -
             digest_mode="systematic",
         )
 
-    assert scheduler_calls
-    assert all(call == {"items": [None], "max_concurrent": 1} for call in scheduler_calls)
 
 
 @pytest.mark.anyio
 async def test_docgen_writer_raises_when_completion_times_out(monkeypatch) -> None:
-    scheduler_calls: list[dict[str, object]] = []
-
-    async def slow_run_llm_tasks(items, worker, *, max_concurrent=None, on_result=None):
-        queued = list(items)
-        scheduler_calls.append({"items": queued, "max_concurrent": max_concurrent})
+    async def slow_llm(*args, **kwargs):
         await asyncio.sleep(0.05)
-        return [await worker(item) for item in queued]
-
-    async def fake_llm(*args, **kwargs):
         return "# Should not arrive\n\nThis completion is too slow."
 
     monkeypatch.setattr(writer, "WRITER_TASK_TIMEOUT_S", 0.01)
-    monkeypatch.setattr(writer, "run_llm_tasks", slow_run_llm_tasks)
 
     runtime = DocGenWriterRuntime(
         TracedExecutionContext(
             course_id="course_docgen0000",
             build_session_id="build-1",
             digest_mode="systematic",
-            llm_caller=fake_llm,
+            llm_caller=slow_llm,
         )
     )
     with pytest.raises(writer.DocGenWriterNoContentError, match="TimeoutError"):
@@ -328,18 +251,8 @@ async def test_docgen_writer_raises_when_completion_times_out(monkeypatch) -> No
             digest_mode="systematic",
         )
 
-    assert scheduler_calls == [{"items": [None], "max_concurrent": 1}]
-
-
 @pytest.mark.anyio
-async def test_chapter_rewrite_uses_run_llm_tasks(monkeypatch) -> None:
-    scheduler_calls: list[dict[str, object]] = []
-
-    async def fake_run_llm_tasks(items, worker, *, max_concurrent=None, on_result=None):
-        queued = list(items)
-        scheduler_calls.append({"items": queued, "max_concurrent": max_concurrent})
-        return [await worker(item) for item in queued]
-
+async def test_chapter_rewrite_calls_single_llm_directly(monkeypatch) -> None:
     async def fake_llm(*args, **kwargs):
         return (
             "# Function Graphs\n\n"
@@ -352,8 +265,6 @@ async def test_chapter_rewrite_uses_run_llm_tasks(monkeypatch) -> None:
             "## 单元测试\n\n"
             "1. Explain the graph trend.\n"
         )
-
-    monkeypatch.setattr(chapter_revision, "run_llm_tasks", fake_run_llm_tasks)
 
     rewritten, quality = await chapter_revision.maybe_rewrite_chapter(
         llm=fake_llm,
@@ -375,7 +286,6 @@ async def test_chapter_rewrite_uses_run_llm_tasks(monkeypatch) -> None:
 
     assert "Function Graphs" in rewritten
     assert quality.rewrite_used is True
-    assert scheduler_calls == [{"items": [None], "max_concurrent": 1}]
 
 
 @pytest.mark.anyio

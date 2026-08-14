@@ -213,8 +213,9 @@ def build_docgen_writer_messages(
 6. 学习者画像只调整解释节奏、练习密度、文档内解析方式和易错提醒；如果含前置诊断信号，把它落实到讲解起点、例题、练习、错因提醒、例题/练习解析和章末检测配置中，不在正文复述问卷，也不要写成真实考试后的反馈流程。
 7. 只有当概念关系、方法流程、几何/坐标/结构关系、实验路径等靠文字不直观时，才请求 Mermaid 图示；不要为公式展开、三步文字清单、单条箭头线或纯文字关系生成图。只允许使用 Mermaid 代码块表达图示，不请求图片、SVG、HTML 图或交互图。代码块只用于代码、命令、伪代码或 Mermaid。
 8. 严格控制篇幅：正文围绕目标字数写作，最多不超过目标字数约 35%；如果覆盖要求和篇幅冲突，合并相近解释与重复例题，但不得删除“必须逐项覆盖”中的任何一项。
-9. 较长章节自然加入 2-3 个短提示块：`> [!IMPORTANT]` 写关键前提/结论，`> [!TIP]` 写快速抓手，`> [!WARNING]` 写易错边界；题干或短练习可用 `> [!QUESTION]` 轻底色题块，解析、步骤和答案保持普通正文。
-10. `## 单元测试` 必须是最后一个二级标题，按计划生成 {chapter_end_min_tasks}-{chapter_end_max_tasks} 个可判断的短题、案例检查、步骤任务、边界辨析或迁移任务；每题都包含题目以及答案、判定依据或解析，不能只留“自行思考”。
+9. 较长章节自然加入 2-3 个短提示块：`> [!IMPORTANT]` 写关键前提/结论，`> [!TIP]` 写快速抓手，`> [!WARNING]` 写易错边界；正文中的题干或短练习可用 `> [!QUESTION]` 轻底色题块，解析、步骤和答案保持普通正文。
+10. `## 单元测试` 必须是最后一个二级标题，按计划生成 {chapter_end_min_tasks}-{chapter_end_max_tasks} 个可判断的短题、案例检查、步骤任务、边界辨析或迁移任务；每题都包含题目以及答案、判定依据或解析，不能只留“自行思考”。只有选择类题目输出 A-D 选项，填空、判断、短答、步骤任务和迁移任务不得伪造选项。
+11. 单元测试中的每题必须使用独立的 `> [!QUESTION]` 题干块，并紧跟独立的 `> [!ANSWER]` 答案块；答案、判定依据和解析全部放入 ANSWER 块，使阅读端默认折叠。题目块首行使用 `**Q01｜题型｜难度｜考点：具体考点**`，答案块包含 `**答案**`，需要时再写 `**解析步骤**`。不要把答案写进 QUESTION 块，也不要把多题答案合并到一个 ANSWER 块。
 
 版式合同：
 {_presentation_contract(digest_mode=normalized_mode)}
@@ -236,6 +237,7 @@ def build_docgen_writer_messages(
 交稿前静默自检（不要把自检过程写进正文）：
 - 再逐项核对开头“必须逐项覆盖”的 {len(required_elements) or 1} 项要求；每项必须在正文解释、例题、练习或边界辨析中有实际内容。
 - 若仍有漏项，先合并重复解释或练习腾出篇幅并补齐，再输出最终 Markdown；不得用目录、清单或仅复述要素名称冒充覆盖。
+- 检查所有 `**加粗**` 标记成对闭合，结束 `**` 前不得留空格；逐题确认单元测试答案均位于独立的 `[!ANSWER]` 块。
 """.strip()
     messages = [
         {"role": "system", "content": system_prompt},
@@ -251,57 +253,6 @@ def build_docgen_writer_messages(
             "dense_context_chars": len(dense_context),
             "chapter_index": chapter_index,
             "chapter_count": chapter_count,
-        },
-        output=messages,
-    )
-
-
-def build_docgen_research_purify_messages(
-    *,
-    dense_context: str,
-    chapter_title: str,
-    objective: str,
-    required_elements: list[str],
-    digest_mode: str,
-) -> list[dict[str, str]]:
-    must_cover = "、".join(required_elements) if required_elements else "与本章最相关的核心知识"
-    profile = get_docgen_mode_profile(digest_mode)
-    mode_label = profile.prompt_label
-    system_prompt = """
-你是 AITeachMe 的研究整理助手。
-你的任务是把杂乱素材提纯成适合章节写作使用的中文研究笔记。
-你不能补充素材里没有的事实，也不能把研究笔记写成最终讲义正文。
-""".strip()
-    user_prompt = f"""
-请把下面的研究素材提纯成“供章节写作直接使用”的中文研究笔记。
-
-章节标题：{chapter_title or "本章内容"}
-章节目标：{objective or "为本章提供可教学、可解释、可举例的可靠材料。"}
-文档模式：{mode_label}
-必须覆盖：{must_cover}
-
-输出要求：
-1. 只保留和本章直接相关的信息。
-2. 优先保留定义、公式、推理线索、典型例子、来源线索。
-3. 删除空话、重复段落和无关背景。
-4. 输出应是中文 Markdown 研究笔记，不是最终成稿。
-5. 不能补充素材中没有出现的事实。
-6. 本模式优先保留：{profile.prompt_research_focus}。
-
-原始素材：
-{dense_context}
-""".strip()
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_prompt},
-    ]
-    return trace_prompt_build(
-        "docgen_research_purify",
-        inputs={
-            "chapter_title": chapter_title,
-            "digest_mode": digest_mode,
-            "required_count": len(required_elements),
-            "dense_context_chars": len(dense_context),
         },
         output=messages,
     )
@@ -432,7 +383,6 @@ def build_docgen_gap_query_messages(
 
 __all__ = [
     "build_docgen_mermaid_prompt",
-    "build_docgen_research_purify_messages",
     "build_docgen_sub_query_messages",
     "build_docgen_gap_query_messages",
     "build_docgen_writer_messages",

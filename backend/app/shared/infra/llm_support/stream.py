@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from typing import Any, AsyncGenerator
 
 from app.schemas.llm import ChatMessage
@@ -28,6 +28,7 @@ from .common import (
     prepare_completion_attempt,
     pop_overall_timeout_s,
     context_request_timeout_s,
+    should_advance_to_fallback,
     should_try_endpoint_fallback,
     sleep_before_retry,
     track_call,
@@ -49,6 +50,26 @@ from .responses_adapter import (
     response_stream_delta,
     response_stream_final_text,
 )
+
+StreamAttemptCallback = Callable[[str, Mapping[str, Any]], Awaitable[None]]
+
+
+async def _notify_attempt_progress(
+    callback: StreamAttemptCallback | None,
+    event: str,
+    **payload: Any,
+) -> None:
+    if callback is None:
+        return
+    try:
+        await callback(event, payload)
+    except Exception as exc:
+        logger.warning(
+            "llm_stream_attempt_callback_failed",
+            event=event,
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
 
 
 def _ensure_native_responses_streaming(litellm: Any, provider_call: ProviderCall) -> bool:
@@ -241,6 +262,7 @@ async def acompletion_stream(
     task_type: object | None = None,
     model: str | None = None,
     extra_metadata: Mapping[str, Any] | None = None,
+    attempt_callback: StreamAttemptCallback | None = None,
     **kwargs,
 ) -> AsyncGenerator[str, None]:
     """Async streaming completion."""
@@ -252,6 +274,7 @@ async def acompletion_stream(
             task_type=task_type,
             model=model,
             extra_metadata=extra_metadata,
+            attempt_callback=attempt_callback,
             kwargs=kwargs,
         ),
         overall_timeout_s,
@@ -269,6 +292,7 @@ async def _acompletion_stream_impl(
     task_type: object | None,
     model: str | None,
     extra_metadata: Mapping[str, Any] | None,
+    attempt_callback: StreamAttemptCallback | None,
     kwargs: dict[str, Any],
 ) -> AsyncGenerator[str, None]:
     litellm = load_litellm()
@@ -282,6 +306,7 @@ async def _acompletion_stream_impl(
     last_error: Exception | None = None
 
     attempt_number = 0
+    has_fallback_endpoints = any(context.endpoint_role == "fallback" for context in contexts)
     async with get_llm_concurrency_limiter().slot() as lease:
         for group_index, context_group in enumerate(completion_context_groups(contexts)):
             if (
@@ -311,6 +336,14 @@ async def _acompletion_stream_impl(
                     tracked_model = prepared.tracked_model
                     attempt_streamed_content = False
                     try:
+                        await _notify_attempt_progress(
+                            attempt_callback,
+                            "connecting",
+                            attempt=prepared.attempt,
+                            retry_round=retry_round,
+                            endpoint_role=context.endpoint_role,
+                            model=tracked_model,
+                        )
                         log_attempt_started(
                             "llm_stream_started",
                             attempt=prepared,
@@ -536,7 +569,34 @@ async def _acompletion_stream_impl(
                             )
                             raise LLMCallError(reason=str(exc)) from exc
 
+                if should_advance_to_fallback(
+                    context_group,
+                    has_fallback_endpoints=has_fallback_endpoints,
+                    error=last_error,
+                ):
+                    logger.info(
+                        "llm_stream_primary_retries_skipped_for_endpoint_fallback",
+                        task_type=primary_context.task_type,
+                        model=tracked_model,
+                        error_type=last_error.__class__.__name__ if last_error is not None else "",
+                    )
+                    await _notify_attempt_progress(
+                        attempt_callback,
+                        "fallback",
+                        attempt=attempt_number,
+                        endpoint_role="fallback",
+                        error_type=last_error.__class__.__name__ if last_error is not None else "",
+                    )
+                    break
                 if retry_round < group_max_retries:
+                    await _notify_attempt_progress(
+                        attempt_callback,
+                        "retrying",
+                        attempt=attempt_number,
+                        retry_round=retry_round + 1,
+                        endpoint_role=context_group[0].endpoint_role,
+                        error_type=last_error.__class__.__name__ if last_error is not None else "",
+                    )
                     await sleep_before_retry(retry_round, error=last_error, lease=lease)
 
         track_call(

@@ -120,6 +120,8 @@ class DocGenState(TypedDict, total=False):
     cancel_after_rollback: bool
     graph_sync_status: str
     graph_sync_metrics: dict[str, Any]
+    vector_index_status: str
+    vector_index_chunk_count: int
 
     load_ms: int
     prepare_ms: Annotated[int, operator.add]

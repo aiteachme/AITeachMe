@@ -11,6 +11,7 @@ from app.shared.infra.llm_support.defaults import DEFAULT_LLM_CONCURRENCY_LIMIT
 from .support import get_llm_provider_model_defaults, resolve_runtime_llm_provider
 
 DEFAULT_INGEST_MAX_UPLOAD_SIZE_MB = 20
+DEFAULT_KNOWLEDGE_GRAPH_PREFETCH_CONCURRENCY = 9
 
 DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
     "models": {
@@ -32,6 +33,7 @@ DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
         "api_mode": "auto",
         "responses_api_models": [],
         "fallback_only_models": [],
+        "text_endpoint_fallback_enabled": True,
         "reasoning_efforts": {
             "light": None,
             "primary": None,
@@ -54,6 +56,7 @@ DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
     },
     "docgen": {
         "allow_external_search": True,
+        "max_retrieval_queries_per_chapter": 2,
         "generate_cover_image": False,
         "generate_interactive_html": False,
     },
@@ -74,7 +77,7 @@ DEFAULT_SETTINGS_VALUES: dict[str, Any] = {
     "knowledge_graph": {
         "sync_after_docgen": True,
         "prefetch_during_docgen": True,
-        "prefetch_concurrency": DEFAULT_LLM_CONCURRENCY_LIMIT,
+        "prefetch_concurrency": DEFAULT_KNOWLEDGE_GRAPH_PREFETCH_CONCURRENCY,
         "max_parallel_extractions": 16,
     },
     "observability": {

@@ -17,7 +17,7 @@ _HEADING_LINE_RE = re.compile(r"^(?P<prefix>#{1,6})\s+(?P<title>.+?)\s*$")
 _BOLD_LABEL_LINE_RE = re.compile(r"^\s*\*\*(?P<title>[^*\n]{1,30})\*\*\s*$")
 _BLOCKQUOTE_LINE_RE = re.compile(r"^\s*>\s?(?P<body>.*)$")
 _CALLOUT_MARKER_RE = re.compile(
-    r"^\s*\[!(?P<kind>NOTE|TIP|IMPORTANT|WARNING|CAUTION|EXAMPLE|PRACTICE|QUESTION)\]",
+    r"^\s*\[!(?P<kind>NOTE|TIP|IMPORTANT|WARNING|CAUTION|EXAMPLE|PRACTICE|QUESTION|ANSWER)\]",
     re.IGNORECASE,
 )
 _MARKDOWN_DECORATION_RE = re.compile(r"[#*_`>{}\[\]()]")
@@ -82,6 +82,7 @@ _PLAIN_CALLOUT_TITLES = {
     "EXAMPLE": "例题",
     "PRACTICE": "练习",
     "QUESTION": "题目",
+    "ANSWER": "答案与解析",
 }
 _GENERIC_VISIBLE_FOCUS_TITLES = {
     "未命名章节",
@@ -420,7 +421,7 @@ def _visible_callout_char_count(content_lines: Iterable[str]) -> int:
 
 def _should_flatten_callout(kind: str, content_lines: list[str]) -> bool:
     normalized_kind = kind.strip().upper()
-    if normalized_kind == "QUESTION":
+    if normalized_kind in {"QUESTION", "ANSWER"}:
         return False
     return normalized_kind in {"EXAMPLE", "PRACTICE"} or (
         _visible_callout_char_count(content_lines) > _LONG_CALLOUT_VISIBLE_CHAR_LIMIT

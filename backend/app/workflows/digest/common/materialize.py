@@ -110,11 +110,15 @@ async def materialize_shared_inputs(
     }
 
     with managed_session() as session:
+        course_record = get_course_record_by_id(session, course_id)
+        if course_record is None:
+            raise RuntimeError(f"Course `{course_id}` not found while materializing retrieval inputs.")
         documents = knowledge_repo.bulk_create_documents(
             session,
             [
                 RawFile(
                     id=packet.file_id,
+                    user_id=course_record.user_id,
                     origin_course_id=course_id,
                     filename=packet.filename,
                     filetype="markdown",
@@ -161,6 +165,7 @@ async def materialize_shared_inputs(
 
         reused_chunks: list[RetrievalChunk] = []
         new_chunk_models: list[RetrievalChunk] = []
+        content_changed_chunk_ids: list[int] = []
         reused_count = 0
 
         for section in desired_sections:
@@ -182,6 +187,7 @@ async def materialize_shared_inputs(
                 )
                 continue
 
+            content_changed = existing_chunk.content != section.normalized_content
             metadata_changed = any(
                 [
                     existing_chunk.file_id != file_id,
@@ -205,8 +211,22 @@ async def materialize_shared_inputs(
                 existing_chunk.is_active = True
                 existing_chunk.updated_at = utcnow()
                 session.add(existing_chunk)
+            if content_changed and existing_chunk.id is not None:
+                content_changed_chunk_ids.append(int(existing_chunk.id))
             reused_chunks.append(existing_chunk)
             reused_count += 1
+
+        if content_changed_chunk_ids:
+            knowledge_repo.delete_embeddings_by_chunk_ids(
+                session,
+                course_id=course_id,
+                chunk_ids=content_changed_chunk_ids,
+            )
+            for chunk in reused_chunks:
+                if chunk.id is not None and int(chunk.id) in content_changed_chunk_ids:
+                    chunk.embedding_model = None
+                    chunk.vector_ref = None
+                    session.add(chunk)
 
         if reused_chunks:
             session.commit()
@@ -217,15 +237,12 @@ async def materialize_shared_inputs(
         should_embed = should_generate_course_embeddings(session, course_id=course_id)
         if should_embed and (chunk_rows or reused_chunks):
             runtime = get_runtime_embedding_config()
-            course_record = get_course_record_by_id(session, course_id)
             capability = (
                 get_course_vector_capability(session, course_record)
-                if course_record is not None
-                else None
             )
             expected_table = (
                 build_course_index_ref_for_course(course_record)
-                if capability is not None and course_record is not None
+                if capability is not None
                 else None
             )
             reused_chunk_ids = [int(chunk.id) for chunk in reused_chunks if chunk.id is not None]

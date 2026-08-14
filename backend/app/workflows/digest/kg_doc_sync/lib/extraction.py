@@ -10,7 +10,7 @@ from time import perf_counter
 from pydantic import BaseModel, Field, field_validator, model_validator
 import structlog
 
-from app.shared.infra.llm_support import acompletion_structured, run_llm_tasks
+from app.shared.infra.llm_support import acompletion_structured
 from app.shared.infra.prompt_loader import populate_prompt
 from app.schemas.llm import ChatMessage, SYSTEM, USER
 from app.workflows.digest.kg_doc_sync.lib.model_policy import (
@@ -332,19 +332,15 @@ async def _repair_docs_extraction_after_empty(
             ),
         }
     )
-    async def _run_empty_repair(_: object) -> ChunkExtractionResult:
-        return await acompletion_structured(
-            response_model=ChunkExtractionResult,
-            messages=repair_messages,
-            **kg_doc_sync_completion_kwargs_with_metadata(
-                KGDocSyncModelStep.EMPTY_REPAIR,
-                chunk_title=chunk_title,
-                header_path=header_path,
-            ),
-        )
-
-    (result,) = await run_llm_tasks([None], _run_empty_repair, max_concurrent=1)
-    return result
+    return await acompletion_structured(
+        response_model=ChunkExtractionResult,
+        messages=repair_messages,
+        **kg_doc_sync_completion_kwargs_with_metadata(
+            KGDocSyncModelStep.EMPTY_REPAIR,
+            chunk_title=chunk_title,
+            header_path=header_path,
+        ),
+    )
 
 
 def _should_retry_docs_extraction_after_empty(
@@ -732,25 +728,22 @@ async def _extract_candidates_internal(
 
     try:
         diagnostics.llm_attempted = True
-        async def _run_section_graph(_: object) -> ChunkExtractionResult:
-            return await acompletion_structured(
-                response_model=ChunkExtractionResult,
-                messages=messages,
-                **kg_doc_sync_completion_kwargs_with_metadata(
-                    KGDocSyncModelStep.SECTION_GRAPH,
-                    chunk_title=chunk_title,
-                    header_path=header_path,
-                    doc_source_type=doc_source_type,
-                    digest_mode=digest_mode,
-                    chunk_chars=len(chunk_content),
-                    llm_chunk_chars=len(llm_chunk_content),
-                    course_context_chars=len(course_context or ""),
-                    llm_course_context_chars=len(llm_course_context),
-                    section_timeout_s=kg_doc_sync_section_llm_timeout_s(),
-                ),
-            )
-
-        (result,) = await run_llm_tasks([None], _run_section_graph, max_concurrent=1)
+        result = await acompletion_structured(
+            response_model=ChunkExtractionResult,
+            messages=messages,
+            **kg_doc_sync_completion_kwargs_with_metadata(
+                KGDocSyncModelStep.SECTION_GRAPH,
+                chunk_title=chunk_title,
+                header_path=header_path,
+                doc_source_type=doc_source_type,
+                digest_mode=digest_mode,
+                chunk_chars=len(chunk_content),
+                llm_chunk_chars=len(llm_chunk_content),
+                course_context_chars=len(course_context or ""),
+                llm_course_context_chars=len(llm_course_context),
+                section_timeout_s=kg_doc_sync_section_llm_timeout_s(),
+            ),
+        )
     except Exception as exc:
         diagnostics.llm_error_count += 1
         logger.warning(

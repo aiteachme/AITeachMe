@@ -41,7 +41,7 @@ def _result(url: str, title: str, snippet: str, *, score: float = 0.8, source: s
     return SearchResult(url=url, title=title, snippet=snippet, score=score, source=source)
 
 
-def test_source_filtering_coverage_and_gap_query_helpers() -> None:
+def test_source_filtering_and_ranking_helpers() -> None:
     runtime = _runtime()
     results = [
         _result("local://section/1", "Local matrix", "矩阵乘法和秩", source="local_rag"),
@@ -57,23 +57,6 @@ def test_source_filtering_coverage_and_gap_query_helpers() -> None:
     stats: dict[str, dict[str, object]] = {}
     runtime._record_retriever_call(stats, retriever_name="local_rag", query="矩阵", results=[results[0]])
     runtime._record_retriever_call(stats, retriever_name="local_rag", query="矩阵", results=[])
-    pending = ["矩阵", "秩", "线性映射"]
-    round_queries = runtime._take_round_queries(pending, executed_queries=["矩阵"], limit=2)
-    enqueued = runtime._enqueue_gap_queries(pending, ["秩", "特征值", " "], limit=5)
-    assessment = runtime._assess_coverage(
-        dense_context="矩阵乘法说明了秩的直觉，也包含线性映射例子。",
-        objective="掌握矩阵 线性映射",
-        required_elements=["矩阵乘法", "特征值应用"],
-        digest_mode="systematic",
-        curated_results=candidates,
-    )
-    gap_queries = runtime._build_gap_queries(
-        chapter_title="矩阵基础",
-        objective="掌握矩阵 线性映射",
-        gaps=assessment["gaps_remaining"],
-        digest_mode="systematic",
-        max_queries=2,
-    )
     breakdown = runtime._classify_source_breakdown(candidates)
 
     assert [item.url for item in candidates] == [
@@ -87,11 +70,6 @@ def test_source_filtering_coverage_and_gap_query_helpers() -> None:
     assert [item.title for item in deduped] == ["Local matrix", "No URL"]
     assert stats["local_rag"]["query_count"] == 2
     assert stats["local_rag"]["result_count"] == 1
-    assert round_queries == ["秩", "线性映射"]
-    assert enqueued == ["特征值"]
-    assert assessment["coverage_score"] < 1
-    assert "特征值应用" in assessment["gaps_remaining"]
-    assert gap_queries and all(query.startswith("矩阵基础") for query in gap_queries)
     assert breakdown == {"local": 1, "institutional": 1, "academic": 1, "general_web": 3}
 
 
@@ -264,7 +242,7 @@ def test_source_slice_line_spans_advance_for_repeated_sections() -> None:
     assert "L4: 重复定义" in hydrated.text
 
 
-def test_priority_source_context_spreads_budget_across_top_slices() -> None:
+def test_priority_source_context_keeps_top_sections_whole_until_total_budget() -> None:
     section_texts = [f"知识片段 {index}：" + (f"要点{index} " * 120) for index in range(1, 7)]
     source_text = "\n\n".join(section_texts)
     packet = SourcePacket(
@@ -307,18 +285,13 @@ def test_priority_source_context_spreads_budget_across_top_slices() -> None:
             for index in range(1, 7)
         ],
         max_total_chars=1800,
-        max_excerpt_chars=900,
     )
 
-    assert [item["source_ref"] for item in hydrated.source_details] == [
-        "budget_sec_1",
-        "budget_sec_2",
-        "budget_sec_3",
-        "budget_sec_4",
-    ]
+    refs = [item["source_ref"] for item in hydrated.source_details]
+    assert refs[:2] == ["budget_sec_1", "budget_sec_2"]
+    assert len(refs) < 6
     assert "知识片段 1" in hydrated.text
-    assert "知识片段 4" in hydrated.text
-    assert "知识片段 5" not in hydrated.text
+    assert "要点1 " * 100 in hydrated.text
 
 
 def test_local_rag_section_fallback_searches_full_section_content() -> None:
@@ -448,6 +421,63 @@ async def test_research_round_tracks_local_fallback_and_external_hits(monkeypatc
 
 
 @pytest.mark.anyio
+async def test_research_round_keeps_external_calibration_when_local_is_sufficient(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = _runtime()
+    monkeypatch.setattr(chapter_context_module, "enrich_queries_for_retriever", lambda queries, **_kwargs: queries)
+
+    class FakeRetriever:
+        def __init__(self, name: str, results: list[SearchResult]) -> None:
+            self.name = name
+            self.results = results
+            self.queries: list[str] = []
+
+        async def traced_search(self, query: str, *, max_results: int) -> list[SearchResult]:
+            self.queries.append(query)
+            return self.results[:max_results]
+
+    local = FakeRetriever(
+        "local_rag",
+        [_result("local://strong", "Strong local", "高相关本地材料", score=0.95, source="local_rag")],
+    )
+    external = FakeRetriever(
+        "bocha",
+        [_result("https://example.edu/calibration", "External calibration", "外部校准材料", score=0.8, source="bocha")],
+    )
+
+    round_result = await runtime._run_research_round(
+        round_index=1,
+        round_queries=["矩阵", "向量"],
+        search_domain="zh",
+        query_limit=2,
+        settings=SimpleNamespace(
+            rag=SimpleNamespace(similarity_threshold=0.6),
+            local_rag=SimpleNamespace(min_results=1),
+        ),
+        local_retriever=local,
+        other_retrievers=[external],
+        local_hits_total=0,
+        web_hits_total=0,
+        fallback_queries_total=[],
+        executed_queries=[],
+        retriever_stats={},
+        all_results=[],
+        retrieval_started_at=time.monotonic(),
+        retrieval_budget_s=3600.0,
+        provider_budget_s=1.0,
+        external_query_cap=1,
+    )
+
+    assert round_result["round_fallback_queries"] == []
+    assert round_result["round_external_queries"] == ["矩阵"]
+    assert round_result["round_local_hits"] == 2
+    assert round_result["round_web_hits"] == 1
+    assert local.queries == ["矩阵", "向量"]
+    assert external.queries == ["矩阵"]
+
+
+@pytest.mark.anyio
 async def test_search_budget_and_execute_return_stable_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
     runtime = _runtime()
 
@@ -551,10 +581,10 @@ async def test_search_budget_and_execute_return_stable_metadata(monkeypatch: pyt
     assert failed == []
     assert empty.metadata == {"local_hits": 0, "web_hits": 0, "query_count": 0}
     assert result.content == "矩阵 本地材料 已压缩"
-    assert result.metadata["local_hits"] == 1
+    assert result.metadata["local_hits"] == 2
     assert result.metadata["web_hits"] == 0
-    assert result.metadata["query_count"] == 1
+    assert result.metadata["query_count"] == 2
     assert result.metadata["research_round_count"] == 1
-    assert result.metadata["stop_reason"] == "coverage_target_met"
+    assert result.metadata["stop_reason"] == "query_plan_executed"
     assert result.metadata["compression_mode"] == "extractive"
     assert result.metadata["configured_retrievers"] == ["local_rag"]

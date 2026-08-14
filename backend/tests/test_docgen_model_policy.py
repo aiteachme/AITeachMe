@@ -15,21 +15,16 @@ def test_docgen_model_policy_routes_tiers_and_bounds_noncritical_steps() -> None
     systematic_writer = docgen_completion_kwargs(DocGenModelStep.WRITER, digest_mode="systematic")
     sprint_writer = docgen_completion_kwargs(DocGenModelStep.WRITER, digest_mode="sprint")
     intent_core = docgen_completion_kwargs(DocGenModelStep.INTENT_CORE)
+    backbone = docgen_completion_kwargs(DocGenModelStep.DOCUMENT_BACKBONE)
 
     assert systematic_writer["model"] == "reason"
     assert sprint_writer["model"] == "primary"
     assert intent_core["overall_timeout_s"] >= intent_core["timeout"]
+    assert backbone["model"] == "reason"
+    assert backbone["max_tokens"] == 10000
+    assert backbone[PROVIDER_NATIVE_TOOLS_KWARG] == []
     assert systematic_writer[PROVIDER_NATIVE_TOOLS_KWARG] == []
     assert "task_type" not in systematic_writer
-
-    for step in (DocGenModelStep.RESEARCH_PURIFY,):
-        kwargs = docgen_completion_kwargs(step, digest_mode="sprint")
-
-        assert kwargs["model"] == "light"
-        assert kwargs["timeout"] < systematic_writer["timeout"]
-        assert kwargs["overall_timeout_s"] < systematic_writer["overall_timeout_s"]
-        assert kwargs["max_retries"] < systematic_writer["max_retries"]
-
 
 def test_kg_doc_sync_model_policy_disables_provider_native_tools_by_default() -> None:
     kwargs = kg_doc_sync_completion_kwargs(KGDocSyncModelStep.SECTION_GRAPH)

@@ -5,7 +5,7 @@ from __future__ import annotations
 import structlog
 
 from app.shared.infra.workflow.context import WorkflowContext
-from app.workflows.digest.planner.lib.planner_events import emit_planner_event, emit_planner_token
+from app.workflows.digest.planner.lib.planner_events import emit_planner_event
 from app.workflows.digest.planner.lib.plans import _resolve_course_name, compose_planning_note
 from app.workflows.digest.planner.state import BuildPlannerState
 
@@ -92,7 +92,6 @@ def build_understand_goal_and_materials_node(*, context: WorkflowContext):
         )
         planning_note = _build_planning_note(state)
         material_note = _build_material_note(state)
-        await emit_planner_token(state, planning_note)
         await emit_planner_event(
             state,
             event="planner.analysis.ready",

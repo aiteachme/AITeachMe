@@ -7,7 +7,7 @@ from typing import Any
 
 import structlog
 
-from app.shared.infra.llm_support import acompletion_with_fallback, run_llm_tasks
+from app.shared.infra.llm_support import acompletion_with_fallback
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.models import DocGenIntentProfile
 from app.workflows.digest.docgen.prompts.intent import build_intent_core_messages
@@ -31,8 +31,8 @@ async def infer_intent_core(
     learner_profile_text: str = "",
     extra_metadata: Mapping[str, Any] | None = None,
 ) -> DocGenIntentProfile:
-    async def _run_intent(_: object) -> object:
-        return await acompletion_with_fallback(
+    try:
+        response = await acompletion_with_fallback(
             build_intent_core_messages(
                 course_name=course_name,
                 digest_mode=digest_mode,
@@ -51,9 +51,6 @@ async def infer_intent_core(
             ),
             response_model=DocGenIntentProfile,
         )
-
-    try:
-        (response,) = await run_llm_tasks([None], _run_intent, max_concurrent=1)
     except Exception as exc:
         logger.warning("docgen_intent_core_failed", error=str(exc))
         raise DocGenIntentError("LLM failed to infer DocGen intent after configured retries.") from exc

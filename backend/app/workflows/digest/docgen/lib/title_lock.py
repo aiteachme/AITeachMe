@@ -8,7 +8,7 @@ from typing import Any
 
 import structlog
 
-from app.shared.infra.llm_support import acompletion_with_fallback, run_llm_tasks
+from app.shared.infra.llm_support import acompletion_with_fallback
 from app.workflows.digest.common.pedagogy import (
     clean_generated_chapter_title,
     resolve_effective_chapter_title,
@@ -125,8 +125,8 @@ async def lock_title_for_chapter(
     confirmed_title = resolve_effective_chapter_title(chapter, chapter_index=chapter_index)
     fallback = fallback_locked_title(chapter)
 
-    async def _run_title_lock(_: object) -> object:
-        return await acompletion_with_fallback(
+    try:
+        response = await acompletion_with_fallback(
             build_title_lock_messages(
                 course_name=course_name,
                 digest_mode=digest_mode,
@@ -143,9 +143,6 @@ async def lock_title_for_chapter(
             ),
             response_model=LockedChapterTitle,
         )
-
-    try:
-        (response,) = await run_llm_tasks([None], _run_title_lock, max_concurrent=1)
     except Exception as exc:
         logger.warning("docgen_title_lock_failed", chapter_index=chapter_index, error=str(exc))
         fallback.plan_mismatch_warnings = [

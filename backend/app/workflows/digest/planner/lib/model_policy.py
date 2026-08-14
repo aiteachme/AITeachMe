@@ -13,12 +13,16 @@ from app.workflows.common.model_policy import ProviderNativeToolPolicy, compact_
 
 PlannerModelSlot = Literal["light", "primary", "reason"]
 PlannerAPIMode = Literal["auto", "chat_completions", "responses"]
+_PLANNER_FAST_TIMEOUT_S = 60
 _PLANNER_DRAFT_TIMEOUT_S = 120
 _PLANNER_DRAFT_OVERALL_TIMEOUT_S = 180
 
 
 class PlannerModelStep(str, Enum):
+    DIAGNOSE_QUESTIONS = "compose_planner_draft.diagnose_questions"
+    REPAIR_DIAGNOSIS = "compose_planner_draft.repair_diagnosis"
     DRAFT_PLAN = "compose_planner_draft"
+    REPAIR_PLAN = "compose_planner_draft.repair_plan"
 
 
 @dataclass(frozen=True)
@@ -92,15 +96,47 @@ class PlannerModelPolicy:
 
 
 _POLICIES: dict[PlannerModelStep, PlannerModelPolicy] = {
+    PlannerModelStep.DIAGNOSE_QUESTIONS: PlannerModelPolicy(
+        step=PlannerModelStep.DIAGNOSE_QUESTIONS,
+        call_type="stream",
+        model="light",
+        max_tokens=1600,
+        timeout_s=_PLANNER_FAST_TIMEOUT_S,
+        overall_timeout_s=_PLANNER_FAST_TIMEOUT_S,
+        temperature=0.3,
+        note="生成前置诊断选择题；失败时终止本轮 Planner 构建。",
+    ),
     PlannerModelStep.DRAFT_PLAN: PlannerModelPolicy(
         step=PlannerModelStep.DRAFT_PLAN,
         call_type="stream",
         model="light",
-        max_tokens=8000,
+        max_tokens=4800,
         timeout_s=_PLANNER_DRAFT_TIMEOUT_S,
         overall_timeout_s=_PLANNER_DRAFT_OVERALL_TIMEOUT_S,
         temperature=0.3,
-        note="生成 suggestion、plan 和 chapters；plan 段落会流式展示。",
+        note="生成轻量的 suggestion、plan 和章节覆盖合同；plan 段落会流式展示。",
+    ),
+    PlannerModelStep.REPAIR_DIAGNOSIS: PlannerModelPolicy(
+        step=PlannerModelStep.REPAIR_DIAGNOSIS,
+        call_type="text",
+        model="light",
+        max_tokens=1600,
+        timeout_s=_PLANNER_FAST_TIMEOUT_S,
+        overall_timeout_s=_PLANNER_FAST_TIMEOUT_S,
+        max_retries=1,
+        temperature=0.2,
+        note="仅在前置诊断不满足课程名或四选题合同时修复一次完整结果。",
+    ),
+    PlannerModelStep.REPAIR_PLAN: PlannerModelPolicy(
+        step=PlannerModelStep.REPAIR_PLAN,
+        call_type="text",
+        model="light",
+        max_tokens=4800,
+        timeout_s=_PLANNER_DRAFT_TIMEOUT_S,
+        overall_timeout_s=_PLANNER_DRAFT_OVERALL_TIMEOUT_S,
+        max_retries=1,
+        temperature=0.2,
+        note="仅在首次 Planner 输出未满足标签协议或用户硬约束时修复一次完整结果。",
     ),
 }
 

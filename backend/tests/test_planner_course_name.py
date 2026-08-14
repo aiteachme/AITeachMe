@@ -105,7 +105,7 @@ def test_course_identity_uses_explicit_topic_without_llm() -> None:
     assert "planner.identity.failed" not in stages
 
 
-def test_course_identity_does_not_persist_generic_learning_plan_name() -> None:
+def test_course_identity_does_not_treat_first_coverage_item_as_course_name() -> None:
     node = identity_node.build_generate_course_identity_node(context=None)
     result = asyncio.run(
         node(
@@ -122,8 +122,8 @@ def test_course_identity_does_not_persist_generic_learning_plan_name() -> None:
         )
     )
 
-    assert result["generated_course_name"] == "C语言变量与数据类型"
-    assert result["generated_course_name"] != "方案"
+    assert result["generated_course_name"] == "学习课程"
+    assert result["generated_course_name"] != "C语言变量与数据类型"
 
 
 def test_course_identity_uses_uploaded_material_topic_instead_of_instruction_noun() -> None:

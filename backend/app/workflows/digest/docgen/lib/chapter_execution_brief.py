@@ -8,7 +8,8 @@ import structlog
 
 from app.shared.infra.env_support import get_env_bounded_float
 from app.shared.infra.exceptions import LLMTimeoutError
-from app.shared.infra.llm_support import acompletion_with_fallback, run_llm_tasks
+from app.shared.infra.llm_support import acompletion_with_fallback
+from app.shared.infra.settings import get_settings
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.models import ChapterExecutionBrief, clean_string_list
 from app.workflows.digest.docgen.prompts.chapter_execution_brief import build_chapter_execution_brief_messages
@@ -48,16 +49,17 @@ async def build_chapter_execution_brief(
 ) -> ChapterExecutionBrief:
     chapter_index = int(chapter.get("chapter_index", 0) or 0) or 1
     timeout_s = _chapter_brief_timeout_seconds()
+    retrieval_query_limit = get_settings().docgen.max_retrieval_queries_per_chapter
 
-    async def _run_chapter_brief(_: object) -> object:
-        completion_kwargs = docgen_completion_kwargs_with_metadata(
-            DocGenModelStep.CHAPTER_EXECUTION_BRIEF,
-            digest_mode=digest_mode,
-            extra_metadata=extra_metadata,
-            docgen_stage="build_chapter_execution_brief",
-        )
-        completion_kwargs["overall_timeout_s"] = timeout_s
-        return await acompletion_with_fallback(
+    completion_kwargs = docgen_completion_kwargs_with_metadata(
+        DocGenModelStep.CHAPTER_EXECUTION_BRIEF,
+        digest_mode=digest_mode,
+        extra_metadata=extra_metadata,
+        docgen_stage="build_chapter_execution_brief",
+    )
+    completion_kwargs["overall_timeout_s"] = timeout_s
+    try:
+        response = await acompletion_with_fallback(
             build_chapter_execution_brief_messages(
                 course_name=course_name,
                 digest_mode=digest_mode,
@@ -72,13 +74,11 @@ async def build_chapter_execution_brief(
                 plan=plan,
                 docgen_history_brief=docgen_history_brief,
                 learner_profile_text=learner_profile_text,
+                max_retrieval_queries_per_chapter=retrieval_query_limit,
             ),
             **completion_kwargs,
             response_model=ChapterExecutionBrief,
         )
-
-    try:
-        (response,) = await run_llm_tasks([None], _run_chapter_brief, max_concurrent=1)
     except LLMTimeoutError as exc:
         logger.warning("docgen_chapter_brief_timeout", chapter_index=chapter_index, timeout_s=timeout_s)
         raise ChapterExecutionBriefError(f"LLM timed out building chapter brief for chapter {chapter_index}.") from exc
@@ -96,7 +96,10 @@ async def build_chapter_execution_brief(
     brief.formula_targets = clean_string_list(brief.formula_targets, limit=2)
     brief.example_targets = clean_string_list(brief.example_targets, limit=2)
     brief.pitfall_targets = clean_string_list(brief.pitfall_targets, limit=2)
-    brief.retrieval_queries = clean_string_list(brief.retrieval_queries, limit=2)
+    brief.retrieval_queries = clean_string_list(
+        brief.retrieval_queries,
+        limit=retrieval_query_limit,
+    )
     if not brief.teaching_outline or not brief.retrieval_queries:
         raise ChapterExecutionBriefError(f"LLM returned an incomplete chapter brief for chapter {chapter_index}.")
     if not brief.content_role_targets or not brief.example_coverage_plan:

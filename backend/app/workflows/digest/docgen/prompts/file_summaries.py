@@ -12,7 +12,7 @@ def build_file_summary_messages(
     *,
     filename: str,
     digest_mode: str,
-    chapter_titles: list[str],
+    chapter_contracts: list[dict[str, object]],
     excerpt: str,
     section_catalog: list[dict[str, object]] | None = None,
 ) -> list[dict[str, str]]:
@@ -28,12 +28,13 @@ def build_file_summary_messages(
 
 文件：{filename}
 模式：{mode_label}
-目标章节：{"、".join(chapter_titles) or "未提供"}
+目标章节合同：
+{json.dumps(chapter_contracts, ensure_ascii=False, indent=2)}
 
 切片目录（只能从这里选择 section_ref；line_start/line_end 用于后续精确提取原文）：
 {section_catalog_text}
 
-文件内容采样（不是完整全文；切片选择必须以切片目录为准）：
+本批完整解析正文（本批每个切片均已完整提供；切片选择必须以切片目录为准）：
 {excerpt}
 
 请输出 JSON：
@@ -68,10 +69,10 @@ def build_file_summary_messages(
 2. 章节亲和度用 chapter_index 字符串作为 key。
 3. 不要编造文件中没有的真题或引用。
 4. `chapter_slices` 是后续写作的关键上下文路由：请基于语义判断每个章节最需要哪些切片，不要只按关键词机械匹配。
-5. 每个 `section_ref` 必须来自切片目录；每个文件最多选择 18 个高价值切片，宁缺毋滥。
+5. 每个 `section_ref` 必须来自切片目录；为每个章节选择真正相关的切片，不能为了缩短输出漏掉承载 required_elements 的材料。
 6. `summary` 要概括这段原文对章节写作的用途，后续会和原文行一起注入章节上下文。
 7. 输出必须短：总 `summary` 不超过 180 个中文字符；各列表最多 8 项；每项不超过 32 个中文字符。
-8. `chapter_slices` 最多 12 项；`reason` 不超过 50 个中文字符，`summary` 不超过 70 个中文字符。
+8. 每个章节的 `chapter_slices` 最多 12 项；`reason` 不超过 50 个中文字符，`summary` 不超过 70 个中文字符。
 9. 不要在 `chapter_slices` 里输出 `file_id`、`filename`、`section_title`、`header_path`、`excerpt` 等额外字段。
 10. 不确定就跳过；绝不能补造 `????`、省略号或目录中不存在的 `section_ref`。
 """.strip()
@@ -84,7 +85,7 @@ def build_file_summary_messages(
         inputs={
             "filename": filename,
             "digest_mode": digest_mode,
-            "chapter_count": len(chapter_titles),
+            "chapter_count": len(chapter_contracts),
             "excerpt_chars": len(excerpt),
             "section_count": len(section_catalog or []),
         },

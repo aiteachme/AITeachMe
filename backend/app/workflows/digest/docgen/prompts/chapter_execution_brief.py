@@ -24,6 +24,7 @@ def build_chapter_execution_brief_messages(
     plan: str = "",
     docgen_history_brief: str = "",
     learner_profile_text: str = "",
+    max_retrieval_queries_per_chapter: int = 2,
 ) -> list[dict[str, str]]:
     profile = get_docgen_mode_profile(digest_mode)
     density_policy = dict(profile.example_density_policy)
@@ -138,7 +139,7 @@ Planner handoff:
 8. 每个 `example_coverage_plan` 和 `chapter_end_practice_plan` 项的 `purpose` 写清这道例题/案例帮助学生学会什么；自测、辨析或思考题同步规划参考答案、判定依据或解题要点。
 9. 如果 learner_profile 含“前置诊断信号”或“文档落点”，把相关选择落到 `teaching_outline`、`example_coverage_plan`、`chapter_end_practice_plan`、文档内练习解析、错因提醒或章末小测答案依据中，不要只复述诊断答案；不要把解析类诊断写成真实考试后的反馈流程。
 10. 旧字段 `concept_targets`、`definition_targets`、`formula_targets`、`example_targets`、`pitfall_targets` 只做兼容输出，各最多 2 条。
-11. `retrieval_queries` 最多 2 条。
+11. `retrieval_queries` 最多 {max_retrieval_queries_per_chapter} 条。
 12. 不允许顺带修改标题。
 13. 不要输出媒体请求，这些后续由规则节点派生。
 14. 只输出简短、可执行的字段，不要输出长段解释。
@@ -160,6 +161,7 @@ Planner handoff:
             "claim_target_count": len(list(claim_targets or [])),
             "source_slice_count": len(list(source_slices or [])),
             "evidence_item_count": len(list(evidence_items or [])),
+            "max_retrieval_queries_per_chapter": max_retrieval_queries_per_chapter,
         },
         output=messages,
     )

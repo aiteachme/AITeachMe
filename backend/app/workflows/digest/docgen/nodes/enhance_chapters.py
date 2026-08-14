@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 from time import perf_counter
 
 from app.shared.infra.execution import TracedExecutionContext
-from app.shared.infra.llm_support import run_llm_tasks
 from app.shared.infra.tools.builtin.markdown_processing import count_words
 from app.shared.infra.knowledge.build_store import (
     append_knowledge_build_recent_event,
@@ -16,6 +16,7 @@ from app.shared.infra.knowledge.build_store import (
 from app.utils.time import utcnow
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.docgen.lib.chapter_enhancement import enhance_chapter_draft
+from app.workflows.digest.docgen.lib.defaults import DEFAULT_DOCGEN_IO_PARALLELISM
 from app.workflows.digest.docgen.lib.models import ChapterDraft, ClaimLedger
 from app.workflows.digest.docgen.lib.publish import build_merged_markdown
 from app.workflows.digest.docgen.nodes.common import extract_markdown_preview_headings, publish_docgen_progress
@@ -58,8 +59,6 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
             digest_mode=state.get("digest_mode") or None,
             current_stage_description=f"章节初稿已生成，正在并行增强 {len(drafts)} 个章节。",
         )
-        used_static_figure_signatures: set[str] = set()
-
         async def _enhance_one(draft: ChapterDraft):
             traced_context = TracedExecutionContext(
                 course_id=state["course_id"],
@@ -92,7 +91,6 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
                 traced_context=traced_context,
                 digest_mode=state.get("digest_mode") or "systematic",
                 claim_ledger=claim_ledgers_by_chapter.get(draft.chapter_index),
-                used_static_figure_signatures=used_static_figure_signatures,
             )
             word_count = count_words(enhanced.markdown)
             upsert_knowledge_build_chapter_preview(
@@ -135,10 +133,15 @@ def build_enhance_chapters_node(*, context: WorkflowContext):
             )
             return enhanced, asset_manifest, practice_manifest
 
-        results = await run_llm_tasks(
-            drafts,
-            _enhance_one,
+        enhance_slots = asyncio.Semaphore(
+            max(1, min(len(drafts), int(DEFAULT_DOCGEN_IO_PARALLELISM)))
         )
+
+        async def _enhance_one_bounded(draft: ChapterDraft):
+            async with enhance_slots:
+                return await _enhance_one(draft)
+
+        results = await asyncio.gather(*(_enhance_one_bounded(draft) for draft in drafts))
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         enhanced_items = [item[0] for item in results]
         asset_manifests = [item[1] for item in results]

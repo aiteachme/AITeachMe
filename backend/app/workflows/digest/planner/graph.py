@@ -108,7 +108,12 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "调整方案时，这一步是唯一会重新调用的 Planner 生成模型。"
         ),
         "reads": ["material_context", "planning_note", "material_note", "message_history", "latest_plan", "feedback_message"],
-        "writes": ["build_plan_draft", "plan_outline_markdown"],
+        "writes": [
+            "build_plan_draft",
+            "generated_course_name",
+            "generated_course_icon_key",
+            "plan_outline_markdown",
+        ],
         "input_keys": [
             "course_id",
             "material_context",
@@ -121,7 +126,14 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "latest_plan",
             "planner_session_id",
         ],
-        "output_keys": ["build_plan_draft", "plan_outline_markdown", "compose_ms", "error"],
+        "output_keys": [
+            "build_plan_draft",
+            "generated_course_name",
+            "generated_course_icon_key",
+            "plan_outline_markdown",
+            "compose_ms",
+            "error",
+        ],
     },
     STEP_SAVE_PLAN: {
         "description": (

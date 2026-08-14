@@ -20,9 +20,9 @@ class DocGenModelStep(str, Enum):
     INTENT_CORE = "prepare_global_seed.infer_intent_core"
     FILE_SUMMARY = "prepare_global_seed.summarize_files"
     TITLE_LOCK = "lock_titles_for_chapters.lock_title_for_chapter"
+    DOCUMENT_BACKBONE = "assemble_chapter_tasks.build_document_backbone"
     CHAPTER_EXECUTION_BRIEF = "build_chapter_execution_briefs.build_chapter_execution_brief"
     QUERY_PLANNING = "generate_chapters.query_planning"
-    RESEARCH_PURIFY = "generate_chapters.research_purify"
     WRITER = "generate_chapters.writer"
     CHAPTER_REWRITE = "generate_chapters.rewrite"
     MERMAID_PLACEHOLDER = "enhance_chapters.mermaid_placeholder"
@@ -120,6 +120,15 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         temperature=0.1,
         note="标题输出极短，但要守住 confirmed plan 语义。",
     ),
+    DocGenModelStep.DOCUMENT_BACKBONE: DocGenModelPolicy(
+        step=DocGenModelStep.DOCUMENT_BACKBONE,
+        call_type="structured",
+        model="reason",
+        max_tokens=10000,
+        timeout_s=120,
+        temperature=0.1,
+        note="一次整本结构化调用，同时生成跨章语义骨架和全部章节执行 brief。",
+    ),
     DocGenModelStep.CHAPTER_EXECUTION_BRIEF: DocGenModelPolicy(
         step=DocGenModelStep.CHAPTER_EXECUTION_BRIEF,
         call_type="structured",
@@ -137,17 +146,6 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         timeout_s=120,
         temperature=0.2,
         note="研究查询拆解需要覆盖缺口判断。",
-    ),
-    DocGenModelStep.RESEARCH_PURIFY: DocGenModelPolicy(
-        step=DocGenModelStep.RESEARCH_PURIFY,
-        call_type="text",
-        model="light",
-        max_tokens=3000,
-        timeout_s=30,
-        overall_timeout_s=40,
-        max_retries=1,
-        temperature=0.1,
-        note="清洗 dense context，不做重推理；失败时直接使用原研究材料。",
     ),
     DocGenModelStep.WRITER: DocGenModelPolicy(
         step=DocGenModelStep.WRITER,

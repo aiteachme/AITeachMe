@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import Any, Iterator, Literal, NoReturn
 from urllib.parse import urlparse
 
+import httpx
 import structlog
 
 from app.schemas.llm import ChatMessage
@@ -44,6 +45,7 @@ from app.shared.infra.settings.support import (
 logger = structlog.get_logger()
 
 _REQUEST_TIMEOUT_GRACE_S = 2
+_LLM_CONNECT_TIMEOUT_S = 10.0
 _LLM_LIMITER: "LLMConcurrencyLimiter | None" = None
 _LLM_LIMITER_LOCK = threading.Lock()
 _LLM_RUNTIME_SNAPSHOT: ContextVar["LLMRuntimeSnapshot | None"] = ContextVar(
@@ -880,6 +882,8 @@ def build_completion_contexts(
                 f"模型 `{primary_contexts[0].model}` 被配置为 llm.fallback_only_models，"
                 "且未配置可用的 LLM_FALLBACK_BASE_URL / LLM_FALLBACK_API_KEY。"
             )
+        if not snapshot.settings.llm.text_endpoint_fallback_enabled and primary_contexts:
+            return primary_contexts
         return tuple(contexts)
     if missing_key_error is not None:
         raise missing_key_error
@@ -972,6 +976,22 @@ def should_try_endpoint_fallback(error: Exception | None) -> bool:
     return any(marker in message for marker in _ENDPOINT_FALLBACK_MESSAGE_MARKERS)
 
 
+def should_advance_to_fallback(
+    context_group: tuple[CompletionContext, ...],
+    *,
+    has_fallback_endpoints: bool,
+    error: Exception | None,
+) -> bool:
+    """Skip repeated primary rounds after an endpoint failure when backup exists."""
+
+    return bool(
+        has_fallback_endpoints
+        and context_group
+        and context_group[0].endpoint_role == "primary"
+        and should_try_endpoint_fallback(error)
+    )
+
+
 def build_completion_context(
     task_type: object | None = None,
     *,
@@ -998,6 +1018,8 @@ def effective_call_timeout_s(context: CompletionContext, call_kwargs: Mapping[st
     raw_timeout = (call_kwargs or {}).get("timeout")
     if raw_timeout in (None, ""):
         return context.profile.timeout_s
+    if isinstance(raw_timeout, httpx.Timeout):
+        raw_timeout = raw_timeout.read
     try:
         timeout_s = int(float(raw_timeout))
     except (TypeError, ValueError):
@@ -1220,6 +1242,19 @@ def build_completion_kwargs(
         )
     )
     completion_kwargs.update(remaining_kwargs)
+    raw_timeout = completion_kwargs.get("timeout")
+    if raw_timeout not in (None, "") and not isinstance(raw_timeout, httpx.Timeout):
+        try:
+            total_timeout_s = float(raw_timeout)
+        except (TypeError, ValueError):
+            pass
+        else:
+            if total_timeout_s > 0:
+                completion_kwargs["timeout"] = httpx.Timeout(
+                    timeout=total_timeout_s,
+                    connect=min(_LLM_CONNECT_TIMEOUT_S, total_timeout_s),
+                    pool=min(_LLM_CONNECT_TIMEOUT_S, total_timeout_s),
+                )
     apply_provider_extra_headers(completion_kwargs)
     _drop_unsupported_sampling_params(
         context=context,
@@ -1360,7 +1395,12 @@ async def sleep_before_retry(
 ) -> None:
     """Apply the current linear retry backoff."""
 
-    delay_s = min(30, attempt * 8) if is_concurrency_rate_limit_error(error) else attempt * 2
+    if is_concurrency_rate_limit_error(error):
+        delay_s = min(30, attempt * 8)
+    elif should_try_endpoint_fallback(error):
+        delay_s = min(0.5, attempt * 0.25)
+    else:
+        delay_s = attempt * 2
     if lease is None:
         await asyncio.sleep(delay_s)
         return

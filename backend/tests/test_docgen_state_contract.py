@@ -10,8 +10,7 @@ from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.common.metrics import DigestTokenSummary
 from app.workflows.digest.common.markdown_knowledge_anchors import MarkdownKnowledgeUnit
 from app.workflows.digest.docgen import graph
-from app.workflows.digest.docgen.lib import chapter_planning, quality, repair
-from app.workflows.digest.docgen.lib.chapter_review import measure_chapter_coverage
+from app.workflows.digest.docgen.lib import chapter_planning, document_backbone as document_backbone_lib, quality, repair
 from app.workflows.digest.docgen.lib.document_backbone import build_document_backbone as build_document_backbone_value
 from app.workflows.digest.docgen.lib.models import (
     BackboneResearchAgenda,
@@ -28,6 +27,8 @@ from app.workflows.digest.docgen.lib.models import (
     DocGenContext,
     DocGenIntentProfile,
     DocumentBackbone,
+    DocumentPreparationBundle,
+    DocumentConsistencyReport,
     EnhancedChapterDraft,
     FileMaterialSummary,
     HighConfidenceEvidenceUnit,
@@ -95,7 +96,7 @@ def test_initial_state_exposes_explicit_docgen_pipeline_artifacts() -> None:
     assert state["kg_draft_rollback_metrics"] == {}
 
 
-def test_document_backbone_matches_whitespace_normalized_terms_to_their_chapter() -> None:
+def test_document_backbone_does_not_promote_planner_coverage_text_to_semantic_units() -> None:
     term = "逻辑运算符&& || !的条件真值与优先级"
     backbone, _ = build_document_backbone_value(
         task_seeds=[
@@ -115,18 +116,144 @@ def test_document_backbone_matches_whitespace_normalized_terms_to_their_chapter(
         file_summaries=[],
     )
 
-    glossary_item = next(item for item in backbone.canonical_glossary if item.term == term)
-    assert glossary_item.target_chapters == [2]
+    assert backbone.canonical_glossary == []
+    assert backbone.canonical_claim_pool == []
+    assert backbone.concept_dependency_graph == []
 
 
-def test_writer_and_review_share_semantic_required_element_coverage() -> None:
-    score, missing = measure_chapter_coverage(
-        "# 数组任务\n\n本节完成数组求和，并计算平均值，最后定位最大元素的下标。",
-        ["数组求和、平均值、最大值下标"],
+@pytest.mark.anyio
+async def test_document_backbone_uses_one_llm_slot_and_preserves_measured_source_stats(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    async def fake_completion(messages, **kwargs):
+        captured["messages"] = messages
+        captured["response_model"] = kwargs.get("response_model")
+        return DocumentPreparationBundle(
+            document_backbone=DocumentBackbone(
+                canonical_glossary=[
+                    CanonicalGlossaryItem(
+                        term="行列配对",
+                        definition="矩阵乘法中对应行与列的元素配对求积后相加。",
+                        source_hint="notes.md/s1",
+                        target_chapters=[1],
+                    )
+                ],
+                source_trust_summary={"model_supplied": True},
+            ),
+            chapter_execution_briefs=[
+                ChapterExecutionBrief(
+                    chapter_index=1,
+                    teaching_outline=["先解释维度条件，再演示行列配对"],
+                    writing_instructions=["使用资料中的矩阵算例，并给出一次维度不匹配反例。"],
+                    concept_targets=["行列配对"],
+                    retrieval_queries=[
+                        "矩阵乘法 行列配对",
+                        "矩阵乘法 维度条件",
+                        "矩阵乘法 反例",
+                    ],
+                )
+            ],
+        )
+
+    monkeypatch.setattr(document_backbone_lib, "acompletion_with_fallback", fake_completion)
+
+    backbone, briefs, warnings = await document_backbone_lib.generate_document_backbone(
+        course_name="线性代数",
+        digest_mode="systematic",
+        task_seeds=[
+            ChapterGenerationTaskSeed(
+                chapter_index=1,
+                confirmed_title="矩阵乘法",
+                required_elements=["行列配对"],
+            )
+        ],
+        agenda=BackboneResearchAgenda(glossary_candidates=["行列配对"]),
+        evidence_units=[
+            HighConfidenceEvidenceUnit(
+                evidence_id="e1",
+                text="矩阵乘法按行列配对求和。",
+                source_ref="local://file/f1/section/s1",
+                source_type="local",
+                confidence=0.9,
+            )
+        ],
+        file_summaries=[FileMaterialSummary(file_id="f1", filename="notes.md")],
+        max_retrieval_queries_per_chapter=2,
     )
 
-    assert score == 1.0
-    assert missing == []
+    assert captured["response_model"] is DocumentPreparationBundle
+    assert backbone.canonical_glossary[0].term == "行列配对"
+    assert backbone.source_trust_summary == {
+        "evidence_unit_count": 1,
+        "source_type_counts": {"local": 1},
+        "avg_evidence_confidence": 0.9,
+        "file_summary_count": 1,
+    }
+    assert backbone.fallback_used is False
+    assert briefs[0].teaching_outline == ["先解释维度条件，再演示行列配对"]
+    assert briefs[0].writing_instructions == ["使用资料中的矩阵算例，并给出一次维度不匹配反例。"]
+    assert briefs[0].retrieval_queries == ["矩阵乘法 行列配对", "矩阵乘法 维度条件"]
+    assert "retrieval_queries 每章最多 2 条" in captured["messages"][1]["content"]
+    assert warnings == []
+
+
+@pytest.mark.anyio
+async def test_document_preparation_rejects_duplicate_brief_indices_and_falls_back(monkeypatch) -> None:
+    async def fake_completion(*args, **kwargs):
+        del args, kwargs
+        return DocumentPreparationBundle(
+            document_backbone=DocumentBackbone(),
+            chapter_execution_briefs=[
+                ChapterExecutionBrief(chapter_index=1),
+                ChapterExecutionBrief(chapter_index=1),
+            ],
+        )
+
+    monkeypatch.setattr(document_backbone_lib, "acompletion_with_fallback", fake_completion)
+
+    backbone, briefs, warnings = await document_backbone_lib.generate_document_backbone(
+        course_name="线性代数",
+        digest_mode="systematic",
+        task_seeds=[
+            ChapterGenerationTaskSeed(chapter_index=1, confirmed_title="矩阵"),
+            ChapterGenerationTaskSeed(chapter_index=2, confirmed_title="线性映射"),
+        ],
+        agenda=BackboneResearchAgenda(),
+        evidence_units=[],
+        file_summaries=[],
+    )
+
+    assert backbone.fallback_used is True
+    assert [brief.chapter_index for brief in briefs] == [1, 2]
+    assert all(brief.fallback_used for brief in briefs)
+    assert {warning.warning_id for warning in warnings} == {"bb_no_evidence_units", "bb_llm_fallback"}
+
+
+@pytest.mark.anyio
+async def test_prepare_chapter_tasks_accumulates_internal_llm_calls(monkeypatch) -> None:
+    def fake_builder(llm_calls: int, output_key: str):
+        def build_node(*, context):
+            del context
+
+            async def node(state):
+                del state
+                return {output_key: True, "llm_calls_total": llm_calls}
+
+            return node
+
+        return build_node
+
+    monkeypatch.setattr(graph, "build_confirm_and_seed_backbone_node", fake_builder(0, "seed_ready"))
+    monkeypatch.setattr(graph, "build_document_backbone_node", fake_builder(1, "backbone_ready"))
+    monkeypatch.setattr(graph, "build_assemble_chapter_tasks_node", fake_builder(0, "tasks_ready"))
+
+    node = graph._build_prepare_chapter_tasks_node(context=object())
+    result = await node({})
+
+    assert result["seed_ready"] is True
+    assert result["backbone_ready"] is True
+    assert result["tasks_ready"] is True
+    assert result["llm_calls_total"] == 1
 
 
 def test_docgen_lane_summary_uses_final_published_quality_metrics() -> None:
@@ -171,6 +298,37 @@ def test_intent_payload_preserves_confirmed_contract_and_legacy_fields() -> None
     assert payload["content_strategy_text"] == "严格按确认章节组织"
     assert payload["example_ratio"] == pytest.approx(0.32)
     assert payload["legacy_compat"]["depth_level"] == "compact"
+
+
+def test_intent_compilation_uses_planner_writing_strategies_without_fixed_teaching_policy() -> None:
+    profile = prepare_global_seed._intent_from_confirmed_plan(  # noqa: SLF001
+        docgen_context=DocGenContext(
+            course_name="青少年人工智能素养",
+            digest_mode="sprint",
+            user_prompt="理解人工智能、数据偏见、隐私和负责任使用。",
+            plan="先理解原理，再分析社会影响并练习伦理决策。",
+            learner_profile_text="从高中生熟悉的生成式 AI 使用场景切入。",
+        ),
+        confirmed_plan={
+            "chapters": [
+                {
+                    "title": "训练数据与偏见",
+                    "writing_instructions": "从招聘筛选案例切入，对比数据偏差和算法偏差。",
+                },
+                {
+                    "title": "隐私与责任边界",
+                    "writing_instructions": "用个人信息授权场景组织伦理决策练习。",
+                },
+            ]
+        },
+    )
+
+    assert "招聘筛选案例" in profile.content_strategy_text
+    assert "个人信息授权场景" in profile.example_practice_policy
+    assert profile.audience_profile_text == "从高中生熟悉的生成式 AI 使用场景切入。"
+    assert profile.example_ratio == 0.0
+    assert profile.practice_ratio == 0.0
+    assert "紧凑讲解后立即" not in profile.example_practice_policy
 
 
 def test_chapter_generation_plan_ignores_planner_default_length_for_writer_budget() -> None:
@@ -250,7 +408,33 @@ def test_sprint_plan_expands_one_writer_budget_for_dense_confirmed_contract() ->
     assert task.target_word_count == 1500
 
 
-def test_chapter_generation_plan_requests_mermaid_for_structured_chapter() -> None:
+def test_chapter_generation_plan_preserves_planner_writing_instructions() -> None:
+    plan_seed, task_seeds, _agenda = chapter_planning.compose_seed_plan_and_backbone_agenda(
+        docgen_context=DocGenContext(course_name="人工智能素养", digest_mode="systematic"),
+        confirmed_chapters=[
+            {
+                "chapter_index": 1,
+                "title": "偏见如何进入模型",
+                "objective": "理解训练数据与模型偏见的关系",
+                "required_elements": ["样本代表性", "标签偏差"],
+                "writing_instructions": "从招聘筛选案例切入，再比较数据偏差与算法偏差。",
+            }
+        ],
+        locked_titles=[
+            LockedChapterTitle(
+                chapter_index=1,
+                confirmed_title="偏见如何进入模型",
+                enhanced_title="偏见如何进入模型",
+            )
+        ],
+        file_summaries=[],
+    )
+
+    assert "从招聘筛选案例切入，再比较数据偏差与算法偏差。" in task_seeds[0].style_rules
+    assert "从招聘筛选案例切入，再比较数据偏差与算法偏差。" in plan_seed.chapters[0].style_rules
+
+
+def test_chapter_generation_plan_leaves_mermaid_structure_to_writer_llm() -> None:
     plan = chapter_planning.assemble_chapter_generation_plan(
         docgen_context=DocGenContext(
             course_name="高等数学",
@@ -278,6 +462,7 @@ def test_chapter_generation_plan_requests_mermaid_for_structured_chapter() -> No
             ChapterExecutionBrief(
                 chapter_index=1,
                 teaching_outline=["先搭结构图，再讲定义和例题"],
+                writing_instructions=["从函数图像变化切入，并用间断点反例收束。"],
                 content_role_targets={
                     "concept": ["函数概念", "极限定义", "连续性"],
                     "procedure": ["间断点判定流程"],
@@ -290,19 +475,10 @@ def test_chapter_generation_plan_requests_mermaid_for_structured_chapter() -> No
     )
 
     task = plan.chapters[0]
-    assert task.allowed_assets == ["mermaid"]
-    assert len(task.placeholder_requests) == 1
-    assert task.placeholder_requests[0]["kind"] == "mermaid"
-    assert task.placeholder_requests[0]["description"] == (
-        "mindmap\n"
-        "  root((函数与极限结构))\n"
-        "    函数概念\n"
-        "    极限定义\n"
-        "    连续性\n"
-        "    间断点\n"
-        "    间断点判定流程\n"
-        "    把极限存在误当作函数连续"
-    )
+    assert task.allowed_assets == []
+    assert task.placeholder_requests == []
+    assert task.teaching_outline == ["先搭结构图，再讲定义和例题"]
+    assert "从函数图像变化切入，并用间断点反例收束。" in task.writing_rules
 
 
 def test_docgen_pipeline_artifacts_keep_stage_outputs_compact() -> None:
@@ -474,8 +650,8 @@ def test_docgen_pipeline_artifacts_keep_stage_outputs_compact() -> None:
     assert dispatch["items"][0]["preferred_sources"] == ["local://file/f1/section/s1"]
     assert dispatch["items"][0]["max_research_rounds"] == 2
     assert any(node["name"] == "矩阵基础" and node["knowledge_unit_type_label"] == "主题模块" for node in preliminary_kg["nodes"])
-    assert any(node["name"] == "矩阵乘法" and node["knowledge_unit_type_label"] == "概念术语" for node in preliminary_kg["nodes"])
-    assert any(edge["source_name"] == "矩阵乘法" and edge["edge_type_label"] == "归属" for edge in preliminary_kg["edges"])
+    assert {node["name"] for node in preliminary_kg["nodes"]} == {"矩阵基础"}
+    assert preliminary_kg["edges"] == []
 
 
 def test_learner_profile_text_for_branch_deduplicates_repeated_profile_fragments() -> None:
@@ -489,7 +665,7 @@ def test_learner_profile_text_for_branch_deduplicates_repeated_profile_fragments
     assert profile_text.count("诊断画像：应加强例题。") == 1
 
 
-def test_preliminary_kg_uses_explicit_object_targets_without_keyword_splitting() -> None:
+def test_preliminary_kg_does_not_promote_planning_targets_to_semantic_nodes() -> None:
     preliminary_kg = build_preliminary_kg(
         chapters_enhanced=[
             {
@@ -510,9 +686,7 @@ def test_preliminary_kg_uses_explicit_object_targets_without_keyword_splitting()
     nodes_by_name = {node["name"]: node for node in preliminary_kg["nodes"]}
     assert "学习目标：熟练掌握有理数、实数、整式与分式运算基础，提升计算准确率" not in nodes_by_name
     assert "计算准确率" not in nodes_by_name
-    assert {"有理数", "实数", "整式与分式运算基础", "绝对值", "平方根", "忽略分母不为零", "符号错误"} <= set(nodes_by_name)
-    assert nodes_by_name["忽略分母不为零"]["knowledge_unit_type"] == "misconception"
-    assert nodes_by_name["绝对值"]["knowledge_unit_type"] == "concept"
+    assert set(nodes_by_name) == {"数与式基础"}
 
 
 def test_preliminary_kg_does_not_turn_required_elements_into_graph_nodes() -> None:
@@ -571,21 +745,8 @@ def test_preliminary_kg_does_not_turn_required_elements_into_graph_nodes() -> No
         "判定题",
         "图表分析",
     }.isdisjoint(node_names)
-    assert {
-        "函数",
-        "变量",
-        "自变量与因变量",
-        "函数图像",
-        "函数值求解例题",
-        "自变量与因变量混淆",
-        "函数性质关系",
-        "读图能力与基础计算",
-        "初中几何常见对象与性质",
-    } <= node_names
-    nodes_by_name = {node["name"]: node for node in preliminary_kg["nodes"]}
-    assert nodes_by_name["函数图像"]["knowledge_unit_type"] == "concept"
-    assert nodes_by_name["函数值求解例题"]["knowledge_unit_type"] == "application_case"
-    assert nodes_by_name["自变量与因变量混淆"]["knowledge_unit_type"] == "misconception"
+    assert node_names == {"函数的基本概念、图像与读图方法"}
+    assert preliminary_kg["edges"] == []
 
 
 @pytest.mark.anyio
@@ -603,6 +764,32 @@ async def test_backbone_node_emits_early_dispatch_and_preliminary_kg(monkeypatch
     monkeypatch.setattr(build_document_backbone, "update_knowledge_build_status", fake_update_status)
     monkeypatch.setattr(build_document_backbone, "append_knowledge_build_recent_event", lambda *args, **kwargs: None)
     monkeypatch.setattr(build_document_backbone, "publish_docgen_progress", fake_publish_progress)
+
+    async def fake_generate_document_backbone(**kwargs):
+        captured["backbone_kwargs"] = kwargs
+        return (
+            DocumentBackbone(
+                canonical_glossary=[
+                    CanonicalGlossaryItem(
+                        term="行列配对",
+                        definition="矩阵乘法的行列配对规则。",
+                        source_hint="notes.md/s1",
+                        target_chapters=[1],
+                    )
+                ]
+            ),
+            [
+                ChapterExecutionBrief(
+                    chapter_index=1,
+                    teaching_outline=["先说明维度匹配，再讲行列配对"],
+                    writing_instructions=["用资料中的算例解释规则。"],
+                    concept_targets=["行列配对"],
+                )
+            ],
+            [],
+        )
+
+    monkeypatch.setattr(build_document_backbone, "generate_document_backbone", fake_generate_document_backbone)
 
     node = build_document_backbone.build_document_backbone_node(
         context=WorkflowContext(workflow_name="digest.docgen", course_id="course-early-kg"),
@@ -669,16 +856,19 @@ async def test_backbone_node_emits_early_dispatch_and_preliminary_kg(monkeypatch
         }
     )
 
-    assert result["guideline"]["canonical_glossary"]
+    assert result["guideline"]["canonical_glossary"][0]["term"] == "行列配对"
+    assert result["chapter_execution_briefs"][0]["writing_instructions"] == ["用资料中的算例解释规则。"]
     assert result["chapters_enhanced"][0]["chapter_index"] == 1
     assert result["dispatch_table"]["items"][0]["source_section_refs"] == ["s1"]
     assert result["dispatch_table"]["items"][0]["evidence_ids"] == ["e1"]
-    assert result["preliminary_kg"]["node_count"] >= 2
-    assert result["preliminary_kg"]["edge_count"] >= 1
+    assert result["preliminary_kg"]["node_count"] == 1
+    assert result["preliminary_kg"]["edge_count"] == 0
     assert captured["progress_payload"]["preliminary_kg_node_count"] == result["preliminary_kg"]["node_count"]
     status_kwargs = captured["status_kwargs"]
     assert status_kwargs["discovered_node_count"] == result["preliminary_kg"]["node_count"]
     assert status_kwargs["metrics"]["docgen_preliminary_kg_stage"] == "document_backbone_ready"
+    assert captured["backbone_kwargs"]["course_name"] == ""
+    assert result["llm_calls_total"] == 1
 
 
 def test_docgen_kg_draft_merges_preliminary_and_reviewed_headings() -> None:
@@ -1107,10 +1297,10 @@ async def test_chapter_brief_node_compiles_confirmed_contract_without_llm(monkey
 
     brief = result["chapter_execution_briefs"][0]
     assert brief["chapter_index"] == 1
-    assert "矩阵乘法" in brief["content_role_targets"]["concept"]
-    assert "矩阵乘法需要行列配对" in brief["content_role_targets"]["principle"]
-    assert brief["definition_targets"] == ["矩阵乘法"]
-    assert brief["example_coverage_plan"][0]["min_examples"] == 1
+    assert brief["content_role_targets"] == {}
+    assert brief["teaching_outline"] == []
+    assert brief["example_coverage_plan"] == []
+    assert brief["retrieval_queries"] == ["矩阵基础", "矩阵乘法"]
     assert result["kg_prefetch_status"] == "deferred_until_enhanced_chapters"
     assert result["llm_calls_total"] == 0
     assert progress_payload["kg_prefetch_started"] is False
@@ -1353,15 +1543,6 @@ async def test_enhance_node_starts_whole_document_kg_prefetch(monkeypatch) -> No
     captured_progress_payload: dict[str, object] = {}
     captured_prefetch_kwargs: dict[str, object] = {}
 
-    async def fake_run_llm_tasks(items, worker, *, max_concurrent=None, on_result=None):
-        results = []
-        for index, item in enumerate(list(items)):
-            result = await worker(item)
-            if on_result is not None:
-                await on_result(index, item, result)
-            results.append(result)
-        return results
-
     async def fake_enhance_chapter_draft(draft, **kwargs):
         enhanced = EnhancedChapterDraft(
             chapter_index=draft.chapter_index,
@@ -1371,7 +1552,6 @@ async def test_enhance_node_starts_whole_document_kg_prefetch(monkeypatch) -> No
         )
         return enhanced, AssetManifest(assets=[{"asset_id": "fig-1"}]), PracticeManifest(questions=[])
 
-    monkeypatch.setattr(enhance_chapters, "run_llm_tasks", fake_run_llm_tasks)
     monkeypatch.setattr(enhance_chapters, "enhance_chapter_draft", fake_enhance_chapter_draft)
     monkeypatch.setattr(enhance_chapters, "update_knowledge_build_status", lambda *args, **kwargs: None)
     monkeypatch.setattr(enhance_chapters, "upsert_knowledge_build_chapter_preview", lambda *args, **kwargs: None)
@@ -1585,9 +1765,9 @@ async def test_review_node_outputs_overlay_without_markdown(monkeypatch) -> None
 @pytest.mark.anyio
 async def test_document_consistency_llm_review_adds_document_actions(monkeypatch) -> None:
     captured_kwargs: dict = {}
-    scheduler_call: dict = {}
-
+    captured_messages: list[dict[str, str]] = []
     async def fake_completion(*args, **kwargs):
+        captured_messages.extend(args[0])
         captured_kwargs.update(kwargs)
         return LLMDocumentConsistencyReviewResult(
             passed=False,
@@ -1612,19 +1792,7 @@ async def test_document_consistency_llm_review_adds_document_actions(monkeypatch
             ],
         )
 
-    async def fake_run_llm_tasks(items, worker, *, max_concurrent=None, on_result=None):
-        scheduler_call["items"] = list(items)
-        scheduler_call["max_concurrent"] = max_concurrent
-        results = []
-        for index, item in enumerate(scheduler_call["items"]):
-            result = await worker(item)
-            if on_result is not None:
-                await on_result(index, item, result)
-            results.append(result)
-        return results
-
     monkeypatch.setattr(quality, "acompletion_with_fallback", fake_completion)
-    monkeypatch.setattr(quality, "run_llm_tasks", fake_run_llm_tasks)
     report, actions, llm_calls = await quality.review_document_consistency_with_llm(
         reviewed_chapters=[
             ReviewedChapterDraft(
@@ -1647,8 +1815,10 @@ async def test_document_consistency_llm_review_adds_document_actions(monkeypatch
     )
 
     assert llm_calls == 1
-    assert scheduler_call == {"items": [None], "max_concurrent": 1}
     assert captured_kwargs["response_model"] is LLMDocumentConsistencyReviewResult
+    assert "A 表示矩阵" in captured_messages[1]["content"]
+    assert "A 表示面积" in captured_messages[1]["content"]
+    assert "markdown_excerpt" not in captured_messages[1]["content"]
     assert report.passed is False
     assert report.source_summary["document_review_mode"] == "llm_structured_with_rule_guardrails"
     assert report.source_summary["llm_action_count"] == 1
@@ -1659,7 +1829,7 @@ async def test_document_consistency_llm_review_adds_document_actions(monkeypatch
 
 
 @pytest.mark.anyio
-async def test_document_consistency_node_keeps_rule_actions_without_llm_review(monkeypatch) -> None:
+async def test_document_consistency_node_keeps_rule_actions_with_single_llm_review(monkeypatch) -> None:
     monkeypatch.setattr(review_content, "update_knowledge_build_status", lambda *args, **kwargs: None)
     monkeypatch.setattr(review_content, "append_knowledge_build_recent_event", lambda *args, **kwargs: None)
 
@@ -1667,6 +1837,18 @@ async def test_document_consistency_node_keeps_rule_actions_without_llm_review(m
         return None
 
     monkeypatch.setattr(review_content, "publish_docgen_progress", fake_publish)
+
+    async def fake_document_review(**kwargs):
+        del kwargs
+        return (
+            DocumentConsistencyReport(
+                source_summary={"document_review_mode": "llm_structured_with_rule_guardrails"}
+            ),
+            [],
+            1,
+        )
+
+    monkeypatch.setattr(review_content, "review_document_consistency_with_llm", fake_document_review)
     node = review_content.build_document_consistency_review_node(
         context=WorkflowContext(workflow_name="digest.docgen", course_id="course_state_contract")
     )
@@ -1701,12 +1883,12 @@ async def test_document_consistency_node_keeps_rule_actions_without_llm_review(m
     )
 
     assert result["review_decision"] == "publish_with_warnings"
-    assert result["llm_calls_total"] == 0
+    assert result["llm_calls_total"] == 1
     assert [item["action_id"] for item in result["review_actions"]] == [
         "chapter_review_record",
     ]
     assert result["document_consistency_report"]["source_summary"]["document_review_mode"] == (
-        "rule_cross_chapter_guardrail"
+        "llm_structured_with_rule_guardrails"
     )
 
 
@@ -1720,6 +1902,18 @@ async def test_document_consistency_node_preserves_enhanced_kg_prefetch_status(m
     monkeypatch.setattr(review_content, "update_knowledge_build_status", lambda *args, **kwargs: None)
     monkeypatch.setattr(review_content, "append_knowledge_build_recent_event", lambda *args, **kwargs: None)
     monkeypatch.setattr(review_content, "publish_docgen_progress", fake_publish)
+
+    async def fake_document_review(**kwargs):
+        del kwargs
+        return (
+            DocumentConsistencyReport(
+                source_summary={"document_review_mode": "llm_structured_with_rule_guardrails"}
+            ),
+            [],
+            1,
+        )
+
+    monkeypatch.setattr(review_content, "review_document_consistency_with_llm", fake_document_review)
 
     node = review_content.build_document_consistency_review_node(
         context=WorkflowContext(workflow_name="digest.docgen", course_id="course_state_contract")
@@ -1753,9 +1947,9 @@ async def test_document_consistency_node_preserves_enhanced_kg_prefetch_status(m
     )
 
     assert result["kg_prefetch_status"] == "running_from_enhanced_chapters"
-    assert result["llm_calls_total"] == 0
+    assert result["llm_calls_total"] == 1
     assert result["document_consistency_report"]["source_summary"]["document_review_mode"] == (
-        "rule_cross_chapter_guardrail"
+        "llm_structured_with_rule_guardrails"
     )
     assert captured["progress_payload"]["kg_prefetch_status"] == "running_from_enhanced_chapters"
 
