@@ -38,7 +38,7 @@ def _is_markdown_ready(raw_file: RawFile, *, markdown_content: str | None = None
             IngestStatus.READY_FOR_DIGEST.value,
             IngestStatus.ENHANCE_FAILED.value,
         }
-        and bool(str(content or "").strip())
+        and bool(str(content or "").strip() or str(raw_file.markdown_path or "").strip())
     )
 
 

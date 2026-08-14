@@ -187,7 +187,7 @@ def test_storage_only_markdown_marks_file_ready(monkeypatch) -> None:
     assert fake_store.read_text_calls == ["users/user_a/files/file_ready/markdown.md"]
 
 
-def test_user_file_list_is_lightweight_and_does_not_touch_storage(monkeypatch) -> None:
+def test_user_file_list_marks_storage_only_markdown_ready_without_touching_storage(monkeypatch) -> None:
     fake_store = _install_fake_store(monkeypatch)
     with _session() as session:
         session.add(User(id="user_a", username="user_a"))
@@ -199,7 +199,6 @@ def test_user_file_list_is_lightweight_and_does_not_touch_storage(monkeypatch) -
                 filetype="pdf",
                 file_path="users/user_a/files/file_ready/source.pdf",
                 markdown_path="users/user_a/files/file_ready/markdown.md",
-                markdown_content="# 已解析内容",
                 asset_dir="users/user_a/files/file_ready/assets",
                 image_count=2,
                 status=TaskStatus.COMPLETED.value,
