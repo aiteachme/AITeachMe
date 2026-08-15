@@ -12,13 +12,25 @@ from fastapi import Request
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from app.models import AuthSession, CreditAccount, CreditLedger, CreditReservation, ExamPaper, User
+from app.models import (
+    AuthRateLimitBucket,
+    AuthSession,
+    Course,
+    CreditAccount,
+    CreditLedger,
+    CreditReservation,
+    ExamPaper,
+    OAuthFlow,
+    User,
+)
 from app.schemas.credits import AdminCreditAdjustmentRequest
 from app.shared.infra.exceptions import AITeachMeError
 from app.utils.time import utcnow
 from app.workflows.support import credits
-from app.workflows.support.auth import session_store, sessions
+from app.workflows.support.auth import housekeeping, session_store, sessions
 from app.workflows.digest import credit_lifecycle as docgen_credit_lifecycle
+from app.shared.infra.knowledge import build_store
+from app.workflows.digest.docgen.lib import build_lifecycle as docgen_build_lifecycle
 
 
 @pytest.fixture(autouse=True)
@@ -33,6 +45,9 @@ def _engine():
         tables=[
             User.__table__,
             AuthSession.__table__,
+            OAuthFlow.__table__,
+            AuthRateLimitBucket.__table__,
+            Course.__table__,
             CreditAccount.__table__,
             CreditLedger.__table__,
             CreditReservation.__table__,
@@ -98,6 +113,117 @@ def test_expired_session_is_rejected() -> None:
         db.add(auth_session)
         db.commit()
         assert session_store.resolve_auth_session(db, raw_token=token) is None
+
+
+def test_session_last_seen_is_throttled(monkeypatch: pytest.MonkeyPatch) -> None:
+    engine = _engine()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user()
+        db.add(user)
+        db.commit()
+        auth_session, token = session_store.create_auth_session(db, user=user, device_key=None)
+        baseline = utcnow() - timedelta(minutes=1)
+        auth_session.last_seen_at = baseline
+        db.add(auth_session)
+        db.commit()
+
+        monkeypatch.setattr(session_store, "utcnow", lambda: baseline + timedelta(minutes=4))
+        session_store.resolve_auth_session(db, raw_token=token)
+        assert auth_session.last_seen_at == baseline
+
+        touched_at = baseline + timedelta(minutes=6)
+        monkeypatch.setattr(session_store, "utcnow", lambda: touched_at)
+        session_store.resolve_auth_session(db, raw_token=token)
+        assert auth_session.last_seen_at == touched_at
+
+
+def test_auth_housekeeping_deletes_only_expired_or_retention_eligible_records() -> None:
+    engine = _engine()
+    now = utcnow()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user()
+        db.add(user)
+        db.add_all(
+            [
+                AuthRateLimitBucket(
+                    id="rate-expired",
+                    bucket_key="login:expired",
+                    window_started_at=now - timedelta(minutes=2),
+                    expires_at=now - timedelta(seconds=1),
+                ),
+                AuthRateLimitBucket(
+                    id="rate-active",
+                    bucket_key="login:active",
+                    window_started_at=now,
+                    expires_at=now + timedelta(minutes=1),
+                ),
+                OAuthFlow(
+                    id="oauth-expired",
+                    state_hash="state-expired",
+                    provider="google",
+                    provider_app_id="google-app",
+                    expires_at=now - timedelta(seconds=1),
+                ),
+                OAuthFlow(
+                    id="oauth-active",
+                    state_hash="state-active",
+                    provider="google",
+                    provider_app_id="google-app",
+                    expires_at=now + timedelta(minutes=10),
+                ),
+                OAuthFlow(
+                    id="oauth-consumed-old",
+                    state_hash="state-consumed-old",
+                    provider="google",
+                    provider_app_id="google-app",
+                    expires_at=now + timedelta(days=1),
+                    consumed_at=now - timedelta(days=2),
+                ),
+                OAuthFlow(
+                    id="oauth-consumed-recently",
+                    state_hash="state-consumed-recently",
+                    provider="google",
+                    provider_app_id="google-app",
+                    expires_at=now + timedelta(days=1),
+                    consumed_at=now - timedelta(hours=1),
+                ),
+                AuthSession(
+                    id="session-expired",
+                    user_id=user.id,
+                    token_hash="token-expired",
+                    csrf_token="csrf-expired",
+                    expires_at=now - timedelta(seconds=1),
+                ),
+                AuthSession(
+                    id="session-recently-revoked",
+                    user_id=user.id,
+                    token_hash="token-recently-revoked",
+                    csrf_token="csrf-recently-revoked",
+                    expires_at=now + timedelta(days=1),
+                    revoked_at=now - timedelta(days=1),
+                ),
+                AuthSession(
+                    id="session-revoked-old",
+                    user_id=user.id,
+                    token_hash="token-revoked-old",
+                    csrf_token="csrf-revoked-old",
+                    expires_at=now + timedelta(days=1),
+                    revoked_at=now - timedelta(days=8),
+                ),
+            ]
+        )
+        db.commit()
+
+        assert housekeeping._cleanup_expired_auth_records(db, limit=20) == 5
+        assert db.get(AuthRateLimitBucket, "rate-expired") is None
+        assert db.get(OAuthFlow, "oauth-expired") is None
+        assert db.get(OAuthFlow, "oauth-consumed-old") is None
+        assert db.get(AuthSession, "session-expired") is None
+        assert db.get(AuthSession, "session-revoked-old") is None
+        assert db.get(AuthRateLimitBucket, "rate-active") is not None
+        assert db.get(OAuthFlow, "oauth-active") is not None
+        assert db.get(OAuthFlow, "oauth-consumed-recently") is not None
+        assert db.get(AuthSession, "session-recently-revoked") is not None
 
 
 def test_legacy_pbkdf2_password_is_upgraded_after_login(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -374,6 +500,56 @@ def test_stale_exam_reservation_is_released_during_recovery(
         assert credits._reservation_recovery_action(db, reservation) == "release"
         credits.release_reservation(db, reservation_id=reservation.id)
         assert db.get(CreditAccount, user.id).reserved_balance == 0
+
+
+@pytest.mark.parametrize(("owns_lock", "expected_action"), [(True, "defer"), (False, "release")])
+def test_docgen_reservation_recovery_requires_an_active_build_lease(
+    monkeypatch: pytest.MonkeyPatch,
+    owns_lock: bool,
+    expected_action: str,
+) -> None:
+    monkeypatch.setattr(credits, "is_local_mode", lambda: False)
+    monkeypatch.setattr(
+        build_store,
+        "read_knowledge_build_runtime",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            docgen_runtime=SimpleNamespace(
+                build_group_id="build-group",
+                build_session_id="build-session",
+                status="running",
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        build_store,
+        "is_knowledge_build_lock_owner",
+        lambda *_args, **_kwargs: owns_lock,
+    )
+    monkeypatch.setattr(
+        docgen_build_lifecycle,
+        "_docgen_publish_completed_for_owner",
+        lambda **_kwargs: False,
+    )
+    engine = _engine()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user()
+        db.add_all(
+            [
+                user,
+                Course(id="course_docgen000001", user_id=user.id, name="DocGen Recovery"),
+            ]
+        )
+        db.commit()
+        reservation = credits.reserve_credits(
+            db,
+            user=user,
+            feature="docgen_build",
+            reference_id="build-group",
+            amount=30,
+            idempotency_key=f"docgen-recovery:{owns_lock}",
+        )
+
+        assert credits._reservation_recovery_action(db, reservation) == expected_action
 
 
 def test_docgen_credit_lifecycle_uses_persisted_build_session(

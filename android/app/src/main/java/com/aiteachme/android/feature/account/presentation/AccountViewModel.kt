@@ -184,7 +184,6 @@ class AccountViewModel : ViewModel() {
             }.onFailure { throwable ->
                 _uiState.update {
                     it.copy(
-                        user = null,
                         isSubmitting = false,
                         errorMessage = throwable.message ?: throwable::class.java.simpleName,
                     )

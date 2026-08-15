@@ -21,6 +21,7 @@
 identity.py       # 兼容导出：游客身份与 token
 sessions.py       # 邮箱注册登录、密码哈希、旧 token
 session_store.py  # Cookie 会话、撤销、CSRF/Origin
+housekeeping.py   # 过期会话、OAuth flow 与限流桶的分批清理
 providers.py      # Google、QQ、微信 OAuth 与身份绑定
 rate_limit.py     # 数据库级认证限流
 merge.py          # 游客资产摘要、确认与 .atmx 事务化 staging 迁移
@@ -41,3 +42,8 @@ smtp.py           # 邮箱验证码
 邮箱密码或 OAuth 登录只创建 `merge_offer`，用户确认后才运行 `user_merge_job`。课程通过现有 `.atmx` 以 `commit=false` 导入目标账号，并在同一数据库事务内保持 `staging`；课程、独立资料、全局聊天、考试和画像全部完成后才统一切换为可见。失败会回滚目标行并清理本次写入的对象存储前缀，源游客数据保持不变。成功后源游客标记 `merged_into_user_id`，保留七天恢复信息；到期清理循环会幂等删除源课程、独立资料、全局聊天、正式 memory、对象存储前缀和本地学习者档案，失败任务在十五分钟后重试。
 
 `auth` 是 support 用例，不是 LangGraph lane。API 和依赖层通过 `app.workflows.support.auth` 的稳定导出进入。
+
+## 后台清理
+
+- 会话访问时间最多每 5 分钟写回一次，避免普通读取和前端轮询持续制造数据库写入。
+- 后台任务每小时分批删除已过期的限流桶、OAuth flow 和登录会话；另清理消费时间超过 1 天的 flow，未过期的已撤销会话保留 7 天用于审计。

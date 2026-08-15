@@ -555,11 +555,8 @@ export function TopBar({ className }: TopBarProps) {
         email: currentUser?.email,
         isAuthenticated: currentUser?.is_authenticated,
       });
-    } catch {
-      abortActiveApiRequests();
-      resetAnalyticsIdentity();
-      setApiCsrfToken(null);
-      queryClient.setQueryData(AUTH_SESSION_QUERY_KEY, null);
+    } catch (error) {
+      window.alert(getApiErrorMessage(error, "退出登录失败，当前登录状态仍然保留，请稍后重试。"));
     }
     closeMenus();
   };

@@ -18,6 +18,7 @@ from app.shared.infra.runtime import is_cloud_mode, resolve_guest_cookie_samesit
 from app.utils.time import utcnow
 
 SESSION_COOKIE_NAME = "atm_session"
+SESSION_TOUCH_INTERVAL = timedelta(minutes=5)
 _UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 _DEFAULT_ORIGINS = {
     "https://aiteachme.cn",
@@ -136,9 +137,10 @@ def resolve_auth_session(
     user = session.get(User, record.user_id)
     if user is None or not user.is_registered or user.merged_into_user_id is not None:
         return None
-    record.last_seen_at = now
-    session.add(record)
-    session.commit()
+    if _as_utc(record.last_seen_at) <= _as_utc(now - SESSION_TOUCH_INTERVAL):
+        record.last_seen_at = now
+        session.add(record)
+        session.commit()
     return user, record
 
 

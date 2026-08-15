@@ -19,7 +19,7 @@ from sqlmodel import Session, select
 
 from app.models import AuthIdentity, OAuthFlow, User
 from app.repositories.user_repo import create_user, get_user_by_email, get_user_by_username
-from app.shared.infra.env_support import get_env, get_env_int
+from app.shared.infra.env_support import get_env
 from app.shared.infra.exceptions import AITeachMeError
 from app.utils.time import utcnow
 

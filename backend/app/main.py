@@ -416,7 +416,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     from app.workflows.support.system import refresh_community_qr_cache
     from app.shared.infra.llm_support.litellm_loader import warm_litellm
     from app.workflows.examine.recovery import run_exam_grading_recovery_loop
-    from app.workflows.support.auth import run_guest_merge_cleanup_loop
+    from app.workflows.support.auth import run_auth_housekeeping_loop, run_guest_merge_cleanup_loop
     from app.workflows.support.credits import run_credit_reservation_recovery_loop
     from app.workflows.profile.sync import run_exam_profile_sync_recovery_loop
     from app.workflows.examine.initial_exam import run_course_initial_exam_recovery_loop
@@ -444,6 +444,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         kind="auth.merge.cleanup",
         name="auth.merge.cleanup",
         dedupe_key="auth.merge.cleanup",
+    )
+    app.state.background_task_registry.spawn(
+        run_auth_housekeeping_loop(),
+        kind="auth.housekeeping",
+        name="auth.housekeeping",
+        dedupe_key="auth.housekeeping",
     )
     app.state.background_task_registry.spawn(
         run_course_initial_exam_recovery_loop(task_registry=app.state.background_task_registry),

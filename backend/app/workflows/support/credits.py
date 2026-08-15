@@ -346,7 +346,10 @@ def _reservation_recovery_action(
         return "defer"
 
     if reservation.feature == "docgen_build":
-        from app.shared.infra.knowledge.build_store import read_knowledge_build_runtime
+        from app.shared.infra.knowledge.build_store import (
+            is_knowledge_build_lock_owner,
+            read_knowledge_build_runtime,
+        )
         from app.shared.infra.storage import build_course_storage_scope
         from app.workflows.digest.docgen.lib.build_lifecycle import _docgen_publish_completed_for_owner
 
@@ -370,11 +373,18 @@ def _reservation_recovery_action(
                 return "settle"
             if runtime_matches:
                 matched_status = str(docgen_runtime.status or "").strip().lower()
+                if matched_status in {"accepted", "running", "publishing"}:
+                    if is_knowledge_build_lock_owner(
+                        course.id,
+                        build_group_id=reservation.reference_id,
+                        session=session,
+                        course_scope=course_scope,
+                    ):
+                        return "defer"
+                    return "release"
 
         if matched_status in {"failed", "cancelled", "partial_failed", "skipped", "completed"}:
             return "release"
-        if matched_status in {"accepted", "running", "publishing"}:
-            return "defer"
         return "defer" if matched_status else "release"
 
     return "release"

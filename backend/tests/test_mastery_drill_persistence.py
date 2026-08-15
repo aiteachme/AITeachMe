@@ -22,6 +22,7 @@ from app.models import (
     MasteryDrillAttempt,
     MasteryDrillSession,
     QuestionTemplate,
+    User,
 )
 from app.models.knowledge_unit import KnowledgeUnit
 from app.repositories import exams_repo
@@ -343,6 +344,179 @@ async def test_prepare_mastery_drill_generates_only_shortage_and_syncs_templates
         for template in generated
     )
     assert session.exec(select(ExamPaper)).all() == []
+
+
+@pytest.mark.anyio
+async def test_cloud_mastery_drill_backfill_requires_login(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+) -> None:
+    session.add(Course(id=COURSE_ID, user_id=USER_ID, name="Guest Drill"))
+    session.commit()
+    generation_called = False
+
+    async def unexpected_generation(*_args, **_kwargs):
+        nonlocal generation_called
+        generation_called = True
+
+    monkeypatch.setattr(exams_api, "_generate_mastery_drill_template_backfill", unexpected_generation)
+
+    with pytest.raises(AITeachMeError) as error:
+        await exams_api.prepare_mastery_drill(
+            course_id=COURSE_ID,
+            body=MasteryDrillPrepareRequest(num_questions=1, question_types=["single_choice"]),
+            user=CurrentUserContext(
+                user_id=USER_ID,
+                email=None,
+                is_local=False,
+                is_authenticated=False,
+            ),
+            session=session,
+        )
+
+    assert error.value.status_code == 401
+    assert error.value.error_code == "AUTH_REQUIRED_FOR_CREDIT_TASK"
+    assert generation_called is False
+
+
+@pytest.mark.anyio
+async def test_cloud_mastery_drill_backfill_settles_one_reservation(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+) -> None:
+    session.add_all(
+        [
+            User(
+                id=USER_ID,
+                username=USER_ID,
+                email="drill@example.com",
+                is_registered=True,
+            ),
+            Course(id=COURSE_ID, user_id=USER_ID, name="Paid Drill"),
+        ]
+    )
+    session.commit()
+    reserved: list[dict[str, object]] = []
+    settled: list[str] = []
+    released: list[str] = []
+
+    def fake_reserve(_session: Session, **kwargs):
+        reserved.append(kwargs)
+        return SimpleNamespace(id="mastery-reservation")
+
+    async def fake_backfill(
+        worker_session: Session,
+        *,
+        course: Course,
+        user_id: str,
+        question_count: int,
+        question_types: list[str],
+    ) -> set[int]:
+        assert course.id == COURSE_ID
+        assert user_id == USER_ID
+        for index in range(question_count):
+            worker_session.add(
+                QuestionTemplate(
+                    course_id=COURSE_ID,
+                    question_type=question_types[index % len(question_types)],
+                    difficulty="medium",
+                    stem=f"Paid generated question {index}?",
+                    stem_hash=f"paid-generated-{index}",
+                    options_json=json.dumps(["A", "B", "C", "D"]),
+                    answer="A",
+                    explanation="Paid generated explanation.",
+                )
+            )
+        worker_session.commit()
+        return set()
+
+    monkeypatch.setattr(exams_api, "reserve_credits", fake_reserve)
+    monkeypatch.setattr(
+        exams_api,
+        "settle_reservation",
+        lambda _session, *, reservation_id: settled.append(reservation_id),
+    )
+    monkeypatch.setattr(
+        exams_api,
+        "release_reservation",
+        lambda _session, *, reservation_id: released.append(reservation_id),
+    )
+    monkeypatch.setattr(exams_api, "_generate_mastery_drill_template_backfill", fake_backfill)
+
+    response = await exams_api.prepare_mastery_drill(
+        course_id=COURSE_ID,
+        body=MasteryDrillPrepareRequest(num_questions=1, question_types=["single_choice"]),
+        user=CurrentUserContext(
+            user_id=USER_ID,
+            email="drill@example.com",
+            is_local=False,
+            is_authenticated=True,
+        ),
+        session=session,
+    )
+
+    assert response.data.generated_count == 1
+    assert len(reserved) == 1
+    assert reserved[0]["feature"] == "exam_generation"
+    assert reserved[0]["amount"] == exams_api.EXAM_GENERATION_COST
+    assert settled == ["mastery-reservation"]
+    assert released == []
+
+
+@pytest.mark.anyio
+async def test_cloud_mastery_drill_backfill_releases_reservation_on_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+) -> None:
+    session.add_all(
+        [
+            User(
+                id=USER_ID,
+                username=USER_ID,
+                email="drill@example.com",
+                is_registered=True,
+            ),
+            Course(id=COURSE_ID, user_id=USER_ID, name="Failed Paid Drill"),
+        ]
+    )
+    session.commit()
+    released: list[str] = []
+
+    monkeypatch.setattr(
+        exams_api,
+        "reserve_credits",
+        lambda *_args, **_kwargs: SimpleNamespace(id="failed-mastery-reservation"),
+    )
+    monkeypatch.setattr(
+        exams_api,
+        "settle_reservation",
+        lambda *_args, **_kwargs: pytest.fail("failed backfill must not settle"),
+    )
+    monkeypatch.setattr(
+        exams_api,
+        "release_reservation",
+        lambda _session, *, reservation_id: released.append(reservation_id),
+    )
+
+    async def failed_backfill(*_args, **_kwargs):
+        raise RuntimeError("generation failed")
+
+    monkeypatch.setattr(exams_api, "_generate_mastery_drill_template_backfill", failed_backfill)
+
+    with pytest.raises(RuntimeError, match="generation failed"):
+        await exams_api.prepare_mastery_drill(
+            course_id=COURSE_ID,
+            body=MasteryDrillPrepareRequest(num_questions=1, question_types=["single_choice"]),
+            user=CurrentUserContext(
+                user_id=USER_ID,
+                email="drill@example.com",
+                is_local=False,
+                is_authenticated=True,
+            ),
+            session=session,
+        )
+
+    assert released == ["failed-mastery-reservation"]
 
 
 @pytest.mark.anyio

@@ -43,13 +43,10 @@ class AuthRepository(
     }
 
     suspend fun logout(): AuthSessionData {
-        return try {
-            val response = api.logout()
-            response.requireData()
-        } finally {
-            sessionStore.clearAccessToken()
-            sessionStore.saveCsrfToken(null)
-        }
+        val response = api.logout()
+        val session = response.requireData()
+        saveSessionCredentials(session)
+        return session
     }
 
     private fun saveSessionCredentials(session: AuthSessionData) {

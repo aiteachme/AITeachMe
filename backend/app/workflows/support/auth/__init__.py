@@ -36,6 +36,10 @@ from app.workflows.support.auth.session_store import (
     validate_session_request,
 )
 from app.workflows.support.auth.merge import run_guest_merge_cleanup_loop
+from app.workflows.support.auth.housekeeping import (
+    cleanup_expired_auth_records_once,
+    run_auth_housekeeping_loop,
+)
 from app.workflows.support.auth.smtp import send_register_email_verification_code
 
 __all__ = [
@@ -44,6 +48,7 @@ __all__ = [
     "build_logout_guest_user",
     "build_session_from_context",
     "create_guest_user",
+    "cleanup_expired_auth_records_once",
     "clear_auth_session_cookie",
     "create_auth_session",
     "decode_access_token",
@@ -62,6 +67,7 @@ __all__ = [
     "resolve_auth_session",
     "resolve_user_from_token",
     "run_guest_merge_cleanup_loop",
+    "run_auth_housekeeping_loop",
     "send_register_email_verification_code",
     "set_guest_cookie",
     "set_guest_cookie_for_user",

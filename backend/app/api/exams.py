@@ -98,7 +98,12 @@ from app.workflows.examine import (
     run_question_build_workflow,
 )
 from app.workflows.examine.credit_lifecycle import run_reserved_exam_generation
-from app.workflows.support.credits import EXAM_GENERATION_COST, reserve_credits
+from app.workflows.support.credits import (
+    EXAM_GENERATION_COST,
+    release_reservation,
+    reserve_credits,
+    settle_reservation,
+)
 from app.workflows.examine.exam_grade.lib.study_guide import (
     STUDY_GUIDE_ACTION_STEP_LIMIT,
     STUDY_GUIDE_FOCUS_UNIT_LIMIT,
@@ -6015,41 +6020,107 @@ async def prepare_mastery_drill(
             ).all()
             if template_id is not None
         }
+        reservation_id: str | None = None
+        backfill_run_id = uuid.uuid4().hex
 
         # Recalculate after each pass because partial generation and stem de-duplication
         # can change both the available count and the set of represented question types.
-        for _attempt in range(2):
+        try:
+            for _attempt in range(2):
+                usable_templates = _mastery_drill_usable_templates(
+                    session,
+                    course_id=normalized,
+                    question_types=configured_question_types,
+                )
+                generation_count, generation_types = _mastery_drill_backfill_plan(
+                    templates=usable_templates,
+                    requested_count=requested_count,
+                    configured_question_types=configured_question_types,
+                )
+                if generation_count <= 0:
+                    break
+                if not user.is_local and reservation_id is None:
+                    if not user.is_authenticated:
+                        raise AITeachMeError(
+                            detail="云端 AI 补题需要先登录。",
+                            status_code=401,
+                            error_code="AUTH_REQUIRED_FOR_CREDIT_TASK",
+                        )
+                    account_user = session.get(User, user.user_id)
+                    if account_user is None:
+                        raise AITeachMeError(
+                            detail="用户不存在。",
+                            status_code=401,
+                            error_code="AUTH_REQUIRED",
+                        )
+                    reservation = reserve_credits(
+                        session,
+                        user=account_user,
+                        feature="exam_generation",
+                        reference_id=f"mastery:{normalized}:{backfill_run_id}",
+                        amount=EXAM_GENERATION_COST,
+                        idempotency_key=f"mastery:{user.user_id}:{backfill_run_id}",
+                    )
+                    reservation_id = reservation.id if reservation is not None else None
+                await _generate_mastery_drill_template_backfill(
+                    session,
+                    course=course,
+                    user_id=user.user_id,
+                    question_count=generation_count,
+                    question_types=generation_types,
+                )
+                session.expire_all()
+
             usable_templates = _mastery_drill_usable_templates(
                 session,
                 course_id=normalized,
                 question_types=configured_question_types,
             )
-            generation_count, generation_types = _mastery_drill_backfill_plan(
+            remaining_count, _remaining_types = _mastery_drill_backfill_plan(
                 templates=usable_templates,
                 requested_count=requested_count,
                 configured_question_types=configured_question_types,
             )
-            if generation_count <= 0:
-                break
-            await _generate_mastery_drill_template_backfill(
-                session,
-                course=course,
-                user_id=user.user_id,
-                question_count=generation_count,
-                question_types=generation_types,
-            )
-            session.expire_all()
+            if remaining_count > 0:
+                final_template_ids = {
+                    int(template_id)
+                    for template_id in session.exec(
+                        select(QuestionTemplate.id).where(QuestionTemplate.course_id == normalized)
+                    ).all()
+                    if template_id is not None
+                }
+                generated_count = len(final_template_ids - initial_template_ids)
+                logger.warning(
+                    "mastery_drill_question_bank_backfill_incomplete",
+                    course_id=normalized,
+                    user_id=user.user_id,
+                    requested_count=requested_count,
+                    available_count=len(usable_templates),
+                    generated_count=generated_count,
+                    remaining_count=remaining_count,
+                    configured_question_types=configured_question_types,
+                )
+                raise AITeachMeError(
+                    detail=(
+                        f"闯关题库补题未完成：当前可用 {len(usable_templates)} 题，"
+                        f"配置需要 {requested_count} 题。已成功生成的题目仍已加入题库，请重试。"
+                    ),
+                    error_code="MASTERY_DRILL_QUESTION_BACKFILL_INCOMPLETE",
+                    status_code=502,
+                    data={
+                        "requested_count": requested_count,
+                        "available_count": len(usable_templates),
+                        "generated_count": generated_count,
+                        "remaining_count": remaining_count,
+                    },
+                )
+            if reservation_id is not None:
+                settle_reservation(session, reservation_id=reservation_id)
+        except BaseException:
+            if reservation_id is not None:
+                release_reservation(session, reservation_id=reservation_id)
+            raise
 
-        usable_templates = _mastery_drill_usable_templates(
-            session,
-            course_id=normalized,
-            question_types=configured_question_types,
-        )
-        remaining_count, _remaining_types = _mastery_drill_backfill_plan(
-            templates=usable_templates,
-            requested_count=requested_count,
-            configured_question_types=configured_question_types,
-        )
         final_template_ids = {
             int(template_id)
             for template_id in session.exec(
@@ -6058,31 +6129,6 @@ async def prepare_mastery_drill(
             if template_id is not None
         }
         generated_count = len(final_template_ids - initial_template_ids)
-        if remaining_count > 0:
-            logger.warning(
-                "mastery_drill_question_bank_backfill_incomplete",
-                course_id=normalized,
-                user_id=user.user_id,
-                requested_count=requested_count,
-                available_count=len(usable_templates),
-                generated_count=generated_count,
-                remaining_count=remaining_count,
-                configured_question_types=configured_question_types,
-            )
-            raise AITeachMeError(
-                detail=(
-                    f"闯关题库补题未完成：当前可用 {len(usable_templates)} 题，"
-                    f"配置需要 {requested_count} 题。已成功生成的题目仍已加入题库，请重试。"
-                ),
-                error_code="MASTERY_DRILL_QUESTION_BACKFILL_INCOMPLETE",
-                status_code=502,
-                data={
-                    "requested_count": requested_count,
-                    "available_count": len(usable_templates),
-                    "generated_count": generated_count,
-                    "remaining_count": remaining_count,
-                },
-            )
 
         logger.info(
             "mastery_drill_question_bank_prepared",
