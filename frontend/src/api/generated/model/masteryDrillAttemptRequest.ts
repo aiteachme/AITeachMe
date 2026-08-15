@@ -6,7 +6,7 @@
  */
 
 /**
- * Persist and grade one answer attempt.
+ * Legacy payload retained for the disabled mastery-drill attempt endpoint.
  */
 export interface MasteryDrillAttemptRequest {
   /** @minimum 1 */

@@ -8,6 +8,16 @@
 export interface ExamStudyGuideFocusUnit {
   knowledge_unit_id?: number | null;
   knowledge_unit_name: string;
+  /** @minimum 0 */
+  paper_attempts?: number;
+  /** @minimum 0 */
+  paper_correct_attempts?: number;
+  /** @minimum 0 */
+  paper_score_obtained?: number;
+  /** @minimum 0 */
+  paper_score_max?: number;
+  paper_score_rate?: number | null;
+  /** Cumulative profile mastery retained for personalization; not the paper metric. */
   mastery_score?: number | null;
   reason: string;
 }

@@ -202,6 +202,17 @@ class CourseVectorStatusResponse(BaseModel):
     vector_table: str | None = Field(default=None, description="Current course-scoped vector index reference, if any.")
 
 
+class CourseVectorIndexRebuildResponse(BaseModel):
+    """Result of rebuilding and verifying the current course vector index."""
+
+    status: Literal["ready", "rebuilt"] = Field(description="Verified vector-index state.")
+    indexed_chunk_count: int = Field(ge=0, description="Number of chunks verified during this rebuild.")
+    vector_status: CourseVectorStatusResponse = Field(
+        default_factory=CourseVectorStatusResponse,
+        description="Refreshed course-level vector capability status.",
+    )
+
+
 class DocGenBuildData(BaseModel):
     """Knowledge docs build response data."""
 

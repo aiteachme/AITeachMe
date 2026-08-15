@@ -7,6 +7,7 @@
 import type { ExamStudyGuideFocusUnit } from './examStudyGuideFocusUnit.ts';
 
 export interface ExamStudyGuideResponse {
+  schema_version?: 2;
   exam_paper_id: number;
   course_name: string;
   generated_at: string;

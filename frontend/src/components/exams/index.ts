@@ -1,6 +1,8 @@
 export {
   CreateExamModal,
   applyExamModeToCreateConfig,
+  formatCreateExamDifficultySummary,
+  formatCreateExamQuestionTypeSummary,
   getDefaultCreateExamConfigForMode,
   loadCreateExamConfig,
   toExamGenerateRequest,

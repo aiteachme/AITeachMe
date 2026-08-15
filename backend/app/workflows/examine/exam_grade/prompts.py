@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from app.schemas.llm import ChatMessage
 
 _LATEX_FEEDBACK_RULE = (
@@ -58,7 +60,7 @@ def build_study_guide_messages(
     exam_title: str,
     score_summary: str,
     wrong_question_summaries: list[dict[str, str]],
-    weak_points: list[dict[str, str]],
+    knowledge_unit_performance: list[dict[str, Any]],
     pending_reviews: list[dict[str, str]],
 ) -> list[ChatMessage]:
     return [
@@ -66,8 +68,10 @@ def build_study_guide_messages(
             "role": "system",
             "content": (
                 "你是一名擅长考试复盘与查漏补缺规划的学习教练。"
-                "请根据本次考卷表现、薄弱知识点和待复习任务，生成一份务实、可执行的学习指南。"
-                "不要空泛鼓励，要把重点放在下一步该学什么、先补哪里、怎么练。"
+                "请根据本次考卷表现、本卷知识点统计、累计画像上下文和待复习任务，生成一份务实、可执行的学习指南。"
+                "不要空泛鼓励，不要把同一结论换一种说法重复到多个部分。"
+                "要把重点放在下一步该学什么、先补哪里、怎么练，并且所有判断都必须能由输入信息支持。"
+                "不得向学生展示 repeated_wrong、newly_learned、forgetting_due、prereq_gap 等内部状态码或字段名。"
                 f"{_LATEX_FEEDBACK_RULE}"
                 "输出必须是结构化 JSON。"
             ),
@@ -79,16 +83,23 @@ def build_study_guide_messages(
                 f"考卷标题：{exam_title}\n"
                 f"本次成绩概览：{score_summary}\n"
                 f"错题/未作答摘要：{wrong_question_summaries}\n"
-                f"当前薄弱知识点：{weak_points}\n"
-                f"待复习任务：{pending_reviews}\n\n"
-                "请返回：\n"
-                "1. `overall_summary`：100-220字，总结本次考试暴露出的整体情况。\n"
-                "2. `strengths`：2-4条，本次相对做得不错的方面。\n"
-                "3. `priority_gaps`：3-5条，当前最需要查漏补缺的方向。\n"
-                "4. `action_steps`：3-6条，按先后顺序给出下一步学习动作。\n"
-                "5. `review_tasks`：2-5条，适合立刻执行的复习任务。\n"
-                "6. `focus_units`：2-5个重点知识点对象，每个对象包含 `knowledge_unit_id`、`knowledge_unit_name`、`mastery_score`、`reason`。\n"
-                "不要输出 Markdown 代码块。"
+                f"本卷知识点表现（含仅供个性化判断的累计画像上下文）：{knowledge_unit_performance}\n"
+                f"待复习任务（请整合进 action_steps）：{pending_reviews}\n\n"
+                "本卷知识点表现是本指南的主要证据。累计画像只用于判断问题是偶发还是持续、调整建议优先级；"
+                "不要直接复述累计掌握度百分比、累计次数或输入字段名。\n"
+                "请严格按以下字段顺序返回，确保流式内容能从上到下依次出现：\n"
+                "1. `overall_summary`：70-140字。先给出整体判断，再指出首要复习方向；不要重复得分和正确率。\n"
+                "2. `strengths`：0-2条。只写有正确作答或稳定表现支撑的具体优势；证据不足时返回空数组，不要勉强表扬。\n"
+                "3. `focus_units`：0-3个重点知识点对象，每个对象包含 `knowledge_unit_id`、`knowledge_unit_name` 与 `reason`。"
+                "只使用输入中的真实知识点和编号；`reason`只概括本卷关联题目的作答、得分与暴露的问题。"
+                "知识点指标最终由后端按本卷数据校准；没有可靠知识点时返回空数组，不要编造编号。\n"
+                "4. `priority_gaps`：0-3条。描述错题暴露出的概念、方法或审题缺口，每条说明表现证据与纠正要点；"
+                "没有可靠缺口时返回空数组，"
+                "不要只是重复 `focus_units` 的知识点名称。\n"
+                "5. `action_steps`：2-3条。只保留最高优先级的学习动作，按先后顺序给出动作与可核验的完成标准；"
+                "把待复习任务融入这些步骤，不要罗列多个专项清单，也不要重复前文分析；"
+                "不要另行输出 `review_tasks`。\n"
+                "各部分内容必须互补、简洁、可执行；不要输出 Markdown 代码块。"
             ),
         },
     ]

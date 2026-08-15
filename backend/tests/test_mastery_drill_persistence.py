@@ -8,7 +8,6 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import BackgroundTasks
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
@@ -21,23 +20,19 @@ from app.models import (
     ExamPaperItem,
     MasteryDrillAttempt,
     MasteryDrillSession,
-    QuestionKnowledgeUnitLink,
     QuestionTemplate,
 )
 from app.models.knowledge_unit import KnowledgeUnit
 from app.repositories import exams_repo
 from app.schemas.exams import (
     ExamGenerateRequest,
-    ExamSubmitAnswerItem,
-    ExamSubmitRequest,
     MasteryDrillAttemptRequest,
     MasteryDrillCompleteRequest,
+    MasteryDrillPrepareRequest,
     MasteryDrillStartRequest,
-    QuestionTemplateGradeResponse,
 )
 from app.shared.infra.exceptions import AITeachMeError
 from app.utils.time import utcnow
-from app.workflows.profile.common.lib.mastery import update_mastery_from_exam
 
 
 COURSE_ID = "course_drill0000000"
@@ -61,104 +56,73 @@ def user() -> CurrentUserContext:
     return CurrentUserContext(user_id=USER_ID, email=None, is_local=True)
 
 
-def _seed_course_and_template(session: Session) -> tuple[QuestionTemplate, KnowledgeUnit]:
-    course = Course(id=COURSE_ID, user_id=USER_ID, name="Durable Drill")
-    unit = KnowledgeUnit(
-        course_id=COURSE_ID,
-        knowledge_unit_type="concept",
-        canonical_name="Matrix inverse",
-        normalized_name="matrix_inverse",
-        summary="Understand invertibility.",
-        status="active",
-    )
-    session.add(course)
-    session.add(unit)
-    session.commit()
-    session.refresh(unit)
-    template = QuestionTemplate(
-        course_id=COURSE_ID,
-        question_type="single_choice",
-        difficulty="medium",
-        stem="Which matrix is invertible?",
-        stem_hash="durable-drill-template",
-        options_json=json.dumps(["A", "B"]),
-        answer="A",
-        explanation="A has a non-zero determinant.",
-        status="active",
-    )
-    session.add(template)
-    session.commit()
-    session.refresh(template)
-    session.add(
-        QuestionKnowledgeUnitLink(
-            question_template_id=int(template.id or 0),
-            knowledge_unit_id=int(unit.id or 0),
-            coverage_weight=1.0,
+def _assert_ephemeral_only(error: pytest.ExceptionInfo[AITeachMeError]) -> None:
+    assert error.value.status_code == 410
+    assert error.value.error_code == "MASTERY_DRILL_EPHEMERAL_ONLY"
+
+
+@pytest.mark.anyio
+async def test_durable_mastery_drill_endpoints_are_retired_without_writes(
+    session: Session,
+    user: CurrentUserContext,
+) -> None:
+    with pytest.raises(AITeachMeError) as active_error:
+        await exams_api.active_mastery_drill(course_id=COURSE_ID, user=user, session=session)
+    _assert_ephemeral_only(active_error)
+
+    with pytest.raises(AITeachMeError) as start_error:
+        await exams_api.start_mastery_drill(
+            course_id=COURSE_ID,
+            body=MasteryDrillStartRequest(
+                session_key="legacy-start",
+                question_template_ids=[1],
+                configured_question_count=1,
+            ),
+            user=user,
+            session=session,
         )
-    )
+    _assert_ephemeral_only(start_error)
+
+    with pytest.raises(AITeachMeError) as attempt_error:
+        await exams_api.record_mastery_drill_attempt(
+            course_id=COURSE_ID,
+            exam_paper_id=1,
+            body=MasteryDrillAttemptRequest(
+                exam_paper_item_id=1,
+                answer="A",
+                attempt_key="legacy-attempt",
+            ),
+            user=user,
+            session=session,
+        )
+    _assert_ephemeral_only(attempt_error)
+
+    with pytest.raises(AITeachMeError) as complete_error:
+        await exams_api.complete_mastery_drill(
+            request=SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(background_task_registry=None))),
+            background_tasks=BackgroundTasks(),
+            course_id=COURSE_ID,
+            exam_paper_id=1,
+            body=MasteryDrillCompleteRequest(completion_key="legacy-complete"),
+            user=user,
+            session=session,
+        )
+    _assert_ephemeral_only(complete_error)
+
+    assert session.exec(select(ExamPaper)).all() == []
+    assert session.exec(select(MasteryDrillSession)).all() == []
+    assert session.exec(select(MasteryDrillAttempt)).all() == []
+
+
+@pytest.mark.anyio
+async def test_generic_generation_also_rejects_mastery_drill(
+    session: Session,
+    user: CurrentUserContext,
+) -> None:
+    session.add(Course(id=COURSE_ID, user_id=USER_ID, name="Ephemeral Drill"))
     session.commit()
-    return template, unit
 
-
-async def _start(
-    session: Session,
-    user: CurrentUserContext,
-    template: QuestionTemplate,
-    *,
-    session_key: str = "drill-session-1",
-):
-    return await exams_api.start_mastery_drill(
-        course_id=COURSE_ID,
-        body=MasteryDrillStartRequest(
-            session_key=session_key,
-            question_template_ids=[int(template.id or 0)],
-            configured_question_count=1,
-            configured_question_types=["single_choice"],
-        ),
-        user=user,
-        session=session,
-    )
-
-
-@pytest.mark.anyio
-async def test_mastery_drill_start_is_durable_and_resumes_active_session(
-    session: Session,
-    user: CurrentUserContext,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    template, _unit = _seed_course_and_template(session)
-    monkeypatch.setattr(exams_api, "_capture_exam_event", lambda *_args, **_kwargs: None)
-
-    first = await _start(session, user, template)
-    resumed = await _start(session, user, template, session_key="another-client-key")
-
-    assert first.data.id == resumed.data.id
-    assert first.data.status == "in_progress"
-    assert first.data.mastery_drill is not None
-    assert first.data.mastery_drill.status == "active"
-    assert len(first.data.items) == 1
-    assert len(session.exec(select(ExamPaper)).all()) == 1
-    assert len(session.exec(select(MasteryDrillSession)).all()) == 1
-
-    active = await exams_api.active_mastery_drill(
-        course_id=COURSE_ID,
-        user=user,
-        session=session,
-    )
-    assert active.data is not None
-    assert active.data.id == first.data.id
-
-
-@pytest.mark.anyio
-async def test_generic_exam_endpoints_reject_mastery_drill_mode(
-    session: Session,
-    user: CurrentUserContext,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    template, _unit = _seed_course_and_template(session)
-    monkeypatch.setattr(exams_api, "_capture_exam_event", lambda *_args, **_kwargs: None)
-
-    with pytest.raises(AITeachMeError) as generate_error:
+    with pytest.raises(AITeachMeError) as error:
         await exams_api.generate_exam(
             request=SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(background_task_registry=None))),
             background_tasks=BackgroundTasks(),
@@ -167,535 +131,402 @@ async def test_generic_exam_endpoints_reject_mastery_drill_mode(
             user=user,
             session=session,
         )
-    assert generate_error.value.error_code == "MASTERY_DRILL_DEDICATED_ENDPOINT_REQUIRED"
+    _assert_ephemeral_only(error)
+    assert session.exec(select(ExamPaper)).all() == []
 
-    started = await _start(session, user, template)
-    item_id = int(started.data.items[0].id)
-    with pytest.raises(AITeachMeError) as submit_error:
-        await exams_api.submit_exam(
-            request=SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(background_task_registry=None))),
-            background_tasks=BackgroundTasks(),
+
+@pytest.mark.anyio
+async def test_prepare_mastery_drill_reuses_sufficient_bank_without_generation(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+    user: CurrentUserContext,
+) -> None:
+    session.add(Course(id=COURSE_ID, user_id=USER_ID, name="Bank-first Drill"))
+    session.add_all([
+        QuestionTemplate(
             course_id=COURSE_ID,
-            exam_paper_id=int(started.data.id),
-            body=ExamSubmitRequest(
-                answers=[ExamSubmitAnswerItem(exam_paper_item_id=item_id, answer="A")],
-                submission_key="generic-submit-must-fail",
-            ),
+            question_type="single_choice",
+            difficulty="easy",
+            stem=f"Existing reusable question {index}?",
+            stem_hash=f"existing-reusable-{index}",
+            options_json=json.dumps(["A", "B", "C", "D"]),
+            answer="A",
+            explanation="Existing explanation.",
+        )
+        for index in range(2)
+    ])
+    session.commit()
+
+    async def fail_if_generated(**_kwargs):
+        raise AssertionError("the question workflow must not run when the bank already satisfies the config")
+
+    monkeypatch.setattr(exams_api, "run_question_build_workflow", fail_if_generated)
+
+    response = await exams_api.prepare_mastery_drill(
+        course_id=COURSE_ID,
+        body=MasteryDrillPrepareRequest(
+            num_questions=2,
+            question_types=["single_choice"],
+        ),
+        user=user,
+        session=session,
+    )
+
+    assert response.data.requested_count == 2
+    assert response.data.available_count == 2
+    assert response.data.generated_count == 0
+    assert len(response.data.templates) == 2
+    assert session.exec(select(ExamPaper)).all() == []
+
+
+@pytest.mark.anyio
+async def test_prepare_mastery_drill_generates_only_shortage_and_syncs_templates_to_bank(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+    user: CurrentUserContext,
+) -> None:
+    session.add(
+        Course(
+            id=COURSE_ID,
+            user_id=USER_ID,
+            name="Generated Drill",
+            description="A course used to verify mastery-drill question backfill.",
+        )
+    )
+    unit = KnowledgeUnit(
+        course_id=COURSE_ID,
+        knowledge_unit_type="concept",
+        canonical_name="Core concept",
+        normalized_name="core_concept",
+        summary="The core concept used by generated questions.",
+        status="active",
+    )
+    existing = QuestionTemplate(
+        course_id=COURSE_ID,
+        question_type="single_choice",
+        difficulty="easy",
+        stem="Existing bank question?",
+        stem_hash="existing-bank-question",
+        options_json=json.dumps(["A", "B", "C", "D"]),
+        answer="A",
+        explanation="Existing explanation.",
+    )
+    session.add(unit)
+    session.add(existing)
+    session.commit()
+    session.refresh(unit)
+
+    captured: dict[str, object] = {}
+
+    async def fake_question_build_workflow(**kwargs):
+        captured.update(kwargs)
+        requested_count = int(kwargs["question_count"])
+        requested_types = list(kwargs["configured_question_types"])
+        generated_questions = []
+        blueprints = []
+        for order in range(1, requested_count + 1):
+            question_type = requested_types[(order - 1) % len(requested_types)]
+            generated_questions.append(
+                {
+                    "item_order": order,
+                    "question_type": question_type,
+                    "difficulty": "medium",
+                    "stem": f"Generated mastery question {order}?",
+                    "options": ["A", "B", "C", "D"] if question_type.endswith("choice") else None,
+                    "correct_answer": "A" if question_type.endswith("choice") else "True",
+                    "explanation": f"Generated explanation {order}.",
+                    "knowledge_unit_refs": [
+                        {"knowledge_unit_id": int(unit.id or 0), "coverage_weight": 1.0}
+                    ],
+                }
+            )
+            blueprints.append(
+                {
+                    "item_order": order,
+                    "question_type": question_type,
+                    "difficulty": "medium",
+                    "knowledge_unit_ids": [int(unit.id or 0)],
+                    "rationale": "Fill the configured mastery-drill bank shortage.",
+                }
+            )
+        payload = {
+            "generated_questions": generated_questions,
+            "question_blueprints": blueprints,
+            "failed_questions": [],
+            "error": "",
+        }
+        return SimpleNamespace(
+            failed=False,
+            error=None,
+            value=payload,
+            require_value=lambda: payload,
+        )
+
+    monkeypatch.setattr(exams_api, "run_question_build_workflow", fake_question_build_workflow)
+    monkeypatch.setattr(exams_api, "load_course_llm_context", lambda *_args, **_kwargs: "course context")
+
+    response = await exams_api.prepare_mastery_drill(
+        course_id=COURSE_ID,
+        body=MasteryDrillPrepareRequest(
+            num_questions=3,
+            question_types=["single_choice", "true_false"],
+        ),
+        user=user,
+        session=session,
+    )
+
+    assert captured["exam_mode"] == "mastery_drill"
+    assert captured["question_count"] == 2
+    assert captured["configured_question_types"] == ["true_false", "single_choice"]
+    assert response.data.requested_count == 3
+    assert response.data.available_count == 3
+    assert response.data.generated_count == 2
+    assert len(response.data.templates) == 3
+    persisted = list(session.exec(select(QuestionTemplate)).all())
+    assert len(persisted) == 3
+    generated = [template for template in persisted if template.stem.startswith("Generated mastery question")]
+    assert len(generated) == 2
+    assert all(
+        exams_repo.find_knowledge_unit_links_by_template(session, int(template.id or 0))
+        == [{"knowledge_unit_id": int(unit.id or 0), "coverage_weight": 1.0}]
+        for template in generated
+    )
+    assert session.exec(select(ExamPaper)).all() == []
+
+
+@pytest.mark.anyio
+async def test_concurrent_mastery_drill_prepare_generates_bank_shortage_once(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+    user: CurrentUserContext,
+) -> None:
+    session.add(Course(id=COURSE_ID, user_id=USER_ID, name="Concurrent Drill"))
+    session.commit()
+    generation_started = asyncio.Event()
+    release_generation = asyncio.Event()
+    generation_calls = 0
+
+    async def fake_backfill(
+        worker_session: Session,
+        *,
+        course: Course,
+        user_id: str,
+        question_count: int,
+        question_types: list[str],
+    ) -> list[QuestionTemplate]:
+        nonlocal generation_calls
+        generation_calls += 1
+        assert course.id == COURSE_ID
+        assert user_id == USER_ID
+        assert question_count == 1
+        assert question_types == ["single_choice"]
+        generation_started.set()
+        await release_generation.wait()
+        template = QuestionTemplate(
+            course_id=COURSE_ID,
+            question_type="single_choice",
+            difficulty="medium",
+            stem="Generated exactly once for concurrent prepare?",
+            stem_hash="concurrent-prepare-generated-once",
+            options_json=json.dumps(["A", "B", "C", "D"]),
+            answer="A",
+            explanation="The course-level backfill lock prevents duplicate generation.",
+        )
+        worker_session.add(template)
+        worker_session.commit()
+        worker_session.refresh(template)
+        return [template]
+
+    monkeypatch.setattr(
+        exams_api,
+        "_generate_mastery_drill_template_backfill",
+        fake_backfill,
+    )
+    body = MasteryDrillPrepareRequest(
+        num_questions=1,
+        question_types=["single_choice"],
+    )
+    first_task = asyncio.create_task(
+        exams_api.prepare_mastery_drill(
+            course_id=COURSE_ID,
+            body=body,
             user=user,
             session=session,
         )
-    assert submit_error.value.error_code == "MASTERY_DRILL_DEDICATED_ENDPOINT_REQUIRED"
+    )
+    await generation_started.wait()
+
+    with Session(session.get_bind(), expire_on_commit=False) as second_session:
+        second_task = asyncio.create_task(
+            exams_api.prepare_mastery_drill(
+                course_id=COURSE_ID,
+                body=body,
+                user=user,
+                session=second_session,
+            )
+        )
+        await asyncio.sleep(0.02)
+        assert generation_calls == 1
+        assert second_task.done() is False
+
+        release_generation.set()
+        first_response, second_response = await asyncio.gather(first_task, second_task)
+
+    assert generation_calls == 1
+    assert first_response.data.generated_count == 1
+    assert second_response.data.generated_count == 0
+    assert len(first_response.data.templates) == 1
+    assert len(second_response.data.templates) == 1
 
 
-@pytest.mark.anyio
-async def test_mastery_drill_start_abandons_inconsistent_active_session(
+def test_mastery_drill_backfill_plan_requires_two_types_for_smart_mix() -> None:
+    templates = [
+        QuestionTemplate(
+            course_id=COURSE_ID,
+            question_type="single_choice",
+            difficulty="easy",
+            stem=f"Same-type bank question {index}?",
+            stem_hash=f"same-type-{index}",
+            answer="A",
+            explanation="Explanation.",
+        )
+        for index in range(3)
+    ]
+
+    generation_count, generation_types = exams_api._mastery_drill_backfill_plan(
+        templates=templates,
+        requested_count=3,
+        configured_question_types=[],
+    )
+
+    assert generation_count == 1
+    assert generation_types == ["multiple_choice"]
+
+
+def test_legacy_mastery_rows_do_not_enter_history_wrong_questions_or_snapshots(
     session: Session,
-    user: CurrentUserContext,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    template, _unit = _seed_course_and_template(session)
-    monkeypatch.setattr(exams_api, "_capture_exam_event", lambda *_args, **_kwargs: None)
-    started = await _start(session, user, template)
-    old_paper = session.get(ExamPaper, int(started.data.id))
-    assert old_paper is not None
-    old_paper.status = "graded"
-    session.add(old_paper)
+    now = utcnow()
+    session.add(Course(id=COURSE_ID, user_id=USER_ID, name="Legacy Drill Data"))
+    template = QuestionTemplate(
+        course_id=COURSE_ID,
+        question_type="single_choice",
+        difficulty="medium",
+        stem="Which answer is correct?",
+        stem_hash="ephemeral-drill-template",
+        options_json=json.dumps(["A", "B"]),
+        answer="A",
+        explanation="A is correct.",
+    )
+    mastery_only_template = QuestionTemplate(
+        course_id=COURSE_ID,
+        question_type="single_choice",
+        difficulty="medium",
+        stem="Which legacy mastery answer is correct?",
+        stem_hash="legacy-mastery-only-template",
+        options_json=json.dumps(["A", "B"]),
+        answer="A",
+        explanation="A is correct.",
+    )
+    session.add(template)
+    session.add(mastery_only_template)
     session.commit()
+    session.refresh(template)
+    session.refresh(mastery_only_template)
 
-    replacement = await _start(session, user, template, session_key="replacement-session")
-    old_drill = exams_repo.get_mastery_drill_session_by_paper(session, paper_id=int(old_paper.id or 0))
-
-    assert replacement.data.id != old_paper.id
-    assert old_drill is not None and old_drill.status == "abandoned"
-    assert replacement.data.mastery_drill is not None
-    assert replacement.data.mastery_drill.status == "active"
-
-
-@pytest.mark.anyio
-async def test_mastery_drill_database_allows_only_one_active_session_per_user_course(
-    session: Session,
-    user: CurrentUserContext,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    template, _unit = _seed_course_and_template(session)
-    monkeypatch.setattr(exams_api, "_capture_exam_event", lambda *_args, **_kwargs: None)
-    await _start(session, user, template)
-
-    second_paper = ExamPaper(
+    regular_paper = ExamPaper(
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        exam_mode="web_practice",
+        status="graded",
+        total_items=1,
+        created_at=now,
+    )
+    mastery_paper = ExamPaper(
         course_id=COURSE_ID,
         user_id=USER_ID,
         exam_mode="mastery_drill",
-        status="in_progress",
-        visibility="visible",
+        status="graded",
         total_items=1,
+        created_at=now + timedelta(minutes=1),
     )
-    session.add(second_paper)
-    session.flush()
-    session.add(
-        MasteryDrillSession(
-            exam_paper_id=int(second_paper.id or 0),
-            course_id=COURSE_ID,
-            user_id=USER_ID,
-            session_key="parallel-start",
-            status="active",
-        )
+    session.add(regular_paper)
+    session.add(mastery_paper)
+    session.commit()
+    session.refresh(regular_paper)
+    session.refresh(mastery_paper)
+
+    regular_item = ExamPaperItem(
+        exam_paper_id=int(regular_paper.id or 0),
+        question_template_id=int(template.id or 0),
+        item_order=1,
+        stem_snapshot=template.stem,
+        options_snapshot_json=template.options_json,
+        answer_snapshot=template.answer,
+        explanation_snapshot=template.explanation,
+        difficulty=template.difficulty,
+        question_type=template.question_type,
+        answer_content="B",
+        is_correct=False,
+        answered_at=now,
     )
-
-    with pytest.raises(IntegrityError):
-        session.commit()
-    session.rollback()
-
-
-@pytest.mark.anyio
-async def test_mastery_drill_attempt_lease_can_be_renewed_by_its_owner(
-    session: Session,
-    user: CurrentUserContext,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    template, _unit = _seed_course_and_template(session)
-    monkeypatch.setattr(exams_api, "_capture_exam_event", lambda *_args, **_kwargs: None)
-    started = await _start(session, user, template)
-    item = session.get(ExamPaperItem, int(started.data.items[0].id))
-    drill = exams_repo.get_mastery_drill_session_by_paper(session, paper_id=int(started.data.id))
-    assert item is not None and drill is not None
-    now = utcnow()
-
-    outcome, attempt = exams_repo.claim_mastery_drill_attempt(
-        session,
-        drill_session_id=int(drill.id or 0),
-        item=item,
-        attempt_key="lease-owner-attempt",
-        request_hash="lease-owner-hash",
-        answer="A",
-        time_spent_seconds=None,
-        hint_used=False,
-        confidence_self_report=None,
-        claim_token="lease-owner",
-        claimed_at=now,
-        lease_expires_at=now + timedelta(minutes=5),
+    mastery_item = ExamPaperItem(
+        exam_paper_id=int(mastery_paper.id or 0),
+        question_template_id=int(mastery_only_template.id or 0),
+        item_order=1,
+        stem_snapshot=mastery_only_template.stem,
+        options_snapshot_json=mastery_only_template.options_json,
+        answer_snapshot=mastery_only_template.answer,
+        explanation_snapshot=mastery_only_template.explanation,
+        difficulty=mastery_only_template.difficulty,
+        question_type=mastery_only_template.question_type,
+        answer_content="B",
+        is_correct=False,
+        answered_at=now + timedelta(minutes=1),
     )
+    session.add(regular_item)
+    session.add(mastery_item)
+    session.commit()
 
-    assert outcome == "claimed"
-    assert exams_repo.renew_mastery_drill_attempt_lease(
-        session,
-        attempt_id=int(attempt.id or 0),
-        claim_token="lease-owner",
-        lease_expires_at=now + timedelta(minutes=10),
-    )
-    assert not exams_repo.renew_mastery_drill_attempt_lease(
-        session,
-        attempt_id=int(attempt.id or 0),
-        claim_token="another-worker",
-        lease_expires_at=now + timedelta(minutes=10),
-    )
-
-
-@pytest.mark.anyio
-async def test_mastery_drill_attempts_and_completion_are_idempotent_and_feed_profile(
-    session: Session,
-    user: CurrentUserContext,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    template, unit = _seed_course_and_template(session)
-    monkeypatch.setattr(exams_api, "_capture_exam_event", lambda *_args, **_kwargs: None)
-    grade_calls: list[str] = []
-
-    async def fake_grade(*, answer: str, item: ExamPaperItem, **_kwargs):
-        grade_calls.append(answer)
-        correct = answer == "A"
-        return QuestionTemplateGradeResponse(
-            question_template_id=int(item.question_template_id or 0),
-            question_type=item.question_type,
-            is_correct=correct,
-            score_obtained=1.0 if correct else 0.0,
-            score_max=1.0,
-            feedback_text="correct" if correct else "retry",
-            error_cause_label=None if correct else "concept_gap",
-            grading_mode="objective_rule",
-            correct_answer=item.answer_snapshot,
-        )
-
-    monkeypatch.setattr(exams_api, "_grade_exam_paper_item_answer", fake_grade)
-    started = await _start(session, user, template)
-    paper_id = int(started.data.id)
-    item_id = int(started.data.items[0].id)
-
-    wrong_request = MasteryDrillAttemptRequest(
-        exam_paper_item_id=item_id,
-        answer="B",
-        attempt_key="wrong-attempt",
-        time_spent_seconds=12,
-    )
-    wrong = await exams_api.record_mastery_drill_attempt(
-        course_id=COURSE_ID,
-        exam_paper_id=paper_id,
-        body=wrong_request,
-        user=user,
-        session=session,
-    )
-    wrong_retry = await exams_api.record_mastery_drill_attempt(
-        course_id=COURSE_ID,
-        exam_paper_id=paper_id,
-        body=wrong_request,
-        user=user,
-        session=session,
-    )
-    assert wrong.data.id == wrong_retry.data.id
-    assert wrong.data.is_correct is False
-    assert exams_repo.list_wrong_question_template_ids(
+    papers, total = exams_repo.list_exam_papers(
         session,
         course_id=COURSE_ID,
         user_id=USER_ID,
-        template_ids=[int(template.id or 0)],
-    ) == {int(template.id or 0)}
-
-    correct = await exams_api.record_mastery_drill_attempt(
-        course_id=COURSE_ID,
-        exam_paper_id=paper_id,
-        body=MasteryDrillAttemptRequest(
-            exam_paper_item_id=item_id,
-            answer="A",
-            attempt_key="correct-attempt",
-            time_spent_seconds=8,
-        ),
-        user=user,
-        session=session,
+        limit=20,
+        offset=0,
     )
-    correct_retry = await exams_api.record_mastery_drill_attempt(
-        course_id=COURSE_ID,
-        exam_paper_id=paper_id,
-        body=MasteryDrillAttemptRequest(
-            exam_paper_item_id=item_id,
-            answer="A",
-            attempt_key="correct-attempt",
-            time_spent_seconds=8,
-        ),
-        user=user,
-        session=session,
-    )
-
-    assert correct.data.is_correct is True
-    assert correct_retry.data.id == correct.data.id
-    assert grade_calls == ["B", "A"]
-    assert exams_repo.list_wrong_question_template_ids(
+    wrong_ids = exams_repo.list_wrong_question_template_ids(
         session,
         course_id=COURSE_ID,
         user_id=USER_ID,
-        template_ids=[int(template.id or 0)],
-    ) == set()
-
-    with pytest.raises(AITeachMeError) as passed_error:
-        await exams_api.record_mastery_drill_attempt(
-            course_id=COURSE_ID,
-            exam_paper_id=paper_id,
-            body=MasteryDrillAttemptRequest(
-                exam_paper_item_id=item_id,
-                answer="B",
-                attempt_key="stale-client-attempt",
-            ),
-            user=user,
-            session=session,
-        )
-    assert passed_error.value.error_code == "MASTERY_DRILL_ITEM_ALREADY_PASSED"
-
-    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(background_task_registry=None)))
-    background_tasks = BackgroundTasks()
-    completion = await exams_api.complete_mastery_drill(
-        request=request,
-        background_tasks=background_tasks,
+        template_ids=[int(template.id or 0), int(mastery_only_template.id or 0)],
+    )
+    answer_history = exams_repo.list_question_template_answer_history(
+        session,
         course_id=COURSE_ID,
-        exam_paper_id=paper_id,
-        body=MasteryDrillCompleteRequest(completion_key="complete-1", duration_seconds=20),
-        user=user,
-        session=session,
+        user_id=USER_ID,
+        template_id=int(template.id or 0),
     )
-    completion_retry = await exams_api.complete_mastery_drill(
-        request=request,
-        background_tasks=BackgroundTasks(),
+    mastery_answer_history = exams_repo.list_question_template_answer_history(
+        session,
         course_id=COURSE_ID,
-        exam_paper_id=paper_id,
-        body=MasteryDrillCompleteRequest(completion_key="complete-network-retry", duration_seconds=20),
-        user=user,
-        session=session,
+        user_id=USER_ID,
+        template_id=int(mastery_only_template.id or 0),
     )
-
-    session.expire_all()
-    paper = session.get(ExamPaper, paper_id)
-    drill = exams_repo.get_mastery_drill_session_by_paper(session, paper_id=paper_id)
-    item = session.get(ExamPaperItem, item_id)
-    attempts = session.exec(
-        select(MasteryDrillAttempt).where(MasteryDrillAttempt.mastery_drill_session_id == int(drill.id or 0))
-    ).all()
-    profile_sync = exams_repo.get_exam_profile_sync(session, paper_id=paper_id)
-
-    assert completion.data.status == completion_retry.data.status == "completed"
-    assert paper is not None and paper.status == "graded"
-    assert paper.score_obtained == 0.0
-    assert paper.total_score == 1.0
-    assert drill is not None and drill.status == "completed"
-    assert drill.total_attempts == 2
-    assert drill.wrong_attempts == 1
-    assert item is not None and item.is_correct is True and item.answer_content == "A"
-    assert len(attempts) == 2
-    assert profile_sync is not None and profile_sync.status == "pending"
-
-    mastery = update_mastery_from_exam(session, paper_id)
-    state = session.exec(
-        select(app.models.UserKnowledgeState).where(
-            app.models.UserKnowledgeState.knowledge_unit_id == int(unit.id or 0)
-        )
-    ).one()
-    assert mastery.states_updated == 1
-    assert state.total_attempts == 2
-    assert state.correct_attempts == 1
-
-    history = await exams_api.exam_history(
-        request=request,
-        background_tasks=BackgroundTasks(),
+    snapshots = exams_repo.list_exam_item_snapshots_by_user(
+        session,
         course_id=COURSE_ID,
-        page=1,
-        size=20,
-        user=user,
-        session=session,
-    )
-    history_item = next(item for item in history.data.items if item.id == paper_id)
-    assert history_item.mastery_drill is not None
-    assert history_item.mastery_drill.total_attempts == 2
-    assert history_item.mastery_drill.wrong_attempts == 1
-    assert history_item.mastery_drill.attempt_accuracy == 0.5
-
-
-@pytest.mark.anyio
-async def test_mastery_drill_attempt_runs_and_cleans_up_lease_heartbeat(
-    session: Session,
-    user: CurrentUserContext,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    template, _unit = _seed_course_and_template(session)
-    monkeypatch.setattr(exams_api, "_capture_exam_event", lambda *_args, **_kwargs: None)
-    heartbeat_started = asyncio.Event()
-    heartbeat_cancelled = asyncio.Event()
-
-    async def fake_heartbeat(**_kwargs):
-        heartbeat_started.set()
-        try:
-            await asyncio.Event().wait()
-        except asyncio.CancelledError:
-            heartbeat_cancelled.set()
-            raise
-
-    async def fake_grade(*, answer: str, item: ExamPaperItem, **_kwargs):
-        await heartbeat_started.wait()
-        return QuestionTemplateGradeResponse(
-            question_template_id=int(item.question_template_id or 0),
-            question_type=item.question_type,
-            is_correct=answer == "A",
-            score_obtained=1.0,
-            score_max=1.0,
-            feedback_text="correct",
-            error_cause_label=None,
-            grading_mode="objective_rule",
-            correct_answer=item.answer_snapshot,
-        )
-
-    monkeypatch.setattr(exams_api, "_renew_mastery_drill_attempt_lease_loop", fake_heartbeat)
-    monkeypatch.setattr(exams_api, "_grade_exam_paper_item_answer", fake_grade)
-    started = await _start(session, user, template)
-
-    response = await exams_api.record_mastery_drill_attempt(
-        course_id=COURSE_ID,
-        exam_paper_id=int(started.data.id),
-        body=MasteryDrillAttemptRequest(
-            exam_paper_item_id=int(started.data.items[0].id),
-            answer="A",
-            attempt_key="heartbeat-attempt",
-        ),
-        user=user,
-        session=session,
+        user_id=USER_ID,
     )
 
-    assert response.data.status == "graded"
-    assert heartbeat_started.is_set()
-    assert heartbeat_cancelled.is_set()
+    assert total == 1
+    assert [paper.id for paper in papers] == [regular_paper.id]
+    assert wrong_ids == {int(template.id or 0)}
+    assert [paper.id for _item, paper in answer_history] == [regular_paper.id]
+    assert mastery_answer_history == []
+    assert [paper_id for _item, _asked_at, paper_id in snapshots] == [int(regular_paper.id or 0)]
 
 
-@pytest.mark.anyio
-async def test_mastery_drill_attempt_cancellation_releases_claim(
-    session: Session,
-    user: CurrentUserContext,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    template, _unit = _seed_course_and_template(session)
-    monkeypatch.setattr(exams_api, "_capture_exam_event", lambda *_args, **_kwargs: None)
-    heartbeat_started = asyncio.Event()
-
-    async def fake_heartbeat(**_kwargs):
-        heartbeat_started.set()
-        await asyncio.Event().wait()
-
-    async def blocking_grade(**_kwargs):
-        await asyncio.Event().wait()
-
-    monkeypatch.setattr(exams_api, "_renew_mastery_drill_attempt_lease_loop", fake_heartbeat)
-    monkeypatch.setattr(exams_api, "_grade_exam_paper_item_answer", blocking_grade)
-    started = await _start(session, user, template)
-    request_task = asyncio.create_task(
-        exams_api.record_mastery_drill_attempt(
-            course_id=COURSE_ID,
-            exam_paper_id=int(started.data.id),
-            body=MasteryDrillAttemptRequest(
-                exam_paper_item_id=int(started.data.items[0].id),
-                answer="A",
-                attempt_key="cancelled-attempt",
-            ),
-            user=user,
-            session=session,
-        )
-    )
-    await heartbeat_started.wait()
-    request_task.cancel()
-
-    with pytest.raises(asyncio.CancelledError):
-        await request_task
-
-    session.expire_all()
-    attempt = session.exec(
-        select(MasteryDrillAttempt).where(MasteryDrillAttempt.attempt_key == "cancelled-attempt")
-    ).one()
-    assert attempt.status == "failed"
-    assert attempt.claim_token == ""
-    assert attempt.lease_expires_at is None
-    assert attempt.error_code == "MASTERY_DRILL_ATTEMPT_CANCELLED"
-
-
-@pytest.mark.anyio
-async def test_mastery_drill_completion_preserves_partial_first_attempt_score(
-    session: Session,
-    user: CurrentUserContext,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    template, _unit = _seed_course_and_template(session)
-    monkeypatch.setattr(exams_api, "_capture_exam_event", lambda *_args, **_kwargs: None)
-
-    async def fake_partial_grade(*, item: ExamPaperItem, **_kwargs):
-        return QuestionTemplateGradeResponse(
-            question_template_id=int(item.question_template_id or 0),
-            question_type=item.question_type,
-            is_correct=True,
-            score_obtained=0.75,
-            score_max=1.0,
-            feedback_text="基本正确，但仍有少量遗漏。",
-            error_cause_label=None,
-            grading_mode="subjective_llm",
-            correct_answer=item.answer_snapshot,
-        )
-
-    monkeypatch.setattr(exams_api, "_grade_exam_paper_item_answer", fake_partial_grade)
-    started = await _start(session, user, template, session_key="partial-score-session")
-    paper_id = int(started.data.id)
-    item_id = int(started.data.items[0].id)
-    attempt = await exams_api.record_mastery_drill_attempt(
-        course_id=COURSE_ID,
-        exam_paper_id=paper_id,
-        body=MasteryDrillAttemptRequest(
-            exam_paper_item_id=item_id,
-            answer="A",
-            attempt_key="partial-first-attempt",
-        ),
-        user=user,
-        session=session,
-    )
-    assert attempt.data.is_correct is True
-    assert attempt.data.score_obtained == pytest.approx(0.75)
-
-    await exams_api.complete_mastery_drill(
-        request=SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(background_task_registry=None))),
-        background_tasks=BackgroundTasks(),
-        course_id=COURSE_ID,
-        exam_paper_id=paper_id,
-        body=MasteryDrillCompleteRequest(completion_key="partial-score-complete"),
-        user=user,
-        session=session,
-    )
-    session.expire_all()
-    paper = session.get(ExamPaper, paper_id)
-    assert paper is not None
-    assert paper.total_score == pytest.approx(1.0)
-    assert paper.score_obtained == pytest.approx(0.75)
-
-
-@pytest.mark.anyio
-async def test_mastery_drill_rejects_completion_until_every_item_is_passed(
-    session: Session,
-    user: CurrentUserContext,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    template, _unit = _seed_course_and_template(session)
-    monkeypatch.setattr(exams_api, "_capture_exam_event", lambda *_args, **_kwargs: None)
-    started = await _start(session, user, template)
-
-    with pytest.raises(AITeachMeError) as error:
-        await exams_api.complete_mastery_drill(
-            request=SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(background_task_registry=None))),
-            background_tasks=BackgroundTasks(),
-            course_id=COURSE_ID,
-            exam_paper_id=int(started.data.id),
-            body=MasteryDrillCompleteRequest(completion_key="too-early"),
-            user=user,
-            session=session,
-        )
-
-    assert error.value.error_code == "MASTERY_DRILL_ITEMS_INCOMPLETE"
-
-
-@pytest.mark.anyio
-async def test_mastery_drill_attempt_key_rejects_changed_payload(
-    session: Session,
-    user: CurrentUserContext,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    template, _unit = _seed_course_and_template(session)
-    monkeypatch.setattr(exams_api, "_capture_exam_event", lambda *_args, **_kwargs: None)
-
-    async def fake_grade(*, answer: str, item: ExamPaperItem, **_kwargs):
-        return QuestionTemplateGradeResponse(
-            question_template_id=int(item.question_template_id or 0),
-            question_type=item.question_type,
-            is_correct=False,
-            score_obtained=0.0,
-            score_max=1.0,
-            feedback_text="retry",
-            error_cause_label="concept_gap",
-            grading_mode="objective_rule",
-            correct_answer=item.answer_snapshot,
-        )
-
-    monkeypatch.setattr(exams_api, "_grade_exam_paper_item_answer", fake_grade)
-    started = await _start(session, user, template)
-    item_id = int(started.data.items[0].id)
-    await exams_api.record_mastery_drill_attempt(
-        course_id=COURSE_ID,
-        exam_paper_id=int(started.data.id),
-        body=MasteryDrillAttemptRequest(
-            exam_paper_item_id=item_id,
-            answer="B",
-            attempt_key="same-key",
-        ),
-        user=user,
-        session=session,
-    )
-
-    with pytest.raises(AITeachMeError) as error:
-        await exams_api.record_mastery_drill_attempt(
-            course_id=COURSE_ID,
-            exam_paper_id=int(started.data.id),
-            body=MasteryDrillAttemptRequest(
-                exam_paper_item_id=item_id,
-                answer="C",
-                attempt_key="same-key",
-            ),
-            user=user,
-            session=session,
-        )
-
-    assert error.value.error_code == "MASTERY_DRILL_ATTEMPT_CONFLICT"
+def test_legacy_mastery_tables_remain_available_for_database_compatibility() -> None:
+    assert "mastery_drill_session" in SQLModel.metadata.tables
+    assert "mastery_drill_attempt" in SQLModel.metadata.tables

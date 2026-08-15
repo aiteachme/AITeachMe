@@ -92,6 +92,7 @@ def list_wrong_question_template_ids(
             ExamPaper.course_id == course_id,
             ExamPaper.user_id == user_id,
             ExamPaper.visibility != "hidden",
+            ExamPaper.exam_mode != "mastery_drill",
         )
         .subquery()
     )
@@ -123,6 +124,7 @@ def list_question_template_answer_history(
             ExamPaper.course_id == course_id,
             ExamPaper.user_id == user_id,
             ExamPaper.visibility != "hidden",
+            ExamPaper.exam_mode != "mastery_drill",
         )
         .order_by(ExamPaperItem.answered_at.desc(), ExamPaperItem.id.desc())
         .limit(limit)
@@ -1430,6 +1432,7 @@ def list_exam_papers(
             ExamPaper.submitted_at.is_not(None),
             ExamPaper.graded_at.is_not(None),
         ),
+        ExamPaper.exam_mode != "mastery_drill",
     ]
     total = session.exec(
         select(func.count())
@@ -1461,6 +1464,7 @@ def list_stale_visible_generating_exam_papers(
         .where(
             ExamPaper.course_id == course_id,
             ExamPaper.user_id == user_id,
+            ExamPaper.exam_mode != "mastery_drill",
             ExamPaper.visibility != "hidden",
             ExamPaper.status == "generating",
             ExamPaper.updated_at <= stale_before,
@@ -1778,6 +1782,7 @@ def list_exam_item_snapshots_by_user(
         .where(
             ExamPaper.course_id == course_id,
             ExamPaper.user_id == user_id,
+            ExamPaper.exam_mode != "mastery_drill",
         )
         .order_by(ExamPaper.created_at.desc(), ExamPaper.id.desc(), ExamPaperItem.item_order.asc())
     )
@@ -1841,6 +1846,96 @@ def get_study_guide_cache(session: Session, *, exam_paper_id: int) -> ExamStudyG
     return session.exec(
         select(ExamStudyGuideCache).where(ExamStudyGuideCache.exam_paper_id == exam_paper_id)
     ).first()
+
+
+def claim_study_guide_generation(
+    session: Session,
+    *,
+    exam_paper_id: int,
+    course_id: str,
+    user_id: str,
+    expected_cache: ExamStudyGuideCache | None,
+    generation_json: str,
+) -> bool:
+    """Atomically claim one study-guide generation from an observed cache snapshot."""
+
+    now = utcnow()
+    if expected_cache is None:
+        try:
+            session.add(
+                ExamStudyGuideCache(
+                    exam_paper_id=exam_paper_id,
+                    course_id=course_id,
+                    user_id=user_id,
+                    status="generating",
+                    guide_json=generation_json,
+                    error_message="",
+                    generated_at=None,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            session.commit()
+            return True
+        except IntegrityError:
+            # Another request inserted the unique paper cache first.
+            session.rollback()
+            return False
+
+    result = session.exec(
+        sa.update(ExamStudyGuideCache)
+        .where(
+            ExamStudyGuideCache.exam_paper_id == exam_paper_id,
+            ExamStudyGuideCache.status == expected_cache.status,
+            ExamStudyGuideCache.guide_json == expected_cache.guide_json,
+        )
+        .values(
+            course_id=course_id,
+            user_id=user_id,
+            status="generating",
+            guide_json=generation_json,
+            error_message="",
+            generated_at=None,
+            updated_at=now,
+        )
+    )
+    session.commit()
+    return int(result.rowcount or 0) == 1
+
+
+def update_owned_study_guide_cache(
+    session: Session,
+    *,
+    exam_paper_id: int,
+    generation_token: str,
+    status: str,
+    guide_json: str,
+    error_message: str = "",
+    generated_at: datetime | None = None,
+) -> bool:
+    """Fence stale workers by updating only the cache owned by their token."""
+
+    normalized_token = str(generation_token or "").strip()
+    if not normalized_token:
+        return False
+    now = utcnow()
+    result = session.exec(
+        sa.update(ExamStudyGuideCache)
+        .where(
+            ExamStudyGuideCache.exam_paper_id == exam_paper_id,
+            ExamStudyGuideCache.status == "generating",
+            ExamStudyGuideCache.guide_json.like(f'%"generation_token":"{normalized_token}"%'),
+        )
+        .values(
+            status=status,
+            guide_json=guide_json,
+            error_message=error_message,
+            generated_at=generated_at,
+            updated_at=now,
+        )
+    )
+    session.commit()
+    return int(result.rowcount or 0) == 1
 
 
 def upsert_study_guide_cache(

@@ -11,10 +11,26 @@ from pydantic import BaseModel, Field
 class ExamGenerateRequest(BaseModel):
     """Trigger exam generation request."""
 
-    exam_mode: str = Field(description="Exam mode: web_practice | paper_exam. Mastery drills use their dedicated API.")
+    exam_mode: str = Field(
+        description=(
+            "Exam mode: web_practice | paper_exam. Mastery drills are assembled client-side "
+            "after the server ensures the reusable question bank can satisfy the saved config."
+        )
+    )
     user_prompt: str | None = Field(default=None, description="Optional user requirements for exam generation.")
     sample_file_ids: list[str] | None = Field(default=None, description="Optional uploaded sample-paper file IDs.")
     num_questions: int | None = Field(default=None, ge=1, le=200, description="Optional target question count.")
+    question_types: list[
+        Literal["single_choice", "multiple_choice", "true_false", "fill_blank", "short_answer"]
+    ] = Field(
+        default_factory=list,
+        max_length=5,
+        description="Optional allowed question types. Empty means automatic type planning.",
+    )
+    difficulty: Literal["auto", "easy", "medium", "hard"] = Field(
+        default="auto",
+        description="Optional overall difficulty preference. Auto lets the planner choose per question.",
+    )
     paper_layout_mode: str | None = Field(
         default=None,
         description="Optional paper layout mode for paper_exam: auto | standard_two_page | gaokao_four_page | gaokao_six_page | gaokao_eight_page.",
@@ -42,7 +58,7 @@ class ExamSubmitRequest(BaseModel):
 
 
 class MasteryDrillStartRequest(BaseModel):
-    """Start a new durable drill or resume the active one for the course."""
+    """Legacy payload retained for the disabled durable mastery-drill endpoint."""
 
     session_key: str = Field(min_length=1, max_length=128)
     question_template_ids: list[int] = Field(min_length=1, max_length=80)
@@ -50,8 +66,21 @@ class MasteryDrillStartRequest(BaseModel):
     configured_question_types: list[str] = Field(default_factory=list, max_length=20)
 
 
+class MasteryDrillPrepareRequest(BaseModel):
+    """Prepare an ephemeral mastery drill from the reusable question bank."""
+
+    num_questions: int = Field(ge=1, le=80)
+    question_types: list[
+        Literal["single_choice", "multiple_choice", "true_false", "fill_blank", "short_answer"]
+    ] = Field(
+        default_factory=list,
+        max_length=5,
+        description="Allowed question types. Empty means an automatic mix.",
+    )
+
+
 class MasteryDrillAttemptRequest(BaseModel):
-    """Persist and grade one answer attempt."""
+    """Legacy payload retained for the disabled mastery-drill attempt endpoint."""
 
     exam_paper_item_id: int = Field(ge=1)
     answer: str = Field(max_length=20000)
@@ -62,7 +91,7 @@ class MasteryDrillAttemptRequest(BaseModel):
 
 
 class MasteryDrillCompleteRequest(BaseModel):
-    """Idempotently finish a drill after every item has been passed."""
+    """Legacy payload retained for the disabled mastery-drill completion endpoint."""
 
     completion_key: str = Field(min_length=1, max_length=128)
     duration_seconds: int | None = Field(default=None, ge=0, le=604800)
@@ -83,6 +112,10 @@ class QuestionTemplateGradeRequest(BaseModel):
     """Grade one answer against a question template."""
 
     answer: str = Field(description="Submitted answer.")
+    ephemeral: bool = Field(
+        default=False,
+        description="Whether this one-time grading result must skip analytics recording.",
+    )
 
 
 class QuestionTemplateGradeResponse(BaseModel):
@@ -196,11 +229,20 @@ class ExamGradeResponse(RuntimeStatusResponse):
 class ExamStudyGuideFocusUnit(BaseModel):
     knowledge_unit_id: int | None = None
     knowledge_unit_name: str
-    mastery_score: float | None = None
+    paper_attempts: int = Field(default=0, ge=0)
+    paper_correct_attempts: int = Field(default=0, ge=0)
+    paper_score_obtained: float = Field(default=0.0, ge=0.0)
+    paper_score_max: float = Field(default=0.0, ge=0.0)
+    paper_score_rate: float | None = Field(default=None, ge=0.0, le=1.0)
+    mastery_score: float | None = Field(
+        default=None,
+        description="Cumulative profile mastery retained for personalization; not the paper metric.",
+    )
     reason: str
 
 
 class ExamStudyGuideResponse(BaseModel):
+    schema_version: Literal[2] = 2
     exam_paper_id: int
     course_name: str
     generated_at: datetime
@@ -301,6 +343,13 @@ class QuestionTemplateItemResponse(BaseModel):
     has_wrong_attempt: bool = False
     created_at: datetime
     updated_at: datetime
+
+
+class MasteryDrillPrepareResponse(BaseModel):
+    requested_count: int
+    available_count: int
+    generated_count: int
+    templates: list[QuestionTemplateItemResponse] = Field(default_factory=list)
 
 
 class QuestionTemplateAnswerHistoryItem(BaseModel):

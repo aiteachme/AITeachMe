@@ -43,6 +43,7 @@ def build_allocate_knowledge_units_node(*, context: WorkflowContext):
                     for item in list(state.get("question_requirement_plans") or [])
                 ],
                 user_prompt=str(state.get("user_prompt") or ""),
+                configured_difficulty=str(state.get("configured_difficulty") or "auto"),
                 system_constraints=str(state.get("system_constraints") or ""),
             )
             blueprint_payload = [item.model_dump(mode="json") for item in planned]

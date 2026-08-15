@@ -4,15 +4,23 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import inspect
 import json
 import re
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import timedelta
+from threading import Lock as ThreadLock
+from time import monotonic
+from typing import Literal, NoReturn
+from weakref import WeakValueDictionary
 
 import structlog
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, Path, Query, Request, Response
 from fastapi.responses import StreamingResponse
-from sqlalchemy import or_
+from sqlalchemy import or_, text
+from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
@@ -23,14 +31,17 @@ from app.models import (
     ExamPaper,
     ExamPaperItem,
     ExamProfileSync,
+    ExamStudyGuideCache,
     MasteryDrillAttempt,
     MasteryDrillSession,
     QuestionTemplate,
     QuestionTypeRegistry,
     User,
+    UserKnowledgeState,
     exam_mode_value,
 )
 from app.models.knowledge_unit import KnowledgeUnit
+from app.models.knowledge_taxonomy import knowledge_unit_type_label
 from app.models.course import Course
 from app.repositories import exams_repo, knowledge_relation_repo
 from app.repositories import profile_repo
@@ -42,6 +53,8 @@ from app.schemas.exams import (
     ExamGradeResponse,
     ExamHistoryItem,
     MasteryDrillHistorySummary,
+    MasteryDrillPrepareRequest,
+    MasteryDrillPrepareResponse,
     ExamPaperDeleteResponse,
     ExamPaperDetailResponse,
     ExamPaperItemResponse,
@@ -68,6 +81,7 @@ from app.shared.infra.analytics.posthog import capture_product_event_later
 from app.shared.infra.exceptions import AITeachMeError
 from app.shared.infra.database import managed_session
 from app.shared.kernel.question_types import (
+    CANONICAL_QUESTION_TYPE_KEYS,
     UnsupportedQuestionTypeError,
     is_supported_question_type,
     require_supported_question_type_key,
@@ -82,6 +96,12 @@ from app.workflows.examine import (
     run_exam_grade_workflow,
     run_exam_study_guide_workflow,
     run_question_build_workflow,
+)
+from app.workflows.examine.exam_grade.lib.study_guide import (
+    STUDY_GUIDE_ACTION_STEP_LIMIT,
+    STUDY_GUIDE_FOCUS_UNIT_LIMIT,
+    STUDY_GUIDE_PRIORITY_GAP_LIMIT,
+    STUDY_GUIDE_STRENGTH_LIMIT,
 )
 from app.workflows.profile.sync import (
     is_exam_profile_sync_recoverable_now,
@@ -99,7 +119,7 @@ _WHITESPACE_RE = re.compile(r"\s+")
 PAPER_PREVIEW_ROW_LIMIT = 7
 RECENT_EXAM_STEM_AVOID_LIMIT = 18
 _SYNC_EDGE_MARKER_PREFIX = "markdown_anchor_sync:"
-EXAM_PREWARM_CONFIG_VERSION = 1
+EXAM_PREWARM_CONFIG_VERSION = 2
 EXAM_PREWARM_TTL_DAYS = 2
 DEFAULT_AUTO_PREWARM_EXAM_MODE = "web_practice"
 DEFAULT_AUTO_PREWARM_QUESTION_COUNT = 10
@@ -109,8 +129,25 @@ EXAM_GRADING_HEARTBEAT_SECONDS = 60.0
 EXAM_GRADING_RECOVERY_INTERVAL_SECONDS = 30.0
 EXAM_GRADING_RETRY_MAX_SECONDS = 300.0
 EXAM_GRADING_MAX_ATTEMPTS = 3
+EXAM_STUDY_GUIDE_STALE_AFTER = timedelta(minutes=10)
+EXAM_STUDY_GUIDE_GET_WAIT_SECONDS = 300.0
+EXAM_STUDY_GUIDE_GET_POLL_SECONDS = 0.5
+EXAM_STUDY_GUIDE_SCHEMA_VERSION = 2
+EXAM_STUDY_GUIDE_UNIT_CONTEXT_LIMIT = 12
+_STUDY_GUIDE_REVIEW_REASON_LABELS = {
+    "forgetting_due": "已到建议复习时间",
+    "repeated_wrong": "近期同类题连续出错",
+    "prereq_gap": "前置知识仍有缺口",
+    "newly_learned": "新学内容尚未稳定",
+}
+_STUDY_GUIDE_INTERNAL_LABELS = frozenset(_STUDY_GUIDE_REVIEW_REASON_LABELS)
+
+
+class _StudyGuideGenerationOwnershipLost(RuntimeError):
+    """Raised when a superseded study-guide worker attempts to publish."""
 MASTERY_DRILL_ATTEMPT_LEASE_DURATION = timedelta(minutes=5)
 MASTERY_DRILL_ATTEMPT_HEARTBEAT_SECONDS = 60.0
+MASTERY_DRILL_BACKFILL_LOCK_POLL_SECONDS = 0.1
 EXAM_GENERATION_STALE_MESSAGE = "生成超时，请重新生成。"
 EXAM_GENERATION_INCOMPLETE_MESSAGE = "题目生成未完成，请重新生成。"
 PAPER_LAYOUT_CONFIG_VERSION = 1
@@ -122,6 +159,8 @@ PAPER_LAYOUT_MODES = {
     "gaokao_eight_page",
 }
 _PROFILE_UPDATE_CONTEXT_KEY = "profile_update"
+_MASTERY_DRILL_BACKFILL_LOCKS: WeakValueDictionary[str, asyncio.Lock] = WeakValueDictionary()
+_MASTERY_DRILL_BACKFILL_LOCKS_GUARD = ThreadLock()
 
 
 def _require_supported_question_type_for_api(value: object) -> str:
@@ -139,11 +178,7 @@ def _require_supported_question_type_for_api(value: object) -> str:
 
 def _require_generic_exam_mode(mode: str) -> str:
     if mode == "mastery_drill":
-        raise AITeachMeError(
-            detail="Mastery drills must use the dedicated start, attempt, and complete endpoints.",
-            error_code="MASTERY_DRILL_DEDICATED_ENDPOINT_REQUIRED",
-            status_code=409,
-        )
+        _raise_ephemeral_mastery_drill_only()
     return mode
 
 
@@ -294,6 +329,10 @@ def _exam_stream_channel(course_id: str, paper_id: int) -> str:
     return f"exam:{course_id}:{paper_id}"
 
 
+def _exam_study_guide_stream_channel(course_id: str, paper_id: int) -> str:
+    return f"exam-study-guide:{course_id}:{paper_id}"
+
+
 def default_auto_prewarm_exam_config() -> dict[str, object]:
     return {
         "exam_mode": DEFAULT_AUTO_PREWARM_EXAM_MODE,
@@ -306,6 +345,15 @@ def default_auto_prewarm_exam_config() -> dict[str, object]:
 
 def _publish_exam_event(course_id: str, paper_id: int, event: str, data: dict[str, object]) -> None:
     publish_workflow_stream_event(_exam_stream_channel(course_id, paper_id), event, data)
+
+
+def _publish_exam_study_guide_event(
+    course_id: str,
+    paper_id: int,
+    event: str,
+    data: dict[str, object],
+) -> None:
+    publish_workflow_stream_event(_exam_study_guide_stream_channel(course_id, paper_id), event, data)
 
 
 def _suffix(value: object, *, length: int = 8) -> str | None:
@@ -437,6 +485,14 @@ def _raise_not_found(detail: str, error_code: str = "EXAM_NOT_FOUND") -> None:
     raise AITeachMeError(detail=detail, error_code=error_code, status_code=404)
 
 
+def _raise_ephemeral_mastery_drill_only() -> NoReturn:
+    raise AITeachMeError(
+        detail="闯关已调整为一次性训练，只允许保存题目标记，不再保存会话、答案、错题、进度或结果。",
+        error_code="MASTERY_DRILL_EPHEMERAL_ONLY",
+        status_code=410,
+    )
+
+
 def _clean_exam_text(value: str | None) -> str:
     text = str(value or "")
     text = _HTML_COMMENT_RE.sub(" ", text)
@@ -477,6 +533,29 @@ def _normalize_exam_user_prompt(value: str | None) -> str:
     return _WHITESPACE_RE.sub(" ", str(value or "")).strip()
 
 
+def _normalized_exam_question_types(values: list[str] | None) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    iterable_values = values if isinstance(values, list | tuple | set) else []
+    for value in iterable_values:
+        try:
+            question_type = require_supported_question_type_key(value)
+        except UnsupportedQuestionTypeError:
+            continue
+        if question_type in seen:
+            continue
+        seen.add(question_type)
+        normalized.append(question_type)
+    return normalized
+
+
+def _normalized_exam_difficulty(value: str | None) -> str:
+    if not isinstance(value, str):
+        return "auto"
+    normalized = str(value or "auto").strip().lower()
+    return normalized if normalized in {"auto", "easy", "medium", "hard"} else "auto"
+
+
 def _stable_json_hash(payload: object) -> str:
     serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
@@ -515,6 +594,8 @@ def _build_exam_config_snapshot(
     knowledge_unit_ids: list[int],
     mastery_fingerprint: str,
     paper_layout_mode: str | None = None,
+    question_types: list[str] | None = None,
+    difficulty: str | None = None,
 ) -> dict[str, object]:
     return {
         "version": EXAM_PREWARM_CONFIG_VERSION,
@@ -523,6 +604,8 @@ def _build_exam_config_snapshot(
         "exam_mode": exam_mode,
         "num_questions": int(question_count),
         "user_prompt": _normalize_exam_user_prompt(user_prompt),
+        "question_types": _normalized_exam_question_types(question_types),
+        "difficulty": _normalized_exam_difficulty(difficulty),
         "sample_file_ids": _normalized_sample_file_ids(sample_file_ids),
         "knowledge_unit_ids": sorted({int(unit_id) for unit_id in knowledge_unit_ids if int(unit_id or 0) > 0}),
         "mastery_fingerprint": mastery_fingerprint,
@@ -545,6 +628,8 @@ def _is_default_auto_prewarm_request(
     user_prompt: str | None,
     sample_file_ids: list[str] | None,
     paper_layout_mode: str | None,
+    question_types: list[str] | None = None,
+    difficulty: str | None = None,
 ) -> bool:
     default_config = default_auto_prewarm_exam_config()
     default_mode = exam_mode_value(str(default_config.get("exam_mode") or "web_practice"))
@@ -558,6 +643,8 @@ def _is_default_auto_prewarm_request(
         exam_mode == default_mode
         and int(question_count) == default_question_count
         and not _normalize_exam_user_prompt(user_prompt)
+        and not _normalized_exam_question_types(question_types)
+        and _normalized_exam_difficulty(difficulty) == "auto"
         and not _normalized_sample_file_ids(sample_file_ids)
         and paper_layout_mode == default_layout
     )
@@ -588,6 +675,8 @@ def _prepared_snapshot_matches_default_auto_prewarm(
         snapshot_question_count = 0
     raw_sample_file_ids = snapshot.get("sample_file_ids")
     sample_file_ids = raw_sample_file_ids if isinstance(raw_sample_file_ids, list) else []
+    raw_question_types = snapshot.get("question_types")
+    question_types = raw_question_types if isinstance(raw_question_types, list) else []
     raw_layout = snapshot.get("paper_layout_mode")
     snapshot_layout = _normalize_paper_layout_mode(
         raw_layout if isinstance(raw_layout, str) else None,
@@ -598,6 +687,8 @@ def _prepared_snapshot_matches_default_auto_prewarm(
         raw_mode == exam_mode
         and snapshot_question_count == int(question_count)
         and not _normalize_exam_user_prompt(str(snapshot.get("user_prompt") or ""))
+        and not _normalized_exam_question_types([str(item) for item in question_types])
+        and _normalized_exam_difficulty(str(snapshot.get("difficulty") or "auto")) == "auto"
         and not _normalized_sample_file_ids([str(item) for item in sample_file_ids])
         and snapshot_layout == paper_layout_mode
     )
@@ -613,6 +704,8 @@ def _find_default_auto_prewarm_candidate(
     user_prompt: str | None,
     sample_file_ids: list[str] | None,
     paper_layout_mode: str | None,
+    question_types: list[str] | None = None,
+    difficulty: str | None = None,
 ) -> ExamPaper | None:
     if not _is_default_auto_prewarm_request(
         exam_mode=exam_mode,
@@ -620,6 +713,8 @@ def _find_default_auto_prewarm_candidate(
         user_prompt=user_prompt,
         sample_file_ids=sample_file_ids,
         paper_layout_mode=paper_layout_mode,
+        question_types=question_types,
+        difficulty=difficulty,
     ):
         return None
 
@@ -665,6 +760,8 @@ def _claim_default_auto_prewarm_candidate(
     user_prompt: str | None,
     sample_file_ids: list[str] | None,
     paper_layout_mode: str | None,
+    question_types: list[str] | None = None,
+    difficulty: str | None = None,
 ) -> ExamPaper | None:
     candidate = _find_default_auto_prewarm_candidate(
         session,
@@ -675,6 +772,8 @@ def _claim_default_auto_prewarm_candidate(
         user_prompt=user_prompt,
         sample_file_ids=sample_file_ids,
         paper_layout_mode=paper_layout_mode,
+        question_types=question_types,
+        difficulty=difficulty,
     )
     if candidate is None or not _is_active_prewarm_exam_candidate(candidate):
         return None
@@ -2052,6 +2151,279 @@ def _upsert_generated_template(
     return template
 
 
+def _mastery_drill_process_backfill_lock(course_id: str) -> asyncio.Lock:
+    with _MASTERY_DRILL_BACKFILL_LOCKS_GUARD:
+        lock = _MASTERY_DRILL_BACKFILL_LOCKS.get(course_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            _MASTERY_DRILL_BACKFILL_LOCKS[course_id] = lock
+        return lock
+
+
+def _mastery_drill_postgres_lock_key(course_id: str) -> int:
+    digest = hashlib.blake2b(
+        f"aiteachme:mastery-drill-backfill:{course_id}".encode("utf-8"),
+        digest_size=8,
+    ).digest()
+    return int.from_bytes(digest, byteorder="big", signed=True)
+
+
+def _session_engine(session: Session) -> Engine:
+    bind = session.get_bind()
+    if isinstance(bind, Engine):
+        return bind
+    if isinstance(bind, Connection):
+        return bind.engine
+    raise RuntimeError("mastery_drill_backfill_requires_sqlalchemy_engine")
+
+
+@asynccontextmanager
+async def _mastery_drill_database_backfill_lock(
+    session: Session,
+    *,
+    course_id: str,
+) -> AsyncIterator[None]:
+    bind = session.get_bind()
+    if bind.dialect.name != "postgresql":
+        yield
+        return
+
+    lock_connection = _session_engine(session).connect()
+    lock_transaction = lock_connection.begin()
+    lock_key = _mastery_drill_postgres_lock_key(course_id)
+    try:
+        while not bool(
+            lock_connection.scalar(
+                text("SELECT pg_try_advisory_xact_lock(:lock_key)"),
+                {"lock_key": lock_key},
+            )
+        ):
+            await asyncio.sleep(MASTERY_DRILL_BACKFILL_LOCK_POLL_SECONDS)
+        yield
+    finally:
+        try:
+            if lock_transaction.is_active:
+                lock_transaction.rollback()
+        except Exception as exc:
+            logger.warning(
+                "mastery_drill_backfill_lock_release_failed",
+                course_id=course_id,
+                error=str(exc),
+            )
+        finally:
+            try:
+                lock_connection.close()
+            except Exception as exc:
+                logger.warning(
+                    "mastery_drill_backfill_lock_connection_close_failed",
+                    course_id=course_id,
+                    error=str(exc),
+                )
+
+
+@asynccontextmanager
+async def _mastery_drill_backfill_lock(
+    session: Session,
+    *,
+    course_id: str,
+) -> AsyncIterator[None]:
+    # The in-process lock keeps ordinary web/Android requests from racing. The
+    # PostgreSQL advisory lock extends the same guarantee across API workers.
+    process_lock = _mastery_drill_process_backfill_lock(course_id)
+    async with process_lock:
+        async with _mastery_drill_database_backfill_lock(session, course_id=course_id):
+            yield
+
+
+def _mastery_drill_usable_templates(
+    session: Session,
+    *,
+    course_id: str,
+    question_types: list[str],
+) -> list[QuestionTemplate]:
+    allowed_types = set(question_types) if question_types else None
+    rows = exams_repo.list_active_question_templates(
+        session,
+        course_id=course_id,
+        question_types=allowed_types,
+    )
+    return [
+        template
+        for template in rows
+        if is_supported_question_type(template.question_type)
+        and bool(_clean_exam_text(template.stem))
+        and bool(_clean_exam_text(template.answer))
+    ]
+
+
+def _mastery_drill_backfill_plan(
+    *,
+    templates: list[QuestionTemplate],
+    requested_count: int,
+    configured_question_types: list[str],
+) -> tuple[int, list[str]]:
+    """Return the number and ordered types needed to make the bank satisfy a drill config."""
+
+    normalized_count = max(1, int(requested_count or 1))
+    available_types = {
+        str(template.question_type)
+        for template in templates
+        if is_supported_question_type(template.question_type)
+    }
+    missing_required_types: list[str] = []
+
+    if configured_question_types:
+        required_types = configured_question_types[: min(normalized_count, len(configured_question_types))]
+        missing_required_types = [
+            question_type
+            for question_type in required_types
+            if question_type not in available_types
+        ]
+        generation_types = [
+            *missing_required_types,
+            *[
+                question_type
+                for question_type in configured_question_types
+                if question_type not in missing_required_types
+            ],
+        ]
+    else:
+        minimum_type_count = min(2, normalized_count)
+        missing_type_count = max(0, minimum_type_count - len(available_types))
+        missing_required_types = [
+            question_type
+            for question_type in CANONICAL_QUESTION_TYPE_KEYS
+            if question_type not in available_types
+        ][:missing_type_count]
+        generation_types = list(missing_required_types)
+
+    count_deficit = max(0, normalized_count - len(templates))
+    generation_count = max(count_deficit, len(missing_required_types))
+    return generation_count, generation_types
+
+
+async def _generate_mastery_drill_template_backfill(
+    session: Session,
+    *,
+    course: Course,
+    user_id: str,
+    question_count: int,
+    question_types: list[str],
+) -> set[int]:
+    units = _list_exam_eligible_units(session, course_id=course.id)
+    if not units:
+        raise AITeachMeError(
+            detail="当前课程没有可用于补题的知识点，请先完成知识库构建。",
+            error_code="NO_PERSISTED_KNOWLEDGE_UNITS_FOR_MASTERY_DRILL",
+            status_code=409,
+        )
+
+    unit_by_id = {int(unit.id): unit for unit in units if unit.id is not None}
+    recent_templates = exams_repo.list_active_question_templates(session, course_id=course.id)
+    recent_stems = [
+        stem[:220]
+        for stem in (_clean_exam_text(template.stem) for template in reversed(recent_templates))
+        if stem
+    ][:RECENT_EXAM_STEM_AVOID_LIMIT]
+    diversity_prompt = _build_exam_diversity_prompt(
+        run_id=uuid.uuid4().hex,
+        recent_stems=recent_stems,
+    )
+    system_constraints = (
+        f"{diversity_prompt}\n"
+        "- These questions backfill a reusable mastery-drill question bank. "
+        "Each item must be self-contained, unambiguous, and include a complete explanation."
+    )
+    build_result = await run_question_build_workflow(
+        course_id=course.id,
+        course_name=course.name,
+        course_description=course.description,
+        course_user_intent=course.user_intent,
+        exam_mode="mastery_drill",
+        units=units,
+        knowledge_graph_edges=_exam_knowledge_graph_edges(
+            session,
+            course_id=course.id,
+            unit_ids=list(unit_by_id),
+        ),
+        question_count=question_count,
+        mastery_by_unit_id=_mastery_by_unit_id(session, user_id=user_id, course_id=course.id),
+        priority_unit_ids=_exam_priority_unit_ids(
+            session,
+            user_id=user_id,
+            course_id=course.id,
+            exam_mode="mastery_drill",
+        ),
+        course_context=load_course_llm_context(session, course_id=course.id),
+        user_prompt="用于一次性闯关补题；题目应适合逐题作答，并给出清晰、完整的解析。",
+        configured_question_types=question_types,
+        configured_difficulty="auto",
+        system_constraints=system_constraints,
+    )
+    generated_by_order = _require_generated_questions_by_order(
+        build_result=build_result,
+        expected_orders=list(range(1, question_count + 1)),
+    )
+    build_state = build_result.value or {}
+    blueprint_by_order = _blueprints_by_one_based_order(
+        build_state.get("question_blueprints") if isinstance(build_state, dict) else []
+    )
+
+    persisted_template_ids: set[int] = set()
+    for order in sorted(generated_by_order):
+        generated = generated_by_order[order]
+        blueprint = blueprint_by_order.get(order, {})
+        refs_by_unit_id: dict[int, dict[str, object]] = {}
+        for raw_ref in list(generated.get("knowledge_unit_refs") or []):
+            if not isinstance(raw_ref, dict):
+                continue
+            unit_id = _positive_int(raw_ref.get("knowledge_unit_id"))
+            if unit_id not in unit_by_id:
+                continue
+            try:
+                weight = float(raw_ref.get("coverage_weight", 1.0) or 1.0)
+            except (TypeError, ValueError):
+                weight = 1.0
+            refs_by_unit_id[unit_id] = {
+                "knowledge_unit_id": unit_id,
+                "coverage_weight": max(0.0, min(weight, 1.0)),
+            }
+        if not refs_by_unit_id:
+            for raw_unit_id in list(blueprint.get("knowledge_unit_ids") or []):
+                unit_id = _positive_int(raw_unit_id)
+                if unit_id in unit_by_id:
+                    refs_by_unit_id[unit_id] = {
+                        "knowledge_unit_id": unit_id,
+                        "coverage_weight": 1.0,
+                    }
+        if not refs_by_unit_id:
+            fallback_unit_id = list(unit_by_id)[(order - 1) % len(unit_by_id)]
+            refs_by_unit_id[fallback_unit_id] = {
+                "knowledge_unit_id": fallback_unit_id,
+                "coverage_weight": 1.0,
+            }
+
+        refs = list(refs_by_unit_id.values())
+        primary_unit = unit_by_id[int(refs[0]["knowledge_unit_id"])]
+        template = _upsert_generated_template(
+            session,
+            course_id=course.id,
+            unit=primary_unit,
+            question_type=str(generated["question_type"]),
+            difficulty=str(generated["difficulty"]),
+            stem=str(generated["stem"]),
+            answer=str(generated["correct_answer"]),
+            explanation=str(generated["explanation"]),
+            options=list(generated.get("options") or []) or None,
+            knowledge_unit_refs=refs,
+            rationale=str(blueprint.get("rationale") or "mastery drill question-bank backfill"),
+        )
+        if template.id is not None:
+            persisted_template_ids.add(int(template.id))
+
+    return persisted_template_ids
+
+
 def _create_exam_generation_paper(
     session: Session,
     *,
@@ -2510,6 +2882,17 @@ async def _run_exam_generation_background(
     if isinstance(config_snapshot, dict):
         snapshot_question_count = _positive_int(config_snapshot.get("num_questions"))
     question_count = max(1, snapshot_question_count or int(question_count or 1))
+    raw_configured_question_types = (
+        config_snapshot.get("question_types") if isinstance(config_snapshot, dict) else None
+    )
+    configured_question_types = _normalized_exam_question_types(
+        [str(item) for item in raw_configured_question_types]
+        if isinstance(raw_configured_question_types, list)
+        else []
+    )
+    configured_difficulty = _normalized_exam_difficulty(
+        str(config_snapshot.get("difficulty") or "auto") if isinstance(config_snapshot, dict) else "auto"
+    )
     resolved_paper_layout_mode = _normalize_paper_layout_mode(
         paper_layout_mode
         or (str((config_snapshot or {}).get("paper_layout_mode") or "") if isinstance(config_snapshot, dict) else None),
@@ -2800,6 +3183,8 @@ async def _run_exam_generation_background(
             priority_unit_ids=priority_unit_ids,
             course_context=course_context,
             user_prompt=user_prompt or "",
+            configured_question_types=configured_question_types,
+            configured_difficulty=configured_difficulty,
             system_constraints=diversity_prompt,
             progress_callback=handle_question_build_progress,
         )
@@ -3366,6 +3751,84 @@ def _question_template_response(
     )
 
 
+def _question_template_refs_with_metadata(
+    refs: list[dict[str, object]],
+    *,
+    knowledge_unit_by_id: dict[int, KnowledgeUnit],
+) -> list[dict[str, object]]:
+    """Attach display metadata without changing the persisted link contract."""
+
+    enriched: list[dict[str, object]] = []
+    for ref in refs:
+        payload = dict(ref)
+        knowledge_unit_id = _positive_int(payload.get("knowledge_unit_id"))
+        unit = knowledge_unit_by_id.get(knowledge_unit_id)
+        if unit is not None:
+            payload.update(
+                {
+                    "knowledge_unit_name": unit.canonical_name,
+                    "knowledge_unit_type": unit.knowledge_unit_type,
+                    "knowledge_unit_type_label": knowledge_unit_type_label(unit.knowledge_unit_type),
+                }
+            )
+        enriched.append(payload)
+    return enriched
+
+
+def _question_template_items_for_course(
+    session: Session,
+    *,
+    course_id: str,
+    user_id: str,
+) -> list[QuestionTemplateItemResponse]:
+    rows = list(
+        session.exec(
+            select(QuestionTemplate)
+            .where(QuestionTemplate.course_id == course_id)
+            .order_by(QuestionTemplate.created_at.desc(), QuestionTemplate.id.desc())
+        ).all()
+    )
+    template_ids = [int(item.id or 0) for item in rows]
+    links_by_template_id = exams_repo.list_links_for_templates(session, template_ids)
+    knowledge_unit_ids = {
+        _positive_int(ref.get("knowledge_unit_id"))
+        for refs in links_by_template_id.values()
+        for ref in refs
+        if _positive_int(ref.get("knowledge_unit_id")) > 0
+    }
+    knowledge_unit_by_id = {
+        int(unit.id): unit
+        for unit in (
+            session.exec(
+                select(KnowledgeUnit).where(
+                    KnowledgeUnit.course_id == course_id,
+                    KnowledgeUnit.id.in_(knowledge_unit_ids),
+                )
+            ).all()
+            if knowledge_unit_ids
+            else []
+        )
+        if unit.id is not None
+    }
+    wrong_template_ids = exams_repo.list_wrong_question_template_ids(
+        session,
+        course_id=course_id,
+        user_id=user_id,
+        template_ids=template_ids,
+    )
+    return [
+        _question_template_response(
+            item,
+            knowledge_unit_refs=_question_template_refs_with_metadata(
+                links_by_template_id.get(int(item.id or 0), []),
+                knowledge_unit_by_id=knowledge_unit_by_id,
+            ),
+            has_wrong_attempt=int(item.id or 0) in wrong_template_ids,
+        )
+        for item in rows
+    ]
+
+
 def _question_template_answer_history_response(
     item: ExamPaperItem,
     paper: ExamPaper,
@@ -3648,18 +4111,463 @@ def _paper_detail(session: Session, paper: ExamPaper) -> ExamPaperDetailResponse
     )
 
 
-async def _study_guide_detail(session: Session, paper: ExamPaper) -> ExamStudyGuideResponse:
-    cache = exams_repo.get_study_guide_cache(session, exam_paper_id=int(paper.id or 0))
-    if cache is not None and cache.status == "completed" and cache.guide_json.strip():
-        try:
-            return ExamStudyGuideResponse.model_validate_json(cache.guide_json)
-        except Exception:
-            logger.warning(
-                "exam_study_guide_cache_invalid",
-                course_id=paper.course_id,
-                user_id=paper.user_id,
-                paper_id=paper.id,
+def _study_guide_public_text(value: object) -> str:
+    text = " ".join(str(value or "").split()).strip()
+    for internal_label, public_label in _STUDY_GUIDE_REVIEW_REASON_LABELS.items():
+        text = text.replace(internal_label, public_label)
+    return text
+
+
+def _study_guide_public_review_reason(value: object) -> str:
+    normalized = str(value or "").strip()
+    if not normalized:
+        return "建议优先复习"
+    if normalized in _STUDY_GUIDE_REVIEW_REASON_LABELS:
+        return _STUDY_GUIDE_REVIEW_REASON_LABELS[normalized]
+    if re.fullmatch(r"[a-z][a-z0-9_]*", normalized):
+        return "建议优先复习"
+    return _study_guide_public_text(normalized)
+
+
+def _study_guide_cache_is_current(response: ExamStudyGuideResponse) -> bool:
+    if response.schema_version != EXAM_STUDY_GUIDE_SCHEMA_VERSION:
+        return False
+    if response.review_tasks:
+        return False
+    if len(response.strengths) > STUDY_GUIDE_STRENGTH_LIMIT:
+        return False
+    if len(response.focus_units) > STUDY_GUIDE_FOCUS_UNIT_LIMIT:
+        return False
+    if len(response.priority_gaps) > STUDY_GUIDE_PRIORITY_GAP_LIMIT:
+        return False
+    if len(response.action_steps) > STUDY_GUIDE_ACTION_STEP_LIMIT:
+        return False
+    if any(
+        item.knowledge_unit_id is None
+        or item.paper_attempts <= 0
+        or item.paper_correct_attempts > item.paper_attempts
+        or item.paper_score_rate is None
+        or item.paper_score_obtained > item.paper_score_max
+        for item in response.focus_units
+    ):
+        return False
+    serialized = response.model_dump_json().lower()
+    return not any(label in serialized for label in _STUDY_GUIDE_INTERNAL_LABELS)
+
+
+def _study_guide_wrong_question_summaries(
+    items: list[ExamPaperItem],
+    *,
+    limit: int = 5,
+) -> list[dict[str, str]]:
+    summaries: list[dict[str, str]] = []
+    for item in sorted(items, key=lambda current: current.item_order):
+        if item.is_correct is True:
+            continue
+        analysis = str(item.feedback_text or item.explanation_snapshot or "").strip()
+        if not analysis:
+            analysis = "请对照解析检查概念、方法和遗漏条件。"
+        summaries.append(
+            {
+                "question_stem": str(item.stem_snapshot or "").strip(),
+                "user_answer": str(item.answer_content or "未作答").strip(),
+                "correct_answer": str(item.answer_snapshot or "").strip(),
+                "analysis": _study_guide_public_text(analysis),
+            }
+        )
+        if len(summaries) >= max(1, limit):
+            break
+    return summaries
+
+
+def _study_guide_unit_evidence(
+    items: list[ExamPaperItem],
+    links_by_item_id: dict[int, list[dict[str, object]]],
+) -> dict[int, dict[str, int | float]]:
+    evidence: dict[int, dict[str, int | float]] = {}
+    for item in items:
+        linked_unit_weights: dict[int, float] = {}
+        for ref in links_by_item_id.get(int(item.id or 0), []):
+            try:
+                knowledge_unit_id = int(ref.get("knowledge_unit_id", 0) or 0)
+                coverage_weight = float(ref.get("coverage_weight", 1.0) or 1.0)
+            except (TypeError, ValueError):
+                continue
+            if knowledge_unit_id <= 0 or coverage_weight <= 0:
+                continue
+            linked_unit_weights[knowledge_unit_id] = max(
+                linked_unit_weights.get(knowledge_unit_id, 0.0),
+                min(coverage_weight, 1.0),
             )
+
+        score_max = max(0.0, float(item.score_max if item.score_max is not None else item.score or 0.0))
+        if item.score_obtained is not None:
+            score_obtained = max(0.0, float(item.score_obtained))
+        elif item.is_correct is True:
+            score_obtained = score_max
+        else:
+            score_obtained = 0.0
+        score_obtained = min(score_obtained, score_max) if score_max > 0 else 0.0
+
+        for knowledge_unit_id, coverage_weight in linked_unit_weights.items():
+            row = evidence.setdefault(
+                knowledge_unit_id,
+                {
+                    "paper_attempts": 0,
+                    "paper_correct_attempts": 0,
+                    "paper_score_obtained": 0.0,
+                    "paper_score_max": 0.0,
+                },
+            )
+            row["paper_attempts"] = int(row["paper_attempts"]) + 1
+            if item.is_correct is True:
+                row["paper_correct_attempts"] = int(row["paper_correct_attempts"]) + 1
+            row["paper_score_obtained"] = (
+                float(row["paper_score_obtained"]) + score_obtained * coverage_weight
+            )
+            row["paper_score_max"] = float(row["paper_score_max"]) + score_max * coverage_weight
+    return evidence
+
+
+def _study_guide_score_text(value: float) -> str:
+    return f"{max(0.0, value):.2f}".rstrip("0").rstrip(".") or "0"
+
+
+def _study_guide_unit_performance_payload(
+    unit_evidence: dict[int, dict[str, int | float]],
+    *,
+    knowledge_unit_by_id: dict[int, KnowledgeUnit],
+    knowledge_state_by_id: dict[int, UserKnowledgeState],
+    limit: int = EXAM_STUDY_GUIDE_UNIT_CONTEXT_LIMIT,
+) -> list[dict[str, object]]:
+    performance: list[dict[str, object]] = []
+    for knowledge_unit_id, evidence in unit_evidence.items():
+        unit = knowledge_unit_by_id.get(knowledge_unit_id)
+        if unit is None or not unit.canonical_name.strip():
+            continue
+
+        paper_attempts = max(0, int(evidence.get("paper_attempts", 0) or 0))
+        paper_correct_attempts = min(
+            paper_attempts,
+            max(0, int(evidence.get("paper_correct_attempts", 0) or 0)),
+        )
+        paper_score_max = max(0.0, float(evidence.get("paper_score_max", 0.0) or 0.0))
+        paper_score_obtained = min(
+            paper_score_max,
+            max(0.0, float(evidence.get("paper_score_obtained", 0.0) or 0.0)),
+        ) if paper_score_max > 0 else 0.0
+        paper_score_rate = (
+            paper_score_obtained / paper_score_max
+            if paper_score_max > 0
+            else paper_correct_attempts / max(1, paper_attempts)
+        )
+        paper_score_rate = max(0.0, min(1.0, paper_score_rate))
+
+        state = knowledge_state_by_id.get(knowledge_unit_id)
+        cumulative_mastery_score = round(float(state.mastery_score), 3) if state is not None else None
+        cumulative_attempts = max(0, int(state.total_attempts)) if state is not None else 0
+        cumulative_correct_attempts = (
+            min(cumulative_attempts, max(0, int(state.correct_attempts)))
+            if state is not None
+            else 0
+        )
+        paper_evidence = (
+            f"本卷关联 {paper_attempts} 题，答对 {paper_correct_attempts} 题；"
+            f"按关联权重计 {_study_guide_score_text(paper_score_obtained)}/"
+            f"{_study_guide_score_text(paper_score_max)} 分，得分率 {round(paper_score_rate * 100)}%。"
+        )
+        profile_context = (
+            f"累计画像：掌握度 {round(float(state.mastery_score) * 100)}%，"
+            f"累计练习 {cumulative_attempts} 次，答对 {cumulative_correct_attempts} 次。"
+            if state is not None
+            else "累计画像：暂无可靠历史记录。"
+        )
+        performance.append(
+            {
+                "knowledge_unit_id": knowledge_unit_id,
+                "knowledge_unit_name": unit.canonical_name,
+                "paper_attempts": paper_attempts,
+                "paper_correct_attempts": paper_correct_attempts,
+                "paper_score_obtained": round(paper_score_obtained, 4),
+                "paper_score_max": round(paper_score_max, 4),
+                "paper_score_rate": round(paper_score_rate, 4),
+                "mastery_score": cumulative_mastery_score,
+                "cumulative_mastery_score": cumulative_mastery_score,
+                "cumulative_attempts": cumulative_attempts,
+                "cumulative_correct_attempts": cumulative_correct_attempts,
+                "paper_evidence": paper_evidence,
+                "profile_context": profile_context,
+            }
+        )
+
+    performance.sort(
+        key=lambda point: (
+            float(point["paper_score_rate"]),
+            -float(point["paper_score_max"]),
+            -int(point["paper_attempts"]),
+            int(point["knowledge_unit_id"]),
+        )
+    )
+    return performance[:max(0, limit)]
+
+
+def _normalize_study_guide_response(
+    response: ExamStudyGuideResponse,
+    *,
+    unit_performance: list[dict[str, object]],
+) -> ExamStudyGuideResponse:
+    focus_units: list[ExamStudyGuideFocusUnit] = []
+    for point in unit_performance[:STUDY_GUIDE_FOCUS_UNIT_LIMIT]:
+        raw_id = point.get("knowledge_unit_id")
+        if not isinstance(raw_id, int) or isinstance(raw_id, bool) or raw_id <= 0:
+            continue
+        raw_mastery = point.get("cumulative_mastery_score", point.get("mastery_score"))
+        mastery_score = (
+            float(raw_mastery)
+            if isinstance(raw_mastery, (int, float)) and not isinstance(raw_mastery, bool)
+            else None
+        )
+        paper_attempts = max(0, int(point.get("paper_attempts", 0) or 0))
+        paper_correct_attempts = min(
+            paper_attempts,
+            max(0, int(point.get("paper_correct_attempts", 0) or 0)),
+        )
+        paper_score_max = max(0.0, float(point.get("paper_score_max", 0.0) or 0.0))
+        paper_score_obtained = min(
+            paper_score_max,
+            max(0.0, float(point.get("paper_score_obtained", 0.0) or 0.0)),
+        ) if paper_score_max > 0 else 0.0
+        raw_score_rate = point.get("paper_score_rate")
+        paper_score_rate = (
+            max(0.0, min(1.0, float(raw_score_rate)))
+            if isinstance(raw_score_rate, (int, float)) and not isinstance(raw_score_rate, bool)
+            else None
+        )
+        name = _study_guide_public_text(point.get("knowledge_unit_name"))
+        if not name or paper_attempts <= 0:
+            continue
+        focus_units.append(
+            ExamStudyGuideFocusUnit(
+                knowledge_unit_id=raw_id,
+                knowledge_unit_name=name,
+                paper_attempts=paper_attempts,
+                paper_correct_attempts=paper_correct_attempts,
+                paper_score_obtained=paper_score_obtained,
+                paper_score_max=paper_score_max,
+                paper_score_rate=paper_score_rate,
+                mastery_score=mastery_score,
+                reason=_study_guide_public_text(
+                    point.get("paper_evidence") or point.get("evidence") or point.get("reason")
+                ),
+            )
+        )
+
+    return response.model_copy(
+        update={
+            "overall_summary": _study_guide_public_text(response.overall_summary),
+            "strengths": [
+                _study_guide_public_text(item)
+                for item in response.strengths[:STUDY_GUIDE_STRENGTH_LIMIT]
+                if _study_guide_public_text(item)
+            ],
+            "focus_units": focus_units,
+            "priority_gaps": [
+                _study_guide_public_text(item)
+                for item in response.priority_gaps[:STUDY_GUIDE_PRIORITY_GAP_LIMIT]
+                if _study_guide_public_text(item)
+            ],
+            "action_steps": [
+                _study_guide_public_text(item)
+                for item in response.action_steps[:STUDY_GUIDE_ACTION_STEP_LIMIT]
+                if _study_guide_public_text(item)
+            ],
+            "review_tasks": [],
+        }
+    )
+
+
+def _normalize_study_guide_stream_draft(
+    response: ExamStudyGuideResponse,
+    *,
+    unit_performance: list[dict[str, object]],
+) -> ExamStudyGuideResponse:
+    normalized = _normalize_study_guide_response(response, unit_performance=unit_performance)
+    focus_section_started = bool(
+        response.focus_units
+        or response.priority_gaps
+        or response.action_steps
+    )
+    if focus_section_started:
+        return normalized
+    return normalized.model_copy(update={"focus_units": []})
+
+
+def _cached_study_guide_response(cache: ExamStudyGuideCache | None) -> ExamStudyGuideResponse | None:
+    if cache is None or cache.status != "completed" or not cache.guide_json.strip():
+        return None
+    try:
+        payload = json.loads(cache.guide_json)
+        if not isinstance(payload, dict) or payload.get("schema_version") != EXAM_STUDY_GUIDE_SCHEMA_VERSION:
+            return None
+        response = ExamStudyGuideResponse.model_validate(payload)
+    except Exception:
+        return None
+    return response if _study_guide_cache_is_current(response) else None
+
+
+def _cached_study_guide_draft(
+    cache: ExamStudyGuideCache | None,
+) -> tuple[int, ExamStudyGuideResponse] | None:
+    if cache is None or cache.status != "generating" or not cache.guide_json.strip():
+        return None
+    try:
+        payload = json.loads(cache.guide_json)
+        if not isinstance(payload, dict) or payload.get("stream_version") != 1:
+            return None
+        draft_payload = payload.get("draft")
+        if (
+            not isinstance(draft_payload, dict)
+            or draft_payload.get("schema_version") != EXAM_STUDY_GUIDE_SCHEMA_VERSION
+        ):
+            return None
+        raw_sequence = payload.get("sequence")
+        sequence = (
+            raw_sequence
+            if isinstance(raw_sequence, int) and not isinstance(raw_sequence, bool)
+            else 0
+        )
+        draft = ExamStudyGuideResponse.model_validate(draft_payload)
+        return max(sequence, 0), draft
+    except Exception:
+        return None
+
+
+def _is_active_study_guide_generation(
+    cache: ExamStudyGuideCache | None,
+    *,
+    as_of=None,
+) -> bool:
+    if cache is None or cache.status != "generating":
+        return False
+    updated_at = ensure_utc_datetime(cache.updated_at)
+    now = ensure_utc_datetime(as_of) or utcnow()
+    return updated_at is not None and updated_at + EXAM_STUDY_GUIDE_STALE_AFTER > now
+
+
+def _study_guide_done_payload(response: ExamStudyGuideResponse) -> dict[str, object]:
+    return {
+        "exam_paper_id": response.exam_paper_id,
+        "status": "completed",
+        "guide": response.model_dump(mode="json"),
+    }
+
+
+def _study_guide_content_payload(
+    response: ExamStudyGuideResponse,
+    *,
+    sequence: int,
+) -> dict[str, object]:
+    return {
+        "exam_paper_id": response.exam_paper_id,
+        "status": "generating",
+        "sequence": sequence,
+        "draft": response.model_dump(mode="json"),
+    }
+
+
+def _study_guide_draft_cache_json(
+    response: ExamStudyGuideResponse,
+    *,
+    sequence: int,
+    generation_token: str = "",
+) -> str:
+    payload: dict[str, object] = {
+        "stream_version": 1,
+        "sequence": sequence,
+        "draft": response.model_dump(mode="json"),
+    }
+    if generation_token:
+        payload["generation_token"] = generation_token
+    return json.dumps(
+        payload,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+
+
+def _study_guide_generation_cache_json(generation_token: str) -> str:
+    return json.dumps(
+        {
+            "stream_version": 1,
+            "generation_token": generation_token,
+        },
+        separators=(",", ":"),
+    )
+
+
+def _study_guide_cache_generation_token(cache: ExamStudyGuideCache | None) -> str:
+    if cache is None or cache.status != "generating" or not cache.guide_json.strip():
+        return ""
+    try:
+        payload = json.loads(cache.guide_json)
+    except Exception:
+        return ""
+    if not isinstance(payload, dict):
+        return ""
+    return str(payload.get("generation_token") or "").strip()
+
+
+def _fail_owned_study_guide_generation(
+    *,
+    course_id: str,
+    user_id: str,
+    paper_id: int,
+    generation_token: str,
+    error_message: str,
+    create_if_missing: bool,
+) -> bool:
+    del create_if_missing
+    try:
+        with managed_session() as session:
+            return exams_repo.update_owned_study_guide_cache(
+                session,
+                exam_paper_id=paper_id,
+                generation_token=generation_token,
+                status="failed",
+                guide_json="{}",
+                error_message=error_message,
+                generated_at=None,
+            )
+    except Exception as exc:
+        logger.warning(
+            "exam_study_guide_failure_cache_update_failed",
+            course_id=course_id,
+            user_id=user_id,
+            paper_id=paper_id,
+            error=str(exc),
+        )
+        return False
+
+
+async def _study_guide_detail(
+    session: Session,
+    paper: ExamPaper,
+    *,
+    generation_token: str | None = None,
+    progress_callback: object | None = None,
+    content_callback: object | None = None,
+) -> ExamStudyGuideResponse:
+    cache = exams_repo.get_study_guide_cache(session, exam_paper_id=int(paper.id or 0))
+    cached_response = _cached_study_guide_response(cache)
+    if cached_response is not None:
+        return cached_response
+    if cache is not None and cache.status == "completed" and cache.guide_json.strip():
+        logger.warning(
+            "exam_study_guide_cache_invalid",
+            course_id=paper.course_id,
+            user_id=paper.user_id,
+            paper_id=paper.id,
+        )
 
     items = exams_repo.list_items_by_paper(session, paper.id or 0)
     links_by_item_id = _links_for_items(session, items)
@@ -3678,28 +4586,42 @@ async def _study_guide_detail(session: Session, paper: ExamPaper) -> ExamStudyGu
         if unit.id is not None
     } if knowledge_unit_ids else {}
 
-    weak_states = profile_repo.list_weak_knowledge_states(
+    unit_evidence = _study_guide_unit_evidence(items, links_by_item_id)
+    all_knowledge_states = profile_repo.list_knowledge_states(
         session,
         user_id=paper.user_id,
         course_id=paper.course_id,
         target_kind="knowledge_unit",
     )
-    pending_reviews = profile_repo.list_pending_reviews(
+    knowledge_state_by_id = {
+        int(state.knowledge_unit_id): state
+        for state in all_knowledge_states
+        if state.knowledge_unit_id is not None
+        and int(state.knowledge_unit_id) in unit_evidence
+    }
+    unit_performance_payload = _study_guide_unit_performance_payload(
+        unit_evidence,
+        knowledge_unit_by_id=knowledge_unit_by_id,
+        knowledge_state_by_id=knowledge_state_by_id,
+    )
+    performance_by_unit_id = {
+        int(point["knowledge_unit_id"]): point
+        for point in unit_performance_payload
+    }
+    all_pending_reviews = profile_repo.list_pending_reviews(
         session,
         user_id=paper.user_id,
         course_id=paper.course_id,
+        target_kind="knowledge_unit",
     )
-    wrong_question_summaries = profile_repo.list_recent_wrong_attempt_summaries(
-        session,
-        user_id=paper.user_id,
-        course_id=paper.course_id,
-        knowledge_unit_ids=[
-            int(state.knowledge_unit_id)
-            for state in weak_states
-            if state.knowledge_unit_id is not None
-        ],
-        limit=5,
-    )
+    pending_reviews = [
+        state
+        for state in all_pending_reviews
+        if state.knowledge_unit_id is not None
+        and int(state.knowledge_unit_id) in performance_by_unit_id
+        and float(performance_by_unit_id[int(state.knowledge_unit_id)]["paper_score_rate"]) < 1.0
+    ]
+    wrong_question_summaries = _study_guide_wrong_question_summaries(items)
 
     score_summary = (
         f"得分 {paper.score_obtained or 0:.1f}/{paper.total_score or 0:.1f}，"
@@ -3707,23 +4629,6 @@ async def _study_guide_detail(session: Session, paper: ExamPaper) -> ExamStudyGu
         f"正确 {sum(1 for item in items if item.is_correct)} 题，"
         f"错误或未作答 {sum(1 for item in items if item.is_correct is not True)} 题。"
     )
-    weak_point_payload = [
-        {
-            "knowledge_unit_id": int(state.knowledge_unit_id) if state.knowledge_unit_id is not None else None,
-            "knowledge_unit_name": (
-                knowledge_unit_by_id[int(state.knowledge_unit_id)].canonical_name
-                if state.knowledge_unit_id is not None and int(state.knowledge_unit_id) in knowledge_unit_by_id
-                else "未命名知识点"
-            ),
-            "mastery_score": round(float(state.mastery_score), 3),
-            "reason": (
-                f"掌握度 {float(state.mastery_score):.0%}，"
-                f"累计 {state.total_attempts} 次练习，"
-                f"正确 {state.correct_attempts} 次。"
-            ),
-        }
-        for state in weak_states[:5]
-    ]
     review_payload = [
         {
             "knowledge_unit_name": (
@@ -3731,11 +4636,23 @@ async def _study_guide_detail(session: Session, paper: ExamPaper) -> ExamStudyGu
                 if state.knowledge_unit_id is not None and int(state.knowledge_unit_id) in knowledge_unit_by_id
                 else "未命名知识点"
             ),
-            "reason": state.review_reason or "建议尽快回顾",
+            "reason": _study_guide_public_review_reason(state.review_reason),
             "priority": round(float(state.review_priority), 3),
         }
-        for state in pending_reviews[:5]
+        for state in pending_reviews[:STUDY_GUIDE_ACTION_STEP_LIMIT]
     ]
+
+    normalized_content_callback: object | None = None
+    if callable(content_callback):
+        def emit_normalized_content(draft: ExamStudyGuideResponse):
+            return content_callback(
+                _normalize_study_guide_stream_draft(
+                    draft,
+                    unit_performance=unit_performance_payload,
+                )
+            )
+
+        normalized_content_callback = emit_normalized_content
 
     response = await run_exam_study_guide_workflow(
         exam_paper_id=paper.id or 0,
@@ -3744,26 +4661,39 @@ async def _study_guide_detail(session: Session, paper: ExamPaper) -> ExamStudyGu
         exam_title=_build_exam_title(paper),
         score_summary=score_summary,
         wrong_question_summaries=wrong_question_summaries,
-        weak_points=weak_point_payload,
+        knowledge_unit_performance=unit_performance_payload,
         pending_reviews=review_payload,
         generated_at=utcnow(),
+        progress_callback=progress_callback,
+        content_callback=normalized_content_callback,
     )
-    if response.focus_units:
-        normalized_focus_units: list[ExamStudyGuideFocusUnit] = []
-        for item in response.focus_units:
-            if item.knowledge_unit_name.strip():
-                normalized_focus_units.append(item)
-        response.focus_units = normalized_focus_units
-    exams_repo.upsert_study_guide_cache(
-        session,
-        exam_paper_id=int(paper.id or 0),
-        course_id=paper.course_id,
-        user_id=paper.user_id,
-        status="completed",
-        guide_json=response.model_dump_json(),
-        error_message="",
-        generated_at=response.generated_at,
+    response = _normalize_study_guide_response(
+        response,
+        unit_performance=unit_performance_payload,
     )
+    if generation_token:
+        completed = exams_repo.update_owned_study_guide_cache(
+            session,
+            exam_paper_id=int(paper.id or 0),
+            generation_token=generation_token,
+            status="completed",
+            guide_json=response.model_dump_json(),
+            error_message="",
+            generated_at=response.generated_at,
+        )
+        if not completed:
+            raise _StudyGuideGenerationOwnershipLost("study_guide_generation_owner_changed")
+    else:
+        exams_repo.upsert_study_guide_cache(
+            session,
+            exam_paper_id=int(paper.id or 0),
+            course_id=paper.course_id,
+            user_id=paper.user_id,
+            status="completed",
+            guide_json=response.model_dump_json(),
+            error_message="",
+            generated_at=response.generated_at,
+        )
     return response
 
 
@@ -3772,8 +4702,48 @@ async def _run_exam_study_guide_background(
     course_id: str,
     user_id: str,
     paper_id: int,
+    generation_token: str | None = None,
 ) -> None:
+    active_generation_token = str(generation_token or "").strip() or uuid.uuid4().hex
     try:
+        if generation_token is None:
+            with managed_session() as claim_session:
+                cache = exams_repo.get_study_guide_cache(claim_session, exam_paper_id=paper_id)
+                cached_response = _cached_study_guide_response(cache)
+                if cached_response is not None:
+                    _publish_exam_study_guide_event(
+                        course_id,
+                        paper_id,
+                        "done",
+                        _study_guide_done_payload(cached_response),
+                    )
+                    return
+                if _is_active_study_guide_generation(cache):
+                    return
+                claimed = exams_repo.claim_study_guide_generation(
+                    claim_session,
+                    exam_paper_id=paper_id,
+                    course_id=course_id,
+                    user_id=user_id,
+                    expected_cache=cache,
+                    generation_json=_study_guide_generation_cache_json(active_generation_token),
+                )
+                if not claimed:
+                    return
+
+        with managed_session() as sync_session:
+            profile_sync = exams_repo.get_exam_profile_sync(sync_session, paper_id=paper_id)
+        if profile_sync is not None and profile_sync.status != "completed":
+            if is_exam_profile_sync_recoverable_now(profile_sync):
+                await run_exam_profile_sync_background(
+                    course_id=course_id,
+                    user_id=user_id,
+                    paper_id=paper_id,
+                )
+            profile_sync = await _wait_for_exam_profile_sync_completion(paper_id=paper_id)
+            if profile_sync is None or profile_sync.status != "completed":
+                raise RuntimeError("profile_sync_not_completed")
+
         with managed_session() as session:
             paper = exams_repo.get_exam_paper_by_id(session, paper_id)
             if paper is None or paper.course_id != course_id or paper.user_id != user_id or _is_hidden_exam_paper(paper):
@@ -3781,10 +4751,114 @@ async def _run_exam_study_guide_background(
             if paper.status != "graded":
                 return
             cache = exams_repo.get_study_guide_cache(session, exam_paper_id=paper_id)
-            if cache is not None and cache.status == "completed" and cache.guide_json.strip():
+            cached_response = _cached_study_guide_response(cache)
+            if cached_response is not None:
+                _publish_exam_study_guide_event(
+                    course_id,
+                    paper_id,
+                    "done",
+                    _study_guide_done_payload(cached_response),
+                )
                 return
-            await _study_guide_detail(session, paper)
+            if _study_guide_cache_generation_token(cache) != active_generation_token:
+                return
+
+            def publish_progress(payload: dict[str, object]) -> None:
+                _publish_exam_study_guide_event(
+                    course_id,
+                    paper_id,
+                    "progress",
+                    {
+                        "exam_paper_id": paper_id,
+                        "status": "generating",
+                        **payload,
+                    },
+                )
+
+            content_sequence = 0
+
+            def publish_content(draft: ExamStudyGuideResponse) -> None:
+                nonlocal content_sequence
+                content_sequence += 1
+                payload = _study_guide_content_payload(
+                    draft,
+                    sequence=content_sequence,
+                )
+                try:
+                    updated = exams_repo.update_owned_study_guide_cache(
+                        session,
+                        exam_paper_id=paper_id,
+                        generation_token=active_generation_token,
+                        status="generating",
+                        guide_json=_study_guide_draft_cache_json(
+                            draft,
+                            sequence=content_sequence,
+                            generation_token=active_generation_token,
+                        ),
+                        error_message="",
+                        generated_at=None,
+                    )
+                    if not updated:
+                        raise _StudyGuideGenerationOwnershipLost(
+                            "study_guide_generation_owner_changed"
+                        )
+                except Exception as cache_exc:
+                    session.rollback()
+                    if isinstance(cache_exc, _StudyGuideGenerationOwnershipLost):
+                        raise
+                    logger.warning(
+                        "exam_study_guide_draft_cache_failed",
+                        course_id=course_id,
+                        user_id=user_id,
+                        paper_id=paper_id,
+                        sequence=content_sequence,
+                        error=str(cache_exc),
+                    )
+                    return
+                _publish_exam_study_guide_event(
+                    course_id,
+                    paper_id,
+                    "content",
+                    payload,
+                )
+
+            publish_progress(
+                {
+                    "stage": "study_guide",
+                    "step": "prepare_study_guide",
+                    "detail": "正在汇总本次作答与薄弱知识点...",
+                }
+            )
+            response = await _study_guide_detail(
+                session,
+                paper,
+                generation_token=active_generation_token,
+                progress_callback=publish_progress,
+                content_callback=publish_content,
+            )
+        _publish_exam_study_guide_event(
+            course_id,
+            paper_id,
+            "done",
+            _study_guide_done_payload(response),
+        )
+    except _StudyGuideGenerationOwnershipLost:
+        logger.info(
+            "exam_study_guide_background_superseded",
+            course_id=course_id,
+            user_id=user_id,
+            paper_id=paper_id,
+        )
+        return
     except asyncio.CancelledError:
+        _fail_owned_study_guide_generation(
+            course_id=course_id,
+            user_id=user_id,
+            paper_id=paper_id,
+            generation_token=active_generation_token,
+            error_message="study_guide_generation_cancelled",
+            create_if_missing=False,
+        )
         raise
     except Exception as exc:
         logger.exception(
@@ -3794,16 +4868,25 @@ async def _run_exam_study_guide_background(
             paper_id=paper_id,
             error=str(exc),
         )
-        with managed_session() as session:
-            exams_repo.upsert_study_guide_cache(
-                session,
-                exam_paper_id=paper_id,
-                course_id=course_id,
-                user_id=user_id,
-                status="failed",
-                guide_json="{}",
-                error_message=str(exc),
-                generated_at=None,
+        failed_current_generation = _fail_owned_study_guide_generation(
+            course_id=course_id,
+            user_id=user_id,
+            paper_id=paper_id,
+            generation_token=active_generation_token,
+            error_message=str(exc),
+            create_if_missing=True,
+        )
+        if failed_current_generation:
+            _publish_exam_study_guide_event(
+                course_id,
+                paper_id,
+                "error",
+                {
+                    "exam_paper_id": paper_id,
+                    "status": "failed",
+                    "detail": "复习指南生成失败，请稍后重试。",
+                    "error_code": "EXAM_STUDY_GUIDE_FAILED",
+                },
             )
 
 
@@ -3814,7 +4897,7 @@ async def _spawn_exam_study_guide_after_response(
     user_id: str,
     paper_id: int,
 ) -> None:
-    _schedule_exam_study_guide_task(
+    await _schedule_exam_study_guide_task(
         getattr(request.app.state, "background_task_registry", None),
         course_id=course_id,
         user_id=user_id,
@@ -3822,7 +4905,7 @@ async def _spawn_exam_study_guide_after_response(
     )
 
 
-def _schedule_exam_study_guide_task(
+async def _schedule_exam_study_guide_task(
     background_task_registry,
     *,
     course_id: str,
@@ -3831,18 +4914,79 @@ def _schedule_exam_study_guide_task(
 ) -> bool:
     if background_task_registry is None:
         return False
-    background_task_registry.spawn(
-        _run_exam_study_guide_background(
+    generation_token = uuid.uuid4().hex
+    with managed_session() as session:
+        cache = exams_repo.get_study_guide_cache(session, exam_paper_id=paper_id)
+        if _cached_study_guide_response(cache) is not None or _is_active_study_guide_generation(cache):
+            return False
+        claimed = exams_repo.claim_study_guide_generation(
+            session,
+            exam_paper_id=paper_id,
+            course_id=course_id,
+            user_id=user_id,
+            expected_cache=cache,
+            generation_json=_study_guide_generation_cache_json(generation_token),
+        )
+    if not claimed:
+        return False
+
+    task_name = f"exam.study_guide:{course_id}:{paper_id}"
+    try:
+        cancel_matching = getattr(background_task_registry, "cancel_matching", None)
+        if callable(cancel_matching):
+            cancel_result = cancel_matching(
+                kind="exam.study_guide",
+                course_id=course_id,
+                name=task_name,
+            )
+            if inspect.isawaitable(cancel_result):
+                await cancel_result
+        background_task_registry.spawn(
+            _run_exam_study_guide_background(
+                course_id=course_id,
+                user_id=user_id,
+                paper_id=paper_id,
+                generation_token=generation_token,
+            ),
+            kind="exam.study_guide",
+            course_id=course_id,
+            name=task_name,
+            dedupe_key=f"{task_name}:{generation_token}",
+        )
+    except Exception:
+        _fail_owned_study_guide_generation(
             course_id=course_id,
             user_id=user_id,
             paper_id=paper_id,
-        ),
-        kind="exam.study_guide",
-        course_id=course_id,
-        name=f"exam.study_guide:{course_id}:{paper_id}",
-        dedupe_key=f"exam.study_guide:{course_id}:{paper_id}",
-    )
+            generation_token=generation_token,
+            error_message="study_guide_task_schedule_failed",
+            create_if_missing=False,
+        )
+        raise
     return True
+
+
+async def _wait_for_exam_study_guide_result(
+    *,
+    paper_id: int,
+    timeout_seconds: float = EXAM_STUDY_GUIDE_GET_WAIT_SECONDS,
+) -> ExamStudyGuideResponse | None:
+    deadline = monotonic() + max(0.0, timeout_seconds)
+    while True:
+        with managed_session() as session:
+            cache = exams_repo.get_study_guide_cache(session, exam_paper_id=paper_id)
+            cached_response = _cached_study_guide_response(cache)
+            if cached_response is not None:
+                return cached_response
+            if cache is not None and cache.status == "failed":
+                raise AITeachMeError(
+                    detail="复习指南生成失败，请稍后重试。",
+                    error_code="EXAM_STUDY_GUIDE_FAILED",
+                    status_code=502,
+                )
+        if monotonic() >= deadline:
+            return None
+        await asyncio.sleep(EXAM_STUDY_GUIDE_GET_POLL_SECONDS)
 
 
 async def _grade_exam(
@@ -3941,6 +5085,22 @@ async def _renew_exam_grading_lease_loop(*, paper_id: int, claim_token: str) -> 
             return
 
 
+async def _wait_for_exam_profile_sync_completion(
+    *,
+    paper_id: int,
+    timeout_seconds: float = 30.0,
+) -> ExamProfileSync | None:
+    deadline = monotonic() + max(0.0, timeout_seconds)
+    while True:
+        with managed_session() as session:
+            task = exams_repo.get_exam_profile_sync(session, paper_id=paper_id)
+            if task is None or task.status in {"completed", "failed", "retry_wait"}:
+                return task
+        if monotonic() >= deadline:
+            return task
+        await asyncio.sleep(0.1)
+
+
 async def _renew_mastery_drill_attempt_lease_loop(*, attempt_id: int, claim_token: str) -> None:
     while True:
         await asyncio.sleep(MASTERY_DRILL_ATTEMPT_HEARTBEAT_SECONDS)
@@ -4014,24 +5174,28 @@ async def _run_exam_grading_background(
                 },
             )
         _publish_exam_event(course_id, paper_id, "done", {"exam_paper_id": paper_id, "status": "graded"})
-        profile_sync_scheduled = schedule_exam_profile_sync_task(
-            background_task_registry,
+        await run_exam_profile_sync_background(
             course_id=course_id,
             user_id=user_id,
             paper_id=paper_id,
         )
-        if not profile_sync_scheduled:
-            await run_exam_profile_sync_background(
+        profile_sync = await _wait_for_exam_profile_sync_completion(paper_id=paper_id)
+        profile_sync_completed = profile_sync is not None and profile_sync.status == "completed"
+        if profile_sync_completed:
+            await _schedule_exam_study_guide_task(
+                background_task_registry,
                 course_id=course_id,
                 user_id=user_id,
                 paper_id=paper_id,
             )
-        _schedule_exam_study_guide_task(
-            background_task_registry,
-            course_id=course_id,
-            user_id=user_id,
-            paper_id=paper_id,
-        )
+        else:
+            logger.warning(
+                "exam_study_guide_deferred_until_profile_sync",
+                course_id=course_id,
+                user_id=user_id,
+                paper_id=paper_id,
+                profile_sync_status=(profile_sync.status if profile_sync is not None else "missing"),
+            )
     except asyncio.CancelledError:
         with managed_session() as session:
             exams_repo.release_exam_grading_claim(
@@ -4173,14 +5337,16 @@ async def run_exam_grading_recovery_loop(*, task_registry) -> None:
 @router.get(
     "/mastery-drills/active",
     response_model=ApiResponse[ExamPaperDetailResponse | None],
-    summary="Fetch the active mastery drill for this course",
-    responses=build_error_responses([400, 404, 500]),
+    summary="Deprecated: durable mastery drills are no longer supported",
+    deprecated=True,
+    responses=build_error_responses([410]),
 )
 async def active_mastery_drill(
     course_id: str = Path(...),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[ExamPaperDetailResponse | None]:
+    _raise_ephemeral_mastery_drill_only()
     normalized = normalize_course_id(course_id)
     _ensure_course(session, normalized, user.user_id)
     active = exams_repo.get_active_mastery_drill_session(
@@ -4200,7 +5366,7 @@ async def active_mastery_drill(
     "/generate",
     response_model=ApiResponse[ExamGenerateResponse],
     summary="Generate an exam from KnowledgeUnits",
-    responses=build_error_responses([400, 404, 409, 500]),
+    responses=build_error_responses([400, 404, 409, 410, 500]),
 )
 async def generate_exam(
     request: Request,
@@ -4215,6 +5381,8 @@ async def generate_exam(
     mode = _require_generic_exam_mode(exam_mode_value(body.exam_mode))
     default_question_count = _default_exam_question_count_for_mode(mode)
     question_count = max(1, int(body.num_questions or default_question_count))
+    configured_question_types = _normalized_exam_question_types(body.question_types)
+    configured_difficulty = _normalized_exam_difficulty(body.difficulty)
     paper_layout_mode = _normalize_paper_layout_mode(
         body.paper_layout_mode,
         exam_mode=mode,
@@ -4249,6 +5417,8 @@ async def generate_exam(
         knowledge_unit_ids=unit_ids,
         mastery_fingerprint=_exam_mastery_fingerprint(session, course_id=normalized, user_id=user.user_id),
         paper_layout_mode=paper_layout_mode,
+        question_types=configured_question_types,
+        difficulty=configured_difficulty,
     )
     config_hash = _exam_config_hash(config_snapshot)
     paper = _visible_active_exam_candidate(
@@ -4276,6 +5446,8 @@ async def generate_exam(
             user_prompt=body.user_prompt,
             sample_file_ids=body.sample_file_ids,
             paper_layout_mode=paper_layout_mode,
+            question_types=configured_question_types,
+            difficulty=configured_difficulty,
         )
     if paper is not None:
         paper = _mark_prewarm_paper_claimed(session, paper)
@@ -4437,6 +5609,11 @@ async def exam_prewarm_status(
     exam_mode: str = Query("web_practice"),
     num_questions: int = Query(DEFAULT_AUTO_PREWARM_QUESTION_COUNT, ge=1, le=200),
     user_prompt: str | None = Query(default=None),
+    question_types: list[
+        Literal["single_choice", "multiple_choice", "true_false", "fill_blank", "short_answer"]
+    ]
+    | None = Query(default=None),
+    difficulty: Literal["auto", "easy", "medium", "hard"] = Query(default="auto"),
     sample_file_ids: list[str] | None = Query(default=None),
     paper_layout_mode: str | None = Query(default=None),
     user: CurrentUserContext = Depends(get_current_user_context),
@@ -4447,6 +5624,8 @@ async def exam_prewarm_status(
     _ensure_course(session, normalized, user.user_id)
     mode = exam_mode_value(exam_mode)
     question_count = max(1, int(num_questions or DEFAULT_AUTO_PREWARM_QUESTION_COUNT))
+    configured_question_types = _normalized_exam_question_types(question_types)
+    configured_difficulty = _normalized_exam_difficulty(difficulty)
     resolved_paper_layout_mode = _normalize_paper_layout_mode(
         paper_layout_mode,
         exam_mode=mode,
@@ -4474,6 +5653,8 @@ async def exam_prewarm_status(
         knowledge_unit_ids=unit_ids,
         mastery_fingerprint=_exam_mastery_fingerprint(session, course_id=normalized, user_id=user.user_id),
         paper_layout_mode=resolved_paper_layout_mode,
+        question_types=configured_question_types,
+        difficulty=configured_difficulty,
     )
     config_hash = _exam_config_hash(config_snapshot)
     candidate = _visible_active_exam_candidate(
@@ -4501,6 +5682,8 @@ async def exam_prewarm_status(
             user_prompt=user_prompt,
             sample_file_ids=sample_file_ids or [],
             paper_layout_mode=resolved_paper_layout_mode,
+            question_types=configured_question_types,
+            difficulty=configured_difficulty,
         )
     status = _prewarm_status_from_candidate(candidate)
 
@@ -4605,29 +5788,13 @@ async def question_templates(
 ) -> ApiResponse[list[QuestionTemplateItemResponse]]:
     normalized = normalize_course_id(course_id)
     _ensure_course(session, normalized, user.user_id)
-    rows = list(
-        session.exec(
-            select(QuestionTemplate)
-            .where(QuestionTemplate.course_id == normalized)
-            .order_by(QuestionTemplate.created_at.desc(), QuestionTemplate.id.desc())
-        ).all()
-    )
-    template_ids = [int(item.id or 0) for item in rows]
-    links_by_template_id = exams_repo.list_links_for_templates(session, template_ids)
-    wrong_template_ids = exams_repo.list_wrong_question_template_ids(
-        session,
-        course_id=normalized,
-        user_id=user.user_id,
-        template_ids=template_ids,
-    )
-    return ok_response([
-        _question_template_response(
-            item,
-            knowledge_unit_refs=links_by_template_id.get(int(item.id or 0), []),
-            has_wrong_attempt=int(item.id or 0) in wrong_template_ids,
+    return ok_response(
+        _question_template_items_for_course(
+            session,
+            course_id=normalized,
+            user_id=user.user_id,
         )
-        for item in rows
-    ])
+    )
 
 
 @router.get(
@@ -4692,23 +5859,24 @@ async def grade_question_template_answer(
         template=template,
         answer=body.answer,
     )
-    _capture_exam_event(
-        "question_template_answer_graded",
-        course_id=normalized,
-        user=user,
-        insert_id_parts=[str(question_template_id), str(data.grading_mode), str(utcnow().isoformat())],
-        properties={
-            "question_template_id_present": True,
-            "question_template_id_suffix": _suffix(question_template_id),
-            "question_type": data.question_type,
-            "difficulty": template.difficulty,
-            "is_correct": data.is_correct,
-            "score_obtained": data.score_obtained,
-            "score_max": data.score_max,
-            "grading_mode": data.grading_mode,
-            "error_cause_label": data.error_cause_label,
-        },
-    )
+    if not body.ephemeral:
+        _capture_exam_event(
+            "question_template_answer_graded",
+            course_id=normalized,
+            user=user,
+            insert_id_parts=[str(question_template_id), str(data.grading_mode), str(utcnow().isoformat())],
+            properties={
+                "question_template_id_present": True,
+                "question_template_id_suffix": _suffix(question_template_id),
+                "question_type": data.question_type,
+                "difficulty": template.difficulty,
+                "is_correct": data.is_correct,
+                "score_obtained": data.score_obtained,
+                "score_max": data.score_max,
+                "grading_mode": data.grading_mode,
+                "error_cause_label": data.error_cause_label,
+            },
+        )
     return ok_response(data)
 
 
@@ -4781,10 +5949,129 @@ async def question_types(
 
 
 @router.post(
+    "/mastery-drills/prepare",
+    response_model=ApiResponse[MasteryDrillPrepareResponse],
+    summary="Prepare an ephemeral mastery drill and backfill its question-bank shortage",
+    responses=build_error_responses([404, 409, 502]),
+)
+async def prepare_mastery_drill(
+    course_id: str = Path(...),
+    body: MasteryDrillPrepareRequest = Body(...),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[MasteryDrillPrepareResponse]:
+    normalized = normalize_course_id(course_id)
+    requested_count = max(1, int(body.num_questions))
+    configured_question_types = _normalized_exam_question_types(body.question_types)
+    async with _mastery_drill_backfill_lock(session, course_id=normalized):
+        # Nothing is read before the lock, so a waiter starts with a fresh view
+        # of any templates committed by the request that just released it.
+        course = _ensure_course(session, normalized, user.user_id)
+        initial_template_ids = {
+            int(template_id)
+            for template_id in session.exec(
+                select(QuestionTemplate.id).where(QuestionTemplate.course_id == normalized)
+            ).all()
+            if template_id is not None
+        }
+
+        # Recalculate after each pass because partial generation and stem de-duplication
+        # can change both the available count and the set of represented question types.
+        for _attempt in range(2):
+            usable_templates = _mastery_drill_usable_templates(
+                session,
+                course_id=normalized,
+                question_types=configured_question_types,
+            )
+            generation_count, generation_types = _mastery_drill_backfill_plan(
+                templates=usable_templates,
+                requested_count=requested_count,
+                configured_question_types=configured_question_types,
+            )
+            if generation_count <= 0:
+                break
+            await _generate_mastery_drill_template_backfill(
+                session,
+                course=course,
+                user_id=user.user_id,
+                question_count=generation_count,
+                question_types=generation_types,
+            )
+            session.expire_all()
+
+        usable_templates = _mastery_drill_usable_templates(
+            session,
+            course_id=normalized,
+            question_types=configured_question_types,
+        )
+        remaining_count, _remaining_types = _mastery_drill_backfill_plan(
+            templates=usable_templates,
+            requested_count=requested_count,
+            configured_question_types=configured_question_types,
+        )
+        final_template_ids = {
+            int(template_id)
+            for template_id in session.exec(
+                select(QuestionTemplate.id).where(QuestionTemplate.course_id == normalized)
+            ).all()
+            if template_id is not None
+        }
+        generated_count = len(final_template_ids - initial_template_ids)
+        if remaining_count > 0:
+            logger.warning(
+                "mastery_drill_question_bank_backfill_incomplete",
+                course_id=normalized,
+                user_id=user.user_id,
+                requested_count=requested_count,
+                available_count=len(usable_templates),
+                generated_count=generated_count,
+                remaining_count=remaining_count,
+                configured_question_types=configured_question_types,
+            )
+            raise AITeachMeError(
+                detail=(
+                    f"闯关题库补题未完成：当前可用 {len(usable_templates)} 题，"
+                    f"配置需要 {requested_count} 题。已成功生成的题目仍已加入题库，请重试。"
+                ),
+                error_code="MASTERY_DRILL_QUESTION_BACKFILL_INCOMPLETE",
+                status_code=502,
+                data={
+                    "requested_count": requested_count,
+                    "available_count": len(usable_templates),
+                    "generated_count": generated_count,
+                    "remaining_count": remaining_count,
+                },
+            )
+
+        logger.info(
+            "mastery_drill_question_bank_prepared",
+            course_id=normalized,
+            user_id=user.user_id,
+            requested_count=requested_count,
+            available_count=len(usable_templates),
+            generated_count=generated_count,
+            configured_question_types=configured_question_types,
+        )
+        return ok_response(
+            MasteryDrillPrepareResponse(
+                requested_count=requested_count,
+                available_count=len(usable_templates),
+                generated_count=generated_count,
+                templates=_question_template_items_for_course(
+                    session,
+                    course_id=normalized,
+                    user_id=user.user_id,
+                ),
+            )
+        )
+
+
+@router.post(
     "/mastery-drills/start",
     response_model=ApiResponse[ExamPaperDetailResponse],
-    summary="Start or resume a durable mastery drill",
-    responses=build_error_responses([400, 404, 409, 500]),
+    summary="Deprecated: durable mastery drills are no longer supported",
+    deprecated=True,
+    responses=build_error_responses([410]),
 )
 async def start_mastery_drill(
     course_id: str = Path(...),
@@ -4792,6 +6079,7 @@ async def start_mastery_drill(
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[ExamPaperDetailResponse]:
+    _raise_ephemeral_mastery_drill_only()
     normalized = normalize_course_id(course_id)
     _ensure_course(session, normalized, user.user_id)
 
@@ -5006,8 +6294,9 @@ async def start_mastery_drill(
 @router.post(
     "/{exam_paper_id}/mastery-drill-attempts",
     response_model=ApiResponse[MasteryDrillAttemptResponse],
-    summary="Persist and grade one mastery-drill attempt",
-    responses=build_error_responses([400, 404, 409, 500]),
+    summary="Deprecated: mastery-drill attempts are not persisted",
+    deprecated=True,
+    responses=build_error_responses([410]),
 )
 async def record_mastery_drill_attempt(
     course_id: str = Path(...),
@@ -5016,6 +6305,7 @@ async def record_mastery_drill_attempt(
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[MasteryDrillAttemptResponse]:
+    _raise_ephemeral_mastery_drill_only()
     normalized = normalize_course_id(course_id)
     course = _ensure_course(session, normalized, user.user_id)
     paper = exams_repo.get_exam_paper_by_id(session, exam_paper_id)
@@ -5185,8 +6475,9 @@ async def record_mastery_drill_attempt(
 @router.post(
     "/{exam_paper_id}/mastery-drill-complete",
     response_model=ApiResponse[ExamGradeResponse],
-    summary="Idempotently complete a mastery drill",
-    responses=build_error_responses([400, 404, 409, 500]),
+    summary="Deprecated: mastery-drill results are not persisted",
+    deprecated=True,
+    responses=build_error_responses([410]),
 )
 async def complete_mastery_drill(
     request: Request,
@@ -5197,6 +6488,7 @@ async def complete_mastery_drill(
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[ExamGradeResponse]:
+    _raise_ephemeral_mastery_drill_only()
     normalized = normalize_course_id(course_id)
     _ensure_course(session, normalized, user.user_id)
     paper = exams_repo.get_exam_paper_by_id(session, exam_paper_id)
@@ -5481,12 +6773,162 @@ async def delete_exam_paper(
 
 
 @router.get(
+    "/{exam_paper_id}/study-guide/stream",
+    summary="SSE stream for a graded exam study guide",
+    responses=build_error_responses([400, 404, 409, 500, 503]),
+)
+async def exam_study_guide_stream(
+    request: Request,
+    response: Response,
+    course_id: str = Path(...),
+    exam_paper_id: int = Path(...),
+) -> StreamingResponse:
+    normalized = normalize_course_id(course_id)
+    background_task_registry = getattr(request.app.state, "background_task_registry", None)
+    should_generate = False
+    with managed_session() as session:
+        user = get_current_user_context(request, response, session)
+        _ensure_course(session, normalized, user.user_id)
+        paper = exams_repo.get_exam_paper_by_id(session, exam_paper_id)
+        if paper is None or paper.course_id != normalized or paper.user_id != user.user_id or _is_hidden_exam_paper(paper):
+            _raise_not_found(f"Exam paper `{exam_paper_id}` not found.")
+        if paper.status != "graded":
+            raise AITeachMeError(
+                detail="Study guide is available only after grading is complete.",
+                error_code="EXAM_NOT_GRADED",
+                status_code=409,
+            )
+
+        cache = exams_repo.get_study_guide_cache(session, exam_paper_id=exam_paper_id)
+        should_generate = (
+            _cached_study_guide_response(cache) is None
+            and not _is_active_study_guide_generation(cache)
+        )
+        if should_generate:
+            if background_task_registry is None:
+                raise AITeachMeError(
+                    detail="Study guide background service is unavailable.",
+                    error_code="EXAM_STUDY_GUIDE_SERVICE_UNAVAILABLE",
+                    status_code=503,
+                )
+
+    if should_generate:
+        await _schedule_exam_study_guide_task(
+            background_task_registry,
+            course_id=normalized,
+            user_id=user.user_id,
+            paper_id=exam_paper_id,
+        )
+
+    async def event_generator():
+        snapshot_fallback_interval_s = get_sse_interval(
+            "SSE_EXAM_STUDY_GUIDE_SNAPSHOT_FALLBACK_INTERVAL_S",
+            default=2.0,
+        )
+        last_snapshot_hash: str | None = None
+
+        def snapshot_payload() -> dict[str, object]:
+            with managed_session() as stream_session:
+                cache = exams_repo.get_study_guide_cache(
+                    stream_session,
+                    exam_paper_id=exam_paper_id,
+                )
+                guide = _cached_study_guide_response(cache)
+                if guide is not None:
+                    return _study_guide_done_payload(guide)
+                if cache is not None and cache.status == "failed":
+                    return {
+                        "exam_paper_id": exam_paper_id,
+                        "status": "failed",
+                        "detail": "复习指南生成失败，请稍后重试。",
+                        "error_code": "EXAM_STUDY_GUIDE_FAILED",
+                    }
+                cached_draft = _cached_study_guide_draft(cache)
+                if cached_draft is not None:
+                    sequence, draft = cached_draft
+                    return {
+                        **_study_guide_content_payload(draft, sequence=sequence),
+                        "stage": "study_guide",
+                        "detail": "正在生成复习指南...",
+                    }
+                return {
+                    "exam_paper_id": exam_paper_id,
+                    "status": "generating",
+                    "stage": "study_guide",
+                    "detail": "正在生成复习指南...",
+                }
+
+        def should_emit_snapshot(snapshot: dict[str, object], *, force: bool = False) -> bool:
+            nonlocal last_snapshot_hash
+            snapshot_json = json.dumps(snapshot, ensure_ascii=False, sort_keys=True, default=str)
+            current_hash = hashlib.md5(snapshot_json.encode()).hexdigest()
+            if not force and current_hash == last_snapshot_hash:
+                return False
+            last_snapshot_hash = current_hash
+            return True
+
+        def terminal_event(snapshot: dict[str, object]) -> str | None:
+            status = str(snapshot.get("status") or "")
+            if status == "completed":
+                return "done"
+            if status == "failed":
+                return "error"
+            return None
+
+        initial = snapshot_payload()
+        initial_terminal_event = terminal_event(initial)
+        if initial_terminal_event is not None:
+            yield format_sse_event(initial_terminal_event, initial)
+            return
+        if should_emit_snapshot(initial, force=True):
+            yield format_sse_event("snapshot", initial)
+
+        with subscribe_workflow_stream(
+            _exam_study_guide_stream_channel(normalized, exam_paper_id)
+        ) as queue:
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    event = await asyncio.wait_for(
+                        queue.get(),
+                        timeout=snapshot_fallback_interval_s,
+                    )
+                except asyncio.TimeoutError:
+                    snapshot = snapshot_payload()
+                    event_name = terminal_event(snapshot)
+                    if event_name is not None:
+                        yield format_sse_event(event_name, snapshot)
+                        break
+                    if should_emit_snapshot(snapshot):
+                        yield format_sse_event("snapshot", snapshot)
+                    else:
+                        yield format_sse_event("ping", {})
+                    continue
+                except Exception:
+                    break
+
+                yield format_sse_event(event.event, event.data)
+                if event.event in {"done", "error"}:
+                    break
+
+    stream_response = StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers=sse_headers(),
+    )
+    set_guest_cookie_for_user(stream_response, user_id=user.user_id)
+    return stream_response
+
+
+@router.get(
     "/{exam_paper_id}/study-guide",
     response_model=ApiResponse[ExamStudyGuideResponse],
-    summary="Generate study guide from a graded exam",
-    responses=build_error_responses([400, 404, 409, 500]),
+    summary="Fetch or wait for the shared study guide generation of a graded exam",
+    responses=build_error_responses([400, 404, 409, 500, 502, 503, 504]),
 )
 async def exam_study_guide(
+    request: Request,
     course_id: str = Path(...),
     exam_paper_id: int = Path(...),
     user: CurrentUserContext = Depends(get_current_user_context),
@@ -5503,7 +6945,34 @@ async def exam_study_guide(
             error_code="EXAM_NOT_GRADED",
             status_code=409,
         )
-    return ok_response(await _study_guide_detail(session, paper))
+    cache = exams_repo.get_study_guide_cache(session, exam_paper_id=exam_paper_id)
+    cached_response = _cached_study_guide_response(cache)
+    if cached_response is not None:
+        return ok_response(cached_response)
+
+    background_task_registry = getattr(request.app.state, "background_task_registry", None)
+    if not _is_active_study_guide_generation(cache):
+        if background_task_registry is None:
+            raise AITeachMeError(
+                detail="复习指南后台服务暂不可用，请稍后重试。",
+                error_code="EXAM_STUDY_GUIDE_SERVICE_UNAVAILABLE",
+                status_code=503,
+            )
+        await _schedule_exam_study_guide_task(
+            background_task_registry,
+            course_id=normalized,
+            user_id=user.user_id,
+            paper_id=exam_paper_id,
+        )
+
+    result = await _wait_for_exam_study_guide_result(paper_id=exam_paper_id)
+    if result is None:
+        raise AITeachMeError(
+            detail="复习指南仍在生成，请稍后重试。",
+            error_code="EXAM_STUDY_GUIDE_GENERATION_TIMEOUT",
+            status_code=504,
+        )
+    return ok_response(result)
 
 
 @router.post(

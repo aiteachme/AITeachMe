@@ -252,6 +252,64 @@ async def test_docgen_writer_raises_when_completion_times_out(monkeypatch) -> No
         )
 
 @pytest.mark.anyio
+async def test_docgen_writer_stream_timeout_retries_with_primary_completion(monkeypatch) -> None:
+    completion_calls: list[dict[str, object]] = []
+
+    async def slow_stream(*args, **kwargs):
+        await asyncio.sleep(0.05)
+        yield "# Incomplete stream"
+
+    async def fallback_llm(*args, **kwargs):
+        completion_calls.append(dict(kwargs))
+        return (
+            "# Function Graphs\n\n"
+            "## Function Graph Definition\n\n"
+            "A function graph shows the relation between input and output.\n\n"
+            "## Worked Example\n\n"
+            "Use points to sketch the trend and compare intervals.\n\n"
+            "## Common Mistakes\n\n"
+            "Do not confuse intercepts with extrema.\n"
+        )
+
+    async def ignore_stream_update(_: str) -> None:
+        return None
+
+    monkeypatch.setattr(writer, "WRITER_TASK_TIMEOUT_S", 0.01)
+    monkeypatch.setattr(writer, "acompletion_stream", slow_stream)
+    monkeypatch.setattr(TracedExecutionContext, "resolve_llm_caller", lambda self: fallback_llm)
+
+    runtime = DocGenWriterRuntime(
+        TracedExecutionContext(
+            course_id="course_docgen0000",
+            build_session_id="build-1",
+            digest_mode="systematic",
+        )
+    )
+    result = await runtime.execute(
+        chapter_plan={
+            "chapter_index": 1,
+            "total_chapters": 1,
+            "title": "Function Graphs",
+            "objective": "Understand function graph basics.",
+            "required_elements": ["function graph", "worked example"],
+            "execution_contract": {"min_word_count": 1, "target_word_count": 1200},
+        },
+        dense_context="Function graphs connect input and output values.",
+        digest_mode="systematic",
+        on_stream_update=ignore_stream_update,
+    )
+
+    assert "Function Graphs" in result.content
+    assert result.metadata["fallback_used"] is True
+    assert "TimeoutError" in str(result.metadata["writer_stream_failure_reason"])
+    assert result.metadata["writer_fallback_model_slot"] == "primary"
+    assert completion_calls[0]["model"] == "primary"
+    fallback_metadata = completion_calls[0]["extra_metadata"]
+    assert isinstance(fallback_metadata, dict)
+    assert fallback_metadata["docgen_writer_stream_timed_out"] is True
+
+
+@pytest.mark.anyio
 async def test_chapter_rewrite_calls_single_llm_directly(monkeypatch) -> None:
     async def fake_llm(*args, **kwargs):
         return (

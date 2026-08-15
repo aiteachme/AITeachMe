@@ -202,6 +202,15 @@ const QUESTION_BANK: Record<QuestionType, QuestionTemplateSeed[]> = {
   ],
 };
 
+const MOCK_KNOWLEDGE_UNIT_METADATA: Record<number, { name: string; type: string; typeLabel: string }> = {
+  101: { name: "导数基础", type: "concept", typeLabel: "概念术语" },
+  102: { name: "导数的性质与判断", type: "principle", typeLabel: "原理性质" },
+  103: { name: "函数代入求值", type: "procedure", typeLabel: "方法步骤" },
+  104: { name: "等差数列通项", type: "formula_model", typeLabel: "公式模型" },
+  105: { name: "利用导数判断函数极值", type: "skill", typeLabel: "解题技能" },
+  107: { name: "正弦函数的性质", type: "concept", typeLabel: "概念术语" },
+};
+
 const papers = new Map<number, InternalPaper>();
 const generateJobs = new Map<number, GenerateJob>();
 const gradeJobs = new Map<number, GradeJob>();
@@ -212,9 +221,37 @@ const PAPER_PREVIEW_ROW_LIMIT = 7;
 let nextPaperId = 10;
 let nextGenerateJobId = 200;
 let nextGradeJobId = 400;
+let nextQuestionTemplateId = 10_000;
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+function createMasteryBackfillTemplate(questionType: QuestionType): QuestionTemplateSeed {
+  const id = nextQuestionTemplateId++;
+  const choiceOptions = ["选项一", "选项二", "选项三", "选项四"];
+  const isChoice = questionType === "single_choice" || questionType === "multiple_choice";
+  return {
+    id,
+    question_type: questionType,
+    difficulty: "medium",
+    stem: `闯关题库自动补充题目 #${id}`,
+    options: isChoice ? choiceOptions : null,
+    answer: questionType === "multiple_choice"
+      ? "A,C"
+      : questionType === "single_choice"
+        ? "A"
+        : questionType === "true_false"
+          ? "True"
+          : `参考答案 ${id}`,
+    explanation: "该题由当前闯关配置触发生成，并已同步到题库。",
+    knowledge_unit_id: 101 + (id % 7),
+  };
+}
+
+
+function formatMockSseEvent(event: string, data: Record<string, unknown>): string {
+  return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
 function extractRequestedCount(prompt: string | undefined): number | null {
@@ -270,11 +307,20 @@ function selectTemplates(types: QuestionType[], count: number, seedShift: number
   return selected;
 }
 
-function createPaper(course: string, mode: ExamMode, prompt: string | undefined, explicitCount?: number): InternalPaper {
+function createPaper(
+  course: string,
+  mode: ExamMode,
+  prompt: string | undefined,
+  explicitCount?: number,
+  configuredQuestionTypes?: QuestionType[],
+  configuredDifficulty?: "auto" | "easy" | "medium" | "hard",
+): InternalPaper {
   const paperId = nextPaperId++;
   const requestedCount = extractRequestedCount(prompt);
   const count = explicitCount ?? requestedCount ?? defaultCountByMode(mode);
-  const types = chooseQuestionTypes(mode, prompt);
+  const types = configuredQuestionTypes?.length
+    ? [...new Set(configuredQuestionTypes)]
+    : chooseQuestionTypes(mode, prompt);
   const templates = selectTemplates(types, count, paperId % 5);
   const createdAt = nowIso();
 
@@ -283,7 +329,9 @@ function createPaper(course: string, mode: ExamMode, prompt: string | undefined,
     item_order: index + 1,
     question_template_id: template.id,
     question_type: template.question_type,
-    difficulty: template.difficulty,
+    difficulty: configuredDifficulty && configuredDifficulty !== "auto"
+      ? configuredDifficulty
+      : template.difficulty,
     stem: template.stem,
     options: template.options,
     explanation: template.explanation,
@@ -644,30 +692,35 @@ papers.set(paperExamMockPaper.id, paperExamMockPaper);
 function buildQuestionTemplates(course: string): Array<Record<string, unknown>> {
   return Object.values(QUESTION_BANK)
     .flat()
-    .map((template) => ({
-      id: template.id,
-      course,
-      question_type: template.question_type,
-      difficulty: template.difficulty,
-      stem: template.stem,
-      options: template.options,
-      answer: template.answer,
-      explanation: template.explanation,
-      knowledge_unit_refs: [
-        {
-          knowledge_unit_id: template.knowledge_unit_id,
-          knowledge_unit_name: `KU-${template.knowledge_unit_id}`,
-          coverage_weight: 1,
-        },
-      ],
-      selection_hints: {},
-      template_version: 1,
-      status: "active",
-      is_marked: markedQuestionTemplateIds.has(template.id),
-      has_wrong_attempt: template.id === 3001,
-      created_at: "2026-03-18T10:00:00Z",
-      updated_at: nowIso(),
-    }));
+    .map((template) => {
+      const unitMetadata = MOCK_KNOWLEDGE_UNIT_METADATA[template.knowledge_unit_id];
+      return {
+        id: template.id,
+        course,
+        question_type: template.question_type,
+        difficulty: template.difficulty,
+        stem: template.stem,
+        options: template.options,
+        answer: template.answer,
+        explanation: template.explanation,
+        knowledge_unit_refs: [
+          {
+            knowledge_unit_id: template.knowledge_unit_id,
+            knowledge_unit_name: unitMetadata?.name,
+            knowledge_unit_type: unitMetadata?.type,
+            knowledge_unit_type_label: unitMetadata?.typeLabel,
+            coverage_weight: 1,
+          },
+        ],
+        selection_hints: {},
+        template_version: 1,
+        status: "active",
+        is_marked: markedQuestionTemplateIds.has(template.id),
+        has_wrong_attempt: template.id === 3001,
+        created_at: "2026-03-18T10:00:00Z",
+        updated_at: nowIso(),
+      };
+    });
 }
 
 function buildQuestionTypes(course: string): Array<Record<string, unknown>> {
@@ -796,7 +849,13 @@ export const examHandlers = [
       );
     }
 
-    const body = (await request.json()) as { exam_mode?: ExamMode; user_prompt?: string; num_questions?: number };
+    const body = (await request.json()) as {
+      exam_mode?: ExamMode;
+      user_prompt?: string;
+      num_questions?: number;
+      question_types?: QuestionType[];
+      difficulty?: "auto" | "easy" | "medium" | "hard";
+    };
     const mode = body.exam_mode ?? "diagnostic";
     const prompt = body.user_prompt;
     const requestedCount = Number(body.num_questions);
@@ -823,7 +882,14 @@ export const examHandlers = [
     setTimeout(() => {
       const target = generateJobs.get(job.id);
       if (!target) return;
-      const paper = createPaper(course, mode, prompt, count);
+      const paper = createPaper(
+        course,
+        mode,
+        prompt,
+        count,
+        body.question_types,
+        body.difficulty,
+      );
       papers.set(paper.id, paper);
       target.status = "completed";
       target.exam_paper_id = paper.id;
@@ -878,6 +944,40 @@ export const examHandlers = [
     return HttpResponse.json({ code: 0, data: buildQuestionTemplates(String(params.course)) });
   }),
 
+  http.post("/api/v1/courses/:course/exams/mastery-drills/prepare", async ({ params, request }) => {
+    const course = String(params.course);
+    const body = (await request.json()) as {
+      num_questions?: number;
+      question_types?: QuestionType[];
+    };
+    const requestedCount = Math.max(1, Math.min(80, Math.floor(Number(body.num_questions) || 10)));
+    const configuredTypes = Array.from(new Set(
+      (body.question_types ?? []).filter((item): item is QuestionType => item in QUESTION_BANK),
+    ));
+    const targetTypes = configuredTypes.length
+      ? configuredTypes
+      : (["single_choice", "multiple_choice", "true_false", "fill_blank", "short_answer"] as QuestionType[]);
+    const availableBefore = targetTypes.flatMap((questionType) => QUESTION_BANK[questionType]).length;
+    const shortage = Math.max(0, requestedCount - availableBefore);
+    for (let index = 0; index < shortage; index += 1) {
+      const questionType = targetTypes[index % targetTypes.length];
+      QUESTION_BANK[questionType].push(createMasteryBackfillTemplate(questionType));
+    }
+    if (shortage > 0) {
+      await new Promise((resolve) => setTimeout(resolve, 320));
+    }
+    const availableCount = targetTypes.flatMap((questionType) => QUESTION_BANK[questionType]).length;
+    return HttpResponse.json({
+      code: 0,
+      data: {
+        requested_count: requestedCount,
+        available_count: availableCount,
+        generated_count: shortage,
+        templates: buildQuestionTemplates(course),
+      },
+    });
+  }),
+
   http.get("/api/v1/courses/:course/exams/question-types", ({ params }) => {
     return HttpResponse.json({ code: 0, data: buildQuestionTypes(String(params.course)) });
   }),
@@ -926,6 +1026,50 @@ export const examHandlers = [
     return HttpResponse.json({ code: 0, data: history });
   }),
 
+  http.post("/api/v1/courses/:course/exams/question-templates/:questionTemplateId/grade", async ({ params, request }) => {
+    const questionTemplateId = Number(params.questionTemplateId);
+    const template = Object.values(QUESTION_BANK)
+      .flat()
+      .find((item) => item.id === questionTemplateId);
+    if (!template) {
+      return HttpResponse.json({ code: 404, message: "template not found", data: null }, { status: 404 });
+    }
+    const body = (await request.json()) as { answer?: string; ephemeral?: boolean };
+    const judged = scoreItem({
+      id: template.id,
+      item_order: 1,
+      question_template_id: template.id,
+      question_type: template.question_type,
+      difficulty: template.difficulty,
+      stem: template.stem,
+      options: template.options,
+      explanation: template.explanation,
+      knowledge_unit_id: template.knowledge_unit_id,
+      correct_answer: template.answer,
+      user_answer: String(body.answer ?? ""),
+      is_correct: null,
+      score_obtained: null,
+      score_max: 1,
+      error_cause_label: null,
+    });
+    return HttpResponse.json({
+      code: 0,
+      data: {
+        question_template_id: template.id,
+        question_type: template.question_type,
+        is_correct: judged.correct,
+        score_obtained: judged.correct ? 1 : 0,
+        score_max: 1,
+        feedback_text: judged.correct ? "回答正确。" : "请结合参考答案再检查一次。",
+        error_cause_label: judged.reason,
+        grading_mode: template.question_type === "short_answer" || template.question_type === "fill_blank"
+          ? "subjective_fallback"
+          : "objective_rule",
+        correct_answer: template.answer,
+      },
+    });
+  }),
+
   http.patch("/api/v1/courses/:course/exams/question-templates/:questionTemplateId/mark", async ({ params, request }) => {
     const questionTemplateId = Number(params.questionTemplateId);
     const body = (await request.json()) as { is_marked?: boolean };
@@ -942,6 +1086,143 @@ export const examHandlers = [
       data: {
         question_template_id: questionTemplateId,
         is_marked: markedQuestionTemplateIds.has(questionTemplateId),
+      },
+    });
+  }),
+
+  http.get("/api/v1/courses/:course/exams/:examPaperId/study-guide/stream", ({ params }) => {
+    const paperId = Number(params.examPaperId);
+    const paper = papers.get(paperId);
+    if (!paper) {
+      return HttpResponse.json({ code: 404, message: "paper not found", data: null }, { status: 404 });
+    }
+    if (paper.status !== "graded") {
+      return HttpResponse.json({ code: 409, message: "paper not graded", data: null }, { status: 409 });
+    }
+
+    const encoder = new TextEncoder();
+    const guide = {
+      schema_version: 2 as const,
+      exam_paper_id: paperId,
+      course_name: String(params.course || "模拟课程"),
+      generated_at: nowIso(),
+      overall_summary: "本次作答整体稳定，建议优先回顾失分题对应的知识点，再完成一轮变式练习。",
+      strengths: ["两道基础选择题判断准确，基础概念与常见题型识别较稳定。"],
+      focus_units: [
+        {
+          knowledge_unit_id: 105,
+          knowledge_unit_name: "函数极值",
+          paper_attempts: 1,
+          paper_correct_attempts: 0,
+          paper_score_obtained: 0.5,
+          paper_score_max: 1,
+          paper_score_rate: 0.5,
+          mastery_score: 0.45,
+          reason: "本卷关联 1 题，按分值计 0.5/1 分；简答题只找到了一个极值点，求导后的临界点检查仍不完整。",
+        },
+      ],
+      priority_gaps: ["求导后需要完整求解全部临界点，并逐一验证函数在区间两侧的变化。"],
+      action_steps: ["重做本次失分题并写出完整临界点", "对照解析整理漏解原因", "完成两道同类变式题并自行验算"],
+      review_tasks: [],
+    };
+    const contentTimers: Array<ReturnType<typeof setTimeout>> = [];
+    let doneTimer: ReturnType<typeof setTimeout> | null = null;
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode(formatMockSseEvent("snapshot", {
+          exam_paper_id: paperId,
+          status: "generating",
+          stage: "study_guide",
+          detail: "正在汇总本次作答与薄弱知识点...",
+        })));
+        controller.enqueue(encoder.encode(formatMockSseEvent("progress", {
+          exam_paper_id: paperId,
+          status: "generating",
+          stage: "study_guide",
+          step: "generate_study_guide",
+          detail: "正在生成个性化复习建议...",
+        })));
+        contentTimers.push(setTimeout(() => {
+          controller.enqueue(encoder.encode(formatMockSseEvent("content", {
+            exam_paper_id: paperId,
+            status: "generating",
+            sequence: 1,
+            draft: {
+              ...guide,
+              overall_summary: "本次作答整体稳定，建议优先回顾",
+              strengths: [],
+              focus_units: [],
+              priority_gaps: [],
+              action_steps: [],
+              review_tasks: [],
+            },
+          })));
+        }, 120));
+        contentTimers.push(setTimeout(() => {
+          controller.enqueue(encoder.encode(formatMockSseEvent("content", {
+            exam_paper_id: paperId,
+            status: "generating",
+            sequence: 2,
+            draft: {
+              ...guide,
+              focus_units: [],
+              priority_gaps: [],
+              action_steps: [],
+              review_tasks: [],
+            },
+          })));
+        }, 360));
+        contentTimers.push(setTimeout(() => {
+          controller.enqueue(encoder.encode(formatMockSseEvent("content", {
+            exam_paper_id: paperId,
+            status: "generating",
+            sequence: 3,
+            draft: {
+              ...guide,
+              priority_gaps: [],
+              action_steps: [],
+              review_tasks: [],
+            },
+          })));
+        }, 620));
+        contentTimers.push(setTimeout(() => {
+          controller.enqueue(encoder.encode(formatMockSseEvent("content", {
+            exam_paper_id: paperId,
+            status: "generating",
+            sequence: 4,
+            draft: {
+              ...guide,
+              action_steps: [],
+              review_tasks: [],
+            },
+          })));
+        }, 900));
+        contentTimers.push(setTimeout(() => {
+          controller.enqueue(encoder.encode(formatMockSseEvent("content", {
+            exam_paper_id: paperId,
+            status: "generating",
+            sequence: 5,
+            draft: guide,
+          })));
+        }, 1180));
+        doneTimer = setTimeout(() => {
+          controller.enqueue(encoder.encode(formatMockSseEvent("done", {
+            exam_paper_id: paperId,
+            status: "completed",
+            guide,
+          })));
+          controller.close();
+        }, 1480);
+      },
+      cancel() {
+        for (const timer of contentTimers) clearTimeout(timer);
+        if (doneTimer !== null) clearTimeout(doneTimer);
+      },
+    });
+    return new HttpResponse(stream, {
+      headers: {
+        "Cache-Control": "no-cache, no-transform",
+        "Content-Type": "text/event-stream",
       },
     });
   }),

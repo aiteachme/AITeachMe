@@ -9,6 +9,7 @@ import {
   buildCoursePath,
   getCourseIdFromPathname,
   isFullBleedCoursePath,
+  isTrainingDetailPath,
   getCourseRouteSegmentFromPathname,
   rememberCourseRoute,
 } from "../../lib/courseNavigation";
@@ -45,7 +46,7 @@ export function Layout() {
   const { pathname } = location;
   const isElectron = isElectronRuntime();
   const isFullBleed = isFullBleedCoursePath(pathname);
-  const isExamFocusPage = /^\/courses?\/[^/]+\/exams\/\d+$/.test(pathname);
+  const isTrainingDetailPage = isTrainingDetailPath(pathname);
   const isAssistantPage = pathname === "/assistant";
   const isHomePage = pathname === "/";
   const isSharePage = pathname.startsWith("/share/");
@@ -123,9 +124,13 @@ export function Layout() {
     courseId &&
     courseTopNavMeta &&
     hasCoursePageTopNavigation &&
-    !isExamFocusPage,
+    !isTrainingDetailPage,
   );
-  const shouldShowTopBar = !isExamFocusPage && !isAssistantPage && !isSharePage && !hasCoursePageTopNavigation;
+  const shouldShowTopBar =
+    !isTrainingDetailPage &&
+    !isAssistantPage &&
+    !isSharePage &&
+    !hasCoursePageTopNavigation;
   const shouldInsetMainForCourseTopNav =
     shouldShowCourseTopNav && (routeSegment === "exams" || routeSegment === "profile");
   const routeOutlet = <Outlet key={pathname} />;
@@ -149,7 +154,7 @@ export function Layout() {
             isElectron ? "w-full flex-1" : "h-dvh w-screen max-w-full",
           )}
         >
-          {!isExamFocusPage && (
+          {!isTrainingDetailPage && (
             <Sidebar
               onOpenSettings={openSettings}
               onMobileOpenChange={setIsMobileSidebarOpen}
@@ -158,7 +163,7 @@ export function Layout() {
           <div
             className={cn(
               "relative z-10 flex min-w-0 flex-1 flex-col transition-transform duration-200 ease-out lg:translate-x-0",
-              isMobileSidebarOpen && !isExamFocusPage ? "translate-x-[80vw]" : "translate-x-0",
+              isMobileSidebarOpen && !isTrainingDetailPage ? "translate-x-[80vw]" : "translate-x-0",
             )}
           >
             {shouldShowTopBar && (
@@ -204,7 +209,7 @@ export function Layout() {
           <AiInteractionWindow
             defaultPageContext={defaultAiPageContext}
             suppressFloatingTrigger={
-              (isMobileSidebarOpen && !isExamFocusPage) ||
+              (isMobileSidebarOpen && !isTrainingDetailPage) ||
               isSharePage ||
               isHomePage ||
               isCourseDashboardOrBuild ||

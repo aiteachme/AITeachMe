@@ -35,6 +35,7 @@ import type {
   ApiResponseListQuestionTemplateItemResponse,
   ApiResponseListQuestionTypeRegistryItemResponse,
   ApiResponseMasteryDrillAttemptResponse,
+  ApiResponseMasteryDrillPrepareResponse,
   ApiResponsePaginatedDataExamHistoryItem,
   ApiResponseQuestionTemplateGradeResponse,
   ApiResponseQuestionTemplateMarkResponse,
@@ -47,6 +48,7 @@ import type {
   HTTPValidationError,
   MasteryDrillAttemptRequest,
   MasteryDrillCompleteRequest,
+  MasteryDrillPrepareRequest,
   MasteryDrillStartRequest,
   QuestionTemplateAnswerHistoryApiV1CoursesCourseIdExamsQuestionTemplatesQuestionTemplateIdAnswerHistoryGetParams,
   QuestionTemplateGradeRequest,
@@ -81,14 +83,9 @@ export type activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetRes
   status: 200
 }
 
-export type activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetResponse400 = {
+export type activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetResponse410 = {
   data: ErrorResponse
-  status: 400
-}
-
-export type activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetResponse404 = {
-  data: ErrorResponse
-  status: 404
+  status: 410
 }
 
 export type activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetResponse422 = {
@@ -96,15 +93,10 @@ export type activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetRes
   status: 422
 }
 
-export type activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetResponse500 = {
-  data: ErrorResponse
-  status: 500
-}
-
 export type activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetResponseSuccess = (activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetResponse200) & {
   headers: Headers;
 };
-export type activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetResponseError = (activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetResponse400 | activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetResponse404 | activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetResponse422 | activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetResponse500) & {
+export type activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetResponseError = (activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetResponse410 | activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetResponse422) & {
   headers: Headers;
 };
 
@@ -119,7 +111,8 @@ export const getActiveMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGe
 }
 
 /**
- * @summary Fetch the active mastery drill for this course
+ * @deprecated
+ * @summary Deprecated: durable mastery drills are no longer supported
  */
 export const activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGet = async (courseId: string, options?: RequestInit): Promise<activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGetResponse> => {
 
@@ -190,7 +183,8 @@ export function useActiveMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiv
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 /**
- * @summary Fetch the active mastery drill for this course
+ * @deprecated
+ * @summary Deprecated: durable mastery drills are no longer supported
  */
 
 export function useActiveMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGet<TData = Awaited<ReturnType<typeof activeMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsActiveGet>>, TError = ErrorResponse | HTTPValidationError>(
@@ -230,6 +224,11 @@ export type generateExamApiV1CoursesCourseIdExamsGeneratePostResponse409 = {
   status: 409
 }
 
+export type generateExamApiV1CoursesCourseIdExamsGeneratePostResponse410 = {
+  data: ErrorResponse
+  status: 410
+}
+
 export type generateExamApiV1CoursesCourseIdExamsGeneratePostResponse422 = {
   data: HTTPValidationError
   status: 422
@@ -243,7 +242,7 @@ export type generateExamApiV1CoursesCourseIdExamsGeneratePostResponse500 = {
 export type generateExamApiV1CoursesCourseIdExamsGeneratePostResponseSuccess = (generateExamApiV1CoursesCourseIdExamsGeneratePostResponse200) & {
   headers: Headers;
 };
-export type generateExamApiV1CoursesCourseIdExamsGeneratePostResponseError = (generateExamApiV1CoursesCourseIdExamsGeneratePostResponse400 | generateExamApiV1CoursesCourseIdExamsGeneratePostResponse404 | generateExamApiV1CoursesCourseIdExamsGeneratePostResponse409 | generateExamApiV1CoursesCourseIdExamsGeneratePostResponse422 | generateExamApiV1CoursesCourseIdExamsGeneratePostResponse500) & {
+export type generateExamApiV1CoursesCourseIdExamsGeneratePostResponseError = (generateExamApiV1CoursesCourseIdExamsGeneratePostResponse400 | generateExamApiV1CoursesCourseIdExamsGeneratePostResponse404 | generateExamApiV1CoursesCourseIdExamsGeneratePostResponse409 | generateExamApiV1CoursesCourseIdExamsGeneratePostResponse410 | generateExamApiV1CoursesCourseIdExamsGeneratePostResponse422 | generateExamApiV1CoursesCourseIdExamsGeneratePostResponse500) & {
   headers: Headers;
 };
 
@@ -1259,24 +1258,118 @@ export function useQuestionTypesApiV1CoursesCourseIdExamsQuestionTypesGet<TData 
 
 
 
-export type startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResponse200 = {
-  data: ApiResponseExamPaperDetailResponse
+export type prepareMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsPreparePostResponse200 = {
+  data: ApiResponseMasteryDrillPrepareResponse
   status: 200
 }
 
-export type startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResponse400 = {
-  data: ErrorResponse
-  status: 400
-}
-
-export type startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResponse404 = {
+export type prepareMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsPreparePostResponse404 = {
   data: ErrorResponse
   status: 404
 }
 
-export type startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResponse409 = {
+export type prepareMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsPreparePostResponse409 = {
   data: ErrorResponse
   status: 409
+}
+
+export type prepareMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsPreparePostResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type prepareMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsPreparePostResponse502 = {
+  data: ErrorResponse
+  status: 502
+}
+
+export type prepareMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsPreparePostResponseSuccess = (prepareMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsPreparePostResponse200) & {
+  headers: Headers;
+};
+export type prepareMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsPreparePostResponseError = (prepareMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsPreparePostResponse404 | prepareMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsPreparePostResponse409 | prepareMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsPreparePostResponse422 | prepareMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsPreparePostResponse502) & {
+  headers: Headers;
+};
+
+export type prepareMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsPreparePostResponse = (prepareMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsPreparePostResponseSuccess | prepareMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsPreparePostResponseError)
+
+export const getPrepareMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsPreparePostUrl = (courseId: string,) => {
+
+
+
+
+  return `/api/v1/courses/${courseId}/exams/mastery-drills/prepare`
+}
+
+/**
+ * @summary Prepare an ephemeral mastery drill and backfill its question-bank shortage
+ */
+export const prepareMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsPreparePost = async (courseId: string,
+    masteryDrillPrepareRequest: MasteryDrillPrepareRequest, options?: RequestInit): Promise<prepareMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsPreparePostResponse> => {
+
+  return orvalApiClient<prepareMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsPreparePostResponse>(getPrepareMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsPreparePostUrl(courseId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(masteryDrillPrepareRequest)
+  }
+);}
+
+
+
+
+export const getPrepareMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsPreparePostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof prepareMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsPreparePost>>, TError,{courseId: string;data: MasteryDrillPrepareRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof prepareMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsPreparePost>>, TError,{courseId: string;data: MasteryDrillPrepareRequest}, TContext> => {
+
+const mutationKey = ['prepareMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsPreparePost'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof prepareMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsPreparePost>>, {courseId: string;data: MasteryDrillPrepareRequest}> = (props) => {
+          const {courseId,data} = props ?? {};
+
+          return  prepareMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsPreparePost(courseId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PrepareMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsPreparePostMutationResult = NonNullable<Awaited<ReturnType<typeof prepareMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsPreparePost>>>
+    export type PrepareMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsPreparePostMutationBody = MasteryDrillPrepareRequest
+    export type PrepareMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsPreparePostMutationError = ErrorResponse | HTTPValidationError
+
+    /**
+ * @summary Prepare an ephemeral mastery drill and backfill its question-bank shortage
+ */
+export const usePrepareMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsPreparePost = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof prepareMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsPreparePost>>, TError,{courseId: string;data: MasteryDrillPrepareRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof prepareMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsPreparePost>>,
+        TError,
+        {courseId: string;data: MasteryDrillPrepareRequest},
+        TContext
+      > => {
+      return useMutation(getPrepareMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsPreparePostMutationOptions(options), queryClient);
+    }
+    export type startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResponse200 = {
+  data: ApiResponseExamPaperDetailResponse
+  status: 200
+}
+
+export type startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResponse410 = {
+  data: ErrorResponse
+  status: 410
 }
 
 export type startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResponse422 = {
@@ -1284,15 +1377,10 @@ export type startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResp
   status: 422
 }
 
-export type startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResponse500 = {
-  data: ErrorResponse
-  status: 500
-}
-
 export type startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResponseSuccess = (startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResponse200) & {
   headers: Headers;
 };
-export type startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResponseError = (startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResponse400 | startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResponse404 | startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResponse409 | startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResponse422 | startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResponse500) & {
+export type startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResponseError = (startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResponse410 | startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResponse422) & {
   headers: Headers;
 };
 
@@ -1307,7 +1395,8 @@ export const getStartMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPost
 }
 
 /**
- * @summary Start or resume a durable mastery drill
+ * @deprecated
+ * @summary Deprecated: durable mastery drills are no longer supported
  */
 export const startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPost = async (courseId: string,
     masteryDrillStartRequest: MasteryDrillStartRequest, options?: RequestInit): Promise<startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostResponse> => {
@@ -1356,7 +1445,8 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type StartMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPostMutationError = ErrorResponse | HTTPValidationError
 
     /**
- * @summary Start or resume a durable mastery drill
+ * @deprecated
+ * @summary Deprecated: durable mastery drills are no longer supported
  */
 export const useStartMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPost = <TError = ErrorResponse | HTTPValidationError,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPost>>, TError,{courseId: string;data: MasteryDrillStartRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
@@ -1373,19 +1463,9 @@ export const useStartMasteryDrillApiV1CoursesCourseIdExamsMasteryDrillsStartPost
   status: 200
 }
 
-export type recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostResponse400 = {
+export type recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostResponse410 = {
   data: ErrorResponse
-  status: 400
-}
-
-export type recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostResponse404 = {
-  data: ErrorResponse
-  status: 404
-}
-
-export type recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostResponse409 = {
-  data: ErrorResponse
-  status: 409
+  status: 410
 }
 
 export type recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostResponse422 = {
@@ -1393,15 +1473,10 @@ export type recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMastery
   status: 422
 }
 
-export type recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostResponse500 = {
-  data: ErrorResponse
-  status: 500
-}
-
 export type recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostResponseSuccess = (recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostResponse200) & {
   headers: Headers;
 };
-export type recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostResponseError = (recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostResponse400 | recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostResponse404 | recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostResponse409 | recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostResponse422 | recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostResponse500) & {
+export type recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostResponseError = (recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostResponse410 | recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostResponse422) & {
   headers: Headers;
 };
 
@@ -1417,7 +1492,8 @@ export const getRecordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMas
 }
 
 /**
- * @summary Persist and grade one mastery-drill attempt
+ * @deprecated
+ * @summary Deprecated: mastery-drill attempts are not persisted
  */
 export const recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPost = async (courseId: string,
     examPaperId: number,
@@ -1467,7 +1543,8 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type RecordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPostMutationError = ErrorResponse | HTTPValidationError
 
     /**
- * @summary Persist and grade one mastery-drill attempt
+ * @deprecated
+ * @summary Deprecated: mastery-drill attempts are not persisted
  */
 export const useRecordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPost = <TError = ErrorResponse | HTTPValidationError,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPost>>, TError,{courseId: string;examPaperId: number;data: MasteryDrillAttemptRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
@@ -1484,19 +1561,9 @@ export const useRecordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMas
   status: 200
 }
 
-export type completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostResponse400 = {
+export type completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostResponse410 = {
   data: ErrorResponse
-  status: 400
-}
-
-export type completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostResponse404 = {
-  data: ErrorResponse
-  status: 404
-}
-
-export type completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostResponse409 = {
-  data: ErrorResponse
-  status: 409
+  status: 410
 }
 
 export type completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostResponse422 = {
@@ -1504,15 +1571,10 @@ export type completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrill
   status: 422
 }
 
-export type completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostResponse500 = {
-  data: ErrorResponse
-  status: 500
-}
-
 export type completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostResponseSuccess = (completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostResponse200) & {
   headers: Headers;
 };
-export type completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostResponseError = (completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostResponse400 | completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostResponse404 | completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostResponse409 | completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostResponse422 | completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostResponse500) & {
+export type completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostResponseError = (completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostResponse410 | completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostResponse422) & {
   headers: Headers;
 };
 
@@ -1528,7 +1590,8 @@ export const getCompleteMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryD
 }
 
 /**
- * @summary Idempotently complete a mastery drill
+ * @deprecated
+ * @summary Deprecated: mastery-drill results are not persisted
  */
 export const completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePost = async (courseId: string,
     examPaperId: number,
@@ -1578,7 +1641,8 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type CompleteMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePostMutationError = ErrorResponse | HTTPValidationError
 
     /**
- * @summary Idempotently complete a mastery drill
+ * @deprecated
+ * @summary Deprecated: mastery-drill results are not persisted
  */
 export const useCompleteMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePost = <TError = ErrorResponse | HTTPValidationError,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePost>>, TError,{courseId: string;examPaperId: number;data: MasteryDrillCompleteRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
@@ -1979,7 +2043,159 @@ export const useDeleteExamPaperApiV1CoursesCourseIdExamsExamPaperIdDelete = <TEr
       > => {
       return useMutation(getDeleteExamPaperApiV1CoursesCourseIdExamsExamPaperIdDeleteMutationOptions(options), queryClient);
     }
-    export type examStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideGetResponse200 = {
+    export type examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGetResponse200 = {
+  data: unknown
+  status: 200
+}
+
+export type examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGetResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGetResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGetResponse409 = {
+  data: ErrorResponse
+  status: 409
+}
+
+export type examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGetResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGetResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGetResponse503 = {
+  data: ErrorResponse
+  status: 503
+}
+
+export type examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGetResponseSuccess = (examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGetResponse200) & {
+  headers: Headers;
+};
+export type examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGetResponseError = (examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGetResponse400 | examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGetResponse404 | examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGetResponse409 | examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGetResponse422 | examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGetResponse500 | examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGetResponse503) & {
+  headers: Headers;
+};
+
+export type examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGetResponse = (examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGetResponseSuccess | examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGetResponseError)
+
+export const getExamStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGetUrl = (courseId: string,
+    examPaperId: number,) => {
+
+
+
+
+  return `/api/v1/courses/${courseId}/exams/${examPaperId}/study-guide/stream`
+}
+
+/**
+ * @summary SSE stream for a graded exam study guide
+ */
+export const examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGet = async (courseId: string,
+    examPaperId: number, options?: RequestInit): Promise<examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGetResponse> => {
+
+  return orvalApiClient<examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGetResponse>(getExamStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGetUrl(courseId,examPaperId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getExamStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGetQueryKey = (courseId: string,
+    examPaperId: number,) => {
+    return [
+    `/api/v1/courses/${courseId}/exams/${examPaperId}/study-guide/stream`
+    ] as const;
+    }
+
+
+export const getExamStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGetQueryOptions = <TData = Awaited<ReturnType<typeof examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGet>>, TError = ErrorResponse | HTTPValidationError>(courseId: string,
+    examPaperId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getExamStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGetQueryKey(courseId,examPaperId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGet>>> = ({ signal }) => examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGet(courseId,examPaperId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: courseId !== null && courseId !== undefined && examPaperId !== null && examPaperId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ExamStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGetQueryResult = NonNullable<Awaited<ReturnType<typeof examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGet>>>
+export type ExamStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGetQueryError = ErrorResponse | HTTPValidationError
+
+
+export function useExamStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGet<TData = Awaited<ReturnType<typeof examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGet>>, TError = ErrorResponse | HTTPValidationError>(
+ courseId: string,
+    examPaperId: number, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGet>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGet>>,
+          TError,
+          Awaited<ReturnType<typeof examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useExamStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGet<TData = Awaited<ReturnType<typeof examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGet>>, TError = ErrorResponse | HTTPValidationError>(
+ courseId: string,
+    examPaperId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGet>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGet>>,
+          TError,
+          Awaited<ReturnType<typeof examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useExamStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGet<TData = Awaited<ReturnType<typeof examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGet>>, TError = ErrorResponse | HTTPValidationError>(
+ courseId: string,
+    examPaperId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary SSE stream for a graded exam study guide
+ */
+
+export function useExamStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGet<TData = Awaited<ReturnType<typeof examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGet>>, TError = ErrorResponse | HTTPValidationError>(
+ courseId: string,
+    examPaperId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof examStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getExamStudyGuideStreamApiV1CoursesCourseIdExamsExamPaperIdStudyGuideStreamGetQueryOptions(courseId,examPaperId,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+export type examStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideGetResponse200 = {
   data: ApiResponseExamStudyGuideResponse
   status: 200
 }
@@ -2009,10 +2225,25 @@ export type examStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideGetRespo
   status: 500
 }
 
+export type examStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideGetResponse502 = {
+  data: ErrorResponse
+  status: 502
+}
+
+export type examStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideGetResponse503 = {
+  data: ErrorResponse
+  status: 503
+}
+
+export type examStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideGetResponse504 = {
+  data: ErrorResponse
+  status: 504
+}
+
 export type examStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideGetResponseSuccess = (examStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideGetResponse200) & {
   headers: Headers;
 };
-export type examStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideGetResponseError = (examStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideGetResponse400 | examStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideGetResponse404 | examStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideGetResponse409 | examStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideGetResponse422 | examStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideGetResponse500) & {
+export type examStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideGetResponseError = (examStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideGetResponse400 | examStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideGetResponse404 | examStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideGetResponse409 | examStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideGetResponse422 | examStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideGetResponse500 | examStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideGetResponse502 | examStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideGetResponse503 | examStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideGetResponse504) & {
   headers: Headers;
 };
 
@@ -2028,7 +2259,7 @@ export const getExamStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideGetU
 }
 
 /**
- * @summary Generate study guide from a graded exam
+ * @summary Fetch or wait for the shared study guide generation of a graded exam
  */
 export const examStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideGet = async (courseId: string,
     examPaperId: number, options?: RequestInit): Promise<examStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideGetResponse> => {
@@ -2105,7 +2336,7 @@ export function useExamStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideG
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 /**
- * @summary Generate study guide from a graded exam
+ * @summary Fetch or wait for the shared study guide generation of a graded exam
  */
 
 export function useExamStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideGet<TData = Awaited<ReturnType<typeof examStudyGuideApiV1CoursesCourseIdExamsExamPaperIdStudyGuideGet>>, TError = ErrorResponse | HTTPValidationError>(

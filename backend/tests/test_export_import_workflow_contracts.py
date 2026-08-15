@@ -301,7 +301,9 @@ def test_share_snapshot_strips_private_data_from_real_export(
         package_path.unlink(missing_ok=True)
         if snapshot_path is not None:
             snapshot_path.unlink(missing_ok=True)
-def test_mastery_drill_history_round_trips_with_exam_history(
+
+
+def test_mastery_drill_history_is_excluded_from_course_packages(
     session: Session,
     export_import_store: _FakeStore,
     monkeypatch: pytest.MonkeyPatch,
@@ -416,8 +418,11 @@ def test_mastery_drill_history_round_trips_with_exam_history(
 
     try:
         with zipfile.ZipFile(package_path, "r") as exported:
-            assert "db/mastery_drill_session.json" in exported.namelist()
-            assert "db/mastery_drill_attempt.json" in exported.namelist()
+            names = set(exported.namelist())
+            assert "db/mastery_drill_session.json" not in names
+            assert "db/mastery_drill_attempt.json" not in names
+            exported_papers = json.loads(exported.read("db/exam_paper.json"))
+            assert exported_papers["count"] == 0
 
         with Session(target_engine, expire_on_commit=False) as target_session:
             result = import_module.import_course(
@@ -426,25 +431,24 @@ def test_mastery_drill_history_round_trips_with_exam_history(
                 options=ImportOptions(new_course_name="Imported Algebra", rebuild_embeddings=False),
                 user_id="user-2",
             )
-            imported_drill = target_session.exec(
-                select(MasteryDrillSession).where(MasteryDrillSession.course_id == IMPORTED_COURSE_ID)
-            ).one()
-            imported_attempts = target_session.exec(
-                select(MasteryDrillAttempt)
-                .where(MasteryDrillAttempt.mastery_drill_session_id == int(imported_drill.id or 0))
-                .order_by(MasteryDrillAttempt.attempt_no)
+            imported_templates = target_session.exec(
+                select(QuestionTemplate).where(QuestionTemplate.course_id == IMPORTED_COURSE_ID)
             ).all()
-            imported_paper = target_session.get(ExamPaper, imported_drill.exam_paper_id)
-            imported_item = target_session.get(ExamPaperItem, imported_attempts[0].exam_paper_item_id)
+            imported_papers = target_session.exec(
+                select(ExamPaper).where(ExamPaper.course_id == IMPORTED_COURSE_ID)
+            ).all()
+            imported_drills = target_session.exec(
+                select(MasteryDrillSession).where(MasteryDrillSession.course_id == IMPORTED_COURSE_ID)
+            ).all()
+            imported_attempts = target_session.exec(select(MasteryDrillAttempt)).all()
 
-        assert result.imported_counts["mastery_drill_session"] == 1
-        assert result.imported_counts["mastery_drill_attempt"] == 2
-        assert imported_drill.user_id == "user-2"
-        assert imported_drill.total_attempts == 2
-        assert imported_drill.wrong_attempts == 1
-        assert imported_paper is not None and imported_paper.course_id == IMPORTED_COURSE_ID
-        assert imported_item is not None and imported_item.exam_paper_id == imported_paper.id
-        assert [attempt.is_correct for attempt in imported_attempts] == [False, True]
+        assert len(imported_templates) == 1
+        assert imported_papers == []
+        assert imported_drills == []
+        assert imported_attempts == []
+        assert result.imported_counts.get("exam_paper", 0) == 0
+        assert "mastery_drill_session" not in result.imported_counts
+        assert "mastery_drill_attempt" not in result.imported_counts
     finally:
         package_path.unlink(missing_ok=True)
 

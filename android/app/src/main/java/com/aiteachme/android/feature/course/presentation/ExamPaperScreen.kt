@@ -673,12 +673,23 @@ private fun StudyFocusUnits(units: List<ExamStudyGuideFocusUnit>) {
     if (units.isEmpty()) return
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("重点知识点", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text(
+            "按本卷关联题目的得分表现排序",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         units.forEach { unit ->
             Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = RoundedCornerShape(12.dp)) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(unit.knowledgeUnitName, fontWeight = FontWeight.SemiBold)
-                    unit.masteryScore?.let {
-                        Text("掌握度 ${formatPercent(it)}", style = MaterialTheme.typography.bodySmall)
+                    if (unit.paperAttempts > 0) {
+                        Text(
+                            "本卷答对 ${unit.paperCorrectAttempts.coerceIn(0, unit.paperAttempts)}/${unit.paperAttempts} 题",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    unit.paperScoreRate?.let {
+                        Text("本卷得分率 ${formatPercent(it)}", style = MaterialTheme.typography.bodySmall)
                     }
                     MarkdownText(
                         markdown = unit.reason,

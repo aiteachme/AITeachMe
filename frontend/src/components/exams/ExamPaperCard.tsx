@@ -33,6 +33,25 @@ const GRADING_PROGRESS_MIN = 8;
 const GRADING_PROGRESS_MAX = 95;
 const GRADING_PROGRESS_FULL_SCALE_SECONDS = 120;
 
+const EXAM_HISTORY_CARD_TONE = {
+  web_practice: {
+    surface: "border-blue-200/90 bg-[linear-gradient(135deg,rgba(239,246,255,0.68)_0%,rgba(255,255,255,0)_28%)] dark:border-blue-500/30 dark:bg-[linear-gradient(135deg,rgba(59,130,246,0.09)_0%,rgba(15,23,42,0)_30%)]",
+  },
+  paper_exam: {
+    surface: "border-violet-300/75 bg-[linear-gradient(135deg,rgba(245,243,255,0.76)_0%,rgba(255,255,255,0)_28%)] dark:border-violet-500/40 dark:bg-[linear-gradient(135deg,rgba(139,92,246,0.1)_0%,rgba(15,23,42,0)_30%)]",
+  },
+} as const;
+
+const DEFAULT_EXAM_HISTORY_CARD_TONE = {
+  surface: "border-slate-200 dark:border-slate-800",
+};
+
+function getExamHistoryCardTone(examMode: string) {
+  if (examMode === "web_practice") return EXAM_HISTORY_CARD_TONE.web_practice;
+  if (examMode === "paper_exam") return EXAM_HISTORY_CARD_TONE.paper_exam;
+  return DEFAULT_EXAM_HISTORY_CARD_TONE;
+}
+
 function buildFallbackPaperPreview(item: ExamHistoryItem): PaperPreview {
   const rowCount = Math.min(Math.max(item.total_items || 1, 1), PREVIEW_ROW_LIMIT);
   return {
@@ -703,6 +722,7 @@ export function ExamPaperCard({
   const showMasteryResult = isGraded && isMasteryDrill;
   const scorePercent = getExamScorePercent(item);
   const generationProgress = getExamGenerationProgress(item, preview);
+  const cardTone = getExamHistoryCardTone(item.exam_mode);
 
   const handleCardKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "Enter" && event.key !== " ") return;
@@ -722,16 +742,14 @@ export function ExamPaperCard({
         className={`relative mx-auto aspect-[300/230] w-full max-w-[300px] transition-all duration-300 ${
           hasFailed
             ? "drop-shadow-[0_16px_24px_rgba(190,18,60,0.14)] group-hover:drop-shadow-[0_22px_34px_rgba(190,18,60,0.18)]"
-            : "drop-shadow-[0_16px_24px_rgba(15,23,42,0.08)] group-hover:drop-shadow-[0_22px_34px_rgba(15,23,42,0.12)] dark:drop-shadow-[0_16px_24px_rgba(0,0,0,0.4)] dark:group-hover:drop-shadow-[0_24px_36px_rgba(0,0,0,0.55)]"
+            : ""
         }`}
       >
         <div
           className={`absolute inset-0 flex flex-col overflow-hidden rounded-[18px] border bg-white px-4 py-4 text-slate-950 dark:bg-slate-900 dark:text-slate-100 ${
             hasFailed
               ? "border-rose-200 dark:border-rose-900/70"
-              : isGenerating
-                ? "border-indigo-200 bg-indigo-50/30 dark:border-indigo-500/30 dark:bg-indigo-500/5"
-                : "border-slate-200 dark:border-slate-800"
+              : cardTone.surface
           }`}
           style={{ clipPath: "polygon(0 0, calc(100% - 48px) 0, 100% 48px, 100% 100%, 0 100%)" }}
         >

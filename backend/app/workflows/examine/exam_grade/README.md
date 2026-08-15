@@ -236,7 +236,7 @@ course_name
 exam_title
 score_summary
 wrong_question_summaries
-weak_points
+knowledge_unit_performance
 pending_reviews
 generated_at
 ```
@@ -246,11 +246,11 @@ generated_at
 | 字段 | 来源 |
 | --- | --- |
 | `score_summary` | 当前试卷得分、题量、正确/错误数量 |
-| `wrong_question_summaries` | Profile 最近错题摘要 |
-| `weak_points` | Profile 薄弱知识点 |
-| `pending_reviews` | Profile 待复习任务 |
+| `wrong_question_summaries` | 当前试卷错题与未作答摘要 |
+| `knowledge_unit_performance` | 当前试卷关联知识点的题数、得分率与累计画像上下文 |
+| `pending_reviews` | 当前试卷相关的 Profile 待复习任务（内部原因码先转换为中文） |
 
-动作：LLM 生成考试复盘；失败时用规则兜底生成可用建议。
+动作：等待当前试卷完成 Profile 同步后再生成复盘；重点知识点按本卷关联题目的加权得分率排序并由后端校准。累计画像仍传给 LLM，用于判断问题是偶发还是持续以及调整建议优先级，但不作为重点知识点的展示指标。各分区在代码层限制数量：优势最多 2 条、重点知识点最多 3 个、优先补漏最多 3 条、下一步最多 3 条。
 
 输出：`ExamStudyGuideResponse`
 
@@ -266,14 +266,23 @@ review_tasks
 focus_units
 ```
 
+`review_tasks` 仅为旧客户端兼容字段，新指南固定返回空数组；待复习信息已合并进 `action_steps`。
+
 `focus_units[]`：
 
 ```text
 knowledge_unit_id
 knowledge_unit_name
+paper_attempts
+paper_correct_attempts
+paper_score_obtained
+paper_score_max
+paper_score_rate
 mastery_score
 reason
 ```
+
+`paper_*` 是本卷展示与排序指标；`mastery_score` 仅保留累计画像兼容与个性化上下文，客户端重点知识点卡片不显示该值。
 
 ## 7. 学习指南缓存
 
@@ -281,7 +290,7 @@ reason
 
 输入：`ExamStudyGuideResponse`
 
-动作：写入或读取 `ExamStudyGuideCache`，避免重复生成。
+动作：写入或读取 `ExamStudyGuideCache`，避免重复生成。缺少当前本卷指标版本、包含旧 `review_tasks`、内部状态码、无效知识点编号或超量分区的旧缓存会自动失效并重新生成。
 
 输出：
 

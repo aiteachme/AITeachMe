@@ -4,6 +4,7 @@ import com.aiteachme.android.core.network.dto.*
 import okhttp3.MultipartBody
 import retrofit2.http.Body
 import retrofit2.http.GET
+import retrofit2.http.Headers
 import retrofit2.http.Multipart
 import retrofit2.http.PATCH
 import retrofit2.http.Path
@@ -274,17 +275,27 @@ interface AiTeachMeApi {
         @Path("course_id") courseId: String,
     ): ApiResponse<List<QuestionTypeRegistryItemResponse>>
 
+    @Headers("X-AiTeachMe-Read-Timeout-Seconds: 300")
+    @POST("/api/v1/courses/{course_id}/exams/mastery-drills/prepare")
+    suspend fun prepareMasteryDrill(
+        @Path("course_id") courseId: String,
+        @Body request: MasteryDrillPrepareRequest,
+    ): ApiResponse<MasteryDrillPrepareResponse>
+
+    @Deprecated("闯关已改为一次性本地会话，仅题目标记允许持久化。", level = DeprecationLevel.ERROR)
     @GET("/api/v1/courses/{course_id}/exams/mastery-drills/active")
     suspend fun getActiveMasteryDrill(
         @Path("course_id") courseId: String,
     ): ApiResponse<ExamPaperDetailResponse?>
 
+    @Deprecated("闯关已改为一次性本地会话，仅题目标记允许持久化。", level = DeprecationLevel.ERROR)
     @POST("/api/v1/courses/{course_id}/exams/mastery-drills/start")
     suspend fun startMasteryDrill(
         @Path("course_id") courseId: String,
         @Body request: MasteryDrillStartRequest,
     ): ApiResponse<ExamPaperDetailResponse>
 
+    @Deprecated("闯关作答、错题与进度禁止持久化。", level = DeprecationLevel.ERROR)
     @POST("/api/v1/courses/{course_id}/exams/{exam_paper_id}/mastery-drill-attempts")
     suspend fun recordMasteryDrillAttempt(
         @Path("course_id") courseId: String,
@@ -292,6 +303,7 @@ interface AiTeachMeApi {
         @Body request: MasteryDrillAttemptRequest,
     ): ApiResponse<MasteryDrillAttemptResponse>
 
+    @Deprecated("闯关结果禁止持久化。", level = DeprecationLevel.ERROR)
     @POST("/api/v1/courses/{course_id}/exams/{exam_paper_id}/mastery-drill-complete")
     suspend fun completeMasteryDrill(
         @Path("course_id") courseId: String,
@@ -318,6 +330,7 @@ interface AiTeachMeApi {
         @Body request: ExamSubmitRequest,
     ): ApiResponse<ExamGradeResponse>
 
+    @Headers("X-AiTeachMe-Read-Timeout-Seconds: 330")
     @GET("/api/v1/courses/{course_id}/exams/{exam_paper_id}/study-guide")
     suspend fun getExamStudyGuide(
         @Path("course_id") courseId: String,

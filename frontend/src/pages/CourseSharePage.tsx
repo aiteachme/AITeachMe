@@ -349,7 +349,7 @@ function SharedReadonlyExamsView({
               icon={<ClipboardCheck className="h-5 w-5" />}
               title="网页练习"
               statusBadge={templateCount > 0 ? "可准备" : "待保存"}
-              description="快速定位薄弱点。"
+              description="日常巩固，快速检验掌握情况。"
               meta={["默认 10 题", "预计 10-15 分钟"]}
               actions={
                 <>

@@ -174,6 +174,12 @@ def import_course(
                 if not db_file.exists():
                     continue
                 records = _read_table_records(db_file, spec.name)
+                if spec.name == "exam_paper":
+                    records = [
+                        record
+                        for record in records
+                        if str(record.get("exam_mode") or "") != "mastery_drill"
+                    ]
                 if not records:
                     continue
                 _validate_imported_question_types(spec.name, records)

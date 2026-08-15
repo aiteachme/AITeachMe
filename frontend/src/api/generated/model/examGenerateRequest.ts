@@ -4,12 +4,14 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
+import type { ExamGenerateRequestDifficulty } from './examGenerateRequestDifficulty.ts';
+import type { ExamGenerateRequestQuestionTypesItem } from './examGenerateRequestQuestionTypesItem.ts';
 
 /**
  * Trigger exam generation request.
  */
 export interface ExamGenerateRequest {
-  /** Exam mode: web_practice | paper_exam. Mastery drills use their dedicated API. */
+  /** Exam mode: web_practice | paper_exam. Mastery drills are assembled client-side after the server ensures the reusable question bank can satisfy the saved config. */
   exam_mode: string;
   /** Optional user requirements for exam generation. */
   user_prompt?: string | null;
@@ -17,6 +19,13 @@ export interface ExamGenerateRequest {
   sample_file_ids?: string[] | null;
   /** Optional target question count. */
   num_questions?: number | null;
+  /**
+     * Optional allowed question types. Empty means automatic type planning.
+     * @maxItems 5
+     */
+  question_types?: ExamGenerateRequestQuestionTypesItem[];
+  /** Optional overall difficulty preference. Auto lets the planner choose per question. */
+  difficulty?: ExamGenerateRequestDifficulty;
   /** Optional paper layout mode for paper_exam: auto | standard_two_page | gaokao_four_page | gaokao_six_page | gaokao_eight_page. */
   paper_layout_mode?: string | null;
 }

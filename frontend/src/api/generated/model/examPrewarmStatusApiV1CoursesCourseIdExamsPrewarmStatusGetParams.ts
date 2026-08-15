@@ -4,6 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
+import type { ExamPrewarmStatusApiV1CoursesCourseIdExamsPrewarmStatusGetDifficulty } from './examPrewarmStatusApiV1CoursesCourseIdExamsPrewarmStatusGetDifficulty.ts';
 
 export type ExamPrewarmStatusApiV1CoursesCourseIdExamsPrewarmStatusGetParams = {
 exam_mode?: string;
@@ -13,6 +14,8 @@ exam_mode?: string;
  */
 num_questions?: number;
 user_prompt?: string | null;
+question_types?: ('single_choice' | 'multiple_choice' | 'true_false' | 'fill_blank' | 'short_answer')[] | null;
+difficulty?: ExamPrewarmStatusApiV1CoursesCourseIdExamsPrewarmStatusGetDifficulty;
 sample_file_ids?: string[] | null;
 paper_layout_mode?: string | null;
 };

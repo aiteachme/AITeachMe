@@ -11,6 +11,9 @@ data class ExamGenerateRequest(
     val sampleFileIds: List<String>? = null,
     @SerializedName("num_questions")
     val numQuestions: Int? = null,
+    @SerializedName("question_types")
+    val questionTypes: List<String> = emptyList(),
+    val difficulty: String = "auto",
     @SerializedName("paper_layout_mode")
     val paperLayoutMode: String? = null,
 )
@@ -101,6 +104,16 @@ data class ExamStudyGuideFocusUnit(
     val knowledgeUnitId: Int? = null,
     @SerializedName("knowledge_unit_name")
     val knowledgeUnitName: String = "",
+    @SerializedName("paper_attempts")
+    val paperAttempts: Int = 0,
+    @SerializedName("paper_correct_attempts")
+    val paperCorrectAttempts: Int = 0,
+    @SerializedName("paper_score_obtained")
+    val paperScoreObtained: Double = 0.0,
+    @SerializedName("paper_score_max")
+    val paperScoreMax: Double = 0.0,
+    @SerializedName("paper_score_rate")
+    val paperScoreRate: Double? = null,
     @SerializedName("mastery_score")
     val masteryScore: Double? = null,
     val reason: String = "",
@@ -203,6 +216,7 @@ data class QuestionTemplateMarkResponse(
 
 data class QuestionTemplateGradeRequest(
     val answer: String,
+    val ephemeral: Boolean = false,
 )
 
 data class QuestionTemplateGradeResponse(
@@ -224,6 +238,23 @@ data class QuestionTemplateGradeResponse(
     val gradingMode: String = "",
     @SerializedName("correct_answer")
     val correctAnswer: String = "",
+)
+
+data class MasteryDrillPrepareRequest(
+    @SerializedName("num_questions")
+    val numQuestions: Int,
+    @SerializedName("question_types")
+    val questionTypes: List<String> = emptyList(),
+)
+
+data class MasteryDrillPrepareResponse(
+    @SerializedName("requested_count")
+    val requestedCount: Int = 0,
+    @SerializedName("available_count")
+    val availableCount: Int = 0,
+    @SerializedName("generated_count")
+    val generatedCount: Int = 0,
+    val templates: List<QuestionTemplateItemResponse> = emptyList(),
 )
 
 data class MasteryDrillStartRequest(

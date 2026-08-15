@@ -38,7 +38,7 @@ enum class PracticeMode(
     MasteryDrill(
         apiValue = "mastery_drill",
         label = "闯关测试",
-        description = "从题库模板抽题进行即时闯关，并保存跨设备学习记录。",
+        description = "从题库模板抽题进行一次性闯关，仅保存题目标记。",
         defaultQuestionCount = 8,
     );
 
@@ -54,7 +54,7 @@ enum class PracticeMode(
         }
 
         fun isHistoryMode(value: String): Boolean {
-            return values().any { it.apiValue == value }
+            return generatedPaperModes.any { it.apiValue == value }
         }
     }
 }

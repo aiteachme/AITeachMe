@@ -143,7 +143,7 @@ interface MarkdownViewerProps {
   headingNumbering?: boolean;
   collapsibleHeadings?: CollapsibleHeadings;
   collapsedHeadingIds?: ReadonlySet<string>;
-  onHeadingCollapseChange?: (id: string, collapsed: boolean, source?: HTMLElement | null) => boolean | void;
+  onHeadingCollapseChange?: (id: string, collapsed: boolean, source?: HTMLElement | null) => void;
 }
 
 interface ViewerStyles {
@@ -2043,37 +2043,6 @@ function resolveCollapsibleHeadingLevels(value: CollapsibleHeadings | undefined)
   return new Set(value.filter((level) => Number.isInteger(level) && level >= 1 && level <= 6));
 }
 
-function applyHeadingCollapseDomState(id: string, collapsed: boolean, source: HTMLElement | null | undefined): boolean {
-  const section = source?.closest<HTMLElement>(".markdown-collapsible-section[data-heading-section-id]");
-  if (!section || section.getAttribute("data-heading-section-id") !== id) {
-    return false;
-  }
-
-  if (collapsed) {
-    section.setAttribute("data-collapsed", "true");
-  } else {
-    section.removeAttribute("data-collapsed");
-  }
-
-  const heading = section.firstElementChild instanceof HTMLElement ? section.firstElementChild : null;
-  if (heading?.getAttribute("data-heading-id") === id) {
-    if (collapsed) {
-      heading.setAttribute("data-heading-collapsed", "true");
-    } else {
-      heading.removeAttribute("data-heading-collapsed");
-    }
-  }
-
-  const toggle = heading?.querySelector<HTMLButtonElement>('[data-heading-toggle="true"]');
-  if (toggle) {
-    toggle.setAttribute("aria-expanded", String(!collapsed));
-    toggle.setAttribute("aria-label", collapsed ? "展开标题内容" : "折叠标题内容");
-    toggle.title = collapsed ? "展开标题内容" : "折叠标题内容";
-  }
-
-  return true;
-}
-
 function extractMarkdownAstText(node: MarkdownAstNode | undefined): string {
   if (!node) return "";
   if (typeof node.value === "string") return node.value;
@@ -3631,31 +3600,22 @@ export function MarkdownViewer({
   }, [controlledCollapsedHeadingIds, processedContent]);
 
   const toggleHeadingCollapse = useCallback((id: string, source?: HTMLElement | null) => {
-    const section = source?.closest<HTMLElement>(".markdown-collapsible-section[data-heading-section-id]");
-    const nextCollapsed = section
-      ? section.getAttribute("data-collapsed") !== "true"
-      : !collapsedHeadingIdsRef.current.has(id);
-
-    if (onHeadingCollapseChange?.(id, nextCollapsed, source ?? null) === true) {
+    const nextCollapsed = !collapsedHeadingIdsRef.current.has(id);
+    if (onHeadingCollapseChange) {
+      onHeadingCollapseChange(id, nextCollapsed, source ?? null);
       return;
     }
-
-    if (applyHeadingCollapseDomState(id, nextCollapsed, source)) {
-      return;
-    }
-
-    if (!controlledCollapsedHeadingIds) {
-      setInternalCollapsedHeadingIds((prev) => {
-        const next = new Set(prev);
-        if (nextCollapsed) {
-          next.add(id);
-        } else {
-          next.delete(id);
-        }
-        return next;
-      });
-    }
-  }, [controlledCollapsedHeadingIds, onHeadingCollapseChange]);
+    setInternalCollapsedHeadingIds((prev) => {
+      const next = new Set(prev);
+      if (nextCollapsed) {
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
+      collapsedHeadingIdsRef.current = next;
+      return next;
+    });
+  }, [onHeadingCollapseChange]);
 
   const remarkPlugins = useMemo(
     () => [

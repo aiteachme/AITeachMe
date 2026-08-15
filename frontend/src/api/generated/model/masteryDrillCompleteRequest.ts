@@ -6,7 +6,7 @@
  */
 
 /**
- * Idempotently finish a drill after every item has been passed.
+ * Legacy payload retained for the disabled mastery-drill completion endpoint.
  */
 export interface MasteryDrillCompleteRequest {
   /**

@@ -15,6 +15,8 @@ class QuestionBuildGraphInput(TypedDict, total=False):
     exam_mode: str
     course_context: str
     user_prompt: str
+    configured_question_types: list[str]
+    configured_difficulty: str
     system_constraints: str
     question_count: int
     units: list[KnowledgeUnit]

@@ -9,6 +9,7 @@ from time import perf_counter
 from typing import Any
 
 from app.shared.infra.env_support import get_env_bounded_float, get_env_bounded_int
+from app.shared.infra.exceptions import LLMTimeoutError
 from app.shared.infra.execution import BaseTracedExecution, TracedExecutionResult
 from app.shared.infra.llm_support import acompletion_stream
 from app.shared.infra.tools.builtin.markdown_processing import count_words
@@ -148,8 +149,13 @@ class DocGenWriterRuntime(BaseTracedExecution):
         stream_char_limit = _writer_stream_char_limit(execution_contract, digest_mode=digest_mode)
         markdown = ""
         writer_no_content_reason = ""
+        stream_attempted = False
         stream_timed_out = False
+        stream_failure_reason = ""
+        writer_fallback_used = False
+        writer_fallback_model_slot = ""
         if on_stream_update is not None and self.context.llm_caller is None:
+            stream_attempted = True
             streamed_chars = 0
             stream_soft_limit_logged = False
 
@@ -195,16 +201,17 @@ class DocGenWriterRuntime(BaseTracedExecution):
                 )
             except asyncio.TimeoutError as exc:
                 stream_timed_out = True
-                writer_no_content_reason = f"TimeoutError: writer stream exceeded {WRITER_TASK_TIMEOUT_S:.0f}s"
+                stream_failure_reason = f"TimeoutError: writer stream exceeded {WRITER_TASK_TIMEOUT_S:.0f}s"
                 self.logger.warning(
-                    "docgen_writer_stream_timeout_no_content",
+                    "docgen_writer_stream_timeout_retry_completion",
                     chapter_index=chapter_index,
                     streamed_chars=streamed_chars,
                     timeout_s=WRITER_TASK_TIMEOUT_S,
                     error=str(exc),
                 )
             except Exception as exc:
-                writer_no_content_reason = f"{type(exc).__name__}: {str(exc)[:180]}"
+                stream_timed_out = isinstance(exc, LLMTimeoutError)
+                stream_failure_reason = f"{type(exc).__name__}: {str(exc)[:180]}"
                 self.logger.warning(
                     "docgen_writer_stream_failed_retry_completion",
                     chapter_index=chapter_index,
@@ -213,22 +220,54 @@ class DocGenWriterRuntime(BaseTracedExecution):
                 )
 
         if not markdown.strip():
-            if not stream_timed_out:
-                try:
-                    markdown = await asyncio.wait_for(
-                        llm(messages, **writer_model_kwargs),
-                        timeout=WRITER_TASK_TIMEOUT_S,
-                    )
-                    markdown = str(markdown or "")
-                except Exception as exc:
-                    writer_no_content_reason = f"{type(exc).__name__}: {str(exc)[:180]}"
-                    self.logger.warning(
-                        "docgen_writer_completion_failed",
-                        chapter_index=chapter_index,
-                        error=str(exc),
-                    )
+            completion_model_kwargs = dict(writer_model_kwargs)
+            if stream_attempted:
+                writer_fallback_used = True
+                stream_failure_reason = stream_failure_reason or "empty_writer_stream_output"
+                if stream_timed_out and str(completion_model_kwargs.get("model") or "") == "reason":
+                    completion_model_kwargs["model"] = "primary"
+                writer_fallback_model_slot = str(completion_model_kwargs.get("model") or "")
+                raw_metadata = completion_model_kwargs.get("extra_metadata")
+                completion_metadata = dict(raw_metadata) if isinstance(raw_metadata, Mapping) else {}
+                completion_metadata.update(
+                    {
+                        "docgen_writer_fallback": "completion_after_stream_failure",
+                        "docgen_writer_stream_timed_out": stream_timed_out,
+                        "docgen_writer_stream_failure_reason": stream_failure_reason,
+                        "docgen_writer_fallback_model_slot": writer_fallback_model_slot,
+                    }
+                )
+                completion_model_kwargs["extra_metadata"] = completion_metadata
+                self.logger.info(
+                    "docgen_writer_retry_completion",
+                    chapter_index=chapter_index,
+                    stream_timed_out=stream_timed_out,
+                    stream_failure_reason=stream_failure_reason,
+                    fallback_model_slot=writer_fallback_model_slot,
+                )
+
+            try:
+                markdown = await asyncio.wait_for(
+                    llm(messages, **completion_model_kwargs),
+                    timeout=WRITER_TASK_TIMEOUT_S,
+                )
+                markdown = str(markdown or "")
+            except Exception as exc:
+                completion_failure_reason = f"{type(exc).__name__}: {str(exc)[:180]}"
+                writer_no_content_reason = (
+                    f"{stream_failure_reason}; fallback {completion_failure_reason}"
+                    if stream_failure_reason
+                    else completion_failure_reason
+                )
+                self.logger.warning(
+                    "docgen_writer_completion_failed",
+                    chapter_index=chapter_index,
+                    stream_failure_reason=stream_failure_reason,
+                    fallback_model_slot=writer_fallback_model_slot,
+                    error=str(exc),
+                )
             if not markdown.strip():
-                writer_no_content_reason = writer_no_content_reason or "empty_writer_output"
+                writer_no_content_reason = writer_no_content_reason or stream_failure_reason or "empty_writer_output"
                 self.logger.error(
                     "docgen_writer_no_content",
                     chapter_index=chapter_index,
@@ -283,6 +322,9 @@ class DocGenWriterRuntime(BaseTracedExecution):
                 "repair_actions": list(quality_summary.get("repair_actions", []) or []),
                 "quality_summary": quality_summary,
                 "writer_no_content_reason": writer_no_content_reason,
+                "writer_stream_failure_reason": stream_failure_reason,
+                "writer_fallback_model_slot": writer_fallback_model_slot,
+                "fallback_used": writer_fallback_used,
                 "heading_missing_module_count": len(list(heading_quality.get("missing_modules") or [])),
             },
         )

@@ -11,11 +11,17 @@ from app.api import knowledge_docs as api
 from app.api.deps import CurrentUserContext
 from app.models import Course
 from app.shared.infra.analytics import posthog as posthog_analytics
+from app.shared.infra.exceptions import AITeachMeError
+from app.workflows.digest.docgen import (
+    PublishedDocumentBoundaryError,
+    PublishedDocumentUnavailableError,
+)
 from app.schemas.knowledge import (
     BuildPlannerConfirmResponse,
     BuildPlannerCreateRequest,
     BuildPlannerPlanResponse,
     BuildPlannerSessionResponse,
+    CourseVectorStatusResponse,
     DocGenBuildData,
     DocGenGetResponse,
     DocGenBuildRequest,
@@ -26,6 +32,31 @@ from app.schemas.knowledge import (
 
 COURSE_ID = "course_api000000000"
 USER_ID = "user-api"
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        PublishedDocumentBoundaryError("published_chapter_headings_mismatch"),
+        PublishedDocumentUnavailableError("published_document_versions_mixed"),
+    ],
+)
+def test_structural_publication_failures_are_explicitly_terminal(error: Exception) -> None:
+    with pytest.raises(AITeachMeError) as raised:
+        api._raise_published_document_service_error(error)
+
+    assert raised.value.status_code == 503
+    assert raised.value.error_code == "PUBLISHED_DOCUMENT_STRUCTURE_INVALID"
+
+
+def test_transient_publication_read_failure_remains_retryable() -> None:
+    with pytest.raises(AITeachMeError) as raised:
+        api._raise_published_document_service_error(
+            PublishedDocumentUnavailableError("published_markdown_unavailable")
+        )
+
+    assert raised.value.status_code == 503
+    assert raised.value.error_code == "PUBLISHED_DOCUMENT_TEMPORARILY_UNAVAILABLE"
 
 
 def _user() -> CurrentUserContext:
@@ -336,6 +367,131 @@ def test_knowledge_docs_offloads_blocking_docgen_read(monkeypatch) -> None:
             },
         }
     ]
+
+
+def test_knowledge_docs_vector_rebuild_reindexes_published_content_and_verifies_status(
+    monkeypatch,
+) -> None:
+    course_scope = SimpleNamespace(course_id=COURSE_ID)
+    docgen_result = DocGenGetResponse(
+        exists=True,
+        markdown="# 第一章\n\n向量空间基础。",
+        source_file_ids=["file-a"],
+    )
+    rebuild_calls: list[dict[str, object]] = []
+
+    @contextmanager
+    def fake_managed_session():
+        yield object()
+
+    async def fake_run_in_threadpool(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    async def fake_ensure_course_vector_index(**kwargs):
+        rebuild_calls.append(dict(kwargs))
+        return "rebuilt", 3
+
+    monkeypatch.setattr(api, "managed_session", fake_managed_session)
+    monkeypatch.setattr(api, "get_current_user_context", lambda _request, _response, _session: _user())
+    monkeypatch.setattr(api, "get_course_record", lambda _session, course_id, owner_user_id: _course(course_id))
+    monkeypatch.setattr(api, "_storage_scope_for_course_record", lambda _course_record: course_scope)
+    monkeypatch.setattr(api, "get_docgen_result", lambda **_kwargs: docgen_result)
+    monkeypatch.setattr(api, "run_in_threadpool", fake_run_in_threadpool)
+    monkeypatch.setattr(api, "ensure_course_vector_index", fake_ensure_course_vector_index)
+    monkeypatch.setattr(
+        api,
+        "get_course_vector_status_by_id",
+        lambda _session, _course_id: CourseVectorStatusResponse(
+            mode="enabled",
+            embedding_model="text-embedding-v4",
+            vector_table="atm_vec_course_api",
+        ),
+    )
+
+    response = asyncio.run(
+        api.knowledge_docs_vector_index_rebuild(
+            request=_request(),
+            response=SimpleNamespace(),
+            course_id=COURSE_ID,
+        )
+    )
+
+    assert response.data.status == "rebuilt"
+    assert response.data.indexed_chunk_count == 3
+    assert response.data.vector_status.notice is None
+    assert rebuild_calls == [
+        {
+            "course_id": COURSE_ID,
+            "file_ids": ["file-a"],
+            "published_markdown": "# 第一章\n\n向量空间基础。",
+            "reason_prefix": "knowledge_docs.manual_vector_index_rebuild",
+        }
+    ]
+
+
+def test_knowledge_docs_vector_rebuild_rejects_missing_published_document(monkeypatch) -> None:
+    @contextmanager
+    def fake_managed_session():
+        yield object()
+
+    async def fake_run_in_threadpool(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(api, "managed_session", fake_managed_session)
+    monkeypatch.setattr(api, "get_current_user_context", lambda _request, _response, _session: _user())
+    monkeypatch.setattr(api, "get_course_record", lambda _session, course_id, owner_user_id: _course(course_id))
+    monkeypatch.setattr(api, "_storage_scope_for_course_record", lambda _course_record: SimpleNamespace())
+    monkeypatch.setattr(api, "get_docgen_result", lambda **_kwargs: DocGenGetResponse(exists=False))
+    monkeypatch.setattr(api, "run_in_threadpool", fake_run_in_threadpool)
+
+    with pytest.raises(api.HTTPException) as exc_info:
+        asyncio.run(
+            api.knowledge_docs_vector_index_rebuild(
+                request=_request(),
+                response=SimpleNamespace(),
+                course_id=COURSE_ID,
+            )
+        )
+
+    assert exc_info.value.status_code == 409
+    assert "还没有已发布的知识文档" in str(exc_info.value.detail)
+
+
+def test_knowledge_docs_vector_rebuild_hides_provider_failure_details(monkeypatch) -> None:
+    @contextmanager
+    def fake_managed_session():
+        yield object()
+
+    async def fake_run_in_threadpool(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    async def failing_rebuild(**_kwargs):
+        raise RuntimeError("Aihubmix_api_error: secret upstream detail")
+
+    monkeypatch.setattr(api, "managed_session", fake_managed_session)
+    monkeypatch.setattr(api, "get_current_user_context", lambda _request, _response, _session: _user())
+    monkeypatch.setattr(api, "get_course_record", lambda _session, course_id, owner_user_id: _course(course_id))
+    monkeypatch.setattr(api, "_storage_scope_for_course_record", lambda _course_record: SimpleNamespace())
+    monkeypatch.setattr(
+        api,
+        "get_docgen_result",
+        lambda **_kwargs: DocGenGetResponse(exists=True, markdown="# Ready"),
+    )
+    monkeypatch.setattr(api, "run_in_threadpool", fake_run_in_threadpool)
+    monkeypatch.setattr(api, "ensure_course_vector_index", failing_rebuild)
+
+    with pytest.raises(api.HTTPException) as exc_info:
+        asyncio.run(
+            api.knowledge_docs_vector_index_rebuild(
+                request=_request(),
+                response=SimpleNamespace(),
+                course_id=COURSE_ID,
+            )
+        )
+
+    assert exc_info.value.status_code == 503
+    assert "重建失败" in str(exc_info.value.detail)
+    assert "Aihubmix" not in str(exc_info.value.detail)
 
 
 def test_knowledge_build_releases_lock_when_registry_spawn_fails(monkeypatch) -> None:

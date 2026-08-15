@@ -134,7 +134,7 @@ class ExamProfileSync(SQLModel, table=True):
 
 
 class MasteryDrillSession(SQLModel, table=True):
-    """Durable metadata for one mastery-drill learning session."""
+    """Legacy durable session metadata retained for migration compatibility."""
 
     __tablename__ = "mastery_drill_session"
     __table_args__ = (
@@ -217,7 +217,7 @@ class ExamPaperItem(SQLModel, table=True):
 
 
 class MasteryDrillAttempt(SQLModel, table=True):
-    """One immutable answer attempt inside a mastery-drill session."""
+    """Legacy immutable attempt data retained for migration compatibility."""
 
     __tablename__ = "mastery_drill_attempt"
     __table_args__ = (

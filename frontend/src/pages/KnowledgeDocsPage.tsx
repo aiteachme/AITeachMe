@@ -1,7 +1,7 @@
 import { memo, Suspense, lazy, startTransition, useState, useRef, useEffect, useMemo, useCallback, useLayoutEffect, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   BookOpen,
@@ -50,6 +50,7 @@ import {
   useGlobalChatModelChoice,
 } from "../components/chat/ChatModelSelect";
 import { buildCoursePath } from "../lib/courseNavigation";
+import { rebuildCourseVectorIndex } from "../lib/knowledgeDocs";
 import { OVERVIEW_INCLUDE_PRESETS, buildKnowledgeOverviewQueryKey } from "../lib/knowledgeOverview";
 import { buildKnowledgeBuildRuntimeQueryKey, triggerKnowledgeGraphBuild } from "../lib/knowledgeBuildRuntime";
 import type { KnowledgeGraphSourceRefNavigationTarget } from "../components/knowledge-graph/KnowledgeGraphNodeDetailPanel";
@@ -196,6 +197,11 @@ interface TocScrollThumbStyle {
 interface ApiResponse<T> {
   code: number;
   data: T;
+}
+
+interface DocGenBuildRetryResponse {
+  requested_at?: string | null;
+  confirmed_plan_id?: string | null;
 }
 
 interface KnowledgeDocInteractiveSelectionResponse {
@@ -654,14 +660,6 @@ function tocEqual(a: TocItem[], b: TocItem[]): boolean {
     ) {
       return false;
     }
-  }
-  return true;
-}
-
-function stringSetEqual(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
-  if (a.size !== b.size) return false;
-  for (const item of a) {
-    if (!b.has(item)) return false;
   }
   return true;
 }
@@ -1154,33 +1152,6 @@ function PendingInteractiveBlockPortal({
     </div>,
     host,
   );
-}
-
-function applyDocHeadingCollapseDomState(contentRoot: HTMLElement | null, headingId: string, collapsed: boolean): boolean {
-  const heading = findHeadingById(contentRoot, headingId);
-  const section = heading?.parentElement?.matches(".markdown-collapsible-section[data-heading-section-id]")
-    ? heading.parentElement
-    : heading?.closest<HTMLElement>(".markdown-collapsible-section[data-heading-section-id]");
-  if (!heading || !section || section.getAttribute("data-heading-section-id") !== headingId) {
-    return false;
-  }
-
-  if (collapsed) {
-    section.setAttribute("data-collapsed", "true");
-    heading.setAttribute("data-heading-collapsed", "true");
-  } else {
-    section.removeAttribute("data-collapsed");
-    heading.removeAttribute("data-heading-collapsed");
-  }
-
-  const toggle = heading.querySelector<HTMLButtonElement>('[data-heading-toggle="true"]');
-  if (toggle) {
-    toggle.setAttribute("aria-expanded", String(!collapsed));
-    toggle.setAttribute("aria-label", collapsed ? "展开标题内容" : "折叠标题内容");
-    toggle.title = collapsed ? "展开标题内容" : "折叠标题内容";
-  }
-
-  return true;
 }
 
 function findSelectionHeading(anchorHeading: HTMLElement | null, selectedText: string): HTMLElement | null {
@@ -1840,11 +1811,13 @@ function buildCommentThreadLayout(
 const DocMarkdown = memo(function DocMarkdown({
   content,
   courseId,
+  collapsedHeadingIds,
   onHeadingCollapseChange,
 }: {
   content: string;
   courseId?: string;
-  onHeadingCollapseChange: (id: string, collapsed: boolean, source?: HTMLElement | null) => boolean | void;
+  collapsedHeadingIds: ReadonlySet<string>;
+  onHeadingCollapseChange: (id: string, collapsed: boolean, source?: HTMLElement | null) => void;
 }) {
   return (
     <div className="knowledge-doc-markdown">
@@ -1854,6 +1827,7 @@ const DocMarkdown = memo(function DocMarkdown({
         headingAnchors
         headingNumbering
         collapsibleHeadings
+        collapsedHeadingIds={collapsedHeadingIds}
         onHeadingCollapseChange={onHeadingCollapseChange}
         assetCourse={courseId}
       />
@@ -2047,20 +2021,56 @@ function DocReadingPositionRestoreState() {
 function DocLoadErrorState({
   message,
   onRetry,
+  actionLabel = "重试加载",
+  pendingLabel = "正在重试",
+  isPending = false,
+  retryErrorMessage,
+  secondaryAction,
 }: {
   message: string;
   onRetry: () => void;
+  actionLabel?: string;
+  pendingLabel?: string;
+  isPending?: boolean;
+  retryErrorMessage?: string | null;
+  secondaryAction?: {
+    label: string;
+    pendingLabel: string;
+    onClick: () => void;
+    isPending: boolean;
+  };
 }) {
+  const hasPendingAction = isPending || Boolean(secondaryAction?.isPending);
   return (
     <section className="rounded-2xl border border-rose-200 bg-rose-50/60 px-5 py-5 dark:border-rose-500/30 dark:bg-rose-500/10">
       <p className="text-sm text-rose-700 dark:text-rose-300">{message}</p>
-      <button
-        onClick={onRetry}
-        className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50 dark:border-rose-500/30 dark:bg-slate-950 dark:text-rose-300 dark:hover:bg-rose-500/10"
-      >
-        <RefreshCw className="h-3.5 w-3.5" />
-        重试加载
-      </button>
+      {retryErrorMessage ? (
+        <p role="alert" className="mt-2 text-xs text-rose-600 dark:text-rose-300">
+          重试仍未成功：{retryErrorMessage}
+        </p>
+      ) : null}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={onRetry}
+          disabled={hasPendingAction}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-500/30 dark:bg-slate-950 dark:text-rose-300 dark:hover:bg-rose-500/10"
+        >
+          <RefreshCw className={cn("h-3.5 w-3.5", isPending && "animate-spin")} />
+          {isPending ? pendingLabel : actionLabel}
+        </button>
+        {secondaryAction ? (
+          <button
+            type="button"
+            onClick={secondaryAction.onClick}
+            disabled={hasPendingAction}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-rose-500 dark:hover:bg-rose-400"
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5", secondaryAction.isPending && "animate-spin")} />
+            {secondaryAction.isPending ? secondaryAction.pendingLabel : secondaryAction.label}
+          </button>
+        ) : null}
+      </div>
     </section>
   );
 }
@@ -2367,6 +2377,7 @@ export function KnowledgeDocsPage() {
     sidebarRequest,
   } = useAiInteraction();
   const location = useLocation();
+  const navigate = useNavigate();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const {
@@ -2573,13 +2584,11 @@ export function KnowledgeDocsPage() {
   const pendingThreadCenterRef = useRef<{ threadId: string } | null>(null);
   const handledRouteSelectionJumpRef = useRef<number | null>(null);
   const collapsedDocHeadingIdsRef = useRef<Set<string>>(new Set());
-  const collapsedDocHeadingCommitTimerRef = useRef<number | null>(null);
   const scrollingToHeadingTargetRef = useRef<string | null>(null);
   const scrollspyIgnoreTimerRef = useRef<number | null>(null);
   const headingNavigationRequestRef = useRef(0);
   const pendingHeadingScrollRef = useRef<{ requestId: number; tryScroll: () => boolean } | null>(null);
   const headingLayoutSettleCleanupRef = useRef<(() => void) | null>(null);
-  const docCollapseLayoutRefreshNeededRef = useRef(false);
   const pendingHeadingCollapseScrollRef = useRef<{ id: string; top: number } | null>(null);
 
   const cancelReadingPositionRestore = useCallback(() => {
@@ -2646,56 +2655,15 @@ export function KnowledgeDocsPage() {
     setViewPrefs((prev) => normalizeKnowledgeDocsViewPrefs(updater(prev)));
   }, []);
 
-  const scheduleCollapsedDocHeadingStateCommit = useCallback((delayMs = 180) => {
-    if (!docCollapseLayoutRefreshNeededRef.current) {
-      return;
-    }
-    if (collapsedDocHeadingCommitTimerRef.current !== null) {
-      window.clearTimeout(collapsedDocHeadingCommitTimerRef.current);
-    }
-    collapsedDocHeadingCommitTimerRef.current = window.setTimeout(() => {
-      collapsedDocHeadingCommitTimerRef.current = null;
-      const snapshot = new Set(collapsedDocHeadingIdsRef.current);
-      startTransition(() => {
-        setCollapsedDocHeadingIds((prev) => (stringSetEqual(prev, snapshot) ? prev : snapshot));
-      });
-    }, delayMs);
-  }, []);
-
-  useEffect(() => () => {
-    if (collapsedDocHeadingCommitTimerRef.current !== null) {
-      window.clearTimeout(collapsedDocHeadingCommitTimerRef.current);
-      collapsedDocHeadingCommitTimerRef.current = null;
-    }
-  }, []);
-
-  useEffect(() => {
-    const needsRefresh = Boolean(
-      comments.length > 0 ||
-      selectionHighlights.length > 0 ||
-      floatingComment ||
-      showDesktopCommentPanel ||
-      isAssistantOpen
-    );
-    docCollapseLayoutRefreshNeededRef.current = needsRefresh;
-    if (needsRefresh) {
-      scheduleCollapsedDocHeadingStateCommit(0);
-    }
-  }, [
-    comments.length,
-    floatingComment,
-    isAssistantOpen,
-    scheduleCollapsedDocHeadingStateCommit,
-    selectionHighlights.length,
-    showDesktopCommentPanel,
-  ]);
-
   const handleDocHeadingCollapseChange = useCallback((id: string, collapsed: boolean, source?: HTMLElement | null) => {
     const container = scrollRef.current;
     const heading = findHeadingFromCollapseSource(contentAreaRef.current, id, source);
-    const previousTop = container && heading && isVisibleHeading(heading)
-      ? heading.getBoundingClientRect().top
-      : null;
+    if (container && heading && isVisibleHeading(heading)) {
+      pendingHeadingCollapseScrollRef.current = {
+        id,
+        top: heading.getBoundingClientRect().top,
+      };
+    }
 
     const next = new Set(collapsedDocHeadingIdsRef.current);
     if (collapsed) {
@@ -2704,60 +2672,8 @@ export function KnowledgeDocsPage() {
       next.delete(id);
     }
     collapsedDocHeadingIdsRef.current = next;
-
-    const handledDom = applyDocHeadingCollapseDomState(contentAreaRef.current, id, collapsed);
-    if (handledDom) {
-      if (container && previousTop !== null) {
-        const nextHeading = findHeadingFromCollapseSource(contentAreaRef.current, id, source);
-        if (nextHeading && isVisibleHeading(nextHeading)) {
-          const delta = nextHeading.getBoundingClientRect().top - previousTop;
-          if (Math.abs(delta) >= 0.5) {
-            const previousScrollBehavior = container.style.scrollBehavior;
-            container.style.scrollBehavior = "auto";
-            container.scrollTop += delta;
-            if (previousScrollBehavior) {
-              container.style.scrollBehavior = previousScrollBehavior;
-            } else {
-              container.style.removeProperty("scroll-behavior");
-            }
-          }
-        }
-      }
-      pendingHeadingCollapseScrollRef.current = null;
-      scheduleCollapsedDocHeadingStateCommit();
-      window.requestAnimationFrame(() => {
-        container?.dispatchEvent(new Event("scroll"));
-      });
-      return true;
-    }
-
-    if (container && previousTop !== null) {
-      pendingHeadingCollapseScrollRef.current = { id, top: previousTop };
-    }
-    scheduleCollapsedDocHeadingStateCommit();
-    window.requestAnimationFrame(() => {
-      const pending = pendingHeadingCollapseScrollRef.current;
-      const nextHeading = findHeadingFromCollapseSource(contentAreaRef.current, id, source);
-      if (!container || !pending || pending.id !== id || !nextHeading || !isVisibleHeading(nextHeading)) {
-        container?.dispatchEvent(new Event("scroll"));
-        return;
-      }
-      const delta = nextHeading.getBoundingClientRect().top - pending.top;
-      if (Math.abs(delta) >= 0.5) {
-        const previousScrollBehavior = container.style.scrollBehavior;
-        container.style.scrollBehavior = "auto";
-        container.scrollTop += delta;
-        if (previousScrollBehavior) {
-          container.style.scrollBehavior = previousScrollBehavior;
-        } else {
-          container.style.removeProperty("scroll-behavior");
-        }
-      }
-      pendingHeadingCollapseScrollRef.current = null;
-      container.dispatchEvent(new Event("scroll"));
-    });
-    return false;
-  }, [scheduleCollapsedDocHeadingStateCommit]);
+    setCollapsedDocHeadingIds(next);
+  }, []);
 
   useLayoutEffect(() => {
     const restoreHeadingPosition = () => {
@@ -2823,7 +2739,6 @@ export function KnowledgeDocsPage() {
     let changed = false;
     for (const id of idsToExpand) {
       if (next.delete(id)) {
-        applyDocHeadingCollapseDomState(contentAreaRef.current, id, false);
         changed = true;
       }
     }
@@ -2831,10 +2746,9 @@ export function KnowledgeDocsPage() {
       return false;
     }
     collapsedDocHeadingIdsRef.current = next;
-    scheduleCollapsedDocHeadingStateCommit(0);
-    scrollRef.current?.dispatchEvent(new Event("scroll"));
+    setCollapsedDocHeadingIds(next);
     return true;
-  }, [scheduleCollapsedDocHeadingStateCommit]);
+  }, []);
 
   const showTocScrollbarTemporarily = useCallback(() => {
     setIsTocScrollbarVisible(true);
@@ -2894,6 +2808,35 @@ export function KnowledgeDocsPage() {
     setIsGraphDrawerOpen(false);
   }, []);
 
+  const vectorIndexRebuildMutation = useMutation({
+    mutationFn: () => {
+      if (!courseId) {
+        throw new Error("缺少课程 ID，无法重建向量索引。");
+      }
+      return rebuildCourseVectorIndex(courseId);
+    },
+    onSuccess: (data) => {
+      if (!courseId) return;
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["docgen-content", courseId] }),
+        queryClient.invalidateQueries({ queryKey: ["knowledge-doc-state", courseId] }),
+        queryClient.invalidateQueries({ queryKey: ["knowledge-overview", courseId] }),
+      ]);
+      toast({
+        title: "向量索引已重建",
+        description: `已校验 ${data.indexed_chunk_count} 个检索块，语义检索现已恢复。`,
+        variant: "success",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "向量索引重建失败",
+        description: getApiErrorMessage(error, "请检查嵌入模型配置后重试。"),
+        variant: "error",
+      });
+    },
+  });
+
   const graphRebuildFromNoticeMutation = useMutation({
     mutationFn: () => {
       if (!courseId) {
@@ -2929,6 +2872,86 @@ export function KnowledgeDocsPage() {
       });
     },
   });
+
+  const reloadDocumentMutation = useMutation({
+    mutationFn: refreshDocument,
+    onError: (error) => {
+      toast({
+        title: "知识文档重试失败",
+        description: getApiErrorMessage(error, "请稍后再试，或重新构建课程。"),
+        variant: "error",
+      });
+    },
+  });
+
+  const failedBuildConfirmedPlanId = docMarkdownQuery.data?.build?.confirmed_plan_id?.trim() ?? "";
+  const retryKnowledgeBuildMutation = useMutation({
+    mutationFn: async () => {
+      if (!courseId) {
+        throw new Error("缺少课程 ID，无法重新构建知识文档。");
+      }
+      if (!failedBuildConfirmedPlanId) {
+        throw new Error("当前失败记录缺少已确认方案，请返回方案页重新确认后构建。");
+      }
+      const response = await apiClient<ApiResponse<DocGenBuildRetryResponse>>({
+        method: "POST",
+        url: `/api/v1/courses/${courseId}/knowledge/build`,
+        data: {
+          build_type: "docs",
+          confirmed_plan_id: failedBuildConfirmedPlanId,
+        },
+        timeout: LONG_RUNNING_API_TIMEOUT_MS,
+      });
+      return response.data;
+    },
+    onSuccess: (data) => {
+      if (!courseId) return;
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: buildKnowledgeBuildRuntimeQueryKey(courseId) }),
+        queryClient.invalidateQueries({ queryKey: ["docgen-content", courseId] }),
+        queryClient.invalidateQueries({ queryKey: ["docgen-draft-content", courseId] }),
+        queryClient.invalidateQueries({ queryKey: ["docgen-publication-manifest", courseId] }),
+      ]);
+
+      const params = new URLSearchParams(location.search);
+      if (data.requested_at) {
+        params.set("requested_at", data.requested_at);
+      }
+      if (data.confirmed_plan_id) {
+        params.set("confirmed_plan_id", data.confirmed_plan_id);
+      }
+      navigate(
+        {
+          pathname: buildCoursePath(courseId, "knowledge-docs"),
+          search: params.toString() ? `?${params.toString()}` : "",
+        },
+        { replace: true, state: null },
+      );
+      toast({
+        title: "已重新开始构建",
+        description: "将复用当前已确认方案，页面会继续显示构建进度。",
+        variant: "success",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "重新构建启动失败",
+        description: getApiErrorMessage(error, "请返回方案页检查当前方案后重试。"),
+        variant: "error",
+      });
+    },
+  });
+  const retryKnowledgeBuild = retryKnowledgeBuildMutation.mutate;
+  const isRetryKnowledgeBuildPending = retryKnowledgeBuildMutation.isPending;
+
+  const handleFailedBuildRetry = useCallback(() => {
+    if (!courseId) return;
+    if (!failedBuildConfirmedPlanId) {
+      navigate(buildCoursePath(courseId, "build"));
+      return;
+    }
+    retryKnowledgeBuild();
+  }, [courseId, failedBuildConfirmedPlanId, navigate, retryKnowledgeBuild]);
 
   useEffect(() => {
     document.body.dataset.knowledgeGraphDrawerOpen = isGraphDrawerOpen ? "true" : "false";
@@ -3211,15 +3234,9 @@ export function KnowledgeDocsPage() {
   ]);
 
   useEffect(() => {
-    if (collapsedDocHeadingCommitTimerRef.current !== null) {
-      window.clearTimeout(collapsedDocHeadingCommitTimerRef.current);
-      collapsedDocHeadingCommitTimerRef.current = null;
-    }
     const next = new Set<string>();
     collapsedDocHeadingIdsRef.current = next;
-    startTransition(() => {
-      setCollapsedDocHeadingIds((prev) => (prev.size === 0 ? prev : next));
-    });
+    setCollapsedDocHeadingIds((prev) => (prev.size === 0 ? prev : next));
   }, [effectiveDocViewMode, readingDocumentIdentity]);
 
   useEffect(() => {
@@ -7261,8 +7278,16 @@ export function KnowledgeDocsPage() {
         <div className="relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden bg-white px-4 pt-16 dark:bg-slate-950">
           <DocLoadErrorState
             message={getApiErrorMessage(documentLoadError, "获取知识文档失败，请稍后重试。")}
-            onRetry={() => {
-              void refreshDocument();
+            onRetry={() => reloadDocumentMutation.mutate()}
+            isPending={reloadDocumentMutation.isPending}
+            retryErrorMessage={reloadDocumentMutation.error
+              ? getApiErrorMessage(reloadDocumentMutation.error, "请稍后再试，或重新构建课程。")
+              : null}
+            secondaryAction={{
+              label: failedBuildConfirmedPlanId ? "重新构建" : "返回方案重新构建",
+              pendingLabel: "正在重新构建",
+              onClick: handleFailedBuildRetry,
+              isPending: isRetryKnowledgeBuildPending,
             }}
           />
         </div>
@@ -7282,9 +7307,10 @@ export function KnowledgeDocsPage() {
         <div className="relative flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden bg-white px-4 pt-16 dark:bg-slate-950">
           <DocLoadErrorState
             message={buildStatusText}
-            onRetry={() => {
-              void refreshDocument();
-            }}
+            onRetry={handleFailedBuildRetry}
+            actionLabel={failedBuildConfirmedPlanId ? "重新构建" : "返回方案重新构建"}
+            pendingLabel="正在重新构建"
+            isPending={isRetryKnowledgeBuildPending}
           />
         </div>
       </div>
@@ -7502,7 +7528,13 @@ export function KnowledgeDocsPage() {
                       isReadingPositionRestoring && "invisible",
                     )}
                   >
-                  <CourseVectorNotice status={docMarkdownQuery.data?.vector_status} className="mb-6" />
+                  <CourseVectorNotice
+                    status={docMarkdownQuery.data?.vector_status}
+                    className="mb-6"
+                    onRebuild={courseId ? () => vectorIndexRebuildMutation.mutate() : undefined}
+                    rebuildPending={vectorIndexRebuildMutation.isPending}
+                    rebuildDisabled={!courseId}
+                  />
                   <CourseGraphNotice
                     status={graphStatus}
                     unhealthy={graphUnhealthy}
@@ -7514,8 +7546,16 @@ export function KnowledgeDocsPage() {
                   {documentLoadError && !hasRenderedMarkdown ? (
                     <DocLoadErrorState
                       message={getApiErrorMessage(documentLoadError, "获取知识文档失败，请稍后重试。")}
-                      onRetry={() => {
-                        void refreshDocument();
+                      onRetry={() => reloadDocumentMutation.mutate()}
+                      isPending={reloadDocumentMutation.isPending}
+                      retryErrorMessage={reloadDocumentMutation.error
+                        ? getApiErrorMessage(reloadDocumentMutation.error, "请稍后再试，或重新构建课程。")
+                        : null}
+                      secondaryAction={{
+                        label: failedBuildConfirmedPlanId ? "重新构建" : "返回方案重新构建",
+                        pendingLabel: "正在重新构建",
+                        onClick: handleFailedBuildRetry,
+                        isPending: isRetryKnowledgeBuildPending,
                       }}
                     />
                   ) : showDocLoadingState ? (
@@ -7538,9 +7578,10 @@ export function KnowledgeDocsPage() {
                   ) : showDocBuildFailureState ? (
                     <DocLoadErrorState
                       message={buildStatusText}
-                      onRetry={() => {
-                        void refreshDocument();
-                      }}
+                      onRetry={handleFailedBuildRetry}
+                      actionLabel={failedBuildConfirmedPlanId ? "重新构建" : "返回方案重新构建"}
+                      pendingLabel="正在重新构建"
+                      isPending={isRetryKnowledgeBuildPending}
                     />
                   ) : showDocEmptyState ? (
                     <DocEmptyState />
@@ -7562,6 +7603,7 @@ export function KnowledgeDocsPage() {
                       <DocMarkdown
                         content={renderedMarkdown}
                         courseId={courseId}
+                        collapsedHeadingIds={collapsedDocHeadingIds}
                         onHeadingCollapseChange={handleDocHeadingCollapseChange}
                       />
                       {effectiveDocViewMode === "live" && totalChunkCount > 0 && (

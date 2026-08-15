@@ -177,6 +177,12 @@ export function isCourseRouteActive(pathname: string, courseId: string, routeId:
   return getCourseIdFromPathname(pathname) === courseId && getCourseRouteSegmentFromPathname(pathname) === routeId;
 }
 
+export function isTrainingDetailPath(pathname: string): boolean {
+  const match = pathname.match(COURSE_PATH_PATTERN);
+  const routeParts = match?.[2]?.split("/").filter(Boolean) ?? [];
+  return routeParts[0] === "exams" && routeParts.length > 1;
+}
+
 export function isFullBleedCoursePath(pathname: string): boolean {
   const segment = getCourseRouteSegmentFromPathname(pathname);
   if (!segment) {

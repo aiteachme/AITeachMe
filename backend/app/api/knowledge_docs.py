@@ -31,6 +31,7 @@ from app.schemas.knowledge import (
     BuildPlannerMessageRequest,
     BuildPlannerSessionResponse,
     ClearKnowledgeResponse,
+    CourseVectorIndexRebuildResponse,
     DocGenBuildCancelData,
     DocGenBuildData,
     DocGenBuildRequest,
@@ -44,6 +45,8 @@ from app.schemas.knowledge import (
     KnowledgeOverviewRequest,
     KnowledgeOverviewResponse,
 )
+from app.shared.infra.course import get_course_vector_status_by_id
+from app.shared.infra.exceptions import AITeachMeError
 from app.workflows.digest.planner import (
     append_build_planner_message,
     confirm_build_planner_session,
@@ -60,6 +63,7 @@ from app.workflows.digest.docgen import (
     PublishedDocumentStaleError,
     PublishedDocumentUnavailableError,
     clear_course_knowledge,
+    ensure_course_vector_index,
     get_docgen_result,
     get_knowledge_build_runtime_result,
     get_published_doc_chunk,
@@ -108,6 +112,33 @@ from app.workflows.digest.docgen.lib.published_manifest import ensure_published_
 
 router = APIRouter(tags=["knowledge"])
 logger = structlog.get_logger(__name__)
+
+
+_STRUCTURAL_PUBLISHED_DOCUMENT_ERRORS = {
+    "published_markdown_empty",
+    "published_document_versions_mixed",
+    "published_document_paths_mixed",
+    "published_document_packages_mixed",
+    "published_document_id_missing",
+    "published_document_title_missing",
+}
+
+
+def _raise_published_document_service_error(
+    exc: PublishedDocumentBoundaryError | PublishedDocumentUnavailableError,
+) -> None:
+    reason = str(exc).strip()
+    if isinstance(exc, PublishedDocumentBoundaryError) or reason in _STRUCTURAL_PUBLISHED_DOCUMENT_ERRORS:
+        raise AITeachMeError(
+            detail="当前知识文档发布结构不完整，请重新构建知识文档。",
+            error_code="PUBLISHED_DOCUMENT_STRUCTURE_INVALID",
+            status_code=503,
+        ) from exc
+    raise AITeachMeError(
+        detail="当前知识文档暂时无法读取，请稍后重试。",
+        error_code="PUBLISHED_DOCUMENT_TEMPORARILY_UNAVAILABLE",
+        status_code=503,
+    ) from exc
 
 
 def _release_docgen_build_lock_safely(
@@ -1208,6 +1239,85 @@ async def knowledge_docs(
     return ok_response(result)
 
 
+@router.post(
+    "/docs/vector-index/rebuild",
+    response_model=ApiResponse[CourseVectorIndexRebuildResponse],
+    summary="Rebuild and verify the current course vector index",
+    responses=build_error_responses([400, 404, 409, 500, 503]),
+)
+async def knowledge_docs_vector_index_rebuild(
+    request: Request,
+    response: Response,
+    course_id: str = Path(...),
+) -> ApiResponse[CourseVectorIndexRebuildResponse]:
+    normalized = normalize_course_id(course_id)
+    with managed_session() as session:
+        user = get_current_user_context(request, response, session)
+        course_record = get_course_record(session, normalized, owner_user_id=user.user_id)
+        course_scope = _storage_scope_for_course_record(course_record)
+
+    docgen_result = await run_in_threadpool(
+        get_docgen_result,
+        course_id=normalized,
+        course_scope=course_scope,
+        include_markdown=True,
+        include_draft=False,
+    )
+    if not docgen_result.exists or not docgen_result.markdown.strip():
+        raise HTTPException(
+            status_code=409,
+            detail="当前课程还没有已发布的知识文档，无法重建语义检索索引。",
+        )
+
+    try:
+        rebuild_status, indexed_chunk_count = await ensure_course_vector_index(
+            course_id=normalized,
+            file_ids=list(docgen_result.source_file_ids or []),
+            published_markdown=docgen_result.markdown,
+            reason_prefix="knowledge_docs.manual_vector_index_rebuild",
+        )
+    except Exception as exc:
+        logger.exception(
+            "knowledge_docs_vector_index_rebuild_failed",
+            course_id=normalized,
+            user_id=user.user_id,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="语义检索索引重建失败，请检查嵌入模型配置后重试。",
+        ) from exc
+
+    if rebuild_status == "skipped_disabled":
+        raise HTTPException(status_code=409, detail="当前课程未启用语义检索，无需重建向量索引。")
+    if rebuild_status not in {"ready", "rebuilt"}:
+        raise HTTPException(
+            status_code=503,
+            detail="当前嵌入模型暂不可用，无法重建语义检索索引。",
+        )
+
+    with managed_session() as session:
+        vector_status = get_course_vector_status_by_id(session, normalized)
+    if vector_status.notice:
+        raise HTTPException(
+            status_code=503,
+            detail="向量索引已写入但完整性校验未通过，请稍后重试。",
+        )
+
+    logger.info(
+        "knowledge_docs_vector_index_rebuild_completed",
+        course_id=normalized,
+        user_id=user.user_id,
+        indexed_chunk_count=indexed_chunk_count,
+    )
+    return ok_response(
+        CourseVectorIndexRebuildResponse(
+            status=rebuild_status,
+            indexed_chunk_count=indexed_chunk_count,
+            vector_status=vector_status,
+        )
+    )
+
+
 @router.get(
     "/docs/manifest",
     response_model=ApiResponse[KnowledgeDocsPublishedManifestResponse],
@@ -1234,10 +1344,7 @@ async def knowledge_docs_manifest(
             detail="知识文档发布版本刚刚发生变化，请刷新后重试。",
         ) from exc
     except (PublishedDocumentBoundaryError, PublishedDocumentUnavailableError) as exc:
-        raise HTTPException(
-            status_code=503,
-            detail="当前知识文档无法安全分块，请稍后重试或重新构建。",
-        ) from exc
+        _raise_published_document_service_error(exc)
 
 
 @router.get(
@@ -1275,10 +1382,7 @@ async def knowledge_docs_publication_chunk(
     except PublishedDocumentChunkNotFoundError as exc:
         raise HTTPException(status_code=404, detail="知识文档分块不存在。") from exc
     except (PublishedDocumentBoundaryError, PublishedDocumentUnavailableError) as exc:
-        raise HTTPException(
-            status_code=503,
-            detail="当前知识文档无法安全分块，请稍后重试或重新构建。",
-        ) from exc
+        _raise_published_document_service_error(exc)
 
 
 @router.post(

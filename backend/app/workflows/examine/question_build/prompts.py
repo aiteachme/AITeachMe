@@ -156,6 +156,7 @@ def build_exam_question_blueprint_messages(
     exam_mode: str,
     requested_question_count: int,
     user_prompt: str,
+    configured_difficulty: str = "auto",
     units: list[dict[str, Any]],
     question_prompt_plans: list[dict[str, Any]] | None = None,
     system_constraints: str = "",
@@ -169,6 +170,7 @@ def build_exam_question_blueprint_messages(
         "exam_mode": exam_mode,
         "requested_question_count": requested_question_count,
         "user_prompt": user_prompt or "",
+        "configured_difficulty": configured_difficulty or "auto",
         "system_constraints": system_constraints or "",
         "knowledge_units": units,
         "question_prompt_plans": list(question_prompt_plans or []),
@@ -179,7 +181,7 @@ def build_exam_question_blueprint_messages(
 请为每道题决定：
 1. item_order：从 1 到 requested_question_count 的连续编号。
 2. question_type：必须逐字复制同 item_order 在 question_prompt_plans 中的题型。
-3. difficulty：easy / medium / hard，根据 question_type 和 knowledge_units 综合选择。
+3. difficulty：easy / medium / hard。如果 configured_difficulty 是 easy / medium / hard，所有题必须使用该值；否则，如果 user_prompt 明确指定了整体、题号或题型难度，必须遵守；其余情况根据 question_type 和 knowledge_units 综合选择。
 4. knowledge_unit_ids：从 knowledge_units 中选择 ID，不要发明 ID。true_false/fill_blank 通常选 1 个单元；选择题通常选 1-2 个单元；short_answer 在概念自然关联时可选 1-3 个单元。
 5. rationale：简短说明知识单元、题型和难度组合的理由。
 
@@ -222,7 +224,7 @@ def build_exam_question_requirement_messages(
 规则：
 - 必须为 1 到 requested_question_count 的每个 item_order 输出且只输出一条记录。
 - 每道题必须选择一个 question_type，可选值只能是：single_choice / multiple_choice / true_false / fill_blank / short_answer。
-- 如果 exam_mode 是 mastery_drill，只使用可即时客观判定的 single_choice / multiple_choice / true_false，不要使用 fill_blank 或 short_answer。
+- 如果 exam_mode 是 mastery_drill，single_choice、multiple_choice、true_false、fill_blank 和 short_answer 都可使用。填空题与简答题会在逐题提交后通过自动判分或 AI 判分给出反馈，不要擅自排除或改成选择题。
 - 如果 exam_mode 是 paper_exam，应按完整试卷组织题型：客观题在前，填空题居中，解答题或综合题在后；题型组合要比专项练习更丰富，除非 user_prompt 明确要求只考某一类题。
 - 如果 exam_mode 是 web_practice，应保持短练习节奏，题型可以更聚焦，不必强行覆盖完整试卷结构。
 - 必须输出一个顶层 rationale，用于整体解释为什么这样排列和分配题型；rationale 不要写到每个 prompts item 里。

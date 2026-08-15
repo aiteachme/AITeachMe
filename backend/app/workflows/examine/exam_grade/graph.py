@@ -45,10 +45,10 @@ NODE_TRACE_DETAILS: dict[str, dict[str, object]] = {
     },
     NODE_GENERATE_STUDY_GUIDE: {
         "description": (
-            "根据已评分试卷的错题摘要、薄弱知识点和待复习项生成学习指南；"
+            "根据已评分试卷的错题摘要、本卷知识点表现、累计画像上下文和待复习项生成学习指南；"
             "该节点不重新判卷，只把诊断结果转成下一步学习建议。"
         ),
-        "reads": ["exam score summary", "wrong_question_summaries", "weak_points", "pending_reviews", "LLM provider"],
+        "reads": ["exam score summary", "wrong_question_summaries", "knowledge_unit_performance", "pending_reviews", "LLM provider"],
         "writes": ["study_guide"],
         "emits": ["progress:study_guide"],
         "input_keys": [
@@ -59,7 +59,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, object]] = {
             "exam_title",
             "score_summary",
             "wrong_question_summaries",
-            "weak_points",
+            "knowledge_unit_performance",
             "pending_reviews",
             "generated_at",
         ],
@@ -78,11 +78,12 @@ class ExamGradeState(TypedDict, total=False):
     exam_title: str
     score_summary: str
     wrong_question_summaries: list[dict[str, Any]]
-    weak_points: list[dict[str, Any]]
+    knowledge_unit_performance: list[dict[str, Any]]
     pending_reviews: list[dict[str, Any]]
     generated_at: datetime
     study_guide: ExamStudyGuideResponse
     progress_callback: object | None
+    content_callback: object | None
     error: str
 
 
@@ -212,9 +213,10 @@ async def _generate_study_guide_node(state: ExamGradeState) -> ExamGradeState:
         exam_title=str(state.get("exam_title") or ""),
         score_summary=str(state.get("score_summary") or ""),
         wrong_question_summaries=list(state.get("wrong_question_summaries") or []),
-        weak_points=list(state.get("weak_points") or []),
+        knowledge_unit_performance=list(state.get("knowledge_unit_performance") or []),
         pending_reviews=list(state.get("pending_reviews") or []),
         generated_at=state.get("generated_at") or datetime.now(),
+        content_callback=state.get("content_callback"),
     )
     elapsed_ms = int((perf_counter() - started_at) * 1000)
     await emit_progress(
@@ -256,10 +258,11 @@ def _create_study_guide_initial_state(
     exam_title: str,
     score_summary: str,
     wrong_question_summaries: list[dict[str, Any]],
-    weak_points: list[dict[str, Any]],
+    knowledge_unit_performance: list[dict[str, Any]],
     pending_reviews: list[dict[str, Any]],
     generated_at: datetime,
     progress_callback: object | None = None,
+    content_callback: object | None = None,
 ) -> ExamGradeState:
     return {
         "mode": "study_guide",
@@ -269,10 +272,11 @@ def _create_study_guide_initial_state(
         "exam_title": exam_title,
         "score_summary": score_summary,
         "wrong_question_summaries": list(wrong_question_summaries),
-        "weak_points": list(weak_points),
+        "knowledge_unit_performance": list(knowledge_unit_performance),
         "pending_reviews": list(pending_reviews),
         "generated_at": generated_at,
         "progress_callback": progress_callback,
+        "content_callback": content_callback,
         "error": "",
     }
 
@@ -333,10 +337,11 @@ async def run_exam_study_guide_workflow(
     exam_title: str,
     score_summary: str,
     wrong_question_summaries: list[dict[str, Any]],
-    weak_points: list[dict[str, Any]],
+    knowledge_unit_performance: list[dict[str, Any]],
     pending_reviews: list[dict[str, Any]],
     generated_at: datetime,
     progress_callback: object | None = None,
+    content_callback: object | None = None,
 ) -> ExamStudyGuideResponse:
     """Run the production exam study-guide workflow."""
 
@@ -360,10 +365,11 @@ async def run_exam_study_guide_workflow(
             exam_title=exam_title,
             score_summary=score_summary,
             wrong_question_summaries=wrong_question_summaries,
-            weak_points=weak_points,
+            knowledge_unit_performance=knowledge_unit_performance,
             pending_reviews=pending_reviews,
             generated_at=generated_at,
             progress_callback=progress_callback,
+            content_callback=content_callback,
         ),
         context=context,
     )

@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useParams } from "react-router-dom";
 
-import { apiClient } from "../../../api/client";
+import { apiClient, getApiErrorCode } from "../../../api/client";
 import type { FileRecord } from "../../../api/generated/model";
 import {
   buildKnowledgeBuildRuntimeQueryKey,
@@ -130,6 +130,10 @@ function getHttpStatus(error: unknown): number | null {
   if (!error || typeof error !== "object") return null;
   const response = (error as { response?: { status?: unknown } }).response;
   return typeof response?.status === "number" ? response.status : null;
+}
+
+function isDeterministicPublicationFailure(error: unknown): boolean {
+  return getApiErrorCode(error) === "PUBLISHED_DOCUMENT_STRUCTURE_INVALID";
 }
 
 const GRAPH_SYNC_BUILD_STAGES = new Set([
@@ -314,6 +318,9 @@ export function useDocMarkdown(): DocMarkdownState {
     queryFn: () => fetchPublicationManifest(courseId as string),
     enabled: Boolean(courseId),
     staleTime: 30000,
+    retry: (failureCount, error) => !isDeterministicPublicationFailure(error) && failureCount < 2,
+    refetchOnWindowFocus: (query) => !isDeterministicPublicationFailure(query.state.error),
+    refetchOnReconnect: (query) => !isDeterministicPublicationFailure(query.state.error),
   });
   publicationManifestRef.current = publicationManifestQuery.data;
   const refetchPublicationManifest = publicationManifestQuery.refetch;
@@ -415,7 +422,11 @@ export function useDocMarkdown(): DocMarkdownState {
           return chunk;
         },
         staleTime: Number.POSITIVE_INFINITY,
-        retry: (failureCount, error) => getHttpStatus(error) !== 409 && failureCount < 2,
+        retry: (failureCount, error) => (
+          getHttpStatus(error) !== 409 &&
+          !isDeterministicPublicationFailure(error) &&
+          failureCount < 2
+        ),
       }).then((chunk) => {
         if (
           !publicationMountedRef.current ||
@@ -722,7 +733,12 @@ export function useDocMarkdown(): DocMarkdownState {
       if (terminalRefreshRetryKeyRef.current === refreshKey) {
         terminalRefreshAttemptRef.current = 0;
       }
-    }).catch(() => {
+    }).catch((error) => {
+      // Only an explicitly classified publication-structure error is terminal.
+      // Transient storage and service 503 responses remain retryable.
+      if (isDeterministicPublicationFailure(error)) {
+        return;
+      }
       if (lastTerminalDocRefreshKeyRef.current === refreshKey) {
         lastTerminalDocRefreshKeyRef.current = null;
       }

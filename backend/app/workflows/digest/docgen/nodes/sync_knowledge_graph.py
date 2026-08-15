@@ -63,12 +63,15 @@ def _indexed_vector_chunk_ids(*, course_id: str, chunk_ids: list[int]) -> set[in
         )
 
 
-async def _ensure_course_vector_index(
+async def ensure_course_vector_index(
     *,
     course_id: str,
     file_ids: list[str],
     published_markdown: str = "",
+    reason_prefix: str = "digest.docgen.finalize_vector_index",
 ) -> tuple[str, int]:
+    """Build and verify every vector row required by the current course sources."""
+
     normalized_file_ids = [
         file_id
         for file_id in dict.fromkeys(str(item or "").strip() for item in file_ids)
@@ -96,7 +99,7 @@ async def _ensure_course_vector_index(
                 await index_course_files_for_retrieval(
                     course_id=course_id,
                     file_ids=normalized_file_ids,
-                    reason=f"digest.docgen.finalize_vector_index.files.attempt_{attempt}",
+                    reason=f"{reason_prefix}.files.attempt_{attempt}",
                     raise_errors=True,
                 )
             )
@@ -105,7 +108,7 @@ async def _ensure_course_vector_index(
                 await index_published_knowledge_docs_for_retrieval(
                     course_id=course_id,
                     markdown=normalized_published_markdown,
-                    reason=f"digest.docgen.finalize_vector_index.published_docs.attempt_{attempt}",
+                    reason=f"{reason_prefix}.published_docs.attempt_{attempt}",
                     raise_errors=True,
                 )
             )
@@ -138,6 +141,11 @@ async def _ensure_course_vector_index(
         "DocGen published successfully but the course vector index is still not queryable"
         + (f": {notice}" if notice else ".")
     )
+
+
+# Keep the node seam patchable for existing workflow tests while exposing the
+# same implementation to targeted recovery endpoints.
+_ensure_course_vector_index = ensure_course_vector_index
 
 
 def build_sync_knowledge_graph_node(*, context: WorkflowContext):

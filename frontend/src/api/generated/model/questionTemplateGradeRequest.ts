@@ -11,4 +11,6 @@
 export interface QuestionTemplateGradeRequest {
   /** Submitted answer. */
   answer: string;
+  /** Whether this one-time grading result must skip analytics recording. */
+  ephemeral?: boolean;
 }

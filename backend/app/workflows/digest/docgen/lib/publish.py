@@ -118,15 +118,12 @@ def _ensure_chapter_structure(markdown: str, *, title: str = "") -> str:
     cleaned = str(markdown or "").strip()
     if not cleaned:
         return ""
-    provided_title = str(title or "").strip()
-    fallback_title = (
-        resolve_effective_chapter_title(
-            {"title": provided_title, "resolved_title": provided_title},
-            fallback_title=provided_title,
-        )
-        if provided_title
-        else ""
-    )
+    # ``title`` is already resolved by the caller and is also persisted as the
+    # authoritative KnowledgeDoc title.  Resolving it a second time drops
+    # numeric fallback titles such as "第 1 章", leaving a model-produced
+    # placeholder H1 (for example "本章内容") in the published Markdown.  The
+    # chunk manifest then cannot match Markdown boundaries to database rows.
+    fallback_title = str(title or "").strip()
 
     lines = cleaned.splitlines()
     first_heading_index = _first_markdown_heading_index(lines)

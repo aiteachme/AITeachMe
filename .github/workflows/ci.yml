@@ -73,6 +73,27 @@ jobs:
       - name: Run SSE parser tests
         run: npm run test:sse
 
+      - name: Run question marking tests
+        run: npm run test:question-marking
+
+      - name: Run question bank filter tests
+        run: npm run test:question-bank-filters
+
+      - name: Run question template detail tests
+        run: npm run test:question-template-detail
+
+      - name: Run exam submission flow tests
+        run: npm run test:exam-submission-flow
+
+      - name: Run study guide stream tests
+        run: npm run test:study-guide-stream
+
+      - name: Run mastery drill progress tests
+        run: npm run test:mastery-drill-progress
+
+      - name: Run training config tests
+        run: npm run test:training-config
+
       - name: Build
         run: npm run build
 

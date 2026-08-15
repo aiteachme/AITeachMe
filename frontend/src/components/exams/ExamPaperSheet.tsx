@@ -43,7 +43,7 @@ interface ExamPaperSheetProps {
   onReviewAnalysisToggle?: (item: ExamPaperItemResponse) => void;
   onQuestionAi?: (item: ExamPaperItemResponse, isReviewStage: boolean, answerValue: string) => void;
   onQuestionMarkToggle?: (item: ExamPaperItemResponse, isMarked: boolean) => void;
-  markingQuestionTemplateId?: number | null;
+  markingQuestionTemplateIds?: ReadonlySet<number>;
   activeAiAnchorId?: string | null;
 }
 
@@ -317,7 +317,7 @@ export function ExamPaperSheet({
   onReviewAnalysisToggle,
   onQuestionAi,
   onQuestionMarkToggle,
-  markingQuestionTemplateId,
+  markingQuestionTemplateIds,
   activeAiAnchorId,
 }: ExamPaperSheetProps) {
   const items = paper.items ?? [];
@@ -341,7 +341,7 @@ export function ExamPaperSheet({
         onReviewAnalysisToggle={onReviewAnalysisToggle ? () => {} : undefined}
         onQuestionAi={onQuestionAi}
         onQuestionMarkToggle={onQuestionMarkToggle}
-        markingQuestionTemplateId={markingQuestionTemplateId}
+        markingQuestionTemplateIds={markingQuestionTemplateIds}
         activeAiAnchorId={activeAiAnchorId}
       />
     );
@@ -405,7 +405,9 @@ export function ExamPaperSheet({
                     const isSelectedReviewItem = isReviewStage && selectedItemId === item.id;
                     const isQuestionHighlighted = highlightedQuestionOrder === item.item_order;
                     const isMarked = isQuestionMarked(item);
-                    const isMarking = markingQuestionTemplateId === item.question_template_id;
+                    const isMarking = Boolean(
+                      item.question_template_id && markingQuestionTemplateIds?.has(item.question_template_id),
+                    );
 
                     return (
                       <div

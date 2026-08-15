@@ -101,6 +101,28 @@ def test_merged_markdown_keeps_application_title_suffix() -> None:
     assert markdown.splitlines()[0] == "# 读图解题与实际应用"
 
 
+def test_merged_markdown_replaces_placeholder_h1_with_numeric_fallback_titles() -> None:
+    markdown = build_merged_markdown(
+        [
+            {
+                "chapter_index": 1,
+                "title": "本章内容",
+                "markdown": "# 本章内容\n\n第一章正文。",
+            },
+            {
+                "chapter_index": 2,
+                "title": "本章内容",
+                "markdown": "# 本章内容\n\n第二章正文。",
+            },
+        ],
+    )
+
+    root_headings = [line for line in markdown.splitlines() if line.startswith("# ")]
+
+    assert root_headings == ["# 第 1 章", "# 第 2 章"]
+    assert markdown.count("# 本章内容") == 0
+
+
 @pytest.mark.anyio
 async def test_lock_title_for_chapter_falls_back_when_llm_call_fails(monkeypatch) -> None:
     async def fake_completion(*_args, **_kwargs):

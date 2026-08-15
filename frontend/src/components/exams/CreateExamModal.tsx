@@ -1,179 +1,120 @@
-import { useEffect, useState } from "react";
-import {
-  RotateCcw,
-  Save,
-} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
-import { Button } from "../ui/Button";
 import { Modal } from "../ui/Modal";
 import { useToast } from "../ui/Toast";
 import { PAPER_EXAM_MODES, PAPER_LAYOUT_MODES } from "./examDisplay";
+import {
+  CREATE_EXAM_DIFFICULTY_OPTIONS,
+  CREATE_EXAM_QUESTION_COUNT_PRESETS,
+  CREATE_EXAM_QUESTION_TYPE_OPTIONS,
+  getDefaultCreateExamConfigForMode,
+  loadCreateExamConfig,
+  normalizeCreateExamConfig,
+  saveCreateExamConfig,
+  type CreateExamConfig,
+} from "./examConfig";
+import {
+  getQuestionCountMode,
+  OptionToggleGrid,
+  QuestionCountSelector,
+  TrainingConfigActions,
+  TrainingConfigField,
+  TrainingConfigIntro,
+  type OptionSelectionMode,
+  type QuestionCountMode,
+} from "./TrainingConfigModal";
 
-export interface CreateExamConfig {
-  examMode: (typeof PAPER_EXAM_MODES)[number]["value"];
-  numQuestions: number;
-  userPrompt: string;
-  paperLayoutMode: (typeof PAPER_LAYOUT_MODES)[number]["value"];
-}
-
-const DEFAULT_PAPER_EXAM_QUESTION_COUNT = 24;
-const DEFAULT_WEB_PRACTICE_QUESTION_COUNT = 10;
-
-export const DEFAULT_CREATE_EXAM_CONFIG: CreateExamConfig = {
-  examMode: "paper_exam",
-  numQuestions: DEFAULT_PAPER_EXAM_QUESTION_COUNT,
-  userPrompt: "",
-  paperLayoutMode: "auto",
-};
-
-const CREATE_EXAM_CONFIG_STORAGE_PREFIX = "aiteachme.exam.createConfig.v1";
-const QUESTION_COUNT_PRESETS = [
-  { label: "轻量", value: 10 },
-  { label: "标准", value: 24 },
-  { label: "冲刺", value: 40 },
-] as const;
-type QuestionCountMode = "preset" | "custom";
-
-function getQuestionCountMode(numQuestions: number): QuestionCountMode {
-  return QUESTION_COUNT_PRESETS.some((preset) => preset.value === numQuestions) ? "preset" : "custom";
-}
-
-function getCreateExamConfigStorageKey(courseId: string) {
-  return `${CREATE_EXAM_CONFIG_STORAGE_PREFIX}.${courseId}`;
-}
-
-function normalizeCreateExamConfig(
-  value: (Partial<CreateExamConfig> & { focusPrompt?: string }) | null | undefined,
-): CreateExamConfig {
-  const examModeValues = new Set<string>(PAPER_EXAM_MODES.map((item) => item.value));
-  const paperLayoutModeValues = new Set<string>(PAPER_LAYOUT_MODES.map((item) => item.value));
-  const examMode = examModeValues.has(value?.examMode ?? "")
-    ? (value?.examMode as CreateExamConfig["examMode"])
-    : DEFAULT_CREATE_EXAM_CONFIG.examMode;
-  const numQuestions = Number(value?.numQuestions);
-  const defaultQuestionCount =
-    examMode === "paper_exam" ? DEFAULT_PAPER_EXAM_QUESTION_COUNT : DEFAULT_WEB_PRACTICE_QUESTION_COUNT;
-
-  return {
-    examMode,
-    numQuestions: Math.min(
-      80,
-      Math.max(1, Number.isFinite(numQuestions) ? numQuestions : defaultQuestionCount),
-    ),
-    userPrompt:
-      typeof value?.userPrompt === "string"
-        ? value.userPrompt
-        : typeof value?.focusPrompt === "string"
-          ? value.focusPrompt
-          : DEFAULT_CREATE_EXAM_CONFIG.userPrompt,
-    paperLayoutMode: paperLayoutModeValues.has(value?.paperLayoutMode ?? "")
-      ? (value?.paperLayoutMode as CreateExamConfig["paperLayoutMode"])
-      : DEFAULT_CREATE_EXAM_CONFIG.paperLayoutMode,
-  };
-}
-
-export function loadCreateExamConfig(courseId: string): CreateExamConfig {
-  if (typeof window === "undefined") {
-    return DEFAULT_CREATE_EXAM_CONFIG;
-  }
-
-  try {
-    const raw = window.localStorage.getItem(getCreateExamConfigStorageKey(courseId));
-    return normalizeCreateExamConfig(raw ? JSON.parse(raw) : null);
-  } catch {
-    return DEFAULT_CREATE_EXAM_CONFIG;
-  }
-}
-
-export function saveCreateExamConfig(courseId: string, config: CreateExamConfig) {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  window.localStorage.setItem(
-    getCreateExamConfigStorageKey(courseId),
-    JSON.stringify(normalizeCreateExamConfig(config)),
-  );
-}
-
-export function applyExamModeToCreateConfig(
-  config: CreateExamConfig,
-  examMode: CreateExamConfig["examMode"],
-): CreateExamConfig {
-  const switchedFromPaperDefault =
-    examMode !== "paper_exam" &&
-    config.examMode === "paper_exam" &&
-    config.numQuestions === DEFAULT_PAPER_EXAM_QUESTION_COUNT;
-  return normalizeCreateExamConfig({
-    ...config,
-    examMode,
-    numQuestions:
-      examMode === "paper_exam" && config.examMode !== "paper_exam" && config.numQuestions <= 12
-        ? DEFAULT_PAPER_EXAM_QUESTION_COUNT
-        : switchedFromPaperDefault
-          ? DEFAULT_WEB_PRACTICE_QUESTION_COUNT
-        : config.numQuestions,
-  });
-}
-
-export function getDefaultCreateExamConfigForMode(examMode: CreateExamConfig["examMode"]): CreateExamConfig {
-  return applyExamModeToCreateConfig(DEFAULT_CREATE_EXAM_CONFIG, examMode);
-}
-
-export function toExamGenerateRequest(config: CreateExamConfig) {
-  const normalized = normalizeCreateExamConfig(config);
-
-  return {
-    exam_mode: normalized.examMode,
-    user_prompt: normalized.userPrompt.trim() || undefined,
-    num_questions: normalized.numQuestions,
-    paper_layout_mode: normalized.examMode === "paper_exam" ? normalized.paperLayoutMode : undefined,
-  };
-}
+export {
+  applyExamModeToCreateConfig,
+  buildExamConfigUserPrompt,
+  formatCreateExamDifficultySummary,
+  formatCreateExamQuestionTypeSummary,
+  getDefaultCreateExamConfigForMode,
+  loadCreateExamConfig,
+  saveCreateExamConfig,
+  toExamGenerateRequest,
+} from "./examConfig";
+export type { CreateExamConfig } from "./examConfig";
 
 interface CreateExamModalProps {
   open: boolean;
   courseId: string;
-  courseName?: string | null;
   initialExamMode?: CreateExamConfig["examMode"] | null;
   onClose: () => void;
+  onSaved?: (config: CreateExamConfig) => void;
 }
 
-export function CreateExamModal({ open, courseId, courseName, initialExamMode, onClose }: CreateExamModalProps) {
+export function CreateExamModal({
+  open,
+  courseId,
+  initialExamMode,
+  onClose,
+  onSaved,
+}: CreateExamModalProps) {
   const { toast } = useToast();
-  const [config, setConfig] = useState<CreateExamConfig>(() => loadCreateExamConfig(courseId));
+  const requestedMode = initialExamMode ?? "paper_exam";
+  const [config, setConfig] = useState<CreateExamConfig>(() => loadCreateExamConfig(courseId, requestedMode));
   const [questionCountMode, setQuestionCountMode] = useState<QuestionCountMode>(() =>
-    getQuestionCountMode(loadCreateExamConfig(courseId).numQuestions),
+    getQuestionCountMode(
+      loadCreateExamConfig(courseId, requestedMode).numQuestions,
+      CREATE_EXAM_QUESTION_COUNT_PRESETS,
+    ),
   );
-  const displayName = courseName?.trim() || "当前课程";
+  const [questionTypeMode, setQuestionTypeMode] = useState<OptionSelectionMode>(() =>
+    loadCreateExamConfig(courseId, requestedMode).questionTypes.length ? "custom" : "primary",
+  );
+  const selectedQuestionTypeSet = useMemo(() => new Set(config.questionTypes), [config.questionTypes]);
   const activeExamMode = PAPER_EXAM_MODES.find((item) => item.value === config.examMode);
-  const isCustomQuestionCount = questionCountMode === "custom";
+  const activeDifficulty = CREATE_EXAM_DIFFICULTY_OPTIONS.find((item) => item.value === config.difficulty);
 
   useEffect(() => {
     if (!open) return;
-    const stored = loadCreateExamConfig(courseId);
-    const nextConfig = initialExamMode ? applyExamModeToCreateConfig(stored, initialExamMode) : stored;
-    setConfig(nextConfig);
-    setQuestionCountMode(getQuestionCountMode(nextConfig.numQuestions));
-  }, [open, courseId, initialExamMode]);
+    const stored = loadCreateExamConfig(courseId, requestedMode);
+    setConfig(stored);
+    setQuestionCountMode(getQuestionCountMode(stored.numQuestions, CREATE_EXAM_QUESTION_COUNT_PRESETS));
+    setQuestionTypeMode(stored.questionTypes.length ? "custom" : "primary");
+  }, [courseId, open, requestedMode]);
+
+  const toggleQuestionType = (questionType: string) => {
+    const normalizedQuestionType = questionType as CreateExamConfig["questionTypes"][number];
+    setConfig((current) => ({
+      ...current,
+      questionTypes: current.questionTypes.includes(normalizedQuestionType)
+        ? current.questionTypes.filter((item) => item !== normalizedQuestionType)
+        : [...current.questionTypes, normalizedQuestionType],
+    }));
+  };
 
   const handleReset = () => {
-    const resetConfig = applyExamModeToCreateConfig(DEFAULT_CREATE_EXAM_CONFIG, config.examMode);
+    const resetConfig = getDefaultCreateExamConfigForMode(config.examMode);
     setConfig(resetConfig);
-    setQuestionCountMode(getQuestionCountMode(resetConfig.numQuestions));
-    saveCreateExamConfig(courseId, resetConfig);
+    setQuestionCountMode(getQuestionCountMode(resetConfig.numQuestions, CREATE_EXAM_QUESTION_COUNT_PRESETS));
+    setQuestionTypeMode("primary");
     toast({
-      title: "配置已重置",
-      description: "之后会使用当前模式的默认配置开始训练或测试。",
-      variant: "success",
+      title: "已恢复默认配置",
+      description: "点击保存后生效。",
+      variant: "info",
     });
   };
 
   const handleSave = () => {
-    saveCreateExamConfig(courseId, config);
+    if (questionTypeMode === "custom" && config.questionTypes.length === 0) {
+      toast({
+        title: "请选择题型",
+        description: "指定题型模式至少选择一种题型。",
+        variant: "error",
+      });
+      return;
+    }
+    const normalizedConfig = normalizeCreateExamConfig(
+      questionTypeMode === "primary" ? { ...config, questionTypes: [] } : config,
+      config.examMode,
+    );
+    saveCreateExamConfig(courseId, normalizedConfig);
+    onSaved?.(normalizedConfig);
     toast({
-      title: "配置已保存",
-      description: "下次点击开始会直接使用这套配置。",
+      title: `${activeExamMode?.label ?? "出题"}配置已保存`,
+      description: `下次点击开始将按 ${normalizedConfig.numQuestions} 题和当前题型、难度要求出题。`,
       variant: "success",
     });
     onClose();
@@ -183,88 +124,72 @@ export function CreateExamModal({ open, courseId, courseName, initialExamMode, o
     <Modal
       open={open}
       onClose={onClose}
-      title={`${activeExamMode?.label ?? "出题"}配置`}
-      className="max-w-2xl rounded-xl"
+      title={`${activeExamMode?.label ?? "出题"}出题配置`}
+      className="max-w-2xl rounded-[24px]"
     >
-      <div className="space-y-4">
-        <div className="min-w-0">
-          <p className="text-xs font-medium text-slate-500 dark:text-slate-400">当前课程</p>
-          <h3 className="mt-1 break-words text-xl font-semibold tracking-tight text-slate-950 dark:text-slate-100">
-            {displayName}
-          </h3>
-        </div>
+      <div className="space-y-0">
+        <TrainingConfigIntro
+          description={config.examMode === "paper_exam"
+            ? "用于阶段检验和考前模拟，保存后下次开始生效。"
+            : "用于日常巩固和快速摸底，保存后下次开始生效。"}
+        />
 
         <section className="divide-y divide-slate-100 dark:divide-slate-800">
-          <div className="grid gap-3 py-4 sm:grid-cols-[6rem_minmax(0,1fr)] sm:items-center">
-            <p className="text-sm font-semibold text-slate-950 dark:text-slate-100">题目数量</p>
-            <div className="space-y-2">
-              <div className="grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1 sm:grid-cols-4 dark:bg-slate-800/60">
-                {QUESTION_COUNT_PRESETS.map((preset) => {
-                  const selected = !isCustomQuestionCount && config.numQuestions === preset.value;
-                  return (
-                    <button
-                      key={preset.value}
-                      type="button"
-                      onClick={() => {
-                        setQuestionCountMode("preset");
-                        setConfig((current) => ({
-                          ...current,
-                          numQuestions: preset.value,
-                        }));
-                      }}
-                      className={`rounded-md px-3 py-2 text-center text-sm transition ${
-                        selected
-                          ? "bg-white font-semibold text-slate-950 shadow-sm dark:bg-slate-950 dark:text-slate-100"
-                          : "text-slate-600 hover:bg-white/70 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-900/70 dark:hover:text-slate-100"
-                      }`}
-                      aria-pressed={selected}
-                    >
-                      {preset.label} <span className="text-xs text-slate-400">{preset.value}题</span>
-                    </button>
-                  );
-                })}
-                <button
-                  type="button"
-                  onClick={() => setQuestionCountMode("custom")}
-                  className={`rounded-md px-3 py-2 text-center text-sm transition ${
-                    isCustomQuestionCount
-                      ? "bg-white font-semibold text-slate-950 shadow-sm dark:bg-slate-950 dark:text-slate-100"
-                      : "text-slate-600 hover:bg-white/70 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-900/70 dark:hover:text-slate-100"
-                  }`}
-                  aria-pressed={isCustomQuestionCount}
-                >
-                  自定义
-                </button>
-              </div>
-              {isCustomQuestionCount && (
-                <label className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-                  <span>题量</span>
-                  <input
-                    className="h-9 w-24 rounded-lg border border-transparent bg-slate-100 px-3 text-center font-semibold tabular-nums text-slate-950 outline-none transition focus:border-slate-300 focus:bg-white dark:bg-slate-800/60 dark:text-slate-100 dark:focus:border-slate-700"
-                    type="number"
-                    min={1}
-                    max={80}
-                    value={config.numQuestions}
-                    aria-label="自定义题目数量"
-                    onChange={(event) =>
-                      setConfig((current) => ({
-                        ...current,
-                        numQuestions: Math.min(80, Math.max(1, Number(event.target.value) || 1)),
-                      }))
-                    }
-                  />
-                  <span>题</span>
-                </label>
-              )}
-            </div>
-          </div>
+          <TrainingConfigField label="题目数量" description="下次生成题量" align="center">
+            <QuestionCountSelector
+              value={config.numQuestions}
+              mode={questionCountMode}
+              presets={CREATE_EXAM_QUESTION_COUNT_PRESETS}
+              customAriaLabel={`自定义${activeExamMode?.label ?? ""}题目数量`}
+              onModeChange={setQuestionCountMode}
+              onChange={(numQuestions) => setConfig((current) => ({ ...current, numQuestions }))}
+            />
+          </TrainingConfigField>
 
-          {config.examMode === "paper_exam" && (
-            <div className="grid gap-3 py-4 sm:grid-cols-[6rem_minmax(0,1fr)] sm:items-center">
-              <p className="text-sm font-semibold text-slate-950 dark:text-slate-100">考卷格式</p>
+          <TrainingConfigField label="题型方式" description="自动搭配或手动限定">
+            <OptionToggleGrid
+              primaryLabel="智能搭配"
+              secondaryLabel="指定题型"
+              mode={questionTypeMode}
+              options={CREATE_EXAM_QUESTION_TYPE_OPTIONS}
+              selectedValues={selectedQuestionTypeSet}
+              errorMessage={questionTypeMode === "custom" && config.questionTypes.length === 0
+                ? "至少选择一种题型。"
+                : null}
+              onModeChange={setQuestionTypeMode}
+              onToggle={toggleQuestionType}
+            />
+          </TrainingConfigField>
+
+          <TrainingConfigField label="整体难度" description={activeDifficulty?.description} align="center">
+            <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1 sm:grid-cols-4 dark:bg-slate-900">
+              {CREATE_EXAM_DIFFICULTY_OPTIONS.map((option) => {
+                const selected = option.value === config.difficulty;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setConfig((current) => ({ ...current, difficulty: option.value }))}
+                    className={`min-h-10 rounded-lg px-3 py-2 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 ${
+                      selected
+                        ? "bg-white text-slate-950 shadow-sm dark:bg-slate-800 dark:text-slate-100"
+                        : "text-slate-500 hover:bg-white/70 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-800/70 dark:hover:text-slate-100"
+                    }`}
+                    aria-pressed={selected}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </TrainingConfigField>
+
+          {config.examMode === "paper_exam" ? (
+            <TrainingConfigField label="考卷格式" description="选择卷面排版" align="center">
               <select
-                className="h-10 w-full rounded-lg border border-transparent bg-slate-100 px-3 text-sm font-medium text-slate-900 outline-none transition focus:border-slate-300 focus:bg-white dark:bg-slate-800/60 dark:text-slate-100 dark:focus:border-slate-700"
+                className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-slate-500 dark:focus:ring-slate-800"
                 value={config.paperLayoutMode}
+                aria-label="考卷格式"
                 onChange={(event) =>
                   setConfig((current) => ({
                     ...current,
@@ -278,35 +203,25 @@ export function CreateExamModal({ open, courseId, courseName, initialExamMode, o
                   </option>
                 ))}
               </select>
-            </div>
-          )}
+            </TrainingConfigField>
+          ) : null}
 
-          <label className="grid gap-3 py-4 sm:grid-cols-[6rem_minmax(0,1fr)] sm:items-start">
-            <span className="text-sm font-semibold text-slate-950 dark:text-slate-100">出题要求</span>
+          <TrainingConfigField label="补充要求" description="选填，补充重点或限制">
             <textarea
-              className="min-h-20 w-full resize-none rounded-lg border border-transparent bg-slate-50 px-3 py-2.5 text-sm leading-6 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-300 focus:bg-white dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-slate-700"
-              placeholder="题型、难度或重点范围"
+              className="min-h-20 w-full resize-y rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm leading-6 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-slate-500 dark:focus:ring-slate-800"
+              placeholder="例如：重点考查函数单调性，减少纯记忆题。"
               value={config.userPrompt}
-              onChange={(event) =>
-                setConfig((current) => ({
-                  ...current,
-                  userPrompt: event.target.value,
-                }))
-              }
+              onChange={(event) => setConfig((current) => ({ ...current, userPrompt: event.target.value }))}
             />
-          </label>
+          </TrainingConfigField>
         </section>
 
-        <div className="flex justify-end gap-3 border-t border-slate-100 pt-4 dark:border-slate-800">
-          <Button variant="outline" className="rounded-full px-5" onClick={handleReset}>
-            <RotateCcw className="h-4 w-4" />
-            重置
-          </Button>
-          <Button className="rounded-full bg-black px-6 dark:bg-white dark:text-slate-950" onClick={handleSave}>
-            <Save className="h-4 w-4" />
-            保存配置
-          </Button>
-        </div>
+        <TrainingConfigActions
+          onReset={handleReset}
+          onCancel={onClose}
+          onSave={handleSave}
+          saveDisabled={questionTypeMode === "custom" && config.questionTypes.length === 0}
+        />
       </div>
     </Modal>
   );

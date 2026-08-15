@@ -183,9 +183,9 @@ user.profile_json
 
 入口：`run_exam_study_guide_workflow`
 
-输入：考试得分摘要、错题摘要、Profile 薄弱点、待复习项。
+输入：考试得分摘要、当前试卷错题摘要、当前失分题关联的 Profile 薄弱点与待复习项。
 
-动作：生成考试后的复盘建议，并缓存到 `ExamStudyGuideCache`。
+动作：在 Profile 同步完成后生成考试复盘；后端校准重点知识点、累计掌握度和数量上限，并缓存到 `ExamStudyGuideCache`。
 
 输出：
 
@@ -197,6 +197,8 @@ action_steps
 review_tasks
 focus_units
 ```
+
+`review_tasks` 是旧客户端兼容字段，新生成结果固定为空，相关建议合并到最多 3 条 `action_steps`。
 
 ## 与其他模块的边界
 

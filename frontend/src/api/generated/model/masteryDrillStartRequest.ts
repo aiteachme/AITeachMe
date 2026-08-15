@@ -6,7 +6,7 @@
  */
 
 /**
- * Start a new durable drill or resume the active one for the course.
+ * Legacy payload retained for the disabled durable mastery-drill endpoint.
  */
 export interface MasteryDrillStartRequest {
   /**

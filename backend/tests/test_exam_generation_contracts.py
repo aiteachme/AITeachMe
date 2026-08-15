@@ -151,11 +151,15 @@ def test_exam_config_snapshot_normalizes_hash_inputs(monkeypatch: pytest.MonkeyP
         sample_file_ids=[" b ", "a", "", "a"],
         knowledge_unit_ids=[2, 1, 2, 0, -1],
         mastery_fingerprint="fingerprint",
+        question_types=["true_false", "single_choice", "true_false"],
+        difficulty="hard",
     )
 
     assert snapshot["user_prompt"] == "focus on weak units"
     assert snapshot["sample_file_ids"] == ["a", "b"]
     assert snapshot["knowledge_unit_ids"] == [1, 2]
+    assert snapshot["question_types"] == ["true_false", "single_choice"]
+    assert snapshot["difficulty"] == "hard"
     assert snapshot["paper_layout_mode"] == "practice_scroll"
     assert exams_api._exam_config_hash(snapshot) == exams_api._exam_config_hash(dict(reversed(snapshot.items())))
 
@@ -1480,6 +1484,8 @@ async def test_generate_exam_endpoint_creates_paper_and_schedules_background(
             user_prompt="  focus on matrices  ",
             sample_file_ids=["file-b", "file-a"],
             num_questions=2,
+            question_types=["single_choice", "true_false"],
+            difficulty="hard",
         ),
         user=CurrentUserContext(user_id=USER_ID, email=None, is_local=True),
         session=session,
@@ -1493,9 +1499,12 @@ async def test_generate_exam_endpoint_creates_paper_and_schedules_background(
     assert response.data.served_from_prepared is False
     assert len(background_tasks.tasks) == 1
     assert len(papers) == 1
-    assert json.loads(papers[0].config_snapshot_json)["knowledge_unit_ids"] == [
+    snapshot = json.loads(papers[0].config_snapshot_json)
+    assert snapshot["knowledge_unit_ids"] == [
         int(unit.id or 0) for unit in units
     ]
+    assert snapshot["question_types"] == ["single_choice", "true_false"]
+    assert snapshot["difficulty"] == "hard"
     assert captured[0][0] == "exam_generation_requested"
     assert captured[0][1]["course_id"] == COURSE_ID
     assert captured[0][1]["properties"]["exam_mode"] == "web_practice"

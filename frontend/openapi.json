@@ -3414,6 +3414,99 @@
         }
       }
     },
+    "/api/v1/courses/{course_id}/knowledge/docs/vector-index/rebuild": {
+      "post": {
+        "tags": [
+          "knowledge",
+          "knowledge"
+        ],
+        "summary": "Rebuild and verify the current course vector index",
+        "operationId": "knowledge_docs_vector_index_rebuild_api_v1_courses__course_id__knowledge_docs_vector_index_rebuild_post",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_CourseVectorIndexRebuildResponse_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态不允许执行该操作。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "依赖服务当前不可用。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/courses/{course_id}/knowledge/docs/manifest": {
       "get": {
         "tags": [
@@ -5683,8 +5776,9 @@
         "tags": [
           "exams"
         ],
-        "summary": "Fetch the active mastery drill for this course",
+        "summary": "Deprecated: durable mastery drills are no longer supported",
         "operationId": "active_mastery_drill_api_v1_courses__course_id__exams_mastery_drills_active_get",
+        "deprecated": true,
         "parameters": [
           {
             "name": "course_id",
@@ -5707,28 +5801,8 @@
               }
             }
           },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务内部异常。",
+          "410": {
+            "description": "接口可能返回业务错误。",
             "content": {
               "application/json": {
                 "schema": {
@@ -5819,6 +5893,16 @@
               }
             }
           },
+          "410": {
+            "description": "接口可能返回业务错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "500": {
             "description": "服务内部异常。",
             "content": {
@@ -5895,6 +5979,48 @@
                 }
               ],
               "title": "User Prompt"
+            }
+          },
+          {
+            "name": "question_types",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "enum": [
+                      "single_choice",
+                      "multiple_choice",
+                      "true_false",
+                      "fill_blank",
+                      "short_answer"
+                    ],
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Question Types"
+            }
+          },
+          {
+            "name": "difficulty",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "auto",
+                "easy",
+                "medium",
+                "hard"
+              ],
+              "type": "string",
+              "default": "auto",
+              "title": "Difficulty"
             }
           },
           {
@@ -6510,13 +6636,96 @@
         }
       }
     },
+    "/api/v1/courses/{course_id}/exams/mastery-drills/prepare": {
+      "post": {
+        "tags": [
+          "exams"
+        ],
+        "summary": "Prepare an ephemeral mastery drill and backfill its question-bank shortage",
+        "operationId": "prepare_mastery_drill_api_v1_courses__course_id__exams_mastery_drills_prepare_post",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MasteryDrillPrepareRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_MasteryDrillPrepareResponse_"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态不允许执行该操作。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "上游模型调用失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/courses/{course_id}/exams/mastery-drills/start": {
       "post": {
         "tags": [
           "exams"
         ],
-        "summary": "Start or resume a durable mastery drill",
+        "summary": "Deprecated: durable mastery drills are no longer supported",
         "operationId": "start_mastery_drill_api_v1_courses__course_id__exams_mastery_drills_start_post",
+        "deprecated": true,
         "parameters": [
           {
             "name": "course_id",
@@ -6549,38 +6758,8 @@
               }
             }
           },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "当前资源状态不允许执行该操作。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务内部异常。",
+          "410": {
+            "description": "接口可能返回业务错误。",
             "content": {
               "application/json": {
                 "schema": {
@@ -6607,8 +6786,9 @@
         "tags": [
           "exams"
         ],
-        "summary": "Persist and grade one mastery-drill attempt",
+        "summary": "Deprecated: mastery-drill attempts are not persisted",
         "operationId": "record_mastery_drill_attempt_api_v1_courses__course_id__exams__exam_paper_id__mastery_drill_attempts_post",
+        "deprecated": true,
         "parameters": [
           {
             "name": "course_id",
@@ -6651,38 +6831,8 @@
               }
             }
           },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "当前资源状态不允许执行该操作。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务内部异常。",
+          "410": {
+            "description": "接口可能返回业务错误。",
             "content": {
               "application/json": {
                 "schema": {
@@ -6709,8 +6859,9 @@
         "tags": [
           "exams"
         ],
-        "summary": "Idempotently complete a mastery drill",
+        "summary": "Deprecated: mastery-drill results are not persisted",
         "operationId": "complete_mastery_drill_api_v1_courses__course_id__exams__exam_paper_id__mastery_drill_complete_post",
+        "deprecated": true,
         "parameters": [
           {
             "name": "course_id",
@@ -6753,38 +6904,8 @@
               }
             }
           },
-          "400": {
-            "description": "请求参数不合法。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "资源不存在。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "当前资源状态不允许执行该操作。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务内部异常。",
+          "410": {
+            "description": "接口可能返回业务错误。",
             "content": {
               "application/json": {
                 "schema": {
@@ -7045,12 +7166,111 @@
         }
       }
     },
+    "/api/v1/courses/{course_id}/exams/{exam_paper_id}/study-guide/stream": {
+      "get": {
+        "tags": [
+          "exams"
+        ],
+        "summary": "SSE stream for a graded exam study guide",
+        "operationId": "exam_study_guide_stream_api_v1_courses__course_id__exams__exam_paper_id__study_guide_stream_get",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          },
+          {
+            "name": "exam_paper_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Exam Paper Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态不允许执行该操作。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "依赖服务当前不可用。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/courses/{course_id}/exams/{exam_paper_id}/study-guide": {
       "get": {
         "tags": [
           "exams"
         ],
-        "summary": "Generate study guide from a graded exam",
+        "summary": "Fetch or wait for the shared study guide generation of a graded exam",
         "operationId": "exam_study_guide_api_v1_courses__course_id__exams__exam_paper_id__study_guide_get",
         "parameters": [
           {
@@ -7115,6 +7335,36 @@
           },
           "500": {
             "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "上游模型调用失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "依赖服务当前不可用。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "接口可能返回业务错误。",
             "content": {
               "application/json": {
                 "schema": {
@@ -9207,6 +9457,40 @@
           "message": "ok"
         }
       },
+      "ApiResponse_CourseVectorIndexRebuildResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CourseVectorIndexRebuildResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[CourseVectorIndexRebuildResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
       "ApiResponse_DocGenBuildCancelData_": {
         "properties": {
           "code": {
@@ -10323,6 +10607,40 @@
         },
         "type": "object",
         "title": "ApiResponse[MasteryDrillAttemptResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_MasteryDrillPrepareResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MasteryDrillPrepareResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[MasteryDrillPrepareResponse]",
         "example": {
           "code": 0,
           "data": {},
@@ -14354,6 +14672,36 @@
         ],
         "title": "CourseUpdateRequest"
       },
+      "CourseVectorIndexRebuildResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "rebuilt"
+            ],
+            "title": "Status",
+            "description": "Verified vector-index state."
+          },
+          "indexed_chunk_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Indexed Chunk Count",
+            "description": "Number of chunks verified during this rebuild."
+          },
+          "vector_status": {
+            "$ref": "#/components/schemas/CourseVectorStatusResponse",
+            "description": "Refreshed course-level vector capability status."
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "indexed_chunk_count"
+        ],
+        "title": "CourseVectorIndexRebuildResponse",
+        "description": "Result of rebuilding and verifying the current course vector index."
+      },
       "CourseVectorStatusResponse": {
         "properties": {
           "mode": {
@@ -14859,7 +15207,7 @@
           "exam_mode": {
             "type": "string",
             "title": "Exam Mode",
-            "description": "Exam mode: web_practice | paper_exam. Mastery drills use their dedicated API."
+            "description": "Exam mode: web_practice | paper_exam. Mastery drills are assembled client-side after the server ensures the reusable question bank can satisfy the saved config."
           },
           "user_prompt": {
             "anyOf": [
@@ -14901,6 +15249,34 @@
             ],
             "title": "Num Questions",
             "description": "Optional target question count."
+          },
+          "question_types": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "single_choice",
+                "multiple_choice",
+                "true_false",
+                "fill_blank",
+                "short_answer"
+              ]
+            },
+            "type": "array",
+            "maxItems": 5,
+            "title": "Question Types",
+            "description": "Optional allowed question types. Empty means automatic type planning."
+          },
+          "difficulty": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "easy",
+              "medium",
+              "hard"
+            ],
+            "title": "Difficulty",
+            "description": "Optional overall difficulty preference. Auto lets the planner choose per question.",
+            "default": "auto"
           },
           "paper_layout_mode": {
             "anyOf": [
@@ -15739,6 +16115,43 @@
             "type": "string",
             "title": "Knowledge Unit Name"
           },
+          "paper_attempts": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Paper Attempts",
+            "default": 0
+          },
+          "paper_correct_attempts": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Paper Correct Attempts",
+            "default": 0
+          },
+          "paper_score_obtained": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Paper Score Obtained",
+            "default": 0.0
+          },
+          "paper_score_max": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Paper Score Max",
+            "default": 0.0
+          },
+          "paper_score_rate": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paper Score Rate"
+          },
           "mastery_score": {
             "anyOf": [
               {
@@ -15748,7 +16161,8 @@
                 "type": "null"
               }
             ],
-            "title": "Mastery Score"
+            "title": "Mastery Score",
+            "description": "Cumulative profile mastery retained for personalization; not the paper metric."
           },
           "reason": {
             "type": "string",
@@ -15764,6 +16178,12 @@
       },
       "ExamStudyGuideResponse": {
         "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 2,
+            "title": "Schema Version",
+            "default": 2
+          },
           "exam_paper_id": {
             "type": "integer",
             "title": "Exam Paper Id"
@@ -19239,7 +19659,7 @@
           "attempt_key"
         ],
         "title": "MasteryDrillAttemptRequest",
-        "description": "Persist and grade one answer attempt."
+        "description": "Legacy payload retained for the disabled mastery-drill attempt endpoint."
       },
       "MasteryDrillAttemptResponse": {
         "properties": {
@@ -19449,7 +19869,7 @@
           "completion_key"
         ],
         "title": "MasteryDrillCompleteRequest",
-        "description": "Idempotently finish a drill after every item has been passed."
+        "description": "Legacy payload retained for the disabled mastery-drill completion endpoint."
       },
       "MasteryDrillHistorySummary": {
         "properties": {
@@ -19493,6 +19913,68 @@
           "status"
         ],
         "title": "MasteryDrillHistorySummary"
+      },
+      "MasteryDrillPrepareRequest": {
+        "properties": {
+          "num_questions": {
+            "type": "integer",
+            "maximum": 80.0,
+            "minimum": 1.0,
+            "title": "Num Questions"
+          },
+          "question_types": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "single_choice",
+                "multiple_choice",
+                "true_false",
+                "fill_blank",
+                "short_answer"
+              ]
+            },
+            "type": "array",
+            "maxItems": 5,
+            "title": "Question Types",
+            "description": "Allowed question types. Empty means an automatic mix."
+          }
+        },
+        "type": "object",
+        "required": [
+          "num_questions"
+        ],
+        "title": "MasteryDrillPrepareRequest",
+        "description": "Prepare an ephemeral mastery drill from the reusable question bank."
+      },
+      "MasteryDrillPrepareResponse": {
+        "properties": {
+          "requested_count": {
+            "type": "integer",
+            "title": "Requested Count"
+          },
+          "available_count": {
+            "type": "integer",
+            "title": "Available Count"
+          },
+          "generated_count": {
+            "type": "integer",
+            "title": "Generated Count"
+          },
+          "templates": {
+            "items": {
+              "$ref": "#/components/schemas/QuestionTemplateItemResponse"
+            },
+            "type": "array",
+            "title": "Templates"
+          }
+        },
+        "type": "object",
+        "required": [
+          "requested_count",
+          "available_count",
+          "generated_count"
+        ],
+        "title": "MasteryDrillPrepareResponse"
       },
       "MasteryDrillSessionResponse": {
         "properties": {
@@ -19601,7 +20083,7 @@
           "configured_question_count"
         ],
         "title": "MasteryDrillStartRequest",
-        "description": "Start a new durable drill or resume the active one for the course."
+        "description": "Legacy payload retained for the disabled durable mastery-drill endpoint."
       },
       "MasteryOverviewResponse": {
         "properties": {
@@ -20435,6 +20917,12 @@
             "type": "string",
             "title": "Answer",
             "description": "Submitted answer."
+          },
+          "ephemeral": {
+            "type": "boolean",
+            "title": "Ephemeral",
+            "description": "Whether this one-time grading result must skip analytics recording.",
+            "default": false
           }
         },
         "type": "object",

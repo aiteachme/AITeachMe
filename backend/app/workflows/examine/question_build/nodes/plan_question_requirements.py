@@ -30,6 +30,7 @@ def build_plan_question_requirements_node(*, context: WorkflowContext):
                 exam_mode=str(state.get("exam_mode") or "web_practice"),
                 question_count=int(state.get("question_count") or 1),
                 user_prompt=str(state.get("user_prompt") or ""),
+                configured_question_types=list(state.get("configured_question_types") or []),
             )
             prompt_payload = [item.model_dump(mode="json") for item in planned]
 

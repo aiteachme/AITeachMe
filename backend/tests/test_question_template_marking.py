@@ -173,6 +173,15 @@ def test_question_template_grade_api_reuses_exam_grade_workflow(monkeypatch: pyt
         assert analytics_properties["grading_mode"] == "subjective_llm"
         assert analytics_properties["score_obtained"] == 1.0
         assert "2x" not in str(analytics_properties)
+
+        with TestClient(app) as client:
+            ephemeral_response = client.post(
+                f"/api/v1/courses/{course.id}/exams/question-templates/{template.id}/grade",
+                json={"answer": "2x", "ephemeral": True},
+            )
+
+        assert ephemeral_response.status_code == 200
+        assert len(analytics_events) == 1
     finally:
         session.close()
 

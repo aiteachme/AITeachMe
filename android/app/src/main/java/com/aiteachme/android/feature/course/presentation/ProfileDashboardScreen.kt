@@ -123,7 +123,7 @@ fun ProfileDashboardScreen(
         if (!state.isLoading && state.mastery == null && state.reviews.isEmpty() && state.studyPlan.isEmpty()) {
             item {
                 MessagePanel(
-                    message = "还没有可用画像。完成一次练习、整卷测试或闯关后，这里会显示掌握度和复习任务。",
+                    message = "还没有可用画像。完成一次测验或整卷测试后，这里会显示掌握度和复习任务。",
                     isError = false,
                 )
             }

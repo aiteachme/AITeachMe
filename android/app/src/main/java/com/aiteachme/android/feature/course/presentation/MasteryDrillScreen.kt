@@ -18,6 +18,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Bookmark
+import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Quiz
 import androidx.compose.material.icons.outlined.Refresh
@@ -73,6 +75,13 @@ fun MasteryDrillScreen(
             )
         }
 
+        item {
+            DrillMessageCard(
+                message = "一次性训练：题目标记会保存；本轮答案、错题、进度和结果不会保存，退出后无法恢复。",
+                isError = false,
+            )
+        }
+
         state.errorMessage?.let { message ->
             item { DrillMessageCard(message = message, isError = true) }
         }
@@ -93,10 +102,6 @@ fun MasteryDrillScreen(
                     DrillCompletedCard(
                         totalCount = state.selectedTemplates.size,
                         wrongAttemptCount = state.wrongAttemptCount,
-                        isCompleting = state.isCompleting,
-                        isCompleted = state.completedAt != null,
-                        completionFailed = state.errorMessage != null,
-                        onRetry = viewModel::retryCompletion,
                         onRestart = viewModel::restart,
                     )
                 }
@@ -110,6 +115,7 @@ fun MasteryDrillScreen(
                         onAnswerChange = { value -> viewModel.updateAnswer(state.currentTemplate!!.id, value) },
                         onCheck = { viewModel.checkCurrentAnswer(courseId) },
                         onContinue = viewModel::continueAfterFeedback,
+                        onToggleMark = { viewModel.toggleCurrentMark(courseId) },
                     )
                 }
             }
@@ -122,6 +128,10 @@ private fun MasteryDrillHeader(
     state: MasteryDrillUiState,
     onBack: () -> Unit,
 ) {
+    val displayedCompletedCount = (
+        state.completedIds.size + if (state.feedback?.isCorrect == true) 1 else 0
+    ).coerceAtMost(state.selectedTemplates.size)
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surfaceContainer,
@@ -148,7 +158,7 @@ private fun MasteryDrillHeader(
                     fontWeight = FontWeight.Black,
                 )
                 Text(
-                    text = "从题库模板抽题，一题一判；每次作答都会自动保存，可跨设备恢复并进入训练历史。",
+                    text = "从题库模板抽题，一题一判；仅题目标记会保存，本轮作答不会进入训练历史。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -156,7 +166,7 @@ private fun MasteryDrillHeader(
 
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 DrillStatChip(label = "本轮", value = state.selectedTemplates.size.toString(), modifier = Modifier.weight(1f))
-                DrillStatChip(label = "已通过", value = state.completedIds.size.toString(), modifier = Modifier.weight(1f))
+                DrillStatChip(label = "已通过", value = displayedCompletedCount.toString(), modifier = Modifier.weight(1f))
                 DrillStatChip(label = "回炉", value = state.wrongAttemptCount.toString(), modifier = Modifier.weight(1f))
             }
         }
@@ -192,12 +202,13 @@ private fun DrillQuestionCard(
     onAnswerChange: (String) -> Unit,
     onCheck: () -> Unit,
     onContinue: () -> Unit,
+    onToggleMark: () -> Unit,
 ) {
     val feedback = state.feedback?.takeIf { it.templateId == template.id }
     val isSupported = isSupportedExamQuestionType(template.questionType)
     val choices = template.drillChoices()
     val isMultipleChoice = template.questionType.lowercase() in setOf("multiple_choice", "multi_choice")
-    val currentNumber = state.selectedTemplates.indexOfFirst { it.id == template.id }.takeIf { it >= 0 }?.plus(1) ?: 1
+    val currentNumber = (state.completedIds.size + 1).coerceAtMost(state.selectedTemplates.size)
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -240,13 +251,32 @@ private fun DrillQuestionCard(
                         )
                     }
                 }
-                Text(
-                    text = template.difficulty.ifBlank { "默认难度" },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = template.difficulty.ifBlank { "默认难度" },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    IconButton(
+                        onClick = onToggleMark,
+                        enabled = state.markingTemplateId == null,
+                    ) {
+                        if (state.markingTemplateId == template.id) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                        } else {
+                            Icon(
+                                imageVector = if (template.isMarked) Icons.Outlined.Bookmark else Icons.Outlined.BookmarkBorder,
+                                contentDescription = if (template.isMarked) "取消标记" else "标记题目",
+                                tint = if (template.isMarked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
             }
 
             MarkdownText(
@@ -474,10 +504,6 @@ private fun DrillAnswerLine(
 private fun DrillCompletedCard(
     totalCount: Int,
     wrongAttemptCount: Int,
-    isCompleting: Boolean,
-    isCompleted: Boolean,
-    completionFailed: Boolean,
-    onRetry: () -> Unit,
     onRestart: () -> Unit,
 ) {
     Surface(
@@ -493,27 +519,14 @@ private fun DrillCompletedCard(
             Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = Color(0xFF146C43), modifier = Modifier.size(44.dp))
             Text("$totalCount 题全部通过", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Text(
-                when {
-                    isCompleting -> "正在保存本轮训练记录…"
-                    completionFailed -> "作答已逐题保存，但训练记录汇总失败，请重试。"
-                    isCompleted -> "本轮回炉 $wrongAttemptCount 次；作答结果已保存到训练历史。"
-                    else -> "正在准备保存本轮训练记录…"
-                },
+                "本轮回炉 $wrongAttemptCount 次；结果仅保留在当前页面，不会生成训练记录或错题。",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            when {
-                isCompleting -> CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                completionFailed -> FilledTonalButton(onClick = onRetry) {
-                    Icon(Icons.Outlined.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("重试保存")
-                }
-                isCompleted -> Button(onClick = onRestart) {
-                    Icon(Icons.Outlined.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("再来一轮")
-                }
+            Button(onClick = onRestart) {
+                Icon(Icons.Outlined.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("再来一轮")
             }
         }
     }

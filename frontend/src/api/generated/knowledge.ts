@@ -30,6 +30,7 @@ import type {
   ApiResponseBuildPlannerSessionResponse,
   ApiResponseChunkContextResponse,
   ApiResponseClearKnowledgeResponse,
+  ApiResponseCourseVectorIndexRebuildResponse,
   ApiResponseDocGenBuildCancelData,
   ApiResponseDocGenBuildData,
   ApiResponseDocGenGetResponse,
@@ -1594,6 +1595,119 @@ export const useKnowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPost = <TError = E
         TContext
       > => {
       return useMutation(getKnowledgeDocsApiV1CoursesCourseIdKnowledgeDocsPostMutationOptions(options), queryClient);
+    }
+    export type knowledgeDocsVectorIndexRebuildApiV1CoursesCourseIdKnowledgeDocsVectorIndexRebuildPostResponse200 = {
+  data: ApiResponseCourseVectorIndexRebuildResponse
+  status: 200
+}
+
+export type knowledgeDocsVectorIndexRebuildApiV1CoursesCourseIdKnowledgeDocsVectorIndexRebuildPostResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type knowledgeDocsVectorIndexRebuildApiV1CoursesCourseIdKnowledgeDocsVectorIndexRebuildPostResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type knowledgeDocsVectorIndexRebuildApiV1CoursesCourseIdKnowledgeDocsVectorIndexRebuildPostResponse409 = {
+  data: ErrorResponse
+  status: 409
+}
+
+export type knowledgeDocsVectorIndexRebuildApiV1CoursesCourseIdKnowledgeDocsVectorIndexRebuildPostResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type knowledgeDocsVectorIndexRebuildApiV1CoursesCourseIdKnowledgeDocsVectorIndexRebuildPostResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type knowledgeDocsVectorIndexRebuildApiV1CoursesCourseIdKnowledgeDocsVectorIndexRebuildPostResponse503 = {
+  data: ErrorResponse
+  status: 503
+}
+
+export type knowledgeDocsVectorIndexRebuildApiV1CoursesCourseIdKnowledgeDocsVectorIndexRebuildPostResponseSuccess = (knowledgeDocsVectorIndexRebuildApiV1CoursesCourseIdKnowledgeDocsVectorIndexRebuildPostResponse200) & {
+  headers: Headers;
+};
+export type knowledgeDocsVectorIndexRebuildApiV1CoursesCourseIdKnowledgeDocsVectorIndexRebuildPostResponseError = (knowledgeDocsVectorIndexRebuildApiV1CoursesCourseIdKnowledgeDocsVectorIndexRebuildPostResponse400 | knowledgeDocsVectorIndexRebuildApiV1CoursesCourseIdKnowledgeDocsVectorIndexRebuildPostResponse404 | knowledgeDocsVectorIndexRebuildApiV1CoursesCourseIdKnowledgeDocsVectorIndexRebuildPostResponse409 | knowledgeDocsVectorIndexRebuildApiV1CoursesCourseIdKnowledgeDocsVectorIndexRebuildPostResponse422 | knowledgeDocsVectorIndexRebuildApiV1CoursesCourseIdKnowledgeDocsVectorIndexRebuildPostResponse500 | knowledgeDocsVectorIndexRebuildApiV1CoursesCourseIdKnowledgeDocsVectorIndexRebuildPostResponse503) & {
+  headers: Headers;
+};
+
+export type knowledgeDocsVectorIndexRebuildApiV1CoursesCourseIdKnowledgeDocsVectorIndexRebuildPostResponse = (knowledgeDocsVectorIndexRebuildApiV1CoursesCourseIdKnowledgeDocsVectorIndexRebuildPostResponseSuccess | knowledgeDocsVectorIndexRebuildApiV1CoursesCourseIdKnowledgeDocsVectorIndexRebuildPostResponseError)
+
+export const getKnowledgeDocsVectorIndexRebuildApiV1CoursesCourseIdKnowledgeDocsVectorIndexRebuildPostUrl = (courseId: string,) => {
+
+
+
+
+  return `/api/v1/courses/${courseId}/knowledge/docs/vector-index/rebuild`
+}
+
+/**
+ * @summary Rebuild and verify the current course vector index
+ */
+export const knowledgeDocsVectorIndexRebuildApiV1CoursesCourseIdKnowledgeDocsVectorIndexRebuildPost = async (courseId: string, options?: RequestInit): Promise<knowledgeDocsVectorIndexRebuildApiV1CoursesCourseIdKnowledgeDocsVectorIndexRebuildPostResponse> => {
+
+  return orvalApiClient<knowledgeDocsVectorIndexRebuildApiV1CoursesCourseIdKnowledgeDocsVectorIndexRebuildPostResponse>(getKnowledgeDocsVectorIndexRebuildApiV1CoursesCourseIdKnowledgeDocsVectorIndexRebuildPostUrl(courseId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getKnowledgeDocsVectorIndexRebuildApiV1CoursesCourseIdKnowledgeDocsVectorIndexRebuildPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof knowledgeDocsVectorIndexRebuildApiV1CoursesCourseIdKnowledgeDocsVectorIndexRebuildPost>>, TError,{courseId: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof knowledgeDocsVectorIndexRebuildApiV1CoursesCourseIdKnowledgeDocsVectorIndexRebuildPost>>, TError,{courseId: string}, TContext> => {
+
+const mutationKey = ['knowledgeDocsVectorIndexRebuildApiV1CoursesCourseIdKnowledgeDocsVectorIndexRebuildPost'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof knowledgeDocsVectorIndexRebuildApiV1CoursesCourseIdKnowledgeDocsVectorIndexRebuildPost>>, {courseId: string}> = (props) => {
+          const {courseId} = props ?? {};
+
+          return  knowledgeDocsVectorIndexRebuildApiV1CoursesCourseIdKnowledgeDocsVectorIndexRebuildPost(courseId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type KnowledgeDocsVectorIndexRebuildApiV1CoursesCourseIdKnowledgeDocsVectorIndexRebuildPostMutationResult = NonNullable<Awaited<ReturnType<typeof knowledgeDocsVectorIndexRebuildApiV1CoursesCourseIdKnowledgeDocsVectorIndexRebuildPost>>>
+
+    export type KnowledgeDocsVectorIndexRebuildApiV1CoursesCourseIdKnowledgeDocsVectorIndexRebuildPostMutationError = ErrorResponse | HTTPValidationError
+
+    /**
+ * @summary Rebuild and verify the current course vector index
+ */
+export const useKnowledgeDocsVectorIndexRebuildApiV1CoursesCourseIdKnowledgeDocsVectorIndexRebuildPost = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof knowledgeDocsVectorIndexRebuildApiV1CoursesCourseIdKnowledgeDocsVectorIndexRebuildPost>>, TError,{courseId: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof knowledgeDocsVectorIndexRebuildApiV1CoursesCourseIdKnowledgeDocsVectorIndexRebuildPost>>,
+        TError,
+        {courseId: string},
+        TContext
+      > => {
+      return useMutation(getKnowledgeDocsVectorIndexRebuildApiV1CoursesCourseIdKnowledgeDocsVectorIndexRebuildPostMutationOptions(options), queryClient);
     }
     export type knowledgeDocsManifestApiV1CoursesCourseIdKnowledgeDocsManifestGetResponse200 = {
   data: ApiResponseKnowledgeDocsPublishedManifestResponse

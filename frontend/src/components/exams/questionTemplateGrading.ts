@@ -23,6 +23,7 @@ export async function gradeQuestionTemplateAnswer(
   questionTemplateId: number,
   answer: string,
   questionType?: string | null,
+  options?: { ephemeral?: boolean },
 ): Promise<QuestionTemplateGradeResult> {
   if (questionType !== undefined) {
     requireSupportedQuestionType(questionType);
@@ -32,7 +33,7 @@ export async function gradeQuestionTemplateAnswer(
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ answer }),
+      body: JSON.stringify({ answer, ephemeral: options?.ephemeral === true }),
       timeout: LONG_RUNNING_API_TIMEOUT_MS,
     },
   );

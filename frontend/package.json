@@ -25,6 +25,13 @@
     "tauri:build:local:raw": "tauri build --config src-tauri/tauri.local.conf.json --features local-backend",
     "build": "tsc && vite build",
     "build:desktop": "tsc && vite build --base=./",
+    "test:exam-submission-flow": "node --experimental-strip-types tests/exam-submission-flow.test.mjs",
+    "test:mastery-drill-progress": "node --experimental-strip-types tests/mastery-drill-progress.test.mjs",
+    "test:question-bank-filters": "node --experimental-strip-types tests/question-bank-filters.test.mjs",
+    "test:question-template-detail": "node --experimental-strip-types tests/question-template-detail.test.mjs",
+    "test:question-marking": "node --experimental-strip-types tests/question-marking.test.mjs",
+    "test:study-guide-stream": "node --experimental-strip-types tests/study-guide-stream.test.mjs",
+    "test:training-config": "node --experimental-strip-types tests/training-config.test.mjs",
     "test:security": "node --experimental-strip-types tests/markdown-security.test.mjs",
     "test:sse": "node --experimental-strip-types tests/sse.test.mjs",
     "preview": "vite preview"

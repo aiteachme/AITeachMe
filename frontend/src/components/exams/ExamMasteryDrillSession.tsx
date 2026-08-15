@@ -26,29 +26,26 @@ import {
   splitMultiChoiceAnswer,
 } from "./examDisplay";
 import { isAiGradedQuestionType, type QuestionTemplateGradeResult } from "./questionTemplateGrading";
+import { getMasteryDrillQuestionNumber } from "./masteryDrillProgress";
 import { isSupportedQuestionType } from "./questionTypes";
 
 export interface MasteryDrillCompletionSummary {
   totalAttemptCount: number;
   wrongAttemptCount: number;
-  wrongQuestionTemplateIds: number[];
 }
 
 interface ExamMasteryDrillSessionProps {
   paper: ExamPaperDetailResponse;
   answers: Record<number, string>;
   setAnswers: Dispatch<SetStateAction<Record<number, string>>>;
-  isCompleting: boolean;
   onComplete: (finalAnswers: Record<number, string>, summary: MasteryDrillCompletionSummary) => void;
   onBack?: () => void;
   onRestart?: () => void;
-  onRetryComplete?: () => void;
   completionDescription?: string;
-  completionError?: string | null;
   onGradeAnswer: (item: ExamPaperItemResponse, answer: string) => Promise<QuestionTemplateGradeResult>;
   onQuestionAi?: (item: ExamPaperItemResponse, isReviewStage: boolean, answerValue: string) => void;
   onQuestionMarkToggle?: (item: ExamPaperItemResponse, isMarked: boolean) => void;
-  markingQuestionTemplateId?: number | null;
+  markingQuestionTemplateIds?: ReadonlySet<number>;
 }
 
 interface DrillFeedback {
@@ -102,6 +99,18 @@ function formatAnswerForDisplay(questionType: string, value?: string | null) {
   return formatAnswerDisplayValue(questionType, value);
 }
 
+function isObjectiveDrillAnswerCorrect(item: ExamPaperItemResponse, answer: string): boolean {
+  if (item.question_type === "multiple_choice" || item.question_type === "multi_choice") {
+    const expected = splitMultiChoiceAnswer(item.correct_answer);
+    const actual = splitMultiChoiceAnswer(answer);
+    return expected.size > 0 && expected.size === actual.size && [...expected].every((value) => actual.has(value));
+  }
+  if (item.question_type === "true_false") {
+    return isTrueFalseAnswerMatch(item.correct_answer, answer);
+  }
+  return normalizeTextAnswer(item.correct_answer) === normalizeTextAnswer(answer);
+}
+
 function DrillAnswerBlock({ title, content }: { title: string; content: string }) {
   return (
     <section className="rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 dark:border-slate-800 dark:bg-slate-950/80">
@@ -117,17 +126,14 @@ export function ExamMasteryDrillSession({
   paper,
   answers,
   setAnswers,
-  isCompleting,
   onComplete,
   onBack,
   onRestart,
-  onRetryComplete,
-  completionDescription = "本轮闯关已完成，训练记录会同步到历史记录。",
-  completionError,
+  completionDescription = "本轮结果只保留在当前页面，不会生成训练记录或沉淀错题。",
   onGradeAnswer,
   onQuestionAi,
   onQuestionMarkToggle,
-  markingQuestionTemplateId,
+  markingQuestionTemplateIds,
 }: ExamMasteryDrillSessionProps) {
   const orderedItems = useMemo(
     () => [...(paper.items ?? [])].sort((left, right) => left.item_order - right.item_order),
@@ -139,51 +145,21 @@ export function ExamMasteryDrillSession({
     () => new Map(orderedItems.map((item) => [item.id, item])),
     [orderedItems],
   );
-  const persistedAttempts = useMemo(
-    () => (paper.mastery_drill?.attempts ?? []).filter((attempt) => attempt.status === "graded"),
-    [paper.mastery_drill?.attempts],
-  );
-  const persistedAttemptSignature = persistedAttempts
-    .map((attempt) => `${attempt.id}:${attempt.is_correct === true ? 1 : 0}`)
-    .join(",");
-  const buildPersistedState = () => {
-    const stats: Record<number, AttemptStats> = {};
-    persistedAttempts.forEach((attempt) => {
-      const previous = stats[attempt.exam_paper_item_id] ?? { attempts: 0, wrong: 0, correct: false };
-      stats[attempt.exam_paper_item_id] = {
-        attempts: previous.attempts + 1,
-        wrong: previous.wrong + (attempt.is_correct === true ? 0 : 1),
-        correct: previous.correct || attempt.is_correct === true,
-      };
-    });
-    const completed = new Set(
-      orderedItems
-        .filter((item) => item.is_correct === true || stats[item.id]?.correct === true)
-        .map((item) => item.id),
-    );
-    return {
-      stats,
-      completed,
-      queue: orderedItemIds.filter((itemId) => !completed.has(itemId)),
-    };
-  };
-  const initialPersistedState = buildPersistedState();
-  const [queue, setQueue] = useState<number[]>(initialPersistedState.queue);
-  const [completedIds, setCompletedIds] = useState<Set<number>>(initialPersistedState.completed);
-  const [attemptStats, setAttemptStats] = useState<Record<number, AttemptStats>>(initialPersistedState.stats);
+  const [queue, setQueue] = useState<number[]>(orderedItemIds);
+  const [completedIds, setCompletedIds] = useState<Set<number>>(new Set());
+  const [attemptStats, setAttemptStats] = useState<Record<number, AttemptStats>>({});
   const [feedback, setFeedback] = useState<DrillFeedback | null>(null);
   const [checkingItemId, setCheckingItemId] = useState<number | null>(null);
   const completionNotifiedPaperIdRef = useRef<number | null>(null);
 
   useEffect(() => {
-    const persisted = buildPersistedState();
-    setQueue(persisted.queue);
-    setCompletedIds(persisted.completed);
-    setAttemptStats(persisted.stats);
+    setQueue(itemIdsKey ? itemIdsKey.split(",").map(Number) : []);
+    setCompletedIds(new Set());
+    setAttemptStats({});
     setFeedback(null);
     setCheckingItemId(null);
     completionNotifiedPaperIdRef.current = null;
-  }, [paper.id, itemIdsKey, persistedAttemptSignature]);
+  }, [itemIdsKey, paper.id]);
 
   const currentItem = queue.length ? itemById.get(queue[0]) ?? null : null;
   const answerValue = currentItem ? answers[currentItem.item_order] ?? "" : "";
@@ -206,7 +182,9 @@ export function ExamMasteryDrillSession({
     setCheckingItemId(currentItem.id);
     let gradeResult: Partial<QuestionTemplateGradeResult> | null = null;
     try {
-      gradeResult = await onGradeAnswer(currentItem, submittedAnswer);
+      gradeResult = isAiGradedQuestionType(currentItem.question_type)
+        ? await onGradeAnswer(currentItem, submittedAnswer)
+        : { is_correct: isObjectiveDrillAnswerCorrect(currentItem, submittedAnswer) };
     } catch {
       return;
     } finally {
@@ -256,17 +234,10 @@ export function ExamMasteryDrillSession({
       setQueue(remainingQueue);
       setFeedback(null);
       if (remainingQueue.length === 0) {
-        const wrongQuestionTemplateIds = Object.entries(finalAttemptStats)
-          .filter(([, stats]) => stats.wrong > 0)
-          .map(([itemId]) => itemById.get(Number(itemId))?.question_template_id)
-          .filter((templateId): templateId is number => (
-            typeof templateId === "number" && Number.isFinite(templateId) && templateId > 0
-          ));
         completionNotifiedPaperIdRef.current = paper.id;
         onComplete(finalAnswers, {
           totalAttemptCount: Object.values(finalAttemptStats).reduce((total, item) => total + item.attempts, 0),
           wrongAttemptCount: Object.values(finalAttemptStats).reduce((total, item) => total + item.wrong, 0),
-          wrongQuestionTemplateIds,
         });
       }
       return;
@@ -287,16 +258,9 @@ export function ExamMasteryDrillSession({
       return;
     }
     completionNotifiedPaperIdRef.current = paper.id;
-    const wrongQuestionTemplateIds = Object.entries(attemptStats)
-      .filter(([, stats]) => stats.wrong > 0)
-      .map(([itemId]) => itemById.get(Number(itemId))?.question_template_id)
-      .filter((templateId): templateId is number => (
-        typeof templateId === "number" && Number.isFinite(templateId) && templateId > 0
-      ));
     onComplete(answers, {
       totalAttemptCount: Object.values(attemptStats).reduce((total, item) => total + item.attempts, 0),
       wrongAttemptCount: Object.values(attemptStats).reduce((total, item) => total + item.wrong, 0),
-      wrongQuestionTemplateIds,
     });
   }, [answers, attemptStats, completedIds, itemById, onComplete, orderedItems.length, paper.id, queue.length]);
 
@@ -314,21 +278,9 @@ export function ExamMasteryDrillSession({
         <Trophy className="mx-auto h-10 w-10" />
         <h2 className="mt-3 text-xl font-semibold">{orderedItems.length} 题全部答对</h2>
         <p className="mt-2 text-sm leading-6 text-emerald-800 dark:text-emerald-200">
-          {isCompleting
-            ? "正在保存本次训练记录..."
-            : completionError ?? completionDescription}
+          {completionDescription}
         </p>
-        {isCompleting ? <Loader2 className="mx-auto mt-4 h-5 w-5 animate-spin" /> : null}
-        {!isCompleting && completionError && onRetryComplete ? (
-          <Button
-            className="mt-5 h-10 rounded-full bg-amber-700 px-5 text-sm font-semibold text-white hover:bg-amber-600"
-            onClick={onRetryComplete}
-          >
-            <RotateCcw className="h-4 w-4" />
-            重试保存
-          </Button>
-        ) : null}
-        {!isCompleting && !completionError && onRestart ? (
+        {onRestart ? (
           <Button
             className="mt-5 h-10 rounded-full bg-emerald-950 px-5 text-sm font-semibold text-white hover:bg-emerald-900 dark:bg-emerald-100 dark:text-emerald-950 dark:hover:bg-white"
             onClick={onRestart}
@@ -351,10 +303,13 @@ export function ExamMasteryDrillSession({
     orderedItems.length,
     completedCount + (activeFeedback?.isCorrect ? 1 : 0),
   );
+  const displayedQuestionNumber = getMasteryDrillQuestionNumber(completedCount, orderedItems.length);
   const displayedRemainingCount = Math.max(0, orderedItems.length - displayedCompletedCount);
   const progressPercent = Math.round((displayedCompletedCount / orderedItems.length) * 100);
   const isMarked = currentItem.is_marked === true;
-  const isMarking = markingQuestionTemplateId === currentItem.question_template_id;
+  const isMarking = Boolean(
+    currentItem.question_template_id && markingQuestionTemplateIds?.has(currentItem.question_template_id),
+  );
 
   const footerHint = useMemo(() => {
     if (activeFeedback) {
@@ -430,7 +385,7 @@ export function ExamMasteryDrillSession({
           <div className="flex flex-wrap items-center gap-4 border-b border-slate-100 pb-3 dark:border-slate-800">
             <div className="flex flex-wrap items-center gap-3">
               <div className="font-sans text-lg font-bold text-slate-800 dark:text-slate-200">
-                {currentItem.item_order}.
+                {displayedQuestionNumber}.
               </div>
               <span className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold leading-4 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                 <span className={cn(
@@ -458,8 +413,8 @@ export function ExamMasteryDrillSession({
                     type="button"
                     onClick={() => onQuestionAi(currentItem, Boolean(hasFeedback), answerValue)}
                     className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition focus:outline-none dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-900"
-                    title={`围绕第 ${currentItem.item_order} 题问 AI`}
-                    aria-label={`围绕第 ${currentItem.item_order} 题问 AI`}
+                    title={`围绕第 ${displayedQuestionNumber} 题问 AI`}
+                    aria-label={`围绕第 ${displayedQuestionNumber} 题问 AI`}
                   >
                     <MessageSquareText className="h-3.5 w-3.5" />
                     <span>问AI</span>
@@ -476,8 +431,8 @@ export function ExamMasteryDrillSession({
                       : "text-slate-500 hover:text-slate-800 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-900",
                     (!onQuestionMarkToggle || isMarking) && "cursor-default opacity-70",
                   )}
-                  title={isMarked ? `取消标记第 ${currentItem.item_order} 题` : `标记第 ${currentItem.item_order} 题`}
-                  aria-label={isMarked ? `取消标记第 ${currentItem.item_order} 题` : `标记第 ${currentItem.item_order} 题`}
+                  title={isMarked ? `取消标记第 ${displayedQuestionNumber} 题` : `标记第 ${displayedQuestionNumber} 题`}
+                  aria-label={isMarked ? `取消标记第 ${displayedQuestionNumber} 题` : `标记第 ${displayedQuestionNumber} 题`}
                   aria-pressed={isMarked}
                 >
                   <Bookmark className={cn("h-3.5 w-3.5", isMarked && "fill-current")} />
@@ -531,7 +486,7 @@ export function ExamMasteryDrillSession({
                     type="button"
                     role={isMultipleChoice ? "checkbox" : "radio"}
                     aria-checked={isSelected}
-                    disabled={Boolean(hasFeedback) || isCompleting || isCheckingAnswer}
+                    disabled={Boolean(hasFeedback) || isCheckingAnswer}
                     onClick={() => {
                       if (!isMultipleChoice) {
                         setCurrentAnswer(currentItem, isSelected ? "" : optionValue);
@@ -595,7 +550,7 @@ export function ExamMasteryDrillSession({
               className={`min-h-28 w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-indigo-500/60 dark:focus:ring-indigo-500/20 dark:disabled:bg-slate-900/70 ${DRILL_TEXTAREA_TEXT_CLASS}`}
               placeholder="输入你的作答"
               value={answerValue}
-              disabled={Boolean(hasFeedback) || isCompleting || isCheckingAnswer}
+              disabled={Boolean(hasFeedback) || isCheckingAnswer}
               onChange={(event) => setCurrentAnswer(currentItem, event.target.value)}
             />
           )}
@@ -646,7 +601,6 @@ export function ExamMasteryDrillSession({
             <Button
               className="h-11 w-full rounded-full bg-black px-5 text-sm font-semibold dark:bg-slate-100 dark:text-slate-900 sm:w-auto"
               onClick={handleContinue}
-              disabled={isCompleting}
             >
               {activeFeedback.isCorrect ? <ArrowRight className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />}
               {activeFeedback.isCorrect ? (queue.length === 1 ? "完成训练" : "下一题") : "重新入队"}
@@ -655,7 +609,7 @@ export function ExamMasteryDrillSession({
             <Button
               className="h-11 w-full rounded-full bg-black px-5 text-sm font-semibold dark:bg-slate-100 dark:text-slate-900 sm:w-auto"
               onClick={handleCheckAnswer}
-              disabled={!isCurrentSupported || !isCurrentAnswered || isCompleting || isCheckingAnswer}
+              disabled={!isCurrentSupported || !isCurrentAnswered || isCheckingAnswer}
             >
               {isCheckingAnswer ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               {isCheckingAnswer ? checkingAnswerLabel : "确认答案"}

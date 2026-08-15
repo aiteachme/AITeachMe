@@ -6,6 +6,9 @@ import { cn } from "../../lib/utils";
 interface CourseVectorNoticeProps {
   status?: CourseVectorStatusResponse | null;
   className?: string;
+  onRebuild?: () => void;
+  rebuildPending?: boolean;
+  rebuildDisabled?: boolean;
 }
 
 interface CourseGraphNoticeProps {
@@ -30,7 +33,8 @@ function buildVectorNoticeCopy(status: CourseVectorStatusResponse) {
   if (notice.includes("缺少可用") || notice.includes("索引缺失")) {
     return {
       title: "语义检索索引暂不可用",
-      description: "当前课程还没有可用的语义检索索引，知识文档仍可正常查看。重新构建课程后会自动补齐。",
+      description: "当前课程还没有可用的语义检索索引，知识文档仍可正常查看。可直接重建向量索引，无需重新生成知识文档。",
+      repairable: true,
     };
   }
 
@@ -54,6 +58,9 @@ function buildVectorNoticeCopy(status: CourseVectorStatusResponse) {
 export function CourseVectorNotice({
   status,
   className,
+  onRebuild,
+  rebuildPending = false,
+  rebuildDisabled = false,
 }: CourseVectorNoticeProps) {
   if (!status?.notice) {
     return null;
@@ -61,6 +68,7 @@ export function CourseVectorNotice({
 
   const isDisabled = status.mode === "disabled";
   const copy = buildVectorNoticeCopy(status);
+  const showRebuild = copy.repairable === true && Boolean(onRebuild);
 
   return (
     <div
@@ -72,18 +80,36 @@ export function CourseVectorNotice({
         className,
       )}
     >
-      <div className="flex items-start gap-3">
-        {isDisabled ? (
-          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
-        ) : (
-          <Info className="mt-0.5 h-5 w-5 shrink-0" />
-        )}
-        <div className="min-w-0">
-          <p className="text-sm font-semibold">
-            {copy.title}
-          </p>
-          <p className="mt-1 text-sm leading-6">{copy.description}</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          {isDisabled ? (
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+          ) : (
+            <Info className="mt-0.5 h-5 w-5 shrink-0" />
+          )}
+          <div className="min-w-0">
+            <p className="text-sm font-semibold">
+              {copy.title}
+            </p>
+            <p className="mt-1 text-sm leading-6">{copy.description}</p>
+          </div>
         </div>
+        {showRebuild ? (
+          <button
+            type="button"
+            onClick={onRebuild}
+            disabled={rebuildPending || rebuildDisabled}
+            aria-busy={rebuildPending}
+            className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-indigo-300 bg-white px-3 text-xs font-semibold text-indigo-800 shadow-sm transition hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-indigo-500/40 dark:bg-slate-950 dark:text-indigo-200 dark:hover:bg-indigo-500/10"
+          >
+            {rebuildPending ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5" />
+            )}
+            {rebuildPending ? "正在重建" : "重建向量"}
+          </button>
+        ) : null}
       </div>
     </div>
   );

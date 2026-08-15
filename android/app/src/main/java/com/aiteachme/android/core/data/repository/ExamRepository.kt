@@ -10,10 +10,8 @@ import com.aiteachme.android.core.network.dto.ExamPaperDetailResponse
 import com.aiteachme.android.core.network.dto.ExamProfileSyncResponse
 import com.aiteachme.android.core.network.dto.ExamStudyGuideResponse
 import com.aiteachme.android.core.network.dto.ExamSubmitRequest
-import com.aiteachme.android.core.network.dto.MasteryDrillAttemptRequest
-import com.aiteachme.android.core.network.dto.MasteryDrillAttemptResponse
-import com.aiteachme.android.core.network.dto.MasteryDrillCompleteRequest
-import com.aiteachme.android.core.network.dto.MasteryDrillStartRequest
+import com.aiteachme.android.core.network.dto.MasteryDrillPrepareRequest
+import com.aiteachme.android.core.network.dto.MasteryDrillPrepareResponse
 import com.aiteachme.android.core.network.dto.QuestionTemplateAnswerHistoryItem
 import com.aiteachme.android.core.network.dto.QuestionTemplateGradeRequest
 import com.aiteachme.android.core.network.dto.QuestionTemplateGradeResponse
@@ -78,11 +76,12 @@ class ExamRepository(
         courseId: String,
         questionTemplateId: Int,
         answer: String,
+        ephemeral: Boolean = false,
     ): QuestionTemplateGradeResponse {
         return api.gradeQuestionTemplateAnswer(
             courseId = courseId,
             questionTemplateId = questionTemplateId,
-            request = QuestionTemplateGradeRequest(answer = answer),
+            request = QuestionTemplateGradeRequest(answer = answer, ephemeral = ephemeral),
         ).requireData("AI 判题失败")
     }
 
@@ -91,44 +90,18 @@ class ExamRepository(
             .requireData("题型注册表加载失败")
     }
 
-    suspend fun getActiveMasteryDrill(courseId: String): ExamPaperDetailResponse? {
-        val response = api.getActiveMasteryDrill(courseId = courseId)
-        if (response.code != 0) {
-            throw IllegalStateException(response.message.ifBlank { "进行中的闯关记录加载失败" })
-        }
-        return response.data
-    }
-
-    suspend fun startMasteryDrill(
+    suspend fun prepareMasteryDrill(
         courseId: String,
-        request: MasteryDrillStartRequest,
-    ): ExamPaperDetailResponse {
-        return api.startMasteryDrill(courseId = courseId, request = request)
-            .requireData("闯关记录创建或恢复失败")
-    }
-
-    suspend fun recordMasteryDrillAttempt(
-        courseId: String,
-        examPaperId: Int,
-        request: MasteryDrillAttemptRequest,
-    ): MasteryDrillAttemptResponse {
-        return api.recordMasteryDrillAttempt(
+        numQuestions: Int,
+        questionTypes: List<String> = emptyList(),
+    ): MasteryDrillPrepareResponse {
+        return api.prepareMasteryDrill(
             courseId = courseId,
-            examPaperId = examPaperId,
-            request = request,
-        ).requireData("闯关答案保存失败")
-    }
-
-    suspend fun completeMasteryDrill(
-        courseId: String,
-        examPaperId: Int,
-        request: MasteryDrillCompleteRequest,
-    ): ExamGradeResponse {
-        return api.completeMasteryDrill(
-            courseId = courseId,
-            examPaperId = examPaperId,
-            request = request,
-        ).requireData("闯关结果保存失败")
+            request = MasteryDrillPrepareRequest(
+                numQuestions = numQuestions,
+                questionTypes = questionTypes,
+            ),
+        ).requireData("闯关题目准备失败")
     }
 
     suspend fun getExamDetail(

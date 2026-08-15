@@ -3,18 +3,13 @@ package com.aiteachme.android.feature.course.presentation
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aiteachme.android.core.di.AppServices
-import com.aiteachme.android.core.network.dto.ExamPaperDetailResponse
-import com.aiteachme.android.core.network.dto.MasteryDrillAttemptRequest
-import com.aiteachme.android.core.network.dto.MasteryDrillAttemptResponse
-import com.aiteachme.android.core.network.dto.MasteryDrillCompleteRequest
-import com.aiteachme.android.core.network.dto.MasteryDrillStartRequest
+import com.aiteachme.android.core.network.dto.QuestionTemplateGradeResponse
 import com.aiteachme.android.core.network.dto.QuestionTemplateItemResponse
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.util.UUID
 import kotlin.math.abs
 
 private const val MasteryDrillQuestionCount = 10
@@ -28,10 +23,8 @@ data class MasteryDrillFeedback(
 )
 
 data class MasteryDrillUiState(
-    val examPaperId: Int? = null,
     val templates: List<QuestionTemplateItemResponse> = emptyList(),
     val selectedTemplates: List<QuestionTemplateItemResponse> = emptyList(),
-    val paperItemIdByTemplateId: Map<Int, Int> = emptyMap(),
     val queue: List<Int> = emptyList(),
     val completedIds: Set<Int> = emptySet(),
     val answers: Map<Int, String> = emptyMap(),
@@ -40,7 +33,7 @@ data class MasteryDrillUiState(
     val completedAt: String? = null,
     val isLoading: Boolean = false,
     val isCheckingAnswer: Boolean = false,
-    val isCompleting: Boolean = false,
+    val markingTemplateId: Int? = null,
     val errorMessage: String? = null,
 ) {
     val currentTemplate: QuestionTemplateItemResponse?
@@ -51,26 +44,20 @@ data class MasteryDrillUiState(
 
 class MasteryDrillViewModel : ViewModel() {
     private val examRepository = AppServices.examRepository
-    private var currentCourseId: String? = null
-    private val pendingAttemptKeys = mutableMapOf<String, String>()
-    private val completionKeys = mutableMapOf<Int, String>()
 
     private val _uiState = MutableStateFlow(MasteryDrillUiState())
     val uiState: StateFlow<MasteryDrillUiState> = _uiState.asStateFlow()
 
     fun load(courseId: String) {
-        currentCourseId = courseId
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             runCatching {
-                val templates = examRepository.listQuestionTemplates(courseId)
-                startOrResumeSession(
+                examRepository.prepareMasteryDrill(
                     courseId = courseId,
-                    templates = templates,
-                    seed = System.currentTimeMillis(),
+                    numQuestions = MasteryDrillQuestionCount,
                 )
-            }.onSuccess { paper ->
-                applyServerSession(paper = paper, templates = _uiState.value.templates)
+            }.onSuccess { prepared ->
+                startSession(templates = prepared.templates, seed = System.currentTimeMillis())
             }.onFailure { throwable ->
                 _uiState.update {
                     it.copy(
@@ -83,30 +70,10 @@ class MasteryDrillViewModel : ViewModel() {
     }
 
     fun restart() {
-        val courseId = currentCourseId ?: return
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
-            runCatching {
-                val templates = _uiState.value.templates.ifEmpty {
-                    examRepository.listQuestionTemplates(courseId)
-                }
-                startOrResumeSession(
-                    courseId = courseId,
-                    templates = templates,
-                    seed = System.currentTimeMillis(),
-                )
-            }.onSuccess { paper ->
-                pendingAttemptKeys.clear()
-                applyServerSession(paper = paper, templates = _uiState.value.templates)
-            }.onFailure { throwable ->
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        errorMessage = throwable.message ?: throwable::class.java.simpleName,
-                    )
-                }
-            }
-        }
+        startSession(
+            templates = _uiState.value.templates,
+            seed = System.currentTimeMillis(),
+        )
     }
 
     fun updateAnswer(templateId: Int, answer: String) {
@@ -122,44 +89,76 @@ class MasteryDrillViewModel : ViewModel() {
         val state = _uiState.value
         val current = state.currentTemplate ?: return
         if (state.feedback != null || state.isCheckingAnswer) return
-        if (!isSupportedExamQuestionType(current.questionType)) {
-            _uiState.update {
-                it.copy(errorMessage = "当前版本不支持题型「${current.questionType.ifBlank { "未指定" }}」")
-            }
-            return
-        }
         val answer = state.answers[current.id].orEmpty().trim()
         if (answer.isBlank()) return
 
-        val paperId = state.examPaperId ?: return
-        val paperItemId = state.paperItemIdByTemplateId[current.id] ?: return
-        val payloadKey = "$paperId:$paperItemId:$answer"
-        val attemptKey = pendingAttemptKeys.getOrPut(payloadKey) { "android-attempt-${UUID.randomUUID()}" }
-        viewModelScope.launch {
-            _uiState.update { it.copy(isCheckingAnswer = true, errorMessage = null) }
-            runCatching {
-                examRepository.recordMasteryDrillAttempt(
-                    courseId = courseId,
-                    examPaperId = paperId,
-                    request = MasteryDrillAttemptRequest(
-                        examPaperItemId = paperItemId,
+        if (current.requiresAiGrade()) {
+            viewModelScope.launch {
+                _uiState.update { it.copy(isCheckingAnswer = true, errorMessage = null) }
+                runCatching {
+                    examRepository.gradeQuestionTemplateAnswer(
+                        courseId = courseId,
+                        questionTemplateId = current.id,
                         answer = answer,
-                        attemptKey = attemptKey,
-                    ),
-                )
-            }.onSuccess { attempt ->
-                pendingAttemptKeys.remove(payloadKey)
-                _uiState.update {
-                    it.copy(
-                        isCheckingAnswer = false,
-                        feedback = current.toFeedback(answer = answer, attempt = attempt),
-                        wrongAttemptCount = it.wrongAttemptCount + if (attempt.isCorrect == true) 0 else 1,
+                        ephemeral = true,
                     )
+                }.onSuccess { grade ->
+                    _uiState.update {
+                        it.copy(
+                            isCheckingAnswer = false,
+                            feedback = current.toFeedback(answer = answer, grade = grade),
+                        )
+                    }
+                }.onFailure { throwable ->
+                    _uiState.update {
+                        it.copy(
+                            isCheckingAnswer = false,
+                            errorMessage = throwable.message ?: throwable::class.java.simpleName,
+                        )
+                    }
+                }
+            }
+            return
+        }
+
+        _uiState.update {
+            it.copy(
+                feedback = MasteryDrillFeedback(
+                    templateId = current.id,
+                    answer = answer,
+                    isCorrect = isAnswerCorrect(current, answer),
+                ),
+            )
+        }
+    }
+
+    fun toggleCurrentMark(courseId: String) {
+        val state = _uiState.value
+        val current = state.currentTemplate ?: return
+        if (state.markingTemplateId != null) return
+        val targetMarked = !current.isMarked
+
+        _uiState.update {
+            it.patchTemplateMark(current.id, targetMarked).copy(
+                markingTemplateId = current.id,
+                errorMessage = null,
+            )
+        }
+        viewModelScope.launch {
+            runCatching {
+                examRepository.markQuestionTemplate(
+                    courseId = courseId,
+                    questionTemplateId = current.id,
+                    isMarked = targetMarked,
+                )
+            }.onSuccess { response ->
+                _uiState.update {
+                    it.patchTemplateMark(current.id, response.isMarked).copy(markingTemplateId = null)
                 }
             }.onFailure { throwable ->
                 _uiState.update {
-                    it.copy(
-                        isCheckingAnswer = false,
+                    it.patchTemplateMark(current.id, current.isMarked).copy(
+                        markingTemplateId = null,
                         errorMessage = throwable.message ?: throwable::class.java.simpleName,
                     )
                 }
@@ -180,10 +179,8 @@ class MasteryDrillViewModel : ViewModel() {
                     completedIds = completedIds,
                     queue = remaining,
                     feedback = null,
+                    completedAt = if (remaining.isEmpty()) System.currentTimeMillis().toString() else it.completedAt,
                 )
-            }
-            if (remaining.isEmpty()) {
-                currentCourseId?.let(::completeCurrentSession)
             }
             return
         }
@@ -193,143 +190,64 @@ class MasteryDrillViewModel : ViewModel() {
                 queue = remaining + current.id,
                 answers = it.answers - current.id,
                 feedback = null,
+                wrongAttemptCount = it.wrongAttemptCount + 1,
             )
         }
     }
 
-    private suspend fun startOrResumeSession(
-        courseId: String,
+    private fun startSession(
         templates: List<QuestionTemplateItemResponse>,
         seed: Long,
-    ): ExamPaperDetailResponse {
-        _uiState.update { it.copy(templates = templates) }
-        examRepository.getActiveMasteryDrill(courseId)?.let { return it }
-        val selected = selectMasteryDrillTemplates(templates = templates, seed = seed)
-        if (selected.isEmpty()) {
-            return ExamPaperDetailResponse()
-        }
-        return examRepository.startMasteryDrill(
-            courseId = courseId,
-            request = MasteryDrillStartRequest(
-                sessionKey = "android-drill-${UUID.randomUUID()}",
-                questionTemplateIds = selected.map { it.id },
-                configuredQuestionCount = MasteryDrillQuestionCount,
-                configuredQuestionTypes = selected.map { it.questionType }.distinct(),
-            ),
-        )
-    }
-
-    private fun applyServerSession(
-        paper: ExamPaperDetailResponse,
-        templates: List<QuestionTemplateItemResponse>,
     ) {
-        if (paper.id <= 0) {
-            _uiState.update {
-                it.copy(
-                    examPaperId = null,
-                    selectedTemplates = emptyList(),
-                    paperItemIdByTemplateId = emptyMap(),
-                    queue = emptyList(),
-                    isLoading = false,
-                    isCheckingAnswer = false,
-                    isCompleting = false,
-                )
-            }
-            return
-        }
-        val templateById = templates.associateBy { it.id }
-        val orderedItems = paper.items.sortedBy { it.itemOrder }
-        val selected = orderedItems.map { item ->
-            templateById[item.questionTemplateId] ?: QuestionTemplateItemResponse(
-                id = item.questionTemplateId,
-                courseId = paper.courseId,
-                questionType = item.questionType,
-                difficulty = item.difficulty,
-                stem = item.stem,
-                options = item.options,
-                answer = item.correctAnswer.orEmpty(),
-                explanation = item.explanation,
-                status = "active",
-                isMarked = item.isMarked,
-            )
-        }
-        val completedTemplateIds = orderedItems
-            .filter { it.isCorrect == true }
-            .map { it.questionTemplateId }
-            .toSet()
-        val queue = selected.map { it.id }.filterNot(completedTemplateIds::contains)
-        val persistedAnswers = orderedItems
-            .filter { it.isCorrect == true && !it.userAnswer.isNullOrBlank() }
-            .associate { it.questionTemplateId to it.userAnswer.orEmpty() }
+        val selected = selectMasteryDrillTemplates(templates = templates, seed = seed)
         _uiState.update {
             it.copy(
-                examPaperId = paper.id,
                 templates = templates,
                 selectedTemplates = selected,
-                paperItemIdByTemplateId = orderedItems.associate { it.questionTemplateId to it.id },
-                queue = queue,
-                completedIds = completedTemplateIds,
-                answers = persistedAnswers,
+                queue = selected.map { template -> template.id },
+                completedIds = emptySet(),
+                answers = emptyMap(),
                 feedback = null,
-                wrongAttemptCount = paper.masteryDrill?.wrongAttempts ?: 0,
-                completedAt = paper.masteryDrill?.completedAt,
+                wrongAttemptCount = 0,
+                completedAt = null,
                 isLoading = false,
                 isCheckingAnswer = false,
-                isCompleting = false,
+                markingTemplateId = null,
                 errorMessage = null,
             )
-        }
-        if (queue.isEmpty() && paper.masteryDrill?.status == "active") {
-            currentCourseId?.let(::completeCurrentSession)
-        }
-    }
-
-    fun retryCompletion() {
-        currentCourseId?.let(::completeCurrentSession)
-    }
-
-    private fun completeCurrentSession(courseId: String) {
-        val state = _uiState.value
-        val paperId = state.examPaperId ?: return
-        if (state.isCompleting || state.completedAt != null || state.queue.isNotEmpty()) return
-        val completionKey = completionKeys.getOrPut(paperId) { "android-complete-${UUID.randomUUID()}" }
-        viewModelScope.launch {
-            _uiState.update { it.copy(isCompleting = true, errorMessage = null) }
-            runCatching {
-                examRepository.completeMasteryDrill(
-                    courseId = courseId,
-                    examPaperId = paperId,
-                    request = MasteryDrillCompleteRequest(completionKey = completionKey),
-                )
-            }.onSuccess {
-                _uiState.update {
-                    it.copy(
-                        isCompleting = false,
-                        completedAt = System.currentTimeMillis().toString(),
-                    )
-                }
-            }.onFailure { throwable ->
-                _uiState.update {
-                    it.copy(
-                        isCompleting = false,
-                        errorMessage = throwable.message ?: throwable::class.java.simpleName,
-                    )
-                }
-            }
         }
     }
 }
 
+private fun MasteryDrillUiState.patchTemplateMark(
+    templateId: Int,
+    isMarked: Boolean,
+): MasteryDrillUiState {
+    fun List<QuestionTemplateItemResponse>.patch(): List<QuestionTemplateItemResponse> {
+        return map { template ->
+            if (template.id == templateId) template.copy(isMarked = isMarked) else template
+        }
+    }
+    return copy(
+        templates = templates.patch(),
+        selectedTemplates = selectedTemplates.patch(),
+    )
+}
+
+private fun QuestionTemplateItemResponse.requiresAiGrade(): Boolean {
+    return questionType.lowercase() in setOf("fill_blank", "short_answer")
+}
+
 private fun QuestionTemplateItemResponse.toFeedback(
     answer: String,
-    attempt: MasteryDrillAttemptResponse,
+    grade: QuestionTemplateGradeResponse,
 ): MasteryDrillFeedback {
     return MasteryDrillFeedback(
         templateId = id,
         answer = answer,
-        isCorrect = attempt.isCorrect == true,
-        feedbackText = attempt.feedbackText?.takeIf { it.isNotBlank() },
-        gradingMode = attempt.gradingMode?.takeIf { it.isNotBlank() },
+        isCorrect = grade.isCorrect,
+        feedbackText = grade.feedbackText.takeIf { it.isNotBlank() },
+        gradingMode = grade.gradingMode.takeIf { it.isNotBlank() },
     )
 }
 
@@ -339,10 +257,10 @@ private fun selectMasteryDrillTemplates(
 ): List<QuestionTemplateItemResponse> {
     return templates
         .filter { template ->
-            template.stem.isNotBlank() &&
+            isSupportedExamQuestionType(template.questionType) &&
+                template.stem.isNotBlank() &&
                 template.answer.isNotBlank() &&
-                isSupportedExamQuestionType(template.questionType) &&
-                !template.status.equals("archived", ignoreCase = true)
+                template.status.equals("active", ignoreCase = true)
         }
         .sortedWith(
             compareByDescending<QuestionTemplateItemResponse> { template -> template.drillPriority() }
@@ -357,7 +275,6 @@ private fun QuestionTemplateItemResponse.drillPriority(): Int {
     var priority = 0
     if (hasWrongAttempt) priority += 4
     if (isMarked) priority += 2
-    if (status.equals("active", ignoreCase = true)) priority += 1
     return priority
 }
 
@@ -368,6 +285,21 @@ private fun hashTemplateForSession(templateId: Int, seed: Long): Int {
         hash = hash and 0xFFFF_FFFFL
     }
     return abs(hash.toInt())
+}
+
+private fun isAnswerCorrect(
+    template: QuestionTemplateItemResponse,
+    answer: String,
+): Boolean {
+    return when (template.questionType.lowercase()) {
+        "multiple_choice", "multi_choice" -> {
+            val expected = drillSplitMultiChoiceAnswer(template.answer)
+            val actual = drillSplitMultiChoiceAnswer(answer)
+            expected.isNotEmpty() && expected == actual
+        }
+        "true_false" -> normalizeTrueFalseAnswer(template.answer) == normalizeTrueFalseAnswer(answer)
+        else -> drillNormalizeTextAnswer(template.answer) == drillNormalizeTextAnswer(answer)
+    }
 }
 
 fun drillSplitMultiChoiceAnswer(value: String?): Set<String> {
@@ -391,4 +323,12 @@ fun drillNormalizeTextAnswer(value: String?): String {
         .replace(Regex("\\s+"), " ")
         .trim()
         .lowercase()
+}
+
+private fun normalizeTrueFalseAnswer(value: String?): String {
+    return when (drillNormalizeTextAnswer(value)) {
+        "true", "t", "yes", "y", "正确", "对", "是" -> "true"
+        "false", "f", "no", "n", "错误", "错", "否" -> "false"
+        else -> drillNormalizeTextAnswer(value)
+    }
 }

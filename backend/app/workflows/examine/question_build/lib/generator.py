@@ -15,7 +15,11 @@ from typing import Literal, TypeVar
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.models.knowledge_unit import KnowledgeUnit
-from app.shared.kernel.question_types import QuestionTypeLiteral
+from app.shared.kernel.question_types import (
+    QuestionTypeLiteral,
+    UnsupportedQuestionTypeError,
+    require_supported_question_type_key,
+)
 from app.shared.infra.exceptions import LLMTimeoutError
 from app.shared.infra.llm_support import acompletion_with_fallback, run_llm_tasks
 from app.workflows.examine.question_build.lib.model_policy import (
@@ -452,14 +456,14 @@ def _build_mastery_drill_requirement_plans(
     question_types: list[QuestionTypeLiteral] = [
         "single_choice",
         "true_false",
-        "single_choice",
+        "fill_blank",
         "multiple_choice",
-        "single_choice",
+        "short_answer",
         "true_false",
         "single_choice",
+        "fill_blank",
         "multiple_choice",
-        "single_choice",
-        "true_false",
+        "short_answer",
     ]
     cleaned_prompt = " ".join(str(user_prompt or "").split()).strip()
     prompt_suffix = f"用户补充要求：{cleaned_prompt}" if cleaned_prompt else "无"
@@ -468,14 +472,54 @@ def _build_mastery_drill_requirement_plans(
             item_order=order,
             question_type=question_types[(order - 1) % len(question_types)],
             generation_prompt=(
-                "本题用于逐题闯关练习，必须能在学生作答后立刻客观判定对错；"
-                "题干和选项应清晰，解析要直接说明正确理由和常见误区。"
+                "本题用于逐题闯关练习，学生提交后会按题型自动判分或 AI 判分；"
+                "题干和作答要求应清晰，解析要直接说明正确理由和常见误区。"
                 f"{prompt_suffix}"
             ),
         )
         for order in range(1, max(1, question_count) + 1)
     ]
-    return plans, "mastery_drill uses an objective-only deterministic type plan for immediate feedback."
+    return plans, "mastery_drill uses a deterministic mixed-type plan with per-question feedback."
+
+
+def _build_configured_question_requirement_plans(
+    *,
+    exam_mode: str,
+    question_count: int,
+    question_types: list[QuestionTypeLiteral],
+    user_prompt: str,
+) -> tuple[list[ExamQuestionRequirementPlan], str]:
+    cleaned_prompt = str(user_prompt or "").strip() or "无"
+    normalized_count = max(1, question_count)
+    if str(exam_mode or "").strip().lower() == "paper_exam":
+        paper_type_order: tuple[QuestionTypeLiteral, ...] = (
+            "single_choice",
+            "multiple_choice",
+            "true_false",
+            "fill_blank",
+            "short_answer",
+        )
+        ordered_types = [item for item in paper_type_order if item in question_types]
+        base_count, remainder = divmod(normalized_count, len(ordered_types))
+        allocated_types = [
+            question_type
+            for index, question_type in enumerate(ordered_types)
+            for _ in range(base_count + (1 if index < remainder else 0))
+        ]
+    else:
+        allocated_types = [
+            question_types[(order - 1) % len(question_types)]
+            for order in range(1, normalized_count + 1)
+        ]
+    plans = [
+        ExamQuestionRequirementPlan(
+            item_order=order,
+            question_type=allocated_types[order - 1],
+            generation_prompt=cleaned_prompt,
+        )
+        for order in range(1, normalized_count + 1)
+    ]
+    return plans, "question types were allocated deterministically from the saved structured configuration."
 
 
 class ExamQuestionDraft(BaseModel):
@@ -1070,6 +1114,7 @@ def _validate_blueprints(
     units: list[KnowledgeUnit],
     question_count: int,
     question_prompt_plans: list[ExamQuestionRequirementPlan] | None = None,
+    configured_difficulty: str = "auto",
 ) -> list[ExamQuestionBlueprint]:
     unit_ids = {int(unit.id) for unit in units if unit.id is not None}
     by_order = {item.item_order: item for item in generated if item.item_order >= 1}
@@ -1079,6 +1124,7 @@ def _validate_blueprints(
         if item.item_order >= 1
     }
     normalized: list[ExamQuestionBlueprint] = []
+    forced_difficulty = configured_difficulty if configured_difficulty in {"easy", "medium", "hard"} else None
     for order in range(1, max(1, question_count) + 1):
         item = by_order.get(order)
         if item is None:
@@ -1094,7 +1140,7 @@ def _validate_blueprints(
                 item_order=order,
                 knowledge_unit_ids=ids,
                 question_type=item.question_type,
-                difficulty=item.difficulty,
+                difficulty=forced_difficulty or item.difficulty,
                 rationale=item.rationale,
                 generation_prompt=prompt_plan.generation_prompt if prompt_plan is not None else item.generation_prompt,
             )
@@ -1264,6 +1310,7 @@ async def allocate_exam_question_knowledge_units(
     mastery_by_unit_id: dict[int, float] | None = None,
     question_prompt_plans: list[ExamQuestionRequirementPlan] | None = None,
     user_prompt: str = "",
+    configured_difficulty: str = "auto",
     system_constraints: str = "",
 ) -> list[ExamQuestionBlueprint]:
     """Plan question type and related knowledge units before item generation."""
@@ -1278,6 +1325,7 @@ async def allocate_exam_question_knowledge_units(
         exam_mode=exam_mode,
         requested_question_count=normalized_count,
         user_prompt=user_prompt,
+        configured_difficulty=configured_difficulty,
         units=[_unit_payload_with_mastery(unit, mastery_by_unit_id) for unit in units],
         question_prompt_plans=[item.model_dump(mode="json") for item in list(question_prompt_plans or [])],
         system_constraints=system_constraints,
@@ -1304,6 +1352,7 @@ async def allocate_exam_question_knowledge_units(
             units=units,
             question_count=normalized_count,
             question_prompt_plans=question_prompt_plans,
+            configured_difficulty=configured_difficulty,
         )
     except (LLMTimeoutError, TimeoutError):
         raise
@@ -1316,10 +1365,27 @@ async def plan_exam_question_requirements(
     exam_mode: str,
     question_count: int,
     user_prompt: str = "",
+    configured_question_types: list[str] | None = None,
 ) -> tuple[list[ExamQuestionRequirementPlan], str]:
     """Plan per-question generation prompts from the user's global and item-specific constraints."""
 
     normalized_count = max(1, int(question_count or 1))
+    normalized_question_types: list[QuestionTypeLiteral] = []
+    for value in configured_question_types or []:
+        try:
+            question_type = require_supported_question_type_key(value)
+        except UnsupportedQuestionTypeError:
+            continue
+        if question_type not in normalized_question_types:
+            normalized_question_types.append(question_type)
+    if normalized_question_types:
+        return _build_configured_question_requirement_plans(
+            exam_mode=exam_mode,
+            question_count=normalized_count,
+            question_types=normalized_question_types,
+            user_prompt=user_prompt,
+        )
+
     if str(exam_mode or "").strip().lower() == "mastery_drill":
         return _build_mastery_drill_requirement_plans(
             question_count=normalized_count,

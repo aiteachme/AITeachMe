@@ -37,8 +37,6 @@ from app.models import (
     KnowledgeGraphSourceRef,
     KnowledgeGraphSyncRun,
     KnowledgeUnit,
-    MasteryDrillAttempt,
-    MasteryDrillSession,
     QuestionKnowledgeUnitLink,
     QuestionTypeRegistry,
     QuestionTemplate,
@@ -235,12 +233,6 @@ TABLE_REGISTRY: list[_TableSpec] = [
         optional_group="exam",
     ),
     _TableSpec(
-        "mastery_drill_session",
-        MasteryDrillSession,
-        fk_remap={"exam_paper_id": "exam_paper"},
-        optional_group="exam",
-    ),
-    _TableSpec(
         "exam_paper_item",
         ExamPaperItem,
         course_field=None,
@@ -248,19 +240,6 @@ TABLE_REGISTRY: list[_TableSpec] = [
         parent_table="exam_paper",
         fk_remap={
             "exam_paper_id": "exam_paper",
-            "question_template_id": "question_template",
-        },
-        optional_group="exam",
-    ),
-    _TableSpec(
-        "mastery_drill_attempt",
-        MasteryDrillAttempt,
-        course_field=None,
-        parent_fk="mastery_drill_session_id",
-        parent_table="mastery_drill_session",
-        fk_remap={
-            "mastery_drill_session_id": "mastery_drill_session",
-            "exam_paper_item_id": "exam_paper_item",
             "question_template_id": "question_template",
         },
         optional_group="exam",
@@ -339,7 +318,9 @@ def preview_export(
         question_template_count=_count(session, QuestionTemplate, course_id)
         if options.include_exam_history
         else 0,
-        exam_paper_count=_count(session, ExamPaper, course_id) if options.include_exam_history else 0,
+        exam_paper_count=_count_exportable_exam_papers(session, course_id)
+        if options.include_exam_history
+        else 0,
         chat_session_count=_count(session, ChatSession, course_id)
         if options.include_chat_history
         else (
@@ -440,6 +421,19 @@ def _count(session: Session, model: type, course_id: str) -> int:
     )
 
 
+def _count_exportable_exam_papers(session: Session, course_id: str) -> int:
+    return int(
+        session.exec(
+            select(func.count())
+            .select_from(ExamPaper)
+            .where(
+                ExamPaper.course_id == course_id,
+                ExamPaper.exam_mode != "mastery_drill",
+            )
+        ).one()
+    )
+
+
 def _has_embedded_confirmed_plan(record: ChatSession | dict[str, Any]) -> bool:
     meta = record.get("meta_json") if isinstance(record, dict) else record.meta_json
     if isinstance(meta, str):
@@ -498,6 +492,15 @@ def _query_table(
 
     if spec.name == "raw_file":
         rows = list_all_raw_files_by_course(session, course_id)
+    elif spec.name == "exam_paper":
+        rows = session.exec(
+            _ordered(
+                select(ExamPaper).where(
+                    ExamPaper.course_id == course_id,
+                    ExamPaper.exam_mode != "mastery_drill",
+                )
+            )
+        ).all()
     elif spec.name == "chat_session" and not options.include_chat_history:
         rows = session.exec(
             _ordered(

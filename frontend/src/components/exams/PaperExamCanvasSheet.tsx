@@ -96,7 +96,7 @@ interface PaperExamCanvasSheetProps {
   onReviewAnalysisToggle?: () => void;
   onQuestionAi?: (item: ExamPaperItemResponse, isReviewStage: boolean, answerValue: string) => void;
   onQuestionMarkToggle?: (item: ExamPaperItemResponse, isMarked: boolean) => void;
-  markingQuestionTemplateId?: number | null;
+  markingQuestionTemplateIds?: ReadonlySet<number>;
   activeAiAnchorId?: string | null;
 }
 
@@ -698,7 +698,7 @@ function PaperExamQuestionBlock({
   onReviewAnalysisToggle,
   onQuestionAi,
   onQuestionMarkToggle,
-  markingQuestionTemplateId,
+  markingQuestionTemplateIds,
   score,
   activeAiAnchorId,
 }: PaperExamCanvasSheetProps & {
@@ -725,7 +725,9 @@ function PaperExamQuestionBlock({
   const isSelectedReviewItem = isReviewStage && selectedItemId === item.id;
   const isQuestionHighlighted = highlightedQuestionOrder === item.item_order;
   const isMarked = isQuestionMarked(item);
-  const isMarking = markingQuestionTemplateId === item.question_template_id;
+  const isMarking = Boolean(
+    item.question_template_id && markingQuestionTemplateIds?.has(item.question_template_id),
+  );
   const scoreLabel = formatScore(score ?? item.score_max);
   const optionColumnCount = getOptionColumnCount(choiceOptions);
 
@@ -975,7 +977,7 @@ export function PaperExamCanvasSheet({
   onSelectQuestion,
   onQuestionAi,
   onQuestionMarkToggle,
-  markingQuestionTemplateId,
+  markingQuestionTemplateIds,
   activeAiAnchorId,
 }: PaperExamCanvasSheetProps) {
   const layout = useMemo(() => getPaperLayout(paper, questionEntries), [paper, questionEntries]);
@@ -1338,7 +1340,7 @@ export function PaperExamCanvasSheet({
                                     onReviewAnalysisToggle={entry.item ? () => handleToggleQuestionAnalysis(entry.item!.id) : undefined}
                                     onQuestionAi={onQuestionAi}
                                     onQuestionMarkToggle={onQuestionMarkToggle}
-                                    markingQuestionTemplateId={markingQuestionTemplateId}
+                                    markingQuestionTemplateIds={markingQuestionTemplateIds}
                                     entry={entry}
                                     score={allocation?.score}
                                     activeAiAnchorId={activeAiAnchorId}

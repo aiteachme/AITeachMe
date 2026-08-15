@@ -974,6 +974,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
                 digest_mode=state.get("digest_mode") or "systematic",
                 on_stream_update=_publish_writer_stream_preview,
             )
+            fallback_used = fallback_used or bool(writer_result.metadata.get("fallback_used", False))
             writer_markdown = ensure_chapter_heading(title, writer_result.content)
             writer_attempt_count += int(bool(writer_result.metadata.get("writer_no_content_reason")))
         except DocGenWriterNoContentError as exc:

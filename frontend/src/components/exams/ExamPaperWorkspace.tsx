@@ -1,22 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, Bookmark, CheckCircle2, ChevronLeft, ChevronRight, ListChecks, Loader2, RefreshCw, Sparkles, ZoomIn, ZoomOut } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import {
-  completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePost,
   getExamDetailApiV1CoursesCourseIdExamsExamPaperIdGetQueryKey,
   getExamHistoryApiV1CoursesCourseIdExamsHistoryGetQueryKey,
-  recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPost,
   useExamDetailApiV1CoursesCourseIdExamsExamPaperIdGet,
   useRetryExamProfileSyncApiV1CoursesCourseIdExamsExamPaperIdProfileSyncRetryPost,
   useSubmitExamApiV1CoursesCourseIdExamsExamPaperIdSubmitPost,
 } from "../../api/generated/exams";
-import type {
-  ExamPaperDetailResponse,
-  ExamPaperItemResponse,
-  MasteryDrillAttemptResponse,
-} from "../../api/generated/model";
+import type { ExamPaperDetailResponse, ExamPaperItemResponse } from "../../api/generated/model";
 import { getMasteryOverviewApiV1CoursesCourseIdProfileMasteryGetQueryKey } from "../../api/generated/profile";
 import {
   getApiErrorMessage,
@@ -38,7 +32,6 @@ import { useToast } from "../ui/Toast";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { useApiAuthGeneration } from "../../hooks/useApiAuthGeneration";
 import { ExamPaperSheet } from "./ExamPaperSheet";
-import { ExamMasteryDrillSession } from "./ExamMasteryDrillSession";
 import { ExamQuestionAnalysisSheet } from "./ExamQuestionAnalysisSheet";
 import { ExamStageHeader } from "./ExamStageHeader";
 import { ExamStudyGuideView } from "./ExamStudyGuideView";
@@ -47,6 +40,7 @@ import {
   patchExamDetailQueryData,
   patchExamHistoryQueryData,
 } from "./examGenerationStream";
+import { parseExamStudyGuideStreamPayload } from "./examStudyGuideStream";
 import type { ExamStudyGuideResponse } from "./types";
 import {
   buildQuestionAiDraft,
@@ -55,19 +49,9 @@ import {
   hasAnsweredQuestion,
   MASTERY_DRILL_EXAM_MODE,
 } from "./examDisplay";
-import type { QuestionTemplateGradeResult } from "./questionTemplateGrading";
+import { resolveExamSubmissionTerminalState } from "./examSubmissionFlow";
 import { isSupportedQuestionType } from "./questionTypes";
-
-async function getExamStudyGuide(courseId: string, paperId: number, signal?: AbortSignal) {
-  return orvalApiClient<{ data?: { code?: number; message?: string; data?: ExamStudyGuideResponse } }>(
-    `/api/v1/courses/${courseId}/exams/${paperId}/study-guide`,
-    {
-      method: "GET",
-      signal,
-      timeout: LONG_RUNNING_API_TIMEOUT_MS,
-    },
-  );
-}
+import { useQuestionTemplateMarkRequestGuard } from "./questionMarking";
 
 type QuestionTemplateMarkResponse = {
   question_template_id: number;
@@ -77,12 +61,6 @@ type QuestionTemplateMarkResponse = {
 type QuestionTemplateMarkVariables = {
   questionTemplateId: number;
   isMarked: boolean;
-};
-
-type MasteryDrillCompletionVariables = {
-  courseId: string;
-  paperId: number;
-  completionKey: string;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -131,15 +109,35 @@ function patchQuestionTemplateMarkInDetail(
   };
 }
 
-function isQuestionTemplateMarked(item: ExamPaperItemResponse) {
-  return (item as ExamPaperItemResponse & { is_marked?: boolean | null }).is_marked === true;
+function getQuestionTemplateMarkInDetail(
+  current: unknown,
+  questionTemplateId: number,
+): boolean | null {
+  if (!isRecord(current) || !isRecord(current.data)) return null;
+  const apiPayload = current.data;
+  if (!isRecord(apiPayload.data)) return null;
+  const paper = apiPayload.data;
+  if (!Array.isArray(paper.items)) return null;
+  const item = paper.items.find(
+    (candidate) => isRecord(candidate) && candidate.question_template_id === questionTemplateId,
+  );
+  return isRecord(item) ? item.is_marked === true : null;
 }
 
-function createDrillIdempotencyKey(prefix: string) {
-  const randomValue = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  return `${prefix}-${randomValue}`.slice(0, 128);
+function restoreQuestionTemplateMarkInDetail(
+  current: unknown,
+  questionTemplateId: number,
+  optimisticIsMarked: boolean,
+  previousIsMarked: boolean,
+): unknown {
+  if (getQuestionTemplateMarkInDetail(current, questionTemplateId) !== optimisticIsMarked) {
+    return current;
+  }
+  return patchQuestionTemplateMarkInDetail(current, questionTemplateId, previousIsMarked);
+}
+
+function isQuestionTemplateMarked(item: ExamPaperItemResponse) {
+  return (item as ExamPaperItemResponse & { is_marked?: boolean | null }).is_marked === true;
 }
 
 interface ExamPaperWorkspaceProps {
@@ -148,11 +146,32 @@ interface ExamPaperWorkspaceProps {
   backHref: string;
 }
 
+type StudyGuideStreamState = {
+  status: "idle" | "connecting" | "generating" | "completed" | "error";
+  detail: string;
+  error: string;
+  guide: ExamStudyGuideResponse | null;
+  sequence: number;
+};
+
+const EMPTY_STUDY_GUIDE_STREAM_STATE: StudyGuideStreamState = {
+  status: "idle",
+  detail: "",
+  error: "",
+  guide: null,
+  sequence: 0,
+};
+
 export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWorkspaceProps) {
   const apiAuthGeneration = useApiAuthGeneration();
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
+  const {
+    pendingIds: markingQuestionTemplateIds,
+    begin: beginQuestionTemplateMark,
+    finish: finishQuestionTemplateMark,
+  } = useQuestionTemplateMarkRequestGuard();
   const {
     openAiInteraction,
     closeAiInteraction,
@@ -171,13 +190,16 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
   const [showSubmitOverlay, setShowSubmitOverlay] = useState(false);
   const [submitProgress, setSubmitProgress] = useState(0);
   const [submitStage, setSubmitStage] = useState<1 | 2 | 3 | 4>(1);
+  const [isSubmissionResultPending, setIsSubmissionResultPending] = useState(false);
+  const [studyGuideStreamState, setStudyGuideStreamState] = useState<StudyGuideStreamState>(
+    EMPTY_STUDY_GUIDE_STREAM_STATE,
+  );
+  const [studyGuideStreamAttempt, setStudyGuideStreamAttempt] = useState(0);
   const handledJumpMarkerRef = useRef<number | string | null>(null);
   const isSubmitOverlayClosedManuallyRef = useRef(false);
   const previousPaperStatusRef = useRef<string | null>(null);
   const previousProfileSyncStatusRef = useRef<string | null>(null);
   const handledGradedAtRef = useRef<string | null>(null);
-  const masteryDrillAttemptKeyRef = useRef(new Map<string, string>());
-  const masteryDrillCompletionKeyRef = useRef(new Map<string, string>());
   const answerStorageKey = useMemo(
     () => `aiteachme:exam-draft-answers:${courseId}:${paperId}`,
     [paperId, courseId],
@@ -188,7 +210,12 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
     previousProfileSyncStatusRef.current = null;
     handledGradedAtRef.current = null;
     isSubmitOverlayClosedManuallyRef.current = false;
-    masteryDrillAttemptKeyRef.current.clear();
+    setIsSubmissionResultPending(false);
+  }, [courseId, paperId]);
+
+  useEffect(() => {
+    setStudyGuideStreamState(EMPTY_STUDY_GUIDE_STREAM_STATE);
+    setStudyGuideStreamAttempt(0);
   }, [courseId, paperId]);
 
   useEffect(() => {
@@ -214,13 +241,15 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
     || profileSyncStatus === "retry_wait";
 
   useEffect(() => {
-    const isGradingPaper = paper?.status === "submitted" || paper?.status === "grading";
+    const isGradingPaper = isSubmissionResultPending
+      || paper?.status === "submitted"
+      || paper?.status === "grading";
     if (!isGradingPaper && !shouldPollProfileSync) return;
     const timer = window.setInterval(() => {
       void examDetailQuery.refetch();
     }, isGradingPaper ? 1_500 : 15_000);
     return () => window.clearInterval(timer);
-  }, [examDetailQuery.refetch, paper?.status, shouldPollProfileSync]);
+  }, [examDetailQuery.refetch, isSubmissionResultPending, paper?.status, shouldPollProfileSync]);
   const unsupportedQuestionTypes = useMemo(
     () => Array.from(new Set(
       (paper?.items ?? [])
@@ -361,14 +390,160 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
     };
   }, [isReviewLayout, paper?.items]);
 
-  const studyGuideQuery = useQuery({
-    queryKey: ["exam-study-guide", courseId, paperId],
-    enabled: Boolean(courseId && paperId && paper?.status === "graded" && activeStage === 3),
-    queryFn: async ({ signal }) => {
-      const response = await getExamStudyGuide(courseId, paperId, signal);
-      return unwrapOrvalResponse<ExamStudyGuideResponse>(response);
-    },
-  });
+  useEffect(() => {
+    if (!courseId || !paperId || paper?.status !== "graded" || activeStage !== 3) return;
+
+    let disposed = false;
+    let reconnectCheckTimer: number | null = null;
+    setStudyGuideStreamState((current) => (
+      current.guide
+        ? current
+        : {
+            status: "connecting",
+            detail: "正在连接复习指南生成服务...",
+            error: "",
+            guide: null,
+            sequence: 0,
+          }
+    ));
+
+    const stream = openAuthenticatedSse(
+      `/api/v1/courses/${encodeURIComponent(courseId)}/exams/${paperId}/study-guide/stream`,
+      { disconnectReason: "exam_study_guide_stream_error" },
+    );
+
+    const applyGeneratingPayload = (event: Event) => {
+      const message = event as MessageEvent<string>;
+      const payload = parseExamStudyGuideStreamPayload(message.data);
+      if (!payload || disposed) return;
+      if (payload.status === "completed" && payload.guide) {
+        setStudyGuideStreamState({
+          status: "completed",
+          detail: "复习指南已生成。",
+          error: "",
+          guide: payload.guide,
+          sequence: Number.MAX_SAFE_INTEGER,
+        });
+        stream.close();
+        return;
+      }
+      if (payload.status === "failed") {
+        setStudyGuideStreamState({
+          status: "error",
+          detail: "",
+          error: payload.detail || "复习指南生成失败，请稍后重试。",
+          guide: null,
+          sequence: 0,
+        });
+        stream.close();
+        return;
+      }
+      setStudyGuideStreamState((current) => {
+        const payloadSequence = payload.sequence ?? current.sequence;
+        const canApplyDraft = Boolean(payload.draft) && payloadSequence >= current.sequence;
+        return {
+          status: "generating",
+          detail: payload.detail || current.detail || "正在生成复习指南...",
+          error: "",
+          guide: canApplyDraft ? payload.draft ?? current.guide : current.guide,
+          sequence: Math.max(current.sequence, payloadSequence),
+        };
+      });
+    };
+
+    const handleDone = (event: Event) => {
+      const message = event as MessageEvent<string>;
+      const payload = parseExamStudyGuideStreamPayload(message.data);
+      if (disposed) return;
+      if (!payload?.guide) {
+        setStudyGuideStreamState({
+          status: "error",
+          detail: "",
+          error: "复习指南返回内容不完整，请重试。",
+          guide: null,
+          sequence: 0,
+        });
+        stream.close();
+        return;
+      }
+      setStudyGuideStreamState({
+        status: "completed",
+        detail: "复习指南已生成。",
+        error: "",
+        guide: payload.guide,
+        sequence: Number.MAX_SAFE_INTEGER,
+      });
+      stream.close();
+    };
+
+    const handleServerError = (event: Event) => {
+      if (!("data" in event) || typeof (event as MessageEvent<unknown>).data !== "string") return;
+      const payload = parseExamStudyGuideStreamPayload((event as MessageEvent<string>).data);
+      if (disposed) return;
+      setStudyGuideStreamState((current) => ({
+        ...current,
+        status: "error",
+        detail: "",
+        error: payload?.detail || "复习指南生成失败，请稍后重试。",
+      }));
+      stream.close();
+    };
+
+    stream.onopen = () => {
+      if (disposed) return;
+      setStudyGuideStreamState((current) => (
+        current.guide
+          ? current
+          : {
+              status: "generating",
+              detail: current.detail || "正在生成复习指南...",
+              error: "",
+              guide: null,
+              sequence: 0,
+            }
+      ));
+    };
+    stream.addEventListener("snapshot", applyGeneratingPayload);
+    stream.addEventListener("progress", applyGeneratingPayload);
+    stream.addEventListener("content", applyGeneratingPayload);
+    stream.addEventListener("done", handleDone);
+    stream.addEventListener("error", handleServerError);
+    stream.onerror = (event) => {
+      if ("data" in event && typeof (event as MessageEvent<unknown>).data === "string") return;
+      if (disposed) return;
+      reportBackendConnectionIssue("exam_study_guide_stream_error");
+      setStudyGuideStreamState((current) => ({
+          ...current,
+          status: "connecting",
+          detail: "连接中断，正在自动重试...",
+          error: "",
+      }));
+      if (reconnectCheckTimer !== null) window.clearTimeout(reconnectCheckTimer);
+      reconnectCheckTimer = window.setTimeout(() => {
+        if (!disposed && stream.readyState === 2) {
+          setStudyGuideStreamState((current) => ({
+              ...current,
+              status: "error",
+              detail: "",
+              error: "无法连接复习指南生成服务，请重试。",
+          }));
+        }
+      }, 100);
+    };
+
+    return () => {
+      disposed = true;
+      if (reconnectCheckTimer !== null) window.clearTimeout(reconnectCheckTimer);
+      stream.onopen = null;
+      stream.onerror = null;
+      stream.removeEventListener("snapshot", applyGeneratingPayload);
+      stream.removeEventListener("progress", applyGeneratingPayload);
+      stream.removeEventListener("content", applyGeneratingPayload);
+      stream.removeEventListener("done", handleDone);
+      stream.removeEventListener("error", handleServerError);
+      stream.close();
+    };
+  }, [activeStage, apiAuthGeneration, courseId, paper?.status, paperId, studyGuideStreamAttempt]);
 
   useEffect(() => {
     if (!courseId || !paperId || paper?.status !== "generating") return;
@@ -619,11 +794,14 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
       updateQuestionTemplateMark(courseId, questionTemplateId, isMarked),
     onMutate: async ({ questionTemplateId, isMarked }) => {
       await queryClient.cancelQueries({ queryKey: examDetailQueryKey });
-      const previousDetail = queryClient.getQueryData(examDetailQueryKey);
+      const previousMark = getQuestionTemplateMarkInDetail(
+        queryClient.getQueryData(examDetailQueryKey),
+        questionTemplateId,
+      );
       queryClient.setQueryData(examDetailQueryKey, (current: unknown) =>
         patchQuestionTemplateMarkInDetail(current, questionTemplateId, isMarked),
       );
-      return { previousDetail };
+      return { previousMark };
     },
     onSuccess: async () => {
       await Promise.all([
@@ -631,9 +809,17 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
         queryClient.invalidateQueries({ queryKey: ["exam-question-templates", courseId] }),
       ]);
     },
-    onError: (error, _variables, context) => {
-      if (context?.previousDetail) {
-        queryClient.setQueryData(examDetailQueryKey, context.previousDetail);
+    onError: (error, { questionTemplateId, isMarked }, context) => {
+      const previousMark = context?.previousMark;
+      if (typeof previousMark === "boolean") {
+        queryClient.setQueryData(examDetailQueryKey, (current: unknown) =>
+          restoreQuestionTemplateMarkInDetail(
+            current,
+            questionTemplateId,
+            isMarked,
+            previousMark,
+          ),
+        );
       }
       toast({
         title: "标记失败",
@@ -641,125 +827,23 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
         variant: "error",
       });
     },
+    onSettled: (_data, _error, { questionTemplateId }) => {
+      finishQuestionTemplateMark(questionTemplateId);
+    },
   });
 
   const toggleQuestionMark = useCallback((item: ExamPaperItemResponse, isMarked: boolean) => {
     if (!item.question_template_id) {
       return;
     }
+    if (!beginQuestionTemplateMark(item.question_template_id)) {
+      return;
+    }
     questionTemplateMarkMutation.mutate({
       questionTemplateId: item.question_template_id,
       isMarked,
     });
-  }, [questionTemplateMarkMutation]);
-  const markingQuestionTemplateId = questionTemplateMarkMutation.isPending
-    ? questionTemplateMarkMutation.variables?.questionTemplateId ?? null
-    : null;
-
-  const gradePersistentDrillAnswer = useCallback(async (
-    item: ExamPaperItemResponse,
-    answer: string,
-  ): Promise<QuestionTemplateGradeResult> => {
-    const payloadKey = `${paperId}:${item.id}:${answer}`;
-    let attemptKey = masteryDrillAttemptKeyRef.current.get(payloadKey);
-    if (!attemptKey) {
-      attemptKey = createDrillIdempotencyKey("web-attempt");
-      masteryDrillAttemptKeyRef.current.set(payloadKey, attemptKey);
-    }
-    try {
-      const response = await recordMasteryDrillAttemptApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillAttemptsPost(
-        courseId,
-        paperId,
-        {
-          exam_paper_item_id: item.id,
-          answer,
-          attempt_key: attemptKey,
-        },
-      );
-      const attempt = unwrapOrvalResponse<MasteryDrillAttemptResponse>(response);
-      if (!attempt) {
-        throw new Error("服务端没有返回闯关判题结果。");
-      }
-      masteryDrillAttemptKeyRef.current.delete(payloadKey);
-      return {
-        question_template_id: item.question_template_id,
-        question_type: item.question_type,
-        is_correct: attempt.is_correct === true,
-        score_obtained: attempt.score_obtained ?? 0,
-        score_max: attempt.score_max ?? 1,
-        feedback_text: attempt.feedback_text ?? "",
-        error_cause_label: attempt.error_cause_label,
-        grading_mode: attempt.grading_mode === "subjective_llm" || attempt.grading_mode === "subjective_fallback"
-          ? attempt.grading_mode
-          : "objective_rule",
-        correct_answer: item.correct_answer ?? "",
-      };
-    } catch (error) {
-      toast({
-        title: "答案保存或判题失败",
-        description: getApiErrorMessage(error, "请重试当前答案"),
-        variant: "error",
-      });
-      throw error;
-    }
-  }, [courseId, paperId, toast]);
-
-  const completePersistentMasteryDrill = useMutation({
-    mutationFn: async ({
-      courseId: targetCourseId,
-      paperId: targetPaperId,
-      completionKey,
-    }: MasteryDrillCompletionVariables) => {
-      return completeMasteryDrillApiV1CoursesCourseIdExamsExamPaperIdMasteryDrillCompletePost(
-        targetCourseId,
-        targetPaperId,
-        { completion_key: completionKey },
-      );
-    },
-    retry: 2,
-    onSuccess: async (_response, variables) => {
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: getExamDetailApiV1CoursesCourseIdExamsExamPaperIdGetQueryKey(
-            variables.courseId,
-            variables.paperId,
-          ),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: getExamHistoryApiV1CoursesCourseIdExamsHistoryGetQueryKey(
-            variables.courseId,
-            { page: 1, size: 24 },
-          ),
-        }),
-      ]);
-      toast({
-        title: "闯关完成",
-        description: "本轮逐题作答记录已保存，学习画像正在后台同步。",
-        variant: "success",
-      });
-    },
-    onError: (error) => {
-      toast({
-        title: "闯关结果保存失败",
-        description: getApiErrorMessage(error, "逐题答案仍已保存，刷新后可以继续完成。"),
-        variant: "error",
-      });
-    },
-  });
-
-  const completePersistentMasteryDrillMutate = completePersistentMasteryDrill.mutate;
-  const completeCurrentPersistentMasteryDrill = useCallback(() => {
-    const paperIdentity = `${courseId}:${paperId}`;
-    let completionKey = masteryDrillCompletionKeyRef.current.get(paperIdentity);
-    if (!completionKey) {
-      completionKey = createDrillIdempotencyKey("web-complete");
-      masteryDrillCompletionKeyRef.current.set(paperIdentity, completionKey);
-    }
-    completePersistentMasteryDrillMutate({ courseId, paperId, completionKey });
-  }, [completePersistentMasteryDrillMutate, courseId, paperId]);
-  const completionMutationTargetsCurrentPaper =
-    completePersistentMasteryDrill.variables?.courseId === courseId
-    && completePersistentMasteryDrill.variables?.paperId === paperId;
+  }, [beginQuestionTemplateMark, questionTemplateMarkMutation]);
 
   const submitExam = useSubmitExamApiV1CoursesCourseIdExamsExamPaperIdSubmitPost({
     request: {
@@ -777,6 +861,7 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
         ]);
       },
       onError: (error) => {
+        setIsSubmissionResultPending(false);
         const isManuallyClosed = isSubmitOverlayClosedManuallyRef.current;
         if (!isManuallyClosed) {
           setShowSubmitOverlay(false);
@@ -815,14 +900,39 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
     },
   });
 
-  const isGrading = submitExam.isPending || paper?.status === "submitted" || paper?.status === "grading";
+  const isGrading = paper?.status !== "graded"
+    && paper?.status !== "grading_failed"
+    && (
+      isSubmissionResultPending
+      || submitExam.isPending
+      || paper?.status === "submitted"
+      || paper?.status === "grading"
+    );
 
   useEffect(() => {
     const previousStatus = previousPaperStatusRef.current;
     previousPaperStatusRef.current = paper?.status ?? null;
-    if (paper?.status !== "graded" || !paper.graded_at) return;
+    const terminalState = resolveExamSubmissionTerminalState(
+      paper?.status,
+      previousStatus,
+      isSubmissionResultPending,
+    );
+    if (!terminalState) return;
+
+    if (terminalState === "grading_failed") {
+      setIsSubmissionResultPending(false);
+      setShowSubmitOverlay(false);
+      toast({
+        title: isSubmitOverlayClosedManuallyRef.current ? "后台判卷失败" : "判卷失败",
+        description: "答卷已安全保存，可点击“重新批改”再次尝试。",
+        variant: "error",
+      });
+      return;
+    }
+
+    if (!paper?.graded_at) return;
+    setIsSubmissionResultPending(false);
     if (handledGradedAtRef.current === paper.graded_at) return;
-    if (previousStatus !== "submitted" && previousStatus !== "grading") return;
     handledGradedAtRef.current = paper.graded_at;
 
     const isManuallyClosed = isSubmitOverlayClosedManuallyRef.current;
@@ -849,7 +959,7 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
     if (!isManuallyClosed) {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
-  }, [answerStorageKey, courseId, paper?.graded_at, paper?.score_obtained, paper?.status, paperId, queryClient, toast]);
+  }, [answerStorageKey, courseId, isSubmissionResultPending, paper?.graded_at, paper?.score_obtained, paper?.status, paperId, queryClient, toast]);
 
   useEffect(() => {
     const previousStatus = previousProfileSyncStatusRef.current;
@@ -929,6 +1039,7 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
       return;
     }
     isSubmitOverlayClosedManuallyRef.current = false;
+    setIsSubmissionResultPending(true);
     submitExam.mutate({
       courseId,
       examPaperId: paperId,
@@ -1127,30 +1238,14 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
               )}
 
               {paper.status !== "generating" && paper.status !== "failed" && activeStage !== 3 && (
-                paper.exam_mode === MASTERY_DRILL_EXAM_MODE && paper.status !== "graded" ? (
-                  paper.mastery_drill ? (
-                    <ExamMasteryDrillSession
-                      paper={paper}
-                      answers={answers}
-                      setAnswers={setAnswers}
-                      isCompleting={completePersistentMasteryDrill.isPending && completionMutationTargetsCurrentPaper}
-                      onBack={() => navigate(backHref)}
-                      onGradeAnswer={gradePersistentDrillAnswer}
-                      onComplete={completeCurrentPersistentMasteryDrill}
-                      onRetryComplete={completeCurrentPersistentMasteryDrill}
-                      completionError={completePersistentMasteryDrill.isError && completionMutationTargetsCurrentPaper
-                        ? getApiErrorMessage(completePersistentMasteryDrill.error, "闯关结果保存失败，请重试。")
-                        : null}
-                      onQuestionAi={openQuestionAi}
-                      onQuestionMarkToggle={toggleQuestionMark}
-                      markingQuestionTemplateId={markingQuestionTemplateId}
-                    />
-                  ) : (
-                    <div className="rounded-[28px] border border-rose-200 bg-rose-50 px-6 py-12 text-center text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300" role="alert">
-                      <h2 className="text-lg font-semibold text-rose-950 dark:text-rose-100">闯关记录不完整</h2>
-                      <p className="mt-2">当前闯关缺少服务端会话，已停止本地判分。请返回训练中心重新创建闯关。</p>
-                    </div>
-                  )
+                paper.exam_mode === MASTERY_DRILL_EXAM_MODE ? (
+                  <div className="rounded-[28px] border border-amber-200 bg-amber-50 px-6 py-12 text-center text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200" role="status">
+                    <h2 className="text-lg font-semibold text-amber-950 dark:text-amber-100">旧闯关记录已停用</h2>
+                    <p className="mt-2">闯关现为一次性训练，不再恢复或保存答案、错题、进度和结果。</p>
+                    <Button className="mt-5 rounded-full px-5" onClick={() => navigate(backHref)}>
+                      返回训练中心
+                    </Button>
+                  </div>
                 ) : (
                   <div
                     className={isPaperCanvasLayout ? "h-full min-h-0 transition-all duration-150" : "transition-all duration-150"}
@@ -1283,7 +1378,7 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
                         onReviewAnalysisToggle={handleToggleQuestionAnalysis}
                         onQuestionAi={openQuestionAi}
                         onQuestionMarkToggle={toggleQuestionMark}
-                        markingQuestionTemplateId={markingQuestionTemplateId}
+                        markingQuestionTemplateIds={markingQuestionTemplateIds}
                         activeAiAnchorId={isSidebarOpen ? sidebarRequest?.anchorId : null}
                       />
                       {isReviewAnalysisVisible ? (
@@ -1307,7 +1402,7 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
                     onReviewAnalysisToggle={handleToggleQuestionAnalysis}
                     onQuestionAi={openQuestionAi}
                     onQuestionMarkToggle={toggleQuestionMark}
-                    markingQuestionTemplateId={markingQuestionTemplateId}
+                    markingQuestionTemplateIds={markingQuestionTemplateIds}
                     activeAiAnchorId={isSidebarOpen ? sidebarRequest?.anchorId : null}
                   />
                 )}
@@ -1324,22 +1419,45 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
 
               {paper.status !== "generating" && paper.status !== "failed" && activeStage === 3 && (
                 <div className="mx-auto max-w-6xl">
-                  {studyGuideQuery.isLoading && (
-                    <div className="rounded-[28px] border border-slate-200 bg-white px-6 py-12 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-950/80 dark:text-slate-400">
-                      正在生成复习指南...
+                  {studyGuideStreamState.status !== "completed"
+                    && !studyGuideStreamState.error
+                    && !studyGuideStreamState.guide && (
+                    <div className="flex items-center justify-center gap-3 rounded-[28px] border border-slate-200 bg-white px-6 py-12 text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-950/80 dark:text-slate-400" role="status">
+                      <Loader2 className="h-5 w-5 animate-spin text-indigo-500" aria-hidden="true" />
+                      {studyGuideStreamState.detail || "正在生成复习指南..."}
                     </div>
                   )}
 
-                  {studyGuideQuery.error && (
-                    <div className="rounded-[28px] border border-red-200 bg-red-50 px-6 py-4 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
-                      {getApiErrorMessage(studyGuideQuery.error, "复习指南生成失败")}
+                  {studyGuideStreamState.error && (
+                    <div className="flex flex-col items-center justify-center gap-4 rounded-[28px] border border-red-200 bg-red-50 px-6 py-8 text-center text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300" role="alert">
+                      <span>{studyGuideStreamState.error}</span>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="rounded-full border-red-200 text-red-700 hover:bg-red-100 dark:border-red-500/30 dark:text-red-200 dark:hover:bg-red-500/10"
+                        onClick={() => {
+                          setStudyGuideStreamState({
+                            status: "connecting",
+                            detail: "正在重新连接复习指南生成服务...",
+                            error: "",
+                            guide: null,
+                            sequence: 0,
+                          });
+                          setStudyGuideStreamAttempt((current) => current + 1);
+                        }}
+                      >
+                        <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                        重新生成
+                      </Button>
                     </div>
                   )}
 
-                  {studyGuideQuery.data && (
+                  {studyGuideStreamState.guide && (
                     <ExamStudyGuideView
-                      guide={studyGuideQuery.data}
+                      guide={studyGuideStreamState.guide}
                       paper={paper}
+                      isStreaming={studyGuideStreamState.status !== "completed"}
                     />
                   )}
                 </div>

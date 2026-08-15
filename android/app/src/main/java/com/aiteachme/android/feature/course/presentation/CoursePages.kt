@@ -507,8 +507,12 @@ fun PracticeScreen(
                     onQuestionCountSelected = practiceViewModel::selectQuestionCount,
                     onPromptChange = practiceViewModel::updatePrompt,
                     onGenerate = {
-                        practiceViewModel.generate(courseId) { paperId ->
-                            onOpenPaper(courseId, paperId)
+                        if (practiceState.mode == PracticeMode.MasteryDrill) {
+                            onOpenMasteryDrill(courseId)
+                        } else {
+                            practiceViewModel.generate(courseId) { paperId ->
+                                onOpenPaper(courseId, paperId)
+                            }
                         }
                     },
                 )
@@ -563,19 +567,13 @@ fun PracticeScreen(
             if (practiceState.isLoadingHistory && practiceState.history.isEmpty()) {
                 item { LoadingBlock("正在加载历史试卷...") }
             } else if (practiceState.history.isEmpty()) {
-                item { EmptyBlock("还没有考试、测试组卷或闯关记录。生成一次后会在这里保留入口。") }
+                item { EmptyBlock("还没有测验或考卷记录。生成一次后会在这里保留入口。") }
             } else {
                 items(practiceState.history, key = { it.id }) { history ->
                     ExamHistoryCard(
                         item = history,
                         selected = false,
-                        onClick = {
-                            if (history.isActiveMasteryDrill()) {
-                                onOpenMasteryDrill(courseId)
-                            } else {
-                                onOpenPaper(courseId, history.id)
-                            }
-                        },
+                        onClick = { onOpenPaper(courseId, history.id) },
                     )
                 }
             }
@@ -906,12 +904,6 @@ private fun ExamPaperDetailResponse.canSubmit(): Boolean {
     return status.lowercase() in setOf("ready", "generated", "grading_failed") && items.isNotEmpty()
 }
 
-private fun ExamHistoryItem.isActiveMasteryDrill(): Boolean {
-    return examMode == PracticeMode.MasteryDrill.apiValue &&
-        status.lowercase() != "graded" &&
-        masteryDrill?.status?.lowercase() == "active"
-}
-
 private fun ExamPaperDetailResponse.isGraded(): Boolean {
     return status.lowercase() == "graded"
 }
@@ -1043,7 +1035,7 @@ fun ProfileScreen(
         item {
             CapabilityCard(
                 title = "画像摘要",
-                body = "移动端画像页先聚合资料、构建和练习信号。练习、组卷和闯关提交后会回写掌握状态，后续可在这里继续展开薄弱点和复习任务。",
+                body = "移动端画像页先聚合资料、构建和练习信号。测验和考卷提交后会回写掌握状态；一次性闯关不会更新画像。",
                 primaryLabel = "开始练习",
                 onPrimary = { onOpenPractice(courseId) },
             )
