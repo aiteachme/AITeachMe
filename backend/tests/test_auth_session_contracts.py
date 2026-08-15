@@ -188,7 +188,7 @@ def test_send_register_code_rate_limits_and_rolls_back_failed_delivery(monkeypat
         assert session.exec(select(EmailConfirmation)).all() == []
 
 
-def test_registered_email_uses_the_same_resend_cooldown_without_sending(
+def test_registered_email_uses_the_same_delivery_and_resend_behavior(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _enable_auth(monkeypatch)
@@ -215,7 +215,7 @@ def test_registered_email_uses_the_same_resend_cooldown_without_sending(
             email="registered@example.com",
         )
         assert first.resend_after_s == 60
-        assert sent_to == []
+        assert sent_to == ["registered@example.com"]
         assert session.exec(
             select(EmailConfirmation).where(
                 EmailConfirmation.email == "registered@example.com"

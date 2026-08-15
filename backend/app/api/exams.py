@@ -97,7 +97,7 @@ from app.workflows.examine import (
     run_exam_study_guide_workflow,
     run_question_build_workflow,
 )
-from app.workflows.examine.credit_lifecycle import run_reserved_exam_generation
+from app.workflows.examine.credit_lifecycle import release_exam_reservation, run_reserved_exam_generation
 from app.workflows.support.credits import (
     EXAM_GENERATION_COST,
     release_reservation,
@@ -3575,31 +3575,46 @@ async def _spawn_exam_generation_after_response(
     reservation_id: str | None = None,
     paper_layout_mode: str | None = None,
 ) -> None:
-    request.app.state.background_task_registry.spawn(
-        run_reserved_exam_generation(
-            _run_exam_generation_background(
-                course_id=course_id,
-                user_id=user_id,
-                paper_id=paper_id,
-                exam_mode=exam_mode,
-                unit_ids=unit_ids,
-                question_count=question_count,
-                user_prompt=user_prompt,
-                sample_file_ids=sample_file_ids,
-                config_snapshot=config_snapshot,
-                config_hash=config_hash,
-                paper_layout_mode=paper_layout_mode,
-                schedule_replacement=schedule_replacement,
-                background_task_registry=getattr(request.app.state, "background_task_registry", None),
-            ),
+    generation_task = None
+    reserved_task = None
+    try:
+        generation_task = _run_exam_generation_background(
+            course_id=course_id,
+            user_id=user_id,
+            paper_id=paper_id,
+            exam_mode=exam_mode,
+            unit_ids=unit_ids,
+            question_count=question_count,
+            user_prompt=user_prompt,
+            sample_file_ids=sample_file_ids,
+            config_snapshot=config_snapshot,
+            config_hash=config_hash,
+            paper_layout_mode=paper_layout_mode,
+            schedule_replacement=schedule_replacement,
+            background_task_registry=getattr(request.app.state, "background_task_registry", None),
+        )
+        reserved_task = run_reserved_exam_generation(
+            generation_task,
             reservation_id=reservation_id,
             paper_id=paper_id,
-        ),
-        kind="exam.generate",
-        course_id=course_id,
-        name=f"exam.generate:{course_id}:{paper_id}",
-        dedupe_key=f"exam.generate:{course_id}:{paper_id}",
-    )
+        )
+        request.app.state.background_task_registry.spawn(
+            reserved_task,
+            kind="exam.generate",
+            course_id=course_id,
+            name=f"exam.generate:{course_id}:{paper_id}",
+            dedupe_key=f"exam.generate:{course_id}:{paper_id}",
+            cancel_cleanup=lambda: release_exam_reservation(reservation_id),
+        )
+    except BaseException:
+        close_reserved = getattr(reserved_task, "close", None)
+        if callable(close_reserved):
+            close_reserved()
+        close_generation = getattr(generation_task, "close", None)
+        if callable(close_generation):
+            close_generation()
+        release_exam_reservation(reservation_id)
+        raise
 
 
 async def _spawn_exam_prewarm_after_response(

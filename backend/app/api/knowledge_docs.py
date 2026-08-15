@@ -71,8 +71,8 @@ from app.workflows.digest.docgen import (
     run_docgen_background,
     trigger_docgen_build,
 )
-from app.workflows.digest.credit_lifecycle import run_reserved_docgen
-from app.workflows.support.credits import DOCGEN_BUILD_COST, release_reservation, reserve_credits
+from app.workflows.digest.credit_lifecycle import release_docgen_reservation, run_reserved_docgen
+from app.workflows.support.credits import DOCGEN_BUILD_COST, reserve_credits
 from app.workflows.digest.kg_doc_sync import (
     get_knowledge_overview,
     trigger_graph_docs_sync_manual_build,
@@ -860,7 +860,7 @@ async def knowledge_build(
     )
 
     build_group_id = uuid.uuid4().hex
-    reservation = None
+    reservation_id = None
     try:
         if not user.is_local:
             account_user = session.get(User, user.user_id)
@@ -874,6 +874,7 @@ async def knowledge_build(
                 amount=DOCGEN_BUILD_COST,
                 idempotency_key=f"docgen:{user.user_id}:{build_group_id}",
             )
+            reservation_id = reservation.id
         data, accepted_file_ids, prepared_build_group_id = trigger_docgen_build(
             session,
             course=course_record,
@@ -887,9 +888,7 @@ async def knowledge_build(
         if prepared_build_group_id != build_group_id:
             raise RuntimeError("DocGen build group changed after credit reservation.")
     except BaseException:
-        if reservation is not None:
-            with managed_session() as credit_session:
-                release_reservation(credit_session, reservation_id=reservation.id)
+        release_docgen_reservation(reservation_id)
         raise
     background_task = None
     docgen_task = None
@@ -937,7 +936,7 @@ async def knowledge_build(
         )
         background_task = run_reserved_docgen(
             docgen_task,
-            reservation_id=reservation.id if reservation is not None else None,
+            reservation_id=reservation_id,
             course_id=normalized,
             user_id=user.user_id,
             build_group_id=build_group_id,
@@ -947,6 +946,7 @@ async def knowledge_build(
             kind="knowledge.build.docs",
             course_id=normalized,
             name=f"knowledge.build.docs:{normalized}:{build_group_id}",
+            cancel_cleanup=lambda: release_docgen_reservation(reservation_id),
         )
     except BaseException:
         close = getattr(background_task, "close", None)
@@ -960,9 +960,7 @@ async def knowledge_build(
             user_id=user.user_id,
             build_group_id=build_group_id,
         )
-        if reservation is not None:
-            with managed_session() as credit_session:
-                release_reservation(credit_session, reservation_id=reservation.id)
+        release_docgen_reservation(reservation_id)
         raise
 
     add_done_callback = getattr(spawned_task, "add_done_callback", None)

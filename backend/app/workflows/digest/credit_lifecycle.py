@@ -11,6 +11,15 @@ from app.workflows.digest.docgen.lib.build_lifecycle import _docgen_publish_comp
 from app.workflows.support.credits import release_reservation, settle_reservation
 
 
+def release_docgen_reservation(reservation_id: str | None) -> None:
+    """Idempotently release a DocGen reservation, including before task admission."""
+
+    if reservation_id is None:
+        return
+    with managed_session() as session:
+        release_reservation(session, reservation_id=reservation_id)
+
+
 async def run_reserved_docgen(
     task: Coroutine,
     *,
@@ -25,8 +34,7 @@ async def run_reserved_docgen(
     try:
         await task
     except BaseException:
-        with managed_session() as session:
-            release_reservation(session, reservation_id=reservation_id)
+        release_docgen_reservation(reservation_id)
         raise
     course_scope = build_course_storage_scope(user_id=user_id, course_id=course_id)
     runtime = read_knowledge_build_runtime(course_id, course_scope=course_scope)
@@ -49,4 +57,4 @@ async def run_reserved_docgen(
             release_reservation(session, reservation_id=reservation_id)
 
 
-__all__ = ["run_reserved_docgen"]
+__all__ = ["release_docgen_reservation", "run_reserved_docgen"]

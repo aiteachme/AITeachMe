@@ -296,6 +296,7 @@ def test_knowledge_build_spawns_background_docgen_with_accepted_files(monkeypatc
     )
 
     assert response.data is build_data
+    cancel_cleanup = spawned[0].pop("cancel_cleanup")
     assert spawned == [
         {
             "task": "docgen-task",
@@ -304,6 +305,7 @@ def test_knowledge_build_spawns_background_docgen_with_accepted_files(monkeypatc
             "name": f"knowledge.build.docs:{COURSE_ID}:group-1",
         }
     ]
+    assert callable(cancel_cleanup)
     assert run_kwargs["course_id"] == COURSE_ID
     assert run_kwargs["course_name"] == "API Course"
     assert run_kwargs["file_ids"] == ["file-a"]

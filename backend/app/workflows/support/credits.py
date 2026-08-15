@@ -434,7 +434,7 @@ async def run_credit_reservation_recovery_loop() -> None:
     logger = structlog.get_logger(__name__)
     while True:
         try:
-            recover_expired_reservations_once()
+            await asyncio.to_thread(recover_expired_reservations_once)
         except asyncio.CancelledError:
             raise
         except Exception as exc:

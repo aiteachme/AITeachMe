@@ -616,6 +616,91 @@ async def test_exam_prewarm_status_reports_missing_default_without_background_ge
 
 
 @pytest.mark.anyio
+async def test_charged_exam_generation_registers_cancel_cleanup(monkeypatch: pytest.MonkeyPatch) -> None:
+    generation_task = SimpleNamespace(close=lambda: None)
+    reserved_task = SimpleNamespace(close=lambda: None)
+    spawn_kwargs: dict[str, object] = {}
+    released: list[str | None] = []
+
+    class Registry:
+        @staticmethod
+        def spawn(task, **kwargs):
+            assert task is reserved_task
+            spawn_kwargs.update(kwargs)
+            return SimpleNamespace()
+
+    monkeypatch.setattr(exams_api, "_run_exam_generation_background", lambda **_kwargs: generation_task)
+    monkeypatch.setattr(
+        exams_api,
+        "run_reserved_exam_generation",
+        lambda task, **_kwargs: reserved_task if task is generation_task else None,
+    )
+    monkeypatch.setattr(exams_api, "release_exam_reservation", released.append)
+
+    await exams_api._spawn_exam_generation_after_response(
+        SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(background_task_registry=Registry()))),
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        paper_id=42,
+        exam_mode="web_practice",
+        unit_ids=[1],
+        question_count=1,
+        user_prompt=None,
+        sample_file_ids=None,
+        config_snapshot={},
+        config_hash="hash",
+        schedule_replacement=False,
+        reservation_id="reservation-42",
+    )
+
+    cleanup = spawn_kwargs["cancel_cleanup"]
+    assert callable(cleanup)
+    cleanup()
+    assert released == ["reservation-42"]
+
+
+@pytest.mark.anyio
+async def test_exam_generation_spawn_failure_closes_tasks_and_releases_reservation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    closed: list[str] = []
+    released: list[str | None] = []
+    generation_task = SimpleNamespace(close=lambda: closed.append("generation"))
+    reserved_task = SimpleNamespace(close=lambda: closed.append("reserved"))
+
+    class FailingRegistry:
+        @staticmethod
+        def spawn(_task, **_kwargs):
+            raise RuntimeError("registry unavailable")
+
+    monkeypatch.setattr(exams_api, "_run_exam_generation_background", lambda **_kwargs: generation_task)
+    monkeypatch.setattr(exams_api, "run_reserved_exam_generation", lambda *_args, **_kwargs: reserved_task)
+    monkeypatch.setattr(exams_api, "release_exam_reservation", released.append)
+
+    with pytest.raises(RuntimeError, match="registry unavailable"):
+        await exams_api._spawn_exam_generation_after_response(
+            SimpleNamespace(
+                app=SimpleNamespace(state=SimpleNamespace(background_task_registry=FailingRegistry()))
+            ),
+            course_id=COURSE_ID,
+            user_id=USER_ID,
+            paper_id=42,
+            exam_mode="web_practice",
+            unit_ids=[1],
+            question_count=1,
+            user_prompt=None,
+            sample_file_ids=None,
+            config_snapshot={},
+            config_hash="hash",
+            schedule_replacement=False,
+            reservation_id="reservation-42",
+        )
+
+    assert closed == ["reserved", "generation"]
+    assert released == ["reservation-42"]
+
+
+@pytest.mark.anyio
 async def test_exam_prewarm_status_finds_visible_preparing_candidate(
     session: Session,
 ) -> None:

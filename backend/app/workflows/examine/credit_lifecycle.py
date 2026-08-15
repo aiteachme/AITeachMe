@@ -9,6 +9,15 @@ from app.shared.infra.database import managed_session
 from app.workflows.support.credits import release_reservation, settle_reservation
 
 
+def release_exam_reservation(reservation_id: str | None) -> None:
+    """Idempotently release an exam reservation, including before task admission."""
+
+    if reservation_id is None:
+        return
+    with managed_session() as session:
+        release_reservation(session, reservation_id=reservation_id)
+
+
 async def run_reserved_exam_generation(
     task: Coroutine,
     *,
@@ -21,8 +30,7 @@ async def run_reserved_exam_generation(
     try:
         await task
     except BaseException:
-        with managed_session() as session:
-            release_reservation(session, reservation_id=reservation_id)
+        release_exam_reservation(reservation_id)
         raise
     with managed_session() as session:
         paper = exams_repo.get_exam_paper_by_id(session, paper_id)
@@ -32,4 +40,4 @@ async def run_reserved_exam_generation(
             release_reservation(session, reservation_id=reservation_id)
 
 
-__all__ = ["run_reserved_exam_generation"]
+__all__ = ["release_exam_reservation", "run_reserved_exam_generation"]

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import threading
 from contextlib import contextmanager
 from datetime import timedelta
 from types import SimpleNamespace
@@ -623,6 +624,30 @@ def test_docgen_reservation_recovery_requires_an_active_build_lease(
         )
 
         assert credits._reservation_recovery_action(db, reservation) == expected_action
+
+
+@pytest.mark.anyio
+async def test_credit_recovery_loop_runs_blocking_scan_off_event_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    event_loop_thread_id = threading.get_ident()
+    recovery_thread_ids: list[int] = []
+
+    def recover_once() -> int:
+        recovery_thread_ids.append(threading.get_ident())
+        return 0
+
+    monkeypatch.setattr(credits, "recover_expired_reservations_once", recover_once)
+    task = asyncio.create_task(credits.run_credit_reservation_recovery_loop())
+    try:
+        while not recovery_thread_ids:
+            await asyncio.sleep(0)
+    finally:
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    assert recovery_thread_ids[0] != event_loop_thread_id
 
 
 def test_docgen_credit_lifecycle_uses_persisted_build_session(
