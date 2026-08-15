@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import Request
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
@@ -390,6 +391,78 @@ def test_admin_credit_adjustment_requires_a_chinese_reason() -> None:
         idempotency_key="admin-adjustment-2",
     )
     assert request.reason == "管理员补发额度"
+
+
+def test_admin_adjustment_recovers_concurrent_same_idempotency_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = _engine()
+    with Session(engine, expire_on_commit=False) as db:
+        target = _user("usr_target")
+        admin = _user("usr_admin", role="admin")
+        db.add_all([target, admin])
+        db.commit()
+        credits.ensure_credit_account(db, user=target)
+
+        monkeypatch.setattr(
+            credits,
+            "ensure_credit_account",
+            lambda session, *, user: session.get(CreditAccount, user.id),
+        )
+        collision_injected = False
+
+        def commit_after_concurrent_winner() -> None:
+            nonlocal collision_injected
+            assert not collision_injected
+            collision_injected = True
+            db.rollback()
+            with Session(engine, expire_on_commit=False) as winner:
+                account = winner.get(CreditAccount, target.id)
+                assert account is not None
+                now = utcnow()
+                before = account.balance
+                account.balance += 25
+                account.lifetime_granted += 25
+                account.version += 1
+                account.updated_at = now
+                winner.add(account)
+                winner.add(
+                    CreditLedger(
+                        id="clg_concurrent_winner",
+                        user_id=target.id,
+                        delta=25,
+                        operation="admin_grant",
+                        reason="管理员并发补发额度",
+                        reference_type="admin_adjustment",
+                        reference_id=target.id,
+                        operator_user_id=admin.id,
+                        idempotency_key="admin-concurrent-grant",
+                        balance_before=before,
+                        balance_after=account.balance,
+                        reserved_before=account.reserved_balance,
+                        reserved_after=account.reserved_balance,
+                        created_at=now,
+                    )
+                )
+                winner.commit()
+            raise IntegrityError("INSERT credit_ledger", {}, Exception("duplicate idempotency key"))
+
+        monkeypatch.setattr(db, "commit", commit_after_concurrent_winner)
+        account = credits.adjust_credits(
+            db,
+            target_user=target,
+            operator_user=admin,
+            operation="grant",
+            amount=25,
+            reason="管理员并发补发额度",
+            idempotency_key="admin-concurrent-grant",
+        )
+
+        assert account.balance == 325
+        assert collision_injected is True
+        assert len(db.exec(
+            select(CreditLedger).where(CreditLedger.idempotency_key == "admin-concurrent-grant")
+        ).all()) == 1
 
 
 def test_successful_exam_reservation_is_settled_during_recovery(

@@ -14,6 +14,7 @@ from uuid import uuid4
 
 import httpx
 import jwt
+import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
@@ -182,26 +183,29 @@ def _authorization_url(config: ProviderConfig, *, flow: OAuthFlow, state: str) -
 
 
 def _consume_flow(session: Session, *, provider: str, state: str) -> OAuthFlow:
-    flow = session.exec(
-        select(OAuthFlow).where(
+    now = utcnow()
+    flow_id = session.exec(
+        sa.update(OAuthFlow)
+        .where(
             OAuthFlow.provider == provider,
             OAuthFlow.state_hash == _sha256(state),
+            OAuthFlow.consumed_at.is_(None),
+            OAuthFlow.expires_at > now,
         )
+        .values(consumed_at=now)
+        .returning(OAuthFlow.id)
     ).first()
-    now = utcnow()
-    if (
-        flow is None
-        or flow.consumed_at is not None
-        or flow.expires_at.replace(tzinfo=flow.expires_at.tzinfo or timezone.utc) <= now
-    ):
+    if flow_id is None:
+        session.rollback()
         raise AITeachMeError(
             detail="OAuth state 无效、已使用或已过期。",
             status_code=400,
             error_code="OAUTH_STATE_INVALID",
         )
-    flow.consumed_at = now
-    session.add(flow)
     session.commit()
+    flow = session.get(OAuthFlow, flow_id)
+    if flow is None:
+        raise RuntimeError("Consumed OAuth flow disappeared.")
     return flow
 
 

@@ -4,6 +4,7 @@ from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
@@ -14,12 +15,14 @@ from app.models import (
     CourseFileLink,
     CourseShare,
     CourseShareImport,
+    ExamPaper,
     Highlight,
     LearningLogRecord,
     MemoryRecord,
     RawFile,
     RetrievalChunk,
     User,
+    UserKnowledgeState,
     UserMergeJob,
 )
 from app.shared.infra.storage.course_scope import build_user_file_storage_scope
@@ -74,6 +77,8 @@ def _engine():
             Highlight.__table__,
             ChatSession.__table__,
             ChatMessage.__table__,
+            ExamPaper.__table__,
+            UserKnowledgeState.__table__,
             MemoryRecord.__table__,
             LearningLogRecord.__table__,
             RetrievalChunk.__table__,
@@ -97,6 +102,58 @@ def _raw_file(file_id: str, *, user_id: str, content_hash: str, file_path: str) 
         parse_request_signature="default",
         status="completed",
     )
+
+
+def test_merge_offer_recovers_concurrent_pair_insert(monkeypatch) -> None:
+    engine = _engine()
+    with Session(engine, expire_on_commit=False) as session:
+        session.add_all(
+            [
+                User(id="guest", username="guest"),
+                User(id="target", username="target", is_registered=True),
+                MemoryRecord(
+                    key="guest:memory",
+                    user_id="guest",
+                    content="需要迁移的游客记忆",
+                    tag="general",
+                ),
+            ]
+        )
+        session.commit()
+        collision_injected = False
+
+        def commit_after_concurrent_winner() -> None:
+            nonlocal collision_injected
+            assert not collision_injected
+            collision_injected = True
+            session.rollback()
+            with Session(engine, expire_on_commit=False) as winner:
+                winner.add(
+                    UserMergeJob(
+                        id="merge-concurrent-winner",
+                        source_user_id="guest",
+                        target_user_id="target",
+                        status="pending",
+                        asset_counts_json={"memory_records": 1, "total": 1},
+                    )
+                )
+                winner.commit()
+            raise IntegrityError("INSERT user_merge_job", {}, Exception("duplicate merge pair"))
+
+        monkeypatch.setattr(session, "commit", commit_after_concurrent_winner)
+        offer = merge.create_merge_offer(
+            session,
+            source_user_id="guest",
+            target_user_id="target",
+        )
+
+        assert offer == {
+            "job_id": "merge-concurrent-winner",
+            "counts": {"memory_records": 1, "total": 1},
+            "status": "pending",
+        }
+        assert collision_injected is True
+        assert len(session.exec(select(UserMergeJob)).all()) == 1
 
 
 def test_unbound_files_are_copied_deduplicated_and_remapped_in_global_chats(

@@ -96,6 +96,7 @@ def create_merge_offer(
             UserMergeJob.target_user_id == target.id,
         )
     ).first()
+    created = job is None
     if job is None:
         job = UserMergeJob(
             id=f"umj_{uuid4().hex}",
@@ -111,7 +112,21 @@ def create_merge_offer(
         job.status = "pending"
         job.updated_at = utcnow()
     session.add(job)
-    session.commit()
+    try:
+        session.commit()
+    except sa.exc.IntegrityError:
+        session.rollback()
+        if not created:
+            raise
+        job = session.exec(
+            select(UserMergeJob).where(
+                UserMergeJob.source_user_id == source.id,
+                UserMergeJob.target_user_id == target.id,
+            )
+        ).first()
+        if job is None:
+            raise
+        counts = dict(job.asset_counts_json or counts)
     return {"job_id": job.id, "counts": counts, "status": job.status}
 
 

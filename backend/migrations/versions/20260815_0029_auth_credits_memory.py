@@ -273,6 +273,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    if op.get_bind().dialect.name != "sqlite":
+        # SQLite may have owned these runtime tables before this revision.
+        # PostgreSQL did not, so this migration must remove what it created.
+        op.drop_table("learning_logs")
+        op.drop_table("memory_entries")
     for table_name in (
         "credit_reservation", "credit_ledger", "credit_account", "user_merge_job",
         "auth_rate_limit_bucket", "oauth_flow", "auth_session", "auth_identity",

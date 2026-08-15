@@ -452,10 +452,7 @@ def adjust_credits(
     reason: str,
     idempotency_key: str,
 ) -> CreditAccount:
-    existing = session.exec(
-        select(CreditLedger).where(CreditLedger.idempotency_key == idempotency_key)
-    ).first()
-    if existing is not None:
+    def resolve_existing(existing: CreditLedger) -> CreditAccount:
         normalized_reason = reason.strip()
         expected_operation = f"admin_{operation}"
         amount_matches = (
@@ -479,6 +476,12 @@ def adjust_credits(
         if account is None:
             raise RuntimeError("Credit ledger exists without account.")
         return account
+
+    existing = session.exec(
+        select(CreditLedger).where(CreditLedger.idempotency_key == idempotency_key)
+    ).first()
+    if existing is not None:
+        return resolve_existing(existing)
     ensure_credit_account(session, user=target_user)
     account = _locked_account(session, target_user.id)
     if account is None:
@@ -531,6 +534,15 @@ def adjust_credits(
             created_at=now,
         )
     )
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        existing = session.exec(
+            select(CreditLedger).where(CreditLedger.idempotency_key == idempotency_key)
+        ).first()
+        if existing is None:
+            raise
+        return resolve_existing(existing)
     session.refresh(account)
     return account

@@ -1,4 +1,4 @@
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiClient, getApiErrorMessage } from "../api/client";
@@ -15,6 +15,9 @@ export function AdminPage() {
   const [amount, setAmount] = useState("100");
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const adjustmentRequestRef = useRef<{ fingerprint: string; idempotencyKey: string } | null>(null);
+  const adjustmentInFlightRef = useRef(false);
   const auth = useAuthSession();
   const isAdmin = auth.data?.current_user?.role === "admin";
   const users = useQuery({
@@ -28,16 +31,32 @@ export function AdminPage() {
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!selected) return;
+    if (!selected || adjustmentInFlightRef.current) return;
+    const normalizedReason = reason.trim();
+    const numericAmount = Number(amount);
+    const fingerprint = JSON.stringify([selected.user_id, operation, numericAmount, normalizedReason]);
+    const existingRequest = adjustmentRequestRef.current;
+    const request = existingRequest?.fingerprint === fingerprint
+      ? existingRequest
+      : { fingerprint, idempotencyKey: crypto.randomUUID() };
+    adjustmentRequestRef.current = request;
+    adjustmentInFlightRef.current = true;
+    setIsSubmitting(true);
     setError("");
     try {
       await apiClient({
         url: `/api/v1/admin/users/${selected.user_id}/credits/adjust`, method: "POST",
-        data: { operation, amount: Number(amount), reason, idempotency_key: crypto.randomUUID() },
+        data: { operation, amount: numericAmount, reason: normalizedReason, idempotency_key: request.idempotencyKey },
       });
+      adjustmentRequestRef.current = null;
       setReason("");
       await queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
-    } catch (cause) { setError(getApiErrorMessage(cause, "额度调整失败。")); }
+    } catch (cause) {
+      setError(getApiErrorMessage(cause, "额度调整失败。"));
+    } finally {
+      adjustmentInFlightRef.current = false;
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -60,7 +79,9 @@ export function AdminPage() {
           <input type="number" min="0" value={amount} onChange={(event) => setAmount(event.target.value)} className="w-full rounded-lg border p-2 dark:bg-slate-900" />
           <textarea required minLength={2} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="请输入中文操作原因" className="min-h-24 w-full rounded-lg border p-2 dark:bg-slate-900" />
           {error ? <p className="text-sm text-red-600">{error}</p> : null}
-          <button disabled={!selected} className="w-full rounded-lg bg-slate-900 px-4 py-2 text-white disabled:opacity-50 dark:bg-white dark:text-slate-900">确认调整</button>
+          <button disabled={!selected || isSubmitting} className="w-full rounded-lg bg-slate-900 px-4 py-2 text-white disabled:opacity-50 dark:bg-white dark:text-slate-900">
+            {isSubmitting ? "正在调整…" : "确认调整"}
+          </button>
         </form>
       </div>
     </main>
