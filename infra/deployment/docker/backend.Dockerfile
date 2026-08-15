@@ -15,11 +15,14 @@ WORKDIR /app
 
 # 先只复制依赖清单，最大化 Docker layer cache；源码变化时不用重复解析锁文件。
 COPY backend/pyproject.toml backend/uv.lock ./
-RUN uv sync --frozen --no-cache --extra cloud --no-install-project
+RUN uv sync --locked --no-cache --extra cloud --no-install-project
 
 # 再复制后端源码并安装当前项目本身。
 COPY backend/ ./
-RUN uv sync --frozen --no-cache --extra cloud
+RUN uv sync --locked --no-cache --extra cloud
+
+# 认证模块在应用启动时即导入 Argon2；构建期验证可避免缺失锁定依赖的镜像进入发布阶段。
+RUN .venv/bin/python -c "from argon2 import PasswordHasher"
 
 ENV PATH="/app/.venv/bin:$PATH"
 

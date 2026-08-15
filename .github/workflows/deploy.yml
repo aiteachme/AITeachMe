@@ -32,7 +32,7 @@ env:
   BACKEND_ACR_NAMESPACE: aiteachme
   BACKEND_ACR_REGISTRY: crpi-eit0zz7ic5vs22ow.cn-beijing.personal.cr.aliyuncs.com
   BACKEND_IMAGE_NAME: aiteachme-backend
-  BACKEND_ROLLOUT_TIMEOUT_SECONDS: "3600"
+  BACKEND_ROLLOUT_TIMEOUT_SECONDS: "600"
   FRONTEND_ACR_NAMESPACE: aiteachme
   FRONTEND_ACR_REGISTRY: crpi-eit0zz7ic5vs22ow.cn-beijing.personal.cr.aliyuncs.com
   FRONTEND_IMAGE_NAME: aiteachme-frontend
