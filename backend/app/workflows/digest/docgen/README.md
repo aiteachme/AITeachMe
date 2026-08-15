@@ -1,6 +1,6 @@
 # DocGen 链路
 
-最后更新：2026-08-13
+最后更新：2026-08-15
 
 职责：根据 `confirmed_plan` 生成正式知识文档。
 
@@ -15,9 +15,11 @@
 load_context
   -> [prepare_global_seed || lock_titles_for_chapters]
   prepare_global_seed -> generate_cover ------------------------------┐
-  [prepare_global_seed + lock_titles_for_chapters] -> assemble_chapter_tasks
-     (内部依次确认 seed；一次整本 LLM 同时生成全文骨架与全部章节 brief；再冻结任务)
-  -> generate_chapters
+  [prepare_global_seed + lock_titles_for_chapters] -> confirm_and_seed_backbone
+  -> build_document_backbone
+  -> [build_chapter_execution_brief × N]
+  -> assemble_chapter_tasks
+  -> [generate_chapters × N]
   -> enhance_chapters
   -> review_chapters
   -> document_consistency_review
@@ -101,8 +103,6 @@ user_profile.prompt_addendum
 
 ## 5. `confirm_backbone_seed`
 
-以下第 5～8 节是 `assemble_chapter_tasks` 图节点内部的连续子步骤，不再分别占用四个 LangGraph 节点。
-
 输入：`locked_titles`, `chapter_assignments`, `file_summaries`, `source_affinity_by_chapter`, `high_confidence_evidence_units`
 
 动作：不调 LLM；把 confirmed plan 收成骨架种子。
@@ -115,21 +115,19 @@ user_profile.prompt_addendum
 
 输入：`chapter_task_seeds`, `summary_enhanced`, `backbone_research_agenda`
 
-动作：用一次整本结构化 LLM 调用同时生成 `DocumentBackbone` 与全部 `ChapterExecutionBrief`。骨架统一跨章术语、符号、关键主张、真实前置关系与易混点；brief 根据诊断答案、资料摘要、证据候选和确认覆盖范围制定各章讲解路径、篇幅、例题/练习/小测密度、解析粒度、资料落点与检索词。模型失败时明确降级为空语义骨架和 seed 级 brief，不用关键词或 required elements 拼造教学语义。
+动作：用一次整本结构化 LLM 调用只生成 `DocumentBackbone`，统一跨章术语、符号、关键主张、真实前置关系与易混点。它不再携带全部章节 brief，避免一个长输出把各章准备串成整本瓶颈；模型失败时明确降级为空语义骨架，不用关键词或 required elements 拼造教学语义。
 
-输出：`document_backbone`, `chapter_execution_briefs`, `guideline`, `backbone_conflict_warnings`
+输出：`document_backbone`, `guideline`, `backbone_conflict_warnings`
 
 `guideline`：`writing_rules`, `canonical_glossary`, `dependency_edges`, `notation_rules`, `confusion_checks`, `claim_count`
 
 ## 7. `build_chapter_execution_briefs`
 
-这是第 6 步整本结构化调用中的逻辑产物，不是主图中的独立节点，也不会增加逐章 LLM 调用。
-
 输入：`chapter_task_seeds`, `document_backbone`, `summary_enhanced`, `learner_profile_text`
 
-动作：在同一次整本调用中为所有确认章节生成专属 brief，说明怎样讲、怎样举例、怎样练习、怎样使用资料和检索证据；不修改用户确认的标题、目标和覆盖范围，也不对尚未成稿的 brief 启动 KG 抽取。
+动作：LangGraph `Send` 为每章启动一个独立分支，并行生成该章专属 brief，说明怎样讲、怎样举例、怎样练习、怎样使用资料和检索证据；各分支共享整本骨架但只读取本章 seed 和本章资料，任何一章模型失败都只降级为该章 seed 级 brief，不阻断其它章节。
 
-输出：`chapter_execution_briefs`, `kg_prefetch_status`, `kg_prefetch_ready`
+输出：各分支写入 reducer 字段 `chapter_execution_brief_items`；fan-in 后由 `assemble_chapter_tasks` 排序并冻结为 `chapter_execution_briefs`
 
 ## 8. `assemble_chapter_tasks`
 
@@ -147,7 +145,7 @@ user_profile.prompt_addendum
 
 输入：`chapter_task`, `guideline`, `dispatch_table`, `summary_enhanced`, `user_profile`
 
-动作：LangGraph `Send` 按章 fan-out；整本骨架 LLM 已为每章生成至多 `docgen.max_retrieval_queries_per_chapter` 条检索词，章节节点不再重复调用 LLM 改写查询。本地资料检索与有限在线校准并行执行，不因 Planner 已预选资料切片或本地命中充足而跳过在线尝试；随后把预选切片、本地结果和在线结果统一筛选、读取、压缩后交给 Writer。每章在同一次 Writer 调用中按完整 confirmed chapter 合同生成正文和最终 `## 单元测试`；本地不通过字符匹配推断教学语义是否覆盖。仅当 `docgen.allow_external_search=false`、没有可用在线 retriever 或外部服务失败时不产生在线结果。
+动作：LangGraph `Send` 按章 fan-out；各章 brief 已生成至多 `docgen.max_retrieval_queries_per_chapter` 条检索词，章节节点不再重复调用 LLM 改写查询。本地资料检索与有限在线校准并行执行，不因 Planner 已预选资料切片或本地命中充足而跳过在线尝试；随后把预选切片、本地结果和在线结果统一筛选、读取、压缩后交给 Writer。Writer 只生成完整知识正文；同一章节分支随后读取全文，用结构化 LLM 生成题目对象，再由唯一渲染器确定性组装最终 `## 单元测试` 和 QUESTION/ANSWER 配对。各章之间仍然并行，不依赖字符匹配推断教学语义。仅当 `docgen.allow_external_search=false`、没有可用在线 retriever 或外部服务失败时不产生在线结果。
 
 输出：`chapter_drafts`, `research_traces`, `claim_ledgers`, `claim_evidence_maps`, `evidence_ledgers`, `conflict_reports`
 
@@ -163,7 +161,7 @@ user_profile.prompt_addendum
 
 输入：`enhanced_chapter_draft`, `guideline`, `dispatch_table`, `chapters_enhanced`, `summary_enhanced`, `user_profile`
 
-动作：按章做确定性的证据、长度、Markdown 和章末测试结构校验；不再使用常驻的第二次 LLM 语义重审，也不以关键词、n-gram 或正则命中率判断语义覆盖并触发补写。复核只同步产出章节结构 topic refinement，不重复启动 KG 抽取。
+动作：按章做确定性的证据、长度、Markdown 和章末测试协议校验；题答区必须是唯一且最终的 `## 单元测试`，QUESTION/ANSWER 严格交替，选择题必须有 A-D，非选择题不得有选项，答案和解析不得游离或重复。不再使用常驻的第二次 LLM 语义重审，也不以关键词、n-gram 或正则命中率判断语义覆盖并触发补写。复核只同步产出章节结构 topic refinement，不重复启动 KG 抽取。
 
 输出：`reviewed_chapter_overlay_items`, `chapter_review_report_items`, `review_action_items`, `kg_refinement_items`
 
@@ -179,7 +177,7 @@ user_profile.prompt_addendum
 
 输入：`reviewed_chapter_drafts`, `review_actions`, `document_consistency_report`
 
-动作：执行确定性的 Markdown 展示修复，并只对缺少章末测试、正文显著低于字数合同等可客观验证的问题生成有界局部补丁；不因关键词覆盖率生成语义补写。低 evidence binding 只保留证据分数和 warning。正文实际变化的 section 由最终 KG 同步按内容哈希补抽。
+动作：执行确定性的 Markdown 展示修复，并只对缺少/损坏的章末测试、正文显著低于字数合同等可客观验证的问题生成有界局部补丁。坏测试必须由 LLM 返回一个完整 replacement block，替换旧 `## 单元测试` 后再次通过同一协议校验；不能在旧测试后追加第二份。其它语义内容不因关键词覆盖率触发补写。低 evidence binding 只保留证据分数和 warning。正文实际变化的 section 由最终 KG 同步按内容哈希补抽。
 
 输出：`reviewed_chapter_drafts`, `repair_trace`, `unresolved_warnings`, `kg_refinement_items`, `kg_prefetch_status`
 

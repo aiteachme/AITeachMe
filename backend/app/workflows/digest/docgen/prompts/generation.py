@@ -144,24 +144,13 @@ def build_docgen_writer_messages(
     )
     training_min_examples = _positive_int(profile_density.get("training_chapter_min_examples"), default=6)
     concept_min_examples = _positive_int(profile_density.get("concept_chapter_min_examples"), default=2)
-    chapter_end_min_tasks = _positive_int(
-        practice_quota.get("chapter_end_min_tasks") or profile_density.get("chapter_end_practice_min_tasks"),
-        default=2,
-    )
-    chapter_end_max_tasks = max(
-        chapter_end_min_tasks,
-        _positive_int(
-            practice_quota.get("chapter_end_max_tasks") or profile_density.get("chapter_end_practice_max_tasks"),
-            default=max(4, chapter_end_min_tasks),
-        ),
-    )
     sprint_problem_contract = ""
     if mode_profile.is_sprint:
         sprint_problem_contract = f"""
 练习组织原则：
 - 按章节角色选择组织方式：概念章用短例子和反例，方法章用步骤和检查点，训练章按真实题型或任务差异分组。
 - 学习活动目标：训练型约 {training_min_examples} 个，普通方法章至少 {min_worked_examples} 个，概念章至少 {concept_min_examples} 个；完整活动含题目/任务、解析、答案/结论、易错点。
-- 正文知识点内安排必要例题、短检查和变式，并在本次写作末尾直接生成章末单元测试。
+- 正文知识点内安排必要例题、短检查和变式；章末测试由下一步读取完整正文后结构化生成，本调用不要提前代写。
 """.strip()
     contract_summary = (
         f"- 目标字数：{execution_contract.get('target_word_count') or '未指定'}\n"
@@ -174,7 +163,7 @@ def build_docgen_writer_messages(
         f"- 例题密度：{example_density_policy.get('policy_text') or '例题、案例和任务服务当前知识点。'}\n"
         f"- 内容角色目标：{content_role_targets}\n"
         f"- 例题覆盖计划：{example_coverage_plan}\n"
-        f"- 章末单元测试计划：{chapter_end_practice_plan}（本次写作直接落成最终测试模块）\n"
+        f"- 章末单元测试计划：{chapter_end_practice_plan}（只用于协调正文覆盖；本调用不要生成测试模块）\n"
         f"- 覆盖检查策略：{'；'.join(coverage_policy) if coverage_policy else '按学习大纲覆盖核心知识和例题。'}\n"
         f"- 本章主张目标：{'；'.join(claim_targets) if claim_targets else '按学习大纲覆盖'}\n"
         f"- 学习者画像参考：{learner_profile or '暂无画像；按用户目标和资料本身写作'}\n"
@@ -206,7 +195,7 @@ def build_docgen_writer_messages(
 
 写作口径：
 1. 只输出本章中文 Markdown 正文，以 `# {title}` 开头。
-2. {_opening_structure_instruction(digest_mode=normalized_mode)}；最后直接生成唯一的 `## 单元测试`。
+2. {_opening_structure_instruction(digest_mode=normalized_mode)}；本调用只生成知识正文，不生成 `## 单元测试`，章末测试会由下一步结构化生成。
 3. 每个知识点小节讲清对象、条件/边界、处理路径、例题/任务、答案/结论和易错点/检查点。
 4. 例题、案例、变式训练和自测贴合本章材料；每个可判断任务给解析、答案或判定依据。
 5. 执行合同中的“本章边界外主题”只作必要前后联系，不扩写成独立小节。
@@ -214,8 +203,7 @@ def build_docgen_writer_messages(
 7. 只有当概念关系、方法流程、几何/坐标/结构关系、实验路径等靠文字不直观时，才请求 Mermaid 图示；不要为公式展开、三步文字清单、单条箭头线或纯文字关系生成图。只允许使用 Mermaid 代码块表达图示，不请求图片、SVG、HTML 图或交互图。代码块只用于代码、命令、伪代码或 Mermaid。
 8. 目标字数是保证讲解充分的建议基线，不是要求提前收尾的硬上限。优先讲清前提、推理、例题与易错边界；只有出现重复解释或同质例题时才合并，不得为了卡字数删去“必须逐项覆盖”的内容。
 9. 较长章节自然加入 2-3 个短提示块：`> [!IMPORTANT]` 写关键前提/结论，`> [!TIP]` 写快速抓手，`> [!WARNING]` 写易错边界；正文中的题干或短练习可用 `> [!QUESTION]` 轻底色题块，解析、步骤和答案保持普通正文。
-10. `## 单元测试` 必须是最后一个二级标题，按计划生成 {chapter_end_min_tasks}-{chapter_end_max_tasks} 个可判断的短题、案例检查、步骤任务、边界辨析或迁移任务；每题都包含题目以及答案、判定依据或解析，不能只留“自行思考”。只有选择类题目输出 A-D 选项，填空、判断、短答、步骤任务和迁移任务不得伪造选项。
-11. 单元测试中的每题必须使用独立的 `> [!QUESTION]` 题干块，并紧跟独立的 `> [!ANSWER]` 答案块；答案、判定依据和解析全部放入 ANSWER 块，使阅读端默认折叠。题目块首行使用 `**Q01｜题型｜难度｜考点：具体考点**`，答案块包含 `**答案**`，需要时再写 `**解析步骤**`。不要把答案写进 QUESTION 块，也不要把多题答案合并到一个 ANSWER 块。
+10. 正文在最后一个完整知识小节、总结或迁移提示处自然收尾；不要提前写章末测试、答案汇总或供渲染器识别的 QUESTION/ANSWER 协议。
 
 版式合同：
 {_presentation_contract(digest_mode=normalized_mode)}
@@ -228,7 +216,7 @@ def build_docgen_writer_messages(
 输出要求：
 1. 只输出中文 Markdown。
 2. 一级标题必须是 `# {title}`。
-3. 在知识正文和知识点内例题、变式、检查点之后，直接以唯一的 `## 单元测试` 收尾，不再交给第二次模型调用追加。
+3. 只交付知识正文；不要输出 `## 单元测试`。系统会读取完整正文并用结构化模型生成唯一的章末测试。
 4. 只写学生可见正文；不输出内部协议、调试信息、来源附录、草稿痕迹、HTML 注释或未渲染占位内容。
 
 研究材料：
@@ -237,7 +225,7 @@ def build_docgen_writer_messages(
 交稿前静默自检（不要把自检过程写进正文）：
 - 再逐项核对开头“必须逐项覆盖”的 {len(required_elements) or 1} 项要求；每项必须在正文解释、例题、练习或边界辨析中有实际内容。
 - 若仍有漏项，先合并重复解释或练习腾出篇幅并补齐，再输出最终 Markdown；不得用目录、清单或仅复述要素名称冒充覆盖。
-- 检查所有 `**加粗**` 标记成对闭合，结束 `**` 前不得留空格；逐题确认单元测试答案均位于独立的 `[!ANSWER]` 块。
+- 检查所有 `**加粗**` 标记成对闭合，结束 `**` 前不得留空格；确认没有输出章末测试或答案汇总。
 """.strip()
     messages = [
         {"role": "system", "content": system_prompt},

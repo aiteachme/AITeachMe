@@ -31,6 +31,8 @@ dependencies = [
     "requests>=2.32.0",
     "pypdf>=5.0.0",
     "cryptography>=48.0.1",
+    "argon2-cffi>=23.1.0",
+    "PyJWT[crypto]>=2.9.0",
     "llama-index-core>=0.12.0",
 ]
 

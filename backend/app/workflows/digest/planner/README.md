@@ -1,6 +1,6 @@
 # Planner 链路
 
-最后更新：2026-08-13
+最后更新：2026-08-15
 
 职责：把用户目标和资料变成可确认的 `confirmed_plan`。Planner 不生成正文，不写 KG，不更新 Profile。
 
@@ -63,6 +63,7 @@ chapters[]
 diagnose
 diagnose_status
 diagnose_note
+build_constraints
 ```
 
 `chapters[]`：
@@ -73,6 +74,17 @@ title
 objective
 required_elements
 ```
+
+`build_constraints`：
+
+```text
+chapter_length_profile
+chapter_min_words
+chapter_target_words
+chapter_max_words
+```
+
+篇幅档位由正式方案 LLM 根据用户原始要求和已回答诊断输出为数字合同：精炼提纲约 `1400/1800/2200`，标准讲解约 `2400/3000/3600`（默认），细致推导约 `3400/4200/5000`，从零铺垫约 `4200/5200/6200`。三个数字分别是每章最低、目标和上限；用户显式给出的整门课程 `target_total_words` 仍具有更高优先级。
 
 正式方案 LLM 只生成用户需要确认的 `course_name / plan / suggestion` 和每章 `title / objective / required_elements`。其中 `required_elements` 表示确认覆盖的具体概念、方法、题型或易错对象，不负责开篇方式、讲解顺序、资料落点、例题数量、练习或小测策略；这些执行决策由 DocGen 在拥有完整资料路由和诊断答案后统一生成。Planner 本地只做标签/JSON 解析、显式章数校验、去编号等格式规范；字段缺失、重复章节、章数不符或出现长 OCR/代码碎片时调用一次 LLM repair，不用固定模板补教学语义，也不合并或改写模型章节。
 
@@ -121,7 +133,7 @@ model_override
 8. diagnose_brief 拼入 learner_profile_text
 ```
 
-影响 DocGen：解释深度、例题密度、练习密度、测后反馈、前置知识补充。
+影响 DocGen：每章目标字数、解释深度、例题密度、练习密度、测后反馈、前置知识补充。
 
 不影响：Profile mastery、Examine 出题、KG 落库。
 

@@ -22,6 +22,8 @@ from app.utils.time import utcnow
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.docgen.lib.chapter_context import DocGenChapterContextRuntime
 from app.workflows.digest.docgen.lib.writer import DocGenWriterNoContentError, DocGenWriterRuntime
+from app.workflows.digest.docgen.lib.unit_test_generation import generate_chapter_unit_test_markdown
+from app.workflows.digest.docgen.lib.unit_tests import ChapterUnitTestGenerationError
 from app.workflows.digest.docgen.lib.chapter_revision import critique_chapter
 from app.workflows.digest.docgen.lib.source_slices import build_priority_source_context
 from app.workflows.digest.docgen.lib.models import (
@@ -954,22 +956,23 @@ def build_generate_chapters_node(*, context: WorkflowContext):
                 },
             )
 
+        chapter_plan = _chapter_plan_for_writer(
+            task,
+            total_chapters=total_chapters,
+            learner_profile_text=learner_profile_text,
+            source_details=source_details,
+            claim_ledger=claim_ledger,
+            claim_evidence_map=claim_evidence_map,
+            conflict_report=conflict_report,
+            guideline_summary=guideline_summary,
+            dispatch_item=dispatch_item,
+            chapter_contract=chapter_contract,
+            evidence_items=evidence_items,
+        )
         try:
             writer = DocGenWriterRuntime(traced_context)
             writer_result = await writer.run(
-                chapter_plan=_chapter_plan_for_writer(
-                    task,
-                    total_chapters=total_chapters,
-                    learner_profile_text=learner_profile_text,
-                    source_details=source_details,
-                    claim_ledger=claim_ledger,
-                    claim_evidence_map=claim_evidence_map,
-                    conflict_report=conflict_report,
-                    guideline_summary=guideline_summary,
-                    dispatch_item=dispatch_item,
-                    chapter_contract=chapter_contract,
-                    evidence_items=evidence_items,
-                ),
+                chapter_plan=chapter_plan,
                 dense_context=dense_context,
                 digest_mode=state.get("digest_mode") or "systematic",
                 on_stream_update=_publish_writer_stream_preview,
@@ -977,6 +980,61 @@ def build_generate_chapters_node(*, context: WorkflowContext):
             fallback_used = fallback_used or bool(writer_result.metadata.get("fallback_used", False))
             writer_markdown = ensure_chapter_heading(title, writer_result.content)
             writer_attempt_count += int(bool(writer_result.metadata.get("writer_no_content_reason")))
+
+            execution_contract = dict(chapter_plan.get("execution_contract") or {})
+            practice_quota = dict(execution_contract.get("practice_quota") or {})
+            chapter_end_min_items = _positive_int(
+                practice_quota.get("chapter_end_min_tasks"),
+                default=2,
+            )
+            chapter_end_max_items = max(
+                chapter_end_min_items,
+                _positive_int(
+                    practice_quota.get("chapter_end_max_tasks"),
+                    default=max(4, chapter_end_min_items),
+                ),
+            )
+            await publish_docgen_progress(
+                context,
+                state=state,
+                stage="chapter_unit_test_generating",
+                payload={
+                    "chapter_index": task.chapter_index,
+                    "title": title,
+                    "min_items": chapter_end_min_items,
+                    "max_items": chapter_end_max_items,
+                },
+            )
+            writer_markdown = await generate_chapter_unit_test_markdown(
+                chapter_index=task.chapter_index,
+                chapter_title=title,
+                digest_mode=state.get("digest_mode") or "systematic",
+                required_elements=list(chapter_plan.get("required_elements") or []),
+                chapter_end_practice_plan=list(execution_contract.get("chapter_end_practice_plan") or []),
+                body_markdown=writer_markdown,
+                min_items=chapter_end_min_items,
+                max_items=chapter_end_max_items,
+                llm_caller=traced_context.resolve_llm_caller(),
+                extra_metadata=traced_context.trace_metadata(
+                    teaching_action="chapter_unit_test",
+                    chapter_index=task.chapter_index,
+                ),
+            )
+            writer_attempt_count += 1
+            _publish_preview_delta(
+                _chapter_live_preview_markdown(writer_markdown, title=title),
+                status="drafting",
+            )
+            await publish_docgen_progress(
+                context,
+                state=state,
+                stage="chapter_unit_test_ready",
+                payload={
+                    "chapter_index": task.chapter_index,
+                    "title": title,
+                    "item_count": writer_markdown.count("> [!QUESTION]"),
+                },
+            )
         except DocGenWriterNoContentError as exc:
             await preview_persist_buffer.close()
             failure_summary = "章节写作没有生成可发布正文，已停止发布；不会使用模板兜底内容。"
@@ -1038,6 +1096,60 @@ def build_generate_chapters_node(*, context: WorkflowContext):
             raise
         except asyncio.CancelledError:
             await preview_persist_buffer.close()
+            raise
+        except ChapterUnitTestGenerationError as exc:
+            await preview_persist_buffer.close()
+            failure_summary = "章末测试没有生成有效的题答结构，本章已停止发布，避免展示错位或重复答案。"
+            failure_preview = f"# {title}\n\n{failure_summary}"
+            _publish_preview_delta(failure_preview, status="failed")
+            upsert_knowledge_build_chapter_progress(
+                state["course_id"],
+                requested_at=state["requested_at"],
+                build_group_id=state.get("build_group_id") or None,
+                chapter_progress={
+                    "chapter_index": task.chapter_index,
+                    "title": title,
+                    "status": "failed",
+                    "error": "unit_test_generation_failed",
+                },
+            )
+            upsert_knowledge_build_chapter_preview(
+                state["course_id"],
+                requested_at=state["requested_at"],
+                build_group_id=state.get("build_group_id") or None,
+                chapter_preview={
+                    "chapter_index": task.chapter_index,
+                    "title": title,
+                    "status": "failed",
+                    "excerpt": failure_preview,
+                    "latest_headings": [],
+                    "word_count": 0,
+                    "source_count": len(source_details),
+                },
+            )
+            append_knowledge_build_recent_event(
+                state["course_id"],
+                requested_at=state["requested_at"],
+                build_group_id=state.get("build_group_id") or None,
+                event={
+                    "stage": "chapter_failed",
+                    "chapter_index": task.chapter_index,
+                    "title": title,
+                    "summary": failure_summary,
+                    "created_at": utcnow(),
+                },
+            )
+            await publish_docgen_progress(
+                context,
+                state=state,
+                stage="chapter_failed",
+                payload={
+                    "chapter_index": task.chapter_index,
+                    "title": title,
+                    "error": "unit_test_generation_failed",
+                    "message": str(exc)[:240],
+                },
+            )
             raise
         except Exception:
             await preview_persist_buffer.close()

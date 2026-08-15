@@ -3,14 +3,22 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from fastapi import Response
+from fastapi import Request, Response
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine
 
 from app.api import auth as auth_api
 from app.api import courses as courses_api
 from app.api.deps import CurrentUserContext
-from app.models import Course, EmailConfirmation, User
+from app.models import (
+    AuthRateLimitBucket,
+    AuthSession,
+    Course,
+    CreditAccount,
+    CreditLedger,
+    EmailConfirmation,
+    User,
+)
 from app.schemas.auth import LoginRequest, LogoutRequest, RegisterRequest
 from app.workflows.support.auth import sessions
 
@@ -49,9 +57,28 @@ def _enable_auth(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sessions, "get_env_bool", lambda name, default: bool(values.get(name, default)))
 
 
+def _request() -> Request:
+    return Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/v1/auth",
+            "headers": [],
+            "client": ("127.0.0.1", 1),
+        }
+    )
+
+
 def test_auth_success_events_are_captured_without_sensitive_fields(monkeypatch: pytest.MonkeyPatch) -> None:
     _enable_auth(monkeypatch)
-    engine = _engine(User.__table__, EmailConfirmation.__table__)
+    engine = _engine(
+        User.__table__,
+        EmailConfirmation.__table__,
+        AuthSession.__table__,
+        AuthRateLimitBucket.__table__,
+        CreditAccount.__table__,
+        CreditLedger.__table__,
+    )
     captured: list[tuple[str, dict[str, object]]] = []
     sent_codes: list[str] = []
 
@@ -72,6 +99,8 @@ def test_auth_success_events_are_captured_without_sensitive_fields(monkeypatch: 
         sessions.send_register_email_verification_code(session, email="learner@example.com")
         register_response = asyncio.run(
             auth_api.register(
+                request=_request(),
+                response=Response(),
                 body=RegisterRequest(
                     email="learner@example.com",
                     password="strong-password",
@@ -89,6 +118,8 @@ def test_auth_success_events_are_captured_without_sensitive_fields(monkeypatch: 
         )
         login_response = asyncio.run(
             auth_api.login(
+                request=_request(),
+                response=Response(),
                 body=LoginRequest(email="learner@example.com", password="strong-password"),
                 user=CurrentUserContext(
                     user_id=guest.id,

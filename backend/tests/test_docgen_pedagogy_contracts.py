@@ -186,7 +186,7 @@ def test_sprint_standard_depth_keeps_a_teachable_chapter_budget() -> None:
     assert profile.word_budget(
         chapter_count=5,
         depth_level="standard",
-    ) == (900, 1600)
+    ) == (2200, 3000)
 
 
 def test_heading_quality_detects_duplicate_titles_without_local_semantic_wordlist() -> None:
@@ -380,7 +380,13 @@ def test_rule_review_does_not_use_keyword_matching_to_patch_teaching_semantics()
     draft = EnhancedChapterDraft(
         chapter_index=1,
         title="函数与极限",
-        markdown="# 函数与极限\n\n## 极限直观\n\n极限描述变量逼近时的趋势。\n\n## 单元测试\n\n**题目**：判断极限是否存在。\n",
+        markdown=(
+            "# 函数与极限\n\n## 极限直观\n\n极限描述变量逼近时的趋势。\n\n## 单元测试\n\n"
+            "> [!QUESTION] **Q01｜短答题｜基础｜考点：极限存在性**\n>\n"
+            "> 怎样判断给定点处的极限是否存在？\n\n"
+            "> [!ANSWER]\n>\n> **答案**\n>\n> 左右极限存在且相等。\n>\n"
+            "> **解析步骤**\n>\n> 分别考察左右两侧的趋近结果。\n"
+        ),
     )
     task = ChapterGenerationTask(
         chapter_index=1,
@@ -440,7 +446,13 @@ def test_rule_review_records_low_evidence_without_requesting_model_patch() -> No
     draft = EnhancedChapterDraft(
         chapter_index=1,
         title="变量",
-        markdown="# 变量\n\n## 定义\n\n变量需要先定义再使用。\n\n## 单元测试\n\n**题目**：变量何时可用？\n\n**答案**：定义后。\n",
+        markdown=(
+            "# 变量\n\n## 定义\n\n变量需要先定义再使用。\n\n## 单元测试\n\n"
+            "> [!QUESTION] **Q01｜短答题｜基础｜考点：变量定义**\n>\n"
+            "> 变量何时可以使用？\n\n"
+            "> [!ANSWER]\n>\n> **答案**\n>\n> 完成定义后。\n>\n"
+            "> **解析步骤**\n>\n> 先声明变量，再在后续表达式中引用。\n"
+        ),
     )
     task = ChapterGenerationTask(
         chapter_index=1,
@@ -574,7 +586,8 @@ def test_rule_review_requires_fixed_unit_test_as_final_h2() -> None:
     assert len(misplaced_unit_actions) == 1
     assert "缺少固定的章末 `## 单元测试` 模块" in missing_unit_actions[0].reason
     assert "`## 单元测试` 必须是本章最后一个二级标题" in misplaced_unit_actions[0].reason
-    assert "本章末尾补齐固定二级标题 `## 单元测试`" in missing_unit_actions[0].instruction
+    assert "缺失时在章末补齐" in missing_unit_actions[0].instruction
+    assert "已存在但格式错误时完整替换" in missing_unit_actions[0].instruction
 
 
 def test_rule_review_short_chapter_requests_section_expansion() -> None:

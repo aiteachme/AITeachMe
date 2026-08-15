@@ -4,6 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
+import type { RuntimeUserRole } from './runtimeUserRole.ts';
 
 /**
  * 当前运行时用户。
@@ -19,4 +20,10 @@ export interface RuntimeUser {
   device_key?: string | null;
   /** 是否已完成账号登录。 */
   is_authenticated?: boolean;
+  /** 账号角色。 */
+  role?: RuntimeUserRole;
+  /** 显示名称。 */
+  display_name?: string | null;
+  /** 头像地址。 */
+  avatar_url?: string | null;
 }

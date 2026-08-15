@@ -20,6 +20,8 @@ from app.workflows.digest.planner.nodes.save_planner_draft import (
     _resolve_effective_course_name,
 )
 from app.workflows.digest.planner.prompts.build_plan_composer import (
+    BUILD_CONSTRAINTS_END,
+    BUILD_CONSTRAINTS_START,
     CHAPTERS_END,
     CHAPTERS_START,
     COURSE_NAME_END,
@@ -319,6 +321,9 @@ def test_diagnosis_prompt_selects_high_impact_course_level_decisions() -> None:
     assert "篇幅与讲解细致程度" in system_prompt
     assert "例题、练习与章末小测密度" in system_prompt
     assert "解析写到什么粒度" in system_prompt
+    assert "短标签｜具体影响" in system_prompt
+    assert "整个 option 最长不超过 48" in system_prompt
+    assert "不能写“不设小测”“取消测试”" in system_prompt
     assert "如果用户已经明确其中某项，就替换" in system_prompt
     assert "个性化应体现在对课程范围的准确概括、模块分组和选项语义上" in system_prompt
     assert "共同覆盖用户列出的全部主要模块" in system_prompt
@@ -735,6 +740,9 @@ def test_parse_planner_response_reads_marker_protocol() -> None:
 {SUGGESTION_START}
 如果更偏中考，可以增加压轴题比例。
 {SUGGESTION_END}
+{BUILD_CONSTRAINTS_START}
+{{"chapter_length_profile":"detailed","chapter_min_words":3400,"chapter_target_words":4200,"chapter_max_words":5000}}
+{BUILD_CONSTRAINTS_END}
 {CHAPTERS_START}
 [
   {{"title": "数与式基础", "objective": "掌握数式运算与基本变形。", "required_elements": ["实数与代数式", "方程基本变形"]}},
@@ -748,6 +756,12 @@ def test_parse_planner_response_reads_marker_protocol() -> None:
     assert parsed["course_name"] == "初中数学复习"
     assert parsed["suggestion"].startswith("如果更偏中考")
     assert parsed["diagnose"] == []
+    assert parsed["build_constraints"] == {
+        "chapter_length_profile": "detailed",
+        "chapter_min_words": 3400,
+        "chapter_target_words": 4200,
+        "chapter_max_words": 5000,
+    }
     assert parsed["chapters"][0]["title"] == "数与式基础"
     assert parsed["chapters"][0]["required_elements"] == ["实数与代数式", "方程基本变形"]
     assert "writing_instructions" not in parsed["chapters"][0]
@@ -758,10 +772,10 @@ def test_parse_diagnosis_response_reads_four_choice_questions() -> None:
         f"""
 {DIAGNOSE_START}
 [
-  {{"question":"极限基础从哪一层起？","purpose":"文档落点：调整极限定义铺垫。","options":["先补函数概念","从极限直觉起","直接讲定义","从典型题查漏"]}},
-  {{"question":"高数讲解先重哪块？","purpose":"文档落点：调整正文篇幅。","options":["极限定义","导数应用","积分计算","综合串联"]}},
-  {{"question":"每节练习怎么配置？","purpose":"文档落点：调整练习密度。","options":["随堂一题","典型题组","增加变式","章末小测"]}},
-  {{"question":"错题解析需要多细？","purpose":"文档落点：调整答案解析。","options":["只给要点","分步依据","重点错因","补充变式"]}}
+  {{"question":"极限基础从哪一层起？","purpose":"文档落点：调整极限定义铺垫。","options":["先补函数概念｜每章先解释前置函数语言","从极限直觉起｜先用图像与趋势建立直觉","直接讲定义｜压缩铺垫并展开严格定义","从典型题查漏｜用题型暴露基础缺口"]}},
+  {{"question":"高数讲解先重哪块？","purpose":"文档落点：调整正文篇幅。","options":["极限定义｜增加定义与边界辨析篇幅","导数应用｜增加变化率和应用例题","积分计算｜增加计算方法与变式训练","综合串联｜均衡分配并强化跨章联系"]}},
+  {{"question":"每节练习怎么配置？","purpose":"文档落点：调整练习密度。","options":["随堂一题｜每节只保留一题即时检查","典型题组｜每个方法安排成组例题","增加变式｜每个核心题追加条件变化","章末小测｜减少随堂题并集中章末检测"]}},
+  {{"question":"错题解析需要多细？","purpose":"文档落点：调整答案解析。","options":["只给要点｜答案保留关键结论和抓手","分步依据｜解析逐步写出判断依据","重点错因｜答案增加错误路径对照","补充变式｜解析后追加同考点变式"]}}
 ]
 {DIAGNOSE_END}
 """
@@ -769,7 +783,7 @@ def test_parse_diagnosis_response_reads_four_choice_questions() -> None:
 
     assert len(parsed) == 4
     assert parsed[0]["question"] == "极限基础从哪一层起？"
-    assert parsed[1]["options"] == ["极限定义", "导数应用", "积分计算", "综合串联"]
+    assert parsed[1]["options"][0] == "极限定义｜增加定义与边界辨析篇幅"
 
 
 def test_parse_generated_course_name_reads_short_title() -> None:
@@ -887,13 +901,13 @@ def test_planner_node_create_generates_diagnosis_before_plan(monkeypatch: pytest
         f"{COURSE_NAME_START}三年级数学巩固{COURSE_NAME_END}"
         f"{DIAGNOSE_START}"
         '[{"question":"乘除法哪里最容易错？","purpose":"文档落点：调整计算基础铺垫。",'
-        '"options":["口诀不熟","顺序混淆","竖式易错","应用题转换"]},'
+        '"options":["口诀不熟｜增加口算与口诀回顾","顺序混淆｜增加运算顺序辨析","竖式易错｜增加竖式步骤与检查","应用题转换｜增加情境到算式的转换"]},'
         '{"question":"三年级数学先讲哪块？","purpose":"文档落点：调整正文篇幅。",'
-        '"options":["乘除法","长度单位","几何图形","应用题"]},'
+        '"options":["乘除法｜增加计算方法与练习","长度单位｜增加换算与测量任务","几何图形｜增加识图和性质辨析","应用题｜增加建模与列式训练"]},'
         '{"question":"每节练习怎么配置？","purpose":"文档落点：调整练习密度。",'
-        '"options":["随堂一题","典型题组","增加变式","章末小测"]},'
+        '"options":["随堂一题｜每节保留一题即时检查","典型题组｜每个方法安排成组练习","增加变式｜核心题追加条件变化","章末小测｜减少随堂题并集中检测"]},'
         '{"question":"应用题解析写多细？","purpose":"文档落点：调整答案解析。",'
-        '"options":["只给要点","分步列式","解释错因","补充变式"]}]'
+        '"options":["只给要点｜答案保留关键结论","分步列式｜逐步解释条件到算式","解释错因｜增加错误路径对照","补充变式｜解析后追加同类变式"]}]'
         f"{DIAGNOSE_END}"
     )
 
@@ -955,10 +969,10 @@ def test_planner_node_create_generates_diagnosis_before_plan(monkeypatch: pytest
     assert result["generated_course_name"] == "三年级数学巩固"
     assert result["build_plan_draft"]["diagnose"][0]["question"] == "乘除法哪里最容易错？"
     assert result["build_plan_draft"]["diagnose"][0]["options"] == [
-        "口诀不熟",
-        "顺序混淆",
-        "竖式易错",
-        "应用题转换",
+        "口诀不熟｜增加口算与口诀回顾",
+        "顺序混淆｜增加运算顺序辨析",
+        "竖式易错｜增加竖式步骤与检查",
+        "应用题转换｜增加情境到算式的转换",
     ]
     assert [event for event, _payload in emitted_events] == [
         "planner.diagnose.started",

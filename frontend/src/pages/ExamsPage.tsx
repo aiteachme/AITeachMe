@@ -33,6 +33,7 @@ import type {
 } from "../api/generated/model";
 import {
   LONG_RUNNING_API_TIMEOUT_MS,
+  getCreditInsufficientMessage,
   getApiErrorMessage,
   openAuthenticatedSse,
   orvalApiClient,
@@ -252,8 +253,8 @@ interface ExamPrewarmStatusResponse {
 }
 
 const EXAM_PAGE_SHELL_CLASS = COURSE_PAGE_SHELL_CLASS;
-const EXAM_ALERT_CLASS = "rounded-lg border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900 shadow-sm dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300";
-const TRAINING_SECTION_CLASS = "rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950/75";
+const EXAM_ALERT_CLASS = "rounded-lg border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300";
+const TRAINING_SECTION_CLASS = "border-b border-slate-200 py-7 dark:border-slate-800";
 
 type TrainingModeCardVariant = "practice" | "paper" | "mastery" | "disabled";
 type TrainingModeStatusTone = "ready" | "pending" | "idle" | "failed";
@@ -274,28 +275,28 @@ const TRAINING_MODE_CARD_TONE_CLASS: Record<
   { card: string; icon: string; badge: string; meta: string }
 > = {
   practice: {
-    card: "border-blue-200/90 bg-[linear-gradient(135deg,rgba(239,246,255,0.72)_0%,rgba(255,255,255,1)_30%)] hover:border-blue-300 dark:border-blue-500/30 dark:bg-[linear-gradient(135deg,rgba(59,130,246,0.08)_0%,rgba(2,6,23,0.8)_30%)] dark:hover:border-blue-400/45",
+    card: "",
     icon: "bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400",
     badge: "border-blue-100 bg-blue-50/80 text-blue-700 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300",
-    meta: "border-blue-100/70 bg-blue-50/45 text-blue-700 dark:border-blue-500/15 dark:bg-blue-500/[0.07] dark:text-blue-300",
+    meta: "text-slate-600 dark:text-slate-300",
   },
   paper: {
-    card: "border-violet-300/75 bg-[linear-gradient(135deg,rgba(245,243,255,0.82)_0%,rgba(255,255,255,1)_30%)] hover:border-violet-400/75 dark:border-violet-500/40 dark:bg-[linear-gradient(135deg,rgba(139,92,246,0.1)_0%,rgba(2,6,23,0.8)_30%)] dark:hover:border-violet-400/55",
+    card: "",
     icon: "bg-violet-100/70 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300",
     badge: "border-violet-200 bg-violet-50/90 text-violet-700 dark:border-violet-500/25 dark:bg-violet-500/10 dark:text-violet-300",
-    meta: "border-violet-200/75 bg-violet-50/70 text-violet-700 dark:border-violet-500/20 dark:bg-violet-500/[0.08] dark:text-violet-300",
+    meta: "text-slate-600 dark:text-slate-300",
   },
   mastery: {
-    card: "border-emerald-200/90 bg-[linear-gradient(135deg,rgba(236,253,245,0.72)_0%,rgba(255,255,255,1)_30%)] hover:border-emerald-300 dark:border-emerald-500/30 dark:bg-[linear-gradient(135deg,rgba(16,185,129,0.08)_0%,rgba(2,6,23,0.8)_30%)] dark:hover:border-emerald-400/45",
+    card: "",
     icon: "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400",
     badge: "border-emerald-100 bg-emerald-50/80 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300",
-    meta: "border-emerald-100/70 bg-emerald-50/45 text-emerald-700 dark:border-emerald-500/15 dark:bg-emerald-500/[0.07] dark:text-emerald-300",
+    meta: "text-slate-600 dark:text-slate-300",
   },
   disabled: {
-    card: "border-slate-200 bg-slate-50/50 dark:border-slate-800/80 dark:bg-slate-950/40 cursor-not-allowed",
+    card: "cursor-not-allowed",
     icon: "bg-slate-100 text-slate-400 dark:bg-slate-900 dark:text-slate-600",
     badge: "border-slate-200 bg-slate-100 text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400",
-    meta: "border-slate-200/80 bg-slate-100/70 text-slate-500 dark:border-slate-700/80 dark:bg-slate-900 dark:text-slate-400",
+    meta: "text-slate-400 dark:text-slate-500",
   },
 };
 
@@ -307,9 +308,9 @@ const TRAINING_MODE_STATUS_BADGE_CLASS: Record<TrainingModeStatusTone, string> =
 };
 
 const TRAINING_PRIMARY_ACTION_CLASS =
-  "w-full min-w-0 gap-1.5 rounded-xl bg-slate-950 px-4 text-sm font-semibold tracking-[0.01em] shadow-sm hover:bg-slate-800 hover:shadow-md dark:bg-white dark:text-slate-950 dark:hover:bg-slate-100";
+  "w-full min-w-0 gap-1.5 rounded-lg bg-slate-950 px-4 text-sm font-semibold tracking-[0.01em] shadow-none hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-100";
 const TRAINING_CONFIG_ACTION_CLASS =
-  "w-full min-w-0 gap-1.5 rounded-xl border-slate-200/90 bg-white/90 px-4 text-sm font-medium text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700/80 dark:bg-slate-900/90 dark:text-slate-200 dark:hover:border-slate-600 dark:hover:bg-slate-800";
+  "w-full min-w-0 gap-1.5 rounded-lg border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 shadow-none hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-600 dark:hover:bg-slate-800";
 
 function TrainingModeCard({
   icon,
@@ -340,20 +341,17 @@ function TrainingModeCard({
 
   return (
     <article
-      className={`flex h-full min-w-0 flex-col rounded-2xl border transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${toneClass.card} ${
-        disabled
-          ? "opacity-60"
-          : "shadow-[0_4px_16px_-4px_rgba(15,23,42,0.04)] hover:-translate-y-1 hover:shadow-[0_12px_24px_-8px_rgba(15,23,42,0.08)] dark:hover:shadow-none"
+      className={`grid min-w-0 grid-cols-1 gap-4 px-1 py-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.7fr)_220px] ${toneClass.card} ${
+        disabled ? "opacity-60" : ""
       } ${className}`}
     >
-      <div className="flex flex-1 flex-col p-5">
-        <div className="mx-auto flex w-full max-w-[22rem] min-w-0 items-start gap-3">
-          <div className={`grid h-14 w-14 shrink-0 place-items-center rounded-2xl transition-all duration-300 ${toneClass.icon}`}>
+      <div className="flex min-w-0 items-start gap-3.5">
+          <div className={`grid h-10 w-10 shrink-0 place-items-center rounded-lg ${toneClass.icon}`}>
             {icon}
           </div>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-lg font-extrabold leading-tight tracking-[-0.01em] text-slate-950 dark:text-slate-100">{title}</h3>
+              <h3 className="text-base font-semibold leading-tight text-slate-950 dark:text-slate-100">{title}</h3>
               {badge ? (
                 <span className={`rounded-lg border px-2 py-0.5 text-[11px] font-semibold leading-5 ${toneClass.badge}`}>{badge}</span>
               ) : null}
@@ -363,15 +361,14 @@ function TrainingModeCard({
                 </span>
               ) : null}
             </div>
-            <p className="mt-1.5 text-sm leading-6 text-slate-600 dark:text-slate-400">{description}</p>
+            <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">{description}</p>
           </div>
-        </div>
-        <div className="mt-5 flex flex-1 flex-col justify-between gap-5">
-          <div className="mx-auto grid w-full max-w-[22rem] grid-cols-3 gap-2">
+      </div>
+          <div className="grid grid-cols-3 divide-x divide-slate-200 md:col-span-1 lg:col-span-1 dark:divide-slate-800">
             {meta.map((item, index) => (
               <span
                 key={item}
-                className={`inline-flex w-full min-w-0 items-center justify-center whitespace-nowrap rounded-lg border px-2.5 py-1 text-center text-[12px] font-medium leading-5 tracking-[0.01em] ${toneClass.meta} ${
+                className={`inline-flex min-w-0 items-center justify-center px-2 text-center text-[12px] font-medium leading-5 ${toneClass.meta} ${
                   index === 0 ? "tabular-nums" : ""
                 }`}
               >
@@ -379,9 +376,7 @@ function TrainingModeCard({
               </span>
             ))}
           </div>
-          <div className="mx-auto grid w-full max-w-[22rem] grid-cols-2 items-center gap-2 pt-1">{actions}</div>
-        </div>
-      </div>
+          <div className="grid w-full grid-cols-2 items-center gap-2 md:col-span-2 md:max-w-[220px] md:justify-self-end lg:col-span-1">{actions}</div>
     </article>
   );
 }
@@ -964,10 +959,11 @@ export function ExamsPage() {
         });
       },
       onError: (error) => {
+        const creditMessage = getCreditInsufficientMessage(error);
         toast({
-          title: "创建失败",
-          description: getApiErrorMessage(error, "请稍后重试"),
-          variant: "error",
+          title: creditMessage ? "AI 额度不足" : "创建失败",
+          description: creditMessage ?? getApiErrorMessage(error, "请稍后重试"),
+          variant: creditMessage ? "warning" : "error",
         });
       },
     },
@@ -1076,7 +1072,7 @@ export function ExamsPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2 2xl:grid-cols-3">
+            <div className="divide-y divide-slate-200 border-y border-slate-200 dark:divide-slate-800 dark:border-slate-800">
               <TrainingModeCard
                 icon={<ClipboardCheck className="h-6 w-6" />}
                 title={practiceLabel}
@@ -1168,13 +1164,12 @@ export function ExamsPage() {
                 ]}
                 variant={canStartMasteryDrill ? "mastery" : "disabled"}
                 disabled={!canStartMasteryDrill}
-                className="xl:col-span-2 xl:w-[calc((100%_-_1rem)/2)] xl:justify-self-center 2xl:col-span-1 2xl:w-full 2xl:justify-self-stretch"
                 actions={
                   <>
                     <Button
                       size="sm"
                       variant={canStartMasteryDrill ? "default" : "outline"}
-                      className={`${canStartMasteryDrill ? TRAINING_PRIMARY_ACTION_CLASS : "w-full min-w-0 gap-1.5 rounded-xl px-4 text-sm font-medium"} ${
+                      className={`${canStartMasteryDrill ? TRAINING_PRIMARY_ACTION_CLASS : "w-full min-w-0 gap-1.5 rounded-lg px-4 text-sm font-medium"} ${
                         canStartMasteryDrill
                           ? ""
                           : "border-slate-200 bg-slate-100 text-slate-400 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-500"
@@ -1232,7 +1227,7 @@ export function ExamsPage() {
                 { key: "active" as const, title: "待完成", items: activeHistoryItems },
                 { key: "completed" as const, title: "已完成", items: completedHistoryItems },
               ].map((group) => (
-                <div key={group.key} className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950/80">
+                <div key={group.key} className="border-t border-slate-200 py-4 first:border-t-0 dark:border-slate-800">
                   <button
                     type="button"
                     onClick={() =>
@@ -1243,13 +1238,13 @@ export function ExamsPage() {
                     }
                     className="flex w-full items-center gap-4 text-left"
                   >
-                    <h3 className="flex shrink-0 items-center gap-2 text-base font-black text-slate-950 dark:text-slate-100">
+                    <h3 className="flex shrink-0 items-center gap-2 text-base font-semibold text-slate-950 dark:text-slate-100">
                       <span>{group.title}</span>
                       <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500 dark:bg-slate-900 dark:text-slate-400">
                         {group.items.length}
                       </span>
                     </h3>
-                    <div className="h-px flex-1 bg-slate-200/80 dark:bg-slate-800" />
+                    <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
                     <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-slate-500 dark:text-slate-400">
                       <ChevronDown
                         className={`h-4 w-4 transition-transform ${
@@ -1260,7 +1255,7 @@ export function ExamsPage() {
                   </button>
 
                   {expandedGroups[group.key] && group.items.length === 0 ? (
-                    <div className="mt-3 flex items-center gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-3 py-3 text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900/45 dark:text-slate-400">
+                    <div className="mt-3 flex items-center gap-2 border-t border-dashed border-slate-200 px-1 py-4 text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
                       <FileText className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" />
                       <span>{group.key === "active" ? "暂无待完成记录" : "暂无已完成记录"}</span>
                     </div>

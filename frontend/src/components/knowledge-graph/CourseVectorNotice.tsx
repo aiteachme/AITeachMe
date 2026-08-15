@@ -32,8 +32,8 @@ function buildVectorNoticeCopy(status: CourseVectorStatusResponse) {
 
   if (notice.includes("缺少可用") || notice.includes("索引缺失")) {
     return {
-      title: "语义检索索引暂不可用",
-      description: "当前课程还没有可用的语义检索索引，知识文档仍可正常查看。可直接重建向量索引，无需重新生成知识文档。",
+      title: "智能检索未就绪",
+      description: "课程内容仍可正常阅读；这通常是旧课程的检索索引未生成、已被清理，或上次向量写入未完成。可直接修复，无需重新生成知识文档。",
       repairable: true,
     };
   }
@@ -73,25 +73,25 @@ export function CourseVectorNotice({
   return (
     <div
       className={cn(
-        "rounded-2xl border px-4 py-3",
+        "rounded-xl border px-3 py-2.5",
         isDisabled
-          ? "border-amber-200 bg-amber-50 text-amber-800"
-          : "border-indigo-200 bg-indigo-50 text-indigo-800",
+          ? "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
+          : "border-indigo-200 bg-indigo-50 text-indigo-800 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-200",
         className,
       )}
     >
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex min-w-0 items-start gap-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-start gap-2.5 sm:items-center">
           {isDisabled ? (
-            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 sm:mt-0" />
           ) : (
-            <Info className="mt-0.5 h-5 w-5 shrink-0" />
+            <Info className="mt-0.5 h-4 w-4 shrink-0 sm:mt-0" />
           )}
-          <div className="min-w-0">
-            <p className="text-sm font-semibold">
+          <div className="min-w-0 sm:flex sm:items-baseline sm:gap-2">
+            <p className="shrink-0 text-sm font-semibold">
               {copy.title}
             </p>
-            <p className="mt-1 text-sm leading-6">{copy.description}</p>
+            <p className="mt-0.5 text-xs leading-5 opacity-90 sm:mt-0">{copy.description}</p>
           </div>
         </div>
         {showRebuild ? (
@@ -100,14 +100,14 @@ export function CourseVectorNotice({
             onClick={onRebuild}
             disabled={rebuildPending || rebuildDisabled}
             aria-busy={rebuildPending}
-            className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-indigo-300 bg-white px-3 text-xs font-semibold text-indigo-800 shadow-sm transition hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-indigo-500/40 dark:bg-slate-950 dark:text-indigo-200 dark:hover:bg-indigo-500/10"
+            className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 self-start rounded-lg border border-indigo-300 bg-white px-2.5 text-xs font-semibold text-indigo-800 shadow-sm transition hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-indigo-500/40 dark:bg-slate-950 dark:text-indigo-200 dark:hover:bg-indigo-500/10 sm:self-auto"
           >
             {rebuildPending ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
               <RefreshCw className="h-3.5 w-3.5" />
             )}
-            {rebuildPending ? "正在重建" : "重建向量"}
+            {rebuildPending ? "正在修复" : "修复检索"}
           </button>
         ) : null}
       </div>

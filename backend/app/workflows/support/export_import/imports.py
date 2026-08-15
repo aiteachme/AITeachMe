@@ -241,11 +241,23 @@ def import_course(
             else:
                 session.flush()
         except Exception:
+            file_scope = get_content_store().user_file_scope(user_id=user_id)
+            imported_file_prefixes = {
+                file_scope.file_prefix(file_id=item.id, filename=item.filename)
+                for item in [*session.identity_map.values(), *session.new]
+                if isinstance(item, RawFile)
+                and item.user_id == user_id
+                and item.origin_course_id == new_course_id
+                and item.id
+            }
             session.rollback()
             cleanup_imported_course_artifacts(
                 new_course_id,
                 user_id=user_id,
             )
+            content_store = get_content_store()
+            for prefix in imported_file_prefixes:
+                run_store_sync(content_store.delete_prefix, prefix, default=0)
             raise
 
         if options.rebuild_embeddings:

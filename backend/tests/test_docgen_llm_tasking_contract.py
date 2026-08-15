@@ -191,6 +191,13 @@ def test_docgen_writer_caps_unreasonable_target_word_budget(monkeypatch) -> None
     assert writer._writer_stream_char_limit(contract) <= 14000
 
 
+def test_docgen_writer_reserves_output_budget_for_standard_three_thousand_word_chapter() -> None:
+    contract = {"target_word_count": 3000}
+
+    assert writer._writer_max_tokens_for_contract(contract, digest_mode="sprint") >= 5800
+    assert writer._writer_max_tokens_for_contract(contract, digest_mode="systematic") >= 6400
+
+
 @pytest.mark.anyio
 async def test_docgen_writer_raises_when_primary_completion_fails(monkeypatch) -> None:
     async def failing_llm(*args, **kwargs):

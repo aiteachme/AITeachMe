@@ -226,6 +226,7 @@ workflows/support/<module>/
 适用模块包括：
 
 - `auth`
+- `credits`（AI 额度账户、不可变账本、预占/结算/释放）
 - `courses`
 - `system`
 - `export_import`

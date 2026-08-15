@@ -26,6 +26,8 @@ from app.workflows.digest.planner.lib.plans import (
 )
 from app.workflows.digest.planner.nodes.generate_course_identity import _clean_course_name
 from app.workflows.digest.planner.prompts.build_plan_composer import (
+    BUILD_CONSTRAINTS_END,
+    BUILD_CONSTRAINTS_START,
     CHAPTERS_END,
     CHAPTERS_START,
     COURSE_NAME_END,
@@ -317,8 +319,12 @@ def _parse_diagnose(value: str) -> list[dict[str, Any]]:
             raise ValueError(f"diagnose question `{question}` purpose must start with 文档落点：")
         if len(options) != 4:
             raise ValueError(f"diagnose question `{question}` must contain four distinct options")
-        if any(len(option) > 16 for option in options):
-            raise ValueError(f"diagnose question `{question}` contains an option longer than 16 characters")
+        if any(len(option) > 48 for option in options):
+            raise ValueError(f"diagnose question `{question}` contains an option longer than 48 characters")
+        if any("｜" not in option and "|" not in option for option in options):
+            raise ValueError(
+                f"diagnose question `{question}` options must use label｜impact format"
+            )
         diagnose.append(
             {
                 "question": question,
@@ -330,10 +336,48 @@ def _parse_diagnose(value: str) -> list[dict[str, Any]]:
     return diagnose
 
 
+def _parse_build_constraints(value: str) -> dict[str, Any]:
+    try:
+        decoded = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"build constraints json invalid: {exc}") from exc
+    if not isinstance(decoded, dict):
+        raise ValueError("build constraints must be a JSON object")
+    profile = _clean_text(decoded.get("chapter_length_profile")).casefold()
+    if profile not in {"outline", "standard", "detailed", "foundation"}:
+        raise ValueError("chapter_length_profile must be outline, standard, detailed or foundation")
+    values: dict[str, int] = {}
+    for key in ("chapter_min_words", "chapter_target_words", "chapter_max_words"):
+        try:
+            parsed = int(decoded.get(key) or 0)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{key} must be an integer") from exc
+        if not 800 <= parsed <= 8000:
+            raise ValueError(f"{key} must be between 800 and 8000")
+        values[key] = parsed
+    if not values["chapter_min_words"] <= values["chapter_target_words"] <= values["chapter_max_words"]:
+        raise ValueError("chapter word constraints must satisfy min <= target <= max")
+    return {"chapter_length_profile": profile, **values}
+
+
 def _parse_planner_response(text: str) -> dict[str, Any]:
     course_name = _parse_generated_course_name(text)
     plan = _clean_text(_extract_between(text, PLAN_START, PLAN_END))
     suggestion = _clean_text(_extract_between(text, SUGGESTION_START, SUGGESTION_END))
+    if BUILD_CONSTRAINTS_START in text and BUILD_CONSTRAINTS_END in text:
+        build_constraints = _parse_build_constraints(
+            _extract_between(text, BUILD_CONSTRAINTS_START, BUILD_CONSTRAINTS_END)
+        )
+    else:
+        # Backward-compatible default for older gateways or saved responses.
+        # The current prompt emits the explicit contract so answered diagnosis
+        # choices still control this value in normal runs.
+        build_constraints = {
+            "chapter_length_profile": "standard",
+            "chapter_min_words": 2400,
+            "chapter_target_words": 3000,
+            "chapter_max_words": 3600,
+        }
     chapters = _parse_chapters(_extract_between(text, CHAPTERS_START, CHAPTERS_END))
     if not plan:
         raise ValueError("planner response is missing plan")
@@ -345,6 +389,7 @@ def _parse_planner_response(text: str) -> dict[str, Any]:
         "plan": plan,
         "diagnose": [],
         "chapters": chapters,
+        "build_constraints": build_constraints,
     }
 
 
@@ -402,7 +447,6 @@ def _normalize_generated_plan(state: BuildPlannerState, parsed: dict[str, Any]) 
         "course_name": str(latest_plan.get("course_name") or ""),
         "course_icon": str(latest_plan.get("course_icon") or ""),
         **parsed,
-        "build_constraints": {},
     }
     material_context = state["material_context"]
     digest_mode = (

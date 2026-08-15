@@ -62,6 +62,9 @@ const ProfilePage = lazy(() => import("./pages/ProfilePage").then((module) => ({
 const UserProfilePage = lazy(() =>
   import("./pages/UserProfilePage").then((module) => ({ default: module.UserProfilePage })),
 );
+const CreditsPage = lazy(() => import("./pages/CreditsPage").then((module) => ({ default: module.CreditsPage })));
+const AccountPage = lazy(() => import("./pages/AccountPage").then((module) => ({ default: module.AccountPage })));
+const AdminPage = lazy(() => import("./pages/AdminPage").then((module) => ({ default: module.AdminPage })));
 const CourseSharePage = lazy(() =>
   import("./pages/CourseSharePage").then((module) => ({ default: module.CourseSharePage })),
 );
@@ -248,6 +251,9 @@ function AppRouteTree({
             <Route path="library" element={withRouteFallback(<LibraryPage />)} />
             <Route path="library/:fileId" element={withRouteFallback(<LibraryFilePage />)} />
             <Route path="profile" element={withRouteFallback(<UserProfilePage />)} />
+            <Route path="account" element={withRouteFallback(<AccountPage />)} />
+            <Route path="credits" element={withRouteFallback(<CreditsPage />)} />
+            <Route path="admin" element={withRouteFallback(<AdminPage />)} />
             <Route path="courses/:courseId" element={<CourseEntryRedirect />} />
             {(Object.entries(COURSE_PAGE_ELEMENTS) as Array<[CourseRouteId, ReactElement]>).map(
               ([routeId, element]) => (

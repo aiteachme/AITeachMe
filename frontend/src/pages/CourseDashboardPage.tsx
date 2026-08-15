@@ -102,7 +102,6 @@ function NavTile({
   disabled = false,
   disabledReason,
   badge,
-  connector,
   zIndexClass = "z-10",
 }: {
   icon: LucideIcon;
@@ -121,25 +120,19 @@ function NavTile({
 }) {
   const themeStyles = {
     indigo: {
-      border: "border-slate-200/60 dark:border-slate-800 group-hover:border-indigo-400/50 dark:group-hover:border-indigo-500/50",
-      shadow: "shadow-[0_2px_8px_rgba(0,0,0,0.02)] group-hover:shadow-[0_12px_32px_rgba(99,102,241,0.08)]",
-      iconContainer: "bg-indigo-500/10 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-400 border border-indigo-500/10 dark:border-indigo-500/20 group-hover:bg-indigo-500/20 group-hover:shadow-[0_0_16px_rgba(99,102,241,0.2)]",
-      gradient: "from-indigo-500/[0.005] via-transparent to-indigo-500/[0.03] dark:from-indigo-500/[0.002] dark:to-indigo-500/[0.01]",
-      buttonClass: "bg-indigo-50 text-indigo-600 border border-indigo-100 dark:bg-indigo-500/10 dark:text-indigo-400 dark:border-indigo-500/20 group-hover:bg-indigo-600 group-hover:text-white group-hover:border-indigo-600 group-hover:shadow-md dark:group-hover:bg-indigo-600 dark:group-hover:text-white",
+      border: "border-slate-200 hover:border-indigo-300 dark:border-slate-800 dark:hover:border-indigo-500/50",
+      iconContainer: "bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-400",
+      buttonClass: "border border-indigo-200 bg-white text-indigo-600 hover:bg-indigo-50 dark:border-indigo-500/30 dark:bg-slate-950 dark:text-indigo-300 dark:hover:bg-indigo-500/10",
     },
     violet: {
-      border: "border-slate-200/60 dark:border-slate-800 group-hover:border-violet-400/50 dark:group-hover:border-violet-500/50",
-      shadow: "shadow-[0_2px_8px_rgba(0,0,0,0.02)] group-hover:shadow-[0_12px_32px_rgba(139,92,246,0.08)]",
-      iconContainer: "bg-violet-500/10 text-violet-600 dark:bg-violet-950/50 dark:text-violet-400 border border-violet-500/10 dark:border-violet-500/20 group-hover:bg-violet-500/20 group-hover:shadow-[0_0_16px_rgba(139,92,246,0.2)]",
-      gradient: "from-violet-500/[0.005] via-transparent to-violet-500/[0.03] dark:from-violet-500/[0.002] dark:to-violet-500/[0.01]",
-      buttonClass: "bg-violet-50 text-violet-600 border border-violet-100 dark:bg-violet-500/10 dark:text-violet-400 dark:border-violet-500/20 group-hover:bg-violet-600 group-hover:text-white group-hover:border-violet-600 group-hover:shadow-md dark:group-hover:bg-violet-600 dark:group-hover:text-white",
+      border: "border-slate-200 hover:border-violet-300 dark:border-slate-800 dark:hover:border-violet-500/50",
+      iconContainer: "bg-violet-50 text-violet-600 dark:bg-violet-950/50 dark:text-violet-400",
+      buttonClass: "border border-violet-200 bg-white text-violet-600 hover:bg-violet-50 dark:border-violet-500/30 dark:bg-slate-950 dark:text-violet-300 dark:hover:bg-violet-500/10",
     },
     teal: {
-      border: "border-slate-200/60 dark:border-slate-800 group-hover:border-teal-400/50 dark:group-hover:border-teal-500/50",
-      shadow: "shadow-[0_2px_8px_rgba(0,0,0,0.02)] group-hover:shadow-[0_12px_32px_rgba(20,184,166,0.08)]",
-      iconContainer: "bg-teal-500/10 text-teal-650 dark:bg-teal-950/50 dark:text-teal-400 border border-teal-500/10 dark:border-teal-500/20 group-hover:bg-teal-500/20 group-hover:shadow-[0_0_16px_rgba(20,184,166,0.2)]",
-      gradient: "from-teal-500/[0.005] via-transparent to-teal-500/[0.03] dark:from-teal-500/[0.002] dark:to-teal-500/[0.01]",
-      buttonClass: "bg-teal-50 text-teal-700 border border-teal-100 dark:bg-teal-500/10 dark:text-teal-400 dark:border-teal-500/20 group-hover:bg-teal-600 group-hover:text-white group-hover:border-teal-600 group-hover:shadow-md dark:group-hover:bg-teal-600 dark:group-hover:text-white",
+      border: "border-slate-200 hover:border-teal-300 dark:border-slate-800 dark:hover:border-teal-500/50",
+      iconContainer: "bg-teal-50 text-teal-700 dark:bg-teal-950/50 dark:text-teal-400",
+      buttonClass: "border border-teal-200 bg-white text-teal-700 hover:bg-teal-50 dark:border-teal-500/30 dark:bg-slate-950 dark:text-teal-300 dark:hover:bg-teal-500/10",
     },
   }[theme];
 
@@ -147,23 +140,19 @@ function NavTile({
     <div
       onClick={!disabled ? onClick : undefined}
       className={cn(
-        "group relative flex w-full flex-col justify-between rounded-[20px] bg-white/80 dark:bg-slate-900/80 backdrop-blur-md p-6 min-h-[340px] text-left border transition-all duration-500 ease-out",
+        "group relative flex min-h-[300px] w-full flex-col justify-between rounded-lg border bg-white p-5 text-left transition-colors dark:bg-slate-900/80",
         zIndexClass,
         disabled
-          ? "opacity-60 bg-slate-50/50 dark:bg-slate-900/20 border-slate-150 dark:border-slate-800/40 cursor-not-allowed"
+          ? "cursor-not-allowed border-slate-200 bg-slate-50/50 opacity-60 dark:border-slate-800 dark:bg-slate-900/20"
           : isGenerating
-            ? "border-indigo-305 dark:border-indigo-850 bg-indigo-50/[0.01] dark:bg-indigo-950/[0.01] shadow-[0_4px_16px_rgba(99,102,241,0.04)] hover:-translate-y-1 hover:shadow-[0_12px_24px_rgba(99,102,241,0.06)] cursor-pointer"
-            : cn(themeStyles.border, themeStyles.shadow, "hover:-translate-y-1 hover:bg-white dark:hover:bg-slate-900 cursor-pointer")
+            ? "cursor-pointer border-indigo-300 bg-indigo-50/20 dark:border-indigo-500/40 dark:bg-indigo-950/10"
+            : cn(themeStyles.border, "cursor-pointer")
       )}
     >
-      {!disabled && (
-        <div className={cn("absolute inset-0 rounded-2xl bg-gradient-to-br opacity-0 transition-opacity duration-555 group-hover:opacity-100 pointer-events-none", themeStyles.gradient)} />
-      )}
-
       {/* Top Part: Icon, Title, Description and Live Preview */}
       <div className="flex flex-col gap-4 relative z-10 w-full">
         <span className={cn(
-          "flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-500",
+          "flex h-10 w-10 items-center justify-center rounded-lg",
           isGenerating
             ? "bg-indigo-500/10 text-indigo-655 dark:bg-indigo-500/20 dark:text-indigo-300"
             : disabled
@@ -175,7 +164,7 @@ function NavTile({
           ) : disabled ? (
             <Lock className="h-5 w-5" strokeWidth={1.5} />
           ) : (
-            <Icon className="h-5 w-5 transition-all duration-500 ease-out group-hover:scale-105 group-hover:rotate-2" strokeWidth={1.5} />
+            <Icon className="h-5 w-5" strokeWidth={1.5} />
           )}
         </span>
 
@@ -217,7 +206,7 @@ function NavTile({
         {!disabled && (
           <Button
             type="button"
-            className={cn("h-7.5 rounded-lg px-3.5 text-xs font-semibold shadow-sm transition-all duration-300 flex items-center gap-1 shrink-0", themeStyles.buttonClass)}
+            className={cn("flex h-8 shrink-0 items-center gap-1 rounded-lg px-3.5 text-xs font-semibold transition-colors", themeStyles.buttonClass)}
             onClick={(e) => {
               e.stopPropagation();
               onClick();
@@ -228,7 +217,6 @@ function NavTile({
           </Button>
         )}
       </div>
-      {connector}
     </div>
   );
 }
@@ -244,7 +232,7 @@ function RecentExamsWidget({
   const latestPapers = useMemo(() => items.slice(0, 4), [items]);
 
   return (
-    <div className="rounded-2xl border border-slate-100 bg-white/70 dark:border-slate-800/60 dark:bg-slate-900/70 backdrop-blur-md p-6 shadow-sm hover:shadow-md transition-all duration-300 min-h-[350px] flex flex-col">
+    <div className="flex min-h-[350px] flex-col border-t border-slate-200 py-6 dark:border-slate-800">
       <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-100/50 dark:border-slate-800/40 shrink-0">
         <div className="flex items-center gap-2">
           <span className="h-2 w-2 rounded-full bg-indigo-500 shadow-[0_0_6px_rgba(99,102,241,0.5)]" />
@@ -295,7 +283,7 @@ function RecentExamsWidget({
               <div
                 key={item.id}
                 onClick={() => navigate(buildCourseSubPath(courseId, "exams", String(item.id)))}
-                className="group flex items-center justify-between rounded-2xl border border-slate-100/50 dark:border-slate-800/30 bg-slate-50/20 hover:bg-white dark:bg-slate-900/20 dark:hover:bg-slate-800/40 hover:border-slate-205 dark:hover:border-slate-700/50 p-3.5 transition-all duration-300 hover:shadow-sm cursor-pointer"
+              className="group flex cursor-pointer items-center justify-between border-b border-slate-100 px-1 py-3.5 transition-colors last:border-b-0 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900/50"
               >
                 <div className="min-w-0 flex-1 flex items-center gap-3">
                   <div className="min-w-0">
@@ -374,7 +362,7 @@ function MiniStatsWidget({
   }
 
   return (
-    <div className="rounded-2xl border border-slate-100/80 bg-white/70 dark:border-slate-800/60 dark:bg-slate-900/70 backdrop-blur-md p-6 shadow-sm hover:shadow-md transition-all duration-300 min-h-[350px] flex flex-col">
+    <div className="flex min-h-[350px] flex-col border-t border-slate-200 py-6 dark:border-slate-800">
       <div className="flex items-center gap-2 mb-5 pb-3 border-b border-slate-100/50 dark:border-slate-800/40 shrink-0">
         <span className="h-2 w-2 rounded-full bg-teal-500 shadow-[0_0_6px_rgba(20,184,166,0.5)]" />
         <h3 className="text-[15px] font-bold text-slate-800 dark:text-slate-100">掌握分布</h3>
@@ -642,10 +630,6 @@ export function CourseDashboardPage() {
 
   return (
     <div className={pageShellClass}>
-      {/* Background Ambient Glows */}
-      <div className="absolute top-1/4 left-1/4 -z-10 h-96 w-96 rounded-full bg-indigo-500/[0.04] blur-[120px] dark:bg-indigo-500/[0.02] pointer-events-none" />
-      <div className="absolute bottom-1/3 right-1/4 -z-10 h-96 w-96 rounded-full bg-teal-500/[0.04] blur-[120px] dark:bg-teal-500/[0.02] pointer-events-none" />
-
       <div className={`${COURSE_PAGE_CONTENT_CLASS} gap-5 relative z-10`}>
 
         {/* Top Header & Version Switcher */}
@@ -654,15 +638,14 @@ export function CourseDashboardPage() {
             <div className="min-w-0">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-3">
-                  <h1 className="break-words text-[30px] font-black leading-[1.06] tracking-normal text-slate-950 dark:text-slate-50 sm:text-[38px] lg:text-[42px]">
+                  <h1 className="break-words text-[30px] font-bold leading-[1.12] tracking-[-0.025em] text-slate-950 dark:text-slate-50 sm:text-[34px] lg:text-[38px]">
                     {courseName ?? "当前课程"}
                   </h1>
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/5 px-3 py-1 text-xs font-semibold text-emerald-600 shadow-[0_2px_8px_rgba(16,185,129,0.05)] dark:text-emerald-400">
-                    <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/5 px-3 py-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                    <span className="h-2 w-2 rounded-full bg-emerald-500" />
                     v1.0 (当前版本)
                   </span>
                 </div>
-                <div className="mt-3 h-1.5 w-20 rounded-full bg-indigo-500 dark:bg-indigo-400" />
               </div>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400 sm:text-[15px]">
                 欢迎回到课程空间。您的专属学习大盘已准备就绪，在这里您可以纵览全局知识脉络，追踪学习动态。
@@ -684,7 +667,7 @@ export function CourseDashboardPage() {
         </section>
 
         {/* Three-Column Nav Tiles Layout */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-[56px] relative z-10">
+        <div className="relative z-10 grid grid-cols-1 gap-4 md:grid-cols-3">
 
           {/* Card 1: 知识库 */}
           <NavTile
@@ -981,10 +964,9 @@ export function CourseDashboardPage() {
 
         {/* Feedback Loop Panel */}
         {states.length > 0 && (
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4 p-5 rounded-2xl bg-indigo-50/15 border border-indigo-100/35 dark:bg-slate-900/35 dark:border-slate-800/40 relative overflow-hidden animate-[fadeIn_0.5s_ease-out]">
-            <div className="absolute inset-0 bg-gradient-to-r from-teal-500/[0.02] via-transparent to-indigo-500/[0.02] pointer-events-none" />
+          <div className="relative flex flex-col items-center justify-between gap-4 border-y border-slate-200 py-5 dark:border-slate-800 md:flex-row">
             <div className="flex items-center gap-3.5 relative z-10">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-500/10 text-teal-655 dark:bg-teal-950/40 dark:text-teal-400 border border-teal-500/15 shadow-sm shadow-teal-500/5">
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-teal-500/15 bg-teal-500/10 text-teal-655 dark:bg-teal-950/40 dark:text-teal-400">
                 <RefreshCw className="h-4 w-4 animate-spin-slow" />
               </span>
               <div>
@@ -1008,7 +990,7 @@ export function CourseDashboardPage() {
         )}
 
         {/* Bottom Section: Recent Exams & Mastery Distribution */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mt-2 relative z-10">
+        <div className="relative z-10 mt-2 grid grid-cols-1 gap-8 lg:grid-cols-12">
           {/* Left Side: Recent Exams (Col-span 8) */}
           <div className="lg:col-span-8">
             <RecentExamsWidget items={historyItems} courseId={courseId} />

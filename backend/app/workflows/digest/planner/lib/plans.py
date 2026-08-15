@@ -466,6 +466,7 @@ def _build_constraints(
     shared_inputs: SharedInputs,
     requested_chapter_count: int | None = None,
     requested_chapter_count_range: tuple[int, int] | None = None,
+    overrides: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     contract = get_planner_mode_contract(digest_mode)
     constraints = {
@@ -478,7 +479,37 @@ def _build_constraints(
         "include_exercises": True,
         "include_sources": False,
         "math_mode": shared_inputs.course_profile.has_heavy_formulas,
+        "chapter_length_profile": "standard",
+        "chapter_min_words": 2400,
+        "chapter_target_words": 3000,
+        "chapter_max_words": 3600,
     }
+    raw_overrides = _mapping(overrides)
+    profile_defaults = {
+        "outline": (1400, 1800, 2200),
+        "standard": (2400, 3000, 3600),
+        "detailed": (3400, 4200, 5000),
+        "foundation": (4200, 5200, 6200),
+    }
+    profile = _text(raw_overrides.get("chapter_length_profile")).casefold()
+    if profile not in profile_defaults:
+        profile = "standard"
+    default_min, default_target, default_max = profile_defaults[profile]
+    chapter_min = _positive_int(raw_overrides.get("chapter_min_words")) or default_min
+    chapter_target = _positive_int(raw_overrides.get("chapter_target_words")) or default_target
+    chapter_max = _positive_int(raw_overrides.get("chapter_max_words")) or default_max
+    if 800 <= chapter_min <= chapter_target <= chapter_max <= 8000:
+        constraints.update(
+            {
+                "chapter_length_profile": profile,
+                "chapter_min_words": chapter_min,
+                "chapter_target_words": chapter_target,
+                "chapter_max_words": chapter_max,
+            }
+        )
+    target_total_words = _positive_int(raw_overrides.get("target_total_words"))
+    if target_total_words is not None:
+        constraints["target_total_words"] = target_total_words
     if requested_chapter_count is not None:
         constraints["requested_chapter_count"] = requested_chapter_count
         constraints["chapter_count_source"] = "user_request"
@@ -509,7 +540,10 @@ def normalize_planner_draft(
     resolved_user_prompt = _text(_strip_diagnosis_metadata(user_prompt))
     current = _mapping(draft)
     previous = _mapping(latest_plan)
-    current_constraints = _mapping(current.get("build_constraints"))
+    current_constraints = {
+        **_mapping(previous.get("build_constraints")),
+        **_mapping(current.get("build_constraints")),
+    }
     mode = _normalize_digest_mode(requested_digest_mode or current.get("digest_mode") or previous.get("digest_mode"))
     requested_chapter_titles = extract_explicit_chapter_titles(resolved_user_prompt)
     display_course = (
@@ -580,6 +614,7 @@ def normalize_planner_draft(
             shared_inputs=shared,
             requested_chapter_count=requested_chapter_count,
             requested_chapter_count_range=requested_chapter_count_range,
+            overrides=current_constraints,
         ),
     )
 

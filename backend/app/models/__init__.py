@@ -1,5 +1,6 @@
 """Central model exports."""
 
+from app.models.auth import AuthIdentity, AuthRateLimitBucket, AuthSession, OAuthFlow, UserMergeJob
 from app.models.build_planner import ConfirmedBuildPlan
 from app.models.chat import ChatMessage, ChatSession, Highlight
 from app.models.enums import (
@@ -28,6 +29,8 @@ from app.models.enums import (
     validate_status_transition,
 )
 from app.models.email_confirmation import EmailConfirmation
+from app.models.credits import CreditAccount, CreditLedger, CreditReservation
+from app.models.memory import LearningLogRecord, MemoryRecord
 from app.models.course_initial_exam import CourseInitialExamJob
 from app.models.exam import (
     ExamPaper,
@@ -54,6 +57,16 @@ from app.models.system import SystemRuntimeSettings
 from app.models.user import User
 
 __all__ = [
+    "AuthIdentity",
+    "AuthRateLimitBucket",
+    "AuthSession",
+    "OAuthFlow",
+    "UserMergeJob",
+    "CreditAccount",
+    "CreditLedger",
+    "CreditReservation",
+    "LearningLogRecord",
+    "MemoryRecord",
     "AsyncJobStatus",
     "ChatMessage",
     "ChatSession",

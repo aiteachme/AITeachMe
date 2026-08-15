@@ -1,14 +1,21 @@
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { BarChart3, Github, Loader2, LogIn, LogOut, MessageSquareText, User } from "lucide-react";
-import { abortActiveApiRequests, apiClient, getApiErrorMessage, notifyApiAuthChanged } from "../../api/client";
+import { BarChart3, Coins, Github, Link2, Loader2, LogIn, LogOut, MessageSquareText, Shield, User } from "lucide-react";
+import {
+  abortActiveApiRequests,
+  apiClient,
+  getApiErrorMessage,
+  notifyApiAuthChanged,
+  setApiCsrfToken,
+} from "../../api/client";
 import { listCoursesApiApiV1CoursesListPost } from "../../api/generated/courses";
 import { examHistoryApiV1CoursesCourseIdExamsHistoryGet } from "../../api/generated/exams";
 import { listChatApiApiV1CoursesCourseIdChatsListPost } from "../../api/generated/chats";
 import type { AuthSessionData, ChatMessageItem, CourseItem, ExamHistoryItem, RuntimeUser } from "../../api/generated/model";
 import { resetAnalyticsIdentity, syncAnalyticsUserIdentity, trackAnalyticsEvent } from "../../lib/analytics";
-import { AUTH_SESSION_QUERY_KEY, AUTH_SESSION_STALE_TIME_MS, fetchAuthSession } from "../../lib/authSession";
+import { AUTH_SESSION_QUERY_KEY } from "../../lib/authSession";
+import { useAuthSession } from "../../hooks/useAuthSession";
 import {
   buildLearningActivityEvents,
   buildLearningCalendarWeeks,
@@ -24,6 +31,7 @@ import { cn } from "../../lib/utils";
 import { unwrapOrvalResponse } from "../../lib/unwrapOrvalResponse";
 import { Modal } from "../ui/Modal";
 import { FeedbackModal } from "../ui/FeedbackModal";
+import { OAuthButtons } from "../auth/OAuthButtons";
 
 type SendEmailCodeData = {
   expires_in_s: number;
@@ -171,8 +179,6 @@ export function TopBar({ className }: TopBarProps) {
   const queryClient = useQueryClient();
   const location = useLocation();
   const navigate = useNavigate();
-  const [authUser, setAuthUser] = useState<RuntimeUser | null>(null);
-  const [authEnabled, setAuthEnabled] = useState<boolean | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [authEmail, setAuthEmail] = useState("");
@@ -180,6 +186,7 @@ export function TopBar({ className }: TopBarProps) {
   const [authVerificationCode, setAuthVerificationCode] = useState("");
   const [authError, setAuthError] = useState<string | null>(null);
   const [isAuthSubmitting, setIsAuthSubmitting] = useState(false);
+  const [oauthConfirmationFlowId, setOAuthConfirmationFlowId] = useState<string | null>(null);
   const [isSendCodeSubmitting, setIsSendCodeSubmitting] = useState(false);
   const [sendCodeCooldownS, setSendCodeCooldownS] = useState(0);
   const [codeExpiresInS, setCodeExpiresInS] = useState<number | null>(null);
@@ -188,20 +195,23 @@ export function TopBar({ className }: TopBarProps) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
-  const authSessionQuery = useQuery({
-    queryKey: AUTH_SESSION_QUERY_KEY,
-    queryFn: ({ signal }) => fetchAuthSession(signal),
-    staleTime: AUTH_SESSION_STALE_TIME_MS,
-    retry: 1,
-  });
+  const authSessionQuery = useAuthSession();
+  const authUser = authSessionQuery.data?.current_user ?? null;
+  const authEnabled = authSessionQuery.isSuccess
+    ? Boolean(authSessionQuery.data?.auth_enabled)
+    : authSessionQuery.isError
+      ? false
+      : null;
 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
   const authEntryRequestRef = useRef("");
   const authReturnToRef = useRef<string | null>(null);
+  const oauthMergeRequestRef = useRef("");
 
   const isLoggedIn = Boolean(authUser?.is_authenticated);
   const canUseAuth = authEnabled === true;
+  const creditsEnabled = authSessionQuery.data?.credits_enabled === true;
   const displayName = getDisplayName(authUser);
   const identitySubtitle = getIdentitySubtitle(authUser);
   const avatarText = getAvatarText(authUser);
@@ -281,23 +291,12 @@ export function TopBar({ className }: TopBarProps) {
   useEffect(() => {
     if (authSessionQuery.isSuccess) {
       const currentUser = authSessionQuery.data?.current_user ?? null;
-      setAuthEnabled(Boolean(authSessionQuery.data?.auth_enabled));
-      if (!currentUser?.is_authenticated) {
-        const hadAccessToken = Boolean(localStorage.getItem("token"));
-        localStorage.removeItem("token");
-        if (hadAccessToken) {
-          abortActiveApiRequests();
-        }
-      }
-      setAuthUser(currentUser);
       syncAnalyticsUserIdentity({
         userId: currentUser?.user_id,
         email: currentUser?.email,
         isAuthenticated: currentUser?.is_authenticated,
       });
     } else if (authSessionQuery.isError) {
-      setAuthEnabled(false);
-      setAuthUser(null);
       syncAnalyticsUserIdentity(null);
     }
   }, [authSessionQuery.data, authSessionQuery.isError, authSessionQuery.isSuccess]);
@@ -359,6 +358,7 @@ export function TopBar({ className }: TopBarProps) {
     setCodeExpiresInS(null);
     setSendCodeInfo(null);
     setCodeSentToEmail(null);
+    setOAuthConfirmationFlowId(null);
   };
 
   const openAuthEntry = (mode: "login" | "register") => {
@@ -367,6 +367,7 @@ export function TopBar({ className }: TopBarProps) {
       return;
     }
     authReturnToRef.current = null;
+    setOAuthConfirmationFlowId(null);
     closeMenus();
     openAuthModal(mode);
   };
@@ -412,6 +413,123 @@ export function TopBar({ className }: TopBarProps) {
     );
   }, [authEnabled, location.hash, location.pathname, location.search, navigate]);
 
+  useEffect(() => {
+    if (authEnabled === null) {
+      return;
+    }
+    const searchParams = new URLSearchParams(location.search);
+    if (searchParams.get("oauth") === "denied") {
+      if (authEnabled) {
+        setAuthMode("login");
+        setOAuthConfirmationFlowId(null);
+        setAuthError("第三方登录已取消，你可以重新选择登录方式。");
+        setIsAuthModalOpen(true);
+      }
+      searchParams.delete("oauth");
+      const nextSearch = searchParams.toString();
+      navigate(
+        {
+          pathname: location.pathname,
+          search: nextSearch ? `?${nextSearch}` : "",
+          hash: location.hash,
+        },
+        { replace: true },
+      );
+      return;
+    }
+    const flowId = searchParams.get("flow_id")?.trim() ?? "";
+    if (searchParams.get("oauth") !== "confirmation_required" || !flowId) {
+      return;
+    }
+    if (authEnabled) {
+      setAuthMode("login");
+      setAuthError(null);
+      setAuthPassword("");
+      setAuthEmail("");
+      setOAuthConfirmationFlowId(flowId);
+      setIsAuthModalOpen(true);
+    }
+    searchParams.delete("oauth");
+    searchParams.delete("flow_id");
+    const nextSearch = searchParams.toString();
+    navigate(
+      {
+        pathname: location.pathname,
+        search: nextSearch ? `?${nextSearch}` : "",
+        hash: location.hash,
+      },
+      { replace: true },
+    );
+  }, [authEnabled, location.hash, location.pathname, location.search, navigate]);
+
+  useEffect(() => {
+    if (!authSessionQuery.isSuccess || !isLoggedIn) {
+      return;
+    }
+    const searchParams = new URLSearchParams(location.search);
+    if (searchParams.get("oauth") !== "authenticated") {
+      return;
+    }
+    const mergeJobId = searchParams.get("merge_job_id")?.trim() ?? "";
+    const requestKey = `${location.pathname}:${mergeJobId || "no-merge"}`;
+    if (oauthMergeRequestRef.current === requestKey) {
+      return;
+    }
+    oauthMergeRequestRef.current = requestKey;
+
+    const finishRedirect = () => {
+      searchParams.delete("oauth");
+      searchParams.delete("merge_job_id");
+      const nextSearch = searchParams.toString();
+      navigate(
+        {
+          pathname: location.pathname,
+          search: nextSearch ? `?${nextSearch}` : "",
+          hash: location.hash,
+        },
+        { replace: true },
+      );
+    };
+
+    void (async () => {
+      try {
+        if (!mergeJobId) return;
+        const response = await apiClient<ApiResponse<{
+          job_id: string;
+          status: string;
+          counts?: { courses?: number; files?: number; chats?: number; exams?: number };
+        }>>({
+          url: `/api/v1/auth/merge/${encodeURIComponent(mergeJobId)}`,
+          method: "GET",
+        });
+        if (!["pending", "failed"].includes(response.data.status)) return;
+        const counts = response.data.counts ?? {};
+        const confirmed = window.confirm(
+          `检测到当前游客身份中有 ${counts.courses ?? 0} 门课程、${counts.files ?? 0} 个文件、${counts.chats ?? 0} 个对话和 ${counts.exams ?? 0} 份试卷。是否迁移到刚登录的账号？`,
+        );
+        if (!confirmed) return;
+        await apiClient({
+          url: `/api/v1/auth/merge/${encodeURIComponent(mergeJobId)}/confirm`,
+          method: "POST",
+          data: {},
+        });
+        await queryClient.invalidateQueries();
+      } catch (error) {
+        window.alert(getApiErrorMessage(error, "游客学习数据迁移失败，可重新登录后再试。"));
+      } finally {
+        finishRedirect();
+      }
+    })();
+  }, [
+    authSessionQuery.isSuccess,
+    isLoggedIn,
+    location.hash,
+    location.pathname,
+    location.search,
+    navigate,
+    queryClient,
+  ]);
+
   const openFeedbackModal = () => {
     closeMenus();
     setIsFeedbackModalOpen(true);
@@ -424,9 +542,9 @@ export function TopBar({ className }: TopBarProps) {
         method: "POST",
         data: {},
       });
-      localStorage.removeItem("token");
       abortActiveApiRequests();
       const currentUser = response.data.current_user ?? null;
+      setApiCsrfToken(response.data.csrf_token);
       queryClient.setQueryData(AUTH_SESSION_QUERY_KEY, response.data);
       trackAnalyticsEvent("auth_logout_succeeded", {
         was_authenticated: Boolean(authUser?.is_authenticated),
@@ -437,12 +555,11 @@ export function TopBar({ className }: TopBarProps) {
         email: currentUser?.email,
         isAuthenticated: currentUser?.is_authenticated,
       });
-      setAuthUser(currentUser);
     } catch {
-      localStorage.removeItem("token");
       abortActiveApiRequests();
       resetAnalyticsIdentity();
-      setAuthUser(null);
+      setApiCsrfToken(null);
+      queryClient.setQueryData(AUTH_SESSION_QUERY_KEY, null);
     }
     closeMenus();
   };
@@ -508,8 +625,9 @@ export function TopBar({ className }: TopBarProps) {
     setIsAuthSubmitting(true);
     setAuthError(null);
     try {
-      const requestData =
-        authMode === "login"
+      const requestData = oauthConfirmationFlowId
+        ? { flow_id: oauthConfirmationFlowId, email: emailValue, password: passwordValue }
+        : authMode === "login"
           ? { email: emailValue, password: passwordValue }
           : {
               email: emailValue,
@@ -517,17 +635,31 @@ export function TopBar({ className }: TopBarProps) {
               verification_code: authVerificationCode.trim(),
             };
       const response = await apiClient<ApiResponse<AuthSessionData>>({
-        url: authMode === "login" ? "/api/v1/auth/login" : "/api/v1/auth/register",
+        url: oauthConfirmationFlowId
+          ? "/api/v1/auth/oauth/confirm"
+          : authMode === "login"
+            ? "/api/v1/auth/login"
+            : "/api/v1/auth/register",
         method: "POST",
         data: requestData,
       });
-      const token = response.data.access_token;
-      if (token) {
-        localStorage.setItem("token", token);
-      }
       notifyApiAuthChanged();
       const currentUser = response.data.current_user ?? null;
+      setApiCsrfToken(response.data.csrf_token);
       queryClient.setQueryData(AUTH_SESSION_QUERY_KEY, response.data);
+      const mergeOffer = response.data.merge_offer as
+        | { job_id?: string; counts?: { courses?: number; files?: number; chats?: number; exams?: number } }
+        | null
+        | undefined;
+      if (mergeOffer?.job_id && authMode === "login") {
+        const counts = mergeOffer.counts ?? {};
+        if (window.confirm(
+          `检测到当前游客身份中有 ${counts.courses ?? 0} 门课程、${counts.files ?? 0} 个文件、${counts.chats ?? 0} 个对话和 ${counts.exams ?? 0} 份试卷。是否迁移到刚登录的账号？`,
+        )) {
+          await apiClient({ url: `/api/v1/auth/merge/${mergeOffer.job_id}/confirm`, method: "POST", data: {} });
+          await queryClient.invalidateQueries();
+        }
+      }
       syncAnalyticsUserIdentity({
         userId: currentUser?.user_id,
         email: currentUser?.email,
@@ -536,7 +668,6 @@ export function TopBar({ className }: TopBarProps) {
       trackAnalyticsEvent(authMode === "login" ? "auth_login_succeeded" : "auth_register_succeeded", {
         is_authenticated: Boolean(currentUser?.is_authenticated),
       });
-      setAuthUser(currentUser);
       setIsAuthModalOpen(false);
       setAuthPassword("");
       setAuthVerificationCode("");
@@ -544,6 +675,7 @@ export function TopBar({ className }: TopBarProps) {
       setCodeExpiresInS(null);
       setSendCodeInfo(null);
       setCodeSentToEmail(null);
+      setOAuthConfirmationFlowId(null);
       closeMenus();
       const returnTo = authReturnToRef.current;
       authReturnToRef.current = null;
@@ -628,14 +760,12 @@ export function TopBar({ className }: TopBarProps) {
                   ) : null}
 
                   {isLoggedIn ? (
-                    <button
-                      type="button"
-                      className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
-                      onClick={handleLogout}
-                    >
-                      <LogOut className="h-4 w-4" />
-                      <span>退出登录</span>
-                    </button>
+                    <>
+                      <Link to="/account" onClick={closeMenus} className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800/50"><Link2 className="h-4 w-4 text-emerald-500" /><span>账号与登录安全</span></Link>
+                      {creditsEnabled ? <Link to="/credits" onClick={closeMenus} className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800/50"><Coins className="h-4 w-4 text-amber-500" /><span>AI 额度</span></Link> : null}
+                      {authUser?.role === "admin" ? <Link to="/admin" onClick={closeMenus} className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800/50"><Shield className="h-4 w-4 text-violet-500" /><span>管理后台</span></Link> : null}
+                      <button type="button" className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20" onClick={handleLogout}><LogOut className="h-4 w-4" /><span>退出登录</span></button>
+                    </>
                   ) : canUseAuth ? (
                     <>
                       <button
@@ -742,14 +872,19 @@ export function TopBar({ className }: TopBarProps) {
               ) : null}
 
               {isLoggedIn ? (
-                <button
-                  type="button"
-                  className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
-                  onClick={handleLogout}
-                >
-                  <LogOut className="h-4 w-4" />
-                  <span>退出登录</span>
-                </button>
+                <>
+                  <Link to="/account" onClick={closeMenus} className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800/50"><Link2 className="h-4 w-4 text-emerald-500" /><span>账号与登录安全</span></Link>
+                  {creditsEnabled ? <Link to="/credits" onClick={closeMenus} className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800/50"><Coins className="h-4 w-4 text-amber-500" /><span>AI 额度</span></Link> : null}
+                  {authUser?.role === "admin" ? <Link to="/admin" onClick={closeMenus} className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800/50"><Shield className="h-4 w-4 text-violet-500" /><span>管理后台</span></Link> : null}
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                    onClick={handleLogout}
+                  >
+                    <LogOut className="h-4 w-4" />
+                    <span>退出登录</span>
+                  </button>
+                </>
               ) : canUseAuth ? (
                 <>
                   <button
@@ -809,15 +944,18 @@ export function TopBar({ className }: TopBarProps) {
       <Modal
         open={canUseAuth && isAuthModalOpen}
         onClose={closeAuthModal}
-        title={authMode === "login" ? "登录 AiTeachMe" : "注册 AiTeachMe"}
+        title={oauthConfirmationFlowId ? "确认账号归属" : authMode === "login" ? "登录 AiTeachMe" : "注册 AiTeachMe"}
         className="max-w-md"
       >
         <form className="space-y-4" onSubmit={handleAuthSubmit}>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            {authMode === "login"
+            {oauthConfirmationFlowId
+              ? "该第三方账号使用了已有邮箱。请输入原账号密码，确认两个登录方式都属于你。"
+              : authMode === "login"
               ? "继续使用当前身份，并开启登录态同步。"
               : `将当前${authUser?.is_local ? "本地身份" : "游客身份"}升级为邮箱账号。`}
           </p>
+          {authMode === "login" && !oauthConfirmationFlowId ? <OAuthButtons onError={setAuthError} /> : null}
 
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-slate-700 dark:text-slate-200" htmlFor="auth-email">
@@ -895,26 +1033,28 @@ export function TopBar({ className }: TopBarProps) {
             disabled={isAuthSubmitting}
             className="w-full rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
           >
-            {isAuthSubmitting ? "处理中..." : authMode === "login" ? "登录" : "注册"}
+            {isAuthSubmitting ? "处理中..." : oauthConfirmationFlowId ? "确认并绑定" : authMode === "login" ? "登录" : "注册"}
           </button>
 
           <div className="flex items-center justify-between text-sm">
-            <button
-              type="button"
-              onClick={() => {
-                setAuthMode(authMode === "login" ? "register" : "login");
-                setAuthError(null);
-                setAuthPassword("");
-                setAuthVerificationCode("");
-                setSendCodeCooldownS(0);
-                setCodeExpiresInS(null);
-                setSendCodeInfo(null);
-                setCodeSentToEmail(null);
-              }}
-              className="text-slate-600 underline-offset-2 hover:text-slate-900 hover:underline dark:text-slate-300 dark:hover:text-slate-100"
-            >
-              {authMode === "login" ? "没有账号？去注册" : "已有账号？去登录"}
-            </button>
+            {oauthConfirmationFlowId ? <span /> : (
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode(authMode === "login" ? "register" : "login");
+                  setAuthError(null);
+                  setAuthPassword("");
+                  setAuthVerificationCode("");
+                  setSendCodeCooldownS(0);
+                  setCodeExpiresInS(null);
+                  setSendCodeInfo(null);
+                  setCodeSentToEmail(null);
+                }}
+                className="text-slate-600 underline-offset-2 hover:text-slate-900 hover:underline dark:text-slate-300 dark:hover:text-slate-100"
+              >
+                {authMode === "login" ? "没有账号？去注册" : "已有账号？去登录"}
+              </button>
+            )}
             <button
               type="button"
               onClick={closeAuthModal}

@@ -316,6 +316,24 @@ function plannerDiagnosticOptions(item: PlannerDiagnosticQuestion): string[] {
     .slice(0, 4);
 }
 
+function plannerDiagnosticOptionParts(value: string): { label: string; impact: string } {
+  const normalized = String(value ?? "").trim();
+  const delimiterIndex = normalized.search(/[｜|]/u);
+  if (delimiterIndex < 0) {
+    return { label: normalized, impact: "" };
+  }
+  return {
+    label: normalized.slice(0, delimiterIndex).trim(),
+    impact: normalized.slice(delimiterIndex + 1).trim(),
+  };
+}
+
+function plannerDiagnosticPurpose(value: string | null | undefined): string {
+  return String(value ?? "")
+    .trim()
+    .replace(/^文档落点\s*[:：]\s*/u, "");
+}
+
 function plannerDiagnoseStatus(plan: BuildPlannerPlanResponse | null | undefined): string {
   return String(plannerView(plan)?.diagnose_status ?? "").trim();
 }
@@ -1291,6 +1309,7 @@ function PlannerOutlineCard({
           <div className="mt-3 divide-y divide-zinc-200/80 border-y border-zinc-200/80 dark:divide-slate-800 dark:border-slate-800">
             {visibleDiagnoseItems.map((item, index) => {
               const question = String(item.question ?? "").trim();
+              const purpose = plannerDiagnosticPurpose(item.purpose);
               const options = plannerDiagnosticOptions(item);
               const answerState = answerStateForDiagnosis(item);
               const selectedAnswer = String(answerState.choice ?? "").trim();
@@ -1307,9 +1326,16 @@ function PlannerOutlineCard({
                     </span>
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold leading-6 text-zinc-900 dark:text-slate-100">{question}</p>
+                      {purpose ? (
+                        <p className="mt-1 text-xs leading-5 text-zinc-500 dark:text-slate-400">
+                          你的选择会调整：{purpose}
+                        </p>
+                      ) : null}
                       {options.length ? (
                         <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                          {options.map((answer) => (
+                          {options.map((answer) => {
+                            const option = plannerDiagnosticOptionParts(answer);
+                            return (
                             <button
                               key={`${question}-${answer}`}
                               type="button"
@@ -1321,7 +1347,7 @@ function PlannerOutlineCard({
                               disabled={!canEditDiagnosis}
                               aria-pressed={selectedAnswer === answer}
                               className={
-                                "min-h-11 rounded-md border px-3 py-2.5 text-left text-sm font-medium leading-5 outline-none transition focus-visible:ring-2 focus-visible:ring-blue-500/30 " +
+                                "min-h-14 rounded-md border px-3 py-2.5 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-blue-500/30 " +
                                 (selectedAnswer === answer
                                   ? "border-blue-500 bg-blue-50 text-blue-700 dark:border-blue-400 dark:bg-blue-500/10 dark:text-blue-300"
                                   : "border-zinc-200 bg-white text-zinc-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300") +
@@ -1330,12 +1356,20 @@ function PlannerOutlineCard({
                                   : " cursor-default")
                               }
                             >
-                              <span className="inline-flex items-start gap-2">
+                              <span className="flex items-start gap-2">
                                 <Check className={"mt-0.5 h-3.5 w-3.5 shrink-0 " + (selectedAnswer === answer ? "opacity-100" : "opacity-0")} />
-                                <span>{answer}</span>
+                                <span className="min-w-0">
+                                  <span className="block text-sm font-semibold leading-5">{option.label}</span>
+                                  {option.impact ? (
+                                    <span className={"mt-0.5 block text-xs font-normal leading-5 " + (selectedAnswer === answer ? "text-blue-600/80 dark:text-blue-300/80" : "text-zinc-500 dark:text-slate-400")}>
+                                      {option.impact}
+                                    </span>
+                                  ) : null}
+                                </span>
                               </span>
                             </button>
-                          ))}
+                            );
+                          })}
                         </div>
                       ) : null}
                       {canEditDiagnosis || manualNote ? (
@@ -1464,7 +1498,7 @@ function BuildInProgressBubble({
   onOpen: () => void;
 }) {
   return (
-    <div className="w-full rounded-lg border border-zinc-200 bg-white px-4 py-4 text-left shadow-sm dark:border-slate-800 dark:bg-slate-900/80">
+    <div className="w-full rounded-lg border border-zinc-200 bg-white px-4 py-4 text-left dark:border-slate-800 dark:bg-slate-900/80">
       <div className="flex items-start gap-3">
         <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-zinc-950 text-white dark:bg-slate-100 dark:text-slate-950">
           {isActive ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
@@ -3637,12 +3671,12 @@ export function BuildPlanPage() {
         <div className="relative z-10 flex min-h-0 w-full flex-1 flex-col">
           <CoursePagePillTitle icon={Sparkles} label="方案规划" href={courseId ? buildCoursePath(courseId, "nav") : undefined} />
 
-        <div className="course-page-scroll-container min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-[5.5rem] md:px-8 md:pt-24 lg:px-16">
+        <div className="course-page-scroll-container min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-6 md:px-8 md:pt-8 lg:px-16">
           <div className="mx-auto max-w-3xl space-y-5">
             {shouldShowPlannerEmptyState ? (
               <div className="flex min-h-[calc(100dvh-18rem)] items-center justify-center py-12">
                 <div className="max-w-xl text-center">
-                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-white p-2 shadow-sm ring-1 ring-zinc-200 dark:bg-slate-900 dark:ring-slate-800">
+                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg border border-zinc-200 bg-white p-2 dark:border-slate-800 dark:bg-slate-900">
                     <img src={LOGO_SRC} alt="AI" className="h-full w-full object-contain" />
                   </div>
                   <h1 className="mt-5 text-xl font-semibold tracking-normal text-zinc-950 dark:text-slate-100">
@@ -3657,7 +3691,7 @@ export function BuildPlanPage() {
 
             {shouldShowPlannerStreamingFallback ? (
               <div className="flex gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-50 p-1 shadow-sm ring-1 ring-slate-200/50 dark:bg-slate-900 dark:ring-slate-800">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-slate-50 p-1 dark:border-slate-800 dark:bg-slate-900">
                   <img src={LOGO_SRC} alt="AI" className="h-full w-full object-contain" />
                 </div>
                 <div className="min-w-0 flex-1 space-y-2">
@@ -3688,7 +3722,7 @@ export function BuildPlanPage() {
                   }
                 >
                   {message.role === "assistant" ? (
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-50 p-1 shadow-sm ring-1 ring-slate-200/50 dark:bg-slate-900 dark:ring-slate-800">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-slate-50 p-1 dark:border-slate-800 dark:bg-slate-900">
                       <img src={LOGO_SRC} alt="AI" className="h-full w-full object-contain" />
                     </div>
                   ) : null}
@@ -3697,7 +3731,7 @@ export function BuildPlanPage() {
                     <div className="flex max-w-[80%] flex-col items-end gap-1.5">
                       {isEditingMessage ? (
                         <form
-                          className="w-full min-w-[min(32rem,80vw)] rounded-lg rounded-tr-sm border border-zinc-200 bg-white p-2 shadow-sm dark:border-slate-800 dark:bg-slate-950"
+                          className="w-full min-w-[min(32rem,80vw)] rounded-lg rounded-tr-sm border border-zinc-200 bg-white p-2 dark:border-slate-800 dark:bg-slate-950"
                           onSubmit={(event) => {
                             event.preventDefault();
                             void handleSubmitEditedMessage(message.id);
@@ -3740,7 +3774,7 @@ export function BuildPlanPage() {
                           </div>
                         </form>
                       ) : (
-                        <div className="whitespace-pre-wrap break-words rounded-lg rounded-tr-sm bg-zinc-900 px-4 py-3 text-sm leading-6 text-white shadow-sm selection:bg-white/25">
+                        <div className="whitespace-pre-wrap break-words rounded-lg rounded-tr-sm bg-zinc-900 px-4 py-3 text-sm leading-6 text-white selection:bg-white/25">
                           {message.content}
                         </div>
                       )}
@@ -3835,7 +3869,7 @@ export function BuildPlanPage() {
 
             {shouldShowCurrentPlanFallback && currentPlan ? (
               <div className="flex gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-50 p-1 shadow-sm ring-1 ring-slate-200/50 dark:bg-slate-900 dark:ring-slate-800">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-slate-50 p-1 dark:border-slate-800 dark:bg-slate-900">
                   <img src={LOGO_SRC} alt="AI" className="h-full w-full object-contain" />
                 </div>
                 <div className="min-w-0 flex-1">
@@ -3864,7 +3898,7 @@ export function BuildPlanPage() {
 
             {shouldShowBuildDialog ? (
               <div className="flex gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-50 p-1 shadow-sm ring-1 ring-slate-200/50 dark:bg-slate-900 dark:ring-slate-800">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-slate-50 p-1 dark:border-slate-800 dark:bg-slate-900">
                   <img src={LOGO_SRC} alt="AI" className="h-full w-full object-contain" />
                 </div>
                 <div className="min-w-0 flex-1">
@@ -3896,7 +3930,7 @@ export function BuildPlanPage() {
 
         <div className="shrink-0 px-4 pb-6 pt-2 md:px-8 lg:px-16">
           <div className="mx-auto max-w-3xl">
-            <div className="w-full rounded-lg border border-zinc-200/60 dark:border-slate-800/60 bg-white dark:bg-slate-900 shadow-[0_2px_8px_rgba(0,0,0,0.04)] dark:shadow-[0_2px_8px_rgba(0,0,0,0.2)] transition-all focus-within:border-zinc-300 dark:focus-within:border-slate-700 focus-within:shadow-[0_4px_16px_rgba(0,0,0,0.06)] dark:focus-within:shadow-[0_4px_16px_rgba(0,0,0,0.3)] focus-within:ring-4 focus-within:ring-zinc-900/5 dark:focus-within:ring-slate-800/50">
+            <div className="w-full rounded-lg border border-zinc-200 bg-white transition-[border-color,box-shadow] focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-500/10 dark:border-slate-800 dark:bg-slate-900 dark:focus-within:border-indigo-500/60">
               <textarea
                 ref={inputRef}
                 value={inputValue}
@@ -3940,7 +3974,7 @@ export function BuildPlanPage() {
                       return (
                         <div
                           key={file.id}
-                          className="group relative flex items-center gap-1.5 rounded-md border border-zinc-200/60 dark:border-slate-700/60 bg-zinc-50 dark:bg-slate-800/50 px-2.5 py-1.5 text-[13px] text-zinc-700 dark:text-slate-300 transition-colors hover:bg-white dark:hover:bg-slate-800 hover:border-zinc-300 dark:hover:border-slate-600 hover:shadow-sm"
+                          className="group relative flex items-center gap-1.5 rounded-md border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 text-[13px] text-zinc-700 transition-colors hover:border-zinc-300 hover:bg-white dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:bg-slate-800"
                         >
                           {fileIcon(file)}
                           <span className="max-w-[140px] truncate font-medium">
@@ -4052,10 +4086,10 @@ export function BuildPlanPage() {
                       className={
                         "flex h-11 w-11 shrink-0 items-center justify-center rounded-md transition-all sm:h-9 sm:w-9 " +
                         (isBuilding || plannerStreaming
-                          ? "rounded-full bg-zinc-100 text-zinc-950 shadow-sm hover:bg-zinc-200 focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98]"
+                          ? "rounded-full bg-zinc-100 text-zinc-950 hover:bg-zinc-200 focus:outline-none focus:ring-2 focus:ring-zinc-900/10 active:translate-y-px"
                           : (isRestoredPlannerPending || isDiagnosisPending || !inputValue.trim() || confirmPlannerMutation.isPending)
                           ? "cursor-not-allowed bg-zinc-100 text-zinc-300"
-                          : "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800 focus:outline-none focus:ring-4 focus:ring-zinc-900/10 active:scale-[0.98]")
+                          : "bg-zinc-900 text-white hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-zinc-900/10 active:translate-y-px")
                       }
                     >
                       {cancelBuildMutation.isPending ? (

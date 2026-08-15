@@ -324,22 +324,27 @@ def assemble_chapter_generation_plan(
         if brief is None:
             raise ValueError(f"missing execution brief for chapter {chapter_index}")
         build_constraints = dict(docgen_context.build_constraints or {})
-        # Planner's target_length is a document-level granularity hint. Do not
-        # turn that product-wide range into a per-chapter writer target unless a
-        # concrete total word budget is present.
         explicit_total_words = build_constraints.get("target_total_words")
         min_words, target_words = mode_profile.word_budget(
             chapter_count=chapter_count,
             depth_level=intent_profile.depth_level,
-            target_length=str(build_constraints.get("target_length") or "") if explicit_total_words else "",
+            # target_length is the legacy whole-document display range.  A
+            # concrete total or the per-chapter Planner contract is authoritative.
+            target_length="",
             target_total_words=explicit_total_words,
+            chapter_min_words=build_constraints.get("chapter_min_words"),
+            chapter_target_words=build_constraints.get("chapter_target_words"),
         )
         required_element_count = min(8, len(clean_string_list(seed.required_elements)))
         extra_coverage_units = max(0, required_element_count - 4)
-        if extra_coverage_units:
+        if extra_coverage_units and not explicit_total_words:
             # Extra coverage may expand a budget, but must never shrink an
             # explicit user-provided total that already exceeds the soft cap.
-            target_cap = max(target_words, 1800 if mode_profile.is_sprint else 2600)
+            try:
+                configured_cap = int(build_constraints.get("chapter_max_words") or 0)
+            except (TypeError, ValueError):
+                configured_cap = 0
+            target_cap = max(target_words, configured_cap or target_words + 600)
             target_words = min(target_cap, target_words + extra_coverage_units * 150)
             min_words = min(target_words, min_words + extra_coverage_units * 100)
         affinity = _affinity_for_chapter(

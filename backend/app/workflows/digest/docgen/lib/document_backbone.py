@@ -22,11 +22,9 @@ from app.workflows.digest.docgen.lib.models import (
     BackboneConflictWarning,
     BackboneResearchAgenda,
     CanonicalClaim,
-    ChapterExecutionBrief,
     ChapterGenerationPlan,
     ChapterGenerationTask,
     ChapterGenerationTaskSeed,
-    DocumentPreparationBundle,
     DocumentBackbone,
     FileMaterialSummary,
     HighConfidenceEvidenceUnit,
@@ -37,7 +35,7 @@ from app.workflows.digest.docgen.prompts.document_backbone import build_document
 
 logger = structlog.get_logger(__name__)
 
-DocumentPreparationProgressCallback = Callable[[str, dict[str, Any]], Awaitable[None]]
+DocumentBackboneProgressCallback = Callable[[str, dict[str, Any]], Awaitable[None]]
 _STREAM_PREVIEW_MIN_CHARS = 240
 _BACKBONE_STREAM_SECTIONS = (
     ("canonical_glossary", "concept_dependency_graph"),
@@ -53,17 +51,6 @@ def _preview_text(value: object, *, limit: int = 96) -> str:
     if len(text) <= limit:
         return text
     return f"{text[: max(1, limit - 1)].rstrip()}…"
-
-
-def _preview_string_list(value: object, *, item_limit: int) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    items: list[str] = []
-    for item in value:
-        text = _preview_text(item, limit=item_limit)
-        if text:
-            items.append(text)
-    return items
 
 
 def _backbone_section_items(section: str, raw_items: object) -> list[str]:
@@ -97,74 +84,41 @@ def _backbone_section_items(section: str, raw_items: object) -> list[str]:
 async def _publish_stream_previews(
     payload: object,
     *,
-    callback: DocumentPreparationProgressCallback,
+    callback: DocumentBackboneProgressCallback,
     published_sections: set[str],
-    published_briefs: set[int],
     final: bool,
 ) -> None:
     if not isinstance(payload, Mapping):
         return
 
-    backbone = payload.get("document_backbone")
-    if isinstance(backbone, Mapping):
-        for section, following_section in _BACKBONE_STREAM_SECTIONS:
-            if section in published_sections:
-                continue
-            if not final and following_section not in backbone:
-                continue
-            raw_items = backbone.get(section)
-            items = _backbone_section_items(section, raw_items)
-            await callback(
-                "backbone_section",
-                {
-                    "section": section,
-                    "item_count": len(raw_items) if isinstance(raw_items, list) else 0,
-                    "items": items,
-                },
-            )
-            published_sections.add(section)
-
-    raw_briefs = payload.get("chapter_execution_briefs")
-    if not isinstance(raw_briefs, list):
-        return
-    for position, raw_brief in enumerate(raw_briefs):
-        if not isinstance(raw_brief, Mapping):
+    for section, following_section in _BACKBONE_STREAM_SECTIONS:
+        if section in published_sections:
             continue
-        chapter_index = int(raw_brief.get("chapter_index", 0) or 0)
-        if chapter_index <= 0 or chapter_index in published_briefs:
+        if not final and following_section not in payload:
             continue
-        brief_is_complete = final or position < len(raw_briefs) - 1 or "fallback_used" in raw_brief
-        if not brief_is_complete:
-            continue
+        raw_items = payload.get(section)
+        items = _backbone_section_items(section, raw_items)
         await callback(
-            "chapter_execution_brief",
+            "backbone_section",
             {
-                "chapter_index": chapter_index,
-                "teaching_outline": _preview_string_list(
-                    raw_brief.get("teaching_outline"), item_limit=100
-                ),
-                "writing_instructions": _preview_string_list(
-                    raw_brief.get("writing_instructions"), item_limit=120
-                ),
-                "retrieval_queries": _preview_string_list(
-                    raw_brief.get("retrieval_queries"), item_limit=100
-                ),
+                "section": section,
+                "item_count": len(raw_items) if isinstance(raw_items, list) else 0,
+                "items": items,
             },
         )
-        published_briefs.add(chapter_index)
+        published_sections.add(section)
 
 
-async def _stream_document_preparation_bundle(
+async def _stream_document_backbone(
     *,
     messages: list[dict[str, str]],
     completion_kwargs: dict[str, object],
-    callback: DocumentPreparationProgressCallback,
-) -> DocumentPreparationBundle:
+    callback: DocumentBackboneProgressCallback,
+) -> DocumentBackbone:
     chunks: list[str] = []
     total_chars = 0
     buffered_chars = 0
     published_sections: set[str] = set()
-    published_briefs: set[int] = set()
 
     async for chunk in acompletion_stream(
         messages,
@@ -185,21 +139,19 @@ async def _stream_document_preparation_bundle(
             partial_payload,
             callback=callback,
             published_sections=published_sections,
-            published_briefs=published_briefs,
             final=False,
         )
 
     raw_text = "".join(chunks).strip()
-    bundle = parse_structured_response_text(DocumentPreparationBundle, raw_text)
-    payload = bundle.model_dump(mode="json")
+    backbone = parse_structured_response_text(DocumentBackbone, raw_text)
+    payload = backbone.model_dump(mode="json")
     await _publish_stream_previews(
         payload,
         callback=callback,
         published_sections=published_sections,
-        published_briefs=published_briefs,
         final=True,
     )
-    return bundle
+    return backbone
 
 
 def build_document_backbone(
@@ -253,12 +205,9 @@ async def generate_document_backbone(
     file_summaries: Sequence[FileMaterialSummary],
     learner_profile_text: str = "",
     extra_metadata: dict[str, object] | None = None,
-    max_retrieval_queries_per_chapter: int = 2,
-    progress_callback: DocumentPreparationProgressCallback | None = None,
-) -> tuple[DocumentBackbone, list[ChapterExecutionBrief], list[BackboneConflictWarning]]:
-    """Generate one whole-document backbone and every chapter execution brief."""
-
-    retrieval_query_limit = max(1, min(8, int(max_retrieval_queries_per_chapter)))
+    progress_callback: DocumentBackboneProgressCallback | None = None,
+) -> tuple[DocumentBackbone, list[BackboneConflictWarning]]:
+    """Generate only the shared whole-document backbone."""
 
     metadata_backbone, warnings = build_document_backbone(
         task_seeds=task_seeds,
@@ -275,7 +224,6 @@ async def generate_document_backbone(
         evidence_units=[item.model_dump(mode="json") for item in evidence_units],
         file_summaries=[item.model_dump(mode="json") for item in file_summaries],
         learner_profile_text=learner_profile_text,
-        max_retrieval_queries_per_chapter=retrieval_query_limit,
     )
     completion_kwargs = docgen_completion_kwargs_with_metadata(
         DocGenModelStep.DOCUMENT_BACKBONE,
@@ -290,7 +238,7 @@ async def generate_document_backbone(
     try:
         if progress_callback is not None:
             try:
-                bundle = await _stream_document_preparation_bundle(
+                backbone = await _stream_document_backbone(
                     messages=messages,
                     completion_kwargs=completion_kwargs,
                     callback=progress_callback,
@@ -307,57 +255,23 @@ async def generate_document_backbone(
                 response = await acompletion_with_fallback(
                     messages,
                     **completion_kwargs,
-                    response_model=DocumentPreparationBundle,
+                    response_model=DocumentBackbone,
                 )
-                bundle = (
+                backbone = (
                     response
-                    if isinstance(response, DocumentPreparationBundle)
-                    else DocumentPreparationBundle.model_validate(response)
+                    if isinstance(response, DocumentBackbone)
+                    else DocumentBackbone.model_validate(response)
                 )
         else:
             response = await acompletion_with_fallback(
                 messages,
                 **completion_kwargs,
-                response_model=DocumentPreparationBundle,
+                response_model=DocumentBackbone,
             )
-            bundle = (
+            backbone = (
                 response
-                if isinstance(response, DocumentPreparationBundle)
-                else DocumentPreparationBundle.model_validate(response)
-            )
-        backbone = bundle.document_backbone
-        expected_brief_indices = [int(seed.chapter_index) for seed in task_seeds]
-        returned_brief_indices = [int(item.chapter_index) for item in bundle.chapter_execution_briefs]
-        briefs_by_index = {
-            int(item.chapter_index): item
-            for item in bundle.chapter_execution_briefs
-        }
-        missing_brief_indices = [
-            chapter_index
-            for chapter_index in expected_brief_indices
-            if chapter_index not in briefs_by_index
-        ]
-        if (
-            len(returned_brief_indices) != len(expected_brief_indices)
-            or len(briefs_by_index) != len(returned_brief_indices)
-            or set(returned_brief_indices) != set(expected_brief_indices)
-        ):
-            raise ValueError(
-                "document preparation returned invalid chapter brief indices: "
-                f"expected={expected_brief_indices}, returned={returned_brief_indices}, "
-                f"missing={missing_brief_indices}"
-            )
-        normalized_briefs = []
-        seed_by_index = {int(seed.chapter_index): seed for seed in task_seeds}
-        for chapter_index in expected_brief_indices:
-            brief = briefs_by_index[chapter_index]
-            seed = seed_by_index[chapter_index]
-            retrieval_queries = clean_string_list(
-                brief.retrieval_queries or seed.retrieval_queries,
-                limit=retrieval_query_limit,
-            )
-            normalized_briefs.append(
-                brief.model_copy(update={"retrieval_queries": retrieval_queries})
+                if isinstance(response, DocumentBackbone)
+                else DocumentBackbone.model_validate(response)
             )
         return (
             backbone.model_copy(
@@ -366,7 +280,6 @@ async def generate_document_backbone(
                     "fallback_used": False,
                 }
             ),
-            normalized_briefs,
             warnings,
         )
     except Exception as exc:
@@ -382,19 +295,7 @@ async def generate_document_backbone(
                 detail="整本文档语义骨架生成失败，本轮降级为空语义骨架；章节仍按确认方案继续生成。",
             )
         )
-        fallback_briefs = [
-            ChapterExecutionBrief(
-                chapter_index=seed.chapter_index,
-                retrieval_queries=clean_string_list(
-                    seed.retrieval_queries,
-                    limit=retrieval_query_limit,
-                ),
-                writing_instructions=list(seed.style_rules),
-                fallback_used=True,
-            )
-            for seed in task_seeds
-        ]
-        return metadata_backbone.model_copy(update={"fallback_used": True}), fallback_briefs, warnings
+        return metadata_backbone.model_copy(update={"fallback_used": True}), warnings
 
 
 def apply_backbone_to_chapter_plan(

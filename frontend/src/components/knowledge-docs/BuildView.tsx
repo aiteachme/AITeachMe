@@ -50,6 +50,8 @@ const EVENT_STAGE_LABELS: Record<string, string> = {
   generating_chapters: "章节写作",
   chapter_generating: "章节启动",
   chapter_research_ready: "检索完成",
+  chapter_unit_test_generating: "生成章末测试",
+  chapter_unit_test_ready: "章末测试就绪",
   chapter_generated: "初稿完成",
   enhancing_chapters: "章节增强",
   chapter_enhanced: "增强完成",
@@ -117,12 +119,38 @@ function DocumentBackboneWorkspace({
   statusText: string;
   events: BuildEventItem[];
 }) {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const isPinnedToLatestRef = useRef(true);
   const latestEvent = events[0];
   const stageLabel = EVENT_STAGE_LABELS[stage] ?? "文档骨架";
-  const visibleEvents = events.slice(0, 7).reverse();
+  const visibleEvents = events.slice(0, 60).reverse();
+  const latestEventKey = latestEvent ? buildEventIdentity(latestEvent) : "";
+
+  useEffect(() => {
+    if (!isPinnedToLatestRef.current) return;
+    const frame = window.requestAnimationFrame(() => {
+      const container = scrollRef.current;
+      if (container) {
+        container.scrollTop = container.scrollHeight;
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [latestEventKey, visibleEvents.length]);
+
+  const handleTimelineScroll = () => {
+    const container = scrollRef.current;
+    if (!container) return;
+    const distanceToBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    isPinnedToLatestRef.current = distanceToBottom <= 56;
+  };
 
   return (
-    <div className="build-scroll h-full overflow-y-auto bg-white dark:bg-slate-900">
+    <div
+      ref={scrollRef}
+      onScroll={handleTimelineScroll}
+      className="build-scroll h-full min-h-0 overflow-y-auto overscroll-contain bg-white dark:bg-slate-900"
+      aria-label="文档构建实时历史"
+    >
       <div className="mx-auto w-full max-w-[900px] px-6 py-7 md:px-10 md:py-9">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-zinc-400 dark:text-slate-500">
           <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", sseConnected ? "build-live-dot bg-blue-500 text-blue-500" : "bg-zinc-300 dark:bg-slate-600")} />
@@ -149,7 +177,7 @@ function DocumentBackboneWorkspace({
         </div>
 
         {visibleEvents.length > 0 ? (
-          <ol className="mt-7 max-w-[760px] border-l border-zinc-200 pl-5 dark:border-slate-700">
+          <ol className="mt-7 max-w-[760px] border-l border-zinc-200 pl-5 pb-6 dark:border-slate-700">
             {visibleEvents.map((event, index) => {
               const isCurrent = index === visibleEvents.length - 1;
               const eventLabel = EVENT_STAGE_LABELS[String(event.stage ?? "")] ?? "构建进展";
@@ -742,7 +770,12 @@ export function BuildView({
                     )}
                   </div>
 
-                  <div className="build-scroll flex-1 overflow-y-auto bg-white px-5 py-6 dark:bg-slate-900 md:px-8 md:py-8">
+                  <div className={cn(
+                    "build-scroll min-h-0 flex-1 bg-white dark:bg-slate-900",
+                    isBackboneWorkspace
+                      ? "overflow-hidden"
+                      : "overflow-y-auto px-5 py-6 md:px-8 md:py-8",
+                  )}>
                     {selectedExcerpt.trim() ? (
                       <div
                         className={cn(

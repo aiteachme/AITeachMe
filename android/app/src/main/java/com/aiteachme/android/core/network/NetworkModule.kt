@@ -9,6 +9,8 @@ import java.util.concurrent.TimeUnit
 
 object NetworkModule {
     private const val READ_TIMEOUT_HEADER = "X-AiTeachMe-Read-Timeout-Seconds"
+    private const val ANDROID_ORIGIN = "aiteachme://android"
+    private val SAFE_METHODS = setOf("GET", "HEAD", "OPTIONS")
 
     fun createHttpClient(
         sessionStore: SessionStore? = null,
@@ -35,10 +37,21 @@ object NetworkModule {
                 if (!token.isNullOrBlank()) {
                     builder.header("Authorization", "Bearer $token")
                 }
+                val csrfToken = sessionStore?.getCsrfToken()
+                if (!csrfToken.isNullOrBlank() && request.method !in SAFE_METHODS) {
+                    builder
+                        .header("Origin", ANDROID_ORIGIN)
+                        .header("X-CSRF-Token", csrfToken)
+                }
                 val requestChain = requestReadTimeoutSeconds
                     ?.let { chain.withReadTimeout(it, TimeUnit.SECONDS) }
                     ?: chain
                 requestChain.proceed(builder.build())
+            }
+            .apply {
+                if (sessionStore != null) {
+                    cookieJar(PersistentCookieJar(sessionStore))
+                }
             }
             .addInterceptor(logging)
             .build()

@@ -153,7 +153,7 @@ function SectionHeading({
 function EmptyBlock({ icon, title, detail }: { icon: React.ReactNode; title: string; detail: string }) {
   return (
     <div className="flex min-h-[160px] flex-col items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50/50 px-5 py-8 text-center dark:border-slate-800 dark:bg-slate-900/30">
-      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white text-slate-400 shadow-sm dark:bg-slate-950 dark:text-slate-500">
+      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-100 text-slate-400 dark:bg-slate-900 dark:text-slate-500">
         {icon}
       </div>
       <p className="mt-3 text-sm font-semibold text-slate-800 dark:text-slate-200">{title}</p>
@@ -183,7 +183,7 @@ function SummaryMetric({
   }[tone];
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950/70">
+    <div className="p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">{label}</p>
@@ -206,7 +206,7 @@ function WeakSpotSummary({
   const previewStates = states.slice(0, 3);
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950/70">
+    <div className="p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">优先补哪里</p>
@@ -224,7 +224,7 @@ function WeakSpotSummary({
           {previewStates.map((state) => {
             const score = clamp01(state.mastery_score);
             return (
-              <div key={state.id} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-900/50">
+              <div key={state.id} className="flex items-center justify-between gap-3 border-t border-slate-100 py-2 first:border-t-0 dark:border-slate-800">
                 <span className="min-w-0 truncate text-xs font-semibold text-slate-700 dark:text-slate-300">
                   {getKnowledgeUnitName(state)}
                 </span>
@@ -260,7 +260,7 @@ function ProfileUnavailable({
   onOpenExams: () => void;
 }) {
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-950/75">
+    <section className="rounded-lg border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-950/75">
       <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
           <p className="flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400">
@@ -279,7 +279,7 @@ function ProfileUnavailable({
             type="button"
             variant="outline"
             onClick={onOpenKnowledgeDocs}
-            className="h-10 rounded-lg bg-white px-4 text-sm font-semibold shadow-sm dark:bg-slate-950"
+            className="h-10 rounded-lg bg-white px-4 text-sm font-semibold dark:bg-slate-950"
           >
             <BookOpen className="h-4 w-4" />
             回看知识库
@@ -287,7 +287,7 @@ function ProfileUnavailable({
           <Button
             type="button"
             onClick={onOpenExams}
-            className="h-10 rounded-lg bg-slate-950 px-4 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+            className="h-10 rounded-lg bg-slate-950 px-4 text-sm font-semibold text-white hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
           >
             <FileText className="h-4 w-4" />
             去练习中心
@@ -318,7 +318,7 @@ function NextStepPanel({
   const previewStates = focusStates.slice(0, 3);
 
   return (
-    <section className="flex h-full flex-col rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950/75 sm:p-6">
+    <section className="flex h-full flex-col rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-950/75 sm:p-6">
       <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <p className="flex items-center gap-2 text-xs font-bold text-indigo-600 dark:text-indigo-300">
@@ -334,7 +334,7 @@ function NextStepPanel({
           <Button
             type="button"
             onClick={onOpenExams}
-            className="h-10 rounded-lg bg-slate-950 px-4 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+            className="h-10 rounded-lg bg-slate-950 px-4 text-sm font-semibold text-white hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
           >
             <FileText className="h-4 w-4" />
             去练习中心
@@ -404,7 +404,7 @@ function LearningPlan({
   }
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950/70">
+    <section className="border-t border-slate-200 py-6 dark:border-slate-800">
       <SectionHeading
         icon={<CalendarClock className="h-4 w-4" />}
         title="今日行动"
@@ -412,9 +412,9 @@ function LearningPlan({
       />
       <ol className="mt-4 space-y-3">
         {planItems.slice(0, 4).map((item, index) => (
-          <li key={item.key} className="grid gap-3 rounded-lg border border-slate-100 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-900/40 sm:grid-cols-[5rem_minmax(0,1fr)]">
+          <li key={item.key} className="grid gap-3 border-b border-slate-100 px-1 py-3 last:border-b-0 dark:border-slate-800 sm:grid-cols-[5rem_minmax(0,1fr)]">
             <div className="flex items-center gap-2 sm:flex-col sm:items-start sm:gap-1">
-              <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-white text-[11px] font-black tabular-nums text-slate-500 shadow-sm dark:bg-slate-950 dark:text-slate-400">
+              <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-slate-100 text-[11px] font-black tabular-nums text-slate-500 dark:bg-slate-900 dark:text-slate-400">
                 {String(index + 1).padStart(2, "0")}
               </span>
               <span className="text-xs font-bold text-slate-500 dark:text-slate-400">{item.label}</span>
@@ -472,7 +472,7 @@ function FocusStateRow({ state }: { state: MasteryStateResponse }) {
   const accuracy = state.total_attempts > 0 ? state.correct_attempts / state.total_attempts : null;
 
   return (
-    <div className="rounded-lg border border-slate-100 bg-white p-3 dark:border-slate-800 dark:bg-slate-950/40">
+    <div className="border-b border-slate-100 px-1 py-3 last:border-b-0 dark:border-slate-800">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{getKnowledgeUnitName(state)}</p>
@@ -511,10 +511,10 @@ function ReviewTaskRow({
 
   return (
     <div className={cn(
-      "rounded-lg border p-3",
+      "border-b px-1 py-3 last:border-b-0",
       completed
-        ? "border-emerald-100 bg-emerald-50/60 dark:border-emerald-500/20 dark:bg-emerald-500/10"
-        : "border-slate-100 bg-white dark:border-slate-800 dark:bg-slate-950/40",
+        ? "border-emerald-100 dark:border-emerald-500/20"
+        : "border-slate-100 dark:border-slate-800",
     )}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -538,7 +538,7 @@ function ReviewTaskRow({
           </p>
         </div>
         {completed ? (
-          <span className="inline-flex h-8 shrink-0 items-center gap-1 rounded-lg border border-emerald-200 bg-white px-3 text-xs font-semibold text-emerald-700 shadow-sm dark:border-emerald-500/20 dark:bg-slate-950 dark:text-emerald-300">
+          <span className="inline-flex h-8 shrink-0 items-center gap-1 rounded-lg border border-emerald-200 bg-white px-3 text-xs font-semibold text-emerald-700 dark:border-emerald-500/20 dark:bg-slate-950 dark:text-emerald-300">
             <CheckCircle2 className="h-3.5 w-3.5" />
             已完成
           </span>
@@ -892,22 +892,26 @@ export function ProfilePage() {
                 onOpenExams={openPracticeCenter}
               />
 
-              <section className="grid grid-cols-2 gap-3">
-                <SummaryMetric
-                  label="平均掌握"
-                  value={formatPercent(courseProfile?.avg_mastery)}
-                  hint="按已诊断记录统计"
-                  icon={<Gauge className="h-5 w-5" />}
-                  tone="indigo"
-                />
-                <SummaryMetric
-                  label="做题正确"
-                  value={formatPercent(attemptAccuracy)}
-                  hint={`${totalAttempts} 次作答`}
-                  icon={<Trophy className="h-5 w-5" />}
-                  tone="emerald"
-                />
-                <div className="col-span-2">
+              <section className="grid grid-cols-2 overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950/70">
+                <div className="border-b border-r border-slate-200 dark:border-slate-800">
+                  <SummaryMetric
+                    label="平均掌握"
+                    value={formatPercent(courseProfile?.avg_mastery)}
+                    hint="按已诊断记录统计"
+                    icon={<Gauge className="h-5 w-5" />}
+                    tone="indigo"
+                  />
+                </div>
+                <div className="border-b border-slate-200 dark:border-slate-800">
+                  <SummaryMetric
+                    label="做题正确"
+                    value={formatPercent(attemptAccuracy)}
+                    hint={`${totalAttempts} 次作答`}
+                    icon={<Trophy className="h-5 w-5" />}
+                    tone="emerald"
+                  />
+                </div>
+                <div className="col-span-2 border-b border-slate-200 dark:border-slate-800">
                   <WeakSpotSummary states={focusStates} />
                 </div>
                 <div className="col-span-2">
@@ -923,7 +927,7 @@ export function ProfilePage() {
             </div>
 
             <div id="profile-mastery-section" className="grid scroll-mt-24 gap-4 xl:grid-cols-2">
-              <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950/70">
+              <section className="border-t border-slate-200 py-6 dark:border-slate-800">
                 <SectionHeading
                   icon={<Target className="h-4 w-4" />}
                   title="知识点掌握"
@@ -941,7 +945,7 @@ export function ProfilePage() {
                     </Button>
                   }
                 />
-                <div className="mt-4 space-y-3">
+                <div className="mt-4">
                   {focusStates.length ? (
                     focusStates.map((state) => <FocusStateRow key={state.id} state={state} />)
                   ) : (
@@ -954,13 +958,13 @@ export function ProfilePage() {
                 </div>
               </section>
 
-              <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950/70">
+              <section className="border-t border-slate-200 py-6 dark:border-slate-800">
                 <SectionHeading
                   icon={<CalendarClock className="h-4 w-4" />}
                   title="复习安排"
                   detail="需要回顾和刚完成的任务会保留在这里。"
                 />
-                <div className="mt-4 space-y-3">
+                <div className="mt-4">
                   {topReviewTasks.length ? (
                     <>
                       {topReviewTasks.map((task) => (
@@ -1008,7 +1012,7 @@ export function ProfilePage() {
             <div className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(360px,1.05fr)]">
               <LearningPlan planItems={planItems} />
 
-              <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950/70">
+              <section className="border-t border-slate-200 py-6 dark:border-slate-800">
                 <SectionHeading
                   icon={<FileText className="h-4 w-4" />}
                   title="最近测验"
@@ -1046,7 +1050,7 @@ export function ProfilePage() {
               </section>
             </div>
 
-            <section className="rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950/70">
+            <section className="border-y border-slate-200 dark:border-slate-800">
               <button
                 type="button"
                 onClick={() => setIsProfileExpanded(!isProfileExpanded)}

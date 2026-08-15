@@ -9,16 +9,23 @@ from typing import Generator
 import structlog
 from fastapi import Depends, Request, Response
 from sqlmodel import Session
+from app.models import User
 
 from app.shared.infra.database import managed_session
 from app.shared.infra.runtime import get_guest_cookie_name, is_local_mode
 from app.shared.infra.exceptions import AITeachMeError
 from app.shared.infra.logger import bind_logging_context
 from app.workflows.support.auth import (
+    clear_auth_session_cookie,
+    create_auth_session,
     create_guest_user,
+    get_session_cookie_name,
+    resolve_auth_session,
     resolve_guest_user_from_token,
-    resolve_user_from_token,
+    resolve_user_from_legacy_bearer,
+    set_auth_session_cookie,
     set_guest_cookie_for_user,
+    validate_session_request,
 )
 from app.utils.course import normalize_course_scope
 
@@ -38,6 +45,11 @@ class CurrentUserContext:
     device_key: str | None = None
     is_authenticated: bool = False
     auth_source: str = "device"
+    role: str = "user"
+    display_name: str | None = None
+    avatar_url: str | None = None
+    auth_session_id: str | None = None
+    csrf_token: str | None = None
 
 
 def normalize_course_id(course_id: str | None, *, allow_global: bool = False) -> str:
@@ -119,22 +131,62 @@ def get_current_user_context(
     response: Response,
     session: Session = Depends(get_db),
 ) -> CurrentUserContext:
-    """返回当前运行时用户。优先 access token，其次 guest token。"""
+    """Resolve Cookie session, one-release legacy Bearer, then guest identity."""
 
     device_key = _extract_device_key(request)
     token = _extract_bearer_token(request)
     guest_token = _extract_guest_token(request)
+    raw_session_token = (request.cookies.get(get_session_cookie_name()) or "").strip()
+
+    if raw_session_token:
+        resolved_session = resolve_auth_session(session, raw_token=raw_session_token)
+        if resolved_session is not None:
+            user, auth_session = resolved_session
+            validate_session_request(request, auth_session=auth_session)
+            context = CurrentUserContext(
+                user_id=user.id,
+                email=user.email,
+                is_local=is_local_mode(),
+                device_key=(device_key or auth_session.device_key or user.device_key),
+                is_authenticated=True,
+                auth_source="session_cookie",
+                role="admin" if user.role == "admin" else "user",
+                display_name=user.display_name,
+                avatar_url=user.avatar_url,
+                auth_session_id=auth_session.id,
+                csrf_token=auth_session.csrf_token,
+            )
+            _log_current_user_context(
+                request,
+                context,
+                has_bearer_token=token is not None,
+                has_guest_token=guest_token is not None,
+            )
+            return context
+        clear_auth_session_cookie(response)
 
     if token:
-        user = resolve_user_from_token(session, token)
+        user = resolve_user_from_legacy_bearer(session, token)
         if user is not None:
+            auth_session, raw_token = create_auth_session(
+                session,
+                user=user,
+                device_key=(device_key or user.device_key),
+                request=request,
+            )
+            set_auth_session_cookie(response, raw_token=raw_token)
             context = CurrentUserContext(
                 user_id=user.id,
                 email=user.email,
                 is_local=is_local_mode(),
                 device_key=(device_key or user.device_key),
                 is_authenticated=True,
-                auth_source="token",
+                auth_source="legacy_bearer",
+                role="admin" if user.role == "admin" else "user",
+                display_name=user.display_name,
+                avatar_url=user.avatar_url,
+                auth_session_id=auth_session.id,
+                csrf_token=auth_session.csrf_token,
             )
             _log_current_user_context(
                 request,
@@ -192,3 +244,21 @@ def get_current_user_context(
         has_guest_token=guest_token is not None,
     )
     return context
+
+
+def require_authenticated_user(
+    current: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> User:
+    if not current.is_authenticated:
+        raise AITeachMeError(detail="请先登录。", status_code=401, error_code="AUTH_REQUIRED")
+    user = session.get(User, current.user_id)
+    if user is None or not user.is_registered or user.merged_into_user_id is not None:
+        raise AITeachMeError(detail="登录账号不可用。", status_code=401, error_code="AUTH_ACCOUNT_UNAVAILABLE")
+    return user
+
+
+def require_admin_user(user: User = Depends(require_authenticated_user)) -> User:
+    if user.role != "admin":
+        raise AITeachMeError(detail="需要管理员权限。", status_code=403, error_code="ADMIN_REQUIRED")
+    return user

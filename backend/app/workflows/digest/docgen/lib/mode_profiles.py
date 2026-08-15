@@ -110,12 +110,19 @@ class DocGenModeProfile:
         depth_level: str,
         target_length: str | None = None,
         target_total_words: int | None = None,
+        chapter_min_words: int | None = None,
+        chapter_target_words: int | None = None,
     ) -> tuple[int, int]:
         chapter_total = max(1, int(chapter_count or 1))
         exact_total = _positive_int(target_total_words)
         if exact_total is not None:
             per_chapter = max(1, round(exact_total / chapter_total))
             return per_chapter, per_chapter
+
+        explicit_chapter_target = _positive_int(chapter_target_words)
+        if explicit_chapter_target is not None:
+            explicit_chapter_min = _positive_int(chapter_min_words) or round(explicit_chapter_target * 0.8)
+            return min(explicit_chapter_min, explicit_chapter_target), explicit_chapter_target
 
         parsed_range = _parse_target_word_range(target_length)
         if parsed_range is not None:
@@ -127,13 +134,16 @@ class DocGenModeProfile:
         depth = str(depth_level or "").strip().lower()
         if self.is_sprint:
             if depth == "compact":
-                return 700, 1050
+                return 1400, 1800
             if depth == "deep":
-                return 1100, 1900
-            return 900, 1600
+                return 2800, 3600
+            return 2200, 3000
 
-        base = 1850 if depth == "deep" else 1600
-        return 1050, max(1400, base if chapter_count <= 8 else 1500)
+        if depth == "compact":
+            return 1600, 2200
+        if depth == "deep":
+            return 3400, 4200
+        return 2400, 3000
 
     def budget_policy(self) -> dict[str, int]:
         return {

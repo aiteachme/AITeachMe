@@ -256,15 +256,18 @@ def test_knowledge_build_spawns_background_docgen_with_accepted_files(monkeypatc
     def fake_trigger_docgen_build(_session, **kwargs):
         assert kwargs["file_ids"] == ["file-a", "file-b"]
         assert kwargs["confirmed_plan_id"] == "plan-1"
-        return build_data, ["file-a"], "group-1"
+        return build_data, ["file-a"], kwargs["build_group_id"]
 
     def fake_run_docgen_background(**kwargs):
         run_kwargs.update(kwargs)
         return "docgen-task"
 
     monkeypatch.setattr(api, "get_course_record", lambda _session, course_id, owner_user_id: _course(course_id))
+    monkeypatch.setattr(api.uuid, "uuid4", lambda: SimpleNamespace(hex="group-1"))
+    monkeypatch.setattr(api, "reserve_credits", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(api, "trigger_docgen_build", fake_trigger_docgen_build)
     monkeypatch.setattr(api, "run_docgen_background", fake_run_docgen_background)
+    monkeypatch.setattr(api, "run_reserved_docgen", lambda task, **_kwargs: task)
     monkeypatch.setattr(
         api,
         "_release_docgen_build_lock_safely",
@@ -288,7 +291,7 @@ def test_knowledge_build_spawns_background_docgen_with_accepted_files(monkeypatc
             course_id=COURSE_ID,
             body=DocGenBuildRequest(file_ids=["file-a", "file-b"], prompt="draft", confirmed_plan_id="plan-1"),
             user=_user(),
-            session=object(),
+            session=SimpleNamespace(get=lambda *_args, **_kwargs: object()),
         )
     )
 
@@ -317,6 +320,46 @@ def test_knowledge_build_spawns_background_docgen_with_accepted_files(monkeypatc
     assert all(properties["analytics_source"] == "backend" for _event, _distinct_id, properties in captured)
     assert captured[0][2]["has_confirmed_plan"] is True
     assert captured[1][2]["build_group_id_suffix"] == "group-1"
+
+
+def test_knowledge_build_checks_credit_before_mutating_build_state(monkeypatch) -> None:
+    trigger_called = False
+
+    def reject_credit(*_args, **_kwargs):
+        raise AITeachMeError(
+            detail="AI 额度不足。",
+            status_code=402,
+            error_code="CREDIT_INSUFFICIENT",
+        )
+
+    def unexpected_trigger(*_args, **_kwargs):
+        nonlocal trigger_called
+        trigger_called = True
+        raise AssertionError("build preparation must not run before credit reservation")
+
+    monkeypatch.setattr(api, "get_course_record", lambda _session, course_id, owner_user_id: _course(course_id))
+    monkeypatch.setattr(api, "reserve_credits", reject_credit)
+    monkeypatch.setattr(api, "trigger_docgen_build", unexpected_trigger)
+    cloud_user = CurrentUserContext(
+        user_id=USER_ID,
+        email="learner@example.com",
+        is_local=False,
+        is_authenticated=True,
+        auth_source="test",
+    )
+
+    with pytest.raises(AITeachMeError) as insufficient:
+        asyncio.run(
+            api.knowledge_build(
+                request=_request(request_id="req-credit-first"),
+                course_id=COURSE_ID,
+                body=DocGenBuildRequest(file_ids=["file-a"], confirmed_plan_id="plan-1"),
+                user=cloud_user,
+                session=SimpleNamespace(get=lambda *_args, **_kwargs: object()),
+            )
+        )
+    assert insufficient.value.error_code == "CREDIT_INSUFFICIENT"
+    assert trigger_called is False
 
 
 def test_knowledge_docs_offloads_blocking_docgen_read(monkeypatch) -> None:
@@ -517,12 +560,15 @@ def test_knowledge_build_releases_lock_when_registry_spawn_fails(monkeypatch) ->
         return None
 
     monkeypatch.setattr(api, "get_course_record", lambda _session, course_id, owner_user_id: _course(course_id))
+    monkeypatch.setattr(api.uuid, "uuid4", lambda: SimpleNamespace(hex="group-spawn-failure"))
+    monkeypatch.setattr(api, "reserve_credits", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
         api,
         "trigger_docgen_build",
-        lambda _session, **_kwargs: (build_data, ["file-a"], "group-spawn-failure"),
+        lambda _session, **kwargs: (build_data, ["file-a"], kwargs["build_group_id"]),
     )
     monkeypatch.setattr(api, "run_docgen_background", fake_run_docgen_background)
+    monkeypatch.setattr(api, "run_reserved_docgen", lambda task, **_kwargs: task)
     monkeypatch.setattr(api, "capture_course_build_event_later", lambda *args, **kwargs: None)
     monkeypatch.setattr(
         api,
@@ -539,7 +585,7 @@ def test_knowledge_build_releases_lock_when_registry_spawn_fails(monkeypatch) ->
                 course_id=COURSE_ID,
                 body=DocGenBuildRequest(file_ids=["file-a"], confirmed_plan_id="plan-1"),
                 user=_user(),
-                session=object(),
+                session=SimpleNamespace(get=lambda *_args, **_kwargs: object()),
             )
         )
 

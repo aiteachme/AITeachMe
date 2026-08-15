@@ -1,5 +1,8 @@
 import re
 
+import pytest
+
+from app.workflows.digest.docgen.lib.unit_test_generation import generate_chapter_unit_test_markdown
 from app.workflows.digest.docgen.lib.unit_tests import (
     ChapterUnitTestItem,
     ChapterUnitTestSet,
@@ -7,7 +10,120 @@ from app.workflows.digest.docgen.lib.unit_tests import (
     normalize_published_unit_test_sections,
     render_unit_test_markdown,
     strip_existing_unit_test_sections,
+    unit_test_structure_issues,
 )
+
+
+@pytest.mark.anyio
+async def test_structured_unit_test_generation_uses_full_body_and_publishes_canonical_pairs() -> None:
+    body = "# 函数\n\n## 定义与对应关系\n\n" + "完整正文。" * 5000
+    captured_body = ""
+
+    async def fake_llm(messages, **kwargs):
+        nonlocal captured_body
+        captured_body = str(messages[-1]["content"])
+        assert kwargs["response_model"] is ChapterUnitTestSet
+        return ChapterUnitTestSet(
+            chapter_index=1,
+            items=[
+                ChapterUnitTestItem(
+                    type="填空题",
+                    difficulty="基础",
+                    target="定义域",
+                    stem="函数允许输入的自变量集合称为 ______。",
+                    options=["定义域", "值域", "对应关系", "函数值"],
+                    answer="定义域",
+                    basis="先识别题目问的是允许输入的集合，再对应定义域概念。",
+                ),
+                ChapterUnitTestItem(
+                    type="选择题",
+                    difficulty="进阶",
+                    target="函数相等",
+                    stem="判断两个函数相等时应同时比较什么？",
+                    options=["函数名", "定义域和对应关系", "值域", "图像颜色"],
+                    answer="定义域和对应关系",
+                    basis="函数相等要求定义域相同且对应法则一致。",
+                ),
+            ],
+        )
+
+    markdown = await generate_chapter_unit_test_markdown(
+        chapter_index=1,
+        chapter_title="函数",
+        digest_mode="systematic",
+        required_elements=["定义域", "函数相等"],
+        chapter_end_practice_plan=[],
+        body_markdown=body,
+        min_items=2,
+        max_items=2,
+        llm_caller=fake_llm,
+    )
+
+    assert body in captured_body
+    assert markdown.count("## 单元测试") == 1
+    assert markdown.count("> [!QUESTION]") == 2
+    assert markdown.count("> [!ANSWER]") == 2
+    assert "**Q01｜填空题" in markdown
+    assert "**选项**" not in markdown.split("**Q02", 1)[0]
+    assert "- A. 函数名" in markdown
+    assert unit_test_structure_issues(markdown) == []
+
+
+def test_unit_test_contract_rejects_reversed_empty_and_floating_answers() -> None:
+    malformed = (
+        "# 函数\n\n## 单元测试\n\n"
+        "> [!ANSWER]\n>\n> **答案**\n>\n> 先出现的游离答案。\n\n"
+        "> [!QUESTION] **Q01｜填空题｜基础｜考点：定义域**\n>\n> **题目**\n\n"
+        "> [!ANSWER]\n>\n> **答案**\n>\n> 定义域。\n\n"
+        "**答案**：正文又重复一次答案。\n"
+    )
+
+    issues = unit_test_structure_issues(malformed)
+
+    assert any("游离 ANSWER" in issue or "未配对" in issue for issue in issues)
+    assert any("题干为空" in issue for issue in issues)
+    assert any("跑出" in issue for issue in issues)
+
+
+def test_unit_test_contract_accepts_canonical_non_choice_pair() -> None:
+    markdown = (
+        "# 函数\n\n## 单元测试\n\n"
+        "> [!QUESTION] **Q01｜填空题｜基础｜考点：定义域**\n>\n"
+        "> 函数有意义的自变量取值集合称为 ______。\n\n"
+        "> [!ANSWER]\n>\n> **答案**\n>\n> 定义域。\n>\n"
+        "> **解析步骤**\n>\n> 直接依据函数定义判断。\n"
+    )
+
+    assert unit_test_structure_issues(markdown) == []
+
+
+def test_unit_test_contract_rejects_duplicate_answer_fields() -> None:
+    markdown = (
+        "# 函数\n\n## 单元测试\n\n"
+        "> [!QUESTION] **Q01｜短答题｜基础｜考点：函数定义**\n>\n"
+        "> 什么是函数的定义域？\n\n"
+        "> [!ANSWER]\n>\n> **答案**\n>\n> 使函数有意义的自变量集合。\n>\n"
+        "> **答案**\n>\n> 定义域。\n"
+    )
+
+    issues = unit_test_structure_issues(markdown)
+
+    assert any("重复出现 `**答案**`" in issue for issue in issues)
+
+
+def test_unit_test_contract_rejects_choice_answer_outside_options() -> None:
+    markdown = (
+        "# 极限\n\n## 单元测试\n\n"
+        "> [!QUESTION] **Q01｜选择题｜进阶｜考点：重要极限**\n>\n"
+        "> $\\lim_{x\\to0}\\frac{\\sin 4x}{x}$ 的值是？\n>\n> **选项**\n>\n"
+        "> - A. $4$\n> - B. $1$\n> - C. $0$\n> - D. $\\frac14$\n\n"
+        "> [!ANSWER]\n>\n> **答案**\n>\n> $2$\n>\n"
+        "> **解析步骤**\n>\n> 直接代入得到。\n"
+    )
+
+    issues = unit_test_structure_issues(markdown)
+
+    assert any("答案必须与 A-D 中某个完整选项一致" in issue for issue in issues)
 
 
 def test_unit_test_renderer_replaces_existing_unit_test_section_once() -> None:
@@ -104,7 +220,7 @@ def test_unit_test_renderer_normalizes_raw_and_escaped_latex_options() -> None:
                     difficulty="medium",
                     target="复合函数定义域",
                     stem=r"已知函数 f(x) 的定义域为 [0, 2]，则函数 f(x^2) 的定义域为：",
-                    options=[r"[0, 4]", r"[0, \sqrt{2}]", r"[-\sqrt{2}, \sqrt{2}]", "[-2, 2]"],
+                    options=[r"[0, 4]", r"[0, \sqrt{2}]", r"[-\sqrt{2}, \sqrt{2}]", r"\frac14"],
                     answer=r"[-\sqrt{2}, \sqrt{2}]",
                     basis=r"需要满足 0 \leq x^2 \leq 2。",
                 ),
@@ -131,6 +247,7 @@ def test_unit_test_renderer_normalizes_raw_and_escaped_latex_options() -> None:
 
     assert r"$[0, \sqrt{2}]$" in unit_test
     assert r"$[-\sqrt{2}, \sqrt{2}]$" in unit_test
+    assert r"$\frac14$" in unit_test
     assert r"$0 \leq x^2 \leq 2$" in unit_test
     assert r"\|$$" not in unit_test
     assert r"$$\lim_{x \to x_0} f(x)=f(x_0)$$" in unit_test
@@ -241,10 +358,10 @@ def test_unit_test_renderer_normalizes_metadata_and_keeps_four_options() -> None
     assert "**Q01｜选择题｜挑战｜考点：函数单调性**" in unit_test
     assert "**Q02｜概念判断｜基础｜考点：函数相等判定**" in unit_test
     assert "**Q03｜错因辨析｜进阶｜考点：复合函数定义域**" in unit_test
-    assert unit_test.count("- A.") == 3
-    assert unit_test.count("- B.") == 3
-    assert unit_test.count("- C.") == 3
-    assert unit_test.count("- D.") == 3
+    assert unit_test.count("- A.") == 1
+    assert unit_test.count("- B.") == 1
+    assert unit_test.count("- C.") == 1
+    assert unit_test.count("- D.") == 1
 
 
 def test_unit_test_renderer_keeps_generated_items_without_filling_type_diversity() -> None:

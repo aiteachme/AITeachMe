@@ -8,7 +8,6 @@ from time import perf_counter
 
 from app.shared.infra.workflow.context import WorkflowContext
 from app.shared.infra.knowledge.build_store import append_knowledge_build_recent_event, update_knowledge_build_status
-from app.shared.infra.settings import get_settings
 from app.utils.time import utcnow
 from app.workflows.digest.docgen.lib.document_backbone import (
     generate_document_backbone,
@@ -110,17 +109,11 @@ def build_document_backbone_node(*, context: WorkflowContext):
             for item in list(state.get("file_summaries") or [])
         ]
         plan_seed = ChapterGenerationPlanSeed.model_validate(state.get("chapter_generation_plan_seed") or {})
-        title_by_chapter = {
-            int(seed.chapter_index): seed.enhanced_title or seed.confirmed_title
-            for seed in task_seeds
-        }
         wait_intervals_since_visible_progress = 0
 
         async def publish_preparation_preview(kind: str, payload: dict[str, object]) -> None:
             nonlocal wait_intervals_since_visible_progress
             wait_intervals_since_visible_progress = 0
-            chapter_index: int | None = None
-            title: str | None = None
             if kind == "backbone_section":
                 section = str(payload.get("section") or "")
                 label = _BACKBONE_SECTION_LABELS.get(section, "骨架内容")
@@ -132,22 +125,6 @@ def build_document_backbone_node(*, context: WorkflowContext):
                 else:
                     summary = f"{summary}，本轮无需额外约束。"
                 stage = "document_backbone_section"
-            elif kind == "chapter_execution_brief":
-                chapter_index = int(payload.get("chapter_index", 0) or 0)
-                title = title_by_chapter.get(chapter_index) or f"第 {chapter_index} 章"
-                outline = _compact_preview_items(payload.get("teaching_outline"), limit=4)
-                instructions = _compact_preview_items(payload.get("writing_instructions"), limit=2)
-                queries = _compact_preview_items(payload.get("retrieval_queries"), limit=2)
-                parts = [f"讲解路径：{outline}" if outline else ""]
-                if instructions:
-                    parts.append(f"写作重点：{instructions}")
-                if queries:
-                    parts.append(f"检索：{queries}")
-                summary = f"第 {chapter_index} 章《{title}》执行 brief 已生成：" + "；".join(
-                    part for part in parts if part
-                )
-                summary = summary.rstrip("：") + "。"
-                stage = "chapter_execution_brief_ready"
             else:
                 summary = "流式骨架草案未通过最终结构校验，正在自动修复并重新校验。"
                 stage = "document_backbone_repairing"
@@ -158,8 +135,6 @@ def build_document_backbone_node(*, context: WorkflowContext):
                 build_group_id=state.get("build_group_id") or None,
                 event={
                     "stage": stage,
-                    "chapter_index": chapter_index,
-                    "title": title,
                     "summary": summary,
                     "created_at": utcnow(),
                 },
@@ -212,9 +187,6 @@ def build_document_backbone_node(*, context: WorkflowContext):
                 evidence_units=evidence_units,
                 file_summaries=file_summaries,
                 learner_profile_text=str(state.get("learner_profile_text") or ""),
-                max_retrieval_queries_per_chapter=(
-                    get_settings().docgen.max_retrieval_queries_per_chapter
-                ),
                 extra_metadata={
                     "build_session_id": state.get("build_session_id") or "",
                     "planner_session_id": state.get("planner_session_id") or "",
@@ -227,7 +199,7 @@ def build_document_backbone_node(*, context: WorkflowContext):
         try:
             while True:
                 try:
-                    document_backbone, chapter_briefs, warnings = await asyncio.wait_for(
+                    document_backbone, warnings = await asyncio.wait_for(
                         asyncio.shield(generation_task),
                         timeout=_BACKBONE_PROGRESS_INTERVAL_S,
                     )
@@ -239,7 +211,7 @@ def build_document_backbone_node(*, context: WorkflowContext):
                     wait_intervals_since_visible_progress = 0
                     elapsed_s = max(1, int(perf_counter() - started_at))
                     summary = (
-                        f"骨架模型仍在处理 {len(task_seeds)} 个章节：正在统一术语、核心主张和章节执行 brief，"
+                        f"骨架模型仍在处理 {len(task_seeds)} 个章节：正在统一术语、核心主张和跨章依赖，"
                         f"已持续 {elapsed_s} 秒。"
                     )
                     append_knowledge_build_recent_event(
@@ -304,7 +276,7 @@ def build_document_backbone_node(*, context: WorkflowContext):
                 "docgen_preliminary_kg_edge_count": int(preliminary_kg.get("edge_count", 0) or 0),
                 "docgen_preliminary_kg_stage": "document_backbone_ready",
             },
-            current_stage_description=f"整本知识骨架和 {len(chapter_briefs)} 个章节执行 brief 已生成，正在装配章节任务。",
+            current_stage_description=f"整本知识骨架已生成，正在并行准备 {len(task_seeds)} 个章节执行 brief。",
         )
         append_knowledge_build_recent_event(
             state["course_id"],
@@ -313,8 +285,8 @@ def build_document_backbone_node(*, context: WorkflowContext):
             event={
                 "stage": "document_backbone_ready",
                 "summary": (
-                    f"整本文档准备已完成：术语 {len(document_backbone.canonical_glossary)} 个，"
-                    f"主张 {len(document_backbone.canonical_claim_pool)} 条，章节执行 brief {len(chapter_briefs)} 个。"
+                    f"整本共享骨架已完成：术语 {len(document_backbone.canonical_glossary)} 个，"
+                    f"主张 {len(document_backbone.canonical_claim_pool)} 条；即将并行生成各章执行 brief。"
                 ),
                 "created_at": utcnow(),
             },
@@ -331,12 +303,11 @@ def build_document_backbone_node(*, context: WorkflowContext):
                 "preliminary_kg_edge_count": int(preliminary_kg.get("edge_count", 0) or 0),
                 "warning_count": len(warnings),
                 "fallback_used": document_backbone.fallback_used,
-                "chapter_brief_count": len(chapter_briefs),
+                "chapter_count": len(task_seeds),
             },
         )
         return {
             "document_backbone": document_backbone.model_dump(mode="json"),
-            "chapter_execution_briefs": [item.model_dump(mode="json") for item in chapter_briefs],
             "chapters_enhanced": chapters_enhanced,
             "dispatch_table": dispatch_table,
             "preliminary_kg": preliminary_kg,

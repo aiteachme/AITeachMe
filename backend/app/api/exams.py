@@ -97,6 +97,8 @@ from app.workflows.examine import (
     run_exam_study_guide_workflow,
     run_question_build_workflow,
 )
+from app.workflows.examine.credit_lifecycle import run_reserved_exam_generation
+from app.workflows.support.credits import EXAM_GENERATION_COST, reserve_credits
 from app.workflows.examine.exam_grade.lib.study_guide import (
     STUDY_GUIDE_ACTION_STEP_LIMIT,
     STUDY_GUIDE_FOCUS_UNIT_LIMIT,
@@ -2334,6 +2336,27 @@ async def _generate_mastery_drill_template_backfill(
         "- These questions backfill a reusable mastery-drill question bank. "
         "Each item must be self-contained, unambiguous, and include a complete explanation."
     )
+    knowledge_graph_edges = _exam_knowledge_graph_edges(
+        session,
+        course_id=course.id,
+        unit_ids=list(unit_by_id),
+    )
+    mastery_by_unit_id = _mastery_by_unit_id(
+        session,
+        user_id=user_id,
+        course_id=course.id,
+    )
+    priority_unit_ids = _exam_priority_unit_ids(
+        session,
+        user_id=user_id,
+        course_id=course.id,
+        exam_mode="mastery_drill",
+    )
+    course_context = load_course_llm_context(session, course_id=course.id)
+    # The advisory lock remains held on its dedicated connection. End the
+    # request transaction before the long LLM call so it does not occupy a
+    # second pooled connection while no database work is being performed.
+    session.commit()
     build_result = await run_question_build_workflow(
         course_id=course.id,
         course_name=course.name,
@@ -2341,20 +2364,11 @@ async def _generate_mastery_drill_template_backfill(
         course_user_intent=course.user_intent,
         exam_mode="mastery_drill",
         units=units,
-        knowledge_graph_edges=_exam_knowledge_graph_edges(
-            session,
-            course_id=course.id,
-            unit_ids=list(unit_by_id),
-        ),
+        knowledge_graph_edges=knowledge_graph_edges,
         question_count=question_count,
-        mastery_by_unit_id=_mastery_by_unit_id(session, user_id=user_id, course_id=course.id),
-        priority_unit_ids=_exam_priority_unit_ids(
-            session,
-            user_id=user_id,
-            course_id=course.id,
-            exam_mode="mastery_drill",
-        ),
-        course_context=load_course_llm_context(session, course_id=course.id),
+        mastery_by_unit_id=mastery_by_unit_id,
+        priority_unit_ids=priority_unit_ids,
+        course_context=course_context,
         user_prompt="用于一次性闯关补题；题目应适合逐题作答，并给出清晰、完整的解析。",
         configured_question_types=question_types,
         configured_difficulty="auto",
@@ -3553,23 +3567,28 @@ async def _spawn_exam_generation_after_response(
     config_snapshot: dict[str, object],
     config_hash: str,
     schedule_replacement: bool,
+    reservation_id: str | None = None,
     paper_layout_mode: str | None = None,
 ) -> None:
     request.app.state.background_task_registry.spawn(
-        _run_exam_generation_background(
-            course_id=course_id,
-            user_id=user_id,
+        run_reserved_exam_generation(
+            _run_exam_generation_background(
+                course_id=course_id,
+                user_id=user_id,
+                paper_id=paper_id,
+                exam_mode=exam_mode,
+                unit_ids=unit_ids,
+                question_count=question_count,
+                user_prompt=user_prompt,
+                sample_file_ids=sample_file_ids,
+                config_snapshot=config_snapshot,
+                config_hash=config_hash,
+                paper_layout_mode=paper_layout_mode,
+                schedule_replacement=schedule_replacement,
+                background_task_registry=getattr(request.app.state, "background_task_registry", None),
+            ),
+            reservation_id=reservation_id,
             paper_id=paper_id,
-            exam_mode=exam_mode,
-            unit_ids=unit_ids,
-            question_count=question_count,
-            user_prompt=user_prompt,
-            sample_file_ids=sample_file_ids,
-            config_snapshot=config_snapshot,
-            config_hash=config_hash,
-            paper_layout_mode=paper_layout_mode,
-            schedule_replacement=schedule_replacement,
-            background_task_registry=getattr(request.app.state, "background_task_registry", None),
         ),
         kind="exam.generate",
         course_id=course_id,
@@ -5366,7 +5385,7 @@ async def active_mastery_drill(
     "/generate",
     response_model=ApiResponse[ExamGenerateResponse],
     summary="Generate an exam from KnowledgeUnits",
-    responses=build_error_responses([400, 404, 409, 410, 500]),
+    responses=build_error_responses([400, 401, 402, 404, 409, 410, 500]),
 )
 async def generate_exam(
     request: Request,
@@ -5508,6 +5527,23 @@ async def generate_exam(
         generation_origin="user",
     )
     paper_id = paper.id or 0
+    reservation = None
+    try:
+        if not user.is_local:
+            account_user = session.get(User, user.user_id)
+            if account_user is None:
+                raise AITeachMeError(detail="用户不存在。", status_code=401, error_code="AUTH_REQUIRED")
+            reservation = reserve_credits(
+                session,
+                user=account_user,
+                feature="exam_generation",
+                reference_id=str(paper_id),
+                amount=EXAM_GENERATION_COST,
+                idempotency_key=f"exam:{user.user_id}:{paper_id}",
+            )
+    except BaseException:
+        exams_repo.delete_exam_paper_cascade(session, paper_id=paper_id)
+        raise
     background_tasks.add_task(
         _spawn_exam_generation_after_response,
         request,
@@ -5523,6 +5559,7 @@ async def generate_exam(
         config_hash=config_hash,
         paper_layout_mode=paper_layout_mode,
         schedule_replacement=False,
+        reservation_id=reservation.id if reservation is not None else None,
     )
     _capture_exam_event(
         "exam_generation_requested",
@@ -5963,9 +6000,13 @@ async def prepare_mastery_drill(
     normalized = normalize_course_id(course_id)
     requested_count = max(1, int(body.num_questions))
     configured_question_types = _normalized_exam_question_types(body.question_types)
+    # Authentication may already have opened a transaction on the request
+    # session. Release it before waiting on a dedicated PostgreSQL advisory
+    # lock connection; all course/template reads happen after the lock.
+    session.commit()
     async with _mastery_drill_backfill_lock(session, course_id=normalized):
-        # Nothing is read before the lock, so a waiter starts with a fresh view
-        # of any templates committed by the request that just released it.
+        # A waiter starts with a fresh view of any templates committed by the
+        # request that just released the lock.
         course = _ensure_course(session, normalized, user.user_id)
         initial_template_ids = {
             int(template_id)
@@ -6950,6 +6991,10 @@ async def exam_study_guide(
     if cached_response is not None:
         return ok_response(cached_response)
 
+    # Scheduling and polling both use short managed sessions, and this
+    # endpoint may then wait for up to five minutes. Finish the request
+    # transaction before either path needs another pooled connection.
+    session.commit()
     background_task_registry = getattr(request.app.state, "background_task_registry", None)
     if not _is_active_study_guide_generation(cache):
         if background_task_registry is None:

@@ -187,6 +187,8 @@ workflow 作者通常不需要从这里直接导入。
 | `execution/` | 共享执行契约与安全边界 |
 | `observability/` | LangSmith tracing 与 LLM 统计底层实现 |
 
+`memory/` 的持久化必须走 SQLModel 与当前配置的数据库引擎。`memory_entries`、`learning_logs` 已进入正式 schema；禁止重新引入 `executescript`、`?` 占位符或 SQLite 日期函数，以保证 PostgreSQL 云端可用。
+
 ### LLM 模型选择
 
 LLM 调用现在优先用 `model=` 指定模型选择：

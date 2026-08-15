@@ -79,6 +79,11 @@ def resolve_auth_enabled() -> bool:
     return is_cloud_mode()
 
 
+def resolve_credits_enabled() -> bool:
+    explicit_value = get_env_optional_bool("CREDITS_ENABLED")
+    return False if explicit_value is None else explicit_value
+
+
 def get_guest_cookie_name() -> str:
     return (get_env("GUEST_COOKIE_NAME", "atm_guest_token") or "atm_guest_token").strip() or "atm_guest_token"
 
@@ -104,6 +109,7 @@ __all__ = [
     "is_cloud_mode",
     "is_local_mode",
     "resolve_auth_enabled",
+    "resolve_credits_enabled",
     "resolve_app_mode",
     "resolve_guest_cookie_samesite",
     "resolve_guest_cookie_secure",

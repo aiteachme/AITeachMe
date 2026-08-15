@@ -17,6 +17,8 @@ from email.message import EmailMessage
 from email.utils import formataddr, parseaddr
 
 import structlog
+from argon2 import PasswordHasher
+from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 from fastapi import Response
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import or_
@@ -34,6 +36,7 @@ from app.shared.infra.runtime import (
     is_cloud_mode,
     is_local_mode,
     resolve_auth_enabled,
+    resolve_credits_enabled,
     resolve_guest_cookie_samesite,
     resolve_guest_cookie_secure,
 )
@@ -54,6 +57,8 @@ logger = structlog.get_logger()
 
 _PASSWORD_SCHEME = "pbkdf2_sha256"
 _PASSWORD_ITERATIONS = 120_000
+_ACCESS_TOKEN_KIND = "access"
+_ARGON2 = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=4, hash_len=32, salt_len=16)
 _DEV_AUTH_TOKEN_SECRET = "aiteachme-dev-token-secret"
 _MIN_AUTH_TOKEN_SECRET_LENGTH = 32
 _GUEST_TOKEN_KIND = "guest"
@@ -550,10 +555,11 @@ def send_register_email_verification_code(
 
     existing = get_user_by_email(session, normalized_email)
     if existing is not None and existing.is_registered:
-        raise AITeachMeError(
-            detail="该邮箱已被注册，请直接登录。",
-            status_code=409,
-            error_code="AUTH_EMAIL_ALREADY_REGISTERED",
+        # Do not disclose whether an account exists. Registered addresses do
+        # not receive a registration code, but callers see the same contract.
+        return SendEmailCodeData(
+            expires_in_s=max(60, get_env_int("AUTH_EMAIL_CODE_TTL_S", 600)),
+            resend_after_s=max(1, get_env_int("AUTH_EMAIL_CODE_RESEND_INTERVAL_S", 60)),
         )
 
     now = utcnow()
@@ -686,22 +692,17 @@ def hash_password(password: str) -> str:
             status_code=400,
             error_code="AUTH_WEAK_PASSWORD",
         )
-    salt = secrets.token_bytes(16)
-    digest = hashlib.pbkdf2_hmac(
-        "sha256",
-        password.encode("utf-8"),
-        salt,
-        _PASSWORD_ITERATIONS,
-    )
-    return (
-        f"{_PASSWORD_SCHEME}${_PASSWORD_ITERATIONS}$"
-        f"{_b64url_encode(salt)}${_b64url_encode(digest)}"
-    )
+    return _ARGON2.hash(password)
 
 
 def verify_password(password: str, encoded: str | None) -> bool:
     if not encoded:
         return False
+    if encoded.startswith("$argon2"):
+        try:
+            return bool(_ARGON2.verify(encoded, password))
+        except (VerifyMismatchError, VerificationError, InvalidHashError):
+            return False
     try:
         scheme, rounds_raw, salt_raw, digest_raw = encoded.split("$", 3)
     except ValueError:
@@ -721,10 +722,20 @@ def verify_password(password: str, encoded: str | None) -> bool:
     return hmac.compare_digest(expected, computed)
 
 
+def password_needs_rehash(encoded: str | None) -> bool:
+    if not encoded or not encoded.startswith("$argon2"):
+        return True
+    try:
+        return _ARGON2.check_needs_rehash(encoded)
+    except InvalidHashError:
+        return True
+
+
 def issue_access_token(*, user: User, device_key: str | None = None) -> str:
     now = int(time.time())
     payload = {
         "sub": user.id,
+        "typ": _ACCESS_TOKEN_KIND,
         "email": user.email,
         "device_key": (device_key or user.device_key),
         "iat": now,
@@ -758,7 +769,7 @@ def issue_guest_token(*, user_id: str) -> str:
     return f"{payload_b64}.{_b64url_encode(signature)}"
 
 
-def decode_access_token(token: str) -> dict[str, object] | None:
+def _decode_signed_token(token: str) -> dict[str, object] | None:
     try:
         payload_b64, signature_b64 = token.split(".", 1)
     except ValueError:
@@ -789,36 +800,27 @@ def decode_access_token(token: str) -> dict[str, object] | None:
     return payload
 
 
+def decode_access_token(token: str) -> dict[str, object] | None:
+    payload = _decode_signed_token(token)
+    if payload is None:
+        return None
+    if payload.get("typ") != _ACCESS_TOKEN_KIND:
+        return None
+    return payload
+
+
+def decode_legacy_access_token(token: str) -> dict[str, object] | None:
+    """Decode only pre-session access tokens that did not carry ``typ``."""
+
+    payload = _decode_signed_token(token)
+    if payload is None or "typ" in payload:
+        return None
+    return payload
+
+
 def decode_guest_token(token: str) -> dict[str, object] | None:
-    try:
-        payload_b64, signature_b64 = token.split(".", 1)
-    except ValueError:
-        return None
-
-    expected = hmac.new(
-        _auth_token_secret().encode("utf-8"),
-        payload_b64.encode("utf-8"),
-        hashlib.sha256,
-    ).digest()
-    try:
-        provided = _b64url_decode(signature_b64)
-    except Exception:
-        return None
-    if not hmac.compare_digest(expected, provided):
-        return None
-
-    try:
-        payload = json.loads(_b64url_decode(payload_b64).decode("utf-8"))
-    except Exception:
-        return None
-    if not isinstance(payload, dict):
-        return None
-
-    token_type = payload.get("typ")
-    exp = payload.get("exp")
-    if token_type != _GUEST_TOKEN_KIND:
-        return None
-    if not isinstance(exp, int) or exp < int(time.time()):
+    payload = _decode_signed_token(token)
+    if payload is None or payload.get("typ") != _GUEST_TOKEN_KIND:
         return None
     return payload
 
@@ -830,7 +832,25 @@ def resolve_user_from_token(session: Session, token: str) -> User | None:
     user_id = payload.get("sub")
     if not isinstance(user_id, str) or not user_id.strip():
         return None
-    return get_user_by_id(session, user_id)
+    user = get_user_by_id(session, user_id)
+    if user is None or not user.is_registered or user.merged_into_user_id is not None:
+        return None
+    return user
+
+
+def resolve_user_from_legacy_bearer(session: Session, token: str) -> User | None:
+    """Resolve strict or one-release typeless access tokens for Cookie exchange."""
+
+    payload = decode_access_token(token) or decode_legacy_access_token(token)
+    if payload is None:
+        return None
+    user_id = payload.get("sub")
+    if not isinstance(user_id, str) or not user_id.strip():
+        return None
+    user = get_user_by_id(session, user_id)
+    if user is None or not user.is_registered or user.merged_into_user_id is not None:
+        return None
+    return user
 
 
 def resolve_guest_user_from_token(session: Session, token: str) -> User | None:
@@ -841,7 +861,7 @@ def resolve_guest_user_from_token(session: Session, token: str) -> User | None:
     if not isinstance(user_id, str) or not user_id.strip():
         return None
     user = get_user_by_id(session, user_id)
-    if user is None or user.is_registered:
+    if user is None or user.is_registered or user.merged_into_user_id is not None:
         return None
     return user
 
@@ -880,8 +900,13 @@ def _attach_unclaimed_device_key(session: Session, *, user: User, device_key: st
 
 
 def create_guest_user(session: Session, *, device_key: str | None = None) -> User:
+    normalized_device_key = (device_key or "").strip() or None
+    if normalized_device_key is not None:
+        existing = get_user_by_device_key(session, normalized_device_key)
+        if existing is not None and not existing.is_registered and existing.merged_into_user_id is None:
+            return existing
     guest = _persist_guest_user(session)
-    return _attach_unclaimed_device_key(session, user=guest, device_key=device_key)
+    return _attach_unclaimed_device_key(session, user=guest, device_key=normalized_device_key)
 
 
 def build_logout_guest_user(session: Session, *, device_key: str | None) -> User:
@@ -950,6 +975,7 @@ def register_user(
     user.email = normalized_email
     user.password_hash = hash_password(password)
     user.is_registered = True
+    user.email_verified_at = utcnow()
     user.updated_at = utcnow()
     session.add(user)
     session.commit()
@@ -958,8 +984,7 @@ def register_user(
     if device_key:
         user = attach_device_key(session, user=user, device_key=device_key)
 
-    token = issue_access_token(user=user, device_key=device_key)
-    return build_auth_session_data(user=user, access_token=token)
+    return build_auth_session_data(user=user, access_token=None)
 
 
 def login_user(
@@ -972,17 +997,26 @@ def login_user(
     ensure_auth_enabled()
     normalized_email = _normalize_email(email)
     user = get_user_by_email(session, normalized_email)
-    if user is None or not user.is_registered or not verify_password(password, user.password_hash):
+    if (
+        user is None
+        or not user.is_registered
+        or user.merged_into_user_id is not None
+        or not verify_password(password, user.password_hash)
+    ):
         raise AITeachMeError(
             detail="邮箱或密码错误。",
             status_code=401,
             error_code="AUTH_INVALID_CREDENTIALS",
         )
 
-    if device_key:
-        user = attach_device_key(session, user=user, device_key=device_key)
-    token = issue_access_token(user=user, device_key=device_key)
-    return build_auth_session_data(user=user, access_token=token)
+    if password_needs_rehash(user.password_hash):
+        user.password_hash = hash_password(password)
+        user.updated_at = utcnow()
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+
+    return build_auth_session_data(user=user, access_token=None)
 
 
 def build_auth_session_data(
@@ -992,15 +1026,19 @@ def build_auth_session_data(
 ) -> AuthSessionData:
     return AuthSessionData(
         auth_enabled=resolve_auth_enabled(),
+        credits_enabled=resolve_credits_enabled(),
         auth_ready=True,
-        token_type="bearer",
-        access_token=access_token,
+        token_type="cookie",
+        access_token=None,
         current_user=RuntimeUser(
             user_id=user.id,
             email=user.email,
             is_local=is_local_mode(),
             device_key=user.device_key,
             is_authenticated=user.is_registered,
+            role="admin" if user.role == "admin" else "user",
+            display_name=user.display_name,
+            avatar_url=user.avatar_url,
         ),
     )
 
@@ -1014,11 +1052,15 @@ def build_guest_session_data(*, user: User | None) -> AuthSessionData:
             is_local=is_local_mode(),
             device_key=user.device_key,
             is_authenticated=user.is_registered,
+            role="admin" if user.role == "admin" else "user",
+            display_name=user.display_name,
+            avatar_url=user.avatar_url,
         )
     return AuthSessionData(
         auth_enabled=resolve_auth_enabled(),
+        credits_enabled=resolve_credits_enabled(),
         auth_ready=True,
-        token_type="bearer",
+        token_type="cookie",
         access_token=None,
         current_user=runtime_user,
     )
@@ -1030,17 +1072,28 @@ def build_session_from_context(
     email: str | None,
     device_key: str | None,
     is_authenticated: bool,
+    role: str = "user",
+    display_name: str | None = None,
+    avatar_url: str | None = None,
+    csrf_token: str | None = None,
+    merge_offer: dict | None = None,
 ) -> AuthSessionData:
     return AuthSessionData(
         auth_enabled=resolve_auth_enabled(),
+        credits_enabled=resolve_credits_enabled(),
         auth_ready=True,
-        token_type="bearer",
+        token_type="cookie",
         access_token=None,
+        csrf_token=csrf_token,
+        merge_offer=merge_offer,
         current_user=RuntimeUser(
             user_id=user_id,
             email=email,
             is_local=is_local_mode(),
             device_key=device_key,
             is_authenticated=is_authenticated,
+            role="admin" if role == "admin" else "user",
+            display_name=display_name,
+            avatar_url=avatar_url,
         ),
     )

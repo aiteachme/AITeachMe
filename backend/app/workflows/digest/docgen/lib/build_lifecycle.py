@@ -913,6 +913,7 @@ def trigger_docgen_build(
     prompt: str | None,
     embedding_resolution: str | None,
     confirmed_plan_id: str | None,
+    build_group_id: str | None = None,
 ) -> tuple[DocGenBuildData, list[str], str]:
     """处理知识文档构建请求的同步前置阶段。
 
@@ -987,7 +988,7 @@ def trigger_docgen_build(
             }
         )
     requested_at = utcnow()
-    build_group_id = _new_build_session_id()
+    build_group_id = str(build_group_id or "").strip() or _new_build_session_id()
     build_lock = KnowledgeBuildLock(
         requested_at=requested_at,
         build_group_id=build_group_id,

@@ -45,6 +45,8 @@ from app.shared.infra.course import (
 )
 from migrations.seed_data.question_types import BUILTIN_QUESTION_TYPE_ROWS
 from app.models.chat import ChatMessage, ChatSession
+from app.models.auth import AuthIdentity, AuthRateLimitBucket, AuthSession, OAuthFlow, UserMergeJob
+from app.models.credits import CreditAccount, CreditLedger, CreditReservation
 from app.models.email_confirmation import EmailConfirmation
 from app.models.course_initial_exam import CourseInitialExamJob
 from app.models.exam import (
@@ -71,12 +73,21 @@ from app.models.course_share import CourseShare
 from app.models.course_share_import import CourseShareImport
 from app.models.system import SystemRuntimeSettings
 from app.models.user import User
+from app.models.memory import LearningLogRecord, MemoryRecord
 
 logger = structlog.get_logger()
 
 _engine = None
 _SCHEMA_MODELS = (
     User,
+    AuthIdentity,
+    AuthSession,
+    OAuthFlow,
+    AuthRateLimitBucket,
+    UserMergeJob,
+    CreditAccount,
+    CreditLedger,
+    CreditReservation,
     EmailConfirmation,
     Course,
     CourseShare,
@@ -104,6 +115,8 @@ _SCHEMA_MODELS = (
     ChatMessage,
     Highlight,
     SystemRuntimeSettings,
+    MemoryRecord,
+    LearningLogRecord,
 )
 _SCHEMA_TABLES = [model.__table__ for model in _SCHEMA_MODELS]
 _EXPECTED_SCHEMA_COLUMNS = {
@@ -112,11 +125,6 @@ _EXPECTED_SCHEMA_COLUMNS = {
 }
 _ALLOWED_SQLITE_RUNTIME_TABLES = {
     "sqlite_sequence",
-    # Memory keeps its own lightweight runtime tables for now. They are not
-    # part of the SQLModel schema, but they are legitimate local app state and
-    # must not trigger SQLite drift recovery.
-    "memory_entries",
-    "learning_logs",
 }
 _ALLOWED_SQLITE_RUNTIME_PREFIXES: tuple[str, ...] = (
     # sqlite-vec local vector tables and their shadow tables are runtime-owned.
@@ -153,6 +161,11 @@ _REMOVED_SQLITE_COLUMNS = {
 _SQLITE_ADDITIVE_COLUMNS = {
     "user": (
         ("runtime_settings_json", "JSON NOT NULL DEFAULT '{}'"),
+        ("role", "TEXT NOT NULL DEFAULT 'user'"),
+        ("display_name", "TEXT NULL"),
+        ("avatar_url", "TEXT NULL"),
+        ("email_verified_at", "DATETIME NULL"),
+        ("merged_into_user_id", "TEXT NULL REFERENCES user(id)"),
     ),
     "course": (
         ("description", "TEXT NOT NULL DEFAULT ''"),
@@ -201,6 +214,11 @@ _SQLITE_ADDITIVE_COLUMNS = {
     ),
 }
 _SQLITE_ADDITIVE_INDEXES = {
+    "user": (
+        ("ix_user_role", ("role",), False, ""),
+        ("ix_user_email_verified_at", ("email_verified_at",), False, ""),
+        ("ix_user_merged_into_user_id", ("merged_into_user_id",), False, ""),
+    ),
     "course_share": (
         (
             "uq_course_share_active_source_course",

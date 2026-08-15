@@ -36,6 +36,8 @@ data class AuthSessionData(
     val tokenType: String = "bearer",
     @SerializedName("access_token")
     val accessToken: String? = null,
+    @SerializedName("csrf_token")
+    val csrfToken: String? = null,
     @SerializedName("current_user")
     val currentUser: RuntimeUser? = null,
 )

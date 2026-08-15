@@ -83,7 +83,20 @@ S3_REGION=<region>
 S3_ADDRESSING_STYLE=virtual
 CORS_ALLOWED_ORIGINS=<frontend-origins>
 AUTH_ENABLED=true
+CREDITS_ENABLED=false
 AUTH_TOKEN_SECRET=<at-least-32-random-characters>
+AUTH_SESSION_COOKIE_SECURE=true
+AUTH_SESSION_COOKIE_SAMESITE=none
+# OAuth provider 只有对应三项全部存在时才会展示
+GOOGLE_OAUTH_CLIENT_ID=<google-client-id>
+GOOGLE_OAUTH_CLIENT_SECRET=<google-client-secret>
+GOOGLE_OAUTH_REDIRECT_URI=https://<api-domain>/api/v1/auth/oauth/google/callback
+QQ_OAUTH_APP_ID=<qq-app-id>
+QQ_OAUTH_APP_KEY=<qq-app-key>
+QQ_OAUTH_REDIRECT_URI=https://<api-domain>/api/v1/auth/oauth/qq/callback
+WECHAT_OPEN_APP_ID=<wechat-open-platform-app-id>
+WECHAT_OPEN_APP_SECRET=<wechat-open-platform-secret>
+WECHAT_OPEN_REDIRECT_URI=https://<api-domain>/api/v1/auth/oauth/wechat/callback
 LLM_API_KEY=<model-api-key>
 LLM_BASE_URL=<model-api-base-url>
 # Optional: comma-separated fallback endpoint pairs.
@@ -139,6 +152,7 @@ Environment:
   APP_MODE=cloud
   PORT=9020
   AUTH_ENABLED=true
+  CREDITS_ENABLED=false
   AUTH_TOKEN_SECRET=<at-least-32-random-characters>
   DATABASE_URL=<postgres connection string>
   STORAGE_BACKEND=s3
@@ -181,6 +195,10 @@ YAML 字段时，应先发布支持该 schema 的镜像，再让新配置随该�
 - PostgreSQL 已通过 `python scripts/bootstrap_cloud_db.py` 完成 migration、运行时对象准备和 schema 检查。
 - `STORAGE_BACKEND=s3` 时对象存储变量完整。
 - `AUTH_ENABLED=true`，且 `AUTH_TOKEN_SECRET` 是至少 32 位的随机密钥。
+- `CREDITS_ENABLED` 默认关闭；准备开放注册赠送与自动扣费后再设为 `true`。关闭时管理员仍可查看和手动调整用户余额。
+- 会话 Cookie 在云端保持 `Secure + HttpOnly`，`CORS_ALLOWED_ORIGINS` 只列出真实前端来源。
+- Google、QQ、微信回调域名已在各平台审核通过；未配置完整的 provider 不会显示在前端。
+- 首位管理员通过 `python scripts/set_admin_role.py --email <邮箱>` 提升；撤销时增加 `--revoke`，不要提供公开提权接口。
 - 首次接入新 OSS 可临时打开 `S3_STARTUP_SMOKE_TEST=true`，验证完成后关闭。
 - 如果使用 Office 镜像，确认 `soffice --headless --version` 可执行。
 - SSE 网关关闭响应缓冲和压缩；自建 Nginx 可参考 `infra/deployment/nginx/default.conf`。

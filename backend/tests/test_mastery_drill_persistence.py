@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import Iterator
+from contextlib import asynccontextmanager
 from datetime import timedelta
 from types import SimpleNamespace
 
@@ -180,6 +181,55 @@ async def test_prepare_mastery_drill_reuses_sufficient_bank_without_generation(
 
 
 @pytest.mark.anyio
+async def test_prepare_mastery_drill_releases_request_transaction_before_lock_wait(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+    user: CurrentUserContext,
+) -> None:
+    session.add(Course(id=COURSE_ID, user_id=USER_ID, name="Lock-safe Drill"))
+    session.add(
+        QuestionTemplate(
+            course_id=COURSE_ID,
+            question_type="single_choice",
+            difficulty="easy",
+            stem="Existing lock-safe reusable question?",
+            stem_hash="existing-lock-safe-reusable",
+            options_json=json.dumps(["A", "B", "C", "D"]),
+            answer="A",
+            explanation="Existing explanation.",
+        )
+    )
+    session.commit()
+    session.exec(select(Course).where(Course.id == COURSE_ID)).one()
+    assert session.in_transaction() is True
+
+    @asynccontextmanager
+    async def assert_released_before_lock(
+        lock_session: Session,
+        *,
+        course_id: str,
+    ):
+        assert lock_session is session
+        assert course_id == COURSE_ID
+        assert lock_session.in_transaction() is False
+        yield
+
+    monkeypatch.setattr(exams_api, "_mastery_drill_backfill_lock", assert_released_before_lock)
+
+    response = await exams_api.prepare_mastery_drill(
+        course_id=COURSE_ID,
+        body=MasteryDrillPrepareRequest(
+            num_questions=1,
+            question_types=["single_choice"],
+        ),
+        user=user,
+        session=session,
+    )
+
+    assert response.data.generated_count == 0
+
+
+@pytest.mark.anyio
 async def test_prepare_mastery_drill_generates_only_shortage_and_syncs_templates_to_bank(
     monkeypatch: pytest.MonkeyPatch,
     session: Session,
@@ -219,6 +269,7 @@ async def test_prepare_mastery_drill_generates_only_shortage_and_syncs_templates
     captured: dict[str, object] = {}
 
     async def fake_question_build_workflow(**kwargs):
+        assert session.in_transaction() is False
         captured.update(kwargs)
         requested_count = int(kwargs["question_count"])
         requested_types = list(kwargs["configured_question_types"])

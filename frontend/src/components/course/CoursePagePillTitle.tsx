@@ -1,7 +1,6 @@
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -86,18 +85,14 @@ function courseNavTooltipFromTarget(text: string, target: HTMLElement): CourseNa
 
 export const ENABLE_PERSISTENT_COURSE_NAV = true;
 export const SHOW_COURSE_OVERVIEW_NAV_ENTRY = false;
-const COURSE_NAV_TOP_REVEAL_PX = 64;
-const COURSE_NAV_HIDE_DELTA_PX = 28;
-const COURSE_NAV_SHOW_DELTA_PX = 12;
-
 const COURSE_NAV_SHELL_CLASS =
-  "sticky top-0 z-30 grid h-16 w-full shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center border-b border-slate-200/70 bg-[#fafafa]/92 px-4 backdrop-blur-md dark:border-slate-800/60 dark:bg-[#0b0f19]/92";
+  "sticky top-0 z-40 grid h-14 w-full shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center border-b border-slate-200 bg-white/95 px-4 backdrop-blur-md dark:border-slate-800 dark:bg-[#0b0f19]/95";
 
 const COURSE_NAV_LIST_CLASS =
-  "flex max-w-full items-center gap-1 overflow-x-auto rounded-[10px] border border-slate-200/80 bg-white/95 p-1 shadow-[0_2px_12px_rgba(15,23,42,0.05)] scrollbar-none dark:border-slate-800/80 dark:bg-slate-900/95";
+  "flex h-full max-w-full items-center gap-0 overflow-x-auto bg-transparent shadow-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
 
 const COURSE_NAV_ITEM_CLASS =
-  "group relative flex h-9 shrink-0 items-center gap-2 rounded-lg px-3 text-[12px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 dark:focus-visible:ring-indigo-500";
+  "group relative flex h-14 shrink-0 items-center gap-2 px-4 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-400 dark:focus-visible:ring-indigo-500 max-[520px]:w-11 max-[520px]:justify-center max-[520px]:gap-0 max-[520px]:px-0";
 
 export function CourseSharePillTitle({
   courseName,
@@ -180,16 +175,16 @@ export function CourseSharePillTitle({
               title={`${item.label}：查看共享课程的只读内容。`}
               className={cn(
                 COURSE_NAV_ITEM_CLASS,
-                "max-[480px]:w-9 max-[480px]:justify-center max-[480px]:gap-0 max-[480px]:px-0",
+                "max-[480px]:w-11 max-[480px]:justify-center max-[480px]:gap-0 max-[480px]:px-0",
                 isActive
-                  ? "bg-slate-950 text-white shadow-sm dark:bg-slate-100 dark:text-slate-950"
-                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white",
+                  ? "text-indigo-600 dark:text-indigo-300"
+                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-900 dark:hover:text-white",
               )}
             >
-              <ItemIcon className={cn("h-3.5 w-3.5 shrink-0", isActive ? "text-white dark:text-slate-950" : "text-slate-400 transition-colors group-hover:text-indigo-600 dark:group-hover:text-indigo-300")} />
+              <ItemIcon className={cn("h-4 w-4 shrink-0", isActive ? "text-indigo-600 dark:text-indigo-300" : "text-slate-400 transition-colors group-hover:text-indigo-600 dark:group-hover:text-indigo-300")} />
               <span className="whitespace-nowrap max-[480px]:hidden">{item.label}</span>
               {isActive ? (
-                <span className="absolute inset-x-2 -bottom-1 h-0.5 rounded-full bg-indigo-400 dark:bg-indigo-500" />
+                <span className="absolute inset-x-3 bottom-0 h-0.5 bg-indigo-600 dark:bg-indigo-400" />
               ) : null}
             </button>
           );
@@ -202,7 +197,7 @@ export function CourseSharePillTitle({
             setIsActionMenuOpen((value) => !value);
             window.requestAnimationFrame(updateActionMenuPosition);
           }}
-          className="group relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white dark:focus-visible:ring-indigo-500"
+          className="group relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white dark:focus-visible:ring-indigo-500"
           title="共享课程操作"
           aria-label="共享课程操作"
           aria-expanded={isActionMenuOpen}
@@ -254,101 +249,19 @@ export function CoursePagePillTitle({
   className,
   innerClassName,
   placement = "page",
-  scrollRootRef,
 }: CoursePagePillTitleProps) {
   const params = useParams<{ courseId: string }>();
   const { pathname } = useLocation();
   const queryClient = useQueryClient();
   const [tooltip, setTooltip] = useState<CourseNavTooltipState | null>(null);
   const [isShareOpen, setIsShareOpen] = useState(false);
-  const [isScrollHidden, setIsScrollHidden] = useState(false);
   const canManageCourseShares = useCanManageCourseShares();
   const previousTrainingUnlockedRef = useRef<boolean | null>(null);
   const courseId = params.courseId || (href ? href.split("/")[2] : undefined);
   const shouldHideInlineCourseNav = Boolean(courseId && ENABLE_PERSISTENT_COURSE_NAV && placement === "page");
 
-  useLayoutEffect(() => {
-    setIsScrollHidden(false);
-  }, [pathname]);
-
-  useEffect(() => {
-    const scrollRoot = scrollRootRef?.current;
-    if (!scrollRoot) return;
-
-    const previousScrollTops = new WeakMap<HTMLElement, number>();
-    let activeScrollTarget: HTMLElement | null = null;
-    let accumulatedDelta = 0;
-    let activeDirection = 0;
-
-    const handleScroll = (event: Event) => {
-      const target = event.target;
-      if (!(target instanceof HTMLElement)) return;
-      if (
-        target !== scrollRoot &&
-        !target.classList.contains("course-page-scroll-container") &&
-        !target.classList.contains("doc-scroll-container")
-      ) return;
-
-      const currentScrollTop = target.scrollTop;
-      const previousScrollTop = previousScrollTops.get(target);
-      previousScrollTops.set(target, currentScrollTop);
-
-      if (currentScrollTop <= COURSE_NAV_TOP_REVEAL_PX) {
-        activeScrollTarget = target;
-        accumulatedDelta = 0;
-        activeDirection = 0;
-        setIsScrollHidden(false);
-        return;
-      }
-
-      if (previousScrollTop === undefined || activeScrollTarget !== target) {
-        activeScrollTarget = target;
-        accumulatedDelta = 0;
-        activeDirection = 0;
-        return;
-      }
-
-      const delta = currentScrollTop - previousScrollTop;
-      if (Math.abs(delta) < 1) return;
-
-      const direction = delta > 0 ? 1 : -1;
-      accumulatedDelta = direction === activeDirection ? accumulatedDelta + delta : delta;
-      activeDirection = direction;
-
-      if (accumulatedDelta >= COURSE_NAV_HIDE_DELTA_PX) {
-        accumulatedDelta = 0;
-        setIsScrollHidden(true);
-      } else if (accumulatedDelta <= -COURSE_NAV_SHOW_DELTA_PX) {
-        accumulatedDelta = 0;
-        setIsScrollHidden(false);
-      }
-    };
-
-    scrollRoot.addEventListener("scroll", handleScroll, { capture: true, passive: true });
-    return () => scrollRoot.removeEventListener("scroll", handleScroll, true);
-  }, [pathname, scrollRootRef]);
-
-  useEffect(() => {
-    if (isScrollHidden) setTooltip(null);
-  }, [isScrollHidden]);
-
-  const isFloatingLayoutNav = placement === "layout";
-  const shellClassName = cn(
-    isFloatingLayoutNav
-      ? "pointer-events-none absolute inset-x-0 top-0 z-40 grid h-16 w-full grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center px-4 transition-[transform,opacity] transform-gpu motion-reduce:transition-none"
-      : COURSE_NAV_SHELL_CLASS,
-    isFloatingLayoutNav && (
-      isScrollHidden
-        ? "-translate-y-full opacity-0 duration-[130ms] ease-in"
-        : "translate-y-0 opacity-100 duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)]"
-    ),
-    className,
-  );
-  const navClassName = cn(
-    "flex max-w-full items-center gap-1 overflow-x-auto rounded-[10px] border border-slate-200/80 bg-white/95 p-1 shadow-[0_8px_24px_-14px_rgba(15,23,42,0.28)] backdrop-blur-md scrollbar-none dark:border-slate-800/80 dark:bg-slate-900/95 dark:shadow-[0_10px_28px_-16px_rgba(0,0,0,0.7)]",
-    isFloatingLayoutNav && !isScrollHidden ? "pointer-events-auto" : isFloatingLayoutNav ? "pointer-events-none" : undefined,
-    innerClassName,
-  );
+  const shellClassName = cn(COURSE_NAV_SHELL_CLASS, className);
+  const navClassName = cn(COURSE_NAV_LIST_CLASS, innerClassName);
 
   // 1. Query Document Build Status
   const docMarkdownQuery = useQuery({
@@ -496,7 +409,7 @@ export function CoursePagePillTitle({
       </div>
     );
     return (
-      <div className={shellClassName} onFocusCapture={() => setIsScrollHidden(false)}>
+      <div className={shellClassName}>
         <div />
         {inner}
         <div className="flex justify-end">
@@ -542,7 +455,7 @@ export function CoursePagePillTitle({
   ] as const;
 
   return (
-    <div className={shellClassName} onFocusCapture={() => setIsScrollHidden(false)}>
+    <div className={shellClassName}>
       <div />
       <nav className={navClassName} aria-label="课程页面导航">
         {SHOW_COURSE_OVERVIEW_NAV_ENTRY && href ? (
@@ -587,8 +500,8 @@ export function CoursePagePillTitle({
           const itemClassName = cn(
             COURSE_NAV_ITEM_CLASS,
             isActive
-              ? "bg-slate-950 text-white shadow-sm dark:bg-slate-100 dark:text-slate-950"
-              : "text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white",
+              ? "text-indigo-600 dark:text-indigo-300"
+              : "text-slate-600 hover:bg-slate-50 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-900 dark:hover:text-white",
           );
 
           if (disabledReason) {
@@ -604,11 +517,11 @@ export function CoursePagePillTitle({
                 onMouseLeave={hideTooltip}
                 onFocus={(event) => showTooltip(tooltipText, event.currentTarget)}
                 onBlur={hideTooltip}
-                className="flex h-9 shrink-0 cursor-not-allowed select-none items-center gap-2 rounded-lg px-3 text-[12px] font-semibold text-slate-400 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-indigo-400 dark:text-slate-600 dark:focus-visible:ring-indigo-500"
+                className="flex h-14 shrink-0 cursor-not-allowed select-none items-center gap-2 px-4 text-[13px] font-semibold text-slate-400 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-400 dark:text-slate-600 dark:focus-visible:ring-indigo-500 max-[520px]:w-11 max-[520px]:justify-center max-[520px]:gap-0 max-[520px]:px-0"
               >
-                <ItemIcon className="h-3.5 w-3.5 shrink-0 text-slate-300 dark:text-slate-700" />
-                <span className="whitespace-nowrap">{item.label}</span>
-                <span className="flex h-3 w-3 shrink-0 items-center justify-center" aria-hidden="true">
+                <ItemIcon className="h-4 w-4 shrink-0 text-slate-300 dark:text-slate-700" />
+                <span className="whitespace-nowrap max-[520px]:hidden">{item.label}</span>
+                <span className="flex h-3 w-3 shrink-0 items-center justify-center max-[520px]:hidden" aria-hidden="true">
                   <Lock className="h-3 w-3 text-slate-300 dark:text-slate-700" strokeWidth={1.5} />
                 </span>
               </div>
@@ -628,11 +541,11 @@ export function CoursePagePillTitle({
               onFocus={(event) => showTooltip(tooltipText, event.currentTarget)}
               onBlur={hideTooltip}
             >
-              <ItemIcon className={cn("h-3.5 w-3.5 shrink-0", isActive ? "text-white dark:text-slate-950" : "text-slate-400 transition-colors group-hover:text-indigo-600 dark:group-hover:text-indigo-300")} />
-              <span className="whitespace-nowrap">{item.label}</span>
-              <span className="h-3 w-3 shrink-0" aria-hidden="true" />
+              <ItemIcon className={cn("h-4 w-4 shrink-0", isActive ? "text-indigo-600 dark:text-indigo-300" : "text-slate-400 transition-colors group-hover:text-indigo-600 dark:group-hover:text-indigo-300")} />
+              <span className="whitespace-nowrap max-[520px]:hidden">{item.label}</span>
+              <span className="h-3 w-3 shrink-0 max-[520px]:hidden" aria-hidden="true" />
               {isActive ? (
-                <span className="absolute inset-x-2 -bottom-1 h-0.5 rounded-full bg-indigo-400 dark:bg-indigo-500" />
+                <span className="absolute inset-x-3 bottom-0 h-0.5 bg-indigo-600 dark:bg-indigo-400" />
               ) : null}
             </Link>
           );
@@ -643,7 +556,7 @@ export function CoursePagePillTitle({
             <button
               type="button"
               onClick={() => setIsShareOpen(true)}
-              className="group relative flex h-9 shrink-0 items-center gap-2 rounded-lg px-3 text-[12px] font-semibold text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white dark:focus-visible:ring-indigo-500"
+              className="group relative flex h-14 shrink-0 items-center gap-2 px-4 text-[13px] font-semibold text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-400 dark:text-slate-300 dark:hover:bg-slate-900 dark:hover:text-white dark:focus-visible:ring-indigo-500 max-[520px]:w-11 max-[520px]:justify-center max-[520px]:gap-0 max-[520px]:px-0"
               title="分享课程：生成可浏览的课程链接。"
               aria-label="分享课程：生成可浏览的课程链接。"
               onMouseEnter={(event) => showTooltip("分享课程：生成可浏览的课程链接。", event.currentTarget)}
@@ -651,13 +564,13 @@ export function CoursePagePillTitle({
               onFocus={(event) => showTooltip("分享课程：生成可浏览的课程链接。", event.currentTarget)}
               onBlur={hideTooltip}
             >
-              <Share2 className="h-3.5 w-3.5 shrink-0 text-slate-400 transition-colors group-hover:text-indigo-600 dark:group-hover:text-indigo-300" />
-              <span className="whitespace-nowrap">分享</span>
+              <Share2 className="h-4 w-4 shrink-0 text-slate-400 transition-colors group-hover:text-indigo-600 dark:group-hover:text-indigo-300" />
+              <span className="whitespace-nowrap max-[520px]:hidden">分享</span>
             </button>
           </>
         ) : null}
       </nav>
-      <div className={cn("flex justify-end pr-1", isFloatingLayoutNav && !isScrollHidden ? "pointer-events-auto" : isFloatingLayoutNav ? "pointer-events-none" : undefined)}>
+      <div className="flex justify-end pr-1">
         <TopBar />
       </div>
       {isShareOpen && canManageCourseShares ? (

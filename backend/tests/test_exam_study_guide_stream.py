@@ -223,9 +223,47 @@ async def test_regular_get_waits_for_active_shared_generation_without_rescheduli
         raise AssertionError("an active shared generation must not be scheduled twice")
 
     async def return_shared_result(**_kwargs):
+        assert session.in_transaction() is False
         return guide
 
     monkeypatch.setattr(exams_api, "_schedule_exam_study_guide_task", fail_if_rescheduled)
+    monkeypatch.setattr(exams_api, "_wait_for_exam_study_guide_result", return_shared_result)
+
+    response = await exams_api.exam_study_guide(
+        request=SimpleNamespace(
+            app=SimpleNamespace(state=SimpleNamespace(background_task_registry=object()))
+        ),
+        course_id=COURSE_ID,
+        exam_paper_id=paper_id,
+        user=CurrentUserContext(user_id=USER_ID, email=None, is_local=True),
+        session=session,
+    )
+
+    assert response.data == guide
+
+
+@pytest.mark.anyio
+async def test_regular_get_releases_request_transaction_before_scheduling(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    paper = seed_graded_paper(session)
+    paper_id = int(paper.id or 0)
+    guide = build_guide(paper_id)
+
+    async def assert_released_before_schedule(*_args, **_kwargs):
+        assert session.in_transaction() is False
+        return True
+
+    async def return_shared_result(**_kwargs):
+        assert session.in_transaction() is False
+        return guide
+
+    monkeypatch.setattr(
+        exams_api,
+        "_schedule_exam_study_guide_task",
+        assert_released_before_schedule,
+    )
     monkeypatch.setattr(exams_api, "_wait_for_exam_study_guide_result", return_shared_result)
 
     response = await exams_api.exam_study_guide(

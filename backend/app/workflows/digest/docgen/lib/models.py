@@ -924,13 +924,6 @@ class DocumentBackbone(DocGenBaseModel):
     fallback_used: bool = False
 
 
-class DocumentPreparationBundle(DocGenBaseModel):
-    """One whole-document LLM result consumed before chapter fan-out."""
-
-    document_backbone: DocumentBackbone = Field(default_factory=DocumentBackbone)
-    chapter_execution_briefs: list[ChapterExecutionBrief] = Field(default_factory=list)
-
-
 class ChapterResearchTrace(DocGenBaseModel):
     chapter_index: int = 1
     rounds: list[dict[str, Any]] = Field(default_factory=list)
@@ -1314,7 +1307,6 @@ __all__ = [
     "ConflictItem",
     "ConflictReport",
     "DocumentBackbone",
-    "DocumentPreparationBundle",
     "DocumentConsistencyReport",
     "DocGenContext",
     "DocGenIntentProfile",

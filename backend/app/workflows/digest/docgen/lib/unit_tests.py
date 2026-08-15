@@ -80,8 +80,8 @@ _MATH_SPAN_RE = re.compile(r"(\$\$[\s\S]*?\$\$|\$[^$\n]+\$|\\\([\s\S]*?\\\)|\\\[
 _RAW_LATEX_FRAGMENT_RE = re.compile(
     r"(?<![$\\])"
     r"(?P<formula>"
-    r"(?:[A-Za-z0-9_+\-*/=<>≤≥^{}()[\],. ]|\\[A-Za-z]+|\\[{}])+"
-    r"\\(?:sqrt|frac|lim|sin|cos|tan|cot|ln|log|sum|int|Delta|delta|epsilon|varepsilon|theta|pi|infty|cdot|times|leq|geq|neq|to|sim)"
+    r"(?:[A-Za-z0-9_+\-*/=<>≤≥^{}()[\],. ]|\\[A-Za-z]+|\\[{}])*"
+    r"\\(?:sqrt|frac|lim|sin|cos|tan|cot|ln|log|sum|int|Delta|delta|epsilon|varepsilon|theta|pi|infty|cdot|times|leq|geq|neq|to|sim)(?![A-Za-z])"
     r"(?:[A-Za-z0-9_+\-*/=<>≤≥^{}()[\],. ]|\\[A-Za-z]+|\\[{}])*"
     r")"
     r"(?![$])"
@@ -93,6 +93,20 @@ _LEADING_TABLE_PIPE_BEFORE_MATH_RE = re.compile(
     r"(?m)(^|[\s(（])(?:\\\||\|)+\s*(?=(?:\\?\${1,2}|\\\(|\\\[|\\(?:sqrt|frac|lim|sin|cos|tan|ln|log|sum|int)\b))"
 )
 _ESCAPED_MATH_DOLLAR_RE = re.compile(r"\\(\${1,2})")
+_UNIT_TEST_CALLOUT_START_RE = re.compile(
+    r"^\s*>\s*\[!(?P<kind>QUESTION|ANSWER)\](?P<rest>.*)$",
+    re.IGNORECASE,
+)
+_UNIT_TEST_QUESTION_HEADER_RE = re.compile(
+    r"\*\*Q(?P<number>\d+)\s*[｜|]\s*(?P<type>[^｜|*]+)\s*[｜|]",
+    re.IGNORECASE,
+)
+_UNIT_TEST_OPTION_LINE_RE = re.compile(
+    r"^\s*(?:[-*+]\s*)?(?:\*\*)?(?P<label>[A-Da-d])(?:\*\*)?[.)、:：]\s*(?P<value>\S.*)$"
+)
+_UNIT_TEST_FIELD_ONLY_RE = re.compile(
+    r"^\s*(?:\*\*)?(?:题目|题干|选项|答案|解析|解析步骤|判定依据)(?:\*\*)?\s*(?:[:：])?\s*$"
+)
 
 
 class ChapterUnitTestGenerationError(RuntimeError):
@@ -202,12 +216,18 @@ class ChapterUnitTestItem(DocGenBaseModel):
         self.type = _normalize_question_type(self.type)
         self.difficulty = _normalize_difficulty(self.difficulty)
         self.options = _normalize_choice_options(self.options)
+        answer_label = re.fullmatch(
+            r"(?:选项\s*)?([A-Da-d])(?:[.、:：]\s*(.*))?",
+            self.answer.strip(),
+        )
+        if answer_label is not None:
+            answer_index = ord(answer_label.group(1).upper()) - ord("A")
+            answer_suffix = clean_text(answer_label.group(2) or "")
+            if 0 <= answer_index < len(self.options):
+                option = self.options[answer_index]
+                if not answer_suffix or _compact_label(answer_suffix) == _compact_label(option):
+                    self.answer = option
         if not _is_choice_unit_test_type(self.type):
-            answer_label = re.fullmatch(r"(?:选项\s*)?([A-Da-d])(?:[.、:：])?", self.answer.strip())
-            if answer_label is not None:
-                answer_index = ord(answer_label.group(1).upper()) - ord("A")
-                if 0 <= answer_index < len(self.options):
-                    self.answer = self.options[answer_index]
             self.options = []
         return self
 
@@ -297,14 +317,196 @@ def _ordered_unique(values: list[str], order: list[str]) -> list[str]:
 
 
 def _is_choice_unit_test_type(question_type: str) -> bool:
-    return _normalize_question_type(question_type) in {"概念判断", "选择题", "步骤排序", "错因辨析", "应用迁移", "图表读取", "推导证明"}
+    return _normalize_question_type(question_type) == "选择题"
+
+
+def _unit_test_section(markdown: str) -> tuple[list[str], list[str]]:
+    lines = str(markdown or "").replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    h2_indices = [
+        index
+        for index, line in enumerate(lines)
+        if re.match(r"^##\s+单元测试\s*$", line.strip())
+    ]
+    if not h2_indices:
+        return [], ["缺少固定的章末 `## 单元测试` 模块。"]
+    if len(h2_indices) > 1:
+        return [], ["存在重复的 `## 单元测试` 模块。"]
+    start = h2_indices[0]
+    next_h2 = next(
+        (
+            index
+            for index in range(start + 1, len(lines))
+            if re.match(r"^##\s+\S", lines[index].strip())
+        ),
+        len(lines),
+    )
+    if next_h2 < len(lines):
+        return lines[start + 1 : next_h2], ["`## 单元测试` 必须是本章最后一个二级标题。"]
+    return lines[start + 1 :], []
+
+
+def _callout_visible_lines(lines: list[str], *, marker_rest: str) -> tuple[list[str], bool]:
+    visible: list[str] = []
+    has_floating_line = False
+    if marker_rest.strip():
+        visible.append(marker_rest.strip())
+    for line in lines:
+        if not line.strip():
+            continue
+        if not re.match(r"^\s*>", line):
+            has_floating_line = True
+            visible.append(line.strip())
+            continue
+        visible.append(re.sub(r"^\s*>\s?", "", line).strip())
+    return visible, has_floating_line
+
+
+def unit_test_structure_issues(markdown: str) -> list[str]:
+    """Validate the deterministic QUESTION/ANSWER publication contract.
+
+    This parser only checks the Markdown protocol.  It does not infer teaching
+    semantics or attempt to reconstruct malformed questions locally.
+    """
+
+    section_lines, issues = _unit_test_section(markdown)
+    if issues:
+        return issues
+
+    blocks: list[tuple[str, str, list[str]]] = []
+    current_kind = ""
+    current_rest = ""
+    current_lines: list[str] = []
+    for line in section_lines:
+        marker = _UNIT_TEST_CALLOUT_START_RE.match(line)
+        if marker is not None:
+            if current_kind:
+                blocks.append((current_kind, current_rest, current_lines))
+            current_kind = marker.group("kind").upper()
+            current_rest = marker.group("rest")
+            current_lines = []
+            continue
+        if current_kind:
+            current_lines.append(line)
+    if current_kind:
+        blocks.append((current_kind, current_rest, current_lines))
+
+    if not blocks:
+        return ["单元测试没有使用 QUESTION/ANSWER 题答块。"]
+    if len(blocks) % 2 or any(
+        block[0] != ("QUESTION" if index % 2 == 0 else "ANSWER")
+        for index, block in enumerate(blocks)
+    ):
+        issues.append("单元测试存在未配对的 QUESTION 或 ANSWER 块。")
+
+    question_numbers: set[str] = set()
+    normalized_answers: set[str] = set()
+    question_ordinal = 0
+    for block_index, question in enumerate(blocks):
+        if question[0] != "QUESTION":
+            if block_index == 0 or blocks[block_index - 1][0] != "QUESTION":
+                issues.append("检测到没有对应 QUESTION 的游离 ANSWER 块。")
+            continue
+        question_ordinal += 1
+        answer = blocks[block_index + 1] if block_index + 1 < len(blocks) else None
+        if answer is None or answer[0] != "ANSWER":
+            issues.append(f"第 {question_ordinal} 题没有按 QUESTION 后紧跟 ANSWER 的顺序排列。")
+
+        question_lines, question_has_floating = _callout_visible_lines(
+            question[2],
+            marker_rest=question[1],
+        )
+        answer_lines: list[str] = []
+        answer_has_floating = False
+        if answer is not None and answer[0] == "ANSWER":
+            answer_lines, answer_has_floating = _callout_visible_lines(
+                answer[2],
+                marker_rest=answer[1],
+            )
+        if question_has_floating or answer_has_floating:
+            issues.append(f"第 {question_ordinal} 题有内容跑出 QUESTION/ANSWER 引用块。")
+
+        question_text = "\n".join(question_lines)
+        header = _UNIT_TEST_QUESTION_HEADER_RE.search(question_text)
+        if header is None:
+            issues.append(f"第 {question_ordinal} 题缺少 `Qxx｜题型｜难度｜考点` 标头。")
+            question_type = ""
+        else:
+            number = header.group("number")
+            question_type = _normalize_question_type(header.group("type"))
+            if number in question_numbers:
+                issues.append(f"题号 Q{number} 重复。")
+            question_numbers.add(number)
+
+        if any(re.search(r"(?:\*\*)?(?:答案|正确答案|参考答案)(?:\*\*)?\s*[:：]?", line) for line in question_lines):
+            issues.append(f"第 {question_ordinal} 题把答案写进了 QUESTION 块。")
+
+        option_labels = [
+            match.group("label").upper()
+            for line in question_lines
+            if (match := _UNIT_TEST_OPTION_LINE_RE.match(line)) is not None
+        ]
+        option_values = [
+            match.group("value").strip()
+            for line in question_lines
+            if (match := _UNIT_TEST_OPTION_LINE_RE.match(line)) is not None
+        ]
+        stem_lines = [
+            line
+            for line in question_lines
+            if line
+            and _UNIT_TEST_QUESTION_HEADER_RE.search(line) is None
+            and _UNIT_TEST_FIELD_ONLY_RE.match(line) is None
+            and _UNIT_TEST_OPTION_LINE_RE.match(line) is None
+        ]
+        if not stem_lines:
+            issues.append(f"第 {question_ordinal} 题题干为空。")
+        if question_type == "选择题":
+            if option_labels != ["A", "B", "C", "D"]:
+                issues.append(f"第 {question_ordinal} 道选择题必须且只能包含 A-D 四个选项。")
+        elif option_labels:
+            issues.append(f"第 {question_ordinal} 道非选择题不应显示 A-D 选项。")
+
+        answer_label_indices = [
+            index
+            for index, line in enumerate(answer_lines)
+            if re.match(r"^\s*\*\*答案\*\*\s*$", line)
+        ]
+        answer_label_index = answer_label_indices[0] if answer_label_indices else None
+        if answer_label_index is None:
+            issues.append(f"第 {question_ordinal} 题的 ANSWER 块缺少独立 `**答案**` 字段。")
+            answer_value_lines: list[str] = []
+        else:
+            if len(answer_label_indices) > 1:
+                issues.append(f"第 {question_ordinal} 题的 ANSWER 块重复出现 `**答案**` 字段。")
+            answer_value_lines = []
+            for line in answer_lines[answer_label_index + 1 :]:
+                if _UNIT_TEST_FIELD_ONLY_RE.match(line):
+                    break
+                if line:
+                    answer_value_lines.append(line)
+        if not answer_value_lines:
+            issues.append(f"第 {question_ordinal} 题答案为空。")
+        normalized_answer = _compact_label("".join(answer_value_lines))
+        if question_type == "选择题" and normalized_answer:
+            normalized_options = {_compact_label(value) for value in option_values}
+            if normalized_answer not in normalized_options:
+                issues.append(f"第 {question_ordinal} 道选择题的答案必须与 A-D 中某个完整选项一致。")
+        if normalized_answer:
+            if normalized_answer in normalized_answers:
+                issues.append(f"第 {question_ordinal} 题与前题出现完全重复的答案与解析。")
+            normalized_answers.add(normalized_answer)
+
+    return clean_string_list(issues, limit=24)
 
 
 def _is_usable_unit_test_item(item: ChapterUnitTestItem) -> bool:
     if not item.target.strip() or not item.stem.strip() or not item.answer.strip() or not item.basis.strip():
         return False
     if _is_choice_unit_test_type(item.type):
-        return len(_normalize_choice_options(item.options)) == 4
+        options = _normalize_choice_options(item.options)
+        return len(options) == 4 and _compact_label(item.answer) in {
+            _compact_label(option) for option in options
+        }
     return True
 
 
@@ -491,4 +693,5 @@ __all__ = [
     "normalize_published_unit_test_sections",
     "render_unit_test_markdown",
     "strip_existing_unit_test_sections",
+    "unit_test_structure_issues",
 ]

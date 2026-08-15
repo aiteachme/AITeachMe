@@ -47,7 +47,11 @@ def build_assemble_chapter_tasks_node(*, context: WorkflowContext):
         chapter_briefs = [
             ChapterExecutionBrief.model_validate(item)
             for item in sorted(
-                list(state.get("chapter_execution_briefs") or []),
+                list(
+                    state.get("chapter_execution_brief_items")
+                    or state.get("chapter_execution_briefs")
+                    or []
+                ),
                 key=lambda raw: int((raw or {}).get("chapter_index", 0) or 0),
             )
         ]
@@ -56,7 +60,7 @@ def build_assemble_chapter_tasks_node(*, context: WorkflowContext):
                 ChapterExecutionBrief(
                     chapter_index=seed.chapter_index,
                     retrieval_queries=list(seed.retrieval_queries),
-                    fallback_used=False,
+                    fallback_used=True,
                 )
                 for seed in task_seeds
             ]
@@ -130,6 +134,7 @@ def build_assemble_chapter_tasks_node(*, context: WorkflowContext):
             payload={
                 "chapter_count": len(tasks),
                 "brief_count": len(chapter_briefs),
+                "brief_fallback_count": sum(1 for item in chapter_briefs if item.fallback_used),
                 "warning_count": len(generation_plan.plan_mismatch_warnings),
             },
         )

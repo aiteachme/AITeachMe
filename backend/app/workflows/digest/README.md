@@ -76,10 +76,12 @@ digest/
 KG 候选不是等 `publish_document` 之后才开始生成。当前链路会在 DocGen 写作期持续准备图谱：
 
 ```text
+build_document_backbone
+  -> 只生成整本共享术语、符号、主张、依赖和易混点
 build_chapter_execution_briefs
-  -> 启动基于 brief / 证据 / dispatch_table 的早期 kg_prefetch sidecar
+  -> LangGraph Send 按章并行生成 brief，fan-in 后冻结写作任务
 enhance_chapters
-  -> 用完整章节刷新 sidecar，保留早期候选
+  -> 用完整章节启动唯一一次 kg_prefetch sidecar
 review_chapters
   -> 产出章节级 kg_refinement_items
 document_consistency_review / repair_or_route

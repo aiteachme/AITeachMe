@@ -936,6 +936,16 @@ export type knowledgeBuildApiV1CoursesCourseIdKnowledgeBuildPostResponse400 = {
   status: 400
 }
 
+export type knowledgeBuildApiV1CoursesCourseIdKnowledgeBuildPostResponse401 = {
+  data: ErrorResponse
+  status: 401
+}
+
+export type knowledgeBuildApiV1CoursesCourseIdKnowledgeBuildPostResponse402 = {
+  data: ErrorResponse
+  status: 402
+}
+
 export type knowledgeBuildApiV1CoursesCourseIdKnowledgeBuildPostResponse404 = {
   data: ErrorResponse
   status: 404
@@ -959,7 +969,7 @@ export type knowledgeBuildApiV1CoursesCourseIdKnowledgeBuildPostResponse500 = {
 export type knowledgeBuildApiV1CoursesCourseIdKnowledgeBuildPostResponseSuccess = (knowledgeBuildApiV1CoursesCourseIdKnowledgeBuildPostResponse200) & {
   headers: Headers;
 };
-export type knowledgeBuildApiV1CoursesCourseIdKnowledgeBuildPostResponseError = (knowledgeBuildApiV1CoursesCourseIdKnowledgeBuildPostResponse400 | knowledgeBuildApiV1CoursesCourseIdKnowledgeBuildPostResponse404 | knowledgeBuildApiV1CoursesCourseIdKnowledgeBuildPostResponse409 | knowledgeBuildApiV1CoursesCourseIdKnowledgeBuildPostResponse422 | knowledgeBuildApiV1CoursesCourseIdKnowledgeBuildPostResponse500) & {
+export type knowledgeBuildApiV1CoursesCourseIdKnowledgeBuildPostResponseError = (knowledgeBuildApiV1CoursesCourseIdKnowledgeBuildPostResponse400 | knowledgeBuildApiV1CoursesCourseIdKnowledgeBuildPostResponse401 | knowledgeBuildApiV1CoursesCourseIdKnowledgeBuildPostResponse402 | knowledgeBuildApiV1CoursesCourseIdKnowledgeBuildPostResponse404 | knowledgeBuildApiV1CoursesCourseIdKnowledgeBuildPostResponse409 | knowledgeBuildApiV1CoursesCourseIdKnowledgeBuildPostResponse422 | knowledgeBuildApiV1CoursesCourseIdKnowledgeBuildPostResponse500) & {
   headers: Headers;
 };
 

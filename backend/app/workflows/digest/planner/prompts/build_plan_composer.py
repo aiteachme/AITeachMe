@@ -27,6 +27,8 @@ COURSE_NAME_START = "<COURSE_NAME>"
 COURSE_NAME_END = "</COURSE_NAME>"
 CHAPTERS_START = "<CHAPTERS_JSON>"
 CHAPTERS_END = "</CHAPTERS_JSON>"
+BUILD_CONSTRAINTS_START = "<BUILD_CONSTRAINTS_JSON>"
+BUILD_CONSTRAINTS_END = "</BUILD_CONSTRAINTS_JSON>"
 
 
 def build_planner_stream_messages(
@@ -86,10 +88,11 @@ def build_planner_stream_messages(
 - 全程巩固、检测和纠错按服务对象拆入各章节；plan 结尾落到最后一个知识块自身的学习内容。
 - 上一版 planner 中的前置诊断选择只作为生成参数：影响讲解起点、章节内篇幅侧重、例题/练习密度和文档内解析写法；不要把诊断选项变成一级章节、固定二级标题、章节数量或全章重复模板，除非用户明确这样要求。
 
-输出内容由四个标签组成。
+输出内容由五个标签组成。
 {COURSE_NAME_START} 到 {COURSE_NAME_END} 之间是整门课程的短标题；必须概括用户的完整建课目标，不能从并列覆盖项中只取第一项。
 {PLAN_START} 到 {PLAN_END} 之间是用户可见的 plan 字段，会被实时 SSE 展示；这段要自然、有判断力，像最终方案顶部的黑体说明。
 {SUGGESTION_START} 到 {SUGGESTION_END} 之间是 suggestion 字段，写成可调整参数：章节边界、每章时长、讲解深度、例题数量、练习密度、文档内小测题量和练后解析粒度。
+{BUILD_CONSTRAINTS_START} 到 {BUILD_CONSTRAINTS_END} 之间放合法 JSON 对象，把前置诊断对篇幅细致程度的选择落成每章字数合同。
 {CHAPTERS_START} 到 {CHAPTERS_END} 之间放合法 JSON 数组；每个元素只包含 title、objective、required_elements；用户指定知识块列表时，数组顺序与列表顺序一致。
 """.strip()
     prompt = f"""
@@ -144,6 +147,12 @@ def build_planner_stream_messages(
 8. 用户同时给出学习天数和 A/B/C 列表时，天数是 A/B/C 的进度预算；最后一个列表项按它自身的具体对象、方法和练习安排展开。
 9. 没有资料时按用户目标和通用课程常识规划。
 10. 如果用户明确要求 N 章，chapters 数量必须等于 N；如果要求 A-B 章，chapters 数量必须落在这个范围内；没有明确章数时参考章节规划合同，紧凑节奏也要拆出足够的可授课模块，但资料很少或目标很窄时可以合理少于参考下限。
+11. build constraints 必须根据用户原始要求和已回答的前置诊断选择输出：
+    - 精炼提纲：chapter_length_profile=`outline`，每章 min/target/max 约 1400/1800/2200 字；
+    - 标准讲解：`standard`，约 2400/3000/3600 字；这是没有明确选择时的默认值；
+    - 细致推导：`detailed`，约 3400/4200/5000 字；
+    - 从零铺垫：`foundation`，约 4200/5200/6200 字。
+    选项文案可能不同，要按语义映射；用户明确给出篇幅时优先遵守。三个数字必须满足 min <= target <= max，不要只在 plan 文案里描述篇幅。
 
 严格按以下格式输出：
 {COURSE_NAME_START}课程短标题{COURSE_NAME_END}
@@ -153,6 +162,9 @@ plan 字段正文
 {SUGGESTION_START}
 suggestion 字段正文
 {SUGGESTION_END}
+{BUILD_CONSTRAINTS_START}
+{{"chapter_length_profile":"standard","chapter_min_words":2400,"chapter_target_words":3000,"chapter_max_words":3600}}
+{BUILD_CONSTRAINTS_END}
 {CHAPTERS_START}
 [{{"title":"知识块名称","objective":"本章独有的可观察学习结果","required_elements":["具体概念、方法、题型或易错对象"]}}]
 {CHAPTERS_END}
@@ -224,7 +236,10 @@ def build_planner_diagnosis_messages(
 题面和选项要求：
 - question 通常 8-24 个中文字符，直问一个可执行取舍。
 - 每题 options 必须正好 4 个互斥选项。
-- 每个 option 通常 4-12 个中文字符，最长不超过 16 个中文字符。
+- 每个 option 必须使用“短标签｜具体影响”的格式：短标签便于选择，具体影响说明该选项会怎样改变后续课程文档。
+- 短标签通常 4-10 个中文字符；具体影响通常 8-24 个中文字符；整个 option 最长不超过 48 个中文字符。
+- 影响说明必须写可执行结果，例如每章目标字数、讲解层次、推导展开、背景补充、例题数量、变式密度、小测题量、答案步骤、错因提示或模块重心，不能只写“更详细”“更适合”等空话。
+- 章末测试是当前文档发布合同的固定组成部分；练习密度最低的选项也要保留 1-2 道短测，只能调整题量与解析粒度，不能写“不设小测”“取消测试”。
 - 不把诊断写成知识测验，不问抽象人格或无法写进文档的偏好。
 - 不承诺提分、掌握或通过考试等无法验证的效果。
 
@@ -235,7 +250,7 @@ purpose 必须以“文档落点：”开头，明确这道题会改变哪些实
 - 四个问题分别补齐四个不同的课程级未决条件，没有重复用户已经明确的信息；若篇幅细致程度和题目/解析密度尚未明确，必须覆盖这两项。
 - 每个问题的答案都会实质改变多个章节或全课生成策略，整体范围没有被输入中的某一项悄悄缩窄。
 - JSON 数组正好 4 项，每项都有 question、purpose、options。
-- 每个 options 正好 4 个不重复短标签。
+- 每个 options 正好 4 个不重复的“短标签｜具体影响”，四种影响形成清晰梯度或互斥取舍。
 - 四题只控制 Planner 与 DocGen 能落实的课程结构和文档生成策略，不延伸到 Examine/Profile。
 
 输出内容只包含：
@@ -270,13 +285,13 @@ purpose 必须以“文档落点：”开头，明确这道题会改变哪些实
 
 输出 JSON 结构：
 [
-  {{"question":"针对当前课程的短问题","purpose":"文档落点：会改变的正文部件","options":["短选项一","短选项二","短选项三","短选项四"]}}
+  {{"question":"针对当前课程的短问题","purpose":"文档落点：会改变的正文部件","options":["短标签一｜对应的具体生成影响","短标签二｜对应的具体生成影响","短标签三｜对应的具体生成影响","短标签四｜对应的具体生成影响"]}}
 ]
 
 严格按以下格式输出：
 {COURSE_NAME_START}课程短标题{COURSE_NAME_END}
 {DIAGNOSE_START}
-[{{"question":"问题文本","purpose":"文档落点：具体生成策略","options":["短选项一","短选项二","短选项三","短选项四"]}}]
+[{{"question":"问题文本","purpose":"文档落点：具体生成策略","options":["短标签一｜具体影响","短标签二｜具体影响","短标签三｜具体影响","短标签四｜具体影响"]}}]
 {DIAGNOSE_END}
 """.strip()
     messages = [
@@ -312,6 +327,7 @@ def build_planner_repair_messages(
 {COURSE_NAME_START}非空课程短标题{COURSE_NAME_END}
 {PLAN_START}...{PLAN_END}
 {SUGGESTION_START}...{SUGGESTION_END}
+{BUILD_CONSTRAINTS_START}合法 JSON 对象{BUILD_CONSTRAINTS_END}
 {CHAPTERS_START}合法 JSON 数组{CHAPTERS_END}
 每个章节必须完整包含非空的 title、objective、required_elements；不要新增写作策略字段，也不要用固定通用话术补字段。
 
@@ -335,7 +351,7 @@ def build_planner_diagnosis_repair_messages(
 必须严格包含：
 {COURSE_NAME_START}非空课程短标题{COURSE_NAME_END}
 {DIAGNOSE_START}正好四项的合法 JSON 数组{DIAGNOSE_END}
-每项必须完整包含非空 question、以“文档落点：”开头的 purpose，以及正好四个互不重复的短 options。
+每项必须完整包含非空 question、以“文档落点：”开头的 purpose，以及正好四个互不重复的“短标签｜具体影响” options；每个 option 最长 48 个字符。
 
 上一轮错误输出：
 {invalid_output[:6000]}
@@ -356,6 +372,7 @@ def _render_previous_planner(latest_plan: dict[str, Any] | None) -> str:
         "diagnose_status": str(latest_plan.get("diagnose_status") or ""),
         "diagnose_note": str(latest_plan.get("diagnose_note") or ""),
         "chapters": list(latest_plan.get("chapters") or []),
+        "build_constraints": dict(latest_plan.get("build_constraints") or {}),
     }
     return json.dumps(payload, ensure_ascii=False, indent=2)
 
@@ -363,6 +380,8 @@ def _render_previous_planner(latest_plan: dict[str, Any] | None) -> str:
 __all__ = [
     "CHAPTERS_END",
     "CHAPTERS_START",
+    "BUILD_CONSTRAINTS_END",
+    "BUILD_CONSTRAINTS_START",
     "COURSE_NAME_END",
     "COURSE_NAME_START",
     "DIAGNOSE_END",

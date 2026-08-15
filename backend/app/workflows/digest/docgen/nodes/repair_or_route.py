@@ -53,8 +53,10 @@ def build_repair_or_route_node(*, context: WorkflowContext):
             current_stage_description="正在处理复核回流动作：执行安全局部修补，其余重动作记录为 warning。",
         )
         allow_llm_patches = str(state.get("digest_mode") or "").strip().lower() != "sprint"
-        # Sprint keeps one semantic writing pass. Deterministic presentation
-        # repairs still run, while semantic gaps remain visible as warnings.
+        # Sprint normally keeps one semantic writing pass. Deterministic
+        # presentation repairs, malformed unit tests and objectively short
+        # chapters are the bounded exceptions; other semantic gaps remain
+        # visible as warnings.
         repaired, updated_actions, unresolved, repair_trace = await repair_or_route_review_actions(
             reviewed_chapters=reviewed,
             review_actions=actions,

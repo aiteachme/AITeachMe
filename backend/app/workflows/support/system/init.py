@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 from app.schemas.system import InitData, RuntimeUser
-from app.shared.infra.runtime import get_app_version, resolve_app_mode, resolve_auth_enabled
+from app.shared.infra.runtime import (
+    get_app_version,
+    resolve_app_mode,
+    resolve_auth_enabled,
+    resolve_credits_enabled,
+)
 
 
 def build_init_data(
@@ -17,6 +22,7 @@ def build_init_data(
     """Build frontend runtime initialization data."""
 
     auth_enabled = resolve_auth_enabled()
+    credits_enabled = resolve_credits_enabled()
     return InitData(
         mode=resolve_app_mode(),
         auth_enabled=auth_enabled,
@@ -30,6 +36,7 @@ def build_init_data(
         ),
         feature_flags={
             "auth": auth_enabled,
+            "credits": credits_enabled,
             "files": True,
             "knowledge": True,
             "chat": True,

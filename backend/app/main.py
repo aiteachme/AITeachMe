@@ -415,7 +415,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     from app.workflows.ingest import run_ingest_recovery_loop
     from app.workflows.support.system import refresh_community_qr_cache
     from app.shared.infra.llm_support.litellm_loader import warm_litellm
-    from app.api.exams import run_exam_grading_recovery_loop
+    from app.workflows.examine.recovery import run_exam_grading_recovery_loop
+    from app.workflows.support.credits import run_credit_reservation_recovery_loop
     from app.workflows.profile.sync import run_exam_profile_sync_recovery_loop
     from app.workflows.examine.initial_exam import run_course_initial_exam_recovery_loop
 
@@ -430,6 +431,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         kind="exam.grading.recovery",
         name="exam.grading.recovery",
         dedupe_key="exam.grading.recovery",
+    )
+    app.state.background_task_registry.spawn(
+        run_credit_reservation_recovery_loop(),
+        kind="credits.recovery",
+        name="credits.recovery",
+        dedupe_key="credits.recovery",
     )
     app.state.background_task_registry.spawn(
         run_course_initial_exam_recovery_loop(task_registry=app.state.background_task_registry),
@@ -616,6 +623,7 @@ def _register_exception_handlers(app: FastAPI) -> None:
 
 def _register_routers(app: FastAPI) -> None:
     from app.api.auth import router as auth_router
+    from app.api.credits import admin_router, router as credits_router
     from app.api.chats import global_router as global_chats_router
     from app.api.chats import router as chats_router
     from app.api.exams import router as exams_router
@@ -632,6 +640,8 @@ def _register_routers(app: FastAPI) -> None:
     app.include_router(health_router)
     app.include_router(system_router)
     app.include_router(auth_router)
+    app.include_router(credits_router)
+    app.include_router(admin_router)
     app.include_router(courses_router)
     app.include_router(user_files_router)
     app.include_router(files_router)

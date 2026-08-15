@@ -86,9 +86,9 @@ const BARE_LATEX_TEXT_COMMANDS: Record<string, string> = {
   leftarrow: "←",
 };
 const RAW_LATEX_MATH_COMMAND_RE =
-  /\\(?:sqrt|frac|lim|sin|cos|tan|cot|ln|log|sum|int|Delta|delta|epsilon|varepsilon|theta|pi|infty|cup|cap|leq?|geq?|neq|to|sim|pm|cdot|times)\b/;
+  /\\(?:sqrt|frac|lim|sin|cos|tan|cot|ln|log|sum|int|Delta|delta|epsilon|varepsilon|theta|pi|infty|cup|cap|leq?|geq?|neq|to|sim|pm|cdot|times)(?![A-Za-z])/;
 const RAW_LATEX_MATH_FRAGMENT_RE =
-  /((?:[A-Za-z0-9_+\-*/=<>≤≥^{}()[\],.，、:：;； \t]|\\[A-Za-z]+|\\[{}])+\\(?:sqrt|frac|lim|sin|cos|tan|cot|ln|log|sum|int|Delta|delta|epsilon|varepsilon|theta|pi|infty|cup|cap|leq?|geq?|neq|to|sim|pm|cdot|times)\b(?:[A-Za-z0-9_+\-*/=<>≤≥^{}()[\],.，、:：;； \t]|\\[A-Za-z]+|\\[{}])*)/g;
+  /((?:[A-Za-z0-9_+\-*/=<>≤≥^{}()[\],.，、:：;； \t]|\\[A-Za-z]+|\\[{}])*\\(?:sqrt|frac|lim|sin|cos|tan|cot|ln|log|sum|int|Delta|delta|epsilon|varepsilon|theta|pi|infty|cup|cap|leq?|geq?|neq|to|sim|pm|cdot|times)(?![A-Za-z])(?:[A-Za-z0-9_+\-*/=<>≤≥^{}()[\],.，、:：;； \t]|\\[A-Za-z]+|\\[{}])*)/g;
 const CALLOUT_LEADING_ICON_RE =
   /^[\s\uFE0F]*(?:(?:💡|📌|🎯|🔍|🧩|🚀|✨|✅|🔥|⭐|⚠️|⚠|❗|❌|⛔|🚫|📝|🔗|📚)\s*)+/u;
 const INTERACTIVE_MARKER_RE = /<!--\s*ATM_INTERACTIVE_(?:OVERLAY|PLAN):[\s\S]*?-->\s*/g;
@@ -2573,14 +2573,6 @@ function isDocgenCoverAsset(src: string | undefined): boolean {
   return typeof src === "string" && /\/files\/assets\/docgen\/cover\./i.test(src);
 }
 
-function getBearerToken(): string {
-  try {
-    return window.localStorage.getItem("token") ?? "";
-  } catch {
-    return "";
-  }
-}
-
 function MarkdownImage({
   src,
   alt,
@@ -2609,11 +2601,6 @@ function MarkdownImage({
       setBlobSrc("");
       return;
     }
-    if (!isPublicShareAsset && !getBearerToken()) {
-      setBlobSrc("");
-      return;
-    }
-
     const controller = new AbortController();
     let objectUrl = "";
     const consumeAsset = async (response: Response) => {

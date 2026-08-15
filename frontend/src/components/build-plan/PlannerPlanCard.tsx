@@ -4,7 +4,7 @@ import { BookOpen, RefreshCw } from "lucide-react";
 import { PlannerPreviewMarkdown } from "./PlannerPreviewMarkdown";
 
 export const PLANNER_CARD_CLASSNAME =
-  "rounded-md border border-zinc-200/80 bg-white px-5 py-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:border-slate-800 dark:bg-slate-950";
+  "rounded-lg border border-zinc-200 bg-white px-5 py-5 shadow-none dark:border-slate-800 dark:bg-slate-950";
 
 export interface PlannerPlanOutlineItem {
   title: string;

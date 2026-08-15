@@ -93,17 +93,18 @@ let backendOffline = false;
 let recoveryProbeTimer: number | null = null;
 let recoveryProbeAttempt = 0;
 let connectionIssueProbe: Promise<boolean> | null = null;
+let csrfToken: string | null = null;
 
-function getAccessToken(): string | null {
-  try {
-    return localStorage.getItem("token");
-  } catch {
-    return null;
-  }
+// Cookie sessions replaced bearer tokens. Remove the legacy credential once so
+// it cannot be recovered later by old application code or browser extensions.
+try {
+  window.localStorage.removeItem("token");
+} catch {
+  // Storage may be unavailable in SSR, privacy mode, or a restricted webview.
 }
 
-export function hasStoredAccessToken(): boolean {
-  return Boolean(getAccessToken());
+export function setApiCsrfToken(value: string | null | undefined): void {
+  csrfToken = value?.trim() || null;
 }
 
 function generateDeviceKey(): string {
@@ -198,15 +199,14 @@ function createTrackedAbortSignal(externalSignal?: AbortSignalLike | null): {
   };
 }
 
-function createApiFetchHeaders(headers?: HeadersInit): Headers {
+function createApiFetchHeaders(headers?: HeadersInit, requestMethod = "GET"): Headers {
   const nextHeaders = new Headers(headers);
   nextHeaders.set("X-Device-Key", getDeviceKey());
 
-  const token = getAccessToken();
-  if (token) {
-    nextHeaders.set("Authorization", `Bearer ${token}`);
-  } else {
-    nextHeaders.delete("Authorization");
+  nextHeaders.delete("Authorization");
+  const method = requestMethod.toUpperCase();
+  if (csrfToken && !["GET", "HEAD", "OPTIONS"].includes(method)) {
+    nextHeaders.set("X-CSRF-Token", csrfToken);
   }
 
   return nextHeaders;
@@ -403,7 +403,7 @@ export async function runTrackedApiFetch<T>(
     const response = await fetch(buildApiUrl(url), {
       ...init,
       credentials: init.credentials ?? "include",
-      headers: createApiFetchHeaders(init.headers),
+      headers: createApiFetchHeaders(init.headers, init.method),
       signal: trackedSignal.signal,
     });
     return await consume(response);
@@ -1014,11 +1014,10 @@ instance.interceptors.request.use((config) => {
   const headers = AxiosHeaders.from(config.headers);
   headers.set("X-Device-Key", getDeviceKey());
 
-  const token = getAccessToken();
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
-  } else {
-    headers.delete("Authorization");
+  headers.delete("Authorization");
+  const method = String(config.method ?? "GET").toUpperCase();
+  if (csrfToken && !["GET", "HEAD", "OPTIONS"].includes(method)) {
+    headers.set("X-CSRF-Token", csrfToken);
   }
   config.headers = headers;
   
@@ -1045,6 +1044,10 @@ function cleanupTrackedRequest(config?: AxiosRequestConfig | null) {
 instance.interceptors.response.use(
   (response: AxiosResponse) => {
     cleanupTrackedRequest(response.config);
+    const nextCsrfToken = response.data?.data?.csrf_token;
+    if (typeof nextCsrfToken === "string" || nextCsrfToken === null) {
+      setApiCsrfToken(nextCsrfToken);
+    }
     return response;
   },
   (error) => {
@@ -1189,6 +1192,19 @@ export function getApiErrorData<T>(error: unknown): T | null {
   }
 
   return data as T;
+}
+
+export function getCreditInsufficientMessage(error: unknown): string | null {
+  if (getApiErrorCode(error) !== "CREDIT_INSUFFICIENT") {
+    return null;
+  }
+  const data = getApiErrorData<{ required?: number; available?: number }>(error);
+  const required = Number(data?.required);
+  const available = Number(data?.available);
+  if (Number.isFinite(required) && Number.isFinite(available)) {
+    return `当前可用额度 ${available}，本次需要 ${required}。请前往“AI 额度”查看记录或联系管理员。`;
+  }
+  return "AI 额度不足，请前往“AI 额度”查看记录或联系管理员。";
 }
 
 export function isApiErrorStatus(

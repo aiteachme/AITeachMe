@@ -345,7 +345,7 @@ export function DigestBuildProgress({
           : "border-slate-200 bg-white";
 
     return (
-      <section className={`rounded-lg border px-2.5 py-2 shadow-sm sm:px-3 sm:py-2.5 ${compactTone} ${className}`.trim()}>
+      <section className={`rounded-lg border px-2.5 py-2 sm:px-3 sm:py-2.5 ${compactTone} ${className}`.trim()}>
         <div className="flex min-w-0 flex-wrap items-start justify-between gap-2 sm:flex-nowrap sm:gap-3">
           <div className="flex min-w-0 flex-1 items-start gap-2">
             <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-slate-50 ring-1 ring-slate-200">
@@ -405,7 +405,7 @@ export function DigestBuildProgress({
   }
 
   return (
-    <section className={`rounded-2xl border px-4 py-4 shadow-sm ${tone} ${className}`.trim()}>
+    <section className={`rounded-lg border px-4 py-4 ${tone} ${className}`.trim()}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 text-slate-900 dark:text-slate-100">
@@ -556,7 +556,7 @@ export function KnowledgeGraphBuildProgress({
   );
 
   return (
-    <section className={`rounded-lg border px-4 py-3 shadow-sm ${tone} ${className}`.trim()}>
+    <section className={`rounded-lg border px-4 py-3 ${tone} ${className}`.trim()}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 text-slate-900 dark:text-slate-100">

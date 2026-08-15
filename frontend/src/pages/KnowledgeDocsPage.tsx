@@ -7230,7 +7230,7 @@ export function KnowledgeDocsPage() {
           className="shrink-0 bg-white/92 backdrop-blur-md dark:bg-slate-900/92"
           href={courseId ? buildCoursePath(courseId, "nav") : undefined}
         />
-        <div className="relative flex-1 min-h-0 w-full overflow-hidden pt-16">
+        <div className="relative flex-1 min-h-0 w-full overflow-hidden">
           <BuildView
             className="h-full"
             isFetching={docMarkdownQuery.isFetching}
@@ -7506,7 +7506,7 @@ export function KnowledgeDocsPage() {
           onMouseUp={handleTextSelect}
         >
           <div
-            className="min-h-full px-4 pb-8 pt-20 md:px-6 lg:px-8"
+            className="min-h-full px-4 pb-8 pt-4 md:px-6 md:pt-5 lg:px-8"
             style={desktopCommentScrollMinHeight > 0 ? { minHeight: desktopCommentScrollMinHeight } : undefined}
           >
             <div
@@ -7530,7 +7530,7 @@ export function KnowledgeDocsPage() {
                   >
                   <CourseVectorNotice
                     status={docMarkdownQuery.data?.vector_status}
-                    className="mb-6"
+                    className="mb-3"
                     onRebuild={courseId ? () => vectorIndexRebuildMutation.mutate() : undefined}
                     rebuildPending={vectorIndexRebuildMutation.isPending}
                     rebuildDisabled={!courseId}
@@ -7538,7 +7538,7 @@ export function KnowledgeDocsPage() {
                   <CourseGraphNotice
                     status={graphStatus}
                     unhealthy={graphUnhealthy}
-                    className="mb-6"
+                    className="mb-3"
                     onRebuild={courseId ? () => graphRebuildFromNoticeMutation.mutate() : undefined}
                     rebuildPending={graphRebuildFromNoticeMutation.isPending}
                     rebuildDisabled={!courseId}

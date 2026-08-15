@@ -24,6 +24,7 @@ class DocGenModelStep(str, Enum):
     CHAPTER_EXECUTION_BRIEF = "build_chapter_execution_briefs.build_chapter_execution_brief"
     QUERY_PLANNING = "generate_chapters.query_planning"
     WRITER = "generate_chapters.writer"
+    CHAPTER_UNIT_TEST = "generate_chapters.chapter_unit_test"
     CHAPTER_REWRITE = "generate_chapters.rewrite"
     MERMAID_PLACEHOLDER = "enhance_chapters.mermaid_placeholder"
     STATIC_HTML_FIGURE = "enhance_chapters.static_html_figure"
@@ -127,7 +128,7 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         max_tokens=10000,
         timeout_s=120,
         temperature=0.1,
-        note="一次整本结构化调用，同时生成跨章语义骨架和全部章节执行 brief。",
+        note="一次整本结构化调用只生成跨章共享语义骨架，各章执行 brief 在后续 Send 分支并行生成。",
     ),
     DocGenModelStep.CHAPTER_EXECUTION_BRIEF: DocGenModelPolicy(
         step=DocGenModelStep.CHAPTER_EXECUTION_BRIEF,
@@ -156,6 +157,15 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         max_retries=5,
         temperature=0.5,
         note="实际 model slot 由 digest mode profile 决定。",
+    ),
+    DocGenModelStep.CHAPTER_UNIT_TEST: DocGenModelPolicy(
+        step=DocGenModelStep.CHAPTER_UNIT_TEST,
+        call_type="structured",
+        model="light",
+        max_tokens=5200,
+        timeout_s=120,
+        temperature=0.2,
+        note="按章结构化生成题目对象，再由代码确定性组装 QUESTION/ANSWER 展示协议。",
     ),
     DocGenModelStep.CHAPTER_REWRITE: DocGenModelPolicy(
         step=DocGenModelStep.CHAPTER_REWRITE,

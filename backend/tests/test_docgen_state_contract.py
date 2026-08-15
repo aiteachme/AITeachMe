@@ -10,7 +10,13 @@ from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.digest.common.metrics import DigestTokenSummary
 from app.workflows.digest.common.markdown_knowledge_anchors import MarkdownKnowledgeUnit
 from app.workflows.digest.docgen import graph
-from app.workflows.digest.docgen.lib import chapter_planning, document_backbone as document_backbone_lib, quality, repair
+from app.workflows.digest.docgen.lib import (
+    chapter_planning,
+    document_backbone as document_backbone_lib,
+    quality,
+    repair,
+    unit_tests,
+)
 from app.workflows.digest.docgen.lib.document_backbone import build_document_backbone as build_document_backbone_value
 from app.workflows.digest.docgen.lib.models import (
     BackboneResearchAgenda,
@@ -27,7 +33,6 @@ from app.workflows.digest.docgen.lib.models import (
     DocGenContext,
     DocGenIntentProfile,
     DocumentBackbone,
-    DocumentPreparationBundle,
     DocumentConsistencyReport,
     EnhancedChapterDraft,
     FileMaterialSummary,
@@ -128,36 +133,21 @@ async def test_document_backbone_uses_one_llm_slot_and_preserves_measured_source
     async def fake_completion(messages, **kwargs):
         captured["messages"] = messages
         captured["response_model"] = kwargs.get("response_model")
-        return DocumentPreparationBundle(
-            document_backbone=DocumentBackbone(
-                canonical_glossary=[
-                    CanonicalGlossaryItem(
-                        term="行列配对",
-                        definition="矩阵乘法中对应行与列的元素配对求积后相加。",
-                        source_hint="notes.md/s1",
-                        target_chapters=[1],
-                    )
-                ],
-                source_trust_summary={"model_supplied": True},
-            ),
-            chapter_execution_briefs=[
-                ChapterExecutionBrief(
-                    chapter_index=1,
-                    teaching_outline=["先解释维度条件，再演示行列配对"],
-                    writing_instructions=["使用资料中的矩阵算例，并给出一次维度不匹配反例。"],
-                    concept_targets=["行列配对"],
-                    retrieval_queries=[
-                        "矩阵乘法 行列配对",
-                        "矩阵乘法 维度条件",
-                        "矩阵乘法 反例",
-                    ],
+        return DocumentBackbone(
+            canonical_glossary=[
+                CanonicalGlossaryItem(
+                    term="行列配对",
+                    definition="矩阵乘法中对应行与列的元素配对求积后相加。",
+                    source_hint="notes.md/s1",
+                    target_chapters=[1],
                 )
             ],
+            source_trust_summary={"model_supplied": True},
         )
 
     monkeypatch.setattr(document_backbone_lib, "acompletion_with_fallback", fake_completion)
 
-    backbone, briefs, warnings = await document_backbone_lib.generate_document_backbone(
+    backbone, warnings = await document_backbone_lib.generate_document_backbone(
         course_name="线性代数",
         digest_mode="systematic",
         task_seeds=[
@@ -178,10 +168,9 @@ async def test_document_backbone_uses_one_llm_slot_and_preserves_measured_source
             )
         ],
         file_summaries=[FileMaterialSummary(file_id="f1", filename="notes.md")],
-        max_retrieval_queries_per_chapter=2,
     )
 
-    assert captured["response_model"] is DocumentPreparationBundle
+    assert captured["response_model"] is DocumentBackbone
     assert backbone.canonical_glossary[0].term == "行列配对"
     assert backbone.source_trust_summary == {
         "evidence_unit_count": 1,
@@ -190,41 +179,22 @@ async def test_document_backbone_uses_one_llm_slot_and_preserves_measured_source
         "file_summary_count": 1,
     }
     assert backbone.fallback_used is False
-    assert briefs[0].teaching_outline == ["先解释维度条件，再演示行列配对"]
-    assert briefs[0].writing_instructions == ["使用资料中的矩阵算例，并给出一次维度不匹配反例。"]
-    assert briefs[0].retrieval_queries == ["矩阵乘法 行列配对", "矩阵乘法 维度条件"]
-    assert "retrieval_queries 每章最多 2 条" in captured["messages"][1]["content"]
+    assert "不要生成章节 brief" in captured["messages"][0]["content"]
     assert warnings == []
 
 
 @pytest.mark.anyio
-async def test_document_backbone_streams_validated_sections_and_chapter_briefs(monkeypatch) -> None:
-    streamed_bundle = DocumentPreparationBundle(
-        document_backbone=DocumentBackbone(
-            canonical_glossary=[
-                CanonicalGlossaryItem(term="极限", definition="函数趋近过程的稳定描述。")
-            ],
-            canonical_claim_pool=[
-                CanonicalClaim(
-                    claim_id="claim_limit",
-                    claim_text=r"\lim_{x\to a}f(x) 描述趋近结果，不等同于直接取值。",
-                    target_chapter=1,
-                )
-            ],
-        ),
-        chapter_execution_briefs=[
-            ChapterExecutionBrief(
-                chapter_index=1,
-                teaching_outline=["极限直观", "极限定义"],
-                writing_instructions=["先直观后形式化。"],
-                retrieval_queries=["函数极限 定义"],
-            ),
-            ChapterExecutionBrief(
-                chapter_index=2,
-                teaching_outline=["导数定义", "求导法则"],
-                writing_instructions=["用割线到切线解释导数。"],
-                retrieval_queries=["导数 几何意义"],
-            ),
+async def test_document_backbone_streams_validated_shared_sections(monkeypatch) -> None:
+    streamed_bundle = DocumentBackbone(
+        canonical_glossary=[
+            CanonicalGlossaryItem(term="极限", definition="函数趋近过程的稳定描述。")
+        ],
+        canonical_claim_pool=[
+            CanonicalClaim(
+                claim_id="claim_limit",
+                claim_text=r"\lim_{x\to a}f(x) 描述趋近结果，不等同于直接取值。",
+                target_chapter=1,
+            )
         ],
     ).model_dump_json().replace(r"\\lim", r"\lim")
 
@@ -247,7 +217,7 @@ async def test_document_backbone_streams_validated_sections_and_chapter_briefs(m
     monkeypatch.setattr(document_backbone_lib, "acompletion_with_fallback", fail_structured_fallback)
     monkeypatch.setattr(document_backbone_lib, "_STREAM_PREVIEW_MIN_CHARS", 1)
 
-    backbone, briefs, warnings = await document_backbone_lib.generate_document_backbone(
+    backbone, warnings = await document_backbone_lib.generate_document_backbone(
         course_name="高数复习",
         digest_mode="systematic",
         task_seeds=[
@@ -261,7 +231,6 @@ async def test_document_backbone_streams_validated_sections_and_chapter_briefs(m
     )
 
     assert backbone.canonical_glossary[0].term == "极限"
-    assert [brief.chapter_index for brief in briefs] == [1, 2]
     assert warnings[0].warning_id == "bb_no_evidence_units"
     streamed_sections = {
         payload["section"]
@@ -275,28 +244,18 @@ async def test_document_backbone_streams_validated_sections_and_chapter_briefs(m
         "canonical_claim_pool",
         "confusion_map",
     }
-    assert [
-        payload["chapter_index"]
-        for kind, payload in progress_events
-        if kind == "chapter_execution_brief"
-    ] == [1, 2]
+    assert all(kind != "chapter_execution_brief" for kind, _ in progress_events)
 
 
 @pytest.mark.anyio
-async def test_document_preparation_rejects_duplicate_brief_indices_and_falls_back(monkeypatch) -> None:
+async def test_document_backbone_falls_back_when_model_contract_is_invalid(monkeypatch) -> None:
     async def fake_completion(*args, **kwargs):
         del args, kwargs
-        return DocumentPreparationBundle(
-            document_backbone=DocumentBackbone(),
-            chapter_execution_briefs=[
-                ChapterExecutionBrief(chapter_index=1),
-                ChapterExecutionBrief(chapter_index=1),
-            ],
-        )
+        return []
 
     monkeypatch.setattr(document_backbone_lib, "acompletion_with_fallback", fake_completion)
 
-    backbone, briefs, warnings = await document_backbone_lib.generate_document_backbone(
+    backbone, warnings = await document_backbone_lib.generate_document_backbone(
         course_name="线性代数",
         digest_mode="systematic",
         task_seeds=[
@@ -309,36 +268,25 @@ async def test_document_preparation_rejects_duplicate_brief_indices_and_falls_ba
     )
 
     assert backbone.fallback_used is True
-    assert [brief.chapter_index for brief in briefs] == [1, 2]
-    assert all(brief.fallback_used for brief in briefs)
     assert {warning.warning_id for warning in warnings} == {"bb_no_evidence_units", "bb_llm_fallback"}
 
 
 @pytest.mark.anyio
-async def test_prepare_chapter_tasks_accumulates_internal_llm_calls(monkeypatch) -> None:
-    def fake_builder(llm_calls: int, output_key: str):
-        def build_node(*, context):
-            del context
+def test_chapter_brief_router_fans_out_one_branch_per_seed() -> None:
+    sends = graph.build_chapter_brief_sends(
+        {
+            "course_id": "course-parallel-brief",
+            "requested_at": datetime(2026, 5, 1, tzinfo=timezone.utc),
+            "chapter_task_seeds": [
+                ChapterGenerationTaskSeed(chapter_index=2, confirmed_title="导数").model_dump(mode="json"),
+                ChapterGenerationTaskSeed(chapter_index=1, confirmed_title="极限").model_dump(mode="json"),
+            ],
+            "document_backbone": {},
+        }
+    )
 
-            async def node(state):
-                del state
-                return {output_key: True, "llm_calls_total": llm_calls}
-
-            return node
-
-        return build_node
-
-    monkeypatch.setattr(graph, "build_confirm_and_seed_backbone_node", fake_builder(0, "seed_ready"))
-    monkeypatch.setattr(graph, "build_document_backbone_node", fake_builder(1, "backbone_ready"))
-    monkeypatch.setattr(graph, "build_assemble_chapter_tasks_node", fake_builder(0, "tasks_ready"))
-
-    node = graph._build_prepare_chapter_tasks_node(context=object())
-    result = await node({})
-
-    assert result["seed_ready"] is True
-    assert result["backbone_ready"] is True
-    assert result["tasks_ready"] is True
-    assert result["llm_calls_total"] == 1
+    assert [item.arg["chapter_task_seed"]["chapter_index"] for item in sends] == [1, 2]
+    assert all(item.node == graph.NODE_BUILD_CHAPTER_BRIEF for item in sends)
 
 
 def test_docgen_lane_summary_uses_final_published_quality_metrics() -> None:
@@ -453,8 +401,8 @@ def test_chapter_generation_plan_ignores_planner_default_length_for_writer_budge
     )
 
     task = plan.chapters[0]
-    assert task.min_word_count == 1050
-    assert task.target_word_count == 1850
+    assert task.min_word_count == 3400
+    assert task.target_word_count == 4200
 
 
 def test_sprint_plan_expands_one_writer_budget_for_dense_confirmed_contract() -> None:
@@ -490,8 +438,43 @@ def test_sprint_plan_expands_one_writer_budget_for_dense_confirmed_contract() ->
     )
 
     task = plan.chapters[0]
-    assert task.min_word_count == 1000
-    assert task.target_word_count == 1500
+    assert task.min_word_count == 1700
+    assert task.target_word_count == 2250
+
+
+def test_chapter_generation_plan_uses_planner_per_chapter_word_contract() -> None:
+    plan = chapter_planning.assemble_chapter_generation_plan(
+        docgen_context=DocGenContext(
+            course_name="函数",
+            digest_mode="systematic",
+            build_constraints={
+                "chapter_length_profile": "standard",
+                "chapter_min_words": 2400,
+                "chapter_target_words": 3000,
+                "chapter_max_words": 3600,
+            },
+        ),
+        confirmed_chapters=[
+            {"chapter_index": 1, "title": "函数定义", "objective": "讲清函数定义"},
+        ],
+        locked_titles=[
+            LockedChapterTitle(chapter_index=1, confirmed_title="函数定义", enhanced_title="函数定义"),
+        ],
+        intent_profile=DocGenIntentProfile(depth_level="standard"),
+        file_summaries=[],
+        task_seeds=[
+            ChapterGenerationTaskSeed(
+                chapter_index=1,
+                confirmed_title="函数定义",
+                chapter_goal="讲清函数定义",
+                required_elements=["定义域", "对应法则"],
+            )
+        ],
+        chapter_execution_briefs=[ChapterExecutionBrief(chapter_index=1)],
+    )
+
+    assert plan.chapters[0].min_word_count == 2400
+    assert plan.chapters[0].target_word_count == 3000
 
 
 def test_chapter_generation_plan_preserves_planner_writing_instructions() -> None:
@@ -871,14 +854,6 @@ async def test_backbone_node_emits_early_dispatch_and_preliminary_kg(monkeypatch
                     )
                 ]
             ),
-            [
-                ChapterExecutionBrief(
-                    chapter_index=1,
-                    teaching_outline=["先说明维度匹配，再讲行列配对"],
-                    writing_instructions=["用资料中的算例解释规则。"],
-                    concept_targets=["行列配对"],
-                )
-            ],
             [],
         )
 
@@ -950,7 +925,7 @@ async def test_backbone_node_emits_early_dispatch_and_preliminary_kg(monkeypatch
     )
 
     assert result["guideline"]["canonical_glossary"][0]["term"] == "行列配对"
-    assert result["chapter_execution_briefs"][0]["writing_instructions"] == ["用资料中的算例解释规则。"]
+    assert "chapter_execution_briefs" not in result
     assert result["chapters_enhanced"][0]["chapter_index"] == 1
     assert result["dispatch_table"]["items"][0]["source_section_refs"] == ["s1"]
     assert result["dispatch_table"]["items"][0]["evidence_ids"] == ["e1"]
@@ -1311,8 +1286,9 @@ def test_docgen_kg_draft_blocks_unresolved_repair_warning_but_accepts_applied_re
 
 
 @pytest.mark.anyio
-async def test_chapter_brief_node_compiles_confirmed_contract_without_llm(monkeypatch) -> None:
+async def test_chapter_brief_node_generates_one_llm_brief_per_fanout_branch(monkeypatch) -> None:
     progress_payload: dict[str, object] = {}
+    captured: dict[str, object] = {}
 
     async def fake_publish(*args, **kwargs):
         progress_payload.update(dict(kwargs.get("payload") or {}))
@@ -1320,6 +1296,18 @@ async def test_chapter_brief_node_compiles_confirmed_contract_without_llm(monkey
 
     monkeypatch.setattr(build_chapter_execution_briefs, "append_knowledge_build_recent_event", lambda *args, **kwargs: None)
     monkeypatch.setattr(build_chapter_execution_briefs, "publish_docgen_progress", fake_publish)
+
+    async def fake_build_brief(**kwargs):
+        captured.update(kwargs)
+        return ChapterExecutionBrief(
+            chapter_index=1,
+            teaching_outline=["先讲维度条件", "再演示行列配对"],
+            writing_instructions=["使用资料算例"],
+            concept_targets=["矩阵乘法"],
+            retrieval_queries=["矩阵乘法 行列配对"],
+        )
+
+    monkeypatch.setattr(build_chapter_execution_briefs, "build_chapter_execution_brief", fake_build_brief)
 
     node = build_chapter_execution_briefs.build_chapter_execution_briefs_node(
         context=WorkflowContext(workflow_name="digest.docgen", course_id="course_state_contract")
@@ -1349,25 +1337,23 @@ async def test_chapter_brief_node_compiles_confirmed_contract_without_llm(monkey
                 learner_profile_text="用户画像：基础薄弱。",
             ).model_dump(mode="json"),
             "user_profile": {"prompt_addendum": "课程画像：矩阵乘法错误率高。"},
-            "chapter_task_seeds": [
-                ChapterGenerationTaskSeed(
-                    chapter_index=1,
-                    confirmed_title="矩阵基础",
-                    enhanced_title="矩阵基础",
-                    chapter_goal="讲清矩阵乘法",
-                    required_elements=["矩阵乘法"],
-                    source_slices=[
-                        ChapterSourceSlice(
-                            chapter_index=1,
-                            file_id="f1",
-                            filename="notes.md",
-                            section_ref="s1",
-                            section_title="矩阵乘法",
-                            summary="矩阵乘法依赖行列配对",
-                        )
-                    ],
-                ).model_dump(mode="json")
-            ],
+            "chapter_task_seed": ChapterGenerationTaskSeed(
+                chapter_index=1,
+                confirmed_title="矩阵基础",
+                enhanced_title="矩阵基础",
+                chapter_goal="讲清矩阵乘法",
+                required_elements=["矩阵乘法"],
+                source_slices=[
+                    ChapterSourceSlice(
+                        chapter_index=1,
+                        file_id="f1",
+                        filename="notes.md",
+                        section_ref="s1",
+                        section_title="矩阵乘法",
+                        summary="矩阵乘法依赖行列配对",
+                    )
+                ],
+            ).model_dump(mode="json"),
             "document_backbone": DocumentBackbone(
                 canonical_glossary=[
                     CanonicalGlossaryItem(term="矩阵乘法", definition="按行列配对求和", target_chapters=[1])
@@ -1389,16 +1375,15 @@ async def test_chapter_brief_node_compiles_confirmed_contract_without_llm(monkey
         }
     )
 
-    brief = result["chapter_execution_briefs"][0]
+    brief = result["chapter_execution_brief_items"][0]
     assert brief["chapter_index"] == 1
-    assert brief["content_role_targets"] == {}
-    assert brief["teaching_outline"] == []
-    assert brief["example_coverage_plan"] == []
-    assert brief["retrieval_queries"] == ["矩阵基础", "矩阵乘法"]
-    assert result["kg_prefetch_status"] == "deferred_until_enhanced_chapters"
-    assert result["llm_calls_total"] == 0
-    assert progress_payload["kg_prefetch_started"] is False
-    assert progress_payload["brief_mode"] == "compiled_from_confirmed_contract"
+    assert brief["teaching_outline"] == ["先讲维度条件", "再演示行列配对"]
+    assert brief["retrieval_queries"] == ["矩阵乘法 行列配对"]
+    assert captured["glossary_terms"] == ["矩阵乘法"]
+    assert captured["claim_targets"] == ["矩阵乘法需要行列配对"]
+    assert result["llm_calls_total"] == 1
+    assert progress_payload["chapter_index"] == 1
+    assert progress_payload["fallback_used"] is False
 
 
 @pytest.mark.anyio
@@ -1407,9 +1392,9 @@ async def test_chapter_brief_node_rejects_missing_chapter_seeds() -> None:
     node = build_chapter_execution_briefs.build_chapter_execution_briefs_node(
         context=WorkflowContext(workflow_name="digest.docgen", course_id="course_state_contract")
     )
-    result = await node({"chapter_task_seeds": []})
+    result = await node({})
 
-    assert result == {"error": "缺少可生成执行 brief 的章节 seed。"}
+    assert result == {"error": "缺少当前章节的执行 brief seed。"}
 
 
 def test_writer_context_consumes_dispatch_guideline_and_evidence() -> None:
@@ -1912,6 +1897,8 @@ async def test_document_consistency_llm_review_adds_document_actions(monkeypatch
     assert captured_kwargs["response_model"] is LLMDocumentConsistencyReviewResult
     assert "A 表示矩阵" in captured_messages[1]["content"]
     assert "A 表示面积" in captured_messages[1]["content"]
+    assert "遮住现有答案再独立作答" in captured_messages[1]["content"]
+    assert "题解最终结论与给定答案一致" in captured_messages[1]["content"]
     assert "markdown_excerpt" not in captured_messages[1]["content"]
     assert report.passed is False
     assert report.source_summary["document_review_mode"] == "llm_structured_with_rule_guardrails"
@@ -2792,9 +2779,13 @@ async def test_repair_appends_unit_test_patch_to_chapter_end(monkeypatch) -> Non
             target_anchor="核心概念",
             patch_markdown=(
                 "## 单元测试\n\n"
-                "> [!QUESTION]\n"
-                "> **题目/任务**：判断面积单位是否统一。\n>\n"
-                "> **答案/结论**：必须先统一单位再计算。\n"
+                "> [!QUESTION] **Q01｜短答题｜基础｜考点：单位统一**\n>\n"
+                "> 判断面积计算前是否需要统一单位，并说明理由。\n\n"
+                "> [!ANSWER]\n>\n"
+                "> **答案**\n>\n"
+                "> 必须先统一单位再计算。\n>\n"
+                "> **解析步骤**\n>\n"
+                "> 不同单位的数值不能直接参与同一面积计算。\n"
             ),
         )
 
@@ -2824,7 +2815,7 @@ async def test_repair_appends_unit_test_patch_to_chapter_end(monkeypatch) -> Non
     assert updated_actions[0].status == "applied"
     assert traces[0].changed is True
     assert markdown.index("## 本章小结") < markdown.index("## 单元测试")
-    assert markdown.rstrip().endswith("> **答案/结论**：必须先统一单位再计算。")
+    assert markdown.rstrip().endswith("> 不同单位的数值不能直接参与同一面积计算。")
 
 
 @pytest.mark.anyio
@@ -2834,10 +2825,13 @@ async def test_sprint_repair_still_appends_required_unit_test(monkeypatch) -> No
             status="patch",
             patch_markdown=(
                 "## 单元测试\n\n"
-                "> [!QUESTION]\n"
-                "> **题目/任务**：说明面积计算前为什么要统一单位。\n>\n"
+                "> [!QUESTION] **Q01｜短答题｜基础｜考点：单位统一**\n>\n"
+                "> 说明面积计算前为什么要统一单位。\n\n"
                 "> [!ANSWER]\n"
-                "> **答案/结论**：不同单位的数值不能直接参与同一面积计算。\n"
+                ">\n> **答案**\n>\n"
+                "> 不同单位的数值不能直接参与同一面积计算。\n>\n"
+                "> **解析步骤**\n>\n"
+                "> 先统一量纲，再代入同一个面积公式。\n"
             ),
         )
 
@@ -2867,6 +2861,147 @@ async def test_sprint_repair_still_appends_required_unit_test(monkeypatch) -> No
     assert unresolved == []
     assert traces[0].changed is True
     assert traces[0].llm_attempted is True
+
+
+@pytest.mark.anyio
+async def test_sprint_repair_expands_objectively_short_chapter(monkeypatch) -> None:
+    calls = 0
+
+    async def fake_completion(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return repair._LocalMarkdownPatch(
+            status="patch",
+            patch_markdown=(
+                "## 定义域的边界判断\n\n"
+                "先列出表达式有意义的条件，再求这些条件的交集，并用边界值回代检查。"
+            ),
+        )
+
+    monkeypatch.setattr(repair, "acompletion_with_fallback", fake_completion)
+    chapter = ReviewedChapterDraft(
+        chapter_index=1,
+        title="函数",
+        markdown="# 函数\n\n## 核心概念\n\n函数描述输入与输出的对应关系。\n",
+    )
+    action = ReviewAction(
+        action_id="review_ch01_section_length",
+        action_type="section_patch",
+        chapter_index=1,
+        reason="章节偏短：当前约 1000 字，低于最低要求 2400 字。",
+        target_anchor="核心概念",
+        instruction="扩写本章核心小节。",
+    )
+
+    repaired, updated_actions, unresolved, traces = await repair.repair_or_route_review_actions(
+        reviewed_chapters=[chapter],
+        review_actions=[action],
+        allow_llm_patches=False,
+    )
+
+    assert calls == 1
+    assert unresolved == []
+    assert updated_actions[0].status == "applied"
+    assert traces[0].llm_attempted is True
+    assert "## 定义域的边界判断" in repaired[0].markdown
+
+
+@pytest.mark.anyio
+async def test_repair_replaces_malformed_unit_test_instead_of_appending_duplicate(monkeypatch) -> None:
+    async def fake_completion(*args, **kwargs):
+        return repair._LocalMarkdownPatch(
+            status="patch",
+            patch_markdown=(
+                "## 单元测试\n\n"
+                "> [!QUESTION] **Q01｜填空题｜基础｜考点：函数定义**\n>\n"
+                "> 函数有意义的自变量集合称为 ______。\n\n"
+                "> [!ANSWER]\n>\n> **答案**\n>\n> 定义域。\n>\n"
+                "> **解析步骤**\n>\n> 依据函数定义直接判断。\n"
+            ),
+        )
+
+    monkeypatch.setattr(repair, "acompletion_with_fallback", fake_completion)
+    chapter = ReviewedChapterDraft(
+        chapter_index=1,
+        title="函数",
+        markdown=(
+            "# 函数\n\n## 核心概念\n\n正文。\n\n## 单元测试\n\n"
+            "> [!ANSWER]\n> 旧答案。\n\n"
+            "> [!QUESTION] **Q01｜填空题｜基础｜考点：函数定义**\n> **题目**\n"
+        ),
+    )
+    action = ReviewAction(
+        action_id="review_ch01_unit_test",
+        action_type="section_patch",
+        chapter_index=1,
+        reason="单元测试题答格式不完整。",
+        target_anchor="单元测试",
+        instruction="完整替换单元测试。",
+    )
+
+    repaired, updated_actions, unresolved, traces = await repair.repair_or_route_review_actions(
+        reviewed_chapters=[chapter],
+        review_actions=[action],
+        allow_llm_patches=False,
+    )
+
+    assert unresolved == []
+    assert updated_actions[0].status == "applied"
+    assert traces[0].changed is True
+    assert repaired[0].markdown.count("## 单元测试") == 1
+    assert "旧答案" not in repaired[0].markdown
+    assert "定义域。" in repaired[0].markdown
+
+
+@pytest.mark.anyio
+async def test_repair_retries_unit_test_until_replacement_passes_contract(monkeypatch) -> None:
+    calls = 0
+
+    async def fake_completion(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return repair._LocalMarkdownPatch(
+                status="patch",
+                patch_markdown="## 单元测试\n\n> [!ANSWER]\n> 仍然是游离答案。\n",
+            )
+        return repair._LocalMarkdownPatch(
+            status="patch",
+            patch_markdown=(
+                "## 单元测试\n\n"
+                "> [!QUESTION] **Q01｜短答题｜基础｜考点：函数定义**\n>\n"
+                "> 什么是定义域？\n\n"
+                "> [!ANSWER]\n>\n> **答案**\n>\n> 使函数有意义的自变量集合。\n>\n"
+                "> **解析步骤**\n>\n> 依据函数定义判断。\n"
+            ),
+        )
+
+    monkeypatch.setattr(repair, "acompletion_with_fallback", fake_completion)
+    chapter = ReviewedChapterDraft(
+        chapter_index=1,
+        title="函数",
+        markdown="# 函数\n\n## 单元测试\n\n> [!ANSWER]\n> 旧答案。\n",
+    )
+    action = ReviewAction(
+        action_id="review_ch01_unit_test",
+        action_type="section_patch",
+        chapter_index=1,
+        reason="单元测试题答格式不完整。",
+        target_anchor="单元测试",
+        instruction="完整替换单元测试。",
+    )
+
+    repaired, updated_actions, unresolved, traces = await repair.repair_or_route_review_actions(
+        reviewed_chapters=[chapter],
+        review_actions=[action],
+        allow_llm_patches=False,
+    )
+
+    assert calls == 2
+    assert unresolved == []
+    assert updated_actions[0].status == "applied"
+    assert traces[0].changed is True
+    assert unit_tests.unit_test_structure_issues(repaired[0].markdown) == []
 
 
 @pytest.mark.anyio

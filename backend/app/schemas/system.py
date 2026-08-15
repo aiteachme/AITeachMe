@@ -23,6 +23,9 @@ class RuntimeUser(BaseModel):
     is_local: bool = Field(description="是否为本地模式用户。")
     device_key: str | None = Field(default=None, description="设备标识。")
     is_authenticated: bool = Field(default=False, description="是否已完成账号登录。")
+    role: Literal["user", "admin"] = Field(default="user", description="账号角色。")
+    display_name: str | None = Field(default=None, description="显示名称。")
+    avatar_url: str | None = Field(default=None, description="头像地址。")
 
 
 class InitData(BaseModel):

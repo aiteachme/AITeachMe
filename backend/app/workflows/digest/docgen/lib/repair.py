@@ -15,6 +15,7 @@ from app.workflows.digest.docgen.lib.presentation_policy import (
     find_docgen_presentation_issues,
     normalize_docgen_presentation,
 )
+from app.workflows.digest.docgen.lib.unit_tests import unit_test_structure_issues
 from app.workflows.digest.docgen.prompts.repair import build_chapter_patch_messages
 
 
@@ -170,7 +171,7 @@ def _fallback_patch_target_anchor(
     return ""
 
 
-def _is_unit_test_append_action(action: ReviewAction) -> bool:
+def _is_unit_test_action(action: ReviewAction) -> bool:
     text = " ".join(
         str(item or "")
         for item in (
@@ -182,6 +183,10 @@ def _is_unit_test_append_action(action: ReviewAction) -> bool:
         )
     )
     return "单元测试" in text
+
+
+def _is_length_contract_action(action: ReviewAction) -> bool:
+    return str(action.action_id or "").endswith("_section_length")
 
 
 def _clean_patch_snippet(markdown: str, *, chapter_title: str) -> str:
@@ -257,6 +262,7 @@ def _local_patch_risk_reason(
     original_markdown: str,
     patch_markdown: str,
     append_to_end: bool,
+    unit_test_patch: bool = False,
 ) -> str | None:
     patch = str(patch_markdown or "").strip()
     if not patch:
@@ -271,7 +277,13 @@ def _local_patch_risk_reason(
         return "局部补丁包含多个二级标题，疑似跨小节改写。"
     existing_h2 = {_normalized_visible_heading(title): title for title in _heading_titles(original_markdown, levels={2})}
     patch_h2_keys = [_normalized_visible_heading(title) for title in patch_h2]
-    if append_to_end:
+    if unit_test_patch:
+        non_unit_titles = [title for title, key in zip(patch_h2, patch_h2_keys, strict=False) if key != _normalize_anchor("单元测试")]
+        if non_unit_titles:
+            return "单元测试补丁只能包含 `## 单元测试`，不能附带其它二级标题。"
+        if patch_h2_keys != [_normalize_anchor("单元测试")]:
+            return "单元测试补丁必须包含且只包含一个 `## 单元测试` 二级标题。"
+    elif append_to_end:
         non_unit_titles = [title for title, key in zip(patch_h2, patch_h2_keys, strict=False) if key != _normalize_anchor("单元测试")]
         if non_unit_titles:
             return "章末补丁只能新增 `## 单元测试`，不能附带其它二级标题。"
@@ -329,12 +341,24 @@ def _insert_local_patch(
     target_anchor: str,
     chapter_title: str,
     append_to_end: bool = False,
+    replace_unit_test: bool = False,
 ) -> str:
     patch = _clean_patch_snippet(patch_markdown, chapter_title=chapter_title)
     if not patch:
         return markdown
-    if _normalize_anchor(patch) and _normalize_anchor(patch) in _normalize_anchor(markdown):
+    if not replace_unit_test and _normalize_anchor(patch) and _normalize_anchor(patch) in _normalize_anchor(markdown):
         return markdown
+    if replace_unit_test:
+        section = _find_heading_section(markdown, anchor="单元测试", chapter_title=chapter_title)
+        if section is not None:
+            start, end = section
+            before = markdown[:start].rstrip()
+            after = markdown[end:].lstrip()
+            replaced = f"{before}\n\n{patch}\n"
+            if after:
+                replaced += f"\n{after}"
+            return replaced.rstrip() + "\n"
+        append_to_end = True
     section = None if append_to_end else _find_heading_section(markdown, anchor=target_anchor, chapter_title=chapter_title)
     if append_to_end:
         insert_at = len(markdown)
@@ -539,16 +563,18 @@ async def _apply_llm_patch_actions(
     unresolved_keys &= set(action_keys)
     if not covered_keys and not unresolved_keys:
         covered_keys = set(action_keys)
-    append_to_end = any(
-        _is_unit_test_append_action(action) and _repair_action_key(action_index, action) in covered_keys
+    unit_test_patch = any(
+        _is_unit_test_action(action) and _repair_action_key(action_index, action) in covered_keys
         for action_index, action in indexed_actions
     )
+    append_to_end = unit_test_patch
     patch_markdown = _clean_patch_snippet(patch.patch_markdown, chapter_title=chapter.title)
     if patch.status != "no_change":
         risk_reason = _local_patch_risk_reason(
             original_markdown=chapter.markdown,
             patch_markdown=patch_markdown,
             append_to_end=append_to_end,
+            unit_test_patch=unit_test_patch,
         )
         if risk_reason:
             return chapter, _rejected_llm_patch_results(
@@ -556,7 +582,7 @@ async def _apply_llm_patch_actions(
                 repair_round=repair_round,
                 llm_call_group=llm_call_group,
                 reason=risk_reason,
-            ), []
+            ), (indexed_actions if unit_test_patch else [])
     patched = (
         chapter.markdown
         if patch.status == "no_change"
@@ -566,10 +592,20 @@ async def _apply_llm_patch_actions(
             target_anchor=patch.target_anchor or _fallback_patch_target_anchor(indexed_actions, covered_keys=covered_keys),
             chapter_title=chapter.title,
             append_to_end=append_to_end,
+            replace_unit_test=unit_test_patch,
         )
     )
     if patched and patched != chapter.markdown:
         normalized_patched = normalize_docgen_presentation(patched, title=chapter.title)
+        if unit_test_patch:
+            structure_issues = unit_test_structure_issues(normalized_patched)
+            if structure_issues:
+                return chapter, _rejected_llm_patch_results(
+                    indexed_actions=indexed_actions,
+                    repair_round=repair_round,
+                    llm_call_group=llm_call_group,
+                    reason="单元测试补丁未通过题答合同：" + "；".join(structure_issues[:4]),
+                ), indexed_actions
         risk_reason = _patched_markdown_risk_reason(
             original_markdown=chapter.markdown,
             patched_markdown=normalized_patched,
@@ -580,7 +616,7 @@ async def _apply_llm_patch_actions(
                 repair_round=repair_round,
                 llm_call_group=llm_call_group,
                 reason=risk_reason,
-            ), []
+            ), (indexed_actions if unit_test_patch else [])
     if not patched or patched == chapter.markdown:
         results = []
         for action_index, action in indexed_actions:
@@ -702,14 +738,24 @@ async def repair_or_route_review_actions(
             results.append((action_index, updated_action, trace_item, unresolved_message))
 
         regular_llm_actions = [
-            indexed_action for indexed_action in llm_actions if not _is_unit_test_append_action(indexed_action[1])
+            indexed_action for indexed_action in llm_actions if not _is_unit_test_action(indexed_action[1])
         ]
         unit_test_llm_actions = [
-            indexed_action for indexed_action in llm_actions if _is_unit_test_append_action(indexed_action[1])
+            indexed_action for indexed_action in llm_actions if _is_unit_test_action(indexed_action[1])
         ]
         remaining_llm_actions: list[tuple[int, ReviewAction]] = []
         if not allow_llm_patches:
-            for action_index, action in regular_llm_actions:
+            recorded_actions = [
+                indexed_action
+                for indexed_action in regular_llm_actions
+                if not _is_length_contract_action(indexed_action[1])
+            ]
+            regular_llm_actions = [
+                indexed_action
+                for indexed_action in regular_llm_actions
+                if _is_length_contract_action(indexed_action[1])
+            ]
+            for action_index, action in recorded_actions:
                 updated_action = action.model_copy(update={"status": "recorded"})
                 results.append(
                     (
@@ -730,9 +776,8 @@ async def repair_or_route_review_actions(
                         _unresolved_message(updated_action, status="recorded"),
                     )
                 )
-            regular_llm_actions = []
-        repair_round = 1
         for action_batch in (regular_llm_actions, unit_test_llm_actions):
+            repair_round = 1
             current_batch = action_batch
             while current_batch and repair_round <= _MAX_LLM_PATCH_ROUNDS_PER_CHAPTER:
                 current_chapter, round_results, current_batch = await _apply_llm_patch_actions(
@@ -836,6 +881,8 @@ async def repair_or_route_review_actions(
                 repair_trace_by_index[action_index] = trace_item
                 if unresolved_message:
                     unresolved_by_index[action_index] = unresolved_message
+                else:
+                    unresolved_by_index.pop(action_index, None)
 
     updated_actions = [
         updated_actions_by_index[index]

@@ -4,6 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
+import type { AuthSessionDataMergeOffer } from './authSessionDataMergeOffer.ts';
 import type { RuntimeUser } from './runtimeUser.ts';
 
 /**
@@ -12,12 +13,18 @@ import type { RuntimeUser } from './runtimeUser.ts';
 export interface AuthSessionData {
   /** 是否启用鉴权。 */
   auth_enabled: boolean;
+  /** 是否启用用户侧 AI 额度。 */
+  credits_enabled?: boolean;
   /** 鉴权是否就绪。 */
   auth_ready: boolean;
-  /** 令牌类型。 */
+  /** 会话承载方式。 */
   token_type?: string;
   /** 访问令牌。 */
   access_token?: string | null;
+  /** 已登录写请求使用的 CSRF 令牌。 */
+  csrf_token?: string | null;
+  /** 可确认的游客资产迁移摘要。 */
+  merge_offer?: AuthSessionDataMergeOffer;
   /** 当前用户。 */
   current_user?: RuntimeUser | null;
 }

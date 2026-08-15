@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
+import time
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -44,6 +48,25 @@ def _enable_auth(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sessions, "get_env", lambda name, default="": values.get(name, default))
     monkeypatch.setattr(sessions, "get_env_int", lambda name, default: int(values.get(name, default)))
     monkeypatch.setattr(sessions, "get_env_bool", lambda name, default: bool(values.get(name, default)))
+
+
+def _issue_typeless_access_token(user: User) -> str:
+    payload = {
+        "sub": user.id,
+        "email": user.email,
+        "device_key": user.device_key,
+        "iat": int(time.time()),
+        "exp": int(time.time()) + 3600,
+    }
+    payload_b64 = sessions._b64url_encode(
+        json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    )
+    signature = hmac.new(
+        ("x" * 40).encode("utf-8"),
+        payload_b64.encode("utf-8"),
+        hashlib.sha256,
+    ).digest()
+    return f"{payload_b64}.{sessions._b64url_encode(signature)}"
 
 
 def test_auth_config_normalizers_passwords_tokens_and_cookie(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -101,6 +124,12 @@ def test_auth_config_normalizers_passwords_tokens_and_cookie(monkeypatch: pytest
     guest_token = sessions.issue_guest_token(user_id="guest-1")
     assert sessions.decode_guest_token(guest_token)["sub"] == "guest-1"
     assert sessions.decode_guest_token(token) is None
+    assert sessions.decode_access_token(guest_token) is None
+    assert sessions.decode_legacy_access_token(guest_token) is None
+
+    typeless_token = _issue_typeless_access_token(user)
+    assert sessions.decode_access_token(typeless_token) is None
+    assert sessions.decode_legacy_access_token(typeless_token)["sub"] == user.id
 
     response = Response()
     returned_token = sessions.set_guest_cookie_for_user(response, user_id="guest-1")
@@ -173,7 +202,7 @@ def test_register_login_and_token_resolution(monkeypatch: pytest.MonkeyPatch) ->
     with Session(engine, expire_on_commit=False) as session:
         guest = sessions.create_guest_user(session, device_key="device-a")
         assert guest.is_registered is False
-        assert sessions.create_guest_user(session, device_key="device-a").id != guest.id
+        assert sessions.create_guest_user(session, device_key="device-a").id == guest.id
 
         sessions.send_register_email_verification_code(session, email="learner@example.com")
         registration = sessions.register_user(
@@ -188,11 +217,16 @@ def test_register_login_and_token_resolution(monkeypatch: pytest.MonkeyPatch) ->
         assert registration.current_user is not None
         assert registration.current_user.user_id == guest.id
         assert registration.current_user.is_authenticated is True
-        assert registration.access_token
+        assert registration.access_token is None
 
-        resolved = sessions.resolve_user_from_token(session, registration.access_token)
+        legacy_token = sessions.issue_access_token(user=session.get(User, guest.id))
+        resolved = sessions.resolve_user_from_token(session, legacy_token)
         assert resolved is not None
         assert resolved.email == "learner@example.com"
+
+        typeless_token = _issue_typeless_access_token(session.get(User, guest.id))
+        assert sessions.resolve_user_from_token(session, typeless_token) is None
+        assert sessions.resolve_user_from_legacy_bearer(session, typeless_token).id == guest.id
 
         login = sessions.login_user(
             session,
@@ -201,8 +235,8 @@ def test_register_login_and_token_resolution(monkeypatch: pytest.MonkeyPatch) ->
             device_key="device-b",
         )
         assert login.current_user is not None
-        assert login.current_user.device_key == "device-b"
-        assert sessions.resolve_user_from_token(session, login.access_token or "") is not None
+        assert login.current_user.device_key == "device-a"
+        assert login.access_token is None
 
         with pytest.raises(AITeachMeError) as exc_info:
             sessions.login_user(session, email="learner@example.com", password="wrong", device_key=None)
@@ -212,7 +246,7 @@ def test_register_login_and_token_resolution(monkeypatch: pytest.MonkeyPatch) ->
         assert guest_after_logout.is_registered is False
         guest_token = sessions.issue_guest_token(user_id=guest_after_logout.id)
         assert sessions.resolve_guest_user_from_token(session, guest_token).id == guest_after_logout.id
-        assert sessions.resolve_guest_user_from_token(session, registration.access_token or "") is None
+        assert sessions.resolve_guest_user_from_token(session, legacy_token) is None
 
         guest_session = sessions.build_guest_session_data(user=guest_after_logout)
         context_session = sessions.build_session_from_context(

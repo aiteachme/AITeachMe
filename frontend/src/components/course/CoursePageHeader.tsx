@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 export const COURSE_PAGE_HEADER_ACTION_BUTTON_CLASS =
-  "h-10 rounded-lg bg-white px-4 text-sm font-semibold shadow-sm dark:bg-slate-950";
+  "h-10 rounded-lg bg-white px-4 text-sm font-semibold shadow-none dark:bg-slate-950";
 export const COURSE_PAGE_SHELL_CLASS = "mx-auto min-h-full w-full max-w-[1500px] px-4 pb-24 sm:px-6 lg:px-8 xl:px-10";
 export const COURSE_PAGE_CONTENT_CLASS = "mx-auto flex w-full max-w-[1400px] flex-col";
 
@@ -27,11 +27,10 @@ function CourseHeaderTitle({ title }: { title: string }) {
 
   return (
     <div className="min-w-0">
-      <h1 className="break-words text-[30px] font-black leading-[1.06] tracking-normal text-slate-950 dark:text-slate-50 sm:text-[38px] lg:text-[42px]">
+      <h1 className="break-words text-[30px] font-bold leading-[1.12] tracking-[-0.025em] text-slate-950 dark:text-slate-50 sm:text-[34px] lg:text-[38px]">
         <span>{parts.main}</span>
         {parts.emphasis ? <span>{parts.emphasis}</span> : null}
       </h1>
-      <div className="mt-3 h-1.5 w-20 rounded-full bg-indigo-500 dark:bg-indigo-400" />
     </div>
   );
 }
@@ -45,11 +44,11 @@ interface CoursePageHeaderProps {
 
 export function CoursePageHeader({ title, description, actions, className = "" }: CoursePageHeaderProps) {
   return (
-    <section className={`border-b border-slate-200 pb-5 dark:border-slate-800 ${className}`.trim()}>
+    <section className={`border-b border-slate-200 pb-6 dark:border-slate-800 ${className}`.trim()}>
       <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
           <CourseHeaderTitle title={title} />
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400 sm:text-[15px]">
+          <p className="mt-2.5 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400 sm:text-[15px]">
             {description}
           </p>
         </div>

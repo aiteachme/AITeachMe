@@ -1,104 +1,84 @@
-"""SQLite 持久化记忆存储。
-
-使用与主项目相同的 SQLite 数据库，通过原始 SQL 操作记忆表。
-表结构在首次使用时自动创建。
-"""
+"""Database-portable persistent memory store."""
 
 from __future__ import annotations
 
-import json
-from datetime import datetime, timezone
-import structlog
+from datetime import timedelta
 
+from sqlalchemy import delete
+from sqlalchemy.exc import IntegrityError
+from sqlmodel import select
+
+from app.models.memory import LearningLogRecord, MemoryRecord
+from app.shared.infra.database import managed_session
 from app.shared.infra.memory.types import LearningLogEntry, MemoryEntry
+from app.utils.time import utcnow
 
-logger = structlog.get_logger()
+
+def _to_memory_entry(record: MemoryRecord) -> MemoryEntry:
+    return MemoryEntry(
+        key=record.key,
+        user_id=record.user_id,
+        content=record.content,
+        tag=record.tag,
+        importance=record.importance,
+        created_at=record.created_at,
+        updated_at=record.updated_at,
+    )
 
 
-class SQLiteMemoryStore:
-    """基于 SQLite 的记忆持久化存储。"""
+def _to_learning_log(record: LearningLogRecord) -> LearningLogEntry:
+    return LearningLogEntry(
+        user_id=record.user_id,
+        event_type=record.event_type,
+        course_id=record.course_id,
+        summary=record.summary,
+        metadata=dict(record.metadata_json or {}),
+        created_at=record.created_at,
+    )
 
-    def __init__(self) -> None:
-        self._initialized = False
 
-    def _get_conn(self):
-        """获取原始 SQLite 连接（绕过 SQLAlchemy ORM）。"""
-        from app.shared.infra.database import get_engine
-
-        engine = get_engine()
-        return engine.raw_connection()
-
-    def _ensure_tables(self) -> None:
-        """首次使用时创建记忆相关表。"""
-        if self._initialized:
-            return
-
-        conn = self._get_conn()
-        try:
-            cursor = conn.cursor()
-            cursor.executescript("""
-                CREATE TABLE IF NOT EXISTS memory_entries (
-                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                    key         TEXT UNIQUE NOT NULL,
-                    user_id     TEXT NOT NULL DEFAULT 'default',
-                    content     TEXT NOT NULL,
-                    tag         TEXT DEFAULT 'general',
-                    importance  REAL DEFAULT 0.5,
-                    created_at  TEXT NOT NULL,
-                    updated_at  TEXT NOT NULL
-                );
-
-                CREATE INDEX IF NOT EXISTS idx_memory_user
-                    ON memory_entries(user_id);
-                CREATE INDEX IF NOT EXISTS idx_memory_tag
-                    ON memory_entries(user_id, tag);
-
-                CREATE TABLE IF NOT EXISTS learning_logs (
-                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id     TEXT NOT NULL DEFAULT 'default',
-                    event_type  TEXT NOT NULL,
-                    course_id  TEXT DEFAULT '',
-                    summary     TEXT NOT NULL,
-                    metadata    TEXT DEFAULT '{}',
-                    created_at  TEXT NOT NULL
-                );
-
-                CREATE INDEX IF NOT EXISTS idx_log_user_date
-                    ON learning_logs(user_id, created_at);
-            """)
-            try:
-                cursor.execute("ALTER TABLE learning_logs ADD COLUMN course_id TEXT DEFAULT ''")
-            except Exception:
-                pass
-            conn.commit()
-            self._initialized = True
-            logger.info("memory_tables_initialized")
-        finally:
-            conn.close()
+class DatabaseMemoryStore:
+    """Memory repository backed by the configured SQLite/PostgreSQL engine."""
 
     async def save(self, entry: MemoryEntry) -> None:
-        """保存或更新一条记忆。"""
-        self._ensure_tables()
-        conn = self._get_conn()
-        try:
-            cursor = conn.cursor()
-            now = datetime.now(timezone.utc).isoformat()
-            cursor.execute(
-                """
-                INSERT INTO memory_entries (key, user_id, content, tag, importance, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(key) DO UPDATE SET
-                    content = excluded.content,
-                    tag = excluded.tag,
-                    importance = excluded.importance,
-                    updated_at = excluded.updated_at
-                """,
-                (entry.key, entry.user_id, entry.content, entry.tag,
-                 entry.importance, entry.created_at.isoformat(), now),
-            )
-            conn.commit()
-        finally:
-            conn.close()
+        now = utcnow()
+        with managed_session() as session:
+            record = session.exec(
+                select(MemoryRecord).where(MemoryRecord.key == entry.key)
+            ).first()
+            if record is None:
+                record = MemoryRecord(
+                    key=entry.key,
+                    user_id=entry.user_id,
+                    content=entry.content,
+                    tag=str(entry.tag),
+                    importance=entry.importance,
+                    created_at=entry.created_at,
+                    updated_at=now,
+                )
+            else:
+                record.user_id = entry.user_id
+                record.content = entry.content
+                record.tag = str(entry.tag)
+                record.importance = entry.importance
+                record.updated_at = now
+            session.add(record)
+            try:
+                session.commit()
+            except IntegrityError:
+                session.rollback()
+                current = session.exec(
+                    select(MemoryRecord).where(MemoryRecord.key == entry.key)
+                ).first()
+                if current is None:
+                    raise
+                current.user_id = entry.user_id
+                current.content = entry.content
+                current.tag = str(entry.tag)
+                current.importance = entry.importance
+                current.updated_at = now
+                session.add(current)
+                session.commit()
 
     async def recall(
         self,
@@ -108,64 +88,37 @@ class SQLiteMemoryStore:
         tag: str | None = None,
         top_k: int = 5,
     ) -> list[MemoryEntry]:
-        """按关键词 + 重要度检索记忆。
-
-        当前使用关键词匹配 + importance 排序。
-        后续可升级为 sqlite-vec 语义检索。
-        """
-        self._ensure_tables()
-        conn = self._get_conn()
-        try:
-            cursor = conn.cursor()
-            sql = "SELECT key, user_id, content, tag, importance, created_at, updated_at FROM memory_entries WHERE user_id = ?"
-            params: list = [user_id]
-
+        limit = max(1, top_k)
+        with managed_session() as session:
+            statement = select(MemoryRecord).where(MemoryRecord.user_id == user_id)
             if tag:
-                sql += " AND tag = ?"
-                params.append(tag)
+                statement = statement.where(MemoryRecord.tag == tag)
+            records = list(
+                session.exec(
+                    statement.order_by(
+                        MemoryRecord.importance.desc(),
+                        MemoryRecord.updated_at.desc(),
+                    ).limit(limit * 3)
+                ).all()
+            )
 
-            sql += " ORDER BY importance DESC, updated_at DESC LIMIT ?"
-            params.append(top_k * 3)  # 取多一些做后续过滤
-
-            cursor.execute(sql, params)
-            rows = cursor.fetchall()
-
-            # 关键词加权：匹配 query 的条目加分
-            q = query.lower()
-            entries = []
-            for row in rows:
-                key, uid, content, rtag, importance, created_str, updated_str = row
-                # 关键词命中加分
-                keyword_boost = 0.3 if q and q in content.lower() else 0.0
-                entries.append((
-                    importance + keyword_boost,
-                    MemoryEntry(
-                        key=key,
-                        user_id=uid,
-                        content=content,
-                        tag=rtag,
-                        importance=importance,
-                        created_at=datetime.fromisoformat(created_str),
-                        updated_at=datetime.fromisoformat(updated_str),
-                    ),
-                ))
-
-            entries.sort(key=lambda x: x[0], reverse=True)
-            return [e for _, e in entries[:top_k]]
-        finally:
-            conn.close()
+        normalized_query = query.lower()
+        ranked = [
+            (
+                record.importance
+                + (0.3 if normalized_query and normalized_query in record.content.lower() else 0.0),
+                _to_memory_entry(record),
+            )
+            for record in records
+        ]
+        ranked.sort(key=lambda pair: pair[0], reverse=True)
+        return [entry for _, entry in ranked[:limit]]
 
     async def forget(self, key: str) -> bool:
-        """删除一条记忆。"""
-        self._ensure_tables()
-        conn = self._get_conn()
-        try:
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM memory_entries WHERE key = ?", (key,))
-            conn.commit()
-            return cursor.rowcount > 0
-        finally:
-            conn.close()
+        with managed_session() as session:
+            result = session.exec(delete(MemoryRecord).where(MemoryRecord.key == key))
+            session.commit()
+            return bool(result.rowcount)
 
     async def get_all_by_user(
         self,
@@ -173,49 +126,28 @@ class SQLiteMemoryStore:
         *,
         tag: str | None = None,
     ) -> list[MemoryEntry]:
-        """获取用户的所有记忆条目。"""
-        self._ensure_tables()
-        conn = self._get_conn()
-        try:
-            cursor = conn.cursor()
-            sql = "SELECT key, user_id, content, tag, importance, created_at, updated_at FROM memory_entries WHERE user_id = ?"
-            params: list = [user_id]
+        with managed_session() as session:
+            statement = select(MemoryRecord).where(MemoryRecord.user_id == user_id)
             if tag:
-                sql += " AND tag = ?"
-                params.append(tag)
-            sql += " ORDER BY importance DESC, updated_at DESC"
-
-            cursor.execute(sql, params)
-            return [
-                MemoryEntry(
-                    key=row[0], user_id=row[1], content=row[2],
-                    tag=row[3], importance=row[4],
-                    created_at=datetime.fromisoformat(row[5]),
-                    updated_at=datetime.fromisoformat(row[6]),
-                )
-                for row in cursor.fetchall()
-            ]
-        finally:
-            conn.close()
+                statement = statement.where(MemoryRecord.tag == tag)
+            records = session.exec(
+                statement.order_by(MemoryRecord.importance.desc(), MemoryRecord.updated_at.desc())
+            ).all()
+            return [_to_memory_entry(record) for record in records]
 
     async def save_learning_log(self, entry: LearningLogEntry) -> None:
-        """保存学习日志。"""
-        self._ensure_tables()
-        conn = self._get_conn()
-        try:
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                INSERT INTO learning_logs (user_id, event_type, course_id, summary, metadata, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (entry.user_id, entry.event_type, entry.course_id,
-                 entry.summary, json.dumps(entry.metadata, ensure_ascii=False),
-                 entry.created_at.isoformat()),
+        with managed_session() as session:
+            session.add(
+                LearningLogRecord(
+                    user_id=entry.user_id,
+                    event_type=entry.event_type,
+                    course_id=entry.course_id,
+                    summary=entry.summary,
+                    metadata_json=dict(entry.metadata),
+                    created_at=entry.created_at,
+                )
             )
-            conn.commit()
-        finally:
-            conn.close()
+            session.commit()
 
     async def get_learning_logs(
         self,
@@ -223,41 +155,27 @@ class SQLiteMemoryStore:
         *,
         days: int = 7,
     ) -> list[LearningLogEntry]:
-        """获取最近 N 天的学习日志。"""
-        self._ensure_tables()
-        conn = self._get_conn()
-        try:
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                SELECT user_id, event_type, course_id, summary, metadata, created_at
-                FROM learning_logs
-                WHERE user_id = ? AND created_at >= datetime('now', ?)
-                ORDER BY created_at DESC
-                """,
-                (user_id, f"-{days} days"),
-            )
-            return [
-                LearningLogEntry(
-                    user_id=row[0], event_type=row[1], course_id=row[2],
-                    summary=row[3],
-                    metadata=json.loads(row[4]) if row[4] else {},
-                    created_at=datetime.fromisoformat(row[5]),
+        cutoff = utcnow() - timedelta(days=max(0, days))
+        with managed_session() as session:
+            records = session.exec(
+                select(LearningLogRecord)
+                .where(
+                    LearningLogRecord.user_id == user_id,
+                    LearningLogRecord.created_at >= cutoff,
                 )
-                for row in cursor.fetchall()
-            ]
-        finally:
-            conn.close()
+                .order_by(LearningLogRecord.created_at.desc())
+            ).all()
+            return [_to_learning_log(record) for record in records]
 
 
-# ── 全局单例 ──────────────────────────────────────────────────
+# Compatibility alias for callers importing the former concrete class.
+SQLiteMemoryStore = DatabaseMemoryStore
 
-_store: SQLiteMemoryStore | None = None
+_store: DatabaseMemoryStore | None = None
 
 
-def get_memory_store() -> SQLiteMemoryStore:
-    """返回全局记忆存储单例。"""
+def get_memory_store() -> DatabaseMemoryStore:
     global _store
     if _store is None:
-        _store = SQLiteMemoryStore()
+        _store = DatabaseMemoryStore()
     return _store

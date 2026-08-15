@@ -68,7 +68,7 @@ def build_chapter_execution_brief_messages(
 
 学习大纲：
 - chapter_index: {chapter.get("chapter_index")}
-- objective: {chapter.get("objective")}
+- objective: {chapter.get("objective") or chapter.get("chapter_goal")}
 - required_elements: {", ".join(str(item) for item in chapter.get("required_elements", []))}
 
 文档级写作意图：
@@ -143,6 +143,7 @@ Planner handoff:
 12. 不允许顺带修改标题。
 13. 不要输出媒体请求，这些后续由规则节点派生。
 14. 只输出简短、可执行的字段，不要输出长段解释。
+15. 只负责当前 chapter_index；不要输出其它章节的 brief，也不要复述整本共享骨架。
 """.strip()
     messages = [
         {"role": "system", "content": system_prompt},

@@ -214,6 +214,16 @@ export type generateExamApiV1CoursesCourseIdExamsGeneratePostResponse400 = {
   status: 400
 }
 
+export type generateExamApiV1CoursesCourseIdExamsGeneratePostResponse401 = {
+  data: ErrorResponse
+  status: 401
+}
+
+export type generateExamApiV1CoursesCourseIdExamsGeneratePostResponse402 = {
+  data: ErrorResponse
+  status: 402
+}
+
 export type generateExamApiV1CoursesCourseIdExamsGeneratePostResponse404 = {
   data: ErrorResponse
   status: 404
@@ -242,7 +252,7 @@ export type generateExamApiV1CoursesCourseIdExamsGeneratePostResponse500 = {
 export type generateExamApiV1CoursesCourseIdExamsGeneratePostResponseSuccess = (generateExamApiV1CoursesCourseIdExamsGeneratePostResponse200) & {
   headers: Headers;
 };
-export type generateExamApiV1CoursesCourseIdExamsGeneratePostResponseError = (generateExamApiV1CoursesCourseIdExamsGeneratePostResponse400 | generateExamApiV1CoursesCourseIdExamsGeneratePostResponse404 | generateExamApiV1CoursesCourseIdExamsGeneratePostResponse409 | generateExamApiV1CoursesCourseIdExamsGeneratePostResponse410 | generateExamApiV1CoursesCourseIdExamsGeneratePostResponse422 | generateExamApiV1CoursesCourseIdExamsGeneratePostResponse500) & {
+export type generateExamApiV1CoursesCourseIdExamsGeneratePostResponseError = (generateExamApiV1CoursesCourseIdExamsGeneratePostResponse400 | generateExamApiV1CoursesCourseIdExamsGeneratePostResponse401 | generateExamApiV1CoursesCourseIdExamsGeneratePostResponse402 | generateExamApiV1CoursesCourseIdExamsGeneratePostResponse404 | generateExamApiV1CoursesCourseIdExamsGeneratePostResponse409 | generateExamApiV1CoursesCourseIdExamsGeneratePostResponse410 | generateExamApiV1CoursesCourseIdExamsGeneratePostResponse422 | generateExamApiV1CoursesCourseIdExamsGeneratePostResponse500) & {
   headers: Headers;
 };
 

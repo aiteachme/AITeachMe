@@ -8,10 +8,31 @@
 
 ### 用户、系统与课程
 
-- `user`：用户主表；`runtime_settings_json` 仅保留旧版本地设置兼容数据，当前有效本地覆盖由 `system_runtime_settings` 管理。
+- `user`：用户主表；除注册状态外保存 `role`、显示名称、头像、邮箱验证时间和游客合并目标。`runtime_settings_json` 仅保留旧版本地设置兼容数据，当前有效本地覆盖由 `system_runtime_settings` 管理。
 - `email_confirmation`：邮箱验证记录。
 - `course`：课程空间主表，保存标题、描述、学习意图、文档摘要、LLM 上下文与构建锁字段。
 - `system_runtime_settings`：系统级运行设置覆盖与状态快照表；这是一张单行表，正常只有 `id = "runtime"` 一行。同一行保存当前有效 settings 快照哈希与来源，避免额外快照表。
+
+### 认证、身份与游客迁移
+
+- `auth_identity`：Google、QQ、微信等第三方身份绑定；以 provider、应用标识和 provider subject 唯一定位外部身份，不保存 provider access/refresh token。
+- `auth_session`：可撤销的 HttpOnly Cookie 会话；仅持久化会话 token 哈希、CSRF token、过期/撤销时间和设备摘要。
+- `oauth_flow`：一次性 OAuth `state`、nonce、PKCE verifier、登录/绑定模式和安全返回路径；回调消费后不可重放。
+- `auth_rate_limit_bucket`：登录、验证码和 OAuth 发起的数据库级限流窗口。
+- `user_merge_job`：游客资产确认迁移的持久化任务，保存迁移状态、资产计数、课程映射、进度和失败信息。
+
+### AI 额度
+
+- `credit_account`：用户额度账户，保存总余额、冻结余额、累计赠送/消费和并发版本。
+- `credit_ledger`：不可删除的额度增减账本，记录业务引用、幂等键、操作管理员、原因以及操作前后余额快照。
+- `credit_reservation`：DocGen 和人工出卷等长任务的额度预占记录；业务引用和幂等键均有唯一约束，终态为结算或释放。
+
+### 跨课程记忆与学习日志
+
+- `memory_entries`：用户长期记忆条目，按用户、标签和更新时间查询。
+- `learning_logs`：跨课程学习事件日志，保存事件类型、课程、摘要和结构化元数据。
+
+这两张记忆表现在属于正式 SQLModel/Alembic schema；不再由 SQLite 专用原始 SQL 在运行时单独维护。
 
 ### 文件、切片与知识文档
 

@@ -909,7 +909,7 @@ export function LibraryPage() {
     <div className="min-h-full pb-24 sm:pb-12">
       <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
         <div className="space-y-3">
-          <div className="inline-flex items-center gap-2 rounded-full bg-white/85 px-3 py-1 text-xs font-medium text-slate-500 ring-1 ring-slate-200/80 backdrop-blur dark:bg-slate-800/85 dark:text-slate-400 dark:ring-slate-700/80">
+          <div className="inline-flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400">
             <FolderOpen className="h-3.5 w-3.5" />
             我的资料库
           </div>
@@ -957,9 +957,9 @@ export function LibraryPage() {
         </div>
       </div>
 
-      <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-8 grid grid-cols-2 overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 xl:grid-cols-4">
         {libraryStats.map((item) => (
-          <div key={item.label} className="rounded-xl border border-slate-200/80 bg-white/90 px-4 py-4 shadow-sm dark:border-slate-800/80 dark:bg-slate-900/80">
+          <div key={item.label} className="border-b border-r border-slate-200 px-4 py-4 even:border-r-0 last:border-b-0 dark:border-slate-800 [&:nth-last-child(2)]:border-b-0 xl:border-b-0 xl:even:border-r xl:last:border-r-0">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="text-xs font-medium text-slate-500 dark:text-slate-400">{item.label}</div>
@@ -1011,7 +1011,7 @@ export function LibraryPage() {
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="mt-5 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+            className="mt-5 inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
           >
             <Upload className="h-4 w-4" />
             上传资料
@@ -1020,8 +1020,8 @@ export function LibraryPage() {
       ) : null}
 
       {!filesQuery.isLoading && hasFiles ? (
-        <div className="mt-6 rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="rounded-t-xl border-b border-slate-100 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-900">
+        <div className="mt-6 overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+          <div className="border-b border-slate-100 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-900">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0">
                 <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">文件列表</h2>
@@ -1044,7 +1044,7 @@ export function LibraryPage() {
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
                   placeholder="搜索文件名、类型或状态"
-                  className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50/60 pl-10 pr-10 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-slate-300 focus:bg-white focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-950/40 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-slate-600 dark:focus:bg-slate-900 dark:focus:ring-slate-700/60"
+                  className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50/60 pl-10 pr-10 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-indigo-300 focus:bg-white focus:ring-2 focus:ring-indigo-100 dark:border-slate-700 dark:bg-slate-950/40 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-indigo-500/50 dark:focus:bg-slate-900 dark:focus:ring-indigo-500/10"
                 />
                 {searchQuery ? (
                   <button
@@ -1064,7 +1064,7 @@ export function LibraryPage() {
                   <select
                     value={statusFilter}
                     onChange={(event) => setStatusFilter(event.target.value as FileStatusFilter)}
-                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 outline-none transition hover:border-slate-300 focus:border-slate-300 focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:focus:ring-slate-700/60"
+                    className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 outline-none transition hover:border-slate-300 focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:focus:border-indigo-500/50 dark:focus:ring-indigo-500/10"
                   >
                     {FILE_STATUS_FILTER_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -1079,7 +1079,7 @@ export function LibraryPage() {
                   <select
                     value={sortKey}
                     onChange={(event) => setSortKey(event.target.value as FileSortKey)}
-                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 outline-none transition hover:border-slate-300 focus:border-slate-300 focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:focus:ring-slate-700/60"
+                    className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 outline-none transition hover:border-slate-300 focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:focus:border-indigo-500/50 dark:focus:ring-indigo-500/10"
                   >
                     {FILE_SORT_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -1122,7 +1122,7 @@ export function LibraryPage() {
                   aria-label={`查看资料 ${file.filename}`}
                 >
                   <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800">
                       {fileIcon(file)}
                     </div>
                     <div className="min-w-0">

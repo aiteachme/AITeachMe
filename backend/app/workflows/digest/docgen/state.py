@@ -12,6 +12,10 @@ from datetime import datetime
 from typing import Annotated, Any, TypedDict
 
 
+def _max_int(left: int, right: int) -> int:
+    return max(int(left or 0), int(right or 0))
+
+
 class DocGenState(TypedDict, total=False):
     """State carried by the DocGen graph."""
 
@@ -130,7 +134,9 @@ class DocGenState(TypedDict, total=False):
     title_lock_ms: Annotated[int, operator.add]
     seed_backbone_ms: int
     backbone_ms: int
-    chapter_prepare_ms: Annotated[int, operator.add]
+    # Brief branches run concurrently, so the stage wall time is the slowest
+    # branch rather than the sum of every branch latency.
+    chapter_prepare_ms: Annotated[int, _max_int]
     assemble_tasks_ms: int
     research_ms: Annotated[int, operator.add]
     draft_ms: Annotated[int, operator.add]

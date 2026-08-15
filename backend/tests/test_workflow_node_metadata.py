@@ -39,8 +39,13 @@ def test_docgen_prepares_knowledge_graph_after_final_titles_before_publish() -> 
     ) in workflow.waiting_edges
     assert (
         (docgen_graph.NODE_PREPARE_GLOBAL_SEED, docgen_graph.NODE_LOCK_TITLES),
-        docgen_graph.NODE_ASSEMBLE_CHAPTER_TASKS,
+        docgen_graph.NODE_CONFIRM_BACKBONE_SEED,
     ) in workflow.waiting_edges
+    assert next_node(docgen_graph.NODE_CONFIRM_BACKBONE_SEED) == docgen_graph.NODE_BUILD_DOCUMENT_BACKBONE
+    assert (
+        docgen_graph.NODE_BUILD_CHAPTER_BRIEF,
+        docgen_graph.NODE_ASSEMBLE_CHAPTER_TASKS,
+    ) in workflow.edges
     assert next_node(docgen_graph.NODE_MERGE_REVIEW) == docgen_graph.NODE_SYNC_LOCKED_TITLES
     assert next_node(docgen_graph.NODE_SYNC_LOCKED_TITLES) == docgen_graph.NODE_PREPARE_KNOWLEDGE_GRAPH
     assert next_node(docgen_graph.NODE_PREPARE_KNOWLEDGE_GRAPH) == docgen_graph.NODE_PUBLISH

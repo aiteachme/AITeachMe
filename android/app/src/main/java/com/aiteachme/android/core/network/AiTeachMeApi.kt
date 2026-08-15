@@ -36,10 +36,8 @@ interface AiTeachMeApi {
         @Body request: CourseDeleteRequest,
     ): ApiResponse<CourseDeleteData>
 
-    @POST("/api/v1/auth/user")
-    suspend fun currentUser(
-        @Body request: LogoutRequest = LogoutRequest(),
-    ): ApiResponse<AuthSessionData>
+    @GET("/api/v1/auth/user")
+    suspend fun currentUser(): ApiResponse<AuthSessionData>
 
     @POST("/api/v1/auth/login")
     suspend fun login(

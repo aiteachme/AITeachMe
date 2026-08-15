@@ -7,6 +7,7 @@ import {
   getApiErrorCode,
   getApiErrorData,
   getApiErrorMessage,
+  getCreditInsufficientMessage,
 } from "../api/client";
 import type {
   DocGenBuildData,
@@ -185,6 +186,23 @@ export function useKnowledgeBuildFlow({
     onError: (error) => {
       const errorCode = getApiErrorCode(error);
       const errorData = getApiErrorData<KnowledgeBuildPrecheckConflictData>(error);
+      const creditMessage = getCreditInsufficientMessage(error);
+
+      if (creditMessage) {
+        trackCourseAnalyticsEvent("knowledge_build_start_failed", courseId, {
+          build_type: buildType,
+          error_code: errorCode || "unknown",
+        });
+        setPrecheckConflict(null);
+        setErrorMessage(creditMessage);
+        toast({
+          title: "AI 额度不足",
+          description: creditMessage,
+          variant: "warning",
+          duration: 7000,
+        });
+        return;
+      }
 
       if (
         errorCode === "KNOWLEDGE_BUILD_PRECHECK_CONFLICT" &&

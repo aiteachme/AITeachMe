@@ -28,7 +28,7 @@ import {
   Trophy,
 } from "lucide-react";
 
-import { anonymousApiClient, apiClient, getApiErrorMessage, hasStoredAccessToken } from "../api/client";
+import { anonymousApiClient, apiClient, getApiErrorMessage } from "../api/client";
 import type { ApiResponse } from "../api/types";
 import type { CourseShareDocumentContent, CourseShareDocumentPreview, CourseSharePreviewData, ImportResultData } from "../api/generated/model";
 import { PlannerPlanCardShell, PlannerPlanSummary } from "../components/build-plan/PlannerPlanCard";
@@ -43,6 +43,7 @@ import { useDocToc, type TocTreeNode } from "../components/knowledge-docs";
 import { Button } from "../components/ui/Button";
 import { MarkdownViewer } from "../components/ui/MarkdownViewer";
 import { useToast } from "../components/ui/Toast";
+import { useAuthSession } from "../hooks/useAuthSession";
 import { buildCoursePath } from "../lib/courseNavigation";
 import { publicAssetPath } from "../lib/publicAsset";
 import { cn } from "../lib/utils";
@@ -51,7 +52,7 @@ const FLOATING_ACTION_CLASS =
   "fixed right-6 inline-flex h-10 w-10 items-center justify-center gap-2 rounded-xl border border-slate-200/70 bg-white/90 text-[13px] font-medium text-slate-700 shadow-[0_12px_32px_-24px_rgba(15,23,42,0.55)] backdrop-blur-md transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:bg-white hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/30 active:translate-y-0 active:scale-[0.98] sm:w-[9.25rem] sm:justify-start sm:px-3 dark:border-slate-800/80 dark:bg-slate-950/88 dark:text-slate-300 dark:shadow-[0_18px_44px_-28px_rgba(0,0,0,0.9)] dark:hover:border-slate-700 dark:hover:bg-slate-950 dark:hover:text-slate-100";
 const LOGO_SRC = publicAssetPath("logo.svg");
 const SHARE_TRAINING_SECTION_CLASS =
-  "rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950/75";
+  "border-b border-slate-200 py-7 dark:border-slate-800";
 
 type ShareView = "build" | "knowledge-docs" | "exams" | "profile";
 
@@ -155,7 +156,7 @@ function SaveRequiredButton({
 
 function SharedAssistantAvatar() {
   return (
-    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-50 p-1 shadow-sm ring-1 ring-slate-200/50 dark:bg-slate-900 dark:ring-slate-800">
+    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-slate-50 p-1 dark:border-slate-800 dark:bg-slate-900">
       <img src={LOGO_SRC} alt="AI" className="h-full w-full object-contain" />
     </div>
   );
@@ -206,7 +207,7 @@ function SharedReadonlyBuildView({
 
       <div className="shrink-0 px-4 pb-6 pt-2 md:px-8 lg:px-16">
         <div className="mx-auto max-w-3xl">
-          <div className="w-full rounded-lg border border-zinc-200/60 bg-white shadow-[0_2px_8px_rgba(0,0,0,0.04)] transition-all dark:border-slate-800/60 dark:bg-slate-900 dark:shadow-[0_2px_8px_rgba(0,0,0,0.2)]">
+          <div className="w-full rounded-lg border border-zinc-200 bg-white transition-colors dark:border-slate-800 dark:bg-slate-900">
             <button
               type="button"
               onClick={() => onSaveRequired("继续规划")}
@@ -258,50 +259,40 @@ function SharedTrainingModeCard({
 }) {
   const toneClass = {
     practice: {
-      card: "border-slate-200/80 bg-white hover:border-slate-350 dark:border-slate-800 dark:bg-slate-950/80 dark:hover:border-slate-700",
       icon: "bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400",
     },
     paper: {
-      card: "border-slate-200/80 bg-white hover:border-slate-350 dark:border-slate-800 dark:bg-slate-950/80 dark:hover:border-slate-700",
       icon: "bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400",
     },
     mastery: {
-      card: "border-slate-200/80 bg-white hover:border-slate-350 dark:border-slate-800 dark:bg-slate-950/80 dark:hover:border-slate-700",
       icon: "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400",
     },
   }[variant];
 
   return (
-    <article className={cn(
-      "flex h-full min-w-0 flex-col rounded-2xl border shadow-[0_4px_16px_-4px_rgba(15,23,42,0.04)] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-1 hover:shadow-[0_12px_24px_-8px_rgba(15,23,42,0.08)] dark:hover:shadow-none",
-      toneClass.card,
-    )}>
-      <div className="flex flex-1 flex-col p-5">
-        <div className="flex min-w-0 items-start gap-3">
-          <div className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-xl transition-all duration-300", toneClass.icon)}>
+    <article className="grid min-w-0 grid-cols-1 gap-4 px-1 py-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center lg:grid-cols-[minmax(0,1fr)_minmax(220px,0.55fr)_220px]">
+        <div className="flex min-w-0 items-start gap-3.5">
+          <div className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-lg", toneClass.icon)}>
             {icon}
           </div>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-lg font-black leading-tight text-slate-950 dark:text-slate-100">{title}</h3>
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-black text-slate-500 dark:bg-slate-900 dark:text-slate-400">
+              <h3 className="text-base font-semibold leading-tight text-slate-950 dark:text-slate-100">{title}</h3>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500 dark:bg-slate-900 dark:text-slate-400">
                 {statusBadge}
               </span>
             </div>
-            <p className="mt-1.5 text-sm leading-6 text-slate-600 dark:text-slate-400">{description}</p>
+            <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">{description}</p>
           </div>
         </div>
-        <div className="mt-5 flex flex-1 flex-col justify-between gap-5">
-          <div className="flex flex-wrap gap-2">
+          <div className="grid grid-flow-col auto-cols-fr divide-x divide-slate-200 dark:divide-slate-800">
             {meta.map((item) => (
-              <span key={item} className="rounded-full bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-500 dark:bg-slate-900 dark:text-slate-400">
+              <span key={item} className="px-2 text-center text-xs font-medium leading-5 text-slate-600 dark:text-slate-300">
                 {item}
               </span>
             ))}
           </div>
-          <div className="flex flex-wrap items-center gap-2 pt-1">{actions}</div>
-        </div>
-      </div>
+          <div className="grid w-full grid-cols-2 items-center gap-2 md:col-span-2 md:max-w-[220px] md:justify-self-end lg:col-span-1">{actions}</div>
     </article>
   );
 }
@@ -344,7 +335,7 @@ function SharedReadonlyExamsView({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="divide-y divide-slate-200 border-y border-slate-200 dark:divide-slate-800 dark:border-slate-800">
             <SharedTrainingModeCard
               icon={<ClipboardCheck className="h-5 w-5" />}
               title="网页练习"
@@ -425,9 +416,9 @@ function SharedReadonlyExamsView({
               { key: "active", title: "待完成", count: 0, emptyText: "暂无待完成记录" },
               { key: "completed", title: "已完成", count: paperCount, emptyText: "暂无已完成记录" },
             ].map((group) => (
-              <div key={group.key} className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950/80">
+              <div key={group.key} className="border-t border-slate-200 py-4 first:border-t-0 dark:border-slate-800">
                 <button type="button" onClick={() => onSaveRequired("查看训练记录")} className="flex w-full items-center gap-4 text-left">
-                  <h3 className="flex shrink-0 items-center gap-2 text-base font-black text-slate-950 dark:text-slate-100">
+                  <h3 className="flex shrink-0 items-center gap-2 text-base font-semibold text-slate-950 dark:text-slate-100">
                     <span>{group.title}</span>
                     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500 dark:bg-slate-900 dark:text-slate-400">
                       {formatStat(group.count)}
@@ -440,7 +431,7 @@ function SharedReadonlyExamsView({
                 </button>
 
                 {group.count === 0 ? (
-                  <div className="mt-3 flex items-center gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-3 py-3 text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900/45 dark:text-slate-400">
+                  <div className="mt-3 flex items-center gap-2 border-t border-dashed border-slate-200 px-1 py-4 text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
                     <FileText className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" />
                     <span>{group.emptyText}</span>
                   </div>
@@ -515,7 +506,7 @@ function SharedSummaryMetric({
   }[tone];
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950/70">
+    <div className="p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">{label}</p>
@@ -533,7 +524,7 @@ function SharedSummaryMetric({
 function SharedEmptyBlock({ icon, title, detail }: { icon: ReactNode; title: string; detail: string }) {
   return (
     <div className="flex min-h-[160px] flex-col items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50/50 px-5 py-8 text-center dark:border-slate-800 dark:bg-slate-900/30">
-      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white text-slate-400 shadow-sm dark:bg-slate-950 dark:text-slate-500">
+      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-100 text-slate-400 dark:bg-slate-900 dark:text-slate-500">
         {icon}
       </div>
       <p className="mt-3 text-sm font-semibold text-slate-800 dark:text-slate-200">{title}</p>
@@ -578,7 +569,7 @@ function SharedReadonlyProfileView({
         />
 
         <div className="grid items-stretch gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(360px,0.55fr)]">
-          <section className="flex h-full flex-col rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950/75 sm:p-6">
+          <section className="flex h-full flex-col rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-950/75 sm:p-6">
             <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0">
                 <p className="flex items-center gap-2 text-xs font-bold text-indigo-600 dark:text-indigo-300">
@@ -593,7 +584,7 @@ function SharedReadonlyProfileView({
                 </p>
               </div>
               <div className="flex shrink-0 flex-wrap gap-2">
-                <SaveRequiredButton onClick={() => onSaveRequired("打开练习中心")} className="h-10 rounded-lg bg-slate-950 px-4 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200">
+                <SaveRequiredButton onClick={() => onSaveRequired("打开练习中心")} className="h-10 rounded-lg bg-slate-950 px-4 text-sm font-semibold text-white hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200">
                   <FileText className="h-4 w-4" />
                   去练习中心
                 </SaveRequiredButton>
@@ -624,11 +615,15 @@ function SharedReadonlyProfileView({
             </div>
           </section>
 
-          <section className="grid grid-cols-2 gap-3">
-            <SharedSummaryMetric label="平均掌握" value={masteryCount > 0 ? "0%" : "暂无"} hint="按已诊断记录统计" icon={<Gauge className="h-5 w-5" />} tone="indigo" />
-            <SharedSummaryMetric label="做题正确" value="暂无" hint={`${formatStat(paperCount)} 次测验`} icon={<Trophy className="h-5 w-5" />} tone="emerald" />
-            <div className="col-span-2">
-              <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950/70">
+          <section className="grid grid-cols-2 overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950/70">
+            <div className="border-b border-r border-slate-200 dark:border-slate-800">
+              <SharedSummaryMetric label="平均掌握" value={masteryCount > 0 ? "0%" : "暂无"} hint="按已诊断记录统计" icon={<Gauge className="h-5 w-5" />} tone="indigo" />
+            </div>
+            <div className="border-b border-slate-200 dark:border-slate-800">
+              <SharedSummaryMetric label="做题正确" value="暂无" hint={`${formatStat(paperCount)} 次测验`} icon={<Trophy className="h-5 w-5" />} tone="emerald" />
+            </div>
+            <div className="col-span-2 border-b border-slate-200 dark:border-slate-800">
+              <div className="p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">优先补哪里</p>
@@ -653,7 +648,7 @@ function SharedReadonlyProfileView({
         </div>
 
         <div id="profile-mastery-section" className="grid scroll-mt-24 gap-4 xl:grid-cols-2">
-          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950/70">
+          <section className="border-t border-slate-200 py-6 dark:border-slate-800">
             <SharedSectionHeading
               icon={<Target className="h-4 w-4" />}
               title="知识点掌握"
@@ -674,7 +669,7 @@ function SharedReadonlyProfileView({
             </div>
           </section>
 
-          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950/70">
+          <section className="border-t border-slate-200 py-6 dark:border-slate-800">
             <SharedSectionHeading
               icon={<CalendarClock className="h-4 w-4" />}
               title="复习安排"
@@ -692,7 +687,7 @@ function SharedReadonlyProfileView({
 
         <div className="grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(360px,1.05fr)]">
           {planDocuments.length ? (
-            <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950/70">
+            <section className="border-t border-slate-200 py-6 dark:border-slate-800">
               <SharedSectionHeading
                 icon={<CalendarClock className="h-4 w-4" />}
                 title="今日行动"
@@ -700,9 +695,9 @@ function SharedReadonlyProfileView({
               />
               <ol className="mt-4 space-y-3">
                 {planDocuments.map((doc, index) => (
-                  <li key={doc.doc_id} className="grid gap-3 rounded-lg border border-slate-100 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-900/40 sm:grid-cols-[5rem_minmax(0,1fr)]">
+                  <li key={doc.doc_id} className="grid gap-3 border-b border-slate-100 px-1 py-3 last:border-b-0 dark:border-slate-800 sm:grid-cols-[5rem_minmax(0,1fr)]">
                     <div className="flex items-center gap-2 sm:flex-col sm:items-start sm:gap-1">
-                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-white text-[11px] font-black tabular-nums text-slate-500 shadow-sm dark:bg-slate-950 dark:text-slate-400">
+                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-slate-100 text-[11px] font-black tabular-nums text-slate-500 dark:bg-slate-900 dark:text-slate-400">
                         {String(index + 1).padStart(2, "0")}
                       </span>
                       <span className="text-xs font-bold text-slate-500 dark:text-slate-400">{index === 0 ? "定位" : index === 1 ? "练习" : "复盘"}</span>
@@ -719,7 +714,7 @@ function SharedReadonlyProfileView({
             </section>
           ) : null}
 
-          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950/70">
+          <section className="border-t border-slate-200 py-6 dark:border-slate-800">
             <SharedSectionHeading
               icon={<FileText className="h-4 w-4" />}
               title="最近测验"
@@ -757,7 +752,7 @@ function SharedReadonlyProfileView({
           </section>
         </div>
 
-        <section className="rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950/70">
+        <section className="border-y border-slate-200 dark:border-slate-800">
           <button
             type="button"
             onClick={() => setIsProfileExpanded((value) => !value)}
@@ -826,6 +821,7 @@ export function CourseSharePage() {
   const shareAssetBaseUrl = token ? `/api/v1/course-shares/${encodeURIComponent(token)}/assets` : "";
   const location = useLocation();
   const navigate = useNavigate();
+  const authSessionQuery = useAuthSession();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -1141,7 +1137,9 @@ export function CourseSharePage() {
   const importError = importMutation.isError
     ? getApiErrorMessage(importMutation.error, "保存失败，请稍后重试")
     : "";
-  const canSaveWithCurrentSession = Boolean(preview?.can_import && hasStoredAccessToken());
+  const canSaveWithCurrentSession = Boolean(
+    preview?.can_import && authSessionQuery.data?.current_user?.is_authenticated,
+  );
   const saveRequiresLogin = Boolean(preview?.can_import && !canSaveWithCurrentSession);
   const saveLoginMessage = "请先登录或注册后再保存课程到自己的账号。";
   const requiresLogin = importError.includes("登录") || importError.includes("注册") || importError.includes("AUTH_REQUIRED");

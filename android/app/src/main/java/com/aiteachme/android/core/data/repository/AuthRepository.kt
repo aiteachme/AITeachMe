@@ -14,13 +14,13 @@ class AuthRepository(
 ) {
     suspend fun currentUser(): AuthSessionData {
         val response = api.currentUser()
-        return response.requireData()
+        return response.requireData().also(::saveSessionCredentials)
     }
 
     suspend fun login(email: String, password: String): AuthSessionData {
         val response = api.login(LoginRequest(email = email, password = password))
         val session = response.requireData()
-        sessionStore.saveAccessToken(session.accessToken)
+        saveSessionCredentials(session)
         return session
     }
 
@@ -33,7 +33,7 @@ class AuthRepository(
             ),
         )
         val session = response.requireData()
-        sessionStore.saveAccessToken(session.accessToken)
+        saveSessionCredentials(session)
         return session
     }
 
@@ -48,7 +48,13 @@ class AuthRepository(
             response.requireData()
         } finally {
             sessionStore.clearAccessToken()
+            sessionStore.saveCsrfToken(null)
         }
+    }
+
+    private fun saveSessionCredentials(session: AuthSessionData) {
+        sessionStore.saveAccessToken(session.accessToken)
+        sessionStore.saveCsrfToken(session.csrfToken)
     }
 
     private fun <T> com.aiteachme.android.core.network.dto.ApiResponse<T>.requireData(): T {

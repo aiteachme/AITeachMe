@@ -11,6 +11,7 @@ from app.shared.infra.runtime.mode import (
     is_local_mode,
     resolve_auth_enabled,
     resolve_app_mode,
+    resolve_credits_enabled,
     resolve_guest_cookie_samesite,
     resolve_guest_cookie_secure,
 )
@@ -35,6 +36,7 @@ __all__ = [
     "is_local_mode",
     "resolve_auth_enabled",
     "resolve_app_mode",
+    "resolve_credits_enabled",
     "resolve_guest_cookie_samesite",
     "resolve_guest_cookie_secure",
 ]

@@ -5,21 +5,40 @@
  * 本地优先的 AI 助教后端服务。
  */
 import {
-  useMutation
+  useMutation,
+  useQuery
 } from '@tanstack/react-query';
 import type {
+  DataTag,
+  DefinedInitialDataOptions,
+  DefinedUseQueryResult,
   MutationFunction,
   QueryClient,
+  QueryFunction,
+  QueryKey,
+  UndefinedInitialDataOptions,
   UseMutationOptions,
-  UseMutationResult
+  UseMutationResult,
+  UseQueryOptions,
+  UseQueryResult
 } from '@tanstack/react-query';
 
 import type {
   ApiResponseAuthSessionData,
+  ApiResponseDict,
+  ApiResponseDictStrBool,
+  ApiResponseDictStrInt,
+  ApiResponseListAuthIdentityItem,
+  ApiResponseListOAuthProviderItem,
+  ApiResponseOAuthStartData,
   ApiResponseSendEmailCodeData,
   ErrorResponse,
+  HTTPValidationError,
   LoginRequest,
   LogoutRequest,
+  OAuthConfirmRequest,
+  OAuthStartRequest,
+  OauthCallbackApiV1AuthOauthProviderCallbackGetParams,
   RegisterRequest,
   SendEmailCodeRequest
 } from './model';
@@ -31,6 +50,21 @@ import { orvalApiClient } from '../client.ts';
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 
+
+const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKey: K } => {
+  const result = { queryKey } as T & { queryKey: K };
+  for (const key of Object.keys(query)) {
+    // The explicit queryKey always wins, matching the previous
+    // `{ ...query, queryKey }` spread where it was set last.
+    if (key === 'queryKey') continue;
+    Object.defineProperty(result, key, {
+      enumerable: true,
+      configurable: true,
+      get: () => (query as Record<string, unknown>)[key],
+    });
+  }
+  return result;
+};
 
 export type sendEmailCodeApiV1AuthEmailSendCodePostResponse200 = {
   data: ApiResponseSendEmailCodeData
@@ -453,36 +487,139 @@ export const useLogoutApiV1AuthLogoutPost = <TError = ErrorResponse,
       > => {
       return useMutation(getLogoutApiV1AuthLogoutPostMutationOptions(options), queryClient);
     }
-    export type userApiV1AuthUserPostResponse200 = {
-  data: ApiResponseAuthSessionData
+    export type logoutAllApiV1AuthLogoutAllPostResponse200 = {
+  data: ApiResponseDictStrInt
   status: 200
 }
 
-export type userApiV1AuthUserPostResponse401 = {
+export type logoutAllApiV1AuthLogoutAllPostResponse401 = {
   data: ErrorResponse
   status: 401
 }
 
-export type userApiV1AuthUserPostResponse422 = {
+export type logoutAllApiV1AuthLogoutAllPostResponse403 = {
+  data: ErrorResponse
+  status: 403
+}
+
+export type logoutAllApiV1AuthLogoutAllPostResponse422 = {
   data: ErrorResponse
   status: 422
 }
 
-export type userApiV1AuthUserPostResponse500 = {
+export type logoutAllApiV1AuthLogoutAllPostResponse500 = {
   data: ErrorResponse
   status: 500
 }
 
-export type userApiV1AuthUserPostResponseSuccess = (userApiV1AuthUserPostResponse200) & {
+export type logoutAllApiV1AuthLogoutAllPostResponseSuccess = (logoutAllApiV1AuthLogoutAllPostResponse200) & {
   headers: Headers;
 };
-export type userApiV1AuthUserPostResponseError = (userApiV1AuthUserPostResponse401 | userApiV1AuthUserPostResponse422 | userApiV1AuthUserPostResponse500) & {
+export type logoutAllApiV1AuthLogoutAllPostResponseError = (logoutAllApiV1AuthLogoutAllPostResponse401 | logoutAllApiV1AuthLogoutAllPostResponse403 | logoutAllApiV1AuthLogoutAllPostResponse422 | logoutAllApiV1AuthLogoutAllPostResponse500) & {
   headers: Headers;
 };
 
-export type userApiV1AuthUserPostResponse = (userApiV1AuthUserPostResponseSuccess | userApiV1AuthUserPostResponseError)
+export type logoutAllApiV1AuthLogoutAllPostResponse = (logoutAllApiV1AuthLogoutAllPostResponseSuccess | logoutAllApiV1AuthLogoutAllPostResponseError)
 
-export const getUserApiV1AuthUserPostUrl = () => {
+export const getLogoutAllApiV1AuthLogoutAllPostUrl = () => {
+
+
+
+
+  return `/api/v1/auth/logout-all`
+}
+
+/**
+ * @summary 撤销全部登录会话
+ */
+export const logoutAllApiV1AuthLogoutAllPost = async ( options?: RequestInit): Promise<logoutAllApiV1AuthLogoutAllPostResponse> => {
+
+  return orvalApiClient<logoutAllApiV1AuthLogoutAllPostResponse>(getLogoutAllApiV1AuthLogoutAllPostUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getLogoutAllApiV1AuthLogoutAllPostMutationOptions = <TError = ErrorResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof logoutAllApiV1AuthLogoutAllPost>>, TError,void, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof logoutAllApiV1AuthLogoutAllPost>>, TError,void, TContext> => {
+
+const mutationKey = ['logoutAllApiV1AuthLogoutAllPost'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof logoutAllApiV1AuthLogoutAllPost>>, void> = () => {
+
+
+          return  logoutAllApiV1AuthLogoutAllPost(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type LogoutAllApiV1AuthLogoutAllPostMutationResult = NonNullable<Awaited<ReturnType<typeof logoutAllApiV1AuthLogoutAllPost>>>
+
+    export type LogoutAllApiV1AuthLogoutAllPostMutationError = ErrorResponse
+
+    /**
+ * @summary 撤销全部登录会话
+ */
+export const useLogoutAllApiV1AuthLogoutAllPost = <TError = ErrorResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof logoutAllApiV1AuthLogoutAllPost>>, TError,void, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof logoutAllApiV1AuthLogoutAllPost>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getLogoutAllApiV1AuthLogoutAllPostMutationOptions(options), queryClient);
+    }
+    export type userApiV1AuthUserGetResponse200 = {
+  data: ApiResponseAuthSessionData
+  status: 200
+}
+
+export type userApiV1AuthUserGetResponse401 = {
+  data: ErrorResponse
+  status: 401
+}
+
+export type userApiV1AuthUserGetResponse422 = {
+  data: ErrorResponse
+  status: 422
+}
+
+export type userApiV1AuthUserGetResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type userApiV1AuthUserGetResponseSuccess = (userApiV1AuthUserGetResponse200) & {
+  headers: Headers;
+};
+export type userApiV1AuthUserGetResponseError = (userApiV1AuthUserGetResponse401 | userApiV1AuthUserGetResponse422 | userApiV1AuthUserGetResponse500) & {
+  headers: Headers;
+};
+
+export type userApiV1AuthUserGetResponse = (userApiV1AuthUserGetResponseSuccess | userApiV1AuthUserGetResponseError)
+
+export const getUserApiV1AuthUserGetUrl = () => {
 
 
 
@@ -494,25 +631,272 @@ export const getUserApiV1AuthUserPostUrl = () => {
  * 读取当前 token/device_key 对应的用户会话信息。
  * @summary 当前用户
  */
-export const userApiV1AuthUserPost = async (logoutRequest?: LogoutRequest, options?: RequestInit): Promise<userApiV1AuthUserPostResponse> => {
+export const userApiV1AuthUserGet = async ( options?: RequestInit): Promise<userApiV1AuthUserGetResponse> => {
 
-  return orvalApiClient<userApiV1AuthUserPostResponse>(getUserApiV1AuthUserPostUrl(),
+  return orvalApiClient<userApiV1AuthUserGetResponse>(getUserApiV1AuthUserGetUrl(),
   {
     ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(logoutRequest)
+    method: 'GET'
+
+
   }
 );}
 
 
 
 
-export const getUserApiV1AuthUserPostMutationOptions = <TError = ErrorResponse,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof userApiV1AuthUserPost>>, TError,{data?: LogoutRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
-): UseMutationOptions<Awaited<ReturnType<typeof userApiV1AuthUserPost>>, TError,{data?: LogoutRequest}, TContext> => {
 
-const mutationKey = ['userApiV1AuthUserPost'];
+export const getUserApiV1AuthUserGetQueryKey = () => {
+    return [
+    `/api/v1/auth/user`
+    ] as const;
+    }
+
+
+export const getUserApiV1AuthUserGetQueryOptions = <TData = Awaited<ReturnType<typeof userApiV1AuthUserGet>>, TError = ErrorResponse>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof userApiV1AuthUserGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getUserApiV1AuthUserGetQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof userApiV1AuthUserGet>>> = ({ signal }) => userApiV1AuthUserGet({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof userApiV1AuthUserGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type UserApiV1AuthUserGetQueryResult = NonNullable<Awaited<ReturnType<typeof userApiV1AuthUserGet>>>
+export type UserApiV1AuthUserGetQueryError = ErrorResponse
+
+
+export function useUserApiV1AuthUserGet<TData = Awaited<ReturnType<typeof userApiV1AuthUserGet>>, TError = ErrorResponse>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof userApiV1AuthUserGet>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof userApiV1AuthUserGet>>,
+          TError,
+          Awaited<ReturnType<typeof userApiV1AuthUserGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useUserApiV1AuthUserGet<TData = Awaited<ReturnType<typeof userApiV1AuthUserGet>>, TError = ErrorResponse>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof userApiV1AuthUserGet>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof userApiV1AuthUserGet>>,
+          TError,
+          Awaited<ReturnType<typeof userApiV1AuthUserGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useUserApiV1AuthUserGet<TData = Awaited<ReturnType<typeof userApiV1AuthUserGet>>, TError = ErrorResponse>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof userApiV1AuthUserGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary 当前用户
+ */
+
+export function useUserApiV1AuthUserGet<TData = Awaited<ReturnType<typeof userApiV1AuthUserGet>>, TError = ErrorResponse>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof userApiV1AuthUserGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getUserApiV1AuthUserGetQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+export type providersApiV1AuthProvidersGetResponse200 = {
+  data: ApiResponseListOAuthProviderItem
+  status: 200
+}
+
+export type providersApiV1AuthProvidersGetResponseSuccess = (providersApiV1AuthProvidersGetResponse200) & {
+  headers: Headers;
+};
+;
+
+export type providersApiV1AuthProvidersGetResponse = (providersApiV1AuthProvidersGetResponseSuccess)
+
+export const getProvidersApiV1AuthProvidersGetUrl = () => {
+
+
+
+
+  return `/api/v1/auth/providers`
+}
+
+/**
+ * @summary 可用第三方登录
+ */
+export const providersApiV1AuthProvidersGet = async ( options?: RequestInit): Promise<providersApiV1AuthProvidersGetResponse> => {
+
+  return orvalApiClient<providersApiV1AuthProvidersGetResponse>(getProvidersApiV1AuthProvidersGetUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getProvidersApiV1AuthProvidersGetQueryKey = () => {
+    return [
+    `/api/v1/auth/providers`
+    ] as const;
+    }
+
+
+export const getProvidersApiV1AuthProvidersGetQueryOptions = <TData = Awaited<ReturnType<typeof providersApiV1AuthProvidersGet>>, TError = unknown>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof providersApiV1AuthProvidersGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getProvidersApiV1AuthProvidersGetQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof providersApiV1AuthProvidersGet>>> = ({ signal }) => providersApiV1AuthProvidersGet({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof providersApiV1AuthProvidersGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ProvidersApiV1AuthProvidersGetQueryResult = NonNullable<Awaited<ReturnType<typeof providersApiV1AuthProvidersGet>>>
+export type ProvidersApiV1AuthProvidersGetQueryError = unknown
+
+
+export function useProvidersApiV1AuthProvidersGet<TData = Awaited<ReturnType<typeof providersApiV1AuthProvidersGet>>, TError = unknown>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof providersApiV1AuthProvidersGet>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof providersApiV1AuthProvidersGet>>,
+          TError,
+          Awaited<ReturnType<typeof providersApiV1AuthProvidersGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useProvidersApiV1AuthProvidersGet<TData = Awaited<ReturnType<typeof providersApiV1AuthProvidersGet>>, TError = unknown>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof providersApiV1AuthProvidersGet>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof providersApiV1AuthProvidersGet>>,
+          TError,
+          Awaited<ReturnType<typeof providersApiV1AuthProvidersGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useProvidersApiV1AuthProvidersGet<TData = Awaited<ReturnType<typeof providersApiV1AuthProvidersGet>>, TError = unknown>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof providersApiV1AuthProvidersGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary 可用第三方登录
+ */
+
+export function useProvidersApiV1AuthProvidersGet<TData = Awaited<ReturnType<typeof providersApiV1AuthProvidersGet>>, TError = unknown>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof providersApiV1AuthProvidersGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getProvidersApiV1AuthProvidersGetQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+export type oauthStartApiV1AuthOauthProviderStartPostResponse200 = {
+  data: ApiResponseOAuthStartData
+  status: 200
+}
+
+export type oauthStartApiV1AuthOauthProviderStartPostResponse401 = {
+  data: ErrorResponse
+  status: 401
+}
+
+export type oauthStartApiV1AuthOauthProviderStartPostResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type oauthStartApiV1AuthOauthProviderStartPostResponse422 = {
+  data: ErrorResponse
+  status: 422
+}
+
+export type oauthStartApiV1AuthOauthProviderStartPostResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type oauthStartApiV1AuthOauthProviderStartPostResponseSuccess = (oauthStartApiV1AuthOauthProviderStartPostResponse200) & {
+  headers: Headers;
+};
+export type oauthStartApiV1AuthOauthProviderStartPostResponseError = (oauthStartApiV1AuthOauthProviderStartPostResponse401 | oauthStartApiV1AuthOauthProviderStartPostResponse404 | oauthStartApiV1AuthOauthProviderStartPostResponse422 | oauthStartApiV1AuthOauthProviderStartPostResponse500) & {
+  headers: Headers;
+};
+
+export type oauthStartApiV1AuthOauthProviderStartPostResponse = (oauthStartApiV1AuthOauthProviderStartPostResponseSuccess | oauthStartApiV1AuthOauthProviderStartPostResponseError)
+
+export const getOauthStartApiV1AuthOauthProviderStartPostUrl = (provider: string,) => {
+
+
+
+
+  return `/api/v1/auth/oauth/${provider}/start`
+}
+
+/**
+ * @summary Oauth Start
+ */
+export const oauthStartApiV1AuthOauthProviderStartPost = async (provider: string,
+    oAuthStartRequest?: OAuthStartRequest, options?: RequestInit): Promise<oauthStartApiV1AuthOauthProviderStartPostResponse> => {
+
+  return orvalApiClient<oauthStartApiV1AuthOauthProviderStartPostResponse>(getOauthStartApiV1AuthOauthProviderStartPostUrl(provider),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(oAuthStartRequest)
+  }
+);}
+
+
+
+
+export const getOauthStartApiV1AuthOauthProviderStartPostMutationOptions = <TError = ErrorResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof oauthStartApiV1AuthOauthProviderStartPost>>, TError,{provider: string;data?: OAuthStartRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof oauthStartApiV1AuthOauthProviderStartPost>>, TError,{provider: string;data?: OAuthStartRequest}, TContext> => {
+
+const mutationKey = ['oauthStartApiV1AuthOauthProviderStartPost'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
@@ -522,10 +906,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof userApiV1AuthUserPost>>, {data?: LogoutRequest}> = (props) => {
-          const {data} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof oauthStartApiV1AuthOauthProviderStartPost>>, {provider: string;data?: OAuthStartRequest}> = (props) => {
+          const {provider,data} = props ?? {};
 
-          return  userApiV1AuthUserPost(data,requestOptions)
+          return  oauthStartApiV1AuthOauthProviderStartPost(provider,data,requestOptions)
         }
 
 
@@ -535,20 +919,781 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
   return  { mutationFn, ...mutationOptions }}
 
-    export type UserApiV1AuthUserPostMutationResult = NonNullable<Awaited<ReturnType<typeof userApiV1AuthUserPost>>>
-    export type UserApiV1AuthUserPostMutationBody = LogoutRequest | undefined
-    export type UserApiV1AuthUserPostMutationError = ErrorResponse
+    export type OauthStartApiV1AuthOauthProviderStartPostMutationResult = NonNullable<Awaited<ReturnType<typeof oauthStartApiV1AuthOauthProviderStartPost>>>
+    export type OauthStartApiV1AuthOauthProviderStartPostMutationBody = OAuthStartRequest | undefined
+    export type OauthStartApiV1AuthOauthProviderStartPostMutationError = ErrorResponse
 
     /**
- * @summary 当前用户
+ * @summary Oauth Start
  */
-export const useUserApiV1AuthUserPost = <TError = ErrorResponse,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof userApiV1AuthUserPost>>, TError,{data?: LogoutRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+export const useOauthStartApiV1AuthOauthProviderStartPost = <TError = ErrorResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof oauthStartApiV1AuthOauthProviderStartPost>>, TError,{provider: string;data?: OAuthStartRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
  , queryClient?: QueryClient): UseMutationResult<
-        Awaited<ReturnType<typeof userApiV1AuthUserPost>>,
+        Awaited<ReturnType<typeof oauthStartApiV1AuthOauthProviderStartPost>>,
         TError,
-        {data?: LogoutRequest},
+        {provider: string;data?: OAuthStartRequest},
         TContext
       > => {
-      return useMutation(getUserApiV1AuthUserPostMutationOptions(options), queryClient);
+      return useMutation(getOauthStartApiV1AuthOauthProviderStartPostMutationOptions(options), queryClient);
+    }
+    export type oauthCallbackApiV1AuthOauthProviderCallbackGetResponse200 = {
+  data: unknown
+  status: 200
+}
+
+export type oauthCallbackApiV1AuthOauthProviderCallbackGetResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type oauthCallbackApiV1AuthOauthProviderCallbackGetResponse403 = {
+  data: ErrorResponse
+  status: 403
+}
+
+export type oauthCallbackApiV1AuthOauthProviderCallbackGetResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type oauthCallbackApiV1AuthOauthProviderCallbackGetResponse409 = {
+  data: ErrorResponse
+  status: 409
+}
+
+export type oauthCallbackApiV1AuthOauthProviderCallbackGetResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type oauthCallbackApiV1AuthOauthProviderCallbackGetResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type oauthCallbackApiV1AuthOauthProviderCallbackGetResponseSuccess = (oauthCallbackApiV1AuthOauthProviderCallbackGetResponse200) & {
+  headers: Headers;
+};
+export type oauthCallbackApiV1AuthOauthProviderCallbackGetResponseError = (oauthCallbackApiV1AuthOauthProviderCallbackGetResponse400 | oauthCallbackApiV1AuthOauthProviderCallbackGetResponse403 | oauthCallbackApiV1AuthOauthProviderCallbackGetResponse404 | oauthCallbackApiV1AuthOauthProviderCallbackGetResponse409 | oauthCallbackApiV1AuthOauthProviderCallbackGetResponse422 | oauthCallbackApiV1AuthOauthProviderCallbackGetResponse500) & {
+  headers: Headers;
+};
+
+export type oauthCallbackApiV1AuthOauthProviderCallbackGetResponse = (oauthCallbackApiV1AuthOauthProviderCallbackGetResponseSuccess | oauthCallbackApiV1AuthOauthProviderCallbackGetResponseError)
+
+export const getOauthCallbackApiV1AuthOauthProviderCallbackGetUrl = (provider: string,
+    params: OauthCallbackApiV1AuthOauthProviderCallbackGetParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/auth/oauth/${provider}/callback?${stringifiedParams}` : `/api/v1/auth/oauth/${provider}/callback`
+}
+
+/**
+ * @summary Oauth Callback
+ */
+export const oauthCallbackApiV1AuthOauthProviderCallbackGet = async (provider: string,
+    params: OauthCallbackApiV1AuthOauthProviderCallbackGetParams, options?: RequestInit): Promise<oauthCallbackApiV1AuthOauthProviderCallbackGetResponse> => {
+
+  return orvalApiClient<oauthCallbackApiV1AuthOauthProviderCallbackGetResponse>(getOauthCallbackApiV1AuthOauthProviderCallbackGetUrl(provider,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getOauthCallbackApiV1AuthOauthProviderCallbackGetQueryKey = (provider: string,
+    params?: OauthCallbackApiV1AuthOauthProviderCallbackGetParams,) => {
+    return [
+    `/api/v1/auth/oauth/${provider}/callback`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getOauthCallbackApiV1AuthOauthProviderCallbackGetQueryOptions = <TData = Awaited<ReturnType<typeof oauthCallbackApiV1AuthOauthProviderCallbackGet>>, TError = ErrorResponse | HTTPValidationError>(provider: string,
+    params: OauthCallbackApiV1AuthOauthProviderCallbackGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof oauthCallbackApiV1AuthOauthProviderCallbackGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getOauthCallbackApiV1AuthOauthProviderCallbackGetQueryKey(provider,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof oauthCallbackApiV1AuthOauthProviderCallbackGet>>> = ({ signal }) => oauthCallbackApiV1AuthOauthProviderCallbackGet(provider,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: provider !== null && provider !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof oauthCallbackApiV1AuthOauthProviderCallbackGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type OauthCallbackApiV1AuthOauthProviderCallbackGetQueryResult = NonNullable<Awaited<ReturnType<typeof oauthCallbackApiV1AuthOauthProviderCallbackGet>>>
+export type OauthCallbackApiV1AuthOauthProviderCallbackGetQueryError = ErrorResponse | HTTPValidationError
+
+
+export function useOauthCallbackApiV1AuthOauthProviderCallbackGet<TData = Awaited<ReturnType<typeof oauthCallbackApiV1AuthOauthProviderCallbackGet>>, TError = ErrorResponse | HTTPValidationError>(
+ provider: string,
+    params: OauthCallbackApiV1AuthOauthProviderCallbackGetParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof oauthCallbackApiV1AuthOauthProviderCallbackGet>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof oauthCallbackApiV1AuthOauthProviderCallbackGet>>,
+          TError,
+          Awaited<ReturnType<typeof oauthCallbackApiV1AuthOauthProviderCallbackGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useOauthCallbackApiV1AuthOauthProviderCallbackGet<TData = Awaited<ReturnType<typeof oauthCallbackApiV1AuthOauthProviderCallbackGet>>, TError = ErrorResponse | HTTPValidationError>(
+ provider: string,
+    params: OauthCallbackApiV1AuthOauthProviderCallbackGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof oauthCallbackApiV1AuthOauthProviderCallbackGet>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof oauthCallbackApiV1AuthOauthProviderCallbackGet>>,
+          TError,
+          Awaited<ReturnType<typeof oauthCallbackApiV1AuthOauthProviderCallbackGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useOauthCallbackApiV1AuthOauthProviderCallbackGet<TData = Awaited<ReturnType<typeof oauthCallbackApiV1AuthOauthProviderCallbackGet>>, TError = ErrorResponse | HTTPValidationError>(
+ provider: string,
+    params: OauthCallbackApiV1AuthOauthProviderCallbackGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof oauthCallbackApiV1AuthOauthProviderCallbackGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Oauth Callback
+ */
+
+export function useOauthCallbackApiV1AuthOauthProviderCallbackGet<TData = Awaited<ReturnType<typeof oauthCallbackApiV1AuthOauthProviderCallbackGet>>, TError = ErrorResponse | HTTPValidationError>(
+ provider: string,
+    params: OauthCallbackApiV1AuthOauthProviderCallbackGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof oauthCallbackApiV1AuthOauthProviderCallbackGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getOauthCallbackApiV1AuthOauthProviderCallbackGetQueryOptions(provider,params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+export type oauthConfirmApiV1AuthOauthConfirmPostResponse200 = {
+  data: ApiResponseAuthSessionData
+  status: 200
+}
+
+export type oauthConfirmApiV1AuthOauthConfirmPostResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type oauthConfirmApiV1AuthOauthConfirmPostResponse401 = {
+  data: ErrorResponse
+  status: 401
+}
+
+export type oauthConfirmApiV1AuthOauthConfirmPostResponse409 = {
+  data: ErrorResponse
+  status: 409
+}
+
+export type oauthConfirmApiV1AuthOauthConfirmPostResponse422 = {
+  data: ErrorResponse
+  status: 422
+}
+
+export type oauthConfirmApiV1AuthOauthConfirmPostResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type oauthConfirmApiV1AuthOauthConfirmPostResponseSuccess = (oauthConfirmApiV1AuthOauthConfirmPostResponse200) & {
+  headers: Headers;
+};
+export type oauthConfirmApiV1AuthOauthConfirmPostResponseError = (oauthConfirmApiV1AuthOauthConfirmPostResponse400 | oauthConfirmApiV1AuthOauthConfirmPostResponse401 | oauthConfirmApiV1AuthOauthConfirmPostResponse409 | oauthConfirmApiV1AuthOauthConfirmPostResponse422 | oauthConfirmApiV1AuthOauthConfirmPostResponse500) & {
+  headers: Headers;
+};
+
+export type oauthConfirmApiV1AuthOauthConfirmPostResponse = (oauthConfirmApiV1AuthOauthConfirmPostResponseSuccess | oauthConfirmApiV1AuthOauthConfirmPostResponseError)
+
+export const getOauthConfirmApiV1AuthOauthConfirmPostUrl = () => {
+
+
+
+
+  return `/api/v1/auth/oauth/confirm`
+}
+
+/**
+ * @summary Oauth Confirm
+ */
+export const oauthConfirmApiV1AuthOauthConfirmPost = async (oAuthConfirmRequest: OAuthConfirmRequest, options?: RequestInit): Promise<oauthConfirmApiV1AuthOauthConfirmPostResponse> => {
+
+  return orvalApiClient<oauthConfirmApiV1AuthOauthConfirmPostResponse>(getOauthConfirmApiV1AuthOauthConfirmPostUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(oAuthConfirmRequest)
+  }
+);}
+
+
+
+
+export const getOauthConfirmApiV1AuthOauthConfirmPostMutationOptions = <TError = ErrorResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof oauthConfirmApiV1AuthOauthConfirmPost>>, TError,{data: OAuthConfirmRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof oauthConfirmApiV1AuthOauthConfirmPost>>, TError,{data: OAuthConfirmRequest}, TContext> => {
+
+const mutationKey = ['oauthConfirmApiV1AuthOauthConfirmPost'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof oauthConfirmApiV1AuthOauthConfirmPost>>, {data: OAuthConfirmRequest}> = (props) => {
+          const {data} = props ?? {};
+
+          return  oauthConfirmApiV1AuthOauthConfirmPost(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type OauthConfirmApiV1AuthOauthConfirmPostMutationResult = NonNullable<Awaited<ReturnType<typeof oauthConfirmApiV1AuthOauthConfirmPost>>>
+    export type OauthConfirmApiV1AuthOauthConfirmPostMutationBody = OAuthConfirmRequest
+    export type OauthConfirmApiV1AuthOauthConfirmPostMutationError = ErrorResponse
+
+    /**
+ * @summary Oauth Confirm
+ */
+export const useOauthConfirmApiV1AuthOauthConfirmPost = <TError = ErrorResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof oauthConfirmApiV1AuthOauthConfirmPost>>, TError,{data: OAuthConfirmRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof oauthConfirmApiV1AuthOauthConfirmPost>>,
+        TError,
+        {data: OAuthConfirmRequest},
+        TContext
+      > => {
+      return useMutation(getOauthConfirmApiV1AuthOauthConfirmPostMutationOptions(options), queryClient);
+    }
+    export type listIdentitiesApiV1AuthIdentitiesGetResponse200 = {
+  data: ApiResponseListAuthIdentityItem
+  status: 200
+}
+
+export type listIdentitiesApiV1AuthIdentitiesGetResponse401 = {
+  data: ErrorResponse
+  status: 401
+}
+
+export type listIdentitiesApiV1AuthIdentitiesGetResponse403 = {
+  data: ErrorResponse
+  status: 403
+}
+
+export type listIdentitiesApiV1AuthIdentitiesGetResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type listIdentitiesApiV1AuthIdentitiesGetResponseSuccess = (listIdentitiesApiV1AuthIdentitiesGetResponse200) & {
+  headers: Headers;
+};
+export type listIdentitiesApiV1AuthIdentitiesGetResponseError = (listIdentitiesApiV1AuthIdentitiesGetResponse401 | listIdentitiesApiV1AuthIdentitiesGetResponse403 | listIdentitiesApiV1AuthIdentitiesGetResponse500) & {
+  headers: Headers;
+};
+
+export type listIdentitiesApiV1AuthIdentitiesGetResponse = (listIdentitiesApiV1AuthIdentitiesGetResponseSuccess | listIdentitiesApiV1AuthIdentitiesGetResponseError)
+
+export const getListIdentitiesApiV1AuthIdentitiesGetUrl = () => {
+
+
+
+
+  return `/api/v1/auth/identities`
+}
+
+/**
+ * @summary List Identities
+ */
+export const listIdentitiesApiV1AuthIdentitiesGet = async ( options?: RequestInit): Promise<listIdentitiesApiV1AuthIdentitiesGetResponse> => {
+
+  return orvalApiClient<listIdentitiesApiV1AuthIdentitiesGetResponse>(getListIdentitiesApiV1AuthIdentitiesGetUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListIdentitiesApiV1AuthIdentitiesGetQueryKey = () => {
+    return [
+    `/api/v1/auth/identities`
+    ] as const;
+    }
+
+
+export const getListIdentitiesApiV1AuthIdentitiesGetQueryOptions = <TData = Awaited<ReturnType<typeof listIdentitiesApiV1AuthIdentitiesGet>>, TError = ErrorResponse>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listIdentitiesApiV1AuthIdentitiesGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListIdentitiesApiV1AuthIdentitiesGetQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listIdentitiesApiV1AuthIdentitiesGet>>> = ({ signal }) => listIdentitiesApiV1AuthIdentitiesGet({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listIdentitiesApiV1AuthIdentitiesGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListIdentitiesApiV1AuthIdentitiesGetQueryResult = NonNullable<Awaited<ReturnType<typeof listIdentitiesApiV1AuthIdentitiesGet>>>
+export type ListIdentitiesApiV1AuthIdentitiesGetQueryError = ErrorResponse
+
+
+export function useListIdentitiesApiV1AuthIdentitiesGet<TData = Awaited<ReturnType<typeof listIdentitiesApiV1AuthIdentitiesGet>>, TError = ErrorResponse>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listIdentitiesApiV1AuthIdentitiesGet>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listIdentitiesApiV1AuthIdentitiesGet>>,
+          TError,
+          Awaited<ReturnType<typeof listIdentitiesApiV1AuthIdentitiesGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListIdentitiesApiV1AuthIdentitiesGet<TData = Awaited<ReturnType<typeof listIdentitiesApiV1AuthIdentitiesGet>>, TError = ErrorResponse>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listIdentitiesApiV1AuthIdentitiesGet>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listIdentitiesApiV1AuthIdentitiesGet>>,
+          TError,
+          Awaited<ReturnType<typeof listIdentitiesApiV1AuthIdentitiesGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListIdentitiesApiV1AuthIdentitiesGet<TData = Awaited<ReturnType<typeof listIdentitiesApiV1AuthIdentitiesGet>>, TError = ErrorResponse>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listIdentitiesApiV1AuthIdentitiesGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary List Identities
+ */
+
+export function useListIdentitiesApiV1AuthIdentitiesGet<TData = Awaited<ReturnType<typeof listIdentitiesApiV1AuthIdentitiesGet>>, TError = ErrorResponse>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listIdentitiesApiV1AuthIdentitiesGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListIdentitiesApiV1AuthIdentitiesGetQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+export type deleteIdentityApiV1AuthIdentitiesIdentityIdDeleteResponse200 = {
+  data: ApiResponseDictStrBool
+  status: 200
+}
+
+export type deleteIdentityApiV1AuthIdentitiesIdentityIdDeleteResponse401 = {
+  data: ErrorResponse
+  status: 401
+}
+
+export type deleteIdentityApiV1AuthIdentitiesIdentityIdDeleteResponse403 = {
+  data: ErrorResponse
+  status: 403
+}
+
+export type deleteIdentityApiV1AuthIdentitiesIdentityIdDeleteResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type deleteIdentityApiV1AuthIdentitiesIdentityIdDeleteResponse409 = {
+  data: ErrorResponse
+  status: 409
+}
+
+export type deleteIdentityApiV1AuthIdentitiesIdentityIdDeleteResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type deleteIdentityApiV1AuthIdentitiesIdentityIdDeleteResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type deleteIdentityApiV1AuthIdentitiesIdentityIdDeleteResponseSuccess = (deleteIdentityApiV1AuthIdentitiesIdentityIdDeleteResponse200) & {
+  headers: Headers;
+};
+export type deleteIdentityApiV1AuthIdentitiesIdentityIdDeleteResponseError = (deleteIdentityApiV1AuthIdentitiesIdentityIdDeleteResponse401 | deleteIdentityApiV1AuthIdentitiesIdentityIdDeleteResponse403 | deleteIdentityApiV1AuthIdentitiesIdentityIdDeleteResponse404 | deleteIdentityApiV1AuthIdentitiesIdentityIdDeleteResponse409 | deleteIdentityApiV1AuthIdentitiesIdentityIdDeleteResponse422 | deleteIdentityApiV1AuthIdentitiesIdentityIdDeleteResponse500) & {
+  headers: Headers;
+};
+
+export type deleteIdentityApiV1AuthIdentitiesIdentityIdDeleteResponse = (deleteIdentityApiV1AuthIdentitiesIdentityIdDeleteResponseSuccess | deleteIdentityApiV1AuthIdentitiesIdentityIdDeleteResponseError)
+
+export const getDeleteIdentityApiV1AuthIdentitiesIdentityIdDeleteUrl = (identityId: string,) => {
+
+
+
+
+  return `/api/v1/auth/identities/${identityId}`
+}
+
+/**
+ * @summary Delete Identity
+ */
+export const deleteIdentityApiV1AuthIdentitiesIdentityIdDelete = async (identityId: string, options?: RequestInit): Promise<deleteIdentityApiV1AuthIdentitiesIdentityIdDeleteResponse> => {
+
+  return orvalApiClient<deleteIdentityApiV1AuthIdentitiesIdentityIdDeleteResponse>(getDeleteIdentityApiV1AuthIdentitiesIdentityIdDeleteUrl(identityId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteIdentityApiV1AuthIdentitiesIdentityIdDeleteMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteIdentityApiV1AuthIdentitiesIdentityIdDelete>>, TError,{identityId: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteIdentityApiV1AuthIdentitiesIdentityIdDelete>>, TError,{identityId: string}, TContext> => {
+
+const mutationKey = ['deleteIdentityApiV1AuthIdentitiesIdentityIdDelete'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteIdentityApiV1AuthIdentitiesIdentityIdDelete>>, {identityId: string}> = (props) => {
+          const {identityId} = props ?? {};
+
+          return  deleteIdentityApiV1AuthIdentitiesIdentityIdDelete(identityId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteIdentityApiV1AuthIdentitiesIdentityIdDeleteMutationResult = NonNullable<Awaited<ReturnType<typeof deleteIdentityApiV1AuthIdentitiesIdentityIdDelete>>>
+
+    export type DeleteIdentityApiV1AuthIdentitiesIdentityIdDeleteMutationError = ErrorResponse | HTTPValidationError
+
+    /**
+ * @summary Delete Identity
+ */
+export const useDeleteIdentityApiV1AuthIdentitiesIdentityIdDelete = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteIdentityApiV1AuthIdentitiesIdentityIdDelete>>, TError,{identityId: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof deleteIdentityApiV1AuthIdentitiesIdentityIdDelete>>,
+        TError,
+        {identityId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteIdentityApiV1AuthIdentitiesIdentityIdDeleteMutationOptions(options), queryClient);
+    }
+    export type getGuestMergeOfferApiV1AuthMergeJobIdGetResponse200 = {
+  data: ApiResponseDict
+  status: 200
+}
+
+export type getGuestMergeOfferApiV1AuthMergeJobIdGetResponse401 = {
+  data: ErrorResponse
+  status: 401
+}
+
+export type getGuestMergeOfferApiV1AuthMergeJobIdGetResponse403 = {
+  data: ErrorResponse
+  status: 403
+}
+
+export type getGuestMergeOfferApiV1AuthMergeJobIdGetResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type getGuestMergeOfferApiV1AuthMergeJobIdGetResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type getGuestMergeOfferApiV1AuthMergeJobIdGetResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type getGuestMergeOfferApiV1AuthMergeJobIdGetResponseSuccess = (getGuestMergeOfferApiV1AuthMergeJobIdGetResponse200) & {
+  headers: Headers;
+};
+export type getGuestMergeOfferApiV1AuthMergeJobIdGetResponseError = (getGuestMergeOfferApiV1AuthMergeJobIdGetResponse401 | getGuestMergeOfferApiV1AuthMergeJobIdGetResponse403 | getGuestMergeOfferApiV1AuthMergeJobIdGetResponse404 | getGuestMergeOfferApiV1AuthMergeJobIdGetResponse422 | getGuestMergeOfferApiV1AuthMergeJobIdGetResponse500) & {
+  headers: Headers;
+};
+
+export type getGuestMergeOfferApiV1AuthMergeJobIdGetResponse = (getGuestMergeOfferApiV1AuthMergeJobIdGetResponseSuccess | getGuestMergeOfferApiV1AuthMergeJobIdGetResponseError)
+
+export const getGetGuestMergeOfferApiV1AuthMergeJobIdGetUrl = (jobId: string,) => {
+
+
+
+
+  return `/api/v1/auth/merge/${jobId}`
+}
+
+/**
+ * @summary Get Guest Merge Offer
+ */
+export const getGuestMergeOfferApiV1AuthMergeJobIdGet = async (jobId: string, options?: RequestInit): Promise<getGuestMergeOfferApiV1AuthMergeJobIdGetResponse> => {
+
+  return orvalApiClient<getGuestMergeOfferApiV1AuthMergeJobIdGetResponse>(getGetGuestMergeOfferApiV1AuthMergeJobIdGetUrl(jobId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetGuestMergeOfferApiV1AuthMergeJobIdGetQueryKey = (jobId: string,) => {
+    return [
+    `/api/v1/auth/merge/${jobId}`
+    ] as const;
+    }
+
+
+export const getGetGuestMergeOfferApiV1AuthMergeJobIdGetQueryOptions = <TData = Awaited<ReturnType<typeof getGuestMergeOfferApiV1AuthMergeJobIdGet>>, TError = ErrorResponse | HTTPValidationError>(jobId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getGuestMergeOfferApiV1AuthMergeJobIdGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetGuestMergeOfferApiV1AuthMergeJobIdGetQueryKey(jobId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getGuestMergeOfferApiV1AuthMergeJobIdGet>>> = ({ signal }) => getGuestMergeOfferApiV1AuthMergeJobIdGet(jobId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: jobId !== null && jobId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getGuestMergeOfferApiV1AuthMergeJobIdGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetGuestMergeOfferApiV1AuthMergeJobIdGetQueryResult = NonNullable<Awaited<ReturnType<typeof getGuestMergeOfferApiV1AuthMergeJobIdGet>>>
+export type GetGuestMergeOfferApiV1AuthMergeJobIdGetQueryError = ErrorResponse | HTTPValidationError
+
+
+export function useGetGuestMergeOfferApiV1AuthMergeJobIdGet<TData = Awaited<ReturnType<typeof getGuestMergeOfferApiV1AuthMergeJobIdGet>>, TError = ErrorResponse | HTTPValidationError>(
+ jobId: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getGuestMergeOfferApiV1AuthMergeJobIdGet>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getGuestMergeOfferApiV1AuthMergeJobIdGet>>,
+          TError,
+          Awaited<ReturnType<typeof getGuestMergeOfferApiV1AuthMergeJobIdGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetGuestMergeOfferApiV1AuthMergeJobIdGet<TData = Awaited<ReturnType<typeof getGuestMergeOfferApiV1AuthMergeJobIdGet>>, TError = ErrorResponse | HTTPValidationError>(
+ jobId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getGuestMergeOfferApiV1AuthMergeJobIdGet>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getGuestMergeOfferApiV1AuthMergeJobIdGet>>,
+          TError,
+          Awaited<ReturnType<typeof getGuestMergeOfferApiV1AuthMergeJobIdGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetGuestMergeOfferApiV1AuthMergeJobIdGet<TData = Awaited<ReturnType<typeof getGuestMergeOfferApiV1AuthMergeJobIdGet>>, TError = ErrorResponse | HTTPValidationError>(
+ jobId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getGuestMergeOfferApiV1AuthMergeJobIdGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Get Guest Merge Offer
+ */
+
+export function useGetGuestMergeOfferApiV1AuthMergeJobIdGet<TData = Awaited<ReturnType<typeof getGuestMergeOfferApiV1AuthMergeJobIdGet>>, TError = ErrorResponse | HTTPValidationError>(
+ jobId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getGuestMergeOfferApiV1AuthMergeJobIdGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetGuestMergeOfferApiV1AuthMergeJobIdGetQueryOptions(jobId,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+export type confirmGuestMergeApiV1AuthMergeJobIdConfirmPostResponse200 = {
+  data: ApiResponseDict
+  status: 200
+}
+
+export type confirmGuestMergeApiV1AuthMergeJobIdConfirmPostResponse401 = {
+  data: ErrorResponse
+  status: 401
+}
+
+export type confirmGuestMergeApiV1AuthMergeJobIdConfirmPostResponse403 = {
+  data: ErrorResponse
+  status: 403
+}
+
+export type confirmGuestMergeApiV1AuthMergeJobIdConfirmPostResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type confirmGuestMergeApiV1AuthMergeJobIdConfirmPostResponse409 = {
+  data: ErrorResponse
+  status: 409
+}
+
+export type confirmGuestMergeApiV1AuthMergeJobIdConfirmPostResponse422 = {
+  data: ErrorResponse
+  status: 422
+}
+
+export type confirmGuestMergeApiV1AuthMergeJobIdConfirmPostResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type confirmGuestMergeApiV1AuthMergeJobIdConfirmPostResponseSuccess = (confirmGuestMergeApiV1AuthMergeJobIdConfirmPostResponse200) & {
+  headers: Headers;
+};
+export type confirmGuestMergeApiV1AuthMergeJobIdConfirmPostResponseError = (confirmGuestMergeApiV1AuthMergeJobIdConfirmPostResponse401 | confirmGuestMergeApiV1AuthMergeJobIdConfirmPostResponse403 | confirmGuestMergeApiV1AuthMergeJobIdConfirmPostResponse404 | confirmGuestMergeApiV1AuthMergeJobIdConfirmPostResponse409 | confirmGuestMergeApiV1AuthMergeJobIdConfirmPostResponse422 | confirmGuestMergeApiV1AuthMergeJobIdConfirmPostResponse500) & {
+  headers: Headers;
+};
+
+export type confirmGuestMergeApiV1AuthMergeJobIdConfirmPostResponse = (confirmGuestMergeApiV1AuthMergeJobIdConfirmPostResponseSuccess | confirmGuestMergeApiV1AuthMergeJobIdConfirmPostResponseError)
+
+export const getConfirmGuestMergeApiV1AuthMergeJobIdConfirmPostUrl = (jobId: string,) => {
+
+
+
+
+  return `/api/v1/auth/merge/${jobId}/confirm`
+}
+
+/**
+ * @summary Confirm Guest Merge
+ */
+export const confirmGuestMergeApiV1AuthMergeJobIdConfirmPost = async (jobId: string, options?: RequestInit): Promise<confirmGuestMergeApiV1AuthMergeJobIdConfirmPostResponse> => {
+
+  return orvalApiClient<confirmGuestMergeApiV1AuthMergeJobIdConfirmPostResponse>(getConfirmGuestMergeApiV1AuthMergeJobIdConfirmPostUrl(jobId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getConfirmGuestMergeApiV1AuthMergeJobIdConfirmPostMutationOptions = <TError = ErrorResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof confirmGuestMergeApiV1AuthMergeJobIdConfirmPost>>, TError,{jobId: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof confirmGuestMergeApiV1AuthMergeJobIdConfirmPost>>, TError,{jobId: string}, TContext> => {
+
+const mutationKey = ['confirmGuestMergeApiV1AuthMergeJobIdConfirmPost'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof confirmGuestMergeApiV1AuthMergeJobIdConfirmPost>>, {jobId: string}> = (props) => {
+          const {jobId} = props ?? {};
+
+          return  confirmGuestMergeApiV1AuthMergeJobIdConfirmPost(jobId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ConfirmGuestMergeApiV1AuthMergeJobIdConfirmPostMutationResult = NonNullable<Awaited<ReturnType<typeof confirmGuestMergeApiV1AuthMergeJobIdConfirmPost>>>
+
+    export type ConfirmGuestMergeApiV1AuthMergeJobIdConfirmPostMutationError = ErrorResponse
+
+    /**
+ * @summary Confirm Guest Merge
+ */
+export const useConfirmGuestMergeApiV1AuthMergeJobIdConfirmPost = <TError = ErrorResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof confirmGuestMergeApiV1AuthMergeJobIdConfirmPost>>, TError,{jobId: string}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof confirmGuestMergeApiV1AuthMergeJobIdConfirmPost>>,
+        TError,
+        {jobId: string},
+        TContext
+      > => {
+      return useMutation(getConfirmGuestMergeApiV1AuthMergeJobIdConfirmPostMutationOptions(options), queryClient);
     }

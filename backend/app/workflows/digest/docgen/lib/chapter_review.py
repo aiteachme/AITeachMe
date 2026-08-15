@@ -17,6 +17,7 @@ from app.workflows.digest.docgen.lib.models import (
     ReviewedChapterDraft,
 )
 from app.workflows.digest.docgen.lib.quality import evidence_support_score
+from app.workflows.digest.docgen.lib.unit_tests import unit_test_structure_issues
 
 
 def _chapter_anchor(draft: EnhancedChapterDraft) -> str:
@@ -34,6 +35,9 @@ def _chapter_unit_test_issue(markdown: str) -> str:
         return "缺少固定的章末 `## 单元测试` 模块。"
     if h2_titles[-1] != "单元测试":
         return "`## 单元测试` 必须是本章最后一个二级标题。"
+    structure_issues = unit_test_structure_issues(markdown)
+    if structure_issues:
+        return "单元测试题答格式不完整：" + "；".join(structure_issues[:4])
     return ""
 
 
@@ -96,13 +100,16 @@ def _rule_review_chapter(
                 chapter_index=draft.chapter_index,
                 severity="warning",
                 reason=unit_test_issue,
-                target_anchor=_chapter_anchor(draft),
+                target_anchor=("单元测试" if "## 单元测试" in draft.markdown else _chapter_anchor(draft)),
                 instruction=(
-                    "在本章末尾补齐固定二级标题 `## 单元测试`，围绕本章核心概念、方法、易错点或应用任务生成短题/"
-                    "案例检查/边界辨析，并为每题给出答案、判定依据或解析要点。"
+                    "缺失时在章末补齐、已存在但格式错误时完整替换 `## 单元测试`；围绕本章核心概念、方法、"
+                    "易错点或应用任务重新生成严格配对的题目与答案，不要在旧测试后追加第二份答案。"
                 ),
                 constraints=[
                     "`## 单元测试` 必须是本章最后一个二级标题。",
+                    "每题必须是一个非空 QUESTION，后面立即跟一个非空 ANSWER；不得有游离答案、空题干、重复题号或重复答案。",
+                    "QUESTION 使用 `Q01｜题型｜难度｜考点` 标头；ANSWER 内必须有独立的 `**答案**` 字段，并默认折叠。",
+                    "只有选择题可以使用 A-D 四个选项；判断、填空、短答、步骤和迁移任务不得显示伪选项。",
                     "不得把其它章节主题补成测试主体。",
                     "传统题不适合时改成案例检查、操作步骤检查、边界辨析或迁移任务。",
                     "每题必须可判断，不能只写“自行思考”。",

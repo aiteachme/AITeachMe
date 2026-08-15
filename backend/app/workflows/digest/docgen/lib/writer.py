@@ -55,7 +55,7 @@ WRITER_TASK_TIMEOUT_S = get_env_bounded_float(
 )
 WRITER_MAX_EFFECTIVE_TARGET_WORDS = get_env_bounded_int(
     "DOCGEN_WRITER_MAX_EFFECTIVE_TARGET_WORDS",
-    2400,
+    6200,
     min_value=800,
     max_value=8000,
 )
@@ -77,8 +77,8 @@ def _writer_target_word_count(execution_contract: Mapping[str, Any]) -> int:
 def _writer_max_tokens_for_contract(execution_contract: Mapping[str, Any], *, digest_mode: str | None = None) -> int:
     target_words = _writer_target_word_count(execution_contract)
     if str(digest_mode or "").strip().lower() == "sprint":
-        return max(1200, min(2800, int(target_words * 1.15) + 650))
-    return max(1800, min(5600, int(target_words * 1.8) + 900))
+        return max(2000, min(9000, int(target_words * 1.6) + 1000))
+    return max(2400, min(12000, int(target_words * 1.8) + 1000))
 
 
 def _writer_stream_char_limit(execution_contract: Mapping[str, Any], *, digest_mode: str | None = None) -> int:

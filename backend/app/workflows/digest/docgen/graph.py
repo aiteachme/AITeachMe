@@ -31,6 +31,9 @@ from app.workflows.digest.docgen.nodes.assemble_chapter_tasks import (
     build_assemble_chapter_tasks_node,
 )
 from app.workflows.digest.docgen.nodes.build_document_backbone import build_document_backbone_node
+from app.workflows.digest.docgen.nodes.build_chapter_execution_briefs import (
+    build_chapter_execution_briefs_node,
+)
 from app.workflows.digest.docgen.nodes.confirm_and_seed_backbone import build_confirm_and_seed_backbone_node
 from app.workflows.digest.docgen.nodes.enhance_chapters import build_enhance_chapters_node
 from app.workflows.digest.docgen.nodes.generate_chapters import build_generate_chapters_node
@@ -56,6 +59,9 @@ NODE_LOAD_CONTEXT = "load_context"
 NODE_PREPARE_GLOBAL_SEED = "prepare_global_seed"
 NODE_GENERATE_COVER = "generate_cover"
 NODE_LOCK_TITLES = "lock_titles_for_chapters"
+NODE_CONFIRM_BACKBONE_SEED = "confirm_and_seed_backbone"
+NODE_BUILD_DOCUMENT_BACKBONE = "build_document_backbone"
+NODE_BUILD_CHAPTER_BRIEF = "build_chapter_execution_brief"
 NODE_ASSEMBLE_CHAPTER_TASKS = "assemble_chapter_tasks"
 NODE_GENERATE_CHAPTERS = "generate_chapters"
 NODE_ENHANCE_CHAPTERS = "enhance_chapters"
@@ -75,6 +81,9 @@ NODE_DISPLAY_NAMES = {
     NODE_PREPARE_GLOBAL_SEED: "准备全局种子",
     NODE_GENERATE_COVER: "生成封面",
     NODE_LOCK_TITLES: "锁定章节标题",
+    NODE_CONFIRM_BACKBONE_SEED: "确认文档骨架种子",
+    NODE_BUILD_DOCUMENT_BACKBONE: "构建整本共享骨架",
+    NODE_BUILD_CHAPTER_BRIEF: "生成章节执行简报",
     NODE_ASSEMBLE_CHAPTER_TASKS: "准备章节生成任务",
     NODE_GENERATE_CHAPTERS: "生成章节草稿",
     NODE_ENHANCE_CHAPTERS: "增强章节内容",
@@ -180,23 +189,22 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
     },
     NODE_ASSEMBLE_CHAPTER_TASKS: {
         "description": (
-            "把严格串行的骨架种子确认、任务组装与一次整本 LLM 准备合并为一个节点；"
-            "同一次模型调用同时生成跨章语义骨架和全部章节执行 brief。"
-            "它一次产出最终 ChapterGenerationPlan 与 ChapterGenerationTask；后续章节 fan-out 只消费这里冻结的单章执行合同。"
+            "汇总并行生成的 ChapterExecutionBrief，装配最终 ChapterGenerationPlan 与 ChapterGenerationTask；"
+            "本节点不调用 LLM。"
         ),
         "reads": [
-            "confirmed_plan",
+            "docgen_context",
+            "chapter_assignments",
             "locked_titles",
-            "intent_core",
-            "file_summaries",
-            "source_affinity_by_chapter",
-            "high_confidence_evidence_units",
-        ],
-        "writes": [
-            "chapter_generation_plan_seed",
             "chapter_task_seeds",
+            "chapter_execution_brief_items",
             "document_backbone",
             "guideline",
+            "file_summaries",
+            "source_affinity_by_chapter",
+            "summary_enhanced",
+        ],
+        "writes": [
             "chapter_execution_briefs",
             "chapter_generation_plan",
             "chapter_tasks",
@@ -205,35 +213,58 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
             "preliminary_kg",
         ],
         "input_keys": [
-            "confirmed_plan",
+            "docgen_context",
+            "chapter_assignments",
             "locked_titles",
-            "intent_core",
-            "file_summaries",
-            "source_affinity_by_chapter",
-            "high_confidence_evidence_units",
-        ],
-        "output_keys": [
-            "chapter_generation_plan_seed",
             "chapter_task_seeds",
+            "chapter_execution_brief_items",
             "document_backbone",
             "guideline",
+            "file_summaries",
+            "source_affinity_by_chapter",
+            "summary_enhanced",
+        ],
+        "output_keys": [
             "chapter_execution_briefs",
             "chapter_generation_plan",
             "chapter_tasks",
             "chapters_enhanced",
             "dispatch_table",
             "preliminary_kg",
-            "chapter_prepare_ms",
             "assemble_tasks_ms",
             "llm_calls_total",
             "error",
         ],
         "routing": "next step sends one branch per chapter",
     },
+    NODE_CONFIRM_BACKBONE_SEED: {
+        "description": "确定性冻结章节 seed 和整本骨架研究线索，不调用 LLM。",
+        "reads": ["confirmed_plan", "locked_titles", "file_summaries", "source_affinity_by_chapter"],
+        "writes": ["chapter_generation_plan_seed", "chapter_task_seeds", "backbone_research_agenda"],
+        "input_keys": ["docgen_context", "chapter_assignments", "locked_titles", "file_summaries"],
+        "output_keys": ["chapter_generation_plan_seed", "chapter_task_seeds", "backbone_research_agenda", "error"],
+    },
+    NODE_BUILD_DOCUMENT_BACKBONE: {
+        "description": "一次整本 LLM 调用只生成跨章共享术语、符号、主张、依赖和易混点，不再携带全部章节 brief。",
+        "reads": ["chapter_task_seeds", "backbone_research_agenda", "file_summaries", "high_confidence_evidence_units"],
+        "writes": ["document_backbone", "guideline", "backbone_conflict_warnings"],
+        "input_keys": ["chapter_task_seeds", "backbone_research_agenda", "file_summaries", "high_confidence_evidence_units"],
+        "output_keys": ["document_backbone", "guideline", "backbone_conflict_warnings", "backbone_ms"],
+    },
+    NODE_BUILD_CHAPTER_BRIEF: {
+        "description": "LangGraph Send 按章 fan-out；每章独立调用 LLM，把共享骨架、确认范围、诊断和本章资料编译为执行 brief。",
+        "reads": ["chapter_task_seed", "document_backbone", "intent_core", "learner_profile_text"],
+        "writes": ["chapter_execution_brief_items"],
+        "input_keys": ["chapter_task_seed", "document_backbone", "docgen_context", "high_confidence_evidence_units"],
+        "output_keys": ["chapter_execution_brief_items", "chapter_prepare_ms", "llm_calls_total"],
+        "fanout": "langgraph_send_per_chapter",
+        "fanin": "assemble_chapter_tasks",
+    },
     NODE_GENERATE_CHAPTERS: {
         "description": (
             "LangGraph Send fan-out 后的单章生成节点。每个分支独立执行本地/外部检索、上下文压缩、claim/evidence/conflict 账本构建、"
-            "章节正文与章末单元测试的一次性写作；输出完整章节草稿，通过 reducer 汇总回整本 state。"
+            "Writer 先生成完整知识正文，再由同一章节分支调用结构化测验模型并确定性组装章末题答；"
+            "各章节分支彼此并行，输出完整章节草稿后通过 reducer 汇总回整本 state。"
         ),
         "reads": ["chapter_task", "shared_inputs", "document_context", "docgen_context", "document_backbone"],
         "writes": ["chapter_drafts", "research_traces", "claim_ledgers", "claim_evidence_maps", "evidence_ledgers", "conflict_reports"],
@@ -594,32 +625,6 @@ def _langgraph_node_metadata(node_key: str) -> dict[str, object]:
     )
 
 
-def _build_prepare_chapter_tasks_node(*, context: WorkflowContext):
-    """Collapse dependent seed, whole-document preparation and assembly steps."""
-
-    handlers = (
-        build_confirm_and_seed_backbone_node(context=context),
-        build_document_backbone_node(context=context),
-        build_assemble_chapter_tasks_node(context=context),
-    )
-
-    async def prepare_chapter_tasks(state: DocGenState) -> dict:
-        current = dict(state)
-        merged: dict[str, Any] = {}
-        llm_calls_total = 0
-        for handler in handlers:
-            output = await handler(current)
-            llm_calls_total += int(output.get("llm_calls_total", 0) or 0)
-            merged.update(output)
-            current.update(output)
-            if current.get("error"):
-                break
-        merged["llm_calls_total"] = llm_calls_total
-        return merged
-
-    return prepare_chapter_tasks
-
-
 def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
     """Build the rewritten DocGen graph."""
 
@@ -666,12 +671,41 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
         metadata=_langgraph_node_metadata(NODE_LOCK_TITLES),
     )
     workflow.add_node(
+        NODE_CONFIRM_BACKBONE_SEED,
+        _trace_docgen_node(
+            trace,
+            NODE_CONFIRM_BACKBONE_SEED,
+            build_confirm_and_seed_backbone_node(context=context),
+            timing_field="seed_backbone_ms",
+        ),
+        metadata=_langgraph_node_metadata(NODE_CONFIRM_BACKBONE_SEED),
+    )
+    workflow.add_node(
+        NODE_BUILD_DOCUMENT_BACKBONE,
+        _trace_docgen_node(
+            trace,
+            NODE_BUILD_DOCUMENT_BACKBONE,
+            build_document_backbone_node(context=context),
+            timing_field="backbone_ms",
+        ),
+        metadata=_langgraph_node_metadata(NODE_BUILD_DOCUMENT_BACKBONE),
+    )
+    workflow.add_node(
+        NODE_BUILD_CHAPTER_BRIEF,
+        _trace_docgen_node(
+            trace,
+            NODE_BUILD_CHAPTER_BRIEF,
+            build_chapter_execution_briefs_node(context=context),
+        ),
+        metadata=_langgraph_node_metadata(NODE_BUILD_CHAPTER_BRIEF),
+    )
+    workflow.add_node(
         NODE_ASSEMBLE_CHAPTER_TASKS,
         _trace_docgen_node(
             trace,
             NODE_ASSEMBLE_CHAPTER_TASKS,
-            _build_prepare_chapter_tasks_node(context=context),
-            timing_field="chapter_prepare_ms",
+            build_assemble_chapter_tasks_node(context=context),
+            timing_field="assemble_tasks_ms",
         ),
         metadata=_langgraph_node_metadata(NODE_ASSEMBLE_CHAPTER_TASKS),
     )
@@ -778,7 +812,18 @@ def build_docgen_graph(*, context: WorkflowContext) -> StateGraph:
         {"fail": END},
     )
     workflow.add_edge(NODE_PREPARE_GLOBAL_SEED, NODE_GENERATE_COVER)
-    workflow.add_edge([NODE_PREPARE_GLOBAL_SEED, NODE_LOCK_TITLES], NODE_ASSEMBLE_CHAPTER_TASKS)
+    workflow.add_edge([NODE_PREPARE_GLOBAL_SEED, NODE_LOCK_TITLES], NODE_CONFIRM_BACKBONE_SEED)
+    workflow.add_conditional_edges(
+        NODE_CONFIRM_BACKBONE_SEED,
+        route_after_step_for_trace,
+        {"continue": NODE_BUILD_DOCUMENT_BACKBONE, "fail": END},
+    )
+    workflow.add_conditional_edges(
+        NODE_BUILD_DOCUMENT_BACKBONE,
+        build_chapter_brief_sends_for_trace,
+        {"fail": END},
+    )
+    workflow.add_edge(NODE_BUILD_CHAPTER_BRIEF, NODE_ASSEMBLE_CHAPTER_TASKS)
     workflow.add_conditional_edges(
         NODE_ASSEMBLE_CHAPTER_TASKS,
         build_generation_sends_for_trace,
@@ -874,6 +919,7 @@ def create_docgen_initial_state(
         "guideline": {},
         "dispatch_table": {},
         "preliminary_kg": {},
+        "chapter_execution_brief_items": [],
         "kg_refinement_items": [],
         "docgen_kg_draft": {},
         "kg_draft_early_persist_metrics": {},
@@ -942,6 +988,44 @@ def _chapter_branch_shared_artifacts(state: DocGenState) -> dict[str, Any]:
         "guideline": state.get("guideline", {}),
         "dispatch_table": state.get("dispatch_table", {}),
     }
+
+
+def build_chapter_brief_sends(state: DocGenState) -> list[Send] | Literal["fail"]:
+    """Fan out one independent LLM brief request per confirmed chapter."""
+
+    if state.get("error"):
+        return "fail"
+    task_seeds = sorted(
+        list(state.get("chapter_task_seeds") or []),
+        key=lambda item: int((item or {}).get("chapter_index", 0) or 0),
+    )
+    if not task_seeds:
+        return "fail"
+    return [
+        Send(
+            NODE_BUILD_CHAPTER_BRIEF,
+            {
+                **_child_state_base(state, teaching_action="chapter_execution_brief"),
+                "docgen_context": state.get("docgen_context", {}),
+                "intent_core": state.get("intent_core", {}),
+                "learner_profile_text": state.get("learner_profile_text", ""),
+                "document_backbone": state.get("document_backbone", {}),
+                "high_confidence_evidence_units": state.get("high_confidence_evidence_units", []),
+                "chapter_task_seed": task_seed,
+            },
+        )
+        for task_seed in task_seeds
+    ]
+
+
+def build_chapter_brief_sends_for_trace(state: DocGenState) -> list[Send] | Literal["fail"]:
+    return build_chapter_brief_sends(state)
+
+
+build_chapter_brief_sends_for_trace = named_route(
+    build_chapter_brief_sends_for_trace,
+    "按章节并行生成执行简报",
+)
 
 
 def build_generation_sends(state: DocGenState) -> list[Send] | Literal["fail"]:
