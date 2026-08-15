@@ -151,12 +151,13 @@
   }
 }
 
-/* Home uses a restrained, product-specific backdrop: the input remains the
-   focal point while the logo and course cards stay crisp on a quiet surface. */
+/* Quiet brand canvas: one surface, no decorative card stack. */
 .atm-home-surface {
   isolation: isolate;
   background:
-    linear-gradient(180deg, #fbfcff 0%, #f8fafc 48%, #f7f9fc 100%);
+    radial-gradient(ellipse 34rem 17rem at 46% -5%, rgba(99, 102, 241, 0.13), transparent 72%),
+    radial-gradient(ellipse 28rem 14rem at 61% 1%, rgba(59, 130, 246, 0.08), transparent 72%),
+    linear-gradient(180deg, #ffffff 0%, #fbfdff 34%, #ffffff 72%);
 }
 
 .atm-home-surface::before {
@@ -165,9 +166,7 @@
   position: absolute;
   inset: 0;
   z-index: 0;
-  background:
-    radial-gradient(ellipse 22rem 10rem at 50% 8.25rem, rgba(109, 40, 217, 0.09), rgba(79, 70, 229, 0.032) 44%, transparent 74%),
-    radial-gradient(ellipse 56rem 17rem at 50% 27rem, rgba(14, 165, 233, 0.06), rgba(99, 102, 241, 0.028) 48%, transparent 78%);
+  display: none;
 }
 
 .atm-home-surface > * {
@@ -177,13 +176,50 @@
 
 .dark .atm-home-surface {
   background:
-    linear-gradient(180deg, #020617 0%, #07111f 52%, #020617 100%);
+    radial-gradient(circle at 50% -10%, rgba(99, 102, 241, 0.14), transparent 34%),
+    #020617;
 }
 
-.dark .atm-home-surface::before {
-  background:
-    radial-gradient(ellipse 22rem 10rem at 50% 8.25rem, rgba(129, 140, 248, 0.14), rgba(79, 70, 229, 0.052) 46%, transparent 74%),
-    radial-gradient(ellipse 56rem 17rem at 50% 27rem, rgba(6, 182, 212, 0.11), rgba(99, 102, 241, 0.05) 48%, transparent 78%);
+@keyframes atm-hero-logo-color {
+  0%,
+  100% {
+    stop-color: #0f172a;
+  }
+  33% {
+    stop-color: #4f46e5;
+  }
+  66% {
+    stop-color: #7c3aed;
+  }
+}
+
+@keyframes atm-hero-logo-color-dark {
+  0%,
+  100% {
+    stop-color: #e0e7ff;
+  }
+  33% {
+    stop-color: #818cf8;
+  }
+  66% {
+    stop-color: #c084fc;
+  }
+}
+
+.atm-hero-logo-stop {
+  animation: atm-hero-logo-color 9s ease-in-out infinite;
+}
+
+.atm-hero-logo-stop-two {
+  animation-delay: -3s;
+}
+
+.atm-hero-logo-stop-three {
+  animation-delay: -6s;
+}
+
+.dark .atm-hero-logo-stop {
+  animation-name: atm-hero-logo-color-dark;
 }
 
 /* Keep KaTeX's accessibility-only MathML out of the visual flow even when
@@ -1851,14 +1887,25 @@
 }
 /* ----------- Text Gradient Animation ----------- */
 @keyframes text-gradient {
-  to {
-    background-position: 200% center;
+  0%,
+  100% {
+    background-position: 0% center;
+  }
+  50% {
+    background-position: 100% center;
   }
 }
 
 .animate-text-gradient {
-  animation: text-gradient 3s linear infinite;
-  background-size: 200% auto;
+  animation: text-gradient 8s ease-in-out infinite;
+  background-size: 220% auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .atm-hero-logo-stop,
+  .animate-text-gradient {
+    animation: none;
+  }
 }
 
 /* ----------- Settings panel scroll ----------- */

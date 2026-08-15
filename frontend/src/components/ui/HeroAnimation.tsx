@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from "react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 
 /**
  * HeroAnimation — 首页 Logo 动画
@@ -52,41 +52,44 @@ interface HeroAnimationProps {
 
 export function HeroAnimation({ width = 130, height = 120, className }: HeroAnimationProps) {
   const [isDrawn, setIsDrawn] = useState(false);
+  const prefersReducedMotion = useReducedMotion();
   const id = useId().replace(/:/g, "");
   const strokeGradientId = `${id}-hero-stroke-grad`;
   const fillGradientId = `${id}-hero-fill-grad`;
 
   useEffect(() => {
-    const timer = setTimeout(() => setIsDrawn(true), 2800);
+    const timer = setTimeout(() => setIsDrawn(true), 650);
     return () => clearTimeout(timer);
   }, []);
 
   return (
     <motion.div
-      className={["relative flex items-center justify-center shrink-0", className].filter(Boolean).join(" ")}
+      className={["atm-hero-logo relative flex shrink-0 items-center justify-center", className].filter(Boolean).join(" ")}
       style={{ width, height }}
-      animate={{ y: [0, -5, 0] }}
-      transition={{ repeat: Infinity, duration: 4, ease: "easeInOut" }}
+      animate={{ y: prefersReducedMotion ? 0 : [0, -2, 0] }}
+      transition={{ repeat: Infinity, duration: 5, ease: "easeInOut" }}
     >
       {/* Background glow pulse */}
       <motion.div
         className="absolute rounded-full pointer-events-none"
         style={{
-          width: "140%",
-          height: "140%",
-          left: "-20%",
-          top: "-20%",
-          background: "radial-gradient(circle, rgba(99,102,241,0.18) 0%, rgba(99,102,241,0.08) 50%, transparent 70%)",
+          width: "130%",
+          height: "130%",
+          left: "-15%",
+          top: "-15%",
+          background: "radial-gradient(circle, rgba(99,102,241,0.12) 0%, rgba(99,102,241,0.04) 52%, transparent 72%)",
         }}
-        animate={{
-          scale: [1, 1.25, 1],
-          opacity: [0.6, 1, 0.6],
-        }}
+        animate={prefersReducedMotion
+          ? { opacity: 0.48 }
+          : {
+              scale: [1, 1.12, 1],
+              opacity: [0.45, 0.72, 0.45],
+            }}
         transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}
       />
 
       {/* Sparkle particles around logo */}
-      {[0, 1, 2, 3, 4].map((i) => (
+      {[0, 1, 2].map((i) => (
         <motion.div
           key={`sparkle-${i}`}
           className="absolute rounded-full pointer-events-none"
@@ -95,12 +98,14 @@ export function HeroAnimation({ width = 130, height = 120, className }: HeroAnim
             height: i % 2 === 0 ? 3 : 2,
             background: i % 3 === 0 ? "#818cf8" : i % 3 === 1 ? "#a78bfa" : "#c4b5fd",
           }}
-          animate={{
-            x: [0, Math.cos((i * 72 * Math.PI) / 180) * 55, 0],
-            y: [0, Math.sin((i * 72 * Math.PI) / 180) * 55, 0],
-            opacity: [0, 0.9, 0],
-            scale: [0, 1.2, 0],
-          }}
+          animate={prefersReducedMotion
+            ? { opacity: 0 }
+            : {
+                x: [0, Math.cos((i * 120 * Math.PI) / 180) * 42, 0],
+                y: [0, Math.sin((i * 120 * Math.PI) / 180) * 42, 0],
+                opacity: [0, 0.55, 0],
+                scale: [0, 1, 0],
+              }}
           transition={{
             repeat: Infinity,
             duration: 2.5 + i * 0.3,
@@ -114,8 +119,9 @@ export function HeroAnimation({ width = 130, height = 120, className }: HeroAnim
       <svg
         xmlns="http://www.w3.org/2000/svg"
         viewBox="0 0 951 819"
-        className="relative z-10 w-full h-full drop-shadow-lg"
-        style={{ filter: "drop-shadow(0 4px 20px rgba(99,102,241,0.2))" }}
+        className="relative z-10 h-full w-full"
+        style={{ filter: "drop-shadow(0 4px 16px rgba(79,70,229,0.18))" }}
+        aria-hidden="true"
       >
         <defs>
           {/* Gradient for stroke draw-on */}
@@ -126,9 +132,9 @@ export function HeroAnimation({ width = 130, height = 120, className }: HeroAnim
           </linearGradient>
           {/* Gradient for filled state */}
           <linearGradient id={fillGradientId} x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#1e1b4b" />
-            <stop offset="40%" stopColor="#0f172a" />
-            <stop offset="100%" stopColor="#1e1b4b" />
+            <stop className="atm-hero-logo-stop atm-hero-logo-stop-one" offset="0%" />
+            <stop className="atm-hero-logo-stop atm-hero-logo-stop-two" offset="48%" />
+            <stop className="atm-hero-logo-stop atm-hero-logo-stop-three" offset="100%" />
           </linearGradient>
         </defs>
 
@@ -156,8 +162,8 @@ export function HeroAnimation({ width = 130, height = 120, className }: HeroAnim
           <motion.path
             key={`fill-${i}`}
             d={d}
-            className="fill-[#0b0c0b] dark:fill-slate-100"
-            initial={{ opacity: 0 }}
+            fill={`url(#${fillGradientId})`}
+            initial={{ opacity: 0.16 }}
             animate={{ opacity: isDrawn ? 1 : 0 }}
             transition={{ duration: 0.6, delay: i * 0.04, ease: "easeOut" }}
           />
@@ -170,7 +176,7 @@ export function HeroAnimation({ width = 130, height = 120, className }: HeroAnim
             cx={c.cx}
             cy={c.cy}
             r={c.r}
-            className="fill-[#0b0c0b] dark:fill-slate-100"
+            fill={`url(#${fillGradientId})`}
             initial={{ scale: 0, opacity: 0 }}
             animate={{ scale: isDrawn ? 1 : 0, opacity: isDrawn ? 1 : 0 }}
             transition={{ duration: 0.4, delay: 0.1 * i, type: "spring", stiffness: 300 }}

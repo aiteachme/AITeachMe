@@ -22,10 +22,8 @@ import {
   Paperclip,
   RefreshCw,
   Search,
-  Sparkles,
   X,
   FileUp,
-  Package,
   Sigma,
   Target,
 } from "lucide-react";
@@ -269,7 +267,7 @@ function formatFileSize(bytes?: number | null): string {
 }
 
 const CARD_THEME_INDIGO = {
-  shell: "border-indigo-100 bg-gradient-to-br from-white via-white to-indigo-50/40 hover:border-indigo-300 hover:shadow-[0_20px_40px_rgba(99,102,241,0.12)] dark:border-indigo-500/20 dark:from-slate-950 dark:via-slate-950 dark:to-indigo-950/20 dark:hover:border-indigo-400/40 dark:hover:shadow-[0_20px_40px_rgba(99,102,241,0.22)]",
+  shell: "border-slate-200 bg-white hover:border-indigo-300 dark:border-slate-800 dark:bg-slate-950 dark:hover:border-indigo-500/50",
   icon: "border-indigo-100 bg-indigo-50/85 text-indigo-600 dark:border-indigo-400/20 dark:bg-indigo-400/10 dark:text-indigo-300",
   strip: "from-indigo-500 via-sky-400 to-violet-400",
   tagColor: "text-indigo-600 dark:text-indigo-400 bg-indigo-50/60 dark:bg-indigo-950/40",
@@ -277,7 +275,7 @@ const CARD_THEME_INDIGO = {
 };
 
 const CARD_THEME_CYAN = {
-  shell: "border-cyan-100 bg-gradient-to-br from-white via-white to-cyan-50/40 hover:border-cyan-300 hover:shadow-[0_20px_40px_rgba(6,182,212,0.12)] dark:border-cyan-500/20 dark:from-slate-950 dark:via-slate-950 dark:to-cyan-950/15 dark:hover:border-cyan-400/40 dark:hover:shadow-[0_20px_40px_rgba(6,182,212,0.22)]",
+  shell: "border-slate-200 bg-white hover:border-cyan-300 dark:border-slate-800 dark:bg-slate-950 dark:hover:border-cyan-500/50",
   icon: "border-cyan-100 bg-cyan-50/85 text-cyan-700 dark:border-cyan-400/20 dark:bg-cyan-400/10 dark:text-cyan-300",
   strip: "from-cyan-500 via-emerald-400 to-sky-400",
   tagColor: "text-cyan-700 dark:text-cyan-400 bg-cyan-50/60 dark:bg-cyan-950/40",
@@ -285,7 +283,7 @@ const CARD_THEME_CYAN = {
 };
 
 const CARD_THEME_VIOLET = {
-  shell: "border-violet-100 bg-gradient-to-br from-white via-white to-violet-50/40 hover:border-violet-300 hover:shadow-[0_20px_40px_rgba(139,92,246,0.12)] dark:border-violet-500/20 dark:from-slate-950 dark:via-slate-950 dark:to-violet-950/20 dark:hover:border-violet-400/40 dark:hover:shadow-[0_20px_40px_rgba(139,92,246,0.22)]",
+  shell: "border-slate-200 bg-white hover:border-violet-300 dark:border-slate-800 dark:bg-slate-950 dark:hover:border-violet-500/50",
   icon: "border-violet-100 bg-violet-50/85 text-violet-600 dark:border-violet-400/20 dark:bg-violet-400/10 dark:text-violet-300",
   strip: "from-violet-500 via-fuchsia-400 to-indigo-400",
   tagColor: "text-violet-600 dark:text-violet-400 bg-violet-50/60 dark:bg-violet-950/40",
@@ -293,7 +291,7 @@ const CARD_THEME_VIOLET = {
 };
 
 const CARD_THEME_AMBER = {
-  shell: "border-amber-100 bg-gradient-to-br from-white via-white to-amber-50/40 hover:border-amber-300 hover:shadow-[0_20px_40px_rgba(245,158,11,0.12)] dark:border-amber-500/20 dark:from-slate-950 dark:via-slate-950 dark:to-amber-950/15 dark:hover:border-amber-400/40 dark:hover:shadow-[0_20px_40px_rgba(245,158,11,0.22)]",
+  shell: "border-slate-200 bg-white hover:border-amber-300 dark:border-slate-800 dark:bg-slate-950 dark:hover:border-amber-500/50",
   icon: "border-amber-100 bg-amber-50/85 text-amber-700 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-300",
   strip: "from-amber-500 via-orange-400 to-yellow-400",
   tagColor: "text-amber-700 dark:text-amber-400 bg-amber-50/60 dark:bg-amber-950/40",
@@ -730,11 +728,7 @@ export function HomePage() {
   });
 
   // ── Courses query ──
-  const {
-    data: courses = [],
-    isLoading: demoCoursesLoading,
-    isFetching: demoCoursesFetching,
-  } = useQuery({
+  const { data: courses = [] } = useQuery({
     queryKey: ["available-demo-courses"],
     queryFn: fetchDemoCourses,
     retry: false,
@@ -1053,7 +1047,6 @@ export function HomePage() {
 
   const isWorking = isCreatingDraftCourse || isStartingBuild || isUploadingFiles;
   const shouldShowDemoCourseSection = courses.length > 0;
-  const shouldReserveDemoCourseSection = shouldShowDemoCourseSection || demoCoursesLoading || demoCoursesFetching;
   const isCourseEntryMode = entryMode === "course";
   const activePromptStarters = isCourseEntryMode
     ? hasEntryFiles ? HOME_FILE_PROMPT_STARTERS : HOME_PROMPT_STARTERS
@@ -1132,75 +1125,62 @@ export function HomePage() {
     />
     <div
       className={cn(
-        "atm-home-surface relative flex w-full flex-col items-center overflow-x-clip p-4 selection:bg-zinc-200 md:p-8",
+        "atm-home-surface relative flex w-full flex-col items-center overflow-x-clip px-4 pb-5 pt-4 selection:bg-indigo-100 md:px-8 md:pb-7 md:pt-5",
         isElectron ? "min-h-full" : "min-h-[100dvh]",
       )}
     >
-      <div className="flex-1 flex flex-col justify-center items-center w-full py-6 md:py-10 relative z-20">
+      <div className="relative z-20 flex w-full flex-1 flex-col items-center pb-6 pt-8 md:pb-8 md:pt-[clamp(3rem,4vh,5rem)]">
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, ease: "easeOut" }}
-          className={cn(
-            "relative z-20 flex w-full max-w-5xl flex-col items-center",
-            shouldReserveDemoCourseSection
-              ? "justify-center"
-              : "min-h-[calc(100dvh-8rem)] translate-y-[6vh] justify-center md:translate-y-[8vh]",
-          )}
+          transition={{ duration: 0.45, ease: "easeOut" }}
+          className="relative z-20 flex w-full max-w-[clamp(1200px,60vw,1500px)] flex-col"
         >
         {/* ── Logo & Title ── */}
         <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.1, type: "spring", stiffness: 200, damping: 20 }}
-          className="mb-1 flex flex-col items-center justify-center"
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05, duration: 0.35, ease: "easeOut" }}
+          className="mt-12 flex min-h-14 items-center justify-center gap-3 sm:mt-0 sm:gap-4"
         >
-          <HeroAnimation width={116} height={106} />
+          <HeroAnimation width={62} height={56} />
           <motion.div
-            initial={{ opacity: 0, y: 10, filter: "blur(6px)" }}
-            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-            transition={{ duration: 0.7, ease: "easeOut", delay: 0.25 }}
-            className="flex flex-col items-center mt-3"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.35, ease: "easeOut", delay: 0.12 }}
+            className="flex min-w-0 flex-col items-start gap-1"
           >
             <h1
-              className="bg-gradient-to-r from-slate-900 via-indigo-700 to-violet-600 bg-clip-text text-[2.1rem] font-extrabold leading-none tracking-normal text-transparent animate-text-gradient dark:from-slate-100 dark:via-indigo-400 dark:to-violet-400 md:text-[2.6rem]"
+              className="animate-text-gradient shrink-0 bg-gradient-to-r from-slate-950 via-indigo-700 to-violet-600 bg-clip-text text-[1.75rem] font-bold leading-none tracking-[-0.045em] text-transparent dark:from-slate-50 dark:via-indigo-300 dark:to-violet-300 sm:text-[1.9rem]"
               style={{
-                backgroundSize: "200% auto",
                 fontFamily:
                   '"Bahnschrift", "Aptos Display", "Segoe UI Variable Display", Inter, system-ui, sans-serif',
               }}
             >
               AITeachMe
             </h1>
+            <p className="truncate text-sm leading-5 text-slate-500 dark:text-slate-400 sm:text-[15px]">
+              把资料变成真正会教你的课程
+            </p>
           </motion.div>
         </motion.div>
 
-        {/* ── Slogan ── */}
-        <motion.p
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.45, duration: 0.5 }}
-          className="mb-5 px-4 text-center text-base leading-relaxed text-zinc-500 dark:text-slate-400"
-        >
-          让天下没有难学的课程
-        </motion.p>
-
         {/* ── Unified Input Area ── */}
         <motion.div
-          initial={{ opacity: 0, scale: 0.97 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.35 }}
-          className="w-full relative z-10"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.12, duration: 0.4, ease: "easeOut" }}
+          className="relative z-10 mt-8 w-full"
         >
           <div className={cn(
-            "w-full overflow-hidden rounded-3xl border bg-white transition-all duration-300 dark:bg-slate-950",
+            "w-full overflow-hidden rounded-2xl border bg-white shadow-[0_24px_64px_-42px_rgba(79,70,229,0.42)] transition-[border-color,box-shadow,background-color] duration-200 dark:bg-slate-950",
             hasEntryFiles
-              ? "border-slate-300 shadow-[0_18px_42px_rgba(15,23,42,0.08)] dark:border-slate-700"
-              : "border-slate-200 shadow-[0_18px_42px_rgba(15,23,42,0.06)] hover:border-slate-300/80 hover:shadow-[0_20px_48px_rgba(15,23,42,0.09)] dark:border-slate-800 dark:hover:border-slate-700/80",
-            "focus-within:border-indigo-400 focus-within:shadow-[0_24px_60px_-12px_rgba(99,102,241,0.18)] focus-within:ring-4 focus-within:ring-indigo-500/5 dark:focus-within:border-indigo-500/60 dark:focus-within:shadow-[0_24px_60px_-12px_rgba(99,102,241,0.25)]"
+              ? "border-indigo-200/90 dark:border-indigo-500/35"
+              : "border-slate-200/90 hover:border-indigo-200/90 dark:border-slate-800 dark:hover:border-indigo-500/35",
+            "focus-within:border-indigo-300 focus-within:bg-white focus-within:shadow-[0_28px_72px_-40px_rgba(79,70,229,0.34)] focus-within:ring-4 focus-within:ring-indigo-500/[0.045] dark:focus-within:border-indigo-500/50 dark:focus-within:bg-slate-950"
           )}>
-            <div className="flex flex-col gap-2 border-b border-slate-100 px-4 py-3 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-              <div className="inline-flex w-fit rounded-xl bg-slate-100 p-1 dark:bg-slate-900">
+            <div className="flex flex-col gap-2 border-b border-slate-100 px-5 py-3 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+              <div className="inline-flex w-fit items-center gap-5">
                 {[
                   { key: "course" as const, label: "构建课程", icon: BookOpen },
                   { key: "chat" as const, label: "先聊再建课", icon: MessageCircle },
@@ -1215,16 +1195,16 @@ export function HomePage() {
                       disabled={isWorking}
                       aria-pressed={active}
                       className={cn(
-                        "relative inline-flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 z-10",
+                        "relative z-10 inline-flex h-7 items-center gap-1.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60",
                         active
-                          ? "text-slate-900 dark:text-slate-100"
+                          ? "text-indigo-700 dark:text-indigo-300"
                           : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200",
                       )}
                     >
                       {active && (
                         <motion.div
                           layoutId="activeTab"
-                          className="absolute inset-0 -z-10 rounded-lg bg-white shadow-sm dark:bg-slate-800"
+                          className="absolute -bottom-3 left-0 right-0 -z-10 h-0.5 rounded-full bg-indigo-500 dark:bg-indigo-400"
                           transition={{ type: "spring", stiffness: 380, damping: 30 }}
                         />
                       )}
@@ -1239,7 +1219,7 @@ export function HomePage() {
               ref={textareaRef}
               aria-label={isCourseEntryMode ? "课程构建需求" : "自由对话输入"}
               placeholder={textareaPlaceholder}
-              className="w-full min-h-[48px] max-h-[320px] resize-none border-0 bg-transparent px-5 pb-2 pt-3 text-[15px] leading-7 text-zinc-900 focus:outline-none placeholder:text-zinc-400 dark:text-slate-100 dark:placeholder:text-slate-500 sm:min-h-[56px] sm:px-7 sm:pt-4 sm:text-[16px]"
+              className="min-h-[112px] max-h-[320px] w-full resize-none border-0 bg-transparent px-5 pb-3 pt-5 text-[15px] leading-7 text-zinc-900 focus:outline-none placeholder:text-zinc-400 dark:text-slate-100 dark:placeholder:text-slate-500 sm:min-h-[124px] sm:px-7 sm:text-[16px]"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -1257,7 +1237,7 @@ export function HomePage() {
                     return (
                       <div
                         key={file.id}
-                        className="group inline-flex max-w-full items-center gap-2 rounded-xl border border-zinc-200/70 bg-zinc-50/60 backdrop-blur-sm px-3.5 py-1.5 text-[13px] text-zinc-700 transition-all duration-200 hover:-translate-y-0.5 hover:border-zinc-300 hover:bg-white hover:shadow-sm dark:border-slate-700/60 dark:bg-slate-800/50 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:bg-slate-800"
+                        className="group inline-flex max-w-full items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3.5 py-1.5 text-[13px] text-zinc-700 transition-colors hover:border-zinc-300 hover:bg-white dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:bg-slate-800"
                       >
                         <span className="shrink-0">{homeFileIcon(file)}</span>
                         <span className="max-w-[200px] truncate font-medium text-zinc-800 dark:text-slate-200">{file.filename}</span>
@@ -1280,7 +1260,7 @@ export function HomePage() {
                   {optimisticUploadingFiles.map((filename) => (
                     <div
                       key={`uploading-${filename}`}
-                      className="inline-flex max-w-full items-center gap-2 rounded-2xl border border-zinc-200/80 bg-zinc-50/90 px-3 py-2 text-[13px] text-zinc-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                      className="inline-flex max-w-full items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-[13px] text-zinc-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
                     >
                       <FileUp className="h-3.5 w-3.5 shrink-0 text-zinc-400 dark:text-slate-500" />
                       <span className="max-w-[220px] truncate font-medium text-zinc-800 dark:text-slate-200">{filename}</span>
@@ -1311,7 +1291,7 @@ export function HomePage() {
                     disabled={isWorking}
                     aria-label={isUploadingFiles || isCreatingDraftCourse ? "正在上传资料" : "上传资料"}
                     title={isUploadingFiles || isCreatingDraftCourse ? "正在上传资料" : "上传资料"}
-                    className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900/10 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 dark:focus:ring-slate-100/10"
+                    className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400/30 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:bg-slate-900"
                   >
                     {isUploadingFiles ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1324,12 +1304,12 @@ export function HomePage() {
                     type="button"
                     onClick={() => setLibraryPickerOpen(true)}
                     disabled={isWorking}
-                    className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900/10 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 dark:focus:ring-slate-100/10"
+                    className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400/30 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:bg-slate-900"
                     aria-label="从资料库选择"
                     title="从我的资料库选择已有文件"
                   >
                     <FolderOpen className="h-3.5 w-3.5" />
-                    <span>选资料</span>
+                    <span>选择资料</span>
                   </button>
                   {isWorking && (
                     <span className="ml-2 flex items-center text-xs font-medium text-zinc-500">
@@ -1359,7 +1339,7 @@ export function HomePage() {
                     className={cn(
                       "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-all focus:outline-none focus:ring-2 focus:ring-zinc-900/10 active:scale-[0.98]",
                       canGenerate && !isWorking
-                        ? "bg-zinc-900 text-white shadow-sm hover:bg-zinc-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+                        ? "bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
                         : "cursor-not-allowed bg-zinc-100 text-zinc-300 dark:bg-slate-800 dark:text-slate-600"
                     )}
                   >
@@ -1370,31 +1350,28 @@ export function HomePage() {
             </div>
           </div>
 
-          <div className="mt-3 w-full px-1 relative">
-            {/* Section Toggle */}
+          <div className="relative mt-5 w-full">
             <button
               type="button"
               onClick={() => setStartersOpen(!startersOpen)}
               aria-expanded={startersOpen}
               aria-controls="home-prompt-starters"
-              className="group flex w-full cursor-pointer items-center gap-4 py-2.5"
+              className="group flex min-h-11 w-full cursor-pointer items-center justify-between rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/40"
             >
-              <div className="flex-1 h-[1px] bg-zinc-200 group-hover:bg-zinc-300 transition-colors dark:bg-slate-800 dark:group-hover:bg-slate-700" />
-              <span className="flex shrink-0 select-none items-center gap-2 rounded-full border border-indigo-100 bg-white px-3 py-1.5 text-[13px] font-semibold text-slate-700 shadow-sm transition-colors group-hover:border-indigo-200 group-hover:text-indigo-700 dark:border-indigo-500/20 dark:bg-slate-950 dark:text-slate-300 dark:group-hover:text-indigo-300">
-                <Sparkles className="h-4 w-4 text-indigo-500" />
+              <span className="text-[14px] font-semibold text-slate-700 transition-colors group-hover:text-indigo-700 dark:text-slate-200 dark:group-hover:text-indigo-300">
                 {isCourseEntryMode ? hasEntryFiles ? "资料课程样例" : "课程需求样例" : "对话建课样例"}
-                <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[12px] text-indigo-600 dark:bg-indigo-400/10 dark:text-indigo-300">{activePromptStarters.length}</span>
+              </span>
+              <span className="flex items-center gap-2 text-xs font-medium text-slate-400 transition-colors group-hover:text-slate-600 dark:text-slate-500 dark:group-hover:text-slate-300">
+                {activePromptStarters.length} 个
                 <motion.div
                   animate={{ rotate: startersOpen ? 180 : 0 }}
-                  transition={{ duration: 0.3, ease: "easeInOut" }}
+                  transition={{ duration: 0.2, ease: "easeInOut" }}
                 >
                   <ChevronDown className="h-4 w-4" />
                 </motion.div>
               </span>
-              <div className="flex-1 h-[1px] bg-zinc-200 group-hover:bg-zinc-300 transition-colors dark:bg-slate-800 dark:group-hover:bg-slate-700" />
             </button>
 
-            {/* Expandable Content */}
             <AnimatePresence>
               {startersOpen && (
                 <motion.div
@@ -1405,12 +1382,7 @@ export function HomePage() {
                   id="home-prompt-starters"
                   className="w-full overflow-hidden"
                 >
-                  <div className="pb-1 pt-3 relative">
-                    {/* 横向滚动消隐遮罩层 */}
-                    <div className="pointer-events-none absolute right-1 bottom-1.5 top-3 z-10 w-16 bg-gradient-to-l from-[#f8fafc] via-[#f8fafc]/60 to-transparent dark:from-[#07111f] dark:via-[#07111f]/60 hidden md:block" />
-                    <div className="pointer-events-none absolute left-1 bottom-1.5 top-3 z-10 w-8 bg-gradient-to-r from-[#f8fafc] to-transparent dark:from-[#07111f] hidden md:block" />
-
-                    <div className="flex gap-2.5 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  <div className="grid gap-2.5 pb-1 pt-1.5 sm:grid-cols-2 lg:grid-cols-4">
                       {activePromptStarters.map((starter) => {
                         const StarterIcon = starter.icon;
                         return (
@@ -1421,23 +1393,28 @@ export function HomePage() {
                             disabled={isWorking}
                             aria-label={`套用${starter.label}提示词示例`}
                             title={starter.prompt}
-                            className="group relative flex min-w-[200px] min-h-[100px] flex-1 cursor-pointer items-start gap-3 rounded-xl border border-slate-200/80 bg-white/80 px-3.5 py-3 text-left backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-indigo-300/60 hover:bg-white hover:shadow-[0_6px_16px_-6px_rgba(99,102,241,0.15)] focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/30 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700/60 dark:bg-slate-900/60 dark:hover:border-indigo-500/40 dark:hover:bg-slate-900 dark:hover:shadow-[0_6px_16px_-6px_rgba(99,102,241,0.25)]"
+                            className="group relative flex min-h-[96px] cursor-pointer flex-col rounded-lg border border-slate-200 bg-slate-50/55 px-3.5 py-3 text-left transition-[border-color,background-color] duration-200 hover:border-indigo-300 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/40 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-800 dark:bg-slate-900/45 dark:hover:border-indigo-500/60 dark:hover:bg-slate-900"
                           >
-                            <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500 transition-colors group-hover:bg-indigo-50 group-hover:text-indigo-600 dark:bg-slate-800 dark:text-slate-400 dark:group-hover:bg-indigo-950/50 dark:group-hover:text-indigo-400">
-                              <StarterIcon className="h-3.5 w-3.5" />
+                            <span className="flex items-center justify-between gap-3">
+                              <span className="flex min-w-0 items-center gap-2.5">
+                                <span className="flex h-6 w-6 shrink-0 items-center justify-center text-slate-400 transition-colors group-hover:text-indigo-600 dark:text-slate-500 dark:group-hover:text-indigo-400">
+                                  <StarterIcon className="h-3.5 w-3.5" />
+                                </span>
+                                <span className="truncate text-[13px] font-semibold text-slate-800 dark:text-slate-100">
+                                  {starter.label}
+                                </span>
+                              </span>
+                              <span className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-slate-400 transition-colors group-hover:text-indigo-700 dark:text-slate-500 dark:group-hover:text-indigo-300">
+                                填入
+                                <ArrowUp className="h-2.5 w-2.5 rotate-90 transition-transform group-hover:translate-x-0.5" />
+                              </span>
                             </span>
-                            <span className="min-w-0 flex-1">
-                              <span className="block text-[13px] font-semibold text-slate-800 dark:text-slate-200">
-                                {starter.label}
-                              </span>
-                              <span className="mt-0.5 block line-clamp-2 text-[12px] leading-[18px] text-slate-400 transition-colors group-hover:text-slate-500 dark:text-slate-500 dark:group-hover:text-slate-400">
-                                {starter.prompt}
-                              </span>
+                            <span className="mt-1.5 line-clamp-2 text-[12px] leading-[18px] text-slate-500 transition-colors group-hover:text-slate-600 dark:text-slate-400 dark:group-hover:text-slate-300">
+                              {starter.prompt}
                             </span>
                           </button>
                         );
                       })}
-                    </div>
                   </div>
                 </motion.div>
               )}
@@ -1468,32 +1445,29 @@ export function HomePage() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.5 }}
-          className="relative z-10 mt-1 md:mt-2 w-full max-w-5xl flex flex-col items-center"
+          className="relative z-10 mt-7 flex w-full max-w-[clamp(1200px,60vw,1500px)] flex-col"
         >
-          {/* Section Toggle */}
           <button
             type="button"
             onClick={() => setRecentOpen(!recentOpen)}
             aria-expanded={recentOpen}
             aria-controls="home-demo-courses"
-            className="group flex w-full cursor-pointer items-center gap-4 py-2.5"
+            className="group flex min-h-11 w-full cursor-pointer items-center justify-between rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/40"
           >
-            <div className="flex-1 h-[1px] bg-zinc-200 group-hover:bg-zinc-300 transition-colors dark:bg-slate-800 dark:group-hover:bg-slate-700" />
-            <span className="flex shrink-0 select-none items-center gap-2 rounded-full border border-indigo-100 bg-white px-3 py-1.5 text-[13px] font-semibold text-slate-700 shadow-sm transition-colors group-hover:border-indigo-200 group-hover:text-indigo-700 dark:border-indigo-500/20 dark:bg-slate-950 dark:text-slate-300 dark:group-hover:text-indigo-300">
-              <Package className="h-4 w-4 text-indigo-500" />
+            <span className="text-[16px] font-semibold text-slate-900 transition-colors group-hover:text-indigo-700 dark:text-slate-100 dark:group-hover:text-indigo-300">
               精选演示课程包
-              <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[12px] text-indigo-600 dark:bg-indigo-400/10 dark:text-indigo-300">{courses.length}</span>
+            </span>
+            <span className="flex items-center gap-2 text-xs font-medium text-slate-400 transition-colors group-hover:text-slate-600 dark:text-slate-500 dark:group-hover:text-slate-300">
+              {courses.length} 个
               <motion.div
                 animate={{ rotate: recentOpen ? 180 : 0 }}
-                transition={{ duration: 0.3, ease: "easeInOut" }}
+                transition={{ duration: 0.2, ease: "easeInOut" }}
               >
                 <ChevronDown className="h-4 w-4" />
               </motion.div>
             </span>
-            <div className="flex-1 h-[1px] bg-zinc-200 group-hover:bg-zinc-300 transition-colors dark:bg-slate-800 dark:group-hover:bg-slate-700" />
           </button>
 
-          {/* Expandable Content */}
           <AnimatePresence>
             {recentOpen && (
               <motion.div
@@ -1504,18 +1478,14 @@ export function HomePage() {
                 id="home-demo-courses"
                 className="w-full overflow-hidden"
               >
-                <div className="pb-10 pt-3">
+                <div className="pb-4 pt-2">
                   {demoCourseError ? (
                     <div className="mb-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-center text-sm font-medium text-red-600">
                       {demoCourseError}
                     </div>
                   ) : null}
                   {courses.length > 0 && (
-                    <div className="relative">
-                      {/* 横向滚动消隐遮罩层 */}
-                      <div className="pointer-events-none absolute right-0 bottom-0 top-0 z-10 w-16 bg-gradient-to-l from-[#f8fafc] via-[#f8fafc]/60 to-transparent dark:from-[#07111f] dark:via-[#07111f]/60 hidden md:block" />
-                      <div className="pointer-events-none absolute left-0 bottom-0 top-0 z-10 w-8 bg-gradient-to-r from-[#f8fafc] to-transparent dark:from-[#07111f] hidden md:block" />
-                      <div className="flex gap-2.5 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                      <div className="flex gap-3 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                         {courses.map((course, i) => {
                           const theme = getCardTheme(course.course_name);
                           const CourseIcon = theme.iconComponent;
@@ -1528,46 +1498,40 @@ export function HomePage() {
                               initial={{ opacity: 0, y: 10 }}
                               animate={{ opacity: 1, y: 0 }}
                               transition={{ delay: i * 0.05, duration: 0.3, ease: "easeOut" }}
-                              className="min-w-[200px] flex-1"
+                              className="min-w-[230px] flex-1"
                             >
                               <button
                                 type="button"
                                 onClick={() => courseImportMutation.mutate({ filename: course.filename })}
                                 disabled={courseImportMutation.isPending}
                                 className={cn(
-                                  "atm-deferred-card group relative flex h-full min-h-[100px] w-full overflow-hidden rounded-xl border p-3.5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 disabled:cursor-wait disabled:hover:translate-y-0 dark:shadow-black/20",
+                                  "atm-deferred-card group relative flex min-h-[clamp(118px,6.2vw,140px)] w-full flex-col rounded-xl border px-4 py-4 text-left transition-[border-color,background-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_30px_-24px_rgba(15,23,42,0.45)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 disabled:cursor-wait disabled:hover:translate-y-0",
                                   theme.shell,
                                 )}
                                 title={`导入 ${course.course_name} 到左侧课程列表`}
                                 aria-label={`导入 ${course.course_name}`}
                               >
-                                <div className={cn("pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r rounded-t-xl", theme.strip)} />
-                                <div className="flex flex-col justify-between w-full h-full gap-2">
-                                  <div className="flex items-start gap-3">
-                                    <span className={cn("mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border p-1.5 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-[6deg]", theme.icon)}>
+                                <div className="flex w-full items-start gap-3">
+                                    <span className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border transition-colors", theme.icon)}>
                                       {isImportingThisCourse ? (
-                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                        <Loader2 className="h-4 w-4 animate-spin" />
                                       ) : (
-                                        <CourseIcon className="h-3.5 w-3.5" />
+                                        <CourseIcon className="h-4 w-4" />
                                       )}
                                     </span>
-                                    <span className="block text-[14px] font-bold text-slate-800 dark:text-slate-200 line-clamp-2 leading-snug pt-0.5">
+                                    <span className="line-clamp-2 min-w-0 flex-1 pt-0.5 text-[14px] font-semibold leading-snug text-slate-900 dark:text-slate-100 sm:text-[15px]">
                                       {course.course_name}
                                     </span>
-                                  </div>
-                                  <span className="flex items-center gap-1 self-end text-[11px] text-slate-400 transition-colors group-hover:text-indigo-600 dark:text-slate-500 dark:group-hover:text-indigo-400">
-                                    {isImportingThisCourse ? "正在加入…" : "点击加入课程"}
-                                    {!isImportingThisCourse && (
-                                      <ArrowUp className="h-2.5 w-2.5 rotate-90 transition-transform duration-200 group-hover:translate-x-0.5" />
-                                    )}
-                                  </span>
                                 </div>
+                                <span className="mt-auto flex items-center gap-1 self-end pt-3 text-xs font-medium text-slate-400 transition-colors group-hover:text-indigo-700 dark:text-slate-500 dark:group-hover:text-indigo-300">
+                                  {isImportingThisCourse ? "正在加入…" : "点击加入课程"}
+                                  {!isImportingThisCourse && <ArrowUp className="h-3 w-3 rotate-90 transition-transform duration-200 group-hover:translate-x-0.5" />}
+                                </span>
                               </button>
                             </motion.div>
                           );
                         })}
                       </div>
-                    </div>
                   )}
                 </div>
               </motion.div>
