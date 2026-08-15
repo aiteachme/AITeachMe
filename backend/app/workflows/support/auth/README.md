@@ -38,6 +38,6 @@ smtp.py           # 邮箱验证码
 
 ## 游客迁移
 
-邮箱密码或 OAuth 登录只创建 `merge_offer`，用户确认后才运行 `user_merge_job`。课程通过现有 `.atmx` 以 `commit=false` 导入目标账号，并在同一数据库事务内保持 `staging`；课程、独立资料、全局聊天、考试和画像全部完成后才统一切换为可见。失败会回滚目标行并清理本次写入的对象存储前缀，源游客数据保持不变。成功后源游客标记 `merged_into_user_id`，保留七天恢复信息。
+邮箱密码或 OAuth 登录只创建 `merge_offer`，用户确认后才运行 `user_merge_job`。课程通过现有 `.atmx` 以 `commit=false` 导入目标账号，并在同一数据库事务内保持 `staging`；课程、独立资料、全局聊天、考试和画像全部完成后才统一切换为可见。失败会回滚目标行并清理本次写入的对象存储前缀，源游客数据保持不变。成功后源游客标记 `merged_into_user_id`，保留七天恢复信息；到期清理循环会幂等删除源课程、独立资料、全局聊天、正式 memory、对象存储前缀和本地学习者档案，失败任务在十五分钟后重试。
 
 `auth` 是 support 用例，不是 LangGraph lane。API 和依赖层通过 `app.workflows.support.auth` 的稳定导出进入。

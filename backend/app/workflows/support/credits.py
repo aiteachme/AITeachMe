@@ -14,11 +14,12 @@ from app.models import Course, CreditAccount, CreditLedger, CreditReservation, E
 from app.schemas.credits import CreditSummaryData
 from app.shared.infra.exceptions import AITeachMeError
 from app.shared.infra.runtime import is_local_mode, resolve_credits_enabled
-from app.utils.time import utcnow
+from app.utils.time import ensure_utc_datetime, utcnow
 
 SIGNUP_GRANT = 300
 DOCGEN_BUILD_COST = 30
 EXAM_GENERATION_COST = 5
+EXAM_GENERATION_STALE_AFTER = timedelta(minutes=20)
 
 
 def ensure_credits_enabled() -> None:
@@ -338,6 +339,10 @@ def _reservation_recovery_action(
             return "settle"
         if paper.status in {"failed", "draft", "cancelled"}:
             return "release"
+        if paper.status == "generating":
+            updated_at = ensure_utc_datetime(paper.updated_at)
+            if updated_at is not None and updated_at <= utcnow() - EXAM_GENERATION_STALE_AFTER:
+                return "release"
         return "defer"
 
     if reservation.feature == "docgen_build":

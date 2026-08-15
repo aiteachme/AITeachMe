@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
 import sqlalchemy as sa
+import structlog
 from sqlmodel import Session, select
 
 from app.models import (
@@ -14,27 +16,35 @@ from app.models import (
     ChatSession,
     Course,
     CourseFileLink,
+    CourseShareImport,
     ExamPaper,
     Highlight,
     LearningLogRecord,
     MemoryRecord,
     RawFile,
+    RetrievalChunk,
     User,
     UserKnowledgeState,
     UserMergeJob,
 )
 from app.schemas.export_import import ExportOptions, ImportOptions
+from app.shared.infra.database import managed_session
 from app.shared.infra.exceptions import AITeachMeError
-from app.shared.infra.storage import get_content_store, run_store_sync
+from app.shared.infra.memory.learner_doc import get_learner_doc_path
+from app.shared.infra.storage import build_course_storage_scope, get_content_store, run_store_sync
 from app.utils.course import GLOBAL_COURSE_ALIASES
-from app.utils.time import utcnow
+from app.utils.time import ensure_utc_datetime, utcnow
 from app.workflows.profile.common.lib.course_profile import refresh_course_profile_summary
 from app.workflows.profile.common.lib.user_profile import refresh_user_profile_summary
+from app.workflows.support.courses import delete_course_with_all_content
 from app.workflows.support.export_import import (
     cleanup_imported_course_artifacts,
     export_course,
     import_course,
 )
+
+logger = structlog.get_logger(__name__)
+
 
 def guest_asset_counts(session: Session, *, user_id: str) -> dict[str, int]:
     def count(model) -> int:
@@ -160,7 +170,13 @@ def _deduplicate_staged_files(
     return deduplicated_prefixes
 
 
-def _copy_memory(session: Session, *, source_user_id: str, target_user_id: str) -> None:
+def _copy_memory(
+    session: Session,
+    *,
+    source_user_id: str,
+    target_user_id: str,
+    course_mapping: dict[str, str],
+) -> None:
     for record in session.exec(select(MemoryRecord).where(MemoryRecord.user_id == source_user_id)).all():
         target_key = f"{target_user_id}:{record.key}"
         if session.exec(select(MemoryRecord).where(MemoryRecord.key == target_key)).first() is None:
@@ -184,13 +200,14 @@ def _copy_memory(session: Session, *, source_user_id: str, target_user_id: str) 
     for record in session.exec(
         select(LearningLogRecord).where(LearningLogRecord.user_id == source_user_id)
     ).all():
-        key = (record.event_type, record.course_id, record.summary, record.created_at)
+        target_course_id = course_mapping.get(record.course_id, record.course_id)
+        key = (record.event_type, target_course_id, record.summary, record.created_at)
         if key not in existing_log_keys:
             session.add(
                 LearningLogRecord(
                     user_id=target_user_id,
                     event_type=record.event_type,
-                    course_id=record.course_id,
+                    course_id=target_course_id,
                     summary=record.summary,
                     metadata_json=dict(record.metadata_json or {}),
                     created_at=record.created_at,
@@ -512,7 +529,12 @@ def run_guest_merge(session: Session, *, job_id: str, target_user_id: str) -> Us
             file_mapping=file_mapping,
             merge_job_id=job.id,
         )
-        _copy_memory(session, source_user_id=source.id, target_user_id=target.id)
+        _copy_memory(
+            session,
+            source_user_id=source.id,
+            target_user_id=target.id,
+            course_mapping=course_mapping,
+        )
         for course_id in imported_ids:
             refresh_course_profile_summary(session, course_id=course_id, auto_commit=False)
         refresh_user_profile_summary(session, user_id=target.id, auto_commit=False)
@@ -554,3 +576,175 @@ def run_guest_merge(session: Session, *, job_id: str, target_user_id: str) -> Us
             session.add(job)
             session.commit()
         raise
+
+
+def _delete_guest_global_rows(session: Session, *, source_user_id: str) -> None:
+    file_ids = list(
+        session.exec(select(RawFile.id).where(RawFile.user_id == source_user_id)).all()
+    )
+    if file_ids:
+        chunk_ids = select(RetrievalChunk.id).where(RetrievalChunk.file_id.in_(tuple(file_ids)))
+        session.exec(
+            sa.update(ChatMessage)
+            .where(ChatMessage.source_chunk_id.in_(chunk_ids))
+            .values(source_chunk_id=None)
+        )
+        session.exec(
+            sa.delete(RetrievalChunk)
+            .where(RetrievalChunk.file_id.in_(tuple(file_ids)))
+            .execution_options(synchronize_session=False)
+        )
+
+    for model in (ChatMessage, ChatSession, Highlight):
+        session.exec(
+            sa.delete(model)
+            .where(model.user_id == source_user_id)
+            .execution_options(synchronize_session=False)
+        )
+    session.exec(
+        sa.delete(CourseFileLink)
+        .where(CourseFileLink.user_id == source_user_id)
+        .execution_options(synchronize_session=False)
+    )
+    session.exec(
+        sa.delete(RawFile)
+        .where(RawFile.user_id == source_user_id)
+        .execution_options(synchronize_session=False)
+    )
+    for model in (MemoryRecord, LearningLogRecord, CourseShareImport):
+        session.exec(
+            sa.delete(model)
+            .where(model.user_id == source_user_id)
+            .execution_options(synchronize_session=False)
+        )
+    session.commit()
+
+
+def _delete_guest_learner_doc(*, source_user_id: str) -> None:
+    learner_path = get_learner_doc_path(source_user_id).resolve()
+    users_root = get_learner_doc_path("default").resolve().parent.parent
+    if learner_path.parent.parent != users_root:
+        raise RuntimeError("Guest learner document escaped the runtime users directory.")
+    learner_path.unlink(missing_ok=True)
+    try:
+        learner_path.parent.rmdir()
+    except OSError:
+        pass
+
+
+def _cleanup_guest_source_assets(session: Session, *, job: UserMergeJob) -> None:
+    source = session.get(User, job.source_user_id)
+    if source is None or source.merged_into_user_id != job.target_user_id:
+        raise RuntimeError("Guest merge source is no longer linked to the expected target user.")
+
+    courses = session.exec(select(Course).where(Course.user_id == source.id)).all()
+    source_course_ids = set(str(course_id) for course_id in dict(job.course_mapping_json or {}))
+    source_course_ids.update(course.id for course in courses)
+    for course in courses:
+        delete_course_with_all_content(
+            session,
+            course=course,
+            background_task_registry=None,
+        )
+
+    _delete_guest_global_rows(session, source_user_id=source.id)
+
+    store = get_content_store()
+    for course_id in sorted(source_course_ids):
+        course_scope = build_course_storage_scope(user_id=source.id, course_id=course_id)
+        run_store_sync(store.delete_prefix, course_scope.course_prefix())
+    file_scope = store.user_file_scope(user_id=source.id)
+    run_store_sync(store.delete_prefix, file_scope.namespace.rstrip("/") + "/")
+    _delete_guest_learner_doc(source_user_id=source.id)
+
+
+def cleanup_expired_guest_merge(session: Session, *, job_id: str) -> bool:
+    job = session.exec(
+        select(UserMergeJob).where(UserMergeJob.id == job_id).with_for_update()
+    ).first()
+    now = utcnow()
+    expires_at = ensure_utc_datetime(job.recovery_expires_at) if job is not None else None
+    if job is None or job.status != "completed" or expires_at is None or expires_at > now:
+        return False
+
+    progress = dict(job.progress_json or {})
+    progress.update(source_cleanup_status="running", source_cleanup_error=None)
+    job.progress_json = progress
+    job.recovery_expires_at = now + timedelta(hours=1)
+    job.updated_at = now
+    session.add(job)
+    session.commit()
+
+    try:
+        _cleanup_guest_source_assets(session, job=job)
+    except Exception as exc:
+        session.rollback()
+        failed = session.get(UserMergeJob, job_id)
+        if failed is not None:
+            progress = dict(failed.progress_json or {})
+            progress.update(
+                source_cleanup_status="failed",
+                source_cleanup_error=str(exc)[:1000],
+            )
+            failed.progress_json = progress
+            failed.recovery_expires_at = utcnow() + timedelta(minutes=15)
+            failed.updated_at = utcnow()
+            session.add(failed)
+            session.commit()
+        raise
+
+    completed = session.get(UserMergeJob, job_id)
+    if completed is None:
+        raise RuntimeError("Guest merge job disappeared during source cleanup.")
+    progress = dict(completed.progress_json or {})
+    progress.update(
+        source_cleanup_status="completed",
+        source_cleanup_error=None,
+        source_cleanup_completed_at=utcnow().isoformat(),
+    )
+    completed.progress_json = progress
+    completed.recovery_expires_at = None
+    completed.updated_at = utcnow()
+    session.add(completed)
+    session.commit()
+    return True
+
+
+def cleanup_expired_guest_merges_once(*, limit: int = 10) -> int:
+    with managed_session() as session:
+        job_ids = list(
+            session.exec(
+                select(UserMergeJob.id)
+                .where(
+                    UserMergeJob.status == "completed",
+                    UserMergeJob.recovery_expires_at.is_not(None),
+                    UserMergeJob.recovery_expires_at <= utcnow(),
+                )
+                .order_by(UserMergeJob.recovery_expires_at.asc())
+                .limit(max(1, limit))
+            ).all()
+        )
+
+    cleaned = 0
+    for job_id in job_ids:
+        try:
+            with managed_session() as session:
+                cleaned += int(cleanup_expired_guest_merge(session, job_id=job_id))
+        except Exception as exc:  # noqa: BLE001
+            logger.exception(
+                "guest_merge_source_cleanup_failed",
+                job_id=job_id,
+                error=str(exc),
+            )
+    return cleaned
+
+
+async def run_guest_merge_cleanup_loop() -> None:
+    while True:
+        try:
+            await asyncio.to_thread(cleanup_expired_guest_merges_once)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("guest_merge_cleanup_loop_failed", error=str(exc))
+        await asyncio.sleep(300)

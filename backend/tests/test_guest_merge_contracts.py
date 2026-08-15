@@ -1,12 +1,27 @@
 from __future__ import annotations
 
+from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from app.models import ChatMessage, ChatSession, Course, CourseFileLink, Highlight, RawFile, User, UserMergeJob
+from app.models import (
+    ChatMessage,
+    ChatSession,
+    Course,
+    CourseFileLink,
+    CourseShare,
+    CourseShareImport,
+    Highlight,
+    LearningLogRecord,
+    MemoryRecord,
+    RawFile,
+    RetrievalChunk,
+    User,
+    UserMergeJob,
+)
 from app.shared.infra.storage.course_scope import build_user_file_storage_scope
 from app.workflows.support.auth import merge
 
@@ -54,9 +69,14 @@ def _engine():
             Course.__table__,
             RawFile.__table__,
             CourseFileLink.__table__,
+            CourseShare.__table__,
+            CourseShareImport.__table__,
             Highlight.__table__,
             ChatSession.__table__,
             ChatMessage.__table__,
+            MemoryRecord.__table__,
+            LearningLogRecord.__table__,
+            RetrievalChunk.__table__,
             UserMergeJob.__table__,
         ],
     )
@@ -218,6 +238,44 @@ def test_unbound_file_storage_failure_rolls_back_target_rows(monkeypatch) -> Non
         assert not any(key.startswith("users/target/files/") for key in store.files)
 
 
+def test_learning_logs_are_remapped_to_imported_course_ids() -> None:
+    with Session(_engine(), expire_on_commit=False) as session:
+        session.add_all(
+            [
+                User(id="guest", username="guest"),
+                User(id="target", username="target", is_registered=True),
+                LearningLogRecord(
+                    user_id="guest",
+                    event_type="exam",
+                    course_id="course-source",
+                    summary="完成诊断卷",
+                ),
+                LearningLogRecord(
+                    user_id="guest",
+                    event_type="chat",
+                    course_id="",
+                    summary="全局学习记录",
+                ),
+            ]
+        )
+        session.commit()
+
+        merge._copy_memory(
+            session,
+            source_user_id="guest",
+            target_user_id="target",
+            course_mapping={"course-source": "course-imported"},
+        )
+        session.commit()
+
+        target_logs = session.exec(
+            select(LearningLogRecord)
+            .where(LearningLogRecord.user_id == "target")
+            .order_by(LearningLogRecord.id)
+        ).all()
+        assert [item.course_id for item in target_logs] == ["course-imported", ""]
+
+
 def _merge_job_fixture(session: Session) -> UserMergeJob:
     source = User(id="guest", username="guest")
     target = User(id="target", username="target", email="target@example.com", is_registered=True)
@@ -305,3 +363,152 @@ def test_course_merge_failure_rolls_back_target_staging_rows(monkeypatch) -> Non
         assert session.get(Course, "course-source").user_id == "guest"
         assert session.get(User, "guest").merged_into_user_id is None
         assert session.get(UserMergeJob, job.id).status == "failed"
+
+
+def test_expired_merge_cleanup_removes_guest_source_assets(monkeypatch) -> None:
+    store = _MemoryStore(
+        {
+            "users/guest/files/source/raw.pdf": b"raw",
+            "users/guest/courses/course_aaaaaaaaaaaa/knowledge.md": b"course",
+            "users/target/files/keep/raw.pdf": b"keep",
+        }
+    )
+    monkeypatch.setattr(merge, "get_content_store", lambda: store)
+    learner_docs_deleted: list[str] = []
+    monkeypatch.setattr(
+        merge,
+        "_delete_guest_learner_doc",
+        lambda *, source_user_id: learner_docs_deleted.append(source_user_id),
+    )
+
+    def delete_course(session, *, course, **_kwargs):
+        session.delete(course)
+        session.commit()
+        return {"course": 1}
+
+    monkeypatch.setattr(merge, "delete_course_with_all_content", delete_course)
+
+    with Session(_engine(), expire_on_commit=False) as session:
+        source = User(
+            id="guest",
+            username="guest",
+            merged_into_user_id="target",
+        )
+        target = User(id="target", username="target", is_registered=True)
+        job = UserMergeJob(
+            id="expired-merge",
+            source_user_id=source.id,
+            target_user_id=target.id,
+            status="completed",
+            course_mapping_json={"course_aaaaaaaaaaaa": "course_bbbbbbbbbbbb"},
+            progress_json={"imported_course_ids": ["course_bbbbbbbbbbbb"]},
+            recovery_expires_at=merge.utcnow() - timedelta(seconds=1),
+        )
+        session.add_all(
+            [
+                source,
+                target,
+                Course(
+                    id="course_aaaaaaaaaaaa",
+                    user_id=source.id,
+                    slug="source",
+                    name="Source Course",
+                ),
+                _raw_file(
+                    "source-file",
+                    user_id=source.id,
+                    content_hash="source-hash",
+                    file_path="users/guest/files/source/raw.pdf",
+                ),
+                ChatSession(
+                    id="source-chat",
+                    course_id="",
+                    user_id=source.id,
+                    title="Source chat",
+                ),
+                MemoryRecord(
+                    key="source-memory",
+                    user_id=source.id,
+                    content="source memory",
+                ),
+                LearningLogRecord(
+                    user_id=source.id,
+                    event_type="chat",
+                    course_id="",
+                    summary="source log",
+                ),
+                job,
+            ]
+        )
+        session.commit()
+        session.add(
+            ChatMessage(
+                course_id="",
+                user_id=source.id,
+                session_id="source-chat",
+                turn_id="source-turn",
+                role="user",
+                content="source message",
+            )
+        )
+        session.commit()
+
+        assert merge.cleanup_expired_guest_merge(session, job_id=job.id) is True
+        assert merge.cleanup_expired_guest_merge(session, job_id=job.id) is False
+        assert session.exec(select(Course).where(Course.user_id == source.id)).all() == []
+        assert session.exec(select(RawFile).where(RawFile.user_id == source.id)).all() == []
+        assert session.exec(select(ChatSession).where(ChatSession.user_id == source.id)).all() == []
+        assert session.exec(select(MemoryRecord).where(MemoryRecord.user_id == source.id)).all() == []
+        completed = session.get(UserMergeJob, job.id)
+        assert completed.recovery_expires_at is None
+        assert completed.progress_json["source_cleanup_status"] == "completed"
+        assert learner_docs_deleted == [source.id]
+        assert not any(key.startswith("users/guest/") for key in store.files)
+        assert store.files["users/target/files/keep/raw.pdf"] == b"keep"
+
+
+def test_expired_merge_cleanup_failure_is_retryable(monkeypatch) -> None:
+    store = _MemoryStore({"users/guest/files/source/raw.pdf": b"raw"})
+    original_delete_prefix = store.delete_prefix
+    delete_attempts = 0
+
+    async def fail_first_delete(prefix: str) -> int:
+        nonlocal delete_attempts
+        delete_attempts += 1
+        if delete_attempts == 1:
+            raise OSError("storage unavailable")
+        return await original_delete_prefix(prefix)
+
+    monkeypatch.setattr(store, "delete_prefix", fail_first_delete)
+    monkeypatch.setattr(merge, "get_content_store", lambda: store)
+    monkeypatch.setattr(merge, "_delete_guest_learner_doc", lambda **_kwargs: None)
+
+    with Session(_engine(), expire_on_commit=False) as session:
+        source = User(id="guest", username="guest", merged_into_user_id="target")
+        target = User(id="target", username="target", is_registered=True)
+        job = UserMergeJob(
+            id="retryable-merge",
+            source_user_id=source.id,
+            target_user_id=target.id,
+            status="completed",
+            recovery_expires_at=merge.utcnow() - timedelta(seconds=1),
+        )
+        session.add_all([source, target, job])
+        session.commit()
+
+        try:
+            merge.cleanup_expired_guest_merge(session, job_id=job.id)
+        except OSError as exc:
+            assert str(exc) == "storage unavailable"
+        else:  # pragma: no cover - contract assertion
+            raise AssertionError("Expected guest cleanup storage failure")
+
+        failed = session.get(UserMergeJob, job.id)
+        assert failed.progress_json["source_cleanup_status"] == "failed"
+        assert failed.recovery_expires_at > merge.utcnow()
+
+        failed.recovery_expires_at = merge.utcnow() - timedelta(seconds=1)
+        session.add(failed)
+        session.commit()
+        assert merge.cleanup_expired_guest_merge(session, job_id=job.id) is True
+        assert not any(key.startswith("users/guest/") for key in store.files)

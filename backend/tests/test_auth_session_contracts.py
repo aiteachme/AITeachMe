@@ -188,6 +188,48 @@ def test_send_register_code_rate_limits_and_rolls_back_failed_delivery(monkeypat
         assert session.exec(select(EmailConfirmation)).all() == []
 
 
+def test_registered_email_uses_the_same_resend_cooldown_without_sending(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _enable_auth(monkeypatch)
+    sent_to: list[str] = []
+    monkeypatch.setattr(
+        sessions,
+        "_send_email_verification_message",
+        lambda *, to_email, **_kwargs: sent_to.append(to_email),
+    )
+
+    with Session(_auth_engine(), expire_on_commit=False) as session:
+        session.add(
+            User(
+                id="registered-user",
+                username="registered-user",
+                email="registered@example.com",
+                is_registered=True,
+            )
+        )
+        session.commit()
+
+        first = sessions.send_register_email_verification_code(
+            session,
+            email="registered@example.com",
+        )
+        assert first.resend_after_s == 60
+        assert sent_to == []
+        assert session.exec(
+            select(EmailConfirmation).where(
+                EmailConfirmation.email == "registered@example.com"
+            )
+        ).one()
+
+        with pytest.raises(AITeachMeError) as exc_info:
+            sessions.send_register_email_verification_code(
+                session,
+                email="registered@example.com",
+            )
+        assert exc_info.value.error_code == "AUTH_EMAIL_CODE_RATE_LIMITED"
+
+
 def test_register_login_and_token_resolution(monkeypatch: pytest.MonkeyPatch) -> None:
     _enable_auth(monkeypatch)
     engine = _auth_engine()

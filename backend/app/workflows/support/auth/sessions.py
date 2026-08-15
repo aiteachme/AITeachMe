@@ -554,14 +554,7 @@ def send_register_email_verification_code(
     normalized_email = _normalize_email(email)
 
     existing = get_user_by_email(session, normalized_email)
-    if existing is not None and existing.is_registered:
-        # Do not disclose whether an account exists. Registered addresses do
-        # not receive a registration code, but callers see the same contract.
-        return SendEmailCodeData(
-            expires_in_s=max(60, get_env_int("AUTH_EMAIL_CODE_TTL_S", 600)),
-            resend_after_s=max(1, get_env_int("AUTH_EMAIL_CODE_RESEND_INTERVAL_S", 60)),
-        )
-
+    should_deliver = existing is None or not existing.is_registered
     now = utcnow()
     purge_expired_email_confirmations(session, now=now)
     resend_interval_s = max(1, get_env_int("AUTH_EMAIL_CODE_RESEND_INTERVAL_S", 60))
@@ -596,11 +589,12 @@ def send_register_email_verification_code(
 
     session.add(record)
     try:
-        _send_email_verification_message(
-            to_email=normalized_email,
-            code=code,
-            ttl_seconds=ttl_s,
-        )
+        if should_deliver:
+            _send_email_verification_message(
+                to_email=normalized_email,
+                code=code,
+                ttl_seconds=ttl_s,
+            )
     except Exception:
         session.rollback()
         raise

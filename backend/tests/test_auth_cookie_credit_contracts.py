@@ -338,6 +338,44 @@ def test_active_exam_reservation_is_deferred_during_recovery(
         assert refreshed.expires_at > utcnow()
 
 
+def test_stale_exam_reservation_is_released_during_recovery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(credits, "is_local_mode", lambda: False)
+    engine = _engine()
+    with Session(engine, expire_on_commit=False) as db:
+        user = _user()
+        db.add(user)
+        db.commit()
+        reservation = credits.reserve_credits(
+            db,
+            user=user,
+            feature="exam_generation",
+            reference_id="89",
+            amount=5,
+            idempotency_key="exam:89",
+        )
+        reservation.expires_at = utcnow() - timedelta(seconds=1)
+        db.add_all(
+            [
+                reservation,
+                ExamPaper(
+                    id=89,
+                    course_id="course-1",
+                    user_id=user.id,
+                    exam_mode="paper_exam",
+                    status="generating",
+                    updated_at=utcnow() - timedelta(minutes=30),
+                ),
+            ]
+        )
+        db.commit()
+
+        assert credits._reservation_recovery_action(db, reservation) == "release"
+        credits.release_reservation(db, reservation_id=reservation.id)
+        assert db.get(CreditAccount, user.id).reserved_balance == 0
+
+
 def test_docgen_credit_lifecycle_uses_persisted_build_session(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
