@@ -538,6 +538,14 @@ def build_settings_overview_data(
     """Build a safe overview of env, project defaults, and runtime overrides."""
 
     local_mode = is_local_mode()
+    if not local_mode:
+        return SettingsOverviewData(
+            settings_source="managed",
+            mode="cloud",
+            sections=[],
+            notes=["云端运行配置由服务端统一管理。"],
+        )
+
     base_settings = get_project_settings()
     raw_system_payload = (
         (
@@ -701,6 +709,13 @@ def _model_probe_failure_message(
 
 async def test_settings_model_connection(payload: ModelProbeRequest) -> ModelProbeResult:
     """Run a small settings-page LLM probe against one explicit endpoint route."""
+
+    if not is_local_mode():
+        raise AITeachMeError(
+            detail="云端模式下不开放模型连通性测试。",
+            error_code="SETTINGS_PROBE_FORBIDDEN",
+            status_code=403,
+        )
 
     snapshot = _model_probe_endpoint_snapshot(payload.endpoint_role)
     requested_api_mode = (

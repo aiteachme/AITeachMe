@@ -778,7 +778,21 @@ def test_knowledge_graph_build_passes_registry_and_course_authorization(monkeypa
     assert calls[0]["background_task_registry"] is registry
 
 
-def test_interactive_selection_generation_persists_overlay_without_handle_leak(monkeypatch) -> None:
+@pytest.mark.parametrize(
+    ("requested_model", "expected_override"),
+    [
+        (None, "primary"),
+        ("settings", None),
+        ("reason", "reason"),
+        ("primary", "primary"),
+        ("light", "light"),
+    ],
+)
+def test_interactive_selection_generation_uses_requested_model_tier_and_persists_overlay(
+    monkeypatch,
+    requested_model: str | None,
+    expected_override: str | None,
+) -> None:
     appended: list[dict[str, object]] = []
     overrides: list[str | None] = []
     generated_assets = [
@@ -842,6 +856,7 @@ def test_interactive_selection_generation_persists_overlay_without_handle_leak(m
                 anchor_id="anchor-1",
                 selected_text="selected text",
                 prompt="make it visual",
+                model=requested_model,
                 client_reference_id="selection-ref",
             ),
             user=_user(),
@@ -850,7 +865,7 @@ def test_interactive_selection_generation_persists_overlay_without_handle_leak(m
     )
 
     assert response.data.title == "Generated Demo"
-    assert overrides == ["primary"]
+    assert overrides == [expected_override]
     assert response.data.version_no == 9
     assert response.data.overlay_id.startswith("interactive-")
     assert "selection-ref" in response.data.preview_url

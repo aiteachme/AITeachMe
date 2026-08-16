@@ -1437,11 +1437,15 @@ async def knowledge_docs_interactive_selection(
     normalized = normalize_course_id(course_id)
     course_record = get_course_record(session, normalized, owner_user_id=user.user_id)
     course_scope = _storage_scope_for_course_record(course_record)
-    model_override = normalize_runtime_model_override(body.model) or _resolve_docgen_runtime_model_override(
-        session,
-        course=course_record,
-        course_scope=course_scope,
-        user_id=user.user_id,
+    model_override = (
+        normalize_runtime_model_override(body.model)
+        if body.model is not None
+        else _resolve_docgen_runtime_model_override(
+            session,
+            course=course_record,
+            course_scope=course_scope,
+            user_id=user.user_id,
+        )
     )
     manifest = ensure_published_knowledge_manifest(session, course_id=normalized, course_scope=course_scope)
     if manifest is None:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from app.schemas.system import ModelProbeRequest
+from app.shared.infra.exceptions import AITeachMeError
 from app.shared.infra.llm_support import common as llm_common
 from app.shared.infra.settings import reset_project_settings_cache, set_system_settings_override
 from app.workflows.support.system import settings as system_settings
@@ -19,6 +20,26 @@ def reset_settings_after_test():
     _reset_settings_state()
     yield
     _reset_settings_state()
+
+
+@pytest.mark.anyio
+async def test_settings_model_probe_is_forbidden_in_cloud_mode(monkeypatch) -> None:
+    monkeypatch.setattr(system_settings, "is_local_mode", lambda: False)
+    monkeypatch.setattr(
+        system_settings,
+        "_model_probe_endpoint_snapshot",
+        lambda _endpoint_role: (_ for _ in ()).throw(
+            AssertionError("cloud model probe must not inspect runtime endpoints")
+        ),
+    )
+
+    with pytest.raises(AITeachMeError) as exc_info:
+        await system_settings.test_settings_model_connection(
+            ModelProbeRequest(model_slot="reason", endpoint_role="primary")
+        )
+
+    assert exc_info.value.error_code == "SETTINGS_PROBE_FORBIDDEN"
+    assert exc_info.value.status_code == 403
 
 
 @pytest.mark.anyio

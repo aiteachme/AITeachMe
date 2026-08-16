@@ -91,12 +91,16 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
 
   const isCloudRuntime = overview?.mode === "cloud";
   const showExamScores = examResultDisplayMode === "score";
-  const hasRuntimeSections = Boolean(overview?.sections?.length);
+  const hasRuntimeSections = Boolean(!isCloudRuntime && overview?.sections?.length);
   const sections = useMemo(
-    () => prioritizeSettingsSections([...(overview?.sections ?? []), SYSTEM_SECTION]),
-    [overview?.sections],
+    () => (
+      isCloudRuntime
+        ? [SYSTEM_SECTION]
+        : prioritizeSettingsSections([...(overview?.sections ?? []), SYSTEM_SECTION])
+    ),
+    [isCloudRuntime, overview?.sections],
   );
-  const isLocalRuntime = !isCloudRuntime;
+  const isLocalRuntime = overview?.mode === "local";
   const hasChanges = hasServerChanges || hasEnvChanges;
 
   useEffect(() => {
@@ -219,22 +223,24 @@ export function SettingsDialog({ isOpen, onClose }: SettingsDialogProps) {
                             />
                           </div>
                         </div>
-                        <div className={SETTINGS_STYLES.list.item}>
-                          <FieldLabelBlock
-                            label="前端模式"
-                            description="发布模式隐藏实验入口；开发模式显示仅供调试和试验的页面或特性。该设置只影响当前浏览器。"
-                            htmlFor="system-ui-frontend-mode"
-                          />
-
-                          <div className={SETTINGS_STYLES.list.controlWrap}>
-                            <SelectInput
-                              id="system-ui-frontend-mode"
-                              value={frontendMode}
-                              onChange={(value) => setFrontendMode(value as FrontendRuntimeMode)}
-                              options={FRONTEND_MODE_OPTIONS}
+                        {isLocalRuntime ? (
+                          <div className={SETTINGS_STYLES.list.item}>
+                            <FieldLabelBlock
+                              label="前端模式"
+                              description="发布模式隐藏实验入口；开发模式显示仅供调试和试验的页面或特性。该设置只影响当前浏览器。"
+                              htmlFor="system-ui-frontend-mode"
                             />
+
+                            <div className={SETTINGS_STYLES.list.controlWrap}>
+                              <SelectInput
+                                id="system-ui-frontend-mode"
+                                value={frontendMode}
+                                onChange={(value) => setFrontendMode(value as FrontendRuntimeMode)}
+                                options={FRONTEND_MODE_OPTIONS}
+                              />
+                            </div>
                           </div>
-                        </div>
+                        ) : null}
                         <SwitchRow
                           title="显示具体分数"
                           description="开启后显示分数盖章和题目对错标记；关闭后只显示已完成 PASS 印章。"

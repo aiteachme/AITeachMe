@@ -300,7 +300,7 @@ def test_model_reasoning_capabilities_preserve_known_unknown_distinction() -> No
     assert get_model_reasoning_capabilities("custom-gateway-model").reasoning_efforts is None
 
 
-def test_cloud_settings_overview_does_not_read_database_runtime_overrides(monkeypatch) -> None:
+def test_cloud_settings_overview_does_not_expose_runtime_configuration(monkeypatch) -> None:
     monkeypatch.setattr(
         "app.workflows.support.system.settings.is_local_mode",
         lambda: False,
@@ -313,16 +313,19 @@ def test_cloud_settings_overview_does_not_read_database_runtime_overrides(monkey
         "app.workflows.support.system.settings.get_system_runtime_settings_payload",
         fail_if_read,
     )
-
-    overview = build_settings_overview_data(session=object())
-    model_entry = next(
-        entry
-        for section in overview.sections
-        for entry in section.entries
-        if entry.key == "models.primary"
+    monkeypatch.setattr(
+        "app.workflows.support.system.settings.describe_project_settings_source",
+        lambda: (_ for _ in ()).throw(
+            AssertionError("cloud settings overview must not inspect project settings source")
+        ),
     )
 
-    assert model_entry.editable is False
+    overview = build_settings_overview_data(session=object())
+
+    assert overview.mode == "cloud"
+    assert overview.settings_source == "managed"
+    assert overview.sections == []
+    assert overview.notes == ["云端运行配置由服务端统一管理。"]
 
 
 def test_rpm_rate_limit_is_treated_as_local_throttle() -> None:
