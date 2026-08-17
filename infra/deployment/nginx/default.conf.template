@@ -93,11 +93,13 @@ server {
     }
 
     location /docs/ {
+        error_page 404 /docs/404.html;
         try_files $uri $uri/index.html $uri.html =404;
         add_header Cache-Control "no-cache" always;
     }
 
     location = /docs {
+        error_page 404 /docs/404.html;
         try_files /docs/index.html =404;
         add_header Cache-Control "no-cache" always;
     }

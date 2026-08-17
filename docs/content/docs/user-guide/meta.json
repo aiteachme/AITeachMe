@@ -1,14 +1,18 @@
 {
   "title": "用户教程",
   "pages": [
+    "---准备课程---",
     "upload-materials",
     "build-course",
     "import-demo-courses",
+    "---学习课程---",
+    "knowledge-docs",
     "knowledge-graph",
     "chat",
+    "---训练与复盘---",
     "exam-modes",
-    "exams-profile",
+    "review-profile",
+    "---设置---",
     "settings-models"
-  ],
-  "pagesIndex": "index"
+  ]
 }

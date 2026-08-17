@@ -1,5 +1,0 @@
-{
-  "title": "开发者文档",
-  "pages": ["local-development", "architecture", "workflows-infra", "api-contracts"],
-  "pagesIndex": "index"
-}
