@@ -1,5 +1,7 @@
 import asyncio
 
+import pytest
+
 from app.shared.infra.tools.builtin.latex_processing import normalize_math_delimiters, validate_latex
 from app.shared.infra.tools.builtin.markdown_processing import (
     find_markdown_presentation_issues,
@@ -11,6 +13,7 @@ from app.shared.infra.tools.builtin.markdown_processing import (
 )
 from app.workflows.digest.docgen.lib.html_sidecar import normalize_single_file_html
 from app.workflows.digest.docgen.lib.models import ReviewAction, ReviewedChapterDraft
+from app.workflows.digest.docgen.lib import presentation_policy
 from app.workflows.digest.docgen.lib.presentation_policy import normalize_docgen_presentation
 from app.workflows.digest.docgen.lib.public_markdown import sanitize_public_markdown
 from app.workflows.digest.docgen.lib.repair import repair_or_route_review_actions
@@ -853,11 +856,13 @@ def test_docgen_normalization_repairs_formula_titles_connectors_and_duplicate_qu
 
 
 def test_docgen_connector_normalization_preserves_code_and_display_math() -> None:
+    tilde_fence = "~~~text\n## 绕 \\ x\\ 轴旋转\n$x>0且x\\ne1$\n~~~"
     raw = (
         "# 约束\n\n"
         "正文条件为 $x>0且x\\ne1$。\n\n"
         "`$x>0且x\\ne1$`\n\n"
         "```text\n$x>0且x\\ne1$\n```\n\n"
+        f"{tilde_fence}\n\n"
         "$$x>0且x\\ne1$$\n"
     )
 
@@ -866,7 +871,28 @@ def test_docgen_connector_normalization_preserves_code_and_display_math() -> Non
     assert "正文条件为 $x>0$ 且 $x\\ne1$。" in fixed
     assert "`$x>0且x\\ne1$`" in fixed
     assert "```text\n$x>0且x\\ne1$\n```" in fixed
+    assert tilde_fence in fixed
     assert "$$x>0且x\\ne1$$" in fixed
+
+
+@pytest.mark.parametrize(
+    "normalizer",
+    [
+        presentation_policy._normalize_heading_math_artifacts,
+        presentation_policy._normalize_inline_math_connectors,
+    ],
+)
+def test_docgen_math_normalizers_respect_long_fence_boundaries(normalizer) -> None:
+    markdown = (
+        "````text\n"
+        "```text\n"
+        "## 绕 \\ x\\ 轴旋转\n"
+        "$x>0且x\\ne1$\n"
+        "```\n"
+        "````"
+    )
+
+    assert normalizer(markdown) == markdown
 
 
 def test_normalize_flattens_headings_inside_list_items() -> None:

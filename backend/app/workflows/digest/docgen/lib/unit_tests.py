@@ -96,6 +96,11 @@ _LEADING_TABLE_PIPE_BEFORE_MATH_RE = re.compile(
 )
 _ESCAPED_MATH_DOLLAR_RE = re.compile(r"\\(\${1,2})")
 _LITERAL_LINE_BREAK_RE = re.compile(r"(?:\\r\\n|\\n)(?![A-Za-z])")
+_LITERAL_LINE_BREAK_PROTECTED_RE = re.compile(
+    r"(?P<ticks>`+)[^`\n]*?(?P=ticks)"
+    r'|"(?:\\.|[^"\\\n])*"'
+    r"|'(?:\\.|[^'\\\n])*'"
+)
 _DISPLAY_MATH_SPAN_RE = re.compile(
     r"\$\$(?P<dollar>[\s\S]*?)\$\$|\\\[(?P<bracket>[\s\S]*?)\\\]"
 )
@@ -396,10 +401,22 @@ def _sanitize_unit_test_math_text(value: Any) -> str:
     text = clean_text(value)
     if not text:
         return ""
-    text = _LITERAL_LINE_BREAK_RE.sub("\n", text)
+    text = _normalize_literal_line_breaks(text)
     text = _ESCAPED_MATH_DOLLAR_RE.sub(r"\1", text)
     text = _LEADING_TABLE_PIPE_BEFORE_MATH_RE.sub(r"\1", text)
     return text.strip()
+
+
+def _normalize_literal_line_breaks(value: str) -> str:
+    text, fenced_blocks = _protect_fenced_code_blocks(str(value or ""))
+    fixed: list[str] = []
+    cursor = 0
+    for protected in _LITERAL_LINE_BREAK_PROTECTED_RE.finditer(text):
+        fixed.append(_LITERAL_LINE_BREAK_RE.sub("\n", text[cursor : protected.start()]))
+        fixed.append(protected.group(0))
+        cursor = protected.end()
+    fixed.append(_LITERAL_LINE_BREAK_RE.sub("\n", text[cursor:]))
+    return _restore_fenced_code_blocks("".join(fixed), fenced_blocks)
 
 
 def _inline_unit_test_display_math(value: str) -> str:

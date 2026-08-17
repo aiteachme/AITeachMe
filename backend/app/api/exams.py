@@ -1418,6 +1418,7 @@ def _locked_question_template_ids(
     ids = sorted({int(template_id) for template_id in template_ids if int(template_id or 0) > 0})
     if not ids:
         return set()
+    now = utcnow()
     rows = session.exec(
         select(ExamPaperItem.question_template_id)
         .join(ExamPaper, ExamPaper.id == ExamPaperItem.exam_paper_id)
@@ -1426,6 +1427,12 @@ def _locked_question_template_ids(
             ExamPaper.course_id == course_id,
             ExamPaper.user_id == user_id,
             ExamPaper.status.notin_(_SOLUTION_UNLOCKED_EXAM_STATUSES),
+            or_(
+                ExamPaper.visibility != "hidden",
+                ExamPaper.generation_origin != "prewarm",
+                ExamPaper.expires_at.is_(None),
+                ExamPaper.expires_at > now,
+            ),
         )
     ).all()
     return {int(template_id) for template_id in rows if template_id is not None}
