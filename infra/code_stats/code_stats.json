@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-08-10T01:25:39.504655",
-  "total_commits_analyzed": 2075,
+  "generated_at": "2026-08-17T01:02:47.749852",
+  "total_commits_analyzed": 2106,
   "stats": [
     {
       "date": "2026-03-11",
@@ -16601,6 +16601,254 @@
       "code_lines": 262306,
       "other_lines": 46993,
       "message": "fix: 修复 LLM 排队误触整体超时"
+    },
+    {
+      "date": "2026-07-04",
+      "commit": "e14d74e",
+      "total_lines": 281686,
+      "code_lines": 238133,
+      "other_lines": 43553,
+      "message": "feat: 接入 OpenMAIC 风格交互生成"
+    },
+    {
+      "date": "2026-07-18",
+      "commit": "1b211cd",
+      "total_lines": 282099,
+      "code_lines": 238496,
+      "other_lines": 43603,
+      "message": "fix: 完善交互生成校验与沙盒展示"
+    },
+    {
+      "date": "2026-08-09",
+      "commit": "516a1f9",
+      "total_lines": 308319,
+      "code_lines": 261370,
+      "other_lines": 46949,
+      "message": "refactor: 精简知识构建流程并完善模型路由"
+    },
+    {
+      "date": "2026-08-09",
+      "commit": "95a2614",
+      "total_lines": 308351,
+      "code_lines": 261394,
+      "other_lines": 46957,
+      "message": "fix: 防止结构草稿覆盖知识图谱抽取结果"
+    },
+    {
+      "date": "2026-08-09",
+      "commit": "06a3df4",
+      "total_lines": 308426,
+      "code_lines": 261467,
+      "other_lines": 46959,
+      "message": "refactor: 并行化文档生成与知识图谱构建"
+    },
+    {
+      "date": "2026-08-10",
+      "commit": "c8f1bdd",
+      "total_lines": 309299,
+      "code_lines": 262306,
+      "other_lines": 46993,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-08-14",
+      "commit": "f3308c9",
+      "total_lines": 308685,
+      "code_lines": 261710,
+      "other_lines": 46975,
+      "message": "fix: 优化规划与知识文档展示"
+    },
+    {
+      "date": "2026-08-14",
+      "commit": "bedf046",
+      "total_lines": 309091,
+      "code_lines": 262038,
+      "other_lines": 47053,
+      "message": "refactor: 收敛知识构建与模型调度链路"
+    },
+    {
+      "date": "2026-08-14",
+      "commit": "a9b8d57",
+      "total_lines": 309096,
+      "code_lines": 262043,
+      "other_lines": 47053,
+      "message": "fix: 修复旧版单元测试答案折叠范围"
+    },
+    {
+      "date": "2026-08-14",
+      "commit": "daf82e3",
+      "total_lines": 309080,
+      "code_lines": 262022,
+      "other_lines": 47058,
+      "message": "refactor: 收敛课程 RAG 配置"
+    },
+    {
+      "date": "2026-08-14",
+      "commit": "f481a04",
+      "total_lines": 312609,
+      "code_lines": 265007,
+      "other_lines": 47602,
+      "message": "feat: 合并交互式内容生成与沙盒预览"
+    },
+    {
+      "date": "2026-08-14",
+      "commit": "fddd705",
+      "total_lines": 312609,
+      "code_lines": 265007,
+      "other_lines": 47602,
+      "message": "Merge branch 'main' of github.com:aiteachme/AITeac"
+    },
+    {
+      "date": "2026-08-14",
+      "commit": "3afe145",
+      "total_lines": 312750,
+      "code_lines": 265216,
+      "other_lines": 47534,
+      "message": "chore: 合并远程主分支最新版本"
+    },
+    {
+      "date": "2026-08-14",
+      "commit": "c4be60f",
+      "total_lines": 312813,
+      "code_lines": 265181,
+      "other_lines": 47632,
+      "message": "fix: 修复课程删除与知识文档构建异常"
+    },
+    {
+      "date": "2026-08-14",
+      "commit": "51a547f",
+      "total_lines": 312847,
+      "code_lines": 265213,
+      "other_lines": 47634,
+      "message": "fix: 修复向量索引状态未及时刷新"
+    },
+    {
+      "date": "2026-08-14",
+      "commit": "283893d",
+      "total_lines": 312902,
+      "code_lines": 265262,
+      "other_lines": 47640,
+      "message": "fix: 修复文档单元测试补齐与向量状态刷新"
+    },
+    {
+      "date": "2026-08-14",
+      "commit": "d0635b4",
+      "total_lines": 313320,
+      "code_lines": 265645,
+      "other_lines": 47675,
+      "message": "fix: 补全文档骨架与章节简报实时进度"
+    },
+    {
+      "date": "2026-08-15",
+      "commit": "95c180d",
+      "total_lines": 313536,
+      "code_lines": 265800,
+      "other_lines": 47736,
+      "message": "fix: 修复资料详情加载并清理静态检查问题"
+    },
+    {
+      "date": "2026-08-15",
+      "commit": "e3c54fc",
+      "total_lines": 313325,
+      "code_lines": 265697,
+      "other_lines": 47628,
+      "message": "fix: 完善云解析超时与超长 PDF 分块逻辑"
+    },
+    {
+      "date": "2026-08-15",
+      "commit": "0f396b0",
+      "total_lines": 314111,
+      "code_lines": 266281,
+      "other_lines": 47830,
+      "message": "merge: 合并云解析超时与超长 PDF 分块更新"
+    },
+    {
+      "date": "2026-08-15",
+      "commit": "1916aa0",
+      "total_lines": 314110,
+      "code_lines": 266280,
+      "other_lines": 47830,
+      "message": "fix: 修复云端资料就绪状态误判"
+    },
+    {
+      "date": "2026-08-15",
+      "commit": "0ff7288",
+      "total_lines": 314096,
+      "code_lines": 266269,
+      "other_lines": 47827,
+      "message": "chore: 清理文件"
+    },
+    {
+      "date": "2026-08-15",
+      "commit": "d7d51b7",
+      "total_lines": 320490,
+      "code_lines": 271814,
+      "other_lines": 48676,
+      "message": "feat: 完善训练中心与复习指南"
+    },
+    {
+      "date": "2026-08-15",
+      "commit": "dbd9dfc",
+      "total_lines": 320460,
+      "code_lines": 271786,
+      "other_lines": 48674,
+      "message": "style: 优化首页动态品牌标识与响应式层级"
+    },
+    {
+      "date": "2026-08-15",
+      "commit": "1455262",
+      "total_lines": 328855,
+      "code_lines": 278542,
+      "other_lines": 50313,
+      "message": "feat: 完善认证登录、AI 额度与教学工作流"
+    },
+    {
+      "date": "2026-08-16",
+      "commit": "4b971f8",
+      "total_lines": 329344,
+      "code_lines": 278985,
+      "other_lines": 50359,
+      "message": "fix: 修复认证枚举、额度恢复与游客迁移清理"
+    },
+    {
+      "date": "2026-08-16",
+      "commit": "cd822ae",
+      "total_lines": 329869,
+      "code_lines": 279456,
+      "other_lines": 50413,
+      "message": "fix: 完善额度恢复、认证清理与登出状态"
+    },
+    {
+      "date": "2026-08-16",
+      "commit": "3910144",
+      "total_lines": 330077,
+      "code_lines": 279644,
+      "other_lines": 50433,
+      "message": "fix: 修复认证与额度并发幂等问题"
+    },
+    {
+      "date": "2026-08-16",
+      "commit": "439d988",
+      "total_lines": 330215,
+      "code_lines": 279759,
+      "other_lines": 50456,
+      "message": "fix: 完善收费任务清理与认证防枚举"
+    },
+    {
+      "date": "2026-08-16",
+      "commit": "34bb404",
+      "total_lines": 330215,
+      "code_lines": 279759,
+      "other_lines": 50456,
+      "message": "fix: 补齐生产镜像认证依赖"
+    },
+    {
+      "date": "2026-08-16",
+      "commit": "c09d365",
+      "total_lines": 330279,
+      "code_lines": 279817,
+      "other_lines": 50462,
+      "message": "fix: 收紧云端设置并统一模型档位语义"
     }
   ]
 }
