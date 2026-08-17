@@ -1533,17 +1533,12 @@ def test_docgen_background_preserves_published_docs_when_downstream_graph_fails(
         scheduling_events.append("exam_scheduled")
         return True
 
-    @contextmanager
-    def fake_trace(**_kwargs):
-        yield None
-
     monkeypatch.setattr(
         build_lifecycle,
         "get_settings",
         lambda: SimpleNamespace(knowledge_graph=SimpleNamespace(sync_after_docgen=True)),
     )
     monkeypatch.setattr(build_lifecycle, "_new_build_session_id", lambda: "build-session-published")
-    monkeypatch.setattr(build_lifecycle, "langsmith_trace", fake_trace)
     monkeypatch.setattr(build_lifecycle, "maintain_knowledge_build_lock_lease", fake_heartbeat)
     monkeypatch.setattr(build_lifecycle, "_still_owns_build_lock", lambda **_kwargs: True)
     monkeypatch.setattr(
@@ -1664,10 +1659,6 @@ def test_docgen_background_marks_completed_when_cancelled_publish_drain_succeeds
             raise
         raise AssertionError("workflow should have been cancelled during publish")
 
-    @contextmanager
-    def fake_trace(**_kwargs):
-        yield None
-
     def read_lock(*_args, **_kwargs) -> build_store.KnowledgeBuildLock:
         if publish_finished.is_set():
             return build_store.KnowledgeBuildLock(
@@ -1689,7 +1680,6 @@ def test_docgen_background_marks_completed_when_cancelled_publish_drain_succeeds
         lambda: SimpleNamespace(knowledge_graph=SimpleNamespace(sync_after_docgen=True)),
     )
     monkeypatch.setattr(build_lifecycle, "_new_build_session_id", lambda: "build-session-publish-cancel")
-    monkeypatch.setattr(build_lifecycle, "langsmith_trace", fake_trace)
     monkeypatch.setattr(build_lifecycle, "maintain_knowledge_build_lock_lease", fake_heartbeat)
     monkeypatch.setattr(build_lifecycle, "_still_owns_build_lock", lambda **_kwargs: True)
     monkeypatch.setattr(build_lifecycle, "read_knowledge_build_lock", read_lock)

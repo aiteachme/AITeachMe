@@ -2,7 +2,10 @@ import re
 
 import pytest
 
+from app.workflows.digest.docgen.lib import unit_tests
 from app.workflows.digest.docgen.lib.unit_test_generation import generate_chapter_unit_test_markdown
+from app.workflows.digest.docgen.lib.presentation_policy import normalize_docgen_presentation
+from app.workflows.digest.docgen.lib.publish import _prepare_chapter_markdown
 from app.workflows.digest.docgen.lib.unit_tests import (
     ChapterUnitTestItem,
     ChapterUnitTestSet,
@@ -14,14 +17,40 @@ from app.workflows.digest.docgen.lib.unit_tests import (
 )
 
 
+def test_unit_test_contract_requires_non_empty_explanation_steps() -> None:
+    markdown = (
+        "# 函数\n\n## 单元测试\n\n"
+        "> [!QUESTION] **Q01｜填空题｜基础｜考点：函数定义**\n>\n"
+        "> **题目**\n>\n> 函数有意义的自变量集合称为 ______。\n\n"
+        "> [!ANSWER]\n>\n> **答案**\n>\n> 定义域。\n"
+    )
+
+    empty = markdown + ">\n> **解析步骤**\n>\n"
+    issues = unit_test_structure_issues(markdown)
+    empty_issues = unit_test_structure_issues(empty)
+
+    assert any("解析步骤" in issue for issue in issues)
+    assert any("解析步骤为空" in issue for issue in empty_issues)
+
+
+def test_explanation_lines_remove_repeated_full_width_step_numbers() -> None:
+    lines = unit_tests._markdown_explanation_lines(
+        "（1）（1）先确定定义域；（2）（2）再代入表达式。"
+    )
+
+    assert lines == ["先确定定义域", "再代入表达式。"]
+
+
 @pytest.mark.anyio
 async def test_structured_unit_test_generation_uses_full_body_and_publishes_canonical_pairs() -> None:
     body = "# 函数\n\n## 定义与对应关系\n\n" + "完整正文。" * 5000
     captured_body = ""
+    call_models: list[str] = []
 
     async def fake_llm(messages, **kwargs):
         nonlocal captured_body
         captured_body = str(messages[-1]["content"])
+        call_models.append(str(kwargs["model"]))
         assert kwargs["response_model"] is ChapterUnitTestSet
         return ChapterUnitTestSet(
             chapter_index=1,
@@ -67,6 +96,89 @@ async def test_structured_unit_test_generation_uses_full_body_and_publishes_cano
     assert "**选项**" not in markdown.split("**Q02", 1)[0]
     assert "- A. 函数名" in markdown
     assert unit_test_structure_issues(markdown) == []
+    assert call_models == ["light", "primary"]
+
+
+@pytest.mark.anyio
+async def test_unit_test_review_recomputes_wrong_answer_before_publish() -> None:
+    calls = 0
+
+    async def fake_llm(_messages, **_kwargs):
+        nonlocal calls
+        calls += 1
+        answer = "$3$" if calls == 1 else "$2$"
+        basis = "$1+1=3$。" if calls == 1 else "$1+1=2$。"
+        return ChapterUnitTestSet(
+            chapter_index=1,
+            items=[
+                ChapterUnitTestItem(
+                    type="填空题",
+                    difficulty="基础",
+                    target="整数加法",
+                    stem="$1+1=$ ______。",
+                    answer=answer,
+                    basis=basis,
+                )
+            ],
+        )
+
+    markdown = await generate_chapter_unit_test_markdown(
+        chapter_index=1,
+        chapter_title="整数加法",
+        digest_mode="systematic",
+        required_elements=["整数加法"],
+        chapter_end_practice_plan=[],
+        body_markdown="# 整数加法\n\n$1+1=2$。",
+        min_items=1,
+        max_items=1,
+        llm_caller=fake_llm,
+    )
+
+    assert calls == 2
+    assert "$1+1=2$。" in markdown
+    assert "$1+1=3$。" not in markdown
+
+
+@pytest.mark.anyio
+async def test_unit_test_review_repairs_an_unusable_initial_structure_once() -> None:
+    calls = 0
+    review_prompt = ""
+
+    async def fake_llm(messages, **_kwargs):
+        nonlocal calls, review_prompt
+        calls += 1
+        if calls == 1:
+            return ChapterUnitTestSet(chapter_index=1, items=[])
+        review_prompt = str(messages[-1]["content"])
+        return ChapterUnitTestSet(
+            chapter_index=1,
+            items=[
+                ChapterUnitTestItem(
+                    type="短答题",
+                    difficulty="基础",
+                    target="函数定义域",
+                    stem="什么是函数的定义域？",
+                    answer="使函数有意义的自变量取值集合。",
+                    basis="依据函数定义判断。",
+                )
+            ],
+        )
+
+    markdown = await generate_chapter_unit_test_markdown(
+        chapter_index=1,
+        chapter_title="函数",
+        digest_mode="systematic",
+        required_elements=["定义域"],
+        chapter_end_practice_plan=[],
+        body_markdown="# 函数\n\n定义域是使函数有意义的自变量取值集合。",
+        min_items=1,
+        max_items=1,
+        llm_caller=fake_llm,
+    )
+
+    assert calls == 2
+    assert "unit-test model returned 0 usable items" in review_prompt
+    assert "使函数有意义的自变量取值集合" in markdown
 
 
 def test_unit_test_contract_rejects_reversed_empty_and_floating_answers() -> None:
@@ -95,6 +207,79 @@ def test_unit_test_contract_accepts_canonical_non_choice_pair() -> None:
     )
 
     assert unit_test_structure_issues(markdown) == []
+
+
+def test_unit_test_renderer_normalizes_model_format_artifacts() -> None:
+    markdown = render_unit_test_markdown(
+        ChapterUnitTestSet(
+            chapter_index=1,
+            items=[
+                ChapterUnitTestItem(
+                    type="短答题",
+                    difficulty="进阶",
+                    target="换元积分",
+                    stem=(
+                        "当 x\\ne0 时计算\\n"
+                        "$$\\int_0^1 2x\\cos(x^2)\\,dx$$\\n并说明换元。"
+                    ),
+                    answer="$\\sin 1$\\n。",
+                    basis="1. 1. 令 $u=x^2$\\n2. 2. 同步换限并积分。",
+                )
+            ],
+        ),
+        title="定积分",
+        min_items=1,
+        fallback_targets=["换元积分"],
+    )
+    normalized = normalize_docgen_presentation(markdown, title="定积分")
+
+    assert re.search(r"\\n(?![A-Za-z])", normalized) is None
+    assert "x\\ne0 时" in normalized
+    assert "$$" not in normalized
+    assert "> 1. 令 $u=x^2$" in normalized
+    assert "> 2. 同步换限并积分。" in normalized
+    assert "1. 1." not in normalized
+    assert "2. 2." not in normalized
+    assert unit_test_structure_issues(normalized) == []
+
+
+def test_final_chapter_normalization_rejects_question_content_outside_callout() -> None:
+    malformed = (
+        "# 定积分\n\n## 单元测试\n\n"
+        "> [!QUESTION] **Q01｜短答题｜进阶｜考点：换元积分**\n>\n"
+        "> **题目**\n>\n> 计算\n> $$\n> \\int_0^1 2x\\,dx\n> $$\n\n"
+        "，并说明理由。\n\n"
+        "> [!ANSWER]\n>\n> **答案**\n>\n> $1$。\n"
+    )
+
+    with pytest.raises(RuntimeError, match="docgen_unit_test_contract_failed"):
+        _prepare_chapter_markdown(malformed, title="定积分")
+
+
+def test_final_chapter_normalization_removes_duplicate_step_numbers() -> None:
+    markdown = (
+        "# 定积分\n\n## 单元测试\n\n"
+        "> [!QUESTION]\n>\n> **Q01｜短答题｜基础｜考点：换元积分**\n>\n"
+        "> **题目**\n>\n> 计算 $\\int_0^1 2x\\,dx$。\n\n"
+        "> [!ANSWER]\n>\n> **答案**\n>\n> $1$\n>\n> **解析步骤**\n>\n"
+        "> 1. 1. 令 $u=x^2$\n"
+        "> 2. 同步换限。2. 再完成积分\n"
+        "> 3. 检查结果。3. 核对符号。4. 写出结论\n"
+    )
+
+    normalized = _prepare_chapter_markdown(markdown, title="定积分")
+
+    assert "> 1. 令 $u=x^2$" in normalized
+    assert "> 2. 同步换限。" in normalized
+    assert "> 3. 再完成积分" in normalized
+    assert "> 4. 检查结果。" in normalized
+    assert "> 5. 核对符号。" in normalized
+    assert "> 6. 写出结论" in normalized
+    assert "1. 1." not in normalized
+    assert "。2." not in normalized
+    assert "。3." not in normalized
+    assert "。4." not in normalized
+    assert unit_test_structure_issues(normalized) == []
 
 
 def test_unit_test_contract_rejects_duplicate_answer_fields() -> None:
@@ -250,8 +435,8 @@ def test_unit_test_renderer_normalizes_raw_and_escaped_latex_options() -> None:
     assert r"$\frac14$" in unit_test
     assert r"$0 \leq x^2 \leq 2$" in unit_test
     assert r"\|$$" not in unit_test
-    assert r"$$\lim_{x \to x_0} f(x)=f(x_0)$$" in unit_test
-    assert r"$$\lim_{x \to x_0^-} f(x)=\lim_{x \to x_0^+} f(x)$$" in unit_test
+    assert r"$\lim_{x \to x_0} f(x)=f(x_0)$" in unit_test
+    assert r"$\lim_{x \to x_0^-} f(x)=\lim_{x \to x_0^+} f(x)$" in unit_test
     assert r"..." not in unit_test
     assert "…" not in re.search(r"> - C\..+", unit_test).group(0)
 

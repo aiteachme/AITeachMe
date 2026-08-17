@@ -46,6 +46,34 @@ def test_docgen_presentation_keeps_real_unpaired_highlight_visible() -> None:
     assert "Markdown 高亮标记 == 未成对闭合。" in find_docgen_presentation_issues(markdown)
 
 
+def test_docgen_presentation_deduplicates_question_and_answer_as_one_block() -> None:
+    exercise = (
+        "> [!QUESTION] **练习 1**\n>\n> 计算 $1+1$。\n\n"
+        "> [!ANSWER]\n>\n> **答案**\n>\n> 2。\n>\n"
+        "> **解析步骤**\n>\n> 由加法定义可得 2。"
+    )
+    markdown = f"# 加法\n\n## 练习\n\n{exercise}\n\n{exercise}\n"
+
+    fixed = normalize_docgen_presentation(markdown)
+
+    assert fixed.count("[!QUESTION]") == 1
+    assert fixed.count("[!ANSWER]") == 1
+    assert fixed.count("由加法定义可得 2。") == 1
+
+
+def test_docgen_presentation_preserves_conflicting_answers_for_review() -> None:
+    question = "> [!QUESTION] **练习 1**\n>\n> 计算 $1+1$。"
+    first = f"{question}\n\n> [!ANSWER]\n>\n> **答案**\n>\n> 2。"
+    second = f"{question}\n\n> [!ANSWER]\n>\n> **答案**\n>\n> 3。"
+
+    fixed = normalize_docgen_presentation(f"# 加法\n\n{first}\n\n{second}\n")
+
+    assert fixed.count("[!QUESTION]") == 2
+    assert fixed.count("[!ANSWER]") == 2
+    assert "> 2。" in fixed
+    assert "> 3。" in fixed
+
+
 def test_docgen_presentation_ignores_html_like_syntax_inside_code() -> None:
     markdown = (
         "# C 语言头文件\n\n"
@@ -57,6 +85,15 @@ def test_docgen_presentation_ignores_html_like_syntax_inside_code() -> None:
     assert "Markdown 正文包含不受控 HTML 标签。" in find_docgen_presentation_issues(
         markdown + "\n<section>正文 HTML</section>\n"
     )
+
+
+def test_docgen_presentation_ignores_comparison_syntax_across_inline_math() -> None:
+    markdown = (
+        "# 左右极限\n\n"
+        "左极限只考察 $x<a$ 的点，右极限只考察 $x>a$ 的点。\n"
+    )
+
+    assert "Markdown 正文包含不受控 HTML 标签。" not in find_docgen_presentation_issues(markdown)
 
 
 def test_empty_mermaid_response_is_treated_as_skip() -> None:

@@ -1710,6 +1710,8 @@ def normalize_markdown_rendering(markdown: str) -> str:
                 in_math = False
                 math_prefix = ""
                 continue
+            if math_prefix and re.fullmatch(r"\s*(?:>\s*)+", line):
+                continue
             cleaned_math_line = (
                 line if math_prefix else _strip_quote_prefix(line) if BLOCKQUOTE_PREFIX_PATTERN.match(line) else line
             )

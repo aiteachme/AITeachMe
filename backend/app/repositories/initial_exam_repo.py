@@ -29,10 +29,47 @@ def ensure_course_initial_exam_job(
     last_error_code: str = "",
     auto_commit: bool = False,
 ) -> CourseInitialExamJob:
-    """Create the course marker once without reopening a completed job."""
+    """Create the marker once, reopening only an imported empty placeholder."""
 
     existing = get_course_initial_exam_job(session, course_id=course_id)
     if existing is not None:
+        if status != "completed":
+            now = utcnow()
+            result = session.exec(
+                sa.update(CourseInitialExamJob)
+                .where(
+                    CourseInitialExamJob.course_id == course_id,
+                    CourseInitialExamJob.status == "completed",
+                    CourseInitialExamJob.exam_paper_id.is_(None),
+                    CourseInitialExamJob.last_error_code == "imported_course_backfill",
+                )
+                .values(
+                    user_id=user_id,
+                    status=status,
+                    build_session_id=str(build_session_id or ""),
+                    model_override=str(model_override or ""),
+                    exam_paper_id=None,
+                    attempt_count=0,
+                    next_attempt_at=now,
+                    claim_token="",
+                    lease_expires_at=None,
+                    last_error_code=str(last_error_code or "")[:80],
+                    started_at=None,
+                    completed_at=None,
+                    updated_at=now,
+                )
+                .execution_options(synchronize_session=False)
+            )
+            if int(result.rowcount or 0) == 1:
+                if auto_commit:
+                    session.commit()
+                else:
+                    session.flush()
+                session.expire_all()
+                reopened = get_course_initial_exam_job(session, course_id=course_id)
+                if reopened is None:
+                    raise RuntimeError("reopened initial-exam job disappeared")
+                return reopened
         return existing
     now = utcnow()
     terminal = status == "completed"

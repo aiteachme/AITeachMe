@@ -5,6 +5,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   BookOpen,
+  AlertTriangle,
   FileText,
   ChevronRight,
   ChevronsLeft,
@@ -2072,6 +2073,47 @@ function DocLoadErrorState({
         ) : null}
       </div>
     </section>
+  );
+}
+
+function DocStaleBuildFailureNotice({
+  message,
+  onRetry,
+  actionLabel,
+  isPending,
+}: {
+  message: string;
+  onRetry: () => void;
+  actionLabel: string;
+  isPending: boolean;
+}) {
+  return (
+    <div
+      role="alert"
+      className="mb-3 flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2.5 text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100 sm:flex-row sm:items-center sm:justify-between"
+    >
+      <div className="flex min-w-0 items-start gap-2.5">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-300" aria-hidden="true" />
+        <div className="min-w-0">
+          <p className="text-sm font-semibold">本轮更新未完成，当前展示的是上一版本</p>
+          <p className="mt-0.5 break-words text-xs leading-5 text-amber-800 dark:text-amber-200/90">{message}</p>
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={onRetry}
+        disabled={isPending}
+        aria-busy={isPending}
+        className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 self-start rounded-lg border border-amber-300 bg-white px-3 text-xs font-semibold text-amber-900 transition-colors hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/30 disabled:cursor-not-allowed disabled:opacity-60 dark:border-amber-500/40 dark:bg-slate-950 dark:text-amber-100 dark:hover:bg-amber-500/10 sm:self-auto"
+      >
+        {isPending ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+        ) : (
+          <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+        )}
+        {isPending ? "正在重新构建" : actionLabel}
+      </button>
+    </div>
   );
 }
 
@@ -7587,6 +7629,14 @@ export function KnowledgeDocsPage() {
                     <DocEmptyState />
                   ) : (
                     <>
+                      {hasRenderedMarkdown && isBuildFailure ? (
+                        <DocStaleBuildFailureNotice
+                          message={buildStatusText}
+                          onRetry={handleFailedBuildRetry}
+                          actionLabel={failedBuildConfirmedPlanId ? "重新构建" : "返回方案重新构建"}
+                          isPending={isRetryKnowledgeBuildPending}
+                        />
+                      ) : null}
                       {showDocUpdatingBanner && (
                         <DocUpdatingBanner
                           progress={buildProgress}

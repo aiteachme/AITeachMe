@@ -143,6 +143,43 @@ async def test_initial_exam_job_runs_once_and_remains_completed_after_paper_dele
     assert managed_session.exec(select(ExamPaper)).all() == []
 
 
+def test_imported_empty_initial_exam_placeholder_reopens_for_real_build(
+    managed_session: Session,
+) -> None:
+    completed_at = utcnow()
+    managed_session.add(
+        CourseInitialExamJob(
+            course_id=COURSE_ID,
+            user_id=USER_ID,
+            status="completed",
+            build_session_id="imported-course",
+            exam_paper_id=None,
+            next_attempt_at=None,
+            last_error_code="imported_course_backfill",
+            completed_at=completed_at,
+        )
+    )
+    managed_session.commit()
+
+    runnable = initial_exam_service.ensure_course_initial_exam_job(
+        course_id=COURSE_ID,
+        user_id=USER_ID,
+        build_session_id="real-docgen-build",
+        model_override="reason",
+    )
+
+    managed_session.expire_all()
+    job = managed_session.exec(select(CourseInitialExamJob)).one()
+    assert runnable is True
+    assert job.status == "pending"
+    assert job.build_session_id == "real-docgen-build"
+    assert job.model_override == "reason"
+    assert job.exam_paper_id is None
+    assert job.next_attempt_at is not None
+    assert job.last_error_code == ""
+    assert job.completed_at is None
+
+
 def test_initial_exam_recovery_preserves_model_override(
     monkeypatch: pytest.MonkeyPatch,
     managed_session: Session,

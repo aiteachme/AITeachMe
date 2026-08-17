@@ -16,6 +16,8 @@ from app.workflows.digest.planner.lib.requested_structure import (
     extract_explicit_chapter_titles,
     extract_explicit_learning_topic,
     extract_requested_chapter_count,
+    requests_preserved_chapter_structure,
+    requests_preserved_knowledge_boundaries,
 )
 
 
@@ -93,13 +95,14 @@ def _remove_planner_self_intro(text: str) -> str:
 
 
 def _student_facing_text(value: Any) -> str:
-    return (
+    text = (
         _remove_planner_self_intro(_text(value))
         .replace("速成课模式", "紧凑节奏")
         .replace("速成课", "紧凑节奏")
         .replace("系统课", "系统节奏")
         .replace("章节合同", "学习大纲")
     )
+    return re.sub(r"。{2,}", "。", text)
 
 
 def compose_effective_planner_request_text(user_prompt: Any, feedback_message: Any = "") -> str:
@@ -401,6 +404,14 @@ def normalize_planner_diagnosis_draft(
         status = "pending"
     if not diagnose and status == "pending":
         status = "skipped"
+    diagnose_note = (
+        ""
+        if status == "pending" and _diagnose_items(current.get("diagnose"))
+        else _student_facing_text(current.get("diagnose_note") or previous.get("diagnose_note"))
+    )
+    has_previous_formal_plan = bool(
+        _student_facing_text(previous.get("plan")) and _chapter_items(previous.get("chapters"))
+    )
     return {
         "planner_stage": "diagnosis",
         "course_name": display_course,
@@ -408,13 +419,13 @@ def normalize_planner_diagnosis_draft(
         "user_prompt": resolved_user_prompt,
         "digest_mode": mode,
         "planning_note": _student_facing_text(current.get("planning_note") or previous.get("planning_note")),
-        "suggestion": "",
-        "plan": "",
-        "chapters": [],
+        "suggestion": _student_facing_text(previous.get("suggestion")) if has_previous_formal_plan else "",
+        "plan": _student_facing_text(previous.get("plan")) if has_previous_formal_plan else "",
+        "chapters": _chapter_items(previous.get("chapters")) if has_previous_formal_plan else [],
         "diagnose": [item.model_dump(mode="json") for item in diagnose],
         "diagnose_status": status,
-        "diagnose_note": _student_facing_text(current.get("diagnose_note") or previous.get("diagnose_note")),
-        "build_constraints": {},
+        "diagnose_note": diagnose_note,
+        "build_constraints": _mapping(previous.get("build_constraints")) if has_previous_formal_plan else {},
     }
 
 
@@ -457,6 +468,39 @@ def _normalize_chapter_count(
             )
         return _reindex_chapters(chapters)
     return _reindex_chapters(chapters)
+
+
+def _validate_locked_revision_scope(
+    chapters: list[PlannerChapterPlan],
+    previous_chapters: list[PlannerChapterPlan],
+    *,
+    revision_feedback: str | None,
+) -> None:
+    preserve_structure = requests_preserved_chapter_structure(revision_feedback)
+    preserve_boundaries = requests_preserved_knowledge_boundaries(revision_feedback)
+    if not previous_chapters or not (preserve_structure or preserve_boundaries):
+        return
+
+    current_titles = [_text(chapter.title) for chapter in chapters]
+    previous_titles = [_text(chapter.title) for chapter in previous_chapters]
+    if current_titles != previous_titles:
+        raise ValueError(
+            "planner revision changed locked chapter structure; "
+            f"expected={previous_titles}, actual={current_titles}"
+        )
+    if not preserve_boundaries:
+        return
+
+    for current, previous in zip(chapters, previous_chapters, strict=True):
+        current_by_key = {_text(item).casefold(): _text(item) for item in current.required_elements}
+        previous_by_key = {_text(item).casefold(): _text(item) for item in previous.required_elements}
+        missing = [previous_by_key[key] for key in previous_by_key.keys() - current_by_key.keys()]
+        added = [current_by_key[key] for key in current_by_key.keys() - previous_by_key.keys()]
+        if missing or added:
+            raise ValueError(
+                f"planner revision changed locked required_elements for `{previous.title}`; "
+                f"missing={missing}, added={added}"
+            )
 
 
 def _build_constraints(
@@ -529,6 +573,7 @@ def normalize_planner_draft(
     requested_digest_mode: str,
     shared_inputs: SharedInputs | None = None,
     latest_plan: BuildPlannerDraft | Mapping[str, Any] | None = None,
+    revision_feedback: str | None = None,
 ) -> BuildPlannerDraft:
     """把模型草稿规范化成稳定 Planner 合同。
 
@@ -551,20 +596,20 @@ def normalize_planner_draft(
         or extract_explicit_learning_topic(resolved_user_prompt)
         or _resolve_course_name(course_id, shared_inputs=shared, user_prompt=resolved_user_prompt)
     )
-    requested_chapter_count = _positive_int(current_constraints.get("requested_chapter_count"))
-    requested_chapter_count_range: tuple[int, int] | None = None
-    if requested_chapter_count is None:
+    requested_chapter_count_range = _chapter_count_range_from_text(resolved_user_prompt)
+    requested_chapter_count = (
+        None
+        if requested_chapter_count_range is not None
+        else extract_requested_chapter_count(resolved_user_prompt)
+    )
+    if requested_chapter_count is None and requested_chapter_count_range is None:
+        requested_chapter_count = _positive_int(current_constraints.get("requested_chapter_count"))
         requested_min = _positive_int(current_constraints.get("requested_chapter_min"))
         requested_max = _positive_int(current_constraints.get("requested_chapter_max"))
-        if requested_min is not None and requested_max is not None:
+        if requested_chapter_count is None and requested_min is not None and requested_max is not None:
             requested_chapter_count_range = (min(requested_min, requested_max), max(requested_min, requested_max))
-        else:
-            requested_chapter_count_range = _chapter_count_range_from_text(resolved_user_prompt)
-            if requested_chapter_count_range is None:
-                requested_chapter_count = extract_requested_chapter_count(resolved_user_prompt)
-    if requested_chapter_titles:
+    if requested_chapter_titles and requested_chapter_count is None and requested_chapter_count_range is None:
         requested_chapter_count = len(requested_chapter_titles)
-        requested_chapter_count_range = None
 
     current_chapters = _chapter_items(current.get("chapters"))
     previous_chapters = _chapter_items(previous.get("chapters"))
@@ -578,6 +623,20 @@ def normalize_planner_draft(
         digest_mode=mode,
         requested_chapter_count=requested_chapter_count,
         requested_chapter_count_range=requested_chapter_count_range,
+    )
+    has_revision_scope_lock = bool(
+        requests_preserved_chapter_structure(revision_feedback)
+        or requests_preserved_knowledge_boundaries(revision_feedback)
+    )
+    previous_normalized_chapters = (
+        [_merge_chapter(raw, index) for index, raw in enumerate(previous_chapters, start=1)]
+        if has_revision_scope_lock
+        else []
+    )
+    _validate_locked_revision_scope(
+        chapters,
+        previous_normalized_chapters,
+        revision_feedback=revision_feedback,
     )
     plan_text = _student_facing_text(current.get("plan") or previous.get("plan"))
     if not plan_text:
@@ -627,6 +686,7 @@ def normalize_planner_payload(
     requested_digest_mode: str,
     shared_inputs: SharedInputs | None = None,
     latest_plan: BuildPlannerDraft | Mapping[str, Any] | None = None,
+    revision_feedback: str | None = None,
 ) -> dict[str, Any]:
     return normalize_planner_draft(
         payload,
@@ -635,6 +695,7 @@ def normalize_planner_payload(
         requested_digest_mode=requested_digest_mode,
         shared_inputs=shared_inputs,
         latest_plan=latest_plan,
+        revision_feedback=revision_feedback,
     ).model_dump(mode="json")
 
 

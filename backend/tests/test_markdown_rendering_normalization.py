@@ -11,6 +11,7 @@ from app.shared.infra.tools.builtin.markdown_processing import (
 )
 from app.workflows.digest.docgen.lib.html_sidecar import normalize_single_file_html
 from app.workflows.digest.docgen.lib.models import ReviewAction, ReviewedChapterDraft
+from app.workflows.digest.docgen.lib.presentation_policy import normalize_docgen_presentation
 from app.workflows.digest.docgen.lib.public_markdown import sanitize_public_markdown
 from app.workflows.digest.docgen.lib.repair import repair_or_route_review_actions
 from app.workflows.digest.docgen.lib.textbook_style import (
@@ -770,6 +771,54 @@ def test_normalize_keeps_loose_display_math_inside_callout() -> None:
     assert "> $$\n> (-1)^S \\times M \\times 2^E\n> $$" in fixed
     assert "> 其中 $S$ 为符号位，$M$ 为尾数，$E$ 为阶码。" in fixed
     assert "display math 内混入 blockquote 前缀。" not in find_markdown_rendering_issues(fixed)
+
+
+def test_normalize_removes_empty_quote_lines_inside_callout_display_math() -> None:
+    raw = "> [!IMPORTANT]\n>\n> $$\n>\n> x^2+y^2=1\n>\n> $$"
+
+    fixed = normalize_markdown_rendering(raw)
+
+    assert "> $$\n> x^2+y^2=1\n> $$" in fixed
+    assert "> $$\n>\n" not in fixed
+
+
+def test_docgen_normalization_repairs_formula_titles_connectors_and_duplicate_questions() -> None:
+    question = (
+        "> [!QUESTION]\n>\n> **练习：判断条件。** 已知 $x>0$，说明结论。\n>\n"
+        "> $$\n> x+1>0\n> $$"
+    )
+    raw = (
+        "# 高等数学\n\n"
+        "## 洛必达法则处理 \\ 0/0\\ 型与 \\ \\infty/\\infty\\ 型\n\n"
+        "#### 绕 \\ x\\ 轴旋转\n\n"
+        "限制为 $x>0且x\\ne1$。\n\n"
+        f"{question}\n\n**解析：** 条件成立。\n\n{question}\n\n**解析：** 条件成立。\n"
+    )
+
+    fixed = normalize_docgen_presentation(raw, title="高等数学")
+
+    assert "## 洛必达法则处理 $0/0$ 型与 $\\infty/\\infty$ 型" in fixed
+    assert "### 绕 $x$ 轴旋转" in fixed
+    assert "$x>0$ 且 $x\\ne1$" in fixed
+    assert fixed.count("> [!QUESTION]") == 1
+    assert fixed.count("**解析：** 条件成立。") == 1
+
+
+def test_docgen_connector_normalization_preserves_code_and_display_math() -> None:
+    raw = (
+        "# 约束\n\n"
+        "正文条件为 $x>0且x\\ne1$。\n\n"
+        "`$x>0且x\\ne1$`\n\n"
+        "```text\n$x>0且x\\ne1$\n```\n\n"
+        "$$x>0且x\\ne1$$\n"
+    )
+
+    fixed = normalize_docgen_presentation(raw, title="约束")
+
+    assert "正文条件为 $x>0$ 且 $x\\ne1$。" in fixed
+    assert "`$x>0且x\\ne1$`" in fixed
+    assert "```text\n$x>0且x\\ne1$\n```" in fixed
+    assert "$$x>0且x\\ne1$$" in fixed
 
 
 def test_normalize_flattens_headings_inside_list_items() -> None:

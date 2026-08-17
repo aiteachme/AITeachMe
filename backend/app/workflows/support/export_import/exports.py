@@ -980,8 +980,38 @@ def _remap_planner_meta(
     if not meta:
         return
 
+    planner_session_id = str(record.get("id") or "")
+    meta["planner_session_id"] = planner_session_id
+
     if "selected_file_ids" in meta:
         _remap_id_list_field(meta, "selected_file_ids", "raw_file", id_map, "chat_session.meta_json", warnings)
+
+    def remap_plan_payload(plan_payload: dict[str, Any], *, path: str) -> dict[str, Any]:
+        plan_payload = dict(plan_payload)
+        plan_payload["course_id"] = new_course_id
+        plan_payload["course"] = new_course_id
+        plan_payload["planner_session_id"] = planner_session_id
+        _remap_id_list_field(
+            plan_payload,
+            "selected_file_ids",
+            "raw_file",
+            id_map,
+            path,
+            warnings,
+        )
+        planner_context = plan_payload.get("planner_context")
+        if isinstance(planner_context, dict):
+            planner_context = dict(planner_context)
+            planner_context["planner_session_id"] = planner_session_id
+            plan_payload["planner_context"] = planner_context
+        return plan_payload
+
+    latest_plan = meta.get("latest_plan")
+    if isinstance(latest_plan, dict):
+        meta["latest_plan"] = remap_plan_payload(
+            latest_plan,
+            path="chat_session.meta_json.latest_plan",
+        )
 
     plan_id_map: dict[str, str] = {}
 
@@ -992,7 +1022,7 @@ def _remap_planner_meta(
         confirmed_plan["course_id"] = new_course_id
         confirmed_plan["course"] = new_course_id
         confirmed_plan["user_id"] = user_id
-        confirmed_plan["planner_session_id"] = str(record.get("id") or "")
+        confirmed_plan["planner_session_id"] = planner_session_id
         _remap_id_list_field(
             confirmed_plan,
             "selected_file_ids",
@@ -1003,9 +1033,10 @@ def _remap_planner_meta(
         )
         plan_json = confirmed_plan.get("plan_json")
         if isinstance(plan_json, dict):
-            plan_json = dict(plan_json)
-            plan_json["course_id"] = new_course_id
-            plan_json["course"] = new_course_id
+            plan_json = remap_plan_payload(
+                plan_json,
+                path="chat_session.meta_json.confirmed_plan.plan_json",
+            )
             plan_json["selected_file_ids"] = list(confirmed_plan.get("selected_file_ids") or [])
             plan_json["planner_session_id"] = confirmed_plan["planner_session_id"]
             plan_json["confirmed_plan_id"] = confirmed_plan["id"]

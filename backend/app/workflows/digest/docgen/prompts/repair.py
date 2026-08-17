@@ -50,6 +50,7 @@ def build_chapter_patch_messages(
 7. 普通 patch 不要超过 1200 字符；完整单元测试替换块可放宽到 2200 字符。不要复制已有小节；不要一次输出多个已有二级标题。
 8. 完整例题、案例和章末练习不要放进大块 callout；提示块只用于短提示、短警告或短重点。
 9. 在结构化字段 covered_action_ids 中列出这段 patch 实际覆盖的 repair_action_key；无法安全处理的放入 unresolved_action_ids。
+10. 修补公式、定理或应用方法时必须保留适用条件和边界：定义域、区间、端点、分母、符号、旋转轴与半径距离不得省略；不要重复已有题干或练习。
 """.strip()
     messages = [
         {"role": "system", "content": system_prompt},

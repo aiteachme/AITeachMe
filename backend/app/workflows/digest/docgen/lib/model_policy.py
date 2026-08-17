@@ -25,6 +25,7 @@ class DocGenModelStep(str, Enum):
     QUERY_PLANNING = "generate_chapters.query_planning"
     WRITER = "generate_chapters.writer"
     CHAPTER_UNIT_TEST = "generate_chapters.chapter_unit_test"
+    CHAPTER_UNIT_TEST_REVIEW = "generate_chapters.chapter_unit_test_review"
     CHAPTER_REWRITE = "generate_chapters.rewrite"
     MERMAID_PLACEHOLDER = "enhance_chapters.mermaid_placeholder"
     STATIC_HTML_FIGURE = "enhance_chapters.static_html_figure"
@@ -166,6 +167,15 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         timeout_s=120,
         temperature=0.2,
         note="按章结构化生成题目对象，再由代码确定性组装 QUESTION/ANSWER 展示协议。",
+    ),
+    DocGenModelStep.CHAPTER_UNIT_TEST_REVIEW: DocGenModelPolicy(
+        step=DocGenModelStep.CHAPTER_UNIT_TEST_REVIEW,
+        call_type="structured",
+        model="primary",
+        max_tokens=5200,
+        timeout_s=120,
+        temperature=0.1,
+        note="独立复算章末题答案与解析，并修复初稿结构问题。",
     ),
     DocGenModelStep.CHAPTER_REWRITE: DocGenModelPolicy(
         step=DocGenModelStep.CHAPTER_REWRITE,

@@ -70,6 +70,7 @@ _GRAPH_RUNTIME_METRIC_KEYS = {
     "prefetch_catchup_section_count",
     "prefetch_stale_section_count",
     "prefetch_failed_section_count",
+    "doc_sync_failed_sections",
 }
 _GRAPH_RUNTIME_INT_METRIC_KEYS = {
     "processed_chunks",

@@ -313,8 +313,34 @@ def test_docgen_lane_summary_uses_final_published_quality_metrics() -> None:
     summary = build_docgen_lane_summary(state, token_summary=DigestTokenSummary())
 
     assert summary["coverage_score"] == pytest.approx(0.95)
+    assert summary["coverage_evaluated"] is True
+    assert summary["coverage_status"] == "evaluated"
     assert summary["quality_score"] == pytest.approx(0.9)
     assert summary["quality_summary"]["avg_coverage_score"] == pytest.approx(0.95)
+
+
+def test_docgen_lane_summary_marks_placeholder_coverage_as_not_evaluated() -> None:
+    summary = build_docgen_lane_summary(
+        {
+            "chapter_metadatas": [
+                {
+                    "chapter_index": 1,
+                    "chapter_review_report": {
+                        "coverage_score": 0.0,
+                        "coverage_evaluated": False,
+                    },
+                    "quality_signals": {"quality_score": 0.9},
+                }
+            ]
+        },
+        token_summary=DigestTokenSummary(),
+    )
+
+    assert summary["coverage_score"] == 0.0
+    assert summary["coverage_evaluated"] is False
+    assert summary["coverage_status"] == "not_evaluated"
+    assert summary["coverage_evaluated_count"] == 0
+    assert summary["coverage_record_count"] == 1
 
 
 def test_intent_payload_preserves_confirmed_contract_and_legacy_fields() -> None:
@@ -2662,6 +2688,9 @@ async def test_prepare_knowledge_graph_uses_ready_draft_when_prefetch_is_still_r
     assert result["kg_prefetch_ready"] is False
     assert result["docgen_kg_draft"]["quality_ready"] is True
     assert result["docgen_kg_draft"]["quality_status"] == "ready"
+    assert result["docgen_kg_draft"]["section_fingerprints"] == [
+        {"section_key": "chapter:1", "content_hash": "hash-ready"}
+    ]
     assert result["kg_prefetch_metrics"]["docgen_kg_pre_publish_unit_count"] == 0
     assert result["kg_prefetch_metrics"]["docgen_kg_pre_publish_edge_count"] == 0
     assert result["kg_prefetch_metrics"]["docgen_kg_pre_publish_persisted"] == 0
@@ -2769,6 +2798,197 @@ async def test_repair_rejects_patch_that_repeats_existing_h2(monkeypatch) -> Non
     assert unresolved
     assert traces[0].changed is False
     assert "Rejected unsafe LLM local patch" in traces[0].detail
+
+
+@pytest.mark.anyio
+async def test_repair_rejects_patch_that_changes_protected_exercise_identity(monkeypatch) -> None:
+    async def fake_completion(*args, **kwargs):
+        return repair._LocalMarkdownPatch(
+            status="patch",
+            target_anchor="核心概念",
+            patch_markdown=(
+                "> [!QUESTION]\n>\n"
+                "> **练习2：单位换算。** 再计算一次长方形面积。\n\n"
+                "**解析：** 先统一单位再计算。"
+            ),
+        )
+
+    monkeypatch.setattr(repair, "acompletion_with_fallback", fake_completion)
+    chapter = ReviewedChapterDraft(
+        chapter_index=1,
+        title="面积",
+        markdown=(
+            "# 面积\n\n## 核心概念\n\n面积表示平面的大小。\n\n"
+            "> [!QUESTION]\n>\n"
+            "> **练习1：单位换算。** 计算长方形面积。\n\n"
+            "**解析：** 先统一单位再计算。\n"
+        ),
+    )
+    action = ReviewAction(
+        action_id="exercise_guard",
+        action_type="section_patch",
+        chapter_index=1,
+        reason="补充边界说明。",
+        target_anchor="核心概念",
+        instruction="只补充说明，不改练习。",
+        constraints=["不得新增或删除练习/题目。"],
+    )
+
+    repaired, updated_actions, unresolved, traces = await repair.repair_or_route_review_actions(
+        reviewed_chapters=[chapter],
+        review_actions=[action],
+    )
+
+    assert repaired[0].markdown == chapter.markdown
+    assert updated_actions[0].status == "downgraded"
+    assert unresolved
+    assert "题目标识" in traces[0].detail
+
+
+@pytest.mark.anyio
+async def test_repair_rejects_duplicate_question_even_when_patch_adds_other_content(monkeypatch) -> None:
+    question = (
+        "> [!QUESTION]\n>\n"
+        "> **练习1：单位换算。** 计算长方形面积。"
+    )
+
+    async def fake_completion(*args, **kwargs):
+        return repair._LocalMarkdownPatch(
+            status="patch",
+            target_anchor="核心概念",
+            patch_markdown=f"{question}\n\n> [!TIP]\n> 计算前先统一单位。",
+        )
+
+    monkeypatch.setattr(repair, "acompletion_with_fallback", fake_completion)
+    chapter = ReviewedChapterDraft(
+        chapter_index=1,
+        title="面积",
+        markdown=(
+            f"# 面积\n\n## 核心概念\n\n面积表示平面的大小。\n\n{question}\n\n"
+            "**解析：** 先统一单位再计算。\n"
+        ),
+    )
+    action = ReviewAction(
+        action_id="normalize_patch",
+        action_type="section_patch",
+        chapter_index=1,
+        reason="补充计算提示。",
+        target_anchor="核心概念",
+        instruction="补充短提示。",
+    )
+
+    repaired, updated_actions, unresolved, traces = await repair.repair_or_route_review_actions(
+        reviewed_chapters=[chapter],
+        review_actions=[action],
+    )
+
+    assert unresolved
+    assert updated_actions[0].status == "downgraded"
+    assert repaired[0].markdown.count("**练习1：单位换算。**") == 1
+    assert "计算前先统一单位" not in repaired[0].markdown
+    assert "重复插入" in traces[0].detail
+
+
+@pytest.mark.anyio
+async def test_repair_rejects_duplicate_question_when_only_number_changes(monkeypatch) -> None:
+    async def fake_completion(*args, **kwargs):
+        return repair._LocalMarkdownPatch(
+            status="patch",
+            target_anchor="核心概念",
+            patch_markdown=(
+                "> [!QUESTION]\n>\n"
+                "> **练习2：单位换算。** 计算长方形面积。\n\n"
+                "**解析：** 先统一单位再计算。"
+            ),
+        )
+
+    monkeypatch.setattr(repair, "acompletion_with_fallback", fake_completion)
+    chapter = ReviewedChapterDraft(
+        chapter_index=1,
+        title="面积",
+        markdown=(
+            "# 面积\n\n## 核心概念\n\n面积表示平面的大小。\n\n"
+            "> [!QUESTION]\n>\n"
+            "> **练习1：单位换算。** 计算长方形面积。\n\n"
+            "**解析：** 先统一单位再计算。\n"
+        ),
+    )
+    action = ReviewAction(
+        action_id="renumbered_duplicate",
+        action_type="surface_patch",
+        chapter_index=1,
+        reason="补充计算提示。",
+        target_anchor="核心概念",
+        instruction="补充短提示。",
+    )
+
+    repaired, updated_actions, unresolved, traces = await repair.repair_or_route_review_actions(
+        reviewed_chapters=[chapter],
+        review_actions=[action],
+    )
+
+    assert unresolved
+    assert updated_actions[0].status == "downgraded"
+    assert repaired[0].markdown == chapter.markdown
+    assert "重复插入" in traces[0].detail
+
+
+def test_surface_repair_preserves_exercises_without_explicit_change_request() -> None:
+    generic_action = ReviewAction(
+        action_id="surface_only",
+        action_type="surface_patch",
+        chapter_index=1,
+        reason="修复表格展示。",
+        instruction="只调整表格。",
+    )
+    add_exercise_action = generic_action.model_copy(
+        update={"reason": "新增一道练习题。", "instruction": "补充一道应用练习。"}
+    )
+
+    assert repair._should_preserve_exercise_identity([generic_action], unit_test_patch=False) is True
+    assert repair._should_preserve_exercise_identity([add_exercise_action], unit_test_patch=False) is False
+
+
+@pytest.mark.anyio
+async def test_repair_rejects_surface_patch_that_breaks_existing_unit_test(monkeypatch) -> None:
+    async def fake_completion(*args, **kwargs):
+        return repair._LocalMarkdownPatch(
+            status="patch",
+            target_anchor="单元测试",
+            patch_markdown="补充一行未进入题答块的说明。",
+        )
+
+    monkeypatch.setattr(repair, "acompletion_with_fallback", fake_completion)
+    chapter = ReviewedChapterDraft(
+        chapter_index=1,
+        title="面积",
+        markdown=(
+            "# 面积\n\n## 单元测试\n\n"
+            "> [!QUESTION] **Q01｜短答题｜基础｜考点：单位统一**\n>\n"
+            "> 判断面积计算前是否需要统一单位。\n\n"
+            "> [!ANSWER]\n>\n> **答案**\n>\n> 需要统一单位。\n>\n"
+            "> **解析步骤**\n>\n> 先统一单位，再代入面积公式。\n"
+        ),
+    )
+    action = ReviewAction(
+        action_id="surface_1",
+        action_type="surface_patch",
+        chapter_index=1,
+        reason="补充一句表述。",
+        target_anchor="单元测试",
+        instruction="补充说明。",
+    )
+
+    repaired, updated_actions, unresolved, traces = await repair.repair_or_route_review_actions(
+        reviewed_chapters=[chapter],
+        review_actions=[action],
+    )
+
+    assert repaired[0].markdown == chapter.markdown
+    assert updated_actions[0].status == "downgraded"
+    assert unresolved
+    assert traces[0].changed is False
+    assert "修补后单元测试未通过题答合同" in traces[0].detail
 
 
 @pytest.mark.anyio

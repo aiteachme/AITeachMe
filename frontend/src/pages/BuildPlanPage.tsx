@@ -126,6 +126,7 @@ type PlannerPromptSource = "composer" | "message_edit";
 interface SubmitPlannerPromptOptions {
   source?: PlannerPromptSource;
   replaceMessageId?: string;
+  refreshDiagnosis?: boolean;
 }
 
 let messageCounter = 0;
@@ -1284,7 +1285,7 @@ function PlannerOutlineCard({
 
       {visibleDiagnoseItems.length ? (
         <section className="mt-5 border-t border-zinc-200/80 pt-5 dark:border-slate-800">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="mx-auto flex w-full max-w-2xl flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
               <div className="text-sm font-semibold text-zinc-950 dark:text-slate-100">前置诊断</div>
               <div className="mt-0.5 text-xs text-zinc-500 dark:text-slate-400">{diagnosisSubtitle}</div>
@@ -1306,7 +1307,7 @@ function PlannerOutlineCard({
               </span>
             ) : null}
           </div>
-          <div className="mt-3 divide-y divide-zinc-200/80 border-y border-zinc-200/80 dark:divide-slate-800 dark:border-slate-800">
+          <div className="mx-auto mt-3 w-full max-w-2xl divide-y divide-zinc-200/80 border-y border-zinc-200/80 dark:divide-slate-800 dark:border-slate-800">
             {visibleDiagnoseItems.map((item, index) => {
               const question = String(item.question ?? "").trim();
               const purpose = plannerDiagnosticPurpose(item.purpose);
@@ -1318,7 +1319,7 @@ function PlannerOutlineCard({
               return (
                 <div
                   key={`${index}-${question}`}
-                  className="py-5"
+                  className="py-4"
                 >
                   <div className="flex gap-3">
                     <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-zinc-100 text-xs font-semibold text-zinc-500 dark:bg-slate-900 dark:text-slate-400">
@@ -1332,7 +1333,11 @@ function PlannerOutlineCard({
                         </p>
                       ) : null}
                       {options.length ? (
-                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                        <div
+                          className="mt-3 grid gap-2 sm:grid-cols-2"
+                          role="group"
+                          aria-label={question}
+                        >
                           {options.map((answer) => {
                             const option = plannerDiagnosticOptionParts(answer);
                             return (
@@ -1347,7 +1352,7 @@ function PlannerOutlineCard({
                               disabled={!canEditDiagnosis}
                               aria-pressed={selectedAnswer === answer}
                               className={
-                                "min-h-14 rounded-md border px-3 py-2.5 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-blue-500/30 " +
+                                "min-h-12 rounded-md border px-3 py-2.5 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-blue-500/30 " +
                                 (selectedAnswer === answer
                                   ? "border-blue-500 bg-blue-50 text-blue-700 dark:border-blue-400 dark:bg-blue-500/10 dark:text-blue-300"
                                   : "border-zinc-200 bg-white text-zinc-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300") +
@@ -1379,6 +1384,7 @@ function PlannerOutlineCard({
                           disabled={!canEditDiagnosis}
                           rows={2}
                           maxLength={240}
+                          aria-label={`补充说明：${question}`}
                           placeholder="补充说明（可选）：例如基础情况、想要的讲解方式或特殊目标"
                           className="mt-3 w-full resize-none rounded-md border border-zinc-200 bg-zinc-50/70 px-3 py-2.5 text-sm leading-5 text-zinc-800 outline-none transition placeholder:text-zinc-400 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-500/15 disabled:cursor-default disabled:text-zinc-500 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-blue-500 dark:focus:bg-slate-950 dark:focus:ring-blue-500/20"
                         />
@@ -1390,7 +1396,7 @@ function PlannerOutlineCard({
             })}
           </div>
           {diagnosisPending ? (
-            <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <div className="mx-auto mt-4 flex w-full max-w-2xl flex-wrap justify-end gap-2">
               <button
                 type="button"
                 onClick={onSkipDiagnostics}
@@ -1977,6 +1983,7 @@ async function revisePlannerSessionStream(
     signal?: AbortSignal;
     onStatus?: (payload: unknown) => void;
     onToken?: (token: string) => void;
+    refreshDiagnosis?: boolean;
     diagnosis?: {
       answers?: BuildPlannerDiagnosticAnswerRequest[];
       status?: "answered" | "skipped";
@@ -1989,6 +1996,7 @@ async function revisePlannerSessionStream(
     {
       message,
       model,
+      refresh_diagnosis: options.refreshDiagnosis ?? false,
       diagnose_answers: options.diagnosis?.answers ?? [],
       diagnose_status: options.diagnosis?.status ?? null,
       diagnose_note: options.diagnosis?.note ?? "",
@@ -2051,9 +2059,14 @@ export function BuildPlanPage() {
   const [plannerStreamingPlan, setPlannerStreamingPlan] = useState<BuildPlannerPlanResponse | null>(null);
   const [, setPlannerStreamingSteps] = useState<PlannerStreamStepItem[]>([]);
   const [diagnosisGate, setDiagnosisGate] = useState<PlannerDiagnosisGate | null>(null);
+  const [refreshDiagnosisOnNextRevision, setRefreshDiagnosisOnNextRevision] = useState(false);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingMessageValue, setEditingMessageValue] = useState("");
+
+  useEffect(() => {
+    setRefreshDiagnosisOnNextRevision(false);
+  }, [courseId]);
 
   const handlePlannerStatusPayload = useCallback((payload: unknown) => {
     setPlannerStreamingStatus(resolvePlannerStatusText(payload));
@@ -2754,6 +2767,15 @@ export function BuildPlanPage() {
   const isPlannerPending = plannerStreaming || isRestoredPlannerPending || confirmPlannerMutation.isPending;
   const isDiagnosisPending = isPlannerDiagnosisPending(diagnosisGate, currentPlan, plannerSessionId);
   const isBuilding = knowledgeBuild.isPending || isBuildActive;
+  const canRefreshDiagnosisOnRevision = Boolean(
+    plannerSessionId &&
+    hasUsablePlannerPlan(currentPlan) &&
+    !plannerNeedsRefresh &&
+    !isDiagnosisPending &&
+    !editingMessageId &&
+    !isPlannerPending &&
+    !isBuilding,
+  );
   const shouldShowBuildDialog = isBuilding || isWaitingForRequestedBuild || isBuildFailure;
   const plannerPendingStatusText = plannerStreaming
     ? plannerStreamingStatus
@@ -3236,6 +3258,10 @@ export function BuildPlanPage() {
       !effectivePlannerSessionId ||
       !hasUsablePlannerPlan(effectiveCurrentPlan) ||
       plannerNeedsRefresh;
+    const shouldRefreshDiagnosis =
+      !shouldCreateSession &&
+      source === "composer" &&
+      Boolean(options.refreshDiagnosis);
     logPlannerDebug("send_plan_message_start", {
       courseId,
       mode: shouldCreateSession ? "create" : "revise",
@@ -3275,7 +3301,9 @@ export function BuildPlanPage() {
       ? readyFileIds.length === 0 && plannerFileIds.length > 0
         ? "资料仍在解析，先基于文件名思考临时大纲..."
         : "正在理解目标和资料，整理学习边界..."
-      : "正在根据你的补充重新思考大纲...";
+      : shouldRefreshDiagnosis
+        ? "正在根据你的新要求重新生成前置诊断..."
+        : "正在根据你的补充重新思考大纲...";
     setPlannerStreamingStatus(initialStatus);
 
     try {
@@ -3310,6 +3338,7 @@ export function BuildPlanPage() {
           plannerStreamingRawRef.current.replace(/\r/g, "").trim(),
           "start",
         );
+        setRefreshDiagnosisOnNextRevision(false);
         trackCourseAnalyticsEvent("course_plan_generated", courseId, {
           ...plannerResponseAnalyticsProperties(response),
           file_count: plannerEffectiveFileIds.length,
@@ -3330,6 +3359,7 @@ export function BuildPlanPage() {
         toChatRequestModel(chatModel),
         {
           signal: controller.signal,
+          refreshDiagnosis: shouldRefreshDiagnosis,
           onStatus: (payload) => {
             handlePlannerStatusPayload(payload);
           },
@@ -3348,7 +3378,11 @@ export function BuildPlanPage() {
         response,
         "我已经按你的新要求更新了计划大纲。",
         plannerStreamingRawRef.current.replace(/\r/g, "").trim(),
+        shouldRefreshDiagnosis ? "start" : "keep",
       );
+      if (shouldRefreshDiagnosis) {
+        setRefreshDiagnosisOnNextRevision(false);
+      }
       trackCourseAnalyticsEvent("course_plan_revised", courseId, {
         ...plannerResponseAnalyticsProperties(response),
         file_count: plannerEffectiveFileIds.length,
@@ -3427,8 +3461,17 @@ export function BuildPlanPage() {
       handleStopPlannerStream();
       return;
     }
-    await submitPlannerPrompt(inputValue, { source: "composer" });
-  }, [handleStopPlannerStream, inputValue, plannerStreaming, submitPlannerPrompt]);
+    await submitPlannerPrompt(inputValue, {
+      source: "composer",
+      refreshDiagnosis: refreshDiagnosisOnNextRevision,
+    });
+  }, [
+    handleStopPlannerStream,
+    inputValue,
+    plannerStreaming,
+    refreshDiagnosisOnNextRevision,
+    submitPlannerPrompt,
+  ]);
 
   const canEditPlannerMessages = !isBuilding && !isPlannerPending && !isDiagnosisPending;
 
@@ -3480,6 +3523,7 @@ export function BuildPlanPage() {
     await submitPlannerPrompt(text, {
       source: "message_edit",
       replaceMessageId: messageId,
+      refreshDiagnosis: false,
     });
   }, [canEditPlannerMessages, editingMessageValue, submitPlannerPrompt]);
 
@@ -3995,6 +4039,25 @@ export function BuildPlanPage() {
                     })}
                   </div>
                 )}
+
+                {canRefreshDiagnosisOnRevision ? (
+                  <label className="mx-1 flex min-h-11 cursor-pointer items-start gap-2.5 border-t border-zinc-100 pt-2.5 dark:border-slate-800">
+                    <input
+                      type="checkbox"
+                      checked={refreshDiagnosisOnNextRevision}
+                      onChange={(event) => setRefreshDiagnosisOnNextRevision(event.target.checked)}
+                      className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-indigo-600"
+                    />
+                    <span className="min-w-0">
+                      <span className="block text-xs font-medium leading-5 text-zinc-700 dark:text-slate-200">
+                        同时更新前置诊断
+                      </span>
+                      <span className="block text-xs leading-5 text-zinc-500 dark:text-slate-400">
+                        开启后会先生成一组新问题，回答后再更新方案
+                      </span>
+                    </span>
+                  </label>
+                ) : null}
 
                 <div className="flex flex-col gap-2 px-1 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex min-w-0 w-full flex-wrap items-center gap-1.5 sm:flex-1 sm:gap-2">

@@ -874,7 +874,7 @@ async def knowledge_build(
                 amount=DOCGEN_BUILD_COST,
                 idempotency_key=f"docgen:{user.user_id}:{build_group_id}",
             )
-            reservation_id = reservation.id
+            reservation_id = reservation.id if reservation is not None else None
         data, accepted_file_ids, prepared_build_group_id = trigger_docgen_build(
             session,
             course=course_record,

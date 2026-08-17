@@ -287,6 +287,7 @@ def require_success_state(result: WorkflowResult[QuestionBuildState]) -> Questio
 async def run_question_build_workflow(
     *,
     course_id: str,
+    exam_paper_id: int | None = None,
     course_name: str = "",
     course_description: str = "",
     course_user_intent: str = "",
@@ -303,15 +304,19 @@ async def run_question_build_workflow(
     priority_unit_ids: list[int] | None = None,
     progress_callback: object | None = None,
 ) -> WorkflowResult[QuestionBuildState]:
+    metadata = {
+        "lane": "question_build",
+        "langsmith_run_name": RUN_NAME_EXAM_QUESTION_BUILD,
+        "question_count": int(question_count or len(units or []) or 1),
+        "exam_mode": exam_mode,
+    }
+    if exam_paper_id is not None and exam_paper_id > 0:
+        metadata["exam_paper_id"] = exam_paper_id
+
     context = WorkflowContext(
         workflow_name="examine.question_build",
         course_id=course_id,
-        metadata={
-            "lane": "question_build",
-            "langsmith_run_name": RUN_NAME_EXAM_QUESTION_BUILD,
-            "question_count": int(question_count or len(units or []) or 1),
-            "exam_mode": exam_mode,
-        },
+        metadata=metadata,
     )
     return await run_state_graph(
         workflow_name="examine.question_build",

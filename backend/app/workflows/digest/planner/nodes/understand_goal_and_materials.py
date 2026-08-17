@@ -43,7 +43,8 @@ def _build_planning_note(state: BuildPlannerState) -> str:
     mode = state.get("digest_mode") or material_context.course_mode_decision.mode.value
     goal = user_prompt or f"围绕{_course_for_prompt(state)}建立可执行学习路径"
     pace = "紧凑冲刺" if str(mode) == "sprint" else "系统学习"
-    return f"学习目标：{goal}。规划节奏：{pace}；方案将直接以用户目标和已解析资料为边界。"
+    goal_suffix = "" if goal.endswith(("。", "！", "？", ".", "!", "?")) else "。"
+    return f"学习目标：{goal}{goal_suffix}规划节奏：{pace}；方案将直接以用户目标和已解析资料为边界。"
 
 
 def _build_material_note(state: BuildPlannerState) -> str:

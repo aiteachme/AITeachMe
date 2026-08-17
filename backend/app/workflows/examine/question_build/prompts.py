@@ -6,6 +6,7 @@ import json
 from typing import Any
 
 from app.schemas.llm import ChatMessage, SYSTEM, USER
+from app.workflows.common.prompt_tracing import trace_prompt_build
 
 _TEXT_EXAM_SOURCE_MAX_CHARS = 80000
 
@@ -142,10 +143,24 @@ def build_exam_knowledge_unit_filter_messages(
 
 输入：{json.dumps(payload, ensure_ascii=False, indent=2)}
 """.strip()
-    return [
+    messages = [
         {"role": SYSTEM, "content": "你负责为考卷选择候选知识单元。只能返回合法 JSON。"},
         {"role": USER, "content": prompt},
     ]
+    return trace_prompt_build(
+        "examine_question_unit_filter",
+        inputs={
+            "exam_mode": exam_mode,
+            "requested_question_count": requested_question_count,
+            "candidate_limit": candidate_limit,
+            "node_count": len(nodes),
+            "edge_count": len(edges),
+            "priority_unit_count": len(priority_unit_ids or []),
+            "weak_unit_count": len(weak_unit_ids or []),
+            "user_prompt_chars": len(user_prompt or ""),
+        },
+        output=messages,
+    )
 
 
 def build_exam_question_blueprint_messages(
@@ -201,10 +216,22 @@ def build_exam_question_blueprint_messages(
 
 输入：{json.dumps(payload, ensure_ascii=False, indent=2)}
 """.strip()
-    return [
+    messages = [
         {"role": SYSTEM, "content": "你是考卷蓝图规划器。只能返回合法 JSON。"},
         {"role": USER, "content": prompt},
     ]
+    return trace_prompt_build(
+        "examine_question_blueprint",
+        inputs={
+            "exam_mode": exam_mode,
+            "requested_question_count": requested_question_count,
+            "configured_difficulty": configured_difficulty,
+            "unit_count": len(units),
+            "question_prompt_plan_count": len(question_prompt_plans or []),
+            "user_prompt_chars": len(user_prompt or ""),
+        },
+        output=messages,
+    )
 
 
 def build_exam_question_requirement_messages(
@@ -247,10 +274,19 @@ def build_exam_question_requirement_messages(
 
 输入：{json.dumps(payload, ensure_ascii=False, indent=2)}
 """.strip()
-    return [
+    messages = [
         {"role": SYSTEM, "content": "你是考卷生成中的题型和单题要求规划器。只能返回合法 JSON。"},
         {"role": USER, "content": prompt},
     ]
+    return trace_prompt_build(
+        "examine_question_requirements",
+        inputs={
+            "exam_mode": exam_mode,
+            "requested_question_count": requested_question_count,
+            "user_prompt_chars": len(user_prompt or ""),
+        },
+        output=messages,
+    )
 
 
 def build_exam_question_messages(
@@ -299,10 +335,21 @@ def build_exam_question_messages(
 
 输入：{json.dumps(payload, ensure_ascii=False, indent=2)}
 """.strip()
-    return [
+    messages = [
         {"role": SYSTEM, "content": SYSTEM_PROMPT_EXAM_QUESTION_BUILD + _QUESTION_TYPE_FORMAT_RULES + _LATEX_FORMAT_RULES},
         {"role": USER, "content": user_prompt_text},
     ]
+    return trace_prompt_build(
+        "examine_question_generate",
+        inputs={
+            "unit_count": len(units),
+            "item_order": spec.get("item_order"),
+            "question_type": spec.get("question_type"),
+            "difficulty": spec.get("difficulty"),
+            "generation_prompt_chars": len(generation_prompt or ""),
+        },
+        output=messages,
+    )
 
 
 def build_text_exam_messages(
@@ -327,7 +374,17 @@ def build_text_exam_messages(
         "fill_blank 题干请使用 `{{blank}}` 表示空格，并确保它位于 LaTeX 数学分隔符之外。\n\n"
         f"{json.dumps(payload, ensure_ascii=False, indent=2)}"
     )
-    return [
+    messages = [
         {"role": SYSTEM, "content": SYSTEM_PROMPT_EXAM_QUESTION_BUILD + _QUESTION_TYPE_FORMAT_RULES + _LATEX_FORMAT_RULES},
         {"role": USER, "content": user_prompt_text},
     ]
+    return trace_prompt_build(
+        "examine_text_exam_generate",
+        inputs={
+            "num_questions": num_questions,
+            "difficulty": difficulty,
+            "knowledge_text_chars": len(str(knowledge_text or "")),
+            "knowledge_text_truncated": knowledge_text_truncated,
+        },
+        output=messages,
+    )

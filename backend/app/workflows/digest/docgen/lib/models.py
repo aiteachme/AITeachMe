@@ -932,6 +932,7 @@ class ChapterResearchTrace(DocGenBaseModel):
     stop_reason: str = ""
     budget_used: dict[str, Any] = Field(default_factory=dict)
     coverage_score: float = 0.0
+    coverage_evaluated: bool = False
     gap_notes: list[str] = Field(default_factory=list)
 
 
@@ -1061,6 +1062,7 @@ class ConflictReport(DocGenBaseModel):
 
 class ChapterQualitySignals(DocGenBaseModel):
     coverage_score: float = 0.0
+    coverage_evaluated: bool = False
     quality_score: float = 0.0
     rewrite_used: bool = False
     warnings: list[str] = Field(default_factory=list)
@@ -1137,6 +1139,7 @@ class ChapterReviewReport(DocGenBaseModel):
     chapter_index: int = 1
     passed: bool = True
     coverage_score: float = 0.0
+    coverage_evaluated: bool = False
     evidence_support_score: float = 0.0
     quality_score: float = 0.0
     missing_elements: list[str] = Field(default_factory=list)

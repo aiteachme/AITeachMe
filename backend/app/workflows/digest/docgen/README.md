@@ -145,7 +145,7 @@ user_profile.prompt_addendum
 
 输入：`chapter_task`, `guideline`, `dispatch_table`, `summary_enhanced`, `user_profile`
 
-动作：LangGraph `Send` 按章 fan-out；各章 brief 已生成至多 `docgen.max_retrieval_queries_per_chapter` 条检索词，章节节点不再重复调用 LLM 改写查询。本地资料检索与有限在线校准并行执行，不因 Planner 已预选资料切片或本地命中充足而跳过在线尝试；随后把预选切片、本地结果和在线结果统一筛选、读取、压缩后交给 Writer。Writer 只生成完整知识正文；同一章节分支随后读取全文，用结构化 LLM 生成题目对象，再由唯一渲染器确定性组装最终 `## 单元测试` 和 QUESTION/ANSWER 配对。各章之间仍然并行，不依赖字符匹配推断教学语义。仅当 `docgen.allow_external_search=false`、没有可用在线 retriever 或外部服务失败时不产生在线结果。
+动作：LangGraph `Send` 按章 fan-out；各章 brief 已生成至多 `docgen.max_retrieval_queries_per_chapter` 条检索词，章节节点不再重复调用 LLM 改写查询。本地资料检索与有限在线校准并行执行，不因 Planner 已预选资料切片或本地命中充足而跳过在线尝试；随后把预选切片、本地结果和在线结果统一筛选、读取、压缩后交给 Writer。Writer 只生成完整知识正文；同一章节分支随后读取全文，由轻量模型生成题目初稿，再由主模型逐题独立复算答案与解析并返回完整题组；初稿结构不合格时也由该复核调用补全一次。唯一渲染器只发布复核后的 `## 单元测试` 和 QUESTION/ANSWER 配对。各章之间仍然并行，不依赖字符匹配推断教学语义。仅当 `docgen.allow_external_search=false`、没有可用在线 retriever 或外部服务失败时不产生在线结果。
 
 输出：`chapter_drafts`, `research_traces`, `claim_ledgers`, `claim_evidence_maps`, `evidence_ledgers`, `conflict_reports`
 

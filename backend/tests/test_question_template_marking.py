@@ -11,7 +11,7 @@ from sqlmodel import Session, SQLModel, create_engine
 from app.api import deps
 from app.api import exams as exams_api
 from app.api.deps import CurrentUserContext
-from app.models import Course, ExamPaper, ExamPaperItem, QuestionTemplate
+from app.models import Course, ExamPaper, ExamPaperItem, QuestionKnowledgeUnitLink, QuestionTemplate
 from app.repositories import exams_repo
 from app.utils.time import utcnow
 from app.workflows.examine.exam_grade.lib.grader import ExamItemGradeDecision
@@ -41,6 +41,9 @@ def _api_engine():
         tables=[
             Course.__table__,
             QuestionTemplate.__table__,
+            ExamPaper.__table__,
+            ExamPaperItem.__table__,
+            QuestionKnowledgeUnitLink.__table__,
         ],
     )
     return engine
@@ -184,6 +187,155 @@ def test_question_template_grade_api_reuses_exam_grade_workflow(monkeypatch: pyt
         assert len(analytics_events) == 1
     finally:
         session.close()
+
+
+@pytest.mark.anyio
+async def test_ungraded_exam_locks_template_solutions_until_grading_completes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = _api_engine()
+    with Session(engine, expire_on_commit=False) as session:
+        course = Course(id="course_math00000000", user_id="api-user", name="Calculus")
+        locked_template = QuestionTemplate(
+            course_id=course.id,
+            question_type="fill_blank",
+            difficulty="medium",
+            stem="The derivative of x^2 is {{blank}}.",
+            stem_hash="stem-hash-locked-solution",
+            answer="2x",
+            explanation="Apply the power rule.",
+        )
+        unlocked_template = QuestionTemplate(
+            course_id=course.id,
+            question_type="true_false",
+            difficulty="easy",
+            stem="Differentiability implies continuity.",
+            stem_hash="stem-hash-unlocked-solution",
+            answer="True",
+            explanation="This is a standard theorem.",
+        )
+        session.add_all([course, locked_template, unlocked_template])
+        session.commit()
+        session.refresh(locked_template)
+        session.refresh(unlocked_template)
+
+        graded_paper = ExamPaper(
+            course_id=course.id,
+            user_id="api-user",
+            exam_mode="web_practice",
+            status="graded",
+            total_items=1,
+            submitted_at=utcnow(),
+            graded_at=utcnow(),
+        )
+        active_paper = ExamPaper(
+            course_id=course.id,
+            user_id="api-user",
+            exam_mode="web_practice",
+            status="ready",
+            visibility="hidden",
+            generation_origin="prewarm",
+            total_items=1,
+        )
+        session.add_all([graded_paper, active_paper])
+        session.commit()
+        session.refresh(graded_paper)
+        session.refresh(active_paper)
+        session.add_all(
+            [
+                ExamPaperItem(
+                    exam_paper_id=int(graded_paper.id or 0),
+                    question_template_id=int(locked_template.id or 0),
+                    item_order=1,
+                    stem_snapshot=locked_template.stem,
+                    answer_snapshot=locked_template.answer,
+                    explanation_snapshot=locked_template.explanation,
+                    difficulty=locked_template.difficulty,
+                    question_type=locked_template.question_type,
+                    answer_content="2x",
+                    is_correct=True,
+                    score_obtained=1.0,
+                    score_max=1.0,
+                    answered_at=utcnow(),
+                    graded_at=utcnow(),
+                ),
+                ExamPaperItem(
+                    exam_paper_id=int(active_paper.id or 0),
+                    question_template_id=int(locked_template.id or 0),
+                    item_order=1,
+                    stem_snapshot=locked_template.stem,
+                    answer_snapshot=locked_template.answer,
+                    explanation_snapshot=locked_template.explanation,
+                    difficulty=locked_template.difficulty,
+                    question_type=locked_template.question_type,
+                ),
+            ]
+        )
+        session.commit()
+
+        visible_templates = exams_api._question_template_items_for_course(
+            session,
+            course_id=course.id,
+            user_id="api-user",
+        )
+        assert [template.id for template in visible_templates] == [unlocked_template.id]
+        assert exams_api._mastery_drill_usable_templates(
+            session,
+            course_id=course.id,
+            user_id="api-user",
+            question_types=[],
+        ) == [unlocked_template]
+
+        current_user = CurrentUserContext(user_id="api-user", email=None, is_local=True)
+        with pytest.raises(exams_api.AITeachMeError) as history_error:
+            await exams_api.question_template_answer_history(
+                course_id=course.id,
+                question_template_id=int(locked_template.id or 0),
+                limit=20,
+                user=current_user,
+                session=session,
+            )
+        assert history_error.value.error_code == "QUESTION_TEMPLATE_SOLUTION_LOCKED"
+        assert history_error.value.status_code == 409
+
+        async def fail_if_graded(**_kwargs):
+            raise AssertionError("locked template must not reach the grading workflow")
+
+        monkeypatch.setattr(exams_api, "run_exam_grade_workflow", fail_if_graded)
+        with pytest.raises(exams_api.AITeachMeError) as grade_error:
+            await exams_api.grade_question_template_answer(
+                course_id=course.id,
+                question_template_id=int(locked_template.id or 0),
+                body=exams_api.QuestionTemplateGradeRequest(answer="2x"),
+                user=current_user,
+                session=session,
+            )
+        assert grade_error.value.error_code == "QUESTION_TEMPLATE_SOLUTION_LOCKED"
+        assert grade_error.value.status_code == 409
+
+        active_paper.status = "graded"
+        active_paper.submitted_at = utcnow()
+        active_paper.graded_at = utcnow()
+        session.add(active_paper)
+        session.commit()
+
+        unlocked_templates = exams_api._question_template_items_for_course(
+            session,
+            course_id=course.id,
+            user_id="api-user",
+        )
+        assert {template.id for template in unlocked_templates} == {
+            locked_template.id,
+            unlocked_template.id,
+        }
+        history = await exams_api.question_template_answer_history(
+            course_id=course.id,
+            question_template_id=int(locked_template.id or 0),
+            limit=20,
+            user=current_user,
+            session=session,
+        )
+        assert history.data[0].correct_answer == "2x"
 
 
 def test_wrong_question_template_ids_filter_visible_user_attempts() -> None:

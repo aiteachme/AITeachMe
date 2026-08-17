@@ -405,6 +405,7 @@ def test_rule_review_does_not_use_keyword_matching_to_patch_teaching_semantics()
     )
 
     assert report.coverage_score == 0.0
+    assert report.coverage_evaluated is False
     assert report.missing_elements == []
     assert not any(action.action_id == "review_ch01_section_patch" for action in actions)
     assert report.passed is True
@@ -438,6 +439,7 @@ def test_rule_review_does_not_treat_source_claims_as_verbatim_coverage_contracts
     )
 
     assert report.coverage_score == 0.0
+    assert report.coverage_evaluated is False
     assert report.missing_elements == []
     assert not any(action.action_id == "review_ch01_section_patch" for action in actions)
 

@@ -15,6 +15,8 @@ export interface BuildPlannerMessageRequest {
   message: string;
   /** Optional per-request planner model. Omit or use settings for configured defaults. */
   model?: string | null;
+  /** Generate a fresh pre-diagnosis before revising the current plan. */
+  refresh_diagnosis?: boolean;
   diagnose_answers?: BuildPlannerDiagnosticAnswerRequest[];
   diagnose_status?: BuildPlannerMessageRequestDiagnoseStatus;
   diagnose_note?: string;

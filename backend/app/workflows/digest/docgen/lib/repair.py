@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 import re
 from typing import Literal
 
@@ -30,6 +31,16 @@ _MAX_PATCH_CONTEXT_CHARS = 7000
 _MAX_LOCAL_PATCH_CHARS = 2200
 _MAX_PATCH_GROWTH_CHARS = 3200
 _MAX_PATCH_GROWTH_RATIO = 0.55
+_QUESTION_CALLOUT_RE = re.compile(r"^\s*>\s*\[!QUESTION\]", re.IGNORECASE)
+_EXERCISE_ID_RE = re.compile(
+    r"(?:\bQ\s*0*\d{1,3}\b|(?:练习|例题|问题|任务)\s*[0-9一二三四五六七八九十百]+)",
+    re.IGNORECASE,
+)
+_SOLUTION_MARKER_RE = re.compile(
+    r"(?:\[!ANSWER\]|(?:^|\n)\s*>?\s*(?:\*\*)?(?:答案|解析|解答|结论)"
+    r"(?:与解析|与结论|步骤)?(?:\*\*)?\s*[:：]?)",
+    re.IGNORECASE,
+)
 _PATCH_PRESENTATION_REGRESSION_MARKERS = (
     "标题层级",
     "标题过长",
@@ -257,6 +268,117 @@ def _repeated_content_block_reason(markdown: str) -> str | None:
     return None
 
 
+def _question_callout_records(markdown: str) -> list[tuple[str, int, int]]:
+    """Return stable question identities and the line after each callout."""
+
+    lines = str(markdown or "").splitlines()
+    records: list[tuple[str, int, int]] = []
+    index = 0
+    while index < len(lines):
+        if not _QUESTION_CALLOUT_RE.match(lines[index]):
+            index += 1
+            continue
+        end = index + 1
+        while end < len(lines) and lines[end].lstrip().startswith(">"):
+            end += 1
+        block_text = "\n".join(
+            re.sub(r"^\s*>\s?", "", line)
+            for line in lines[index:end]
+        )
+        visible = re.sub(r"\[!QUESTION\]|[*_`#>|]", "", block_text, flags=re.IGNORECASE)
+        visible_without_number = _EXERCISE_ID_RE.sub("", visible)
+        signature = _normalize_anchor(visible_without_number)[:160]
+        if not signature:
+            identity_match = _EXERCISE_ID_RE.search(block_text)
+            signature = _normalize_anchor(identity_match.group(0)) if identity_match is not None else ""
+        records.append((signature or f"question_at_{index}", index, end))
+        index = end
+    return records
+
+
+def _preserves_exercise_identity(actions: list[ReviewAction]) -> bool:
+    for action in actions:
+        for constraint in action.constraints or []:
+            compact = re.sub(r"\s+", "", str(constraint or ""))
+            if not any(target in compact for target in ("练习", "题目", "QUESTION")):
+                continue
+            if any(
+                marker in compact
+                for marker in (
+                    "不得新增",
+                    "不得删除",
+                    "禁止新增",
+                    "禁止删除",
+                    "数量不变",
+                    "保持不变",
+                )
+            ):
+                return True
+    return False
+
+
+def _should_preserve_exercise_identity(
+    actions: list[ReviewAction],
+    *,
+    unit_test_patch: bool,
+) -> bool:
+    if unit_test_patch:
+        return False
+    if _preserves_exercise_identity(actions):
+        return True
+    for action in actions:
+        intent = " ".join(
+            str(value or "")
+            for value in (action.reason, action.instruction, action.expected_effect)
+        )
+        if not any(subject in intent for subject in ("练习", "题目", "QUESTION")):
+            continue
+        if any(marker in intent for marker in ("新增", "增加", "删除", "移除", "替换", "重写", "重新生成")):
+            return False
+    return True
+
+
+def _exercise_patch_contract_reason(
+    *,
+    original_markdown: str,
+    patched_markdown: str,
+    preserve_identity: bool,
+) -> str | None:
+    original_records = _question_callout_records(original_markdown)
+    patched_records = _question_callout_records(patched_markdown)
+    original_counts = Counter(signature for signature, _, _ in original_records)
+    patched_counts = Counter(signature for signature, _, _ in patched_records)
+    duplicated_identities = [
+        signature
+        for signature, count in patched_counts.items()
+        if original_counts[signature] > 0 and count > original_counts[signature]
+    ]
+    if duplicated_identities:
+        return "修补重复插入了已有 QUESTION/练习题。"
+    if preserve_identity and original_counts != patched_counts:
+        return "复核动作要求保持练习/题目集合不变，但修补改变了 QUESTION 数量或题目标识。"
+
+    lines = str(patched_markdown or "").splitlines()
+    seen_counts: Counter[str] = Counter()
+    for record_index, (signature, _start_line, end_line) in enumerate(patched_records):
+        seen_counts[signature] += 1
+        if seen_counts[signature] <= original_counts[signature]:
+            continue
+        next_start = (
+            patched_records[record_index + 1][1]
+            if record_index + 1 < len(patched_records)
+            else len(lines)
+        )
+        for line_index in range(end_line, len(lines)):
+            if line_index >= next_start or re.match(r"^\s*#{1,6}\s+", lines[line_index]):
+                next_start = line_index
+                break
+        followup = "\n".join(lines[end_line:next_start])
+        if not _SOLUTION_MARKER_RE.search(followup):
+            return "修补新增了没有紧随答案、解析或解答的 QUESTION 题块。"
+    return None
+
+
 def _local_patch_risk_reason(
     *,
     original_markdown: str,
@@ -300,7 +422,12 @@ def _local_patch_risk_reason(
     return None
 
 
-def _patched_markdown_risk_reason(*, original_markdown: str, patched_markdown: str) -> str | None:
+def _patched_markdown_risk_reason(
+    *,
+    original_markdown: str,
+    patched_markdown: str,
+    preserve_exercise_identity: bool = False,
+) -> str | None:
     growth = len(patched_markdown) - len(original_markdown)
     if growth > _MAX_PATCH_GROWTH_CHARS and growth / max(1, len(original_markdown)) > _MAX_PATCH_GROWTH_RATIO:
         return f"修补后正文增长过大（+{growth} 字符），疑似非局部改写。"
@@ -310,6 +437,13 @@ def _patched_markdown_risk_reason(*, original_markdown: str, patched_markdown: s
     repeated = _repeated_content_block_reason(patched_markdown)
     if repeated:
         return repeated
+    exercise_contract_reason = _exercise_patch_contract_reason(
+        original_markdown=original_markdown,
+        patched_markdown=patched_markdown,
+        preserve_identity=preserve_exercise_identity,
+    )
+    if exercise_contract_reason:
+        return exercise_contract_reason
     before_issues = set(find_docgen_presentation_issues(original_markdown))
     after_issues = set(find_docgen_presentation_issues(patched_markdown))
     regressions = [
@@ -596,19 +730,37 @@ async def _apply_llm_patch_actions(
         )
     )
     if patched and patched != chapter.markdown:
+        preserve_exercise_identity = _should_preserve_exercise_identity(
+            [action for _, action in indexed_actions],
+            unit_test_patch=unit_test_patch,
+        )
+        exercise_contract_reason = _exercise_patch_contract_reason(
+            original_markdown=chapter.markdown,
+            patched_markdown=patched,
+            preserve_identity=preserve_exercise_identity,
+        )
+        if exercise_contract_reason:
+            return chapter, _rejected_llm_patch_results(
+                indexed_actions=indexed_actions,
+                repair_round=repair_round,
+                llm_call_group=llm_call_group,
+                reason=exercise_contract_reason,
+            ), (indexed_actions if unit_test_patch else [])
         normalized_patched = normalize_docgen_presentation(patched, title=chapter.title)
-        if unit_test_patch:
+        preserve_unit_test_contract = unit_test_patch or not unit_test_structure_issues(chapter.markdown)
+        if preserve_unit_test_contract:
             structure_issues = unit_test_structure_issues(normalized_patched)
             if structure_issues:
                 return chapter, _rejected_llm_patch_results(
                     indexed_actions=indexed_actions,
                     repair_round=repair_round,
                     llm_call_group=llm_call_group,
-                    reason="单元测试补丁未通过题答合同：" + "；".join(structure_issues[:4]),
-                ), indexed_actions
+                    reason="修补后单元测试未通过题答合同：" + "；".join(structure_issues[:4]),
+                ), (indexed_actions if unit_test_patch else [])
         risk_reason = _patched_markdown_risk_reason(
             original_markdown=chapter.markdown,
             patched_markdown=normalized_patched,
+            preserve_exercise_identity=preserve_exercise_identity,
         )
         if risk_reason:
             return chapter, _rejected_llm_patch_results(

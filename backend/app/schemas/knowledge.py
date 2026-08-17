@@ -833,6 +833,10 @@ class BuildPlannerMessageRequest(BaseModel):
 
     message: str = Field(description="User feedback used to revise the current plan draft.")
     model: str | None = Field(default=None, description="Optional per-request planner model. Omit or use settings for configured defaults.")
+    refresh_diagnosis: bool = Field(
+        default=False,
+        description="Generate a fresh pre-diagnosis before revising the current plan.",
+    )
     diagnose_answers: list[BuildPlannerDiagnosticAnswerRequest] = Field(default_factory=list)
     diagnose_status: Literal["answered", "skipped"] | None = Field(default=None)
     diagnose_note: str = Field(default="")

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import contextmanager
+import json
 from types import SimpleNamespace
 from typing import Any
 
@@ -13,6 +14,8 @@ from app.shared.infra.tools.definition import ToolDefinition
 from app.shared.infra.tools.registry import ToolRegistry, _tool_trace_inputs
 from app.shared.infra.workflow import authoring as workflow_authoring
 from app.shared.infra.workflow import runtime as workflow_runtime
+from app.workflows.common import prompt_tracing
+from app.workflows.digest.kg_doc_sync.lib import prefetch as kg_prefetch
 
 
 def test_graph_tracing_context_respects_runtime_disabled(monkeypatch) -> None:
@@ -31,6 +34,187 @@ def test_graph_tracing_context_respects_runtime_disabled(monkeypatch) -> None:
         pass
 
     assert calls == [{"enabled": False}]
+
+
+def test_prompt_builder_trace_does_not_require_secondary_feature_flag(monkeypatch) -> None:
+    trace_call: dict[str, Any] = {}
+    trace_outputs: dict[str, Any] = {}
+
+    @contextmanager
+    def fake_langsmith_trace(**kwargs):
+        trace_call.update(kwargs)
+        yield SimpleNamespace(end=lambda **end_kwargs: trace_outputs.update(end_kwargs))
+
+    monkeypatch.delenv("AITM_TRACE_PROMPT_BUILDERS", raising=False)
+    monkeypatch.setattr(prompt_tracing, "langsmith_trace", fake_langsmith_trace)
+    monkeypatch.setattr(
+        prompt_tracing,
+        "get_llm_trace_context",
+        lambda: SimpleNamespace(
+            course_id="course-trace",
+            build_session_id="build-trace",
+            workflow="digest.docgen",
+            lane="docgen",
+            node="generate_chapter",
+        ),
+    )
+    monkeypatch.setattr(
+        prompt_tracing,
+        "sanitize_langsmith_input",
+        lambda value, *, field_name: value,
+    )
+    monkeypatch.setattr(
+        prompt_tracing,
+        "sanitize_langsmith_output",
+        lambda value, *, field_name: value,
+    )
+    messages = [{"role": "user", "content": "生成课程章节"}]
+
+    result = prompt_tracing.trace_prompt_build(
+        "chapter_generation",
+        inputs={"chapter": 1},
+        output=messages,
+    )
+
+    assert result is messages
+    assert trace_call["name"] == "Prompt：chapter_generation"
+    assert trace_call["course_id"] == "course-trace"
+    assert trace_outputs == {"outputs": {"prompt": messages}}
+
+
+def test_prompt_builder_trace_compacts_large_inputs_and_outputs(monkeypatch) -> None:
+    trace_call: dict[str, Any] = {}
+    trace_outputs: dict[str, Any] = {}
+
+    @contextmanager
+    def fake_langsmith_trace(**kwargs):
+        trace_call.update(kwargs)
+        yield SimpleNamespace(end=lambda **end_kwargs: trace_outputs.update(end_kwargs))
+
+    monkeypatch.setattr(prompt_tracing, "langsmith_trace", fake_langsmith_trace)
+    monkeypatch.setattr(prompt_tracing, "get_llm_trace_context", lambda: SimpleNamespace(
+        course_id="course-trace",
+        build_session_id="build-trace",
+        workflow="digest.docgen",
+        lane="docgen",
+        node="generate_chapter",
+    ))
+    monkeypatch.setattr(prompt_tracing, "sanitize_langsmith_input", lambda value, *, field_name: value)
+    monkeypatch.setattr(prompt_tracing, "sanitize_langsmith_output", lambda value, *, field_name: value)
+    messages = [{"role": "user", "content": "章节材料" * 12000}]
+
+    result = prompt_tracing.trace_prompt_build(
+        "chapter_generation",
+        inputs={"context": "检索上下文" * 12000},
+        output=messages,
+    )
+
+    assert result is messages
+    compact_input = trace_call["inputs"]
+    compact_output = trace_outputs["outputs"]["prompt"]
+    for compact in (compact_input, compact_output):
+        assert compact["truncated"] is True
+        assert compact["original_json_bytes"] > prompt_tracing._PROMPT_TRACE_JSON_BUDGET_BYTES
+        assert len(compact["sha256"]) == 64
+        assert len(json.dumps(compact, ensure_ascii=False).encode("utf-8")) <= prompt_tracing._PROMPT_TRACE_JSON_BUDGET_BYTES
+
+
+@pytest.mark.anyio
+async def test_langsmith_flush_is_bounded_and_best_effort(monkeypatch) -> None:
+    calls: list[float] = []
+    monkeypatch.setattr(trace_module, "langsmith_tracing_enabled", lambda: True)
+    monkeypatch.setattr(
+        trace_module.langsmith_run_trees,
+        "_CLIENT",
+        SimpleNamespace(flush=lambda *, timeout: calls.append(timeout)),
+    )
+
+    assert await trace_module.flush_langsmith_traces(timeout_s=2.5) is True
+    assert calls == [2.5]
+
+    monkeypatch.setattr(
+        trace_module.langsmith_run_trees,
+        "_CLIENT",
+        SimpleNamespace(flush=lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("offline"))),
+    )
+    assert await trace_module.flush_langsmith_traces(timeout_s=1.0) is False
+
+
+@pytest.mark.anyio
+async def test_langsmith_flush_does_not_initialize_client_when_absent(monkeypatch) -> None:
+    monkeypatch.setattr(trace_module, "langsmith_tracing_enabled", lambda: True)
+    monkeypatch.setattr(
+        trace_module.langsmith_run_trees,
+        "_CLIENT",
+        None,
+    )
+
+    assert await trace_module.flush_langsmith_traces(timeout_s=1.0) is False
+
+
+def test_langsmith_parent_headers_are_detached(monkeypatch) -> None:
+    headers = {"langsmith-trace": "trace-id", "baggage": "project_name=test"}
+    monkeypatch.setattr(trace_module, "langsmith_tracing_requested", lambda: True)
+    monkeypatch.setattr(
+        trace_module,
+        "get_current_run_tree",
+        lambda: SimpleNamespace(to_headers=lambda: headers),
+    )
+
+    captured = trace_module.capture_langsmith_parent_headers()
+    headers["langsmith-trace"] = "changed"
+
+    assert captured == {"langsmith-trace": "trace-id", "baggage": "project_name=test"}
+
+
+@pytest.mark.anyio
+async def test_kg_prefetch_restores_captured_parent_headers(monkeypatch) -> None:
+    tracing_calls: list[dict[str, Any]] = []
+
+    @contextmanager
+    def fake_context(**kwargs):
+        tracing_calls.append(dict(kwargs))
+        yield
+
+    @contextmanager
+    def passthrough(*_args, **_kwargs):
+        yield
+
+    @contextmanager
+    def fake_trace(**_kwargs):
+        yield None
+
+    async def fake_extract(**_kwargs):
+        return [], {"completed_section_count": 0}
+
+    monkeypatch.setattr(kg_prefetch, "tracing_context", fake_context)
+    monkeypatch.setattr(kg_prefetch, "langsmith_expected_cancellation_scope", passthrough)
+    monkeypatch.setattr(kg_prefetch, "use_llm_runtime_snapshot", passthrough)
+    monkeypatch.setattr(kg_prefetch, "llm_trace_scope", passthrough)
+    monkeypatch.setattr(kg_prefetch, "langsmith_trace", fake_trace)
+    monkeypatch.setattr(kg_prefetch, "extract_knowledge_graph_section_records_async", fake_extract)
+    parent_headers = {"langsmith-trace": "trace-id"}
+
+    records, metrics = await kg_prefetch._extract_prefetch_records_with_trace(
+        course_id="course-trace",
+        build_session_id="build-trace",
+        markdown="# 章节",
+        chapters=[{"chapter_index": 1, "markdown": "# 章节"}],
+        course_context=None,
+        structured_context={},
+        docgen_manifest={"kg_prefetch_phase": "enhanced_document"},
+        snapshot=SimpleNamespace(),
+        concurrency=1,
+        configured_concurrency=1,
+        llm_concurrency_cap=1,
+        incremental=False,
+        on_record=lambda _record: None,
+        parent_headers=parent_headers,
+    )
+
+    assert records == []
+    assert metrics == {"completed_section_count": 0}
+    assert tracing_calls == [{"parent": parent_headers}]
 
 
 def test_graph_tracing_context_preserves_parent_and_suppresses_state_dump(monkeypatch) -> None:

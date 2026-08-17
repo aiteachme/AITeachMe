@@ -359,15 +359,35 @@ def test_exam_response_helpers_include_generated_items_and_preview_payloads() ->
         knowledge_unit_by_id={1: KnowledgeUnit(id=1, canonical_name="Matrices", knowledge_unit_type="concept")},
         mastery_by_unit_id={1: 0.625},
     )
+    revealed_responses = exams_api._generated_question_item_responses(
+        json.loads(paper.selection_context_json),
+        knowledge_unit_by_id={1: KnowledgeUnit(id=1, canonical_name="Matrices", knowledge_unit_type="concept")},
+        mastery_by_unit_id={1: 0.625},
+        reveal_solutions=True,
+    )
 
     assert payload["exam_paper_id"] == 42
     assert payload["status"] == "generating"
     assert payload["generated_question_count"] == 1
     assert payload["failed_question_count"] == 1
     assert payload["stage"] == "generating"
+    assert "correct_answer" not in payload["generated_questions"][0]
+    assert "explanation" not in payload["generated_questions"][0]
+    public_context = payload["selection_context"]
+    assert "correct_answer" not in public_context["generated_questions"][0]
+    assert "explanation" not in public_context["generated_questions"][0]
     assert responses[0].id == -1_000_001
     assert responses[0].knowledge_unit_links[0].knowledge_unit_name == "Matrices"
     assert responses[0].knowledge_unit_links[0].mastery_score == 0.625
+    assert responses[0].correct_answer is None
+    assert responses[0].explanation == ""
+    assert revealed_responses[0].correct_answer == "A"
+    assert revealed_responses[0].explanation == "Because determinant is non-zero."
+
+    paper.status = "graded"
+    graded_payload = exams_api._paper_generation_event_payload(paper)
+    assert graded_payload["generated_questions"][0]["correct_answer"] == "A"
+    assert graded_payload["generated_questions"][0]["explanation"] == "Because determinant is non-zero."
 
 
 def test_question_template_response_tolerates_invalid_option_json() -> None:
@@ -1190,6 +1210,7 @@ async def test_exam_generation_background_persists_progress_items_and_terminal_p
     unit_ids = [int(unit.id or 0) for unit in units]
     events: list[tuple[str, int, str, dict[str, object]]] = []
     captured: list[tuple[str, dict[str, object]]] = []
+    workflow_kwargs: dict[str, object] = {}
 
     monkeypatch.setattr(exams_api, "load_course_llm_context", lambda *args, **kwargs: "course context")
     monkeypatch.setattr(
@@ -1204,6 +1225,7 @@ async def test_exam_generation_background_persists_progress_items_and_terminal_p
     )
 
     async def fake_question_build_workflow(**kwargs):
+        workflow_kwargs.update(kwargs)
         progress_callback = kwargs["progress_callback"]
         await progress_callback(
             {
@@ -1354,6 +1376,7 @@ async def test_exam_generation_background_persists_progress_items_and_terminal_p
     context = json.loads(paper.selection_context_json)
 
     assert paper.status == "failed"
+    assert workflow_kwargs["exam_paper_id"] == int(paper.id or 0)
     assert paper.total_items == 3
     assert [item.item_order for item in items] == [1, 2]
     assert [template.stem for template in templates] == [
@@ -1368,6 +1391,14 @@ async def test_exam_generation_background_persists_progress_items_and_terminal_p
     assert context["paper_layout"]["mode"] == "practice_scroll"
     assert context["paper_layout"]["pages"][0]["question_orders"] == [1, 2, 3]
     assert [row.generation_status for row in preview.rows] == ["generated", "generated", "failed"]
+    generated_events = [
+        data["generated_question"]
+        for _course, _paper, event, data in events
+        if event == "snapshot" and isinstance(data.get("generated_question"), dict)
+    ]
+    assert generated_events
+    assert all("correct_answer" not in item for item in generated_events)
+    assert all("explanation" not in item for item in generated_events)
     assert any(event == "done" and data["status"] == "failed" for _course, _paper, event, data in events)
     assert captured == []
 
@@ -1471,6 +1502,8 @@ async def test_exam_generation_background_keeps_generated_snapshot_when_final_pe
     assert detail.status == "failed"
     assert [item.item_order for item in detail.items] == [1, 2]
     assert detail.items[0].stem == "Which matrix is invertible?"
+    assert "correct_answer" not in detail.selection_context["generated_questions"][0]
+    assert "explanation" not in detail.selection_context["generated_questions"][0]
     assert any(
         event == "snapshot"
         and data.get("stage") == "generate_exam_questions"

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.schemas.llm import ChatMessage
+from app.workflows.common.prompt_tracing import trace_prompt_build
 
 _LATEX_FEEDBACK_RULE = (
     "如果输出内容包含数学公式，必须使用有效 LaTeX，并用 `$...$` 或 `$$...$$` 包裹；"
@@ -22,7 +23,7 @@ def build_subjective_grade_messages(
     user_answer: str,
 ) -> list[ChatMessage]:
     user_answer_block = user_answer.strip() or "未作答"
-    return [
+    messages: list[ChatMessage] = [
         {
             "role": "system",
             "content": (
@@ -52,6 +53,17 @@ def build_subjective_grade_messages(
             ),
         },
     ]
+    return trace_prompt_build(
+        "examine_subjective_grade",
+        inputs={
+            "question_type": question_type,
+            "stem_chars": len(stem),
+            "correct_answer_chars": len(correct_answer),
+            "reference_explanation_chars": len(reference_explanation),
+            "user_answer_chars": len(user_answer),
+        },
+        output=messages,
+    )
 
 
 def build_study_guide_messages(
@@ -63,7 +75,7 @@ def build_study_guide_messages(
     knowledge_unit_performance: list[dict[str, Any]],
     pending_reviews: list[dict[str, str]],
 ) -> list[ChatMessage]:
-    return [
+    messages: list[ChatMessage] = [
         {
             "role": "system",
             "content": (
@@ -103,3 +115,13 @@ def build_study_guide_messages(
             ),
         },
     ]
+    return trace_prompt_build(
+        "examine_study_guide",
+        inputs={
+            "wrong_question_count": len(wrong_question_summaries),
+            "knowledge_unit_count": len(knowledge_unit_performance),
+            "pending_review_count": len(pending_reviews),
+            "score_summary_chars": len(score_summary),
+        },
+        output=messages,
+    )

@@ -329,6 +329,7 @@ export function useDocMarkdown(): DocMarkdownState {
   const buildPreview = runtimeQuery.data?.docgen_preview ?? docMarkdownQuery.data?.build_preview ?? null;
   const buildMetrics = runtimeQuery.data?.docgen_metrics ?? docMarkdownQuery.data?.build_metrics ?? null;
   const buildStatus = buildMeta?.status ?? null;
+  const isBuildFailure = buildStatus === "failed" || buildStatus === "cancelled";
   const buildStage = (buildMeta?.stage ?? "").trim();
   const graphStatus = (runtimeQuery.data?.graph_status ?? runtimeQuery.data?.graph?.status ?? null)?.trim() || null;
   const graphStage = (runtimeQuery.data?.graph?.stage ?? "").trim();
@@ -602,7 +603,7 @@ export function useDocMarkdown(): DocMarkdownState {
     () => visiblePublicationChunks.map((chunk) => chunk.markdown).join(""),
     [visiblePublicationChunks],
   );
-  const rawDraftMarkdown = draftMarkdownQuery.data?.draft_markdown ?? "";
+  const rawDraftMarkdown = isBuildFailure ? "" : (draftMarkdownQuery.data?.draft_markdown ?? "");
   const liveMarkdown = useMemo(
     () => cleanKnowledgeMarkdownForDisplay(rawLiveMarkdown),
     [rawLiveMarkdown],
@@ -641,7 +642,6 @@ export function useDocMarkdown(): DocMarkdownState {
     GRAPH_SYNC_BUILD_STAGES.has(graphStage) ||
     GRAPH_SYNC_BUILD_STAGES.has(buildStage),
   );
-  const isBuildFailure = buildStatus === "failed" || buildStatus === "cancelled";
   const isBuildReadyStatus = Boolean(buildStatus && TERMINAL_DOC_BUILD_READY_STATUSES.has(buildStatus));
   const isWaitingForRequestedBuild =
     !isRequestedBuildReady &&

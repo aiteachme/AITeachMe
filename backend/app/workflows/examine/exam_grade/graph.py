@@ -304,15 +304,20 @@ async def run_exam_grade_workflow(
 ) -> list[ExamItemGradeDecision]:
     """Run the production exam grading workflow."""
 
+    metadata = {
+        "lane": "exam_grade",
+        "langsmith_run_name": RUN_NAME_EXAM_GRADE,
+        "exam_item_count": len(items),
+        "mode": "grade_exam",
+    }
+    exam_paper_ids = {item.exam_paper_id for item in items if item.exam_paper_id > 0}
+    if len(exam_paper_ids) == 1:
+        metadata["exam_paper_id"] = exam_paper_ids.pop()
+
     context = WorkflowContext(
         workflow_name="examine.exam_grade",
         course_id=course_id,
-        metadata={
-            "lane": "exam_grade",
-            "langsmith_run_name": RUN_NAME_EXAM_GRADE,
-            "exam_item_count": len(items),
-            "mode": "grade_exam",
-        },
+        metadata=metadata,
     )
     result = await run_state_graph(
         workflow_name="examine.exam_grade",

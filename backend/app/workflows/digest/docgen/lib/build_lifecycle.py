@@ -10,11 +10,9 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-import sys
 import uuid
 from contextlib import nullcontext
 from datetime import datetime
-from time import perf_counter
 from typing import Any
 
 import structlog
@@ -63,11 +61,7 @@ from app.shared.infra.knowledge.build_store import (
     update_knowledge_build_lane_status,
 )
 from app.shared.infra.llm_support.model_choices import normalize_runtime_model_override
-from app.shared.infra.observability.trace import (
-    langsmith_trace,
-    sanitize_langsmith_input,
-    sanitize_langsmith_output,
-)
+from app.shared.infra.observability import flush_langsmith_traces
 from app.shared.infra.settings import get_settings
 from app.shared.infra.storage import (
     CourseStorageScope,
@@ -1114,79 +1108,11 @@ async def run_docgen_background(
     docgen_published = False
     course_scope: CourseStorageScope | None = None
     build_lock_heartbeat: asyncio.Task[None] | None = None
-    lifecycle_started_at = perf_counter()
     lifecycle_outputs: dict[str, object] = {
         "status": "running",
         "build_session_id": build_session_id,
         "build_group_id": build_group_id,
     }
-    lifecycle_trace_cm = langsmith_trace(
-        name="知识构建：后台构建生命周期",
-        run_type="chain",
-        inputs=sanitize_langsmith_input(
-            {
-                "course_id": course_id,
-                "course_name": course_name or "",
-                "file_ids_count": len(file_ids),
-                "prompt_chars": len(prompt or ""),
-                "requested_at": requested_at.isoformat(),
-                "build_group_id": build_group_id,
-                "build_session_id": build_session_id,
-                "planner_session_id": planner_session_id or "",
-                "confirmed_plan_id": confirmed_plan_id or "",
-                "model_override": resolved_model_override,
-                "sync_graph_after_docgen": sync_graph_after_docgen,
-            },
-            field_name="docgen_lifecycle_inputs",
-        ),
-        course_id=course_id,
-        build_session_id=build_session_id,
-        workflow="digest.docgen.lifecycle",
-        lane="docgen",
-        extra_metadata={
-            "workflow_trace_kind": "background_lifecycle_root",
-            "build_group_id": build_group_id,
-            "planner_session_id": planner_session_id or "",
-            "confirmed_plan_id": confirmed_plan_id or "",
-        },
-        extra_tags=["docgen:lifecycle"],
-    )
-    try:
-        lifecycle_trace_run = lifecycle_trace_cm.__enter__()
-        lifecycle_trace_active = True
-    except Exception as exc:  # pragma: no cover - observability best effort
-        logger.warning("docgen_lifecycle_trace_start_failed", course_id=course_id, error=str(exc))
-        lifecycle_trace_cm = nullcontext(None)
-        lifecycle_trace_run = None
-        lifecycle_trace_active = False
-    lifecycle_trace_closed = False
-
-    def _finish_lifecycle_trace() -> None:
-        nonlocal lifecycle_trace_closed
-        if lifecycle_trace_closed:
-            return
-        lifecycle_trace_closed = True
-        exc_info = sys.exc_info()
-        lifecycle_outputs.setdefault("elapsed_ms", int((perf_counter() - lifecycle_started_at) * 1000))
-        try:
-            if lifecycle_trace_run is not None:
-                lifecycle_trace_run.end(
-                    outputs=sanitize_langsmith_output(
-                        lifecycle_outputs,
-                        field_name="docgen_lifecycle_outputs",
-                    )
-                )
-        except Exception as exc:  # pragma: no cover - observability best effort
-            logger.warning("docgen_lifecycle_trace_end_failed", course_id=course_id, error=str(exc))
-        try:
-            if lifecycle_trace_active:
-                lifecycle_trace_cm.__exit__(*exc_info)
-        except Exception as exc:  # pragma: no cover - observability best effort
-            logger.warning(
-                "docgen_lifecycle_trace_context_close_failed",
-                course_id=course_id,
-                error=str(exc),
-            )
 
     logger.info(
         "knowledge_build_background_started",
@@ -1222,7 +1148,6 @@ async def run_docgen_background(
             "build_group_id": build_group_id,
         }
         release_knowledge_build_lock(course_id, build_group_id=build_group_id)
-        _finish_lifecycle_trace()
         return
 
     course_scope = build_course_storage_scope(user_id=user_id, course_id=course_id)
@@ -1688,7 +1613,6 @@ async def run_docgen_background(
                     error_type=type(exc).__name__,
                     error=str(exc),
                 )
-        _finish_lifecycle_trace()
         if build_lock_heartbeat is not None:
             build_lock_heartbeat.cancel()
             try:
@@ -1701,6 +1625,7 @@ async def run_docgen_background(
                 build_group_id=build_group_id,
                 course_scope=course_scope,
             )
+        await flush_langsmith_traces(timeout_s=3.0)
 
 
 def get_docgen_result(

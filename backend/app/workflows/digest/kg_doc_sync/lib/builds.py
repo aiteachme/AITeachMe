@@ -245,7 +245,7 @@ def _base_doc_sync_metrics(
     knowledge_doc_source: str,
     chapter_count: int,
     doc_version_no: int,
-) -> dict[str, int | str]:
+) -> dict[str, object]:
     return {
         "knowledge_doc_source": knowledge_doc_source,
         "knowledge_doc_chapter_count": chapter_count,
@@ -289,6 +289,7 @@ def _base_doc_sync_metrics(
         "prefetch_catchup_section_count": 0,
         "prefetch_stale_section_count": 0,
         "prefetch_failed_section_count": 0,
+        "doc_sync_failed_sections": [],
         "docgen_draft_fast_finalize": 0,
         "docgen_draft_final_unit_count": 0,
         "docgen_draft_final_edge_count": 0,
@@ -302,7 +303,7 @@ def _completed_doc_sync_metrics(
     chapter_count: int,
     doc_version_no: int,
     sync_report,
-) -> dict[str, int | str]:
+) -> dict[str, object]:
     metrics = _base_doc_sync_metrics(
         knowledge_doc_source=knowledge_doc_source,
         chapter_count=chapter_count,
@@ -349,6 +350,7 @@ def _completed_doc_sync_metrics(
             "prefetch_catchup_section_count": sync_report.prefetch_catchup_section_count,
             "prefetch_stale_section_count": sync_report.prefetch_stale_section_count,
             "prefetch_failed_section_count": sync_report.prefetch_failed_section_count,
+            "doc_sync_failed_sections": list(sync_report.failed_sections),
             "docgen_draft_fast_finalize": sync_report.docgen_draft_fast_finalize,
             "docgen_draft_final_unit_count": sync_report.docgen_draft_final_unit_count,
             "docgen_draft_final_edge_count": sync_report.docgen_draft_final_edge_count,
@@ -529,7 +531,7 @@ async def run_graph_docs_sync_after_doc_build(
     early_units_callback: object | None = None,
     embedded_in_parent_trace: bool = False,
     enforce_build_lock: bool = False,
-) -> dict[str, int | str]:
+) -> dict[str, object]:
     """Re-sync knowledge units and knowledge images from the latest knowledge document."""
 
     from app.workflows.digest.kg_doc_sync import run_graph_docs_sync_workflow
@@ -554,7 +556,7 @@ async def run_graph_docs_sync_after_doc_build(
         doc_version_no=doc_version_no,
     )
     prefetched_sections = []
-    prefetch_metrics: dict[str, int | str] = {}
+    prefetch_metrics: dict[str, object] = {}
     if docgen_state is not None and build_session_id:
         prefetched_sections, prefetch_metrics = await consume_docgen_kg_prefetch(
             course_id=course_id,
