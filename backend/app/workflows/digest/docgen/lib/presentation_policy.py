@@ -53,8 +53,18 @@ _HEADING_ESCAPED_MATH_RE = re.compile(
 _INLINE_MATH_SPAN_RE = re.compile(r"(?<!\$)\$(?!\$)(?P<body>[^$\n]+)\$(?!\$)")
 _QUESTION_CALLOUT_START_RE = re.compile(r"^\s*>\s*\[!QUESTION\]", re.IGNORECASE)
 _ANSWER_CALLOUT_START_RE = re.compile(r"^\s*>\s*\[!ANSWER\]", re.IGNORECASE)
+_ANY_CALLOUT_START_RE = re.compile(r"^\s*>\s*\[![A-Z]+\]", re.IGNORECASE)
+_BODY_ANSWER_START_RE = re.compile(
+    r"^\s*(?:>\s*)?(?:\*\*)?(?:答案|参考答案)(?:\*\*)?\s*[:：]?",
+    re.IGNORECASE,
+)
 _BODY_SOLUTION_START_RE = re.compile(
     r"^\s*(?:>\s*)?(?:\*\*)?(?:答案|参考答案|解析|解析步骤|解答|判定依据)"
+    r"(?:\*\*)?\s*[:：]?",
+    re.IGNORECASE,
+)
+_BODY_EXPLANATION_START_RE = re.compile(
+    r"^\s*(?:>\s*)?(?:\*\*)?(?:解析(?:步骤)?|解法|步骤|判定依据|易错点|错因)"
     r"(?:\*\*)?\s*[:：]?",
     re.IGNORECASE,
 )
@@ -172,6 +182,55 @@ def _normalize_inline_math_connectors(markdown: str) -> str:
     return "\n".join(fixed)
 
 
+def _is_plain_solution_boundary(line: str) -> bool:
+    return bool(
+        _ANY_CALLOUT_START_RE.match(line)
+        or re.match(r"^\s*(?:#{1,6}\s+\S|(?:---|\*\*\*|___)\s*$)", line)
+    )
+
+
+def _plain_solution_span(lines: list[str], start: int) -> tuple[int, bool]:
+    """Return a complete body-style solution span only when its boundary is unambiguous."""
+
+    cursor = start
+    while cursor < len(lines):
+        label = _BODY_SOLUTION_START_RE.match(lines[cursor])
+        if label is None:
+            return cursor, False
+        inline_value = lines[cursor][label.end() :].strip(" \t*_：:")
+        cursor += 1
+
+        if not inline_value:
+            while cursor < len(lines) and not lines[cursor].strip():
+                cursor += 1
+            if (
+                cursor >= len(lines)
+                or _is_plain_solution_boundary(lines[cursor])
+                or _BODY_SOLUTION_START_RE.match(lines[cursor])
+            ):
+                return cursor, False
+            paragraph_start = cursor
+            while cursor < len(lines) and lines[cursor].strip():
+                if _is_plain_solution_boundary(lines[cursor]) or _BODY_SOLUTION_START_RE.match(lines[cursor]):
+                    break
+                cursor += 1
+            if cursor == paragraph_start:
+                return cursor, False
+        else:
+            while cursor < len(lines) and lines[cursor].strip():
+                if _is_plain_solution_boundary(lines[cursor]) or _BODY_SOLUTION_START_RE.match(lines[cursor]):
+                    break
+                cursor += 1
+
+        while cursor < len(lines) and not lines[cursor].strip():
+            cursor += 1
+        if cursor >= len(lines) or _is_plain_solution_boundary(lines[cursor]):
+            return cursor, True
+        if _BODY_SOLUTION_START_RE.match(lines[cursor]) is None:
+            return cursor, False
+    return cursor, has_answer
+
+
 def _dedupe_exact_question_callouts(markdown: str) -> str:
     lines = str(markdown or "").splitlines()
     fixed: list[str] = []
@@ -183,11 +242,12 @@ def _dedupe_exact_question_callouts(markdown: str) -> str:
             index += 1
             continue
 
-        end = index + 1
-        while end < len(lines) and lines[end].lstrip().startswith(">"):
-            end += 1
-        atomic_end = end
-        followup = end
+        question_end = index + 1
+        while question_end < len(lines) and lines[question_end].lstrip().startswith(">"):
+            question_end += 1
+        atomic_end = question_end
+        can_dedupe = True
+        followup = question_end
         while followup < len(lines) and not lines[followup].strip():
             followup += 1
         if followup < len(lines) and _ANSWER_CALLOUT_START_RE.match(lines[followup]):
@@ -195,22 +255,35 @@ def _dedupe_exact_question_callouts(markdown: str) -> str:
             while atomic_end < len(lines) and lines[atomic_end].lstrip().startswith(">"):
                 atomic_end += 1
         elif followup < len(lines) and _BODY_SOLUTION_START_RE.match(lines[followup]):
-            atomic_end = followup + 1
-            while atomic_end < len(lines) and lines[atomic_end].strip():
-                if _QUESTION_CALLOUT_START_RE.match(lines[atomic_end]) or re.match(r"^\s*#{1,6}\s+", lines[atomic_end]):
-                    break
-                atomic_end += 1
+            atomic_end, can_dedupe = _plain_solution_span(lines, followup)
+            if not can_dedupe:
+                atomic_end = question_end
+        signature_end = atomic_end
+        has_answer = bool(
+            followup < atomic_end
+            and (
+                _ANSWER_CALLOUT_START_RE.match(lines[followup])
+                or _BODY_ANSWER_START_RE.match(lines[followup])
+            )
+        )
+        for candidate in range(followup, atomic_end):
+            if _BODY_ANSWER_START_RE.match(lines[candidate]):
+                has_answer = True
+            if has_answer and _BODY_EXPLANATION_START_RE.match(lines[candidate]):
+                signature_end = candidate
+                break
+        signature_lines = [*lines[index:question_end], *lines[followup:signature_end]]
         signature = re.sub(
             r"\s+",
             "",
             "\n".join(
                 re.sub(r"^\s*>\s?", "", line)
-                for line in lines[index:atomic_end]
+                for line in signature_lines
             ),
         )
-        if len(signature) < 24 or signature not in seen:
+        if not can_dedupe or len(signature) < 24 or signature not in seen:
             fixed.extend(lines[index:atomic_end])
-            if len(signature) >= 24:
+            if can_dedupe and len(signature) >= 24:
                 seen.add(signature)
         index = atomic_end
     return "\n".join(fixed)

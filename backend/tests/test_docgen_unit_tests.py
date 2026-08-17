@@ -41,6 +41,12 @@ def test_explanation_lines_remove_repeated_full_width_step_numbers() -> None:
     assert lines == ["先确定定义域", "再代入表达式。"]
 
 
+def test_explanation_lines_preserve_leading_decimal_value() -> None:
+    lines = unit_tests._markdown_explanation_lines("1.5 是代入公式后得到的临界值。")
+
+    assert lines == ["1.5 是代入公式后得到的临界值。"]
+
+
 @pytest.mark.anyio
 async def test_structured_unit_test_generation_uses_full_body_and_publishes_canonical_pairs() -> None:
     body = "# 函数\n\n## 定义与对应关系\n\n" + "完整正文。" * 5000
@@ -280,6 +286,72 @@ def test_final_chapter_normalization_removes_duplicate_step_numbers() -> None:
     assert "。3." not in normalized
     assert "。4." not in normalized
     assert unit_test_structure_issues(normalized) == []
+
+
+def test_final_chapter_ignores_unit_test_heading_inside_fenced_code() -> None:
+    fence = "`" * 3
+    markdown = (
+        f"# Markdown 标题\n\n{fence}markdown\n"
+        "# 示例语法\n\n## 单元测试\n\n这只是代码示例。\n"
+        f"{fence}\n\n正文继续。"
+    )
+
+    normalized = _prepare_chapter_markdown(markdown, title="Markdown 标题")
+
+    assert (
+        f"{fence}markdown\n# 示例语法\n\n## 单元测试\n\n这只是代码示例。\n{fence}"
+        in normalized
+    )
+    assert "正文继续。" in normalized
+
+
+def test_strip_existing_unit_tests_preserves_fenced_markdown_example() -> None:
+    fence = "`" * 3
+    markdown = (
+        f"# 正文\n\n{fence}md\n## 单元测试\n\n示例内容。\n{fence}\n\n"
+        "## 单元测试\n\n需要移除的旧测试。"
+    )
+
+    stripped = strip_existing_unit_test_sections(markdown)
+
+    assert f"{fence}md\n## 单元测试\n\n示例内容。\n{fence}" in stripped
+    assert "需要移除的旧测试。" not in stripped
+
+    canonical_test = render_unit_test_markdown(
+        ChapterUnitTestSet(
+            items=[
+                ChapterUnitTestItem(
+                    target="Markdown 标题",
+                    stem="二级标题使用几个井号？",
+                    answer="两个井号。",
+                    basis="Markdown 二级标题以两个井号开头。",
+                )
+            ]
+        ),
+        title="Markdown 标题",
+        min_items=1,
+        fallback_targets=[],
+    )
+    published = append_unit_test_markdown(markdown, canonical_test)
+
+    assert f"{fence}md\n## 单元测试\n\n示例内容。\n{fence}" in published
+    assert published.count("## 单元测试") == 2
+    assert unit_test_structure_issues(published) == []
+
+
+def test_published_unit_test_normalizer_does_not_rewrite_question_number_pairs() -> None:
+    markdown = (
+        "# 数列\n\n## 单元测试\n\n"
+        "> [!QUESTION]\n>\n> **Q01｜填空题｜基础｜考点：数列项**\n>\n"
+        "> （1）（1）的值是 ______。\n\n"
+        "> [!ANSWER]\n>\n> **答案**\n>\n> 1。\n>\n"
+        "> **解析步骤**\n>\n> 1. 根据数列定义判断。\n"
+    )
+
+    normalized = normalize_published_unit_test_sections(markdown)
+
+    assert "（1）（1）的值是 ______。" in normalized
+    assert "> 1. 根据数列定义判断。" in normalized
 
 
 def test_unit_test_contract_rejects_duplicate_answer_fields() -> None:

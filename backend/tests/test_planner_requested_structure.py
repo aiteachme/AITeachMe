@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import pytest
+
 from app.workflows.digest.planner.lib.requested_structure import (
     extract_explicit_chapter_titles,
     extract_explicit_course_title,
     extract_explicit_learning_topic,
     extract_requested_chapter_count,
+    requests_preserved_chapter_structure,
+    requests_preserved_knowledge_boundaries,
 )
 
 
@@ -72,3 +76,45 @@ def test_latest_explicit_chapter_count_overrides_an_earlier_count() -> None:
     prompt = "先生成三章课程。用户最新调整：内容太散，请改为只有两章。"
 
     assert extract_requested_chapter_count(prompt) == 2
+
+
+@pytest.mark.parametrize(
+    ("feedback", "expected"),
+    [
+        ("保持章节结构，只调整例题。", True),
+        ("不要调整章节结构，只增加练习。", True),
+        ("不要再调整章节结构。", True),
+        ("不得修改章节结构。", True),
+        ("禁止改变大纲结构。", True),
+        ("不能修改章节结构。", True),
+        ("章节结构不要修改。", True),
+        ("不需要保持章节结构，请重新拆分。", False),
+        ("不必再保持章节结构，请重新规划。", False),
+        ("不能保持章节结构，请重新拆分。", False),
+        ("无法维持章节结构，请重新规划。", False),
+        ("不要保留大纲结构，全部重做。", False),
+        ("请重新拆分章节结构。", False),
+    ],
+)
+def test_chapter_structure_preservation_respects_negation(feedback: str, expected: bool) -> None:
+    assert requests_preserved_chapter_structure(feedback) is expected
+
+
+@pytest.mark.parametrize(
+    ("feedback", "expected"),
+    [
+        ("保留知识点边界，只调整讲解顺序。", True),
+        ("不要修改知识点范围。", True),
+        ("不要继续修改知识点范围。", True),
+        ("不得增删知识点。", True),
+        ("禁止改变知识边界。", True),
+        ("勿再修改知识范围。", True),
+        ("知识边界保持不变。", True),
+        ("不保留知识边界，请重新规划。", False),
+        ("禁止保留知识边界，请重新规划。", False),
+        ("无需维持知识点范围。", False),
+        ("请扩展知识点范围。", False),
+    ],
+)
+def test_knowledge_boundary_preservation_respects_negation(feedback: str, expected: bool) -> None:
+    assert requests_preserved_knowledge_boundaries(feedback) is expected

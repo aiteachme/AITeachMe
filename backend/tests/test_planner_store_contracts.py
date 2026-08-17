@@ -502,6 +502,99 @@ def test_save_planner_result_persists_diagnosis_draft_before_plan(managed_planne
     assert result["planner_turns"][-1]["plan_json"]["planner_stage"] == "diagnosis"
 
 
+def test_revision_prompt_survives_refreshed_diagnosis_round(
+    managed_planner_session: Session,
+) -> None:
+    _seed_course_and_files(managed_planner_session)
+    planner_store.prepare_planner_run(
+        {
+            "planner_operation": "create",
+            "planner_session_id": "planner-refresh-diagnosis",
+            "course_id": COURSE_ID,
+            "user_id": USER_ID,
+            "requested_file_ids": ["file-ready"],
+            "user_prompt": "请生成四章线性代数课程。",
+            "digest_mode": "sprint",
+        }
+    )
+    initial_plan = _plan()
+    initial_plan["chapters"] = [
+        {
+            "chapter_index": index,
+            "title": f"线性代数模块 {index}",
+            "objective": f"掌握模块 {index} 的核心内容。",
+            "required_elements": [f"模块 {index} 概念", f"模块 {index} 练习"],
+            "writing_instructions": "先讲概念，再安排练习。",
+        }
+        for index in range(1, 5)
+    ]
+    initial_plan["build_constraints"] = {
+        "min_chapters": 4,
+        "max_chapters": 4,
+        "target_chapter_count": 4,
+    }
+    planner_store.save_planner_result(
+        {
+            "planner_operation": "create",
+            "planner_session_id": "planner-refresh-diagnosis",
+            "course_id": COURSE_ID,
+            "user_id": USER_ID,
+        },
+        plan=initial_plan,
+        material_context=_material_context(),
+    )
+
+    revision_feedback = "改为严格六章，并刷新前置诊断。"
+    planner_store.prepare_planner_run(
+        {
+            "planner_operation": "append",
+            "planner_session_id": "planner-refresh-diagnosis",
+            "course_id": COURSE_ID,
+            "user_id": USER_ID,
+            "feedback_message": revision_feedback,
+        }
+    )
+    diagnosis_plan = {
+        **_plan(),
+        "planner_stage": "diagnosis",
+        "plan": "",
+        "suggestion": "",
+        "chapters": [],
+        "build_constraints": {},
+        "diagnose_status": "pending",
+    }
+    planner_store.save_planner_result(
+        {
+            "planner_operation": "append",
+            "planner_session_id": "planner-refresh-diagnosis",
+            "course_id": COURSE_ID,
+            "user_id": USER_ID,
+            "feedback_message": revision_feedback,
+        },
+        plan=diagnosis_plan,
+        material_context=_material_context(),
+    )
+
+    record = managed_planner_session.get(ChatSession, "planner-refresh-diagnosis")
+    assert record is not None
+    assert record.meta_json["user_prompt"] == (
+        "请生成四章线性代数课程。\n"
+        "用户最新调整：改为严格六章，并刷新前置诊断。"
+    )
+
+    next_round = planner_store.prepare_planner_run(
+        {
+            "planner_operation": "append",
+            "planner_session_id": "planner-refresh-diagnosis",
+            "course_id": COURSE_ID,
+            "user_id": USER_ID,
+            "feedback_message": "前置诊断选择：诊断问题：选项 A",
+        }
+    )
+
+    assert revision_feedback in next_round["user_prompt"]
+
+
 def test_create_operation_reuses_course_planner_session(managed_planner_session: Session) -> None:
     _seed_course_and_files(managed_planner_session)
     planner_store.prepare_planner_run(

@@ -419,7 +419,7 @@ def _plan_preview_payload(state: BuildPlannerState, payload: dict[str, Any]) -> 
     return {
         "course_id": state.get("course_id", ""),
         "selected_file_ids": list(state.get("selected_file_ids") or state.get("requested_file_ids") or []),
-        "user_prompt": state.get("user_prompt") or latest_plan.get("user_prompt") or "",
+        "user_prompt": payload.get("user_prompt") or state.get("user_prompt") or latest_plan.get("user_prompt") or "",
         "digest_mode": state.get("digest_mode") or latest_plan.get("digest_mode") or "systematic",
         "planning_note": planning_note,
         "course_name": str(payload.get("course_name") or latest_plan.get("course_name") or ""),
@@ -681,9 +681,13 @@ def build_compose_planner_draft_node(*, context: WorkflowContext):
             try:
                 material_context = state["material_context"]
                 latest_plan = dict(state.get("latest_plan") or {})
+                effective_request_text = compose_effective_planner_request_text(
+                    state.get("user_prompt") or latest_plan.get("user_prompt") or "",
+                    state.get("feedback_message") or "",
+                )
                 diagnosis_messages = build_planner_diagnosis_messages(
                     course_name=_course_for_prompt(state),
-                    user_prompt=state.get("user_prompt") or latest_plan.get("user_prompt") or "",
+                    user_prompt=effective_request_text,
                     digest_mode=(
                         state.get("digest_mode")
                         or latest_plan.get("digest_mode")
@@ -753,7 +757,7 @@ def build_compose_planner_draft_node(*, context: WorkflowContext):
             draft_payload = normalize_planner_diagnosis_draft(
                 diagnosis_payload,
                 course_id=state["course_id"],
-                user_prompt=state.get("user_prompt") or latest_plan.get("user_prompt") or "",
+                user_prompt=effective_request_text,
                 requested_digest_mode=digest_mode,
                 shared_inputs=material_context,
                 latest_plan=latest_plan or None,

@@ -1286,6 +1286,8 @@ def _looks_like_markdown_boundary_inside_fence(line: str, *, language: str) -> b
     stripped = str(line or "").strip()
     if not stripped:
         return False
+    if language in {"markdown", "md"}:
+        return False
     if re.match(r"^#{2,6}\s+\S", stripped):
         return True
     if re.match(rf"^\[!(?:{CALLOUT_KINDS_PATTERN})\]", stripped, re.IGNORECASE):

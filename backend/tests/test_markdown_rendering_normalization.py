@@ -191,6 +191,54 @@ def test_normalize_supports_bare_answer_callout_without_duplicate_wrapper() -> N
     assert "> **解析：**循环边界包含 1。" in fixed
 
 
+def test_presentation_dedupe_removes_the_duplicate_question_solution_as_one_block() -> None:
+    raw = (
+        "> [!QUESTION]\n> 计算生命、宇宙及一切的答案。\n\n"
+        "答案：42\n\n"
+        "解析：这是第一份解析。\n\n"
+        "> [!QUESTION]\n> 计算生命、宇宙及一切的答案。\n\n"
+        "答案：42\n\n"
+        "解析：这是第二份解析。"
+    )
+
+    fixed = normalize_docgen_presentation(raw)
+
+    assert fixed.count("> [!QUESTION]") == 1
+    assert fixed.count("答案：42") == 1
+    assert "这是第一份解析" in fixed
+    assert "这是第二份解析" not in fixed
+
+
+def test_presentation_dedupe_preserves_ambiguous_prose_after_solution() -> None:
+    question = "> [!QUESTION]\n> 计算生命、宇宙及一切的答案。\n\n"
+    first = question + "答案：42\n\n解析：第一份解析。"
+    second = (
+        question
+        + "答案：42\n\n解析：第二份解析。\n\n"
+        + "这段是后续课程正文，不属于答案或解析。\n\n## 下一小节\n\n继续学习。"
+    )
+
+    fixed = normalize_docgen_presentation(f"{first}\n\n{second}")
+
+    assert fixed.count("> [!QUESTION]") == 2
+    assert "第二份解析。" in fixed
+    assert "这段是后续课程正文，不属于答案或解析。" in fixed
+
+
+def test_presentation_dedupe_preserves_same_question_with_different_multiline_answers() -> None:
+    question = "> [!QUESTION]\n> 计算生命、宇宙及一切的答案。\n\n"
+    first = question + "**答案：**\n\n42。\n\n解析：第一份解析。"
+    second = question + "**答案：**\n\n43。\n\n解析：第二份解析。"
+
+    fixed = normalize_docgen_presentation(f"{first}\n\n{second}")
+
+    assert fixed.count("> [!QUESTION]") == 2
+    assert "42。" in fixed
+    assert "43。" in fixed
+    assert "第一份解析。" in fixed
+    assert "第二份解析。" in fixed
+
+
 def test_normalize_repairs_strong_closer_padding_outside_code_fences() -> None:
     raw = (
         "**短练习： ** 下面代码有什么问题？行内字面量 `** keep **`。\n\n"

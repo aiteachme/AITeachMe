@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Iterator
+from contextlib import contextmanager
 
 import pytest
 from sqlalchemy.pool import StaticPool
@@ -1390,16 +1391,38 @@ def test_async_section_record_extraction_marks_failed_llm_without_inventing_rule
     monkeypatch.setattr(sync, "_max_parallel_extractions", lambda: 2)
     monkeypatch.setattr(sync, "_graph_llm_concurrency_cap", lambda: 2)
     markdown = "# Chapter\n\n## Parent\nParent body\n\n## Child\nChild body"
+    traces: list[dict[str, object]] = []
+    warnings: list[dict[str, object]] = []
+    original_logger = sync.logger
+
+    class CapturingLogger:
+        def warning(self, event: str, **kwargs) -> None:
+            warnings.append({"event": event, **kwargs})
+
+        def __getattr__(self, name: str):
+            return getattr(original_logger, name)
+
+    class FakeTraceRun:
+        def end(self, *, outputs=None, error=None) -> None:
+            traces.append({"outputs": outputs, "error": error})
+
+    @contextmanager
+    def fake_trace_substep(*_args, **_kwargs):
+        yield FakeTraceRun()
 
     async def fake_extract(task_index, chapter, **kwargs):
         if "Child" in chapter.title:
-            raise RuntimeError("boom")
+            raise RuntimeError(
+                "https://example.test/v1?key=top-secret input_value=CONFIDENTIAL_COURSE_TEXT"
+            )
         return _payload(
             unit=_unit(f"ku_{chapter.title.lower()}", chapter.title, chapter_index=kwargs["source_chapter_index"]),
             candidate_id="node",
         )
 
     monkeypatch.setattr(sync, "_extract_chapter_graph_items", fake_extract)
+    monkeypatch.setattr(sync, "trace_substep", fake_trace_substep)
+    monkeypatch.setattr(sync, "logger", CapturingLogger())
 
     records, diagnostics = asyncio.run(
         sync.extract_knowledge_graph_section_records_async(
@@ -1419,7 +1442,7 @@ def test_async_section_record_extraction_marks_failed_llm_without_inventing_rule
     assert records[1].payload.diagnostics["rule_fallback_attempt_count"] == 0
     assert records[1].payload.diagnostics["rule_fallback_success_count"] == 0
     assert records[1].error_type == "RuntimeError"
-    assert records[1].error == "boom"
+    assert records[1].error == "section_extraction_failed"
     assert records[1].payload.units == []
     assert diagnostics["prefetch_section_count"] == 2
     assert diagnostics["prefetch_failed_section_count"] == 1
@@ -1430,12 +1453,21 @@ def test_async_section_record_extraction_marks_failed_llm_without_inventing_rule
             "content_hash": records[1].content_hash,
             "source_chapter_index": records[1].source_chapter_index,
             "error_type": "RuntimeError",
-            "error_message": "boom",
+            "error_code": "section_extraction_failed",
         }
     ]
+    failed_trace = next(item for item in traces if item["outputs"]["status"] == "failed")
+    assert failed_trace["error"] == "RuntimeError: section_extraction_failed"
+    failed_warning = next(
+        item for item in warnings if item["event"] == "knowledge_docs_sync_section_extraction_failed"
+    )
+    assert failed_warning["error_code"] == "section_extraction_failed"
+    assert "error_message" not in failed_warning
+    assert "top-secret" not in str(warnings)
+    assert "CONFIDENTIAL_COURSE_TEXT" not in str(warnings)
 
 
-def test_section_failure_detail_is_bounded_and_redacts_credentials() -> None:
+def test_section_failure_detail_excludes_raw_exception_message() -> None:
     chapter = extract_markdown_chapter_chunks("# Chapter\n\nBody", max_body_chars=None)[0]
     task = sync._ExtractionTask(
         task_index=1,
@@ -1447,13 +1479,14 @@ def test_section_failure_detail_is_bounded_and_redacts_credentials() -> None:
 
     detail = sync._failed_section_detail(
         task,
-        RuntimeError("API_KEY=top-secret token bearer-value " + "x" * 500),
+        RuntimeError("https://example.test/v1?key=top-secret input_value=private-content"),
     )
 
     assert detail["error_type"] == "RuntimeError"
-    assert "top-secret" not in str(detail["error_message"])
-    assert "bearer-value" not in str(detail["error_message"])
-    assert len(str(detail["error_message"])) <= 300
+    assert detail["error_code"] == "section_extraction_failed"
+    assert "error_message" not in detail
+    assert "top-secret" not in str(detail)
+    assert "private-content" not in str(detail)
 
 
 def test_section_record_prefetch_reuses_exact_key_but_reextracts_changed_title(

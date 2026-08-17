@@ -88,8 +88,8 @@ _ASYNC_BRIDGE_LOCK = threading.Lock()
 _ASYNC_BRIDGE_READY = threading.Event()
 _ASYNC_BRIDGE_LOOP: asyncio.AbstractEventLoop | None = None
 _ASYNC_BRIDGE_THREAD: threading.Thread | None = None
-_MAX_SECTION_ERROR_CHARS = 300
 _MAX_FAILED_SECTION_DETAILS = 20
+_SECTION_EXTRACTION_ERROR_CODE = "section_extraction_failed"
 
 logger = structlog.get_logger()
 
@@ -2207,32 +2207,29 @@ def _section_record_for_task(
     )
 
 
-def _bounded_section_error_message(exc: BaseException) -> str:
-    message = re.sub(r"\s+", " ", str(exc or "")).strip()
-    message = re.sub(
-        r"(?i)\b(api[_ -]?key|authorization|bearer|token|secret)\b\s*[:=]?\s*\S+",
-        r"\1=[redacted]",
-        message,
-    )
-    message = re.sub(r"(?i)data:[^\s]+", "data:[redacted]", message)
-    return message[:_MAX_SECTION_ERROR_CHARS]
-
-
 def _failed_section_detail(task: _ExtractionTask, exc: BaseException) -> dict[str, object]:
     return {
         "section_key": _section_task_key(task),
         "content_hash": _section_task_content_hash(task),
         "source_chapter_index": task.source_chapter_index,
         "error_type": type(exc).__name__,
-        "error_message": _bounded_section_error_message(exc),
+        "error_code": _SECTION_EXTRACTION_ERROR_CODE,
     }
 
 
-def _end_section_trace(trace_run: object | None, *, outputs: dict[str, object]) -> None:
+def _end_section_trace(
+    trace_run: object | None,
+    *,
+    outputs: dict[str, object],
+    error: str | None = None,
+) -> None:
     if trace_run is None:
         return
     try:
-        trace_run.end(outputs=outputs)  # type: ignore[attr-defined]
+        if error:
+            trace_run.end(outputs=outputs, error=error)  # type: ignore[attr-defined]
+        else:
+            trace_run.end(outputs=outputs)  # type: ignore[attr-defined]
     except Exception as exc:
         logger.warning(
             "knowledge_docs_sync_section_trace_end_failed",
@@ -2353,6 +2350,7 @@ async def _collect_section_payloads_async(
                 )
                 return payload
 
+            trace_error: str | None = None
             try:
                 payload = await _extract_chapter_graph_items(
                     task.task_index,
@@ -2381,19 +2379,20 @@ async def _collect_section_payloads_async(
                     section_key=section_key,
                     content_hash=content_hash,
                     error_type=type(exc).__name__,
-                    error_message=failure_detail["error_message"],
+                    error_code=_SECTION_EXTRACTION_ERROR_CODE,
                 )
                 payload = _empty_failed_section_payload(task, exc)
                 record = _section_record_for_task(
                     task,
                     payload=payload,
                     error_type=type(exc).__name__,
-                    error=str(failure_detail["error_message"]),
+                    error=_SECTION_EXTRACTION_ERROR_CODE,
                 )
                 trace_outputs = {"status": "failed", **failure_detail}
+                trace_error = f"{type(exc).__name__}: {_SECTION_EXTRACTION_ERROR_CODE}"
             if callable(on_record):
                 on_record(record)
-            _end_section_trace(trace_run, outputs=trace_outputs)
+            _end_section_trace(trace_run, outputs=trace_outputs, error=trace_error)
             return payload
 
     payloads = await run_llm_tasks(

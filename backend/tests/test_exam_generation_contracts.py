@@ -337,7 +337,9 @@ def test_exam_response_helpers_include_generated_items_and_preview_payloads() ->
                         "stem": "Which matrix is invertible?",
                         "options": ["A", "B", "C", "D"],
                         "correct_answer": "A",
+                        "correct_indices": [0],
                         "explanation": "Because determinant is non-zero.",
+                        "option_judgements": [True, False, False, False],
                         "knowledge_unit_refs": [{"knowledge_unit_id": 1, "coverage_weight": 0.8}],
                     }
                 ],
@@ -372,10 +374,14 @@ def test_exam_response_helpers_include_generated_items_and_preview_payloads() ->
     assert payload["failed_question_count"] == 1
     assert payload["stage"] == "generating"
     assert "correct_answer" not in payload["generated_questions"][0]
+    assert "correct_indices" not in payload["generated_questions"][0]
     assert "explanation" not in payload["generated_questions"][0]
+    assert "option_judgements" not in payload["generated_questions"][0]
     public_context = payload["selection_context"]
     assert "correct_answer" not in public_context["generated_questions"][0]
+    assert "correct_indices" not in public_context["generated_questions"][0]
     assert "explanation" not in public_context["generated_questions"][0]
+    assert "option_judgements" not in public_context["generated_questions"][0]
     assert responses[0].id == -1_000_001
     assert responses[0].knowledge_unit_links[0].knowledge_unit_name == "Matrices"
     assert responses[0].knowledge_unit_links[0].mastery_score == 0.625
@@ -387,7 +393,9 @@ def test_exam_response_helpers_include_generated_items_and_preview_payloads() ->
     paper.status = "graded"
     graded_payload = exams_api._paper_generation_event_payload(paper)
     assert graded_payload["generated_questions"][0]["correct_answer"] == "A"
+    assert graded_payload["generated_questions"][0]["correct_indices"] == [0]
     assert graded_payload["generated_questions"][0]["explanation"] == "Because determinant is non-zero."
+    assert graded_payload["generated_questions"][0]["option_judgements"] == [True, False, False, False]
 
 
 def test_question_template_response_tolerates_invalid_option_json() -> None:
