@@ -1125,6 +1125,7 @@ def save_planner_result(
             record,
             latest_plan=persisted_plan,
             latest_summary=str(persisted_plan.get("plan") or ("前置诊断待完成" if _is_diagnosis_draft(persisted_plan) else "")),
+            user_prompt=effective_user_prompt,
             digest_mode=str(persisted_plan.get("digest_mode") or meta.get("digest_mode") or ""),
             model_override=normalize_runtime_model_override(state.get("model_override")),
             planner_status="draft",

@@ -21,7 +21,9 @@ _UNIT_TEST_TABLE_HEADER_RE = re.compile(
 )
 _UNIT_TEST_HTML_BLOCK_RE = re.compile(r'(?ms)<div\s+class="atm-unit-tests"[^>]*>.*?(?=^##\s+|\Z)')
 _STANDARD_UNIT_TEST_HEADING_RE = re.compile(r"(?m)^##\s+单元测试\s*$")
+_ANY_UNIT_TEST_HEADING_RE = re.compile(r"(?m)^##\s+[^\n]*单元测试[^\n]*$")
 _H3_BODY_TEST_OR_RECAP_HEADING_RE = re.compile(r"(?ms)^###\s+(?P<title>[^\n]+?)\s*\n.*?(?=^#{2,3}\s+|\Z)")
+_FENCE_OPEN_RE = re.compile(r"^[ \t]{0,3}(?P<marker>`{3,}|~{3,})")
 
 _QUESTION_TYPE_ALIASES: dict[str, str] = {
     "判断": "概念判断",
@@ -97,7 +99,7 @@ _LITERAL_LINE_BREAK_RE = re.compile(r"(?:\\r\\n|\\n)(?![A-Za-z])")
 _DISPLAY_MATH_SPAN_RE = re.compile(
     r"\$\$(?P<dollar>[\s\S]*?)\$\$|\\\[(?P<bracket>[\s\S]*?)\\\]"
 )
-_STEP_NUMBER_TOKEN = r"(?:\d+[.、)]|[（(]\d+[）)])"
+_STEP_NUMBER_TOKEN = r"(?:\d+\.(?!\d)|\d+[、)]|[（(]\d+[）)])"
 _DUPLICATE_STEP_NUMBER_RE = re.compile(
     rf"(?P<prefix>^|[\s。；;！？!?])(?P<first>{_STEP_NUMBER_TOKEN})\s*"
     rf"(?P<second>{_STEP_NUMBER_TOKEN})(?=\s*\S)"
@@ -261,15 +263,66 @@ class ChapterUnitTestSet(DocGenBaseModel):
         return value if isinstance(value, list) else []
 
 
+def _protect_fenced_code_blocks(markdown: str) -> tuple[str, dict[str, str]]:
+    lines = str(markdown or "").splitlines(keepends=True)
+    protected: list[str] = []
+    blocks: dict[str, str] = {}
+    index = 0
+    while index < len(lines):
+        opening = _FENCE_OPEN_RE.match(lines[index])
+        if opening is None:
+            protected.append(lines[index])
+            index += 1
+            continue
+
+        marker = opening.group("marker")
+        closing = re.compile(
+            rf"^[ \t]{{0,3}}{re.escape(marker[0])}{{{len(marker)},}}[ \t]*(?:\n)?$"
+        )
+        block_start = index
+        index += 1
+        while index < len(lines):
+            if closing.match(lines[index]):
+                index += 1
+                break
+            index += 1
+        block = "".join(lines[block_start:index])
+        trailing_newline = "\n" if block.endswith("\n") else ""
+        if trailing_newline:
+            block = block[:-1]
+        token = f"<!--ATM_FENCED_CODE_BLOCK_{len(blocks)}-->"
+        blocks[token] = block
+        protected.append(token + trailing_newline)
+    return "".join(protected), blocks
+
+
+def _restore_fenced_code_blocks(markdown: str, blocks: dict[str, str]) -> str:
+    restored = markdown
+    for token, block in blocks.items():
+        restored = restored.replace(token, block)
+    return restored
+
+
+def has_unit_test_heading(markdown: str) -> bool:
+    """Return whether prose outside fenced code contains an H2 unit-test heading."""
+
+    visible, _ = _protect_fenced_code_blocks(
+        str(markdown or "").replace("\r\n", "\n").replace("\r", "\n")
+    )
+    return _ANY_UNIT_TEST_HEADING_RE.search(visible) is not None
+
+
 def strip_existing_unit_test_sections(markdown: str) -> str:
     """Remove unit-test H2 blocks that the body writer may have generated."""
 
     text = str(markdown or "").replace("\r\n", "\n").replace("\r", "\n")
+    text, fenced_code_blocks = _protect_fenced_code_blocks(text)
     cleaned = _BODY_TEST_OR_RECAP_HEADING_RE.sub(
         lambda match: "" if _is_body_generated_test_or_recap_heading(match.group("title")) else match.group(0),
         text,
     )
-    return re.sub(r"\n{3,}", "\n\n", cleaned).strip() + "\n"
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip() + "\n"
+    return _restore_fenced_code_blocks(cleaned, fenced_code_blocks)
 
 
 def _markdown_text(value: str, *, limit: int | None = None) -> str:
@@ -298,7 +351,10 @@ def _markdown_explanation_lines(value: str, *, limit: int = 520) -> list[str]:
         for part in re.split(r"[；;]\s*|(?<=[。！？!?])\s+", text)
         if part.strip()
     ]
-    return parts if len(parts) > 1 else [text]
+    if len(parts) > 1:
+        return parts
+    without_leading_number = _LEADING_STEP_NUMBER_RE.sub("", text).strip()
+    return [without_leading_number or text]
 
 
 def _normalize_duplicate_step_numbers(value: str) -> str:
@@ -414,7 +470,10 @@ def unit_test_structure_issues(markdown: str) -> list[str]:
     semantics or attempt to reconstruct malformed questions locally.
     """
 
-    section_lines, issues = _unit_test_section(markdown)
+    visible_markdown, _ = _protect_fenced_code_blocks(
+        str(markdown or "").replace("\r\n", "\n").replace("\r", "\n")
+    )
+    section_lines, issues = _unit_test_section(visible_markdown)
     if issues:
         return issues
 
@@ -748,6 +807,7 @@ def normalize_published_unit_test_sections(markdown: str) -> str:
     """Keep the published chapter to one standard final ``## 单元测试`` section."""
 
     text = str(markdown or "").replace("\r\n", "\n").replace("\r", "\n")
+    text, fenced_code_blocks = _protect_fenced_code_blocks(text)
     matches = list(_BODY_TEST_OR_RECAP_HEADING_RE.finditer(text))
     kept_standard_start = -1
     for match in reversed(matches):
@@ -792,11 +852,11 @@ def normalize_published_unit_test_sections(markdown: str) -> str:
     standard_matches = list(_STANDARD_UNIT_TEST_HEADING_RE.finditer(cleaned))
     if standard_matches:
         unit_start = standard_matches[-1].start()
-        cleaned = cleaned[:unit_start] + _normalize_duplicate_step_numbers(cleaned[unit_start:])
         cleaned = cleaned[:unit_start] + _normalize_published_explanation_steps(
             cleaned[unit_start:]
         )
-    return re.sub(r"\n{3,}", "\n\n", cleaned).strip() + "\n"
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip() + "\n"
+    return _restore_fenced_code_blocks(cleaned, fenced_code_blocks)
 
 
 __all__ = [
@@ -804,6 +864,7 @@ __all__ = [
     "ChapterUnitTestItem",
     "ChapterUnitTestSet",
     "append_unit_test_markdown",
+    "has_unit_test_heading",
     "normalize_published_unit_test_sections",
     "render_unit_test_markdown",
     "strip_existing_unit_test_sections",

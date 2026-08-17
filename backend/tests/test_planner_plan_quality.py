@@ -89,6 +89,60 @@ def test_planner_diagnosis_generation_decision(
     assert plan_draft_node._should_generate_diagnosis_first(state) is expected
 
 
+def test_refreshed_diagnosis_uses_current_revision_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+    questions = [
+        {
+            "question": f"诊断问题 {index}",
+            "purpose": "用于调整正式方案。",
+            "options": ["选项 A", "选项 B", "选项 C", "选项 D"],
+        }
+        for index in range(1, 5)
+    ]
+
+    def fake_build_messages(**kwargs):
+        captured["user_prompt"] = kwargs["user_prompt"]
+        return [{"role": "user", "content": "diagnosis"}]
+
+    async def fake_stream(_state, *, messages):
+        captured["messages"] = messages
+        return "diagnosis-output"
+
+    async def fake_emit_event(*_args, **_kwargs) -> None:
+        return None
+
+    monkeypatch.setattr(plan_draft_node, "build_planner_diagnosis_messages", fake_build_messages)
+    monkeypatch.setattr(plan_draft_node, "_stream_diagnosis_response", fake_stream)
+    monkeypatch.setattr(plan_draft_node, "_parse_generated_course_name", lambda _output: "高数六章精讲")
+    monkeypatch.setattr(plan_draft_node, "_parse_diagnosis_response", lambda _output: questions)
+    monkeypatch.setattr(plan_draft_node, "emit_planner_event", fake_emit_event)
+
+    node = plan_draft_node.build_compose_planner_draft_node(context=object())
+    result = asyncio.run(
+        node(
+            {
+                "course_id": "course_test",
+                "planner_session_id": "session_test",
+                "planner_operation": "append",
+                "refresh_diagnosis": True,
+                "material_context": _material_context(),
+                "planning_note": "原方案为四章。",
+                "material_note": "没有上传资料。",
+                "user_prompt": "请生成四章高数课程。",
+                "feedback_message": "改为严格六章，并刷新前置诊断。",
+                "digest_mode": "sprint",
+                "message_history": [],
+                "latest_plan": {"course_name": "高数四章", "user_prompt": "请生成四章高数课程。"},
+            }
+        )
+    )
+
+    effective_request = "请生成四章高数课程。\n用户最新调整：改为严格六章，并刷新前置诊断。"
+    assert captured["user_prompt"] == effective_request
+    assert captured["messages"] == [{"role": "user", "content": "diagnosis"}]
+    assert result["build_plan_draft"]["user_prompt"] == effective_request.replace("\n", " ")
+
+
 def test_planner_plan_contract_is_lightweight_and_leaves_execution_strategy_to_docgen() -> None:
     messages = build_planner_stream_messages(
         course_name="高等数学",

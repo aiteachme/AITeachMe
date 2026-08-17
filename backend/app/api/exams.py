@@ -1402,7 +1402,9 @@ def _public_generated_question_payload(
     payload = dict(raw_item)
     if not reveal_solutions:
         payload.pop("correct_answer", None)
+        payload.pop("correct_indices", None)
         payload.pop("explanation", None)
+        payload.pop("option_judgements", None)
     return payload
 
 

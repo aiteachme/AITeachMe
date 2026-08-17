@@ -90,17 +90,31 @@ _CHAPTER_STRUCTURE_TARGET = (
     rf"(?:章节|大纲)(?:的)?(?:结构|顺序|划分|框架)|{_NUMBER_TOKEN}\s*章(?:的)?(?:结构|顺序|划分|框架)"
 )
 _KNOWLEDGE_BOUNDARY_TARGET = r"(?:知识点边界|知识边界|知识点范围|知识范围|覆盖范围)"
-_PRESERVE_PREFIX = r"(?:保持|保留|维持|沿用|原样保留)"
-_PRESERVE_SUFFIX = r"(?:保持不变|不变|不调整|不修改|原样保留)"
+_PRESERVE_PREFIX = r"(?:原样保留|保持|保留|维持|沿用)"
+_NEGATION_PREFIX = (
+    r"(?:(?:不(?:再)?(?:需要|必|用|要|得|可|应|允许|能|准|许)?|"
+    r"无需|无须|不用|勿|别|禁止|严禁|避免|无法|没法)"
+    r"(?:再|继续)?)\s*"
+)
+_NO_CHANGE_ACTION = rf"{_NEGATION_PREFIX}(?:增删|调整|改变|修改)"
+_PRESERVE_SUFFIX = rf"(?:保持不变|不变|原样保留|{_NO_CHANGE_ACTION})"
 _PRESERVE_CHAPTER_STRUCTURE_PATTERNS = (
     re.compile(rf"{_PRESERVE_PREFIX}[^。；;\n]{{0,20}}(?:{_CHAPTER_STRUCTURE_TARGET})"),
     re.compile(rf"(?:{_CHAPTER_STRUCTURE_TARGET})[^。；;\n]{{0,10}}{_PRESERVE_SUFFIX}"),
-    re.compile(r"不(?:增删|调整|改变|修改)[^。；;\n]{0,8}(?:章节|大纲)"),
+    re.compile(rf"{_NO_CHANGE_ACTION}[^。；;\n]{{0,8}}(?:{_CHAPTER_STRUCTURE_TARGET})"),
 )
 _PRESERVE_KNOWLEDGE_BOUNDARY_PATTERNS = (
     re.compile(rf"{_PRESERVE_PREFIX}[^。；;\n]{{0,24}}{_KNOWLEDGE_BOUNDARY_TARGET}"),
     re.compile(rf"{_KNOWLEDGE_BOUNDARY_TARGET}[^。；;\n]{{0,10}}{_PRESERVE_SUFFIX}"),
-    re.compile(r"不(?:增删|调整|改变|修改)[^。；;\n]{0,8}(?:知识点|覆盖范围)"),
+    re.compile(rf"{_NO_CHANGE_ACTION}[^。；;\n]{{0,8}}(?:知识点|{_KNOWLEDGE_BOUNDARY_TARGET})"),
+)
+_NEGATED_CHAPTER_PRESERVATION_PATTERNS = (
+    re.compile(rf"{_NEGATION_PREFIX}{_PRESERVE_PREFIX}[^。；;\n]{{0,20}}(?:{_CHAPTER_STRUCTURE_TARGET})"),
+    re.compile(rf"(?:{_CHAPTER_STRUCTURE_TARGET})[^。；;\n]{{0,10}}{_NEGATION_PREFIX}{_PRESERVE_PREFIX}"),
+)
+_NEGATED_KNOWLEDGE_PRESERVATION_PATTERNS = (
+    re.compile(rf"{_NEGATION_PREFIX}{_PRESERVE_PREFIX}[^。；;\n]{{0,24}}{_KNOWLEDGE_BOUNDARY_TARGET}"),
+    re.compile(rf"{_KNOWLEDGE_BOUNDARY_TARGET}[^。；;\n]{{0,10}}{_NEGATION_PREFIX}{_PRESERVE_PREFIX}"),
 )
 
 
@@ -137,12 +151,36 @@ def resolve_planner_revision_feedback(
 
 def requests_preserved_chapter_structure(value: Any) -> bool:
     text = _text(value)
-    return bool(text and any(pattern.search(text) for pattern in _PRESERVE_CHAPTER_STRUCTURE_PATTERNS))
+    return _has_non_negated_preservation_request(
+        text,
+        patterns=_PRESERVE_CHAPTER_STRUCTURE_PATTERNS,
+        negated_patterns=_NEGATED_CHAPTER_PRESERVATION_PATTERNS,
+    )
 
 
 def requests_preserved_knowledge_boundaries(value: Any) -> bool:
     text = _text(value)
-    return bool(text and any(pattern.search(text) for pattern in _PRESERVE_KNOWLEDGE_BOUNDARY_PATTERNS))
+    return _has_non_negated_preservation_request(
+        text,
+        patterns=_PRESERVE_KNOWLEDGE_BOUNDARY_PATTERNS,
+        negated_patterns=_NEGATED_KNOWLEDGE_PRESERVATION_PATTERNS,
+    )
+
+
+def _has_non_negated_preservation_request(
+    text: str,
+    *,
+    patterns: tuple[re.Pattern[str], ...],
+    negated_patterns: tuple[re.Pattern[str], ...],
+) -> bool:
+    if not text:
+        return False
+    negated_spans = [match.span() for pattern in negated_patterns for match in pattern.finditer(text)]
+    for pattern in patterns:
+        for match in pattern.finditer(text):
+            if not any(match.start() < end and start < match.end() for start, end in negated_spans):
+                return True
+    return False
 
 
 def _parse_small_number(value: str) -> int | None:

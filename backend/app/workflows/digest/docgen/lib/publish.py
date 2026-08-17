@@ -40,6 +40,7 @@ from app.workflows.digest.docgen.lib.presentation_policy import (
 from app.workflows.digest.docgen.lib.asset_requests import strip_asset_requests
 from app.workflows.digest.docgen.lib.public_markdown import sanitize_public_markdown
 from app.workflows.digest.docgen.lib.unit_tests import (
+    has_unit_test_heading,
     normalize_published_unit_test_sections,
     unit_test_structure_issues,
 )
@@ -54,9 +55,6 @@ class StagedKnowledgeDocs(BaseModel):
 
     merged_markdown: str = ""
     built_paths: list[tuple[int, str]] = Field(default_factory=list)
-
-
-_UNIT_TEST_HEADING_RE = re.compile(r"(?m)^##\s+[^\n]*单元测试[^\n]*$")
 
 
 def _chapter_merge_score(chapter: dict) -> tuple[int, int, int, int]:
@@ -88,7 +86,7 @@ def _prepare_chapter_markdown(
     digest_mode: str = "",
     focus_items: list[str] | None = None,
 ) -> str:
-    had_unit_test_section = _UNIT_TEST_HEADING_RE.search(str(markdown or "")) is not None
+    had_unit_test_section = has_unit_test_heading(markdown)
     markdown = strip_asset_requests(markdown)
     cleaned = normalize_docgen_presentation(
         markdown,
@@ -107,7 +105,7 @@ def _prepare_chapter_markdown(
     structured = strip_asset_requests(structured)
     structured = normalize_published_unit_test_sections(structured)
     finalized = _finalize_markdown_rendering(structured)
-    if had_unit_test_section or _UNIT_TEST_HEADING_RE.search(finalized) is not None:
+    if had_unit_test_section or has_unit_test_heading(finalized):
         structure_issues = unit_test_structure_issues(finalized)
         if structure_issues:
             chapter_label = str(title or "").strip() or "未命名章节"
