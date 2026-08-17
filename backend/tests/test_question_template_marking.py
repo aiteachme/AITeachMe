@@ -338,6 +338,92 @@ async def test_ungraded_exam_locks_template_solutions_until_grading_completes(
         assert history.data[0].correct_answer == "2x"
 
 
+def test_expired_hidden_prewarm_does_not_lock_question_templates() -> None:
+    engine = _engine()
+    with Session(engine) as session:
+        templates = [
+            QuestionTemplate(
+                course_id="course_math00000000",
+                question_type="fill_blank",
+                difficulty="medium",
+                stem=f"Template {index}",
+                stem_hash=f"stem-hash-prewarm-lock-{index}",
+                answer=str(index),
+                explanation="Explanation",
+            )
+            for index in range(3)
+        ]
+        session.add_all(templates)
+        session.commit()
+        for template in templates:
+            session.refresh(template)
+
+        now = utcnow()
+        papers = [
+            ExamPaper(
+                course_id="course_math00000000",
+                user_id="local",
+                exam_mode="web_practice",
+                status="ready",
+                visibility="hidden",
+                generation_origin="prewarm",
+                total_items=1,
+                expires_at=now - timedelta(minutes=1),
+            ),
+            ExamPaper(
+                course_id="course_math00000000",
+                user_id="local",
+                exam_mode="web_practice",
+                status="ready",
+                visibility="hidden",
+                generation_origin="prewarm",
+                total_items=1,
+                expires_at=now + timedelta(minutes=5),
+            ),
+            ExamPaper(
+                course_id="course_math00000000",
+                user_id="local",
+                exam_mode="web_practice",
+                status="ready",
+                visibility="visible",
+                generation_origin="prewarm",
+                total_items=1,
+                expires_at=now - timedelta(minutes=1),
+            ),
+        ]
+        session.add_all(papers)
+        session.commit()
+        for paper in papers:
+            session.refresh(paper)
+        session.add_all(
+            [
+                ExamPaperItem(
+                    exam_paper_id=int(paper.id or 0),
+                    question_template_id=int(template.id or 0),
+                    item_order=1,
+                    stem_snapshot=template.stem,
+                    answer_snapshot=template.answer,
+                    explanation_snapshot=template.explanation,
+                    difficulty=template.difficulty,
+                    question_type=template.question_type,
+                )
+                for paper, template in zip(papers, templates, strict=True)
+            ]
+        )
+        session.commit()
+
+        locked_ids = exams_api._locked_question_template_ids(
+            session,
+            course_id="course_math00000000",
+            user_id="local",
+            template_ids=[int(template.id or 0) for template in templates],
+        )
+
+        assert int(templates[0].id or 0) not in locked_ids
+        assert int(templates[1].id or 0) in locked_ids
+        assert int(templates[2].id or 0) in locked_ids
+
+
 def test_wrong_question_template_ids_filter_visible_user_attempts() -> None:
     engine = _engine()
     with Session(engine) as session:

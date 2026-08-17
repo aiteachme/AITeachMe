@@ -43,6 +43,7 @@ RELATION_LABELS = {
 }
 
 _INLINE_CODE_SPAN_RE = re.compile(r"(?P<ticks>`+)(?P<body>[^`\n]*?)(?P=ticks)")
+_FENCE_OPEN_RE = re.compile(r"(?P<marker>`{3,}|~{3,})")
 _TABLE_SEPARATOR_CELL_RE = re.compile(r"\s*:?-{3,}:?\s*")
 _UNPAIRED_HIGHLIGHT_ISSUE = "Markdown 高亮标记 == 未成对闭合。"
 _UNCONTROLLED_HTML_ISSUE = "Markdown 正文包含不受控 HTML 标签。"
@@ -127,13 +128,33 @@ def _protect_docgen_table_inline_code(markdown: str) -> str:
     return "\n".join(fixed)
 
 
+def _advance_fence_state(
+    line: str,
+    state: tuple[str, int] | None,
+) -> tuple[tuple[str, int] | None, bool]:
+    boundary = str(line or "").strip()
+    while boundary.startswith(">"):
+        boundary = boundary[1:].lstrip()
+
+    if state is None:
+        opening = _FENCE_OPEN_RE.match(boundary)
+        if opening is None:
+            return None, False
+        marker = opening.group("marker")
+        return (marker[0], len(marker)), True
+
+    marker, length = state
+    if re.fullmatch(rf"{re.escape(marker)}{{{length},}}", boundary):
+        return None, True
+    return state, False
+
+
 def _normalize_heading_math_artifacts(markdown: str) -> str:
     fixed: list[str] = []
-    in_fence = False
+    fence_state: tuple[str, int] | None = None
     for line in str(markdown or "").splitlines():
-        if line.strip().startswith("```"):
-            in_fence = not in_fence
-        if in_fence or not re.match(r"^\s*#{1,6}\s+", line):
+        fence_state, is_fence_boundary = _advance_fence_state(line, fence_state)
+        if is_fence_boundary or fence_state is not None or not re.match(r"^\s*#{1,6}\s+", line):
             fixed.append(line)
             continue
 
@@ -160,14 +181,13 @@ def _normalize_inline_math_connectors(markdown: str) -> str:
         return " 且 ".join(f"${part}$" for part in parts)
 
     fixed: list[str] = []
-    in_fence = False
+    fence_state: tuple[str, int] | None = None
     for line in str(markdown or "").splitlines():
-        boundary = line.strip().removeprefix(">").strip()
-        if boundary.startswith("```"):
-            in_fence = not in_fence
+        fence_state, is_fence_boundary = _advance_fence_state(line, fence_state)
+        if is_fence_boundary:
             fixed.append(line)
             continue
-        if in_fence:
+        if fence_state is not None:
             fixed.append(line)
             continue
 

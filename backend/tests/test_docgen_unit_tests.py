@@ -249,6 +249,31 @@ def test_unit_test_renderer_normalizes_model_format_artifacts() -> None:
     assert unit_test_structure_issues(normalized) == []
 
 
+def test_unit_test_renderer_preserves_newline_escapes_in_python_strings() -> None:
+    markdown = render_unit_test_markdown(
+        ChapterUnitTestSet(
+            chapter_index=1,
+            items=[
+                ChapterUnitTestItem(
+                    type="短答题",
+                    difficulty="基础",
+                    target="Python 换行转义",
+                    stem=r'说明 print("\n") 与 `print("\n")` 的输出效果。',
+                    answer=r'两种写法都会输出字符串字面量 "\n" 表示的换行。',
+                    basis=r'引号内的 "\n" 是 Python 换行转义，不能当作文档格式换行。',
+                )
+            ],
+        ),
+        title="Python 字符串",
+        min_items=1,
+        fallback_targets=[],
+    )
+
+    assert markdown.count(r'print("\n")') == 2
+    assert markdown.count(r'"\n"') >= 4
+    assert 'print(" ")' not in markdown
+
+
 def test_final_chapter_normalization_rejects_question_content_outside_callout() -> None:
     malformed = (
         "# 定积分\n\n## 单元测试\n\n"
