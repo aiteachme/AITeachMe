@@ -128,6 +128,8 @@ RECENT_EXAM_STEM_AVOID_LIMIT = 18
 _SYNC_EDGE_MARKER_PREFIX = "markdown_anchor_sync:"
 EXAM_PREWARM_CONFIG_VERSION = 2
 EXAM_PREWARM_TTL_DAYS = 2
+_SOLUTION_REVEAL_EXAM_STATUSES = frozenset({"graded", "archived"})
+_SOLUTION_UNLOCKED_EXAM_STATUSES = ("graded", "archived", "failed")
 DEFAULT_AUTO_PREWARM_EXAM_MODE = "web_practice"
 DEFAULT_AUTO_PREWARM_QUESTION_COUNT = 10
 EXAM_GENERATION_STALE_AFTER = timedelta(minutes=20)
@@ -1392,6 +1394,78 @@ def _exam_generation_progress_for_response(
     )
 
 
+def _public_generated_question_payload(
+    raw_item: dict[str, object],
+    *,
+    reveal_solutions: bool,
+) -> dict[str, object]:
+    payload = dict(raw_item)
+    if not reveal_solutions:
+        payload.pop("correct_answer", None)
+        payload.pop("explanation", None)
+    return payload
+
+
+def _locked_question_template_ids(
+    session: Session,
+    *,
+    course_id: str,
+    user_id: str,
+    template_ids: list[int],
+) -> set[int]:
+    ids = sorted({int(template_id) for template_id in template_ids if int(template_id or 0) > 0})
+    if not ids:
+        return set()
+    rows = session.exec(
+        select(ExamPaperItem.question_template_id)
+        .join(ExamPaper, ExamPaper.id == ExamPaperItem.exam_paper_id)
+        .where(
+            ExamPaperItem.question_template_id.in_(ids),
+            ExamPaper.course_id == course_id,
+            ExamPaper.user_id == user_id,
+            ExamPaper.status.notin_(_SOLUTION_UNLOCKED_EXAM_STATUSES),
+        )
+    ).all()
+    return {int(template_id) for template_id in rows if template_id is not None}
+
+
+def _require_question_template_solution_unlocked(
+    session: Session,
+    *,
+    course_id: str,
+    user_id: str,
+    template_id: int,
+) -> None:
+    if template_id not in _locked_question_template_ids(
+        session,
+        course_id=course_id,
+        user_id=user_id,
+        template_ids=[template_id],
+    ):
+        return
+    raise AITeachMeError(
+        detail="该题目正在未完成的试卷中使用，完成判卷后才能查看题解或进行单题判分。",
+        error_code="QUESTION_TEMPLATE_SOLUTION_LOCKED",
+        status_code=409,
+    )
+
+
+def _public_paper_selection_context(
+    context: dict[str, object],
+    *,
+    reveal_solutions: bool,
+) -> dict[str, object]:
+    payload = dict(context)
+    generated_questions = context.get("generated_questions")
+    if isinstance(generated_questions, list):
+        payload["generated_questions"] = [
+            _public_generated_question_payload(item, reveal_solutions=reveal_solutions)
+            for item in generated_questions
+            if isinstance(item, dict)
+        ]
+    return payload
+
+
 def _paper_generation_event_payload(
     paper: ExamPaper,
     *,
@@ -1400,13 +1474,19 @@ def _paper_generation_event_payload(
     error_message: str | None = None,
 ) -> dict[str, object]:
     context = _json_dict(paper.selection_context_json)
+    effective_status = _effective_exam_paper_status(paper, context=context)
+    reveal_solutions = effective_status in _SOLUTION_REVEAL_EXAM_STATUSES
+    public_context = _public_paper_selection_context(
+        context,
+        reveal_solutions=reveal_solutions,
+    )
     effective_preview = preview or _paper_preview_from_json(getattr(paper, "paper_preview_json", "{}"))
     payload: dict[str, object] = {
         "exam_paper_id": int(paper.id or 0),
-        "status": _effective_exam_paper_status(paper, context=context),
+        "status": effective_status,
         "num_questions": paper.total_items,
         "paper_preview": effective_preview.model_dump(mode="json"),
-        "selection_context": context,
+        "selection_context": public_context,
         "error_message": error_message if error_message is not None else context.get("error_message"),
         "updated_at": paper.updated_at,
         "generation_progress": _exam_generation_progress_for_response(
@@ -1415,7 +1495,7 @@ def _paper_generation_event_payload(
             preview=effective_preview,
         ).model_dump(mode="json"),
     }
-    generated_questions = context.get("generated_questions")
+    generated_questions = public_context.get("generated_questions")
     if isinstance(generated_questions, list):
         payload["generated_questions"] = [
             item for item in generated_questions if isinstance(item, dict)
@@ -2246,6 +2326,7 @@ def _mastery_drill_usable_templates(
     session: Session,
     *,
     course_id: str,
+    user_id: str,
     question_types: list[str],
 ) -> list[QuestionTemplate]:
     allowed_types = set(question_types) if question_types else None
@@ -2254,10 +2335,17 @@ def _mastery_drill_usable_templates(
         course_id=course_id,
         question_types=allowed_types,
     )
+    locked_template_ids = _locked_question_template_ids(
+        session,
+        course_id=course_id,
+        user_id=user_id,
+        template_ids=[int(template.id or 0) for template in rows],
+    )
     return [
         template
         for template in rows
-        if is_supported_question_type(template.question_type)
+        if int(template.id or 0) not in locked_template_ids
+        and is_supported_question_type(template.question_type)
         and bool(_clean_exam_text(template.stem))
         and bool(_clean_exam_text(template.answer))
     ]
@@ -3062,7 +3150,10 @@ async def _run_exam_generation_background(
                         preview=preview,
                         stage=str(payload.get("stage") or "generate_exam_questions"),
                     )
-                    event_payload["generated_question"] = generated_payload
+                    event_payload["generated_question"] = _public_generated_question_payload(
+                        generated_payload,
+                        reveal_solutions=False,
+                    )
                     if "generated_question_count" in payload:
                         event_payload["generated_question_count"] = payload["generated_question_count"]
                 _publish_exam_event(course_id, paper_id, "snapshot", event_payload)
@@ -3191,6 +3282,7 @@ async def _run_exam_generation_background(
 
         build_result = await run_question_build_workflow(
             course_id=course_id,
+            exam_paper_id=paper_id,
             course_name=course_row.name,
             course_description=course_row.description,
             course_user_intent=course_row.user_intent,
@@ -3653,6 +3745,7 @@ def _paper_item_response(
     mastery_by_unit_id: dict[int, float],
     knowledge_unit_refs: list[dict[str, object]],
     marked_template_ids: set[int],
+    reveal_solutions: bool,
 ) -> ExamPaperItemResponse:
     return ExamPaperItemResponse(
         id=item.id,
@@ -3662,8 +3755,8 @@ def _paper_item_response(
         difficulty=item.difficulty,
         stem=item.stem_snapshot,
         options=json.loads(item.options_snapshot_json) if item.options_snapshot_json else None,
-        correct_answer=item.answer_snapshot,
-        explanation=item.feedback_text or item.explanation_snapshot,
+        correct_answer=item.answer_snapshot if reveal_solutions else None,
+        explanation=(item.feedback_text or item.explanation_snapshot) if reveal_solutions else "",
         knowledge_unit_links=[
             {
                 "knowledge_unit_id": knowledge_unit_id,
@@ -3694,6 +3787,7 @@ def _generated_question_item_responses(
     *,
     knowledge_unit_by_id: dict[int, KnowledgeUnit],
     mastery_by_unit_id: dict[int, float],
+    reveal_solutions: bool = False,
 ) -> list[ExamPaperItemResponse]:
     generated_questions = context.get("generated_questions")
     if not isinstance(generated_questions, list):
@@ -3740,8 +3834,16 @@ def _generated_question_item_responses(
                 difficulty=str(raw_item.get("difficulty") or "medium"),
                 stem=str(raw_item.get("stem") or ""),
                 options=options,
-                correct_answer=str(raw_item.get("correct_answer") or ""),
-                explanation=str(raw_item.get("explanation") or ""),
+                correct_answer=(
+                    str(raw_item.get("correct_answer") or "")
+                    if reveal_solutions
+                    else None
+                ),
+                explanation=(
+                    str(raw_item.get("explanation") or "")
+                    if reveal_solutions
+                    else ""
+                ),
                 knowledge_unit_links=knowledge_unit_links,
                 selection_context={"generation_status": "generated"},
                 user_answer=None,
@@ -3827,6 +3929,13 @@ def _question_template_items_for_course(
             .order_by(QuestionTemplate.created_at.desc(), QuestionTemplate.id.desc())
         ).all()
     )
+    locked_template_ids = _locked_question_template_ids(
+        session,
+        course_id=course_id,
+        user_id=user_id,
+        template_ids=[int(item.id or 0) for item in rows],
+    )
+    rows = [item for item in rows if int(item.id or 0) not in locked_template_ids]
     template_ids = [int(item.id or 0) for item in rows]
     links_by_template_id = exams_repo.list_links_for_templates(session, template_ids)
     knowledge_unit_ids = {
@@ -4066,6 +4175,7 @@ def _paper_detail(session: Session, paper: ExamPaper) -> ExamPaperDetailResponse
     links_by_item_id = _links_for_items(session, items)
     context = _json_dict(paper.selection_context_json)
     effective_status = _effective_exam_paper_status(paper, context=context)
+    reveal_solutions = effective_status in _SOLUTION_REVEAL_EXAM_STATUSES
     knowledge_unit_by_id = _knowledge_units_for_item_links(session, links_by_item_id)
     generated_unit_ids = {
         knowledge_unit_id
@@ -4107,6 +4217,7 @@ def _paper_detail(session: Session, paper: ExamPaper) -> ExamPaperDetailResponse
             mastery_by_unit_id=mastery_by_unit_id,
             knowledge_unit_refs=links_by_item_id.get(int(item.id or 0), []),
             marked_template_ids=marked_template_ids,
+            reveal_solutions=reveal_solutions,
         )
         for item in items
     ]
@@ -4117,6 +4228,7 @@ def _paper_detail(session: Session, paper: ExamPaper) -> ExamPaperDetailResponse
                 context,
                 knowledge_unit_by_id=knowledge_unit_by_id,
                 mastery_by_unit_id=mastery_by_unit_id,
+                reveal_solutions=reveal_solutions,
             )
         }
         response_by_order.update({item.item_order: item for item in item_responses})
@@ -4137,7 +4249,10 @@ def _paper_detail(session: Session, paper: ExamPaper) -> ExamPaperDetailResponse
         submitted_at=paper.submitted_at,
         graded_at=paper.graded_at,
         created_at=paper.created_at,
-        selection_context=context,
+        selection_context=_public_paper_selection_context(
+            context,
+            reveal_solutions=reveal_solutions,
+        ),
         profile_sync=_exam_profile_sync_response(session, paper) if paper.status == "graded" else None,
         mastery_drill=_mastery_drill_session_response(session, drill) if drill is not None else None,
         paper_preview=_paper_preview_for_response(
@@ -5858,7 +5973,7 @@ async def question_templates(
     "/question-templates/{question_template_id}/answer-history",
     response_model=ApiResponse[list[QuestionTemplateAnswerHistoryItem]],
     summary="List answer history for a question template",
-    responses=build_error_responses([400, 404, 500]),
+    responses=build_error_responses([400, 404, 409, 500]),
 )
 async def question_template_answer_history(
     course_id: str = Path(...),
@@ -5875,6 +5990,12 @@ async def question_template_answer_history(
             f"Question template `{question_template_id}` not found.",
             error_code="QUESTION_TEMPLATE_NOT_FOUND",
         )
+    _require_question_template_solution_unlocked(
+        session,
+        course_id=normalized,
+        user_id=user.user_id,
+        template_id=question_template_id,
+    )
     rows = exams_repo.list_question_template_answer_history(
         session,
         course_id=normalized,
@@ -5910,6 +6031,12 @@ async def grade_question_template_answer(
             error_code="QUESTION_TEMPLATE_NOT_FOUND",
         )
     assert template is not None
+    _require_question_template_solution_unlocked(
+        session,
+        course_id=normalized,
+        user_id=user.user_id,
+        template_id=question_template_id,
+    )
     data = await _grade_question_template_answer(
         course_id=normalized,
         course_name=course.name,
@@ -6045,6 +6172,7 @@ async def prepare_mastery_drill(
                 usable_templates = _mastery_drill_usable_templates(
                     session,
                     course_id=normalized,
+                    user_id=user.user_id,
                     question_types=configured_question_types,
                 )
                 generation_count, generation_types = _mastery_drill_backfill_plan(
@@ -6089,6 +6217,7 @@ async def prepare_mastery_drill(
             usable_templates = _mastery_drill_usable_templates(
                 session,
                 course_id=normalized,
+                user_id=user.user_id,
                 question_types=configured_question_types,
             )
             remaining_count, _remaining_types = _mastery_drill_backfill_plan(

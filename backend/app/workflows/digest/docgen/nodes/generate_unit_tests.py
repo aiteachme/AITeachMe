@@ -1,6 +1,6 @@
 """Removed legacy node.
 
-Chapter writers now emit the final unit-test section in their single generation call.
+Chapter branches now generate and review their unit-test section directly.
 """
 
 __all__: list[str] = []

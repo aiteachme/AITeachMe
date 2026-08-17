@@ -17,6 +17,7 @@ from app.workflows.digest.planner.lib.plans import (
 from app.workflows.digest.planner.lib.requested_structure import (
     extract_explicit_course_title,
     extract_explicit_learning_topic,
+    resolve_planner_revision_feedback,
 )
 from app.workflows.digest.planner.lib.store import save_planner_result
 from app.workflows.digest.planner.nodes.generate_course_identity import _clean_course_name
@@ -187,6 +188,10 @@ def build_save_planner_draft_node(*, context: WorkflowContext):
             requested_digest_mode=digest_mode,
             shared_inputs=material_context,
             latest_plan=state.get("latest_plan"),
+            revision_feedback=resolve_planner_revision_feedback(
+                state.get("feedback_message"),
+                list(state.get("message_history") or []),
+            ),
         )
         if effective_course_name:
             draft.course_name = effective_course_name

@@ -17,11 +17,13 @@ def test_docgen_model_policy_routes_tiers_and_bounds_noncritical_steps() -> None
     intent_core = docgen_completion_kwargs(DocGenModelStep.INTENT_CORE)
     backbone = docgen_completion_kwargs(DocGenModelStep.DOCUMENT_BACKBONE)
     interactive_html = docgen_completion_kwargs(DocGenModelStep.INTERACTIVE_HTML)
+    unit_test_review = docgen_completion_kwargs(DocGenModelStep.CHAPTER_UNIT_TEST_REVIEW)
 
     assert systematic_writer["model"] == "reason"
     assert sprint_writer["model"] == "primary"
     assert intent_core["overall_timeout_s"] >= intent_core["timeout"]
     assert backbone["model"] == "reason"
+    assert unit_test_review["model"] == "primary"
     assert backbone["max_tokens"] == 10000
     assert backbone[PROVIDER_NATIVE_TOOLS_KWARG] == []
     assert systematic_writer[PROVIDER_NATIVE_TOOLS_KWARG] == []

@@ -53,6 +53,7 @@ from app.shared.infra.storage.config import (
 from app.shared.infra.exceptions import AITeachMeError as InfraAITeachMeError
 from app.shared.kernel.exceptions import AITeachMeError as KernelAITeachMeError
 from app.shared.infra.runtime import BackgroundTaskRegistry
+from app.shared.infra.observability import flush_langsmith_traces
 from app.shared.infra.settings.support import (
     get_llm_provider_model_defaults,
     resolve_runtime_llm_provider,
@@ -483,6 +484,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     )
     yield
     await app.state.background_task_registry.shutdown(cancel_timeout_s=8.0)
+    await flush_langsmith_traces(timeout_s=5.0)
     logger.info("app_shutdown")
 
 

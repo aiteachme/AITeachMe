@@ -261,11 +261,27 @@ def build_docgen_lane_summary(
                     return value
         return float(chapter.get(key, 0.0) or 0.0)
 
+    def _coverage_was_evaluated(chapter: Mapping[str, Any]) -> bool:
+        for candidate in (
+            chapter,
+            chapter.get("chapter_review_report"),
+            chapter.get("quality_signals"),
+        ):
+            if isinstance(candidate, Mapping) and "coverage_evaluated" in candidate:
+                return bool(candidate.get("coverage_evaluated"))
+        return _nested_metric(
+            chapter,
+            "coverage_score",
+            "chapter_review_report",
+            "quality_signals",
+        ) > 0
+
     # Successful runs already contain the exact metadata that will be persisted.
     # Do not average writer/research/intermediate scores together with final review
     # scores: that produces a number which matches no published chapter.
     final_quality_records = chapter_metadatas or list(state.get("chapter_review_reports") or [])
     if final_quality_records:
+        coverage_records = final_quality_records
         coverage_scores = [
             value
             for chapter in final_quality_records
@@ -278,6 +294,7 @@ def build_docgen_lane_summary(
         ]
     else:
         fallback_quality_records = enhanced_chapter_drafts or chapter_drafts or research_records
+        coverage_records = fallback_quality_records or research_traces
         coverage_scores = [
             value
             for chapter in fallback_quality_records
@@ -294,6 +311,18 @@ def build_docgen_lane_summary(
             for chapter in fallback_quality_records
             if (value := _nested_metric(chapter, "quality_score", "quality_signals")) > 0
         ]
+
+    coverage_record_count = len(coverage_records)
+    coverage_evaluated_count = sum(
+        1 for record in coverage_records if _coverage_was_evaluated(record)
+    )
+    coverage_status = (
+        "evaluated"
+        if coverage_record_count > 0 and coverage_evaluated_count == coverage_record_count
+        else "partially_evaluated"
+        if coverage_evaluated_count > 0
+        else "not_evaluated"
+    )
 
     def _quality_mapping(chapter: Mapping[str, Any]) -> Mapping[str, Any]:
         nested = chapter.get("quality_signals")
@@ -402,9 +431,17 @@ def build_docgen_lane_summary(
         "asset_summary": asset_summary,
         "practice_count": practice_count,
         "coverage_score": round(sum(coverage_scores) / max(1, len(coverage_scores)), 4) if coverage_scores else 0.0,
+        "coverage_evaluated": coverage_status == "evaluated",
+        "coverage_status": coverage_status,
+        "coverage_evaluated_count": coverage_evaluated_count,
+        "coverage_record_count": coverage_record_count,
         "quality_score": round(sum(quality_scores) / max(1, len(quality_scores)), 4) if quality_scores else 0.0,
         "quality_summary": {
             "avg_coverage_score": round(sum(coverage_scores) / max(1, len(coverage_scores)), 4) if coverage_scores else 0.0,
+            "coverage_evaluated": coverage_status == "evaluated",
+            "coverage_status": coverage_status,
+            "coverage_evaluated_count": coverage_evaluated_count,
+            "coverage_record_count": coverage_record_count,
             "avg_quality_score": round(sum(quality_scores) / max(1, len(quality_scores)), 4) if quality_scores else 0.0,
             "asset_count": asset_count,
             "repaired_chapter_count": repaired_chapter_count,

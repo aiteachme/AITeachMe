@@ -88,6 +88,8 @@ chapter_max_words
 
 正式方案 LLM 只生成用户需要确认的 `course_name / plan / suggestion` 和每章 `title / objective / required_elements`。其中 `required_elements` 表示确认覆盖的具体概念、方法、题型或易错对象，不负责开篇方式、讲解顺序、资料落点、例题数量、练习或小测策略；这些执行决策由 DocGen 在拥有完整资料路由和诊断答案后统一生成。Planner 本地只做标签/JSON 解析、显式章数校验、去编号等格式规范；字段缺失、重复章节、章数不符或出现长 OCR/代码碎片时调用一次 LLM repair，不用固定模板补教学语义，也不合并或改写模型章节。
 
+调整已有方案时，若用户明确要求章节结构或知识点边界不变，Planner 会把上一版逐章合同写入 prompt，并在保存前比较 title 顺序与每章 `required_elements`；违规输出进入一次 LLM repair，仍不满足则失败而不是保存缩水方案。重新生成前置诊断只替换诊断题与诊断状态，等待回答期间保留上一版正式方案和构建约束。
+
 `writing_instructions` 只作为历史 confirmed plan 的可选兼容字段保留；新 Planner 不再生成或要求该字段。
 
 ## 3. `save_planner_draft`

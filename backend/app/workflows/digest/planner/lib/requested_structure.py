@@ -81,12 +81,68 @@ _GENERIC_TOPICS = {
     "资料",
 }
 _TOPIC_TAIL_RE = re.compile(r"(?:\s*(?:请|并|按|拆成|生成|构建|做成|包含|每章|适合).*)$")
+_DIAGNOSIS_FEEDBACK_PREFIXES = (
+    "前置诊断选择：",
+    "前置诊断选择:",
+    "跳过前置诊断，请按当前学习目标和资料继续生成可确认的学习方案。",
+)
+_CHAPTER_STRUCTURE_TARGET = (
+    rf"(?:章节|大纲)(?:的)?(?:结构|顺序|划分|框架)|{_NUMBER_TOKEN}\s*章(?:的)?(?:结构|顺序|划分|框架)"
+)
+_KNOWLEDGE_BOUNDARY_TARGET = r"(?:知识点边界|知识边界|知识点范围|知识范围|覆盖范围)"
+_PRESERVE_PREFIX = r"(?:保持|保留|维持|沿用|原样保留)"
+_PRESERVE_SUFFIX = r"(?:保持不变|不变|不调整|不修改|原样保留)"
+_PRESERVE_CHAPTER_STRUCTURE_PATTERNS = (
+    re.compile(rf"{_PRESERVE_PREFIX}[^。；;\n]{{0,20}}(?:{_CHAPTER_STRUCTURE_TARGET})"),
+    re.compile(rf"(?:{_CHAPTER_STRUCTURE_TARGET})[^。；;\n]{{0,10}}{_PRESERVE_SUFFIX}"),
+    re.compile(r"不(?:增删|调整|改变|修改)[^。；;\n]{0,8}(?:章节|大纲)"),
+)
+_PRESERVE_KNOWLEDGE_BOUNDARY_PATTERNS = (
+    re.compile(rf"{_PRESERVE_PREFIX}[^。；;\n]{{0,24}}{_KNOWLEDGE_BOUNDARY_TARGET}"),
+    re.compile(rf"{_KNOWLEDGE_BOUNDARY_TARGET}[^。；;\n]{{0,10}}{_PRESERVE_SUFFIX}"),
+    re.compile(r"不(?:增删|调整|改变|修改)[^。；;\n]{0,8}(?:知识点|覆盖范围)"),
+)
 
 
 def _text(value: Any) -> str:
     if value is None:
         return ""
     return " ".join(str(value).strip().split())
+
+
+def _is_diagnosis_feedback(value: Any) -> bool:
+    text = _text(value)
+    return any(text.startswith(prefix) for prefix in _DIAGNOSIS_FEEDBACK_PREFIXES)
+
+
+def resolve_planner_revision_feedback(
+    feedback_message: Any,
+    message_history: list[str] | None = None,
+) -> str:
+    """Resolve the revision request that owns structure locks across a diagnosis round."""
+
+    current = _text(feedback_message)
+    if not _is_diagnosis_feedback(current):
+        return current
+    for raw_message in reversed(message_history or []):
+        message = str(raw_message or "").strip()
+        match = re.match(r"^用户\s*[:：]\s*(?P<content>.*)$", message, re.S)
+        if not match:
+            continue
+        content = _text(match.group("content"))
+        if content and not _is_diagnosis_feedback(content):
+            return content
+    return current
+
+
+def requests_preserved_chapter_structure(value: Any) -> bool:
+    text = _text(value)
+    return bool(text and any(pattern.search(text) for pattern in _PRESERVE_CHAPTER_STRUCTURE_PATTERNS))
+
+
+def requests_preserved_knowledge_boundaries(value: Any) -> bool:
+    text = _text(value)
+    return bool(text and any(pattern.search(text) for pattern in _PRESERVE_KNOWLEDGE_BOUNDARY_PATTERNS))
 
 
 def _parse_small_number(value: str) -> int | None:
@@ -166,6 +222,7 @@ def extract_explicit_chapter_titles(value: Any) -> list[str]:
         return []
     result: list[str] = []
     seen: set[str] = set()
+    seen_ordinals: set[int] = set()
 
     def add_title(raw: str) -> None:
         title = _clean_heading(raw)
@@ -179,7 +236,13 @@ def extract_explicit_chapter_titles(value: Any) -> list[str]:
         prefix = text[max(0, match.start() - 12) : match.start()]
         if _NEGATIVE_ORDINAL_PREFIX_RE.search(prefix):
             continue
+        ordinal = _parse_small_number(match.group("number"))
+        if ordinal is None or ordinal in seen_ordinals:
+            continue
+        previous_count = len(result)
         add_title(match.group("title"))
+        if len(result) > previous_count:
+            seen_ordinals.add(ordinal)
     if result:
         return result
 
@@ -208,17 +271,18 @@ def extract_requested_chapter_count(value: Any) -> int | None:
     text = str(value or "")
     if not text.strip():
         return None
-    titles = extract_explicit_chapter_titles(text)
-    if titles:
-        return len(titles)
+    explicit_count: int | None = None
     for match in _EXPLICIT_CHAPTER_COUNT_RE.finditer(text):
         prefix = text[max(0, match.start() - 4) : match.start()]
         if "第" in prefix:
             continue
         parsed = _parse_small_number(match.group("count"))
         if parsed is not None:
-            return parsed
-    return None
+            explicit_count = parsed
+    if explicit_count is not None:
+        return explicit_count
+    titles = extract_explicit_chapter_titles(text)
+    return len(titles) if titles else None
 
 
 __all__ = [
@@ -226,4 +290,7 @@ __all__ = [
     "extract_explicit_course_title",
     "extract_explicit_learning_topic",
     "extract_requested_chapter_count",
+    "requests_preserved_chapter_structure",
+    "requests_preserved_knowledge_boundaries",
+    "resolve_planner_revision_feedback",
 ]

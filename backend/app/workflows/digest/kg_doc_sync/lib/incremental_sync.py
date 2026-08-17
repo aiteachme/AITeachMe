@@ -27,6 +27,7 @@ from app.models.knowledge_taxonomy import (
 from app.repositories import knowledge_relation_repo, knowledge_unit_repo
 from app.shared.infra.embedding import aembed_texts
 from app.shared.infra.llm_support import run_llm_tasks, get_llm_concurrency_limit
+from app.shared.infra.observability.trace import trace_substep
 from app.shared.infra.search.api import search_knowledge
 from app.shared.infra.settings import get_settings
 from app.utils.knowledge_helpers import normalize_name
@@ -87,6 +88,8 @@ _ASYNC_BRIDGE_LOCK = threading.Lock()
 _ASYNC_BRIDGE_READY = threading.Event()
 _ASYNC_BRIDGE_LOOP: asyncio.AbstractEventLoop | None = None
 _ASYNC_BRIDGE_THREAD: threading.Thread | None = None
+_MAX_SECTION_ERROR_CHARS = 300
+_MAX_FAILED_SECTION_DETAILS = 20
 
 logger = structlog.get_logger()
 
@@ -782,6 +785,33 @@ def build_docgen_kg_draft_units_payload(
     return KnowledgeSyncExtractionPayload(units=units, extracted_edges=[], diagnostics_totals=diagnostics)
 
 
+def build_markdown_section_fingerprints(
+    *,
+    markdown: str,
+    structured_context: dict[str, object] | None = None,
+) -> list[dict[str, str]]:
+    """Plan stable section fingerprints using the authoritative extraction splitter."""
+
+    chapters = extract_markdown_chapter_chunks(markdown, max_body_chars=None)
+    if not chapters:
+        return []
+    normalized_context = _structured_context_payload(structured_context)
+    tasks, _metrics = _build_extraction_tasks(
+        chapters,
+        _chapter_context_lookup(normalized_context),
+    )
+    return [
+        {
+            "section_key": _section_task_key(task),
+            "content_hash": _section_task_content_hash(task),
+        }
+        for task in sorted(
+            tasks,
+            key=lambda item: (_section_task_key(item), _section_task_content_hash(item)),
+        )
+    ]
+
+
 def build_docgen_kg_draft_final_payload(
     *,
     markdown: str,
@@ -810,6 +840,22 @@ def build_docgen_kg_draft_final_payload(
         index for index in range(1, len(chapters) + 1)
     }
     if expected_chapters and not expected_chapters.issubset(covered_chapters):
+        return None
+    recorded_fingerprints = [
+        {
+            "section_key": str(payload.get("section_key") or "").strip(),
+            "content_hash": str(payload.get("content_hash") or "").strip(),
+        }
+        for payload in (_as_mapping(item) for item in _as_list(draft.get("section_fingerprints")))
+        if str(payload.get("section_key") or "").strip()
+        and str(payload.get("content_hash") or "").strip()
+    ]
+    recorded_fingerprints.sort(key=lambda item: (item["section_key"], item["content_hash"]))
+    final_fingerprints = build_markdown_section_fingerprints(
+        markdown=markdown,
+        structured_context=normalized_context,
+    )
+    if not recorded_fingerprints or recorded_fingerprints != final_fingerprints:
         return None
 
     units: list[MarkdownKnowledgeUnit] = []
@@ -1476,6 +1522,11 @@ def persist_knowledge_graph_items(
         prefetch_catchup_section_count=int(diagnostics_totals.get("prefetch_catchup_section_count", 0) or 0),
         prefetch_stale_section_count=int(diagnostics_totals.get("prefetch_stale_section_count", 0) or 0),
         prefetch_failed_section_count=int(diagnostics_totals.get("prefetch_failed_section_count", 0) or 0),
+        failed_sections=[
+            dict(item)
+            for item in list(diagnostics_totals.get("failed_sections") or [])
+            if isinstance(item, dict)
+        ][:_MAX_FAILED_SECTION_DETAILS],
         docgen_draft_fast_finalize=int(diagnostics_totals.get("docgen_draft_fast_finalize", 0) or 0),
         docgen_draft_final_unit_count=int(diagnostics_totals.get("docgen_draft_final_unit_count", 0) or 0),
         docgen_draft_final_edge_count=int(diagnostics_totals.get("docgen_draft_final_edge_count", 0) or 0),
@@ -2113,8 +2164,11 @@ def _hashable_section_body(markdown: str) -> str:
     lines = [
         line.rstrip()
         for line in str(markdown or "").replace("\r\n", "\n").replace("\r", "\n").split("\n")
-        if not line.lstrip().startswith("#")
     ]
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    if lines and lines[0].lstrip().startswith("#"):
+        lines.pop(0)
     while lines and not lines[0].strip():
         lines.pop(0)
     while lines and not lines[-1].strip():
@@ -2137,6 +2191,7 @@ def _section_record_for_task(
     task: _ExtractionTask,
     *,
     payload: SectionExtractionPayload | None = None,
+    error_type: str = "",
     error: str = "",
 ) -> SectionExtractionRecord:
     return SectionExtractionRecord(
@@ -2147,8 +2202,42 @@ def _section_record_for_task(
         source_kind=task.source_kind,
         title=task.chunk.title,
         payload=payload,
+        error_type=str(error_type or "")[:80],
         error=str(error or ""),
     )
+
+
+def _bounded_section_error_message(exc: BaseException) -> str:
+    message = re.sub(r"\s+", " ", str(exc or "")).strip()
+    message = re.sub(
+        r"(?i)\b(api[_ -]?key|authorization|bearer|token|secret)\b\s*[:=]?\s*\S+",
+        r"\1=[redacted]",
+        message,
+    )
+    message = re.sub(r"(?i)data:[^\s]+", "data:[redacted]", message)
+    return message[:_MAX_SECTION_ERROR_CHARS]
+
+
+def _failed_section_detail(task: _ExtractionTask, exc: BaseException) -> dict[str, object]:
+    return {
+        "section_key": _section_task_key(task),
+        "content_hash": _section_task_content_hash(task),
+        "source_chapter_index": task.source_chapter_index,
+        "error_type": type(exc).__name__,
+        "error_message": _bounded_section_error_message(exc),
+    }
+
+
+def _end_section_trace(trace_run: object | None, *, outputs: dict[str, object]) -> None:
+    if trace_run is None:
+        return
+    try:
+        trace_run.end(outputs=outputs)  # type: ignore[attr-defined]
+    except Exception as exc:
+        logger.warning(
+            "knowledge_docs_sync_section_trace_end_failed",
+            error_type=type(exc).__name__,
+        )
 
 
 def _apply_task_context_to_payload(
@@ -2214,16 +2303,17 @@ async def _collect_section_payloads_async(
     concurrency_limit: int | None = None,
     prefetched_records: list[SectionExtractionRecord] | None = None,
     on_record: object | None = None,
-) -> tuple[list[SectionExtractionPayload], dict[str, int]]:
+) -> tuple[list[SectionExtractionPayload], dict[str, object]]:
     prefetch_lookup: dict[tuple[str, str], SectionExtractionRecord] = {}
     failed_prefetch_count = 0
     for record in list(prefetched_records or []):
-        if record.payload is None:
+        if record.payload is None or record.error:
             failed_prefetch_count += 1
             continue
         record_key = (record.section_key, record.content_hash)
         prefetch_lookup[record_key] = record
     used_prefetch_keys: set[tuple[str, str]] = set()
+    failed_section_details: list[dict[str, object]] = []
     prefetch_enabled = prefetched_records is not None
     extraction_limit = _effective_concurrency_limit(
         len(extraction_tasks),
@@ -2231,40 +2321,80 @@ async def _collect_section_payloads_async(
     )
 
     async def _extract_with_queue(task: _ExtractionTask) -> SectionExtractionPayload:
-        key = (_section_task_key(task), _section_task_content_hash(task))
-        prefetched = prefetch_lookup.get(key)
-        if prefetched is not None and prefetched.payload is not None:
-            used_prefetch_keys.add(key)
-            payload = _apply_task_context_to_payload(prefetched.payload, task)
-            if callable(on_record):
-                on_record(_section_record_for_task(task, payload=payload))
-            return payload
+        section_key = _section_task_key(task)
+        content_hash = _section_task_content_hash(task)
+        key = (section_key, content_hash)
+        trace_fields = {
+            "section_key": section_key,
+            "content_hash": content_hash,
+            "source_chapter_index": task.source_chapter_index,
+            "source_kind": task.source_kind,
+        }
+        with trace_substep(
+            "知识图谱：章节片段抽取",
+            run_type="chain",
+            metadata=trace_fields,
+            tags=["kg:section-extraction"],
+            inputs=trace_fields,
+        ) as trace_run:
+            prefetched = prefetch_lookup.get(key)
+            if prefetched is not None and prefetched.payload is not None:
+                used_prefetch_keys.add(key)
+                payload = _apply_task_context_to_payload(prefetched.payload, task)
+                if callable(on_record):
+                    on_record(_section_record_for_task(task, payload=payload))
+                _end_section_trace(
+                    trace_run,
+                    outputs={
+                        "status": "reused",
+                        "unit_count": len(payload.units),
+                        "edge_count": len(payload.pending_edges),
+                    },
+                )
+                return payload
 
-        try:
-            payload = await _extract_chapter_graph_items(
-                task.task_index,
-                task.chunk,
-                course_context=course_context,
-                chapter_context=task.chapter_context,
-                source_chapter_index=task.source_chapter_index,
-                source_kind=task.source_kind,
-            )
-            record = _section_record_for_task(task, payload=payload)
-        except Exception as exc:
-            logger.warning(
-                "knowledge_docs_sync_section_extraction_failed",
-                task_index=task.task_index,
-                chunk_title=task.chunk.title,
-                header_path=task.chunk.header_path,
-                source_chapter_index=task.source_chapter_index,
-                source_kind=task.source_kind,
-                error_type=type(exc).__name__,
-            )
-            payload = _empty_failed_section_payload(task, exc)
-            record = _section_record_for_task(task, payload=payload, error=str(exc))
-        if callable(on_record):
-            on_record(record)
-        return payload
+            try:
+                payload = await _extract_chapter_graph_items(
+                    task.task_index,
+                    task.chunk,
+                    course_context=course_context,
+                    chapter_context=task.chapter_context,
+                    source_chapter_index=task.source_chapter_index,
+                    source_kind=task.source_kind,
+                )
+                record = _section_record_for_task(task, payload=payload)
+                trace_outputs: dict[str, object] = {
+                    "status": "completed",
+                    "unit_count": len(payload.units),
+                    "edge_count": len(payload.pending_edges),
+                }
+            except Exception as exc:
+                failure_detail = _failed_section_detail(task, exc)
+                failed_section_details.append(failure_detail)
+                logger.warning(
+                    "knowledge_docs_sync_section_extraction_failed",
+                    task_index=task.task_index,
+                    chunk_title=task.chunk.title,
+                    header_path=task.chunk.header_path,
+                    source_chapter_index=task.source_chapter_index,
+                    source_kind=task.source_kind,
+                    section_key=section_key,
+                    content_hash=content_hash,
+                    error_type=type(exc).__name__,
+                    error_message=failure_detail["error_message"],
+                )
+                payload = _empty_failed_section_payload(task, exc)
+                record = _section_record_for_task(
+                    task,
+                    payload=payload,
+                    error_type=type(exc).__name__,
+                    error=str(failure_detail["error_message"]),
+                )
+                trace_outputs = {"status": "failed", **failure_detail}
+            if callable(on_record):
+                on_record(record)
+            _end_section_trace(trace_run, outputs=trace_outputs)
+            return payload
 
     payloads = await run_llm_tasks(
         extraction_tasks,
@@ -2279,6 +2409,10 @@ async def _collect_section_payloads_async(
         ),
         "prefetch_stale_section_count": max(0, len(prefetch_lookup) - len(used_prefetch_keys)),
         "prefetch_failed_section_count": failed_prefetch_count,
+        "failed_sections": sorted(
+            failed_section_details[:_MAX_FAILED_SECTION_DETAILS],
+            key=lambda item: (str(item["section_key"]), str(item["content_hash"])),
+        ),
     }
     return payloads, stats
 
@@ -2292,8 +2426,8 @@ def _combine_section_payloads(
     extraction_tasks: list[_ExtractionTask],
     task_metrics: dict[str, int],
     section_payloads: list[SectionExtractionPayload],
-    prefetch_stats: dict[str, int] | None = None,
-) -> tuple[list[MarkdownKnowledgeUnit], list[MarkdownExtractedEdge], dict[str, int]]:
+    prefetch_stats: dict[str, object] | None = None,
+) -> tuple[list[MarkdownKnowledgeUnit], list[MarkdownExtractedEdge], dict[str, object]]:
     del markdown
     chapter_contexts = _chapter_context_lookup(structured_context)
     units: list[MarkdownKnowledgeUnit] = []
@@ -2307,7 +2441,6 @@ def _combine_section_payloads(
     diagnostics_totals["chapter_count"] = len(chapters)
     diagnostics_totals["section_count"] = len(extraction_tasks)
     diagnostics_totals.update(task_metrics)
-    diagnostics_totals.update(dict(prefetch_stats or {}))
     used_anchors: set[str] = set()
 
     for payload_index, payload in enumerate(section_payloads):
@@ -2330,6 +2463,8 @@ def _combine_section_payloads(
             for anchor in anchors:
                 if anchor not in bucket:
                     bucket.append(anchor)
+
+    diagnostics_totals.update(dict(prefetch_stats or {}))
 
     backbone_units, backbone_edges = _build_backbone_graph_items(
         structured_context=structured_context,
@@ -2475,7 +2610,7 @@ async def extract_knowledge_graph_section_records_async(
     concurrency_limit: int | None = None,
     prefetched_records: list[SectionExtractionRecord] | None = None,
     on_record: object | None = None,
-) -> tuple[list[SectionExtractionRecord], dict[str, int]]:
+) -> tuple[list[SectionExtractionRecord], dict[str, object]]:
     """Extract section-level graph payloads without global merge or persistence."""
 
     chapters = extract_markdown_chapter_chunks(markdown, max_body_chars=None)
@@ -2502,12 +2637,12 @@ async def extract_knowledge_graph_section_records_async(
     diagnostics["chapter_count"] = len(chapters)
     diagnostics["section_count"] = len(extraction_tasks)
     diagnostics.update(task_metrics)
-    diagnostics.update(prefetch_stats)
     for record in records:
         if record.payload is None:
             continue
         for key in diagnostics:
             diagnostics[key] += int(record.payload.diagnostics.get(key, 0) or 0)
+    diagnostics.update(prefetch_stats)
     diagnostics["prefetch_section_count"] = len(records)
     diagnostics["prefetch_failed_section_count"] = sum(1 for record in records if record.error)
     return records, diagnostics
@@ -3798,6 +3933,7 @@ __all__ = [
     "rollback_docgen_kg_draft_graph_early",
     "build_docgen_kg_draft_units_payload",
     "build_docgen_kg_draft_final_payload",
+    "build_markdown_section_fingerprints",
     "build_prefetched_knowledge_graph_units_payload",
     "extract_knowledge_graph_items",
     "extract_knowledge_graph_items_async",

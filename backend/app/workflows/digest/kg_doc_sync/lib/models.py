@@ -60,6 +60,7 @@ class KnowledgeSyncReport:
     prefetch_catchup_section_count: int = 0
     prefetch_stale_section_count: int = 0
     prefetch_failed_section_count: int = 0
+    failed_sections: list[dict[str, object]] = field(default_factory=list)
     docgen_draft_fast_finalize: int = 0
     docgen_draft_final_unit_count: int = 0
     docgen_draft_final_edge_count: int = 0
@@ -167,6 +168,7 @@ class SectionExtractionRecord:
     source_kind: str
     title: str
     payload: SectionExtractionPayload | None = None
+    error_type: str = ""
     error: str = ""
 
 
@@ -188,7 +190,7 @@ class KnowledgeSyncExtractionPayload:
 
     units: list[MarkdownKnowledgeUnit]
     extracted_edges: list[MarkdownExtractedEdge]
-    diagnostics_totals: dict[str, int | float]
+    diagnostics_totals: dict[str, object]
 
 
 __all__ = [

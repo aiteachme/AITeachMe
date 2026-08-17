@@ -618,6 +618,7 @@ def build_chapter_kg_refinement_item(
         "edges": edges,
         "review_report_ref": reviewed.review_report_ref,
         "coverage_score": float(report_payload.get("coverage_score") or 0.0),
+        "coverage_evaluated": bool(report_payload.get("coverage_evaluated", False)),
         "evidence_support_score": float(report_payload.get("evidence_support_score") or 0.0),
         "quality_score": float(report_payload.get("quality_score") or 0.0),
         "passed": bool(report_payload.get("passed", True)),
@@ -721,11 +722,16 @@ def build_docgen_kg_draft(
             )
 
     payload_record_count = 0
+    section_fingerprint_keys: set[tuple[str, str]] = set()
     for record in list(prefetched_records or []):
         payload = getattr(record, "payload", None)
         if payload is None:
             continue
         payload_record_count += 1
+        section_key = str(getattr(record, "section_key", "") or "").strip()
+        content_hash = str(getattr(record, "content_hash", "") or "").strip()
+        if section_key and content_hash:
+            section_fingerprint_keys.add((section_key, content_hash))
         source_chapter_index = _safe_int(getattr(record, "source_chapter_index", 0))
         for unit in list(getattr(payload, "units", []) or []):
             _append_draft_node(
@@ -792,7 +798,7 @@ def build_docgen_kg_draft(
         repair_warning_count=repair_warning_count,
     )
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "stage": stage,
         "status": str(metrics.get("prefetch_status") or "draft").strip() or "draft",
         "ready": prefetch_ready,
@@ -812,6 +818,10 @@ def build_docgen_kg_draft(
         "edge_count": len(edges),
         "prefetch_section_count": int(metrics.get("prefetch_section_count", 0) or 0),
         "prefetch_payload_section_count": payload_record_count,
+        "section_fingerprints": [
+            {"section_key": section_key, "content_hash": content_hash}
+            for section_key, content_hash in sorted(section_fingerprint_keys)
+        ],
         "nodes": nodes,
         "edges": edges,
         "quality_audit": quality_audit,

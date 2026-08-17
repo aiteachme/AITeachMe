@@ -24,6 +24,7 @@ from app.workflows.digest.planner.lib.plans import (
     normalize_planner_diagnosis_draft,
     normalize_planner_draft,
 )
+from app.workflows.digest.planner.lib.requested_structure import resolve_planner_revision_feedback
 from app.workflows.digest.planner.nodes.generate_course_identity import _clean_course_name
 from app.workflows.digest.planner.prompts.build_plan_composer import (
     BUILD_CONSTRAINTS_END,
@@ -465,6 +466,10 @@ def _normalize_generated_plan(state: BuildPlannerState, parsed: dict[str, Any]) 
         requested_digest_mode=digest_mode,
         shared_inputs=material_context,
         latest_plan=latest_plan or None,
+        revision_feedback=resolve_planner_revision_feedback(
+            state.get("feedback_message"),
+            list(state.get("message_history") or []),
+        ),
     ).model_dump(mode="json")
 
 
@@ -614,7 +619,10 @@ async def _repair_diagnosis_response(
 
 
 def _should_generate_diagnosis_first(state: BuildPlannerState) -> bool:
-    if _clean_text(state.get("planner_operation")).casefold() != "create":
+    operation = _clean_text(state.get("planner_operation")).casefold()
+    if operation == "append" and bool(state.get("refresh_diagnosis")):
+        return True
+    if operation != "create":
         return False
     if _clean_text(state.get("diagnose_status")):
         return False
@@ -622,22 +630,11 @@ def _should_generate_diagnosis_first(state: BuildPlannerState) -> bool:
     return not isinstance(latest_plan, dict) or not latest_plan
 
 
-async def _stream_diagnosis_response(state: BuildPlannerState) -> str:
-    material_context = state["material_context"]
-    latest_plan = dict(state.get("latest_plan") or {})
-    messages = build_planner_diagnosis_messages(
-        course_name=_course_for_prompt(state),
-        user_prompt=state.get("user_prompt") or latest_plan.get("user_prompt") or "",
-        digest_mode=(
-            state.get("digest_mode")
-            or latest_plan.get("digest_mode")
-            or material_context.course_mode_decision.mode.value
-        ),
-        material_context=material_context,
-        planning_note=str(state.get("planning_note") or latest_plan.get("planning_note") or "").strip(),
-        material_note=str(state.get("material_note") or "").strip(),
-        message_history=list(state.get("message_history", [])),
-    )
+async def _stream_diagnosis_response(
+    state: BuildPlannerState,
+    *,
+    messages: list[dict[str, str]],
+) -> str:
     await emit_planner_event(
         state,
         event="planner.diagnose.started",
@@ -699,7 +696,7 @@ def build_compose_planner_draft_node(*, context: WorkflowContext):
                     material_note=str(state.get("material_note") or "").strip(),
                     message_history=list(state.get("message_history", [])),
                 )
-                raw_output = await _stream_diagnosis_response(state)
+                raw_output = await _stream_diagnosis_response(state, messages=diagnosis_messages)
                 try:
                     generated_course_name = _parse_generated_course_name(raw_output)
                     diagnose_questions = _parse_diagnosis_response(raw_output)

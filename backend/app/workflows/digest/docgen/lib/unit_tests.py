@@ -93,6 +93,23 @@ _LEADING_TABLE_PIPE_BEFORE_MATH_RE = re.compile(
     r"(?m)(^|[\s(（])(?:\\\||\|)+\s*(?=(?:\\?\${1,2}|\\\(|\\\[|\\(?:sqrt|frac|lim|sin|cos|tan|ln|log|sum|int)\b))"
 )
 _ESCAPED_MATH_DOLLAR_RE = re.compile(r"\\(\${1,2})")
+_LITERAL_LINE_BREAK_RE = re.compile(r"(?:\\r\\n|\\n)(?![A-Za-z])")
+_DISPLAY_MATH_SPAN_RE = re.compile(
+    r"\$\$(?P<dollar>[\s\S]*?)\$\$|\\\[(?P<bracket>[\s\S]*?)\\\]"
+)
+_STEP_NUMBER_TOKEN = r"(?:\d+[.、)]|[（(]\d+[）)])"
+_DUPLICATE_STEP_NUMBER_RE = re.compile(
+    rf"(?P<prefix>^|[\s。；;！？!?])(?P<first>{_STEP_NUMBER_TOKEN})\s*"
+    rf"(?P<second>{_STEP_NUMBER_TOKEN})(?=\s*\S)"
+)
+_EMBEDDED_STEP_BOUNDARY_RE = re.compile(
+    r"(?:(?<=\s)|(?<=[。；;！？!?]))\.?(?=(?:\d+[.、)]\s+|[（(]\d+[）)]\s*))"
+)
+_LEADING_STEP_NUMBER_RE = re.compile(
+    rf"^(?:\.?\s*{_STEP_NUMBER_TOKEN}\s*)+"
+)
+_EXPLANATION_FIELD_RE = re.compile(r"^\s*>\s*\*\*解析步骤\*\*\s*$")
+_BLOCKQUOTE_BODY_RE = re.compile(r"^\s*>\s?(?P<body>.*)$")
 _UNIT_TEST_CALLOUT_START_RE = re.compile(
     r"^\s*>\s*\[!(?P<kind>QUESTION|ANSWER)\](?P<rest>.*)$",
     re.IGNORECASE,
@@ -256,7 +273,8 @@ def strip_existing_unit_test_sections(markdown: str) -> str:
 
 
 def _markdown_text(value: str, *, limit: int | None = None) -> str:
-    text = " ".join(_sanitize_unit_test_math_text(value).strip().split())
+    text = _inline_unit_test_display_math(_sanitize_unit_test_math_text(value))
+    text = " ".join(text.strip().split())
     text = _wrap_raw_latex_fragments(text)
     if limit is not None and len(text) > limit and not _MATH_HINT_RE.search(text):
         text = text[: max(1, limit - 1)].rstrip(" ，,。；;、") + "…"
@@ -267,15 +285,31 @@ def _markdown_explanation_lines(value: str, *, limit: int = 520) -> list[str]:
     text = _markdown_text(value, limit=limit)
     if not text:
         return []
-    numbered_parts = re.split(r"(?:^|\s+)(?=\d+[.、]\s+)", text)
+    text = _normalize_duplicate_step_numbers(text)
+    numbered_parts = _EMBEDDED_STEP_BOUNDARY_RE.split(text)
     if len([part for part in numbered_parts if part.strip()]) > 1:
-        return [re.sub(r"^\d+[.、]\s*", "", part).strip() for part in numbered_parts if part.strip()]
+        return [
+            _LEADING_STEP_NUMBER_RE.sub("", part).strip().rstrip("；; ")
+            for part in numbered_parts
+            if part.strip()
+        ]
     parts = [
         part.strip()
         for part in re.split(r"[；;]\s*|(?<=[。！？!?])\s+", text)
         if part.strip()
     ]
     return parts if len(parts) > 1 else [text]
+
+
+def _normalize_duplicate_step_numbers(value: str) -> str:
+    def replace(match: re.Match[str]) -> str:
+        first = re.search(r"\d+", match.group("first"))
+        second = re.search(r"\d+", match.group("second"))
+        if first is None or second is None or first.group(0) != second.group(0):
+            return match.group(0)
+        return f"{match.group('prefix')}{int(first.group(0))}. "
+
+    return _DUPLICATE_STEP_NUMBER_RE.sub(replace, str(value or ""))
 
 
 def _wrap_raw_latex_fragments(text: str) -> str:
@@ -306,9 +340,21 @@ def _sanitize_unit_test_math_text(value: Any) -> str:
     text = clean_text(value)
     if not text:
         return ""
+    text = _LITERAL_LINE_BREAK_RE.sub("\n", text)
     text = _ESCAPED_MATH_DOLLAR_RE.sub(r"\1", text)
     text = _LEADING_TABLE_PIPE_BEFORE_MATH_RE.sub(r"\1", text)
     return text.strip()
+
+
+def _inline_unit_test_display_math(value: str) -> str:
+    """Keep compact question cards from leaking display math out of callouts."""
+
+    def replace(match: re.Match[str]) -> str:
+        body = match.group("dollar") if match.group("dollar") is not None else match.group("bracket")
+        compact = " ".join(str(body or "").split())
+        return f"${compact}$" if compact else ""
+
+    return _DISPLAY_MATH_SPAN_RE.sub(replace, str(value or ""))
 
 
 def _ordered_unique(values: list[str], order: list[str]) -> list[str]:
@@ -486,6 +532,25 @@ def unit_test_structure_issues(markdown: str) -> list[str]:
                     answer_value_lines.append(line)
         if not answer_value_lines:
             issues.append(f"第 {question_ordinal} 题答案为空。")
+        explanation_label_indices = [
+            index
+            for index, line in enumerate(answer_lines)
+            if re.match(r"^\s*\*\*解析步骤\*\*\s*$", line)
+        ]
+        if not explanation_label_indices:
+            issues.append(f"第 {question_ordinal} 题的 ANSWER 块缺少独立 `**解析步骤**` 字段。")
+            explanation_value_lines: list[str] = []
+        else:
+            if len(explanation_label_indices) > 1:
+                issues.append(f"第 {question_ordinal} 题的 ANSWER 块重复出现 `**解析步骤**` 字段。")
+            explanation_value_lines = []
+            for line in answer_lines[explanation_label_indices[0] + 1 :]:
+                if _UNIT_TEST_FIELD_ONLY_RE.match(line):
+                    break
+                if line:
+                    explanation_value_lines.append(line)
+        if not explanation_value_lines:
+            issues.append(f"第 {question_ordinal} 题解析步骤为空。")
         normalized_answer = _compact_label("".join(answer_value_lines))
         if question_type == "选择题" and normalized_answer:
             normalized_options = {_compact_label(value) for value in option_values}
@@ -637,6 +702,48 @@ def _extract_unit_test_html_block(markdown: str, start: int) -> str:
     return match.group(0).strip() + "\n" if match is not None else ""
 
 
+def _normalize_published_explanation_steps(markdown: str) -> str:
+    """Rebuild answer-step lists after a model patch embeds its own numbering."""
+
+    lines = str(markdown or "").splitlines()
+    normalized: list[str] = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        if not _EXPLANATION_FIELD_RE.match(line):
+            normalized.append(line)
+            index += 1
+            continue
+
+        cursor = index + 1
+        explanation_parts: list[str] = []
+        while cursor < len(lines):
+            candidate = lines[cursor]
+            if not candidate.strip():
+                break
+            if _UNIT_TEST_CALLOUT_START_RE.match(candidate):
+                break
+            quote = _BLOCKQUOTE_BODY_RE.match(candidate)
+            if quote is None:
+                break
+            body = quote.group("body").strip()
+            if body:
+                explanation_parts.append(body)
+            cursor += 1
+
+        if not explanation_parts:
+            normalized.append(line)
+            index += 1
+            continue
+
+        steps = _markdown_explanation_lines(" ".join(explanation_parts), limit=2400)
+        normalized.extend([line, ">"])
+        normalized.extend(f"> {step_number}. {step}" for step_number, step in enumerate(steps, start=1))
+        index = cursor
+
+    return "\n".join(normalized)
+
+
 def normalize_published_unit_test_sections(markdown: str) -> str:
     """Keep the published chapter to one standard final ``## 单元测试`` section."""
 
@@ -682,6 +789,13 @@ def normalize_published_unit_test_sections(markdown: str) -> str:
             prefix = _strip_body_generated_h3_recap_sections(cleaned[: table_match.start()])
             table_block = _extract_markdown_table(cleaned, table_match.start())
             cleaned = prefix.rstrip() + "\n\n## 单元测试\n\n" + table_block
+    standard_matches = list(_STANDARD_UNIT_TEST_HEADING_RE.finditer(cleaned))
+    if standard_matches:
+        unit_start = standard_matches[-1].start()
+        cleaned = cleaned[:unit_start] + _normalize_duplicate_step_numbers(cleaned[unit_start:])
+        cleaned = cleaned[:unit_start] + _normalize_published_explanation_steps(
+            cleaned[unit_start:]
+        )
     return re.sub(r"\n{3,}", "\n\n", cleaned).strip() + "\n"
 
 

@@ -18,6 +18,7 @@ from app.shared.infra.llm_support.common import (
     use_llm_runtime_snapshot,
 )
 from app.shared.infra.observability.trace import (
+    capture_langsmith_parent_headers,
     langsmith_expected_cancellation_scope,
     langsmith_trace,
     llm_trace_scope,
@@ -51,7 +52,7 @@ class _PrefetchCache:
     task: asyncio.Task[None] | None = None
     tasks: list[asyncio.Task[None]] = field(default_factory=list)
     records: list[SectionExtractionRecord] = field(default_factory=list)
-    metrics: dict[str, int | str] = field(default_factory=dict)
+    metrics: dict[str, object] = field(default_factory=dict)
     status: str = "running"
     error: str = ""
 
@@ -134,12 +135,14 @@ async def _extract_prefetch_records_with_trace(
     incremental: bool,
     on_record: Any,
     prefetched_records: list[SectionExtractionRecord] | None = None,
+    parent_headers: dict[str, str] | None = None,
 ) -> tuple[list[SectionExtractionRecord], dict[str, Any]]:
     workflow = "kg_docgen_prefetch"
     lane = "background"
     phase = _prefetch_trace_phase(docgen_manifest)
     trace_name = "KG：DocGen 增量预取" if incremental else "KG：DocGen 预取"
     with (
+        tracing_context(parent=dict(parent_headers)) if parent_headers else nullcontext(),
         langsmith_expected_cancellation_scope("kg_docgen_prefetch_sidecar"),
         use_llm_runtime_snapshot(snapshot),
     ):
@@ -223,7 +226,7 @@ def _cancel_cache_tasks(cache: _PrefetchCache) -> None:
         task.cancel()
 
 
-def _prefetch_metrics_snapshot(cache: _PrefetchCache) -> dict[str, int | str]:
+def _prefetch_metrics_snapshot(cache: _PrefetchCache) -> dict[str, object]:
     records = list(cache.records)
     metrics = dict(cache.metrics)
     status = str(cache.status or "").strip() or "running"
@@ -356,7 +359,7 @@ def start_docgen_kg_prefetch(
         return False
     key = _key(course_id, build_session_id)
     prior_records: list[SectionExtractionRecord] = []
-    prior_metrics: dict[str, int | str] = {}
+    prior_metrics: dict[str, object] = {}
     prior_status = ""
     with _LOCK:
         existing = _CACHES.pop(key, None)
@@ -378,6 +381,7 @@ def start_docgen_kg_prefetch(
         _CACHES[key] = cache
 
     snapshot = llm_snapshot or capture_llm_runtime_snapshot()
+    parent_headers = capture_langsmith_parent_headers()
     structured_context = _structured_context(
         chapters=chapters,
         document_backbone=document_backbone,
@@ -425,6 +429,7 @@ def start_docgen_kg_prefetch(
                 incremental=False,
                 on_record=_on_record,
                 prefetched_records=prior_records,
+                parent_headers=parent_headers,
             )
             with _LOCK:
                 active = _CACHES.get(key)
@@ -538,6 +543,7 @@ def start_docgen_kg_prefetch_incremental(
         ) + 1
 
     snapshot = llm_snapshot or capture_llm_runtime_snapshot()
+    parent_headers = capture_langsmith_parent_headers()
     structured_context = _structured_context(
         chapters=chapters,
         document_backbone=document_backbone,
@@ -583,6 +589,7 @@ def start_docgen_kg_prefetch_incremental(
                 incremental=True,
                 on_record=_on_record,
                 prefetched_records=prior_records,
+                parent_headers=parent_headers,
             )
             with _LOCK:
                 active = _CACHES.get(key)
@@ -664,7 +671,7 @@ async def consume_docgen_kg_prefetch(
     course_id: str,
     build_session_id: str,
     wait_timeout_s: float = _PREFETCH_CONSUME_GRACE_S,
-) -> tuple[list[SectionExtractionRecord], dict[str, int | str]]:
+) -> tuple[list[SectionExtractionRecord], dict[str, object]]:
     """Return finished prefetch records and stop any leftover sidecar calls."""
 
     key = _key(course_id, build_session_id)
@@ -702,7 +709,7 @@ async def await_docgen_kg_prefetch(
     course_id: str,
     build_session_id: str,
     wait_timeout_s: float = _PREFETCH_AWAIT_GRACE_S,
-) -> dict[str, int | str]:
+) -> dict[str, object]:
     """Wait for the DocGen KG prefetch task without consuming its cache."""
 
     key = _key(course_id, build_session_id)
@@ -741,7 +748,7 @@ def snapshot_docgen_kg_prefetch(
     *,
     course_id: str,
     build_session_id: str,
-) -> tuple[list[SectionExtractionRecord], dict[str, int | str]]:
+) -> tuple[list[SectionExtractionRecord], dict[str, object]]:
     """Return a non-consuming snapshot of DocGen KG prefetch records."""
 
     key = _key(course_id, build_session_id)

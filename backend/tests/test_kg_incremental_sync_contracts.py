@@ -38,7 +38,7 @@ COURSE_ID = "course_kgsync000000"
 
 
 def _quality_ready_draft_context() -> dict[str, object]:
-    return {
+    context: dict[str, object] = {
         "chapters": [
             {
                 "chapter_index": 1,
@@ -113,6 +113,12 @@ def _quality_ready_draft_context() -> dict[str, object]:
             }
         },
     }
+    draft = context["docgen_manifest"]["docgen_kg_draft"]  # type: ignore[index]
+    draft["section_fingerprints"] = sync.build_markdown_section_fingerprints(  # type: ignore[index]
+        markdown="# 矩阵基础\n\n正文\n\n# 应用训练\n\n正文",
+        structured_context=context,
+    )
+    return context
 
 
 @pytest.fixture
@@ -1320,6 +1326,35 @@ def test_docgen_kg_draft_final_payload_requires_complete_prefetch_payloads() -> 
     assert payload is None
 
 
+def test_docgen_kg_draft_final_payload_rejects_changed_published_body() -> None:
+    payload = sync.build_docgen_kg_draft_final_payload(
+        markdown="# 矩阵基础\n\n正文已经彻底改写\n\n# 应用训练\n\n正文",
+        structured_context=_quality_ready_draft_context(),
+    )
+
+    assert payload is None
+
+
+def test_docgen_kg_draft_final_payload_rejects_changed_section_identity() -> None:
+    payload = sync.build_docgen_kg_draft_final_payload(
+        markdown="# 线性代数基础\n\n正文\n\n# 应用训练\n\n正文",
+        structured_context=_quality_ready_draft_context(),
+    )
+
+    assert payload is None
+
+
+def test_markdown_section_fingerprints_include_nested_headings() -> None:
+    original = sync.build_markdown_section_fingerprints(
+        markdown="# 矩阵基础\n\n## 矩阵乘法\n\n正文",
+    )
+    renamed = sync.build_markdown_section_fingerprints(
+        markdown="# 矩阵基础\n\n## 行列式\n\n正文",
+    )
+
+    assert original != renamed
+
+
 def test_extract_node_uses_quality_ready_docgen_draft_without_section_llm(monkeypatch: pytest.MonkeyPatch) -> None:
     async def fail_extract(*args, **kwargs):
         raise AssertionError("section LLM extraction should not run for quality-ready DocGen KG draft")
@@ -1383,11 +1418,42 @@ def test_async_section_record_extraction_marks_failed_llm_without_inventing_rule
     assert records[1].payload.diagnostics["llm_error_count"] == 1
     assert records[1].payload.diagnostics["rule_fallback_attempt_count"] == 0
     assert records[1].payload.diagnostics["rule_fallback_success_count"] == 0
+    assert records[1].error_type == "RuntimeError"
     assert records[1].error == "boom"
     assert records[1].payload.units == []
     assert diagnostics["prefetch_section_count"] == 2
     assert diagnostics["prefetch_failed_section_count"] == 1
     assert diagnostics["rule_fallback_success_count"] == 0
+    assert diagnostics["failed_sections"] == [
+        {
+            "section_key": records[1].section_key,
+            "content_hash": records[1].content_hash,
+            "source_chapter_index": records[1].source_chapter_index,
+            "error_type": "RuntimeError",
+            "error_message": "boom",
+        }
+    ]
+
+
+def test_section_failure_detail_is_bounded_and_redacts_credentials() -> None:
+    chapter = extract_markdown_chapter_chunks("# Chapter\n\nBody", max_body_chars=None)[0]
+    task = sync._ExtractionTask(
+        task_index=1,
+        source_chapter_index=1,
+        source_kind="chapter",
+        chunk=chapter,
+        chapter_context=sync.ChapterSourceContext(chapter_index=1),
+    )
+
+    detail = sync._failed_section_detail(
+        task,
+        RuntimeError("API_KEY=top-secret token bearer-value " + "x" * 500),
+    )
+
+    assert detail["error_type"] == "RuntimeError"
+    assert "top-secret" not in str(detail["error_message"])
+    assert "bearer-value" not in str(detail["error_message"])
+    assert len(str(detail["error_message"])) <= 300
 
 
 def test_section_record_prefetch_reuses_exact_key_but_reextracts_changed_title(
@@ -1439,6 +1505,47 @@ def test_section_record_prefetch_reuses_exact_key_but_reextracts_changed_title(
     assert renamed_records[0].title == "Renamed"
     assert renamed_records[0].section_key != prior_record.section_key
     assert renamed_metrics["prefetch_reused_section_count"] == 0
+
+
+def test_failed_prefetch_record_is_retried_in_final_extraction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    markdown = "# Original\n\nSame body"
+    chapters = extract_markdown_chapter_chunks(markdown, max_body_chars=None)
+    tasks, _ = sync._build_extraction_tasks(chapters, {})
+    failed_record = sync._section_record_for_task(
+        tasks[0],
+        payload=_payload(unit=_unit("ku_failed", "Original"), candidate_id="failed"),
+        error_type="RuntimeError",
+        error="prefetch failed",
+    )
+    extraction_calls = 0
+
+    async def fake_extract(task_index, chapter, **kwargs):
+        nonlocal extraction_calls
+        extraction_calls += 1
+        return _payload(
+            unit=_unit("ku_recovered", chapter.title, chapter_index=kwargs["source_chapter_index"]),
+            candidate_id="recovered",
+        )
+
+    monkeypatch.setattr(sync, "_extract_chapter_graph_items", fake_extract)
+
+    records, metrics = asyncio.run(
+        sync.extract_knowledge_graph_section_records_async(
+            markdown=markdown,
+            course_context="course",
+            concurrency_limit=1,
+            prefetched_records=[failed_record],
+        )
+    )
+
+    assert extraction_calls == 1
+    assert records[0].error == ""
+    assert records[0].payload is not None
+    assert records[0].payload.units[0].anchor == "ku_recovered"
+    assert metrics["prefetch_reused_section_count"] == 0
+    assert metrics["prefetch_failed_section_count"] == 0
 
 
 def test_async_graph_extraction_combines_prefetch_without_llm(monkeypatch: pytest.MonkeyPatch) -> None:

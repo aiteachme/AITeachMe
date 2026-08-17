@@ -56,3 +56,19 @@ def test_ordinal_titles_ignore_negative_extra_chapter_constraint() -> None:
     ]
     assert extract_explicit_learning_topic(prompt) == "C 语言"
     assert extract_requested_chapter_count(prompt) == 3
+
+
+def test_repeated_ordinal_adjustment_does_not_inflate_requested_chapter_count() -> None:
+    prompt = (
+        "创建一门只有两章的线性代数微型课程：第一章讲矩阵乘法，第二章讲行列式。"
+        "用户最新调整：正式生成两章方案，第二章必须讲清行列式的面积缩放与方向含义。"
+    )
+
+    assert extract_explicit_chapter_titles(prompt) == ["讲矩阵乘法", "讲行列式"]
+    assert extract_requested_chapter_count(prompt) == 2
+
+
+def test_latest_explicit_chapter_count_overrides_an_earlier_count() -> None:
+    prompt = "先生成三章课程。用户最新调整：内容太散，请改为只有两章。"
+
+    assert extract_requested_chapter_count(prompt) == 2

@@ -51,7 +51,7 @@ def get_sync_run_or_raise(session: Session, sync_run_id: int | None) -> Knowledg
     return sync_run
 
 
-def sync_run_metrics(report: KnowledgeSyncReport) -> dict[str, int]:
+def sync_run_metrics(report: KnowledgeSyncReport) -> dict[str, object]:
     return {
         "chapter_count": report.chapter_count,
         "section_count": report.section_count,
@@ -80,6 +80,7 @@ def sync_run_metrics(report: KnowledgeSyncReport) -> dict[str, int]:
         "prefetch_catchup_section_count": report.prefetch_catchup_section_count,
         "prefetch_stale_section_count": report.prefetch_stale_section_count,
         "prefetch_failed_section_count": report.prefetch_failed_section_count,
+        "failed_sections": list(report.failed_sections),
         "elapsed_ms": report.elapsed_ms,
     }
 
@@ -89,7 +90,7 @@ def finish_sync_run(
     sync_run: KnowledgeGraphSyncRun,
     *,
     status: str,
-    metrics: dict[str, int],
+    metrics: dict[str, object],
     error_message: str = "",
 ) -> None:
     sync_run.status = status
@@ -105,7 +106,7 @@ def mark_knowledge_graph_sync_run_failed(
     *,
     sync_run_id: int | None,
     error_message: str,
-    metrics: dict[str, int] | None = None,
+    metrics: dict[str, object] | None = None,
 ) -> None:
     """Best-effort failure marker used by split graph nodes."""
 

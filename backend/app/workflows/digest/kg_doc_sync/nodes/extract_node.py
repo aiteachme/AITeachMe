@@ -61,6 +61,11 @@ def _payload_metrics(
         "prefetch_catchup_section_count": int(diagnostics.get("prefetch_catchup_section_count", 0) or 0),
         "prefetch_stale_section_count": int(diagnostics.get("prefetch_stale_section_count", 0) or 0),
         "prefetch_failed_section_count": int(diagnostics.get("prefetch_failed_section_count", 0) or 0),
+        "failed_sections": [
+            dict(item)
+            for item in list(diagnostics.get("failed_sections") or [])
+            if isinstance(item, dict)
+        ],
         "docgen_draft_fast_finalize": int(diagnostics.get("docgen_draft_fast_finalize", 0) or 0),
         "docgen_draft_final_unit_count": int(diagnostics.get("docgen_draft_final_unit_count", 0) or 0),
         "docgen_draft_final_edge_count": int(diagnostics.get("docgen_draft_final_edge_count", 0) or 0),

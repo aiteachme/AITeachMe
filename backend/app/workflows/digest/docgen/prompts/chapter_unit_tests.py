@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from app.workflows.digest.common.prompt_tracing import trace_prompt_build
 from app.workflows.digest.docgen.lib.mode_profiles import get_docgen_mode_profile
 
@@ -89,4 +91,80 @@ difficulty 只能填：基础、进阶、挑战。
     )
 
 
-__all__ = ["build_chapter_unit_test_messages"]
+def build_chapter_unit_test_review_messages(
+    *,
+    chapter_title: str,
+    digest_mode: str,
+    required_elements: list[str],
+    chapter_end_practice_plan: list[dict[str, object]],
+    markdown: str,
+    candidate: dict[str, object] | None,
+    generation_issue: str,
+    min_items: int,
+    max_items: int,
+) -> list[dict[str, str]]:
+    """Build the independent answer/solution review prompt for one chapter test."""
+
+    mode_label = get_docgen_mode_profile(digest_mode).prompt_label
+    required_text = "、".join(item for item in required_elements if item) or "本章核心概念、方法和易错点"
+    candidate_text = json.dumps(candidate or {}, ensure_ascii=False, indent=2)
+    system_prompt = """
+你是 AITeachMe 的章末测验复核老师。你必须独立解答每道题，不能默认候选答案和解析正确。
+请根据本章正文逐题复算条件、结论、选项和解析；发现错误、歧义、缺项或结构问题时直接修正。
+最终返回一份完整可发布的题组，而不是评语、差异或局部补丁。
+""".strip()
+    user_prompt = f"""
+请复核并重写下面的章末单元测试，返回完整 JSON 对象。
+
+章节标题：{chapter_title}
+文档模式：{mode_label}
+题量范围：{min_items}-{max_items}
+必须覆盖：{required_text}
+章末测试计划：{chapter_end_practice_plan}
+初稿生成或结构问题：{generation_issue or "无"}
+
+输出 JSON 字段：
+- chapter_index: 整数，无法判断时填 1
+- items: 数组，每项包含 type、difficulty、target、stem、options、answer、basis
+
+复核要求：
+1. 题量必须在范围内；初稿缺失或不可用时，依据正文重新生成完整题组。
+2. 每题题干条件必须充分，答案必须唯一或明确列出全部正确结论。
+3. 选择题必须正好有 4 个互不重复的选项，answer 写正确选项全文；其余题型 options 必须为 `[]`。
+4. 必须独立复算数学运算、公式、定义域、正负号、单位、边界条件以及充分必要条件。
+5. basis 写 2-4 个成立的短步骤，最终结论必须与 answer 一致，不能沿用初稿中的错误推理。
+6. 题目只使用正文能够支持的知识，不编造正文之外的定理、数据或条件。
+7. type 只能从概念判断、选择题、填空题、步骤排序、错因辨析、短答题、应用迁移、图表读取、推导证明中选择；difficulty 只能填基础、进阶、挑战。
+8. 公式使用 Markdown/LaTeX；只输出 JSON，不输出复核说明或 Markdown 代码块。
+
+候选题组：
+{candidate_text}
+
+本章正文：
+{markdown}
+""".strip()
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+    return trace_prompt_build(
+        "docgen_chapter_unit_test_review",
+        inputs={
+            "chapter_title": chapter_title,
+            "digest_mode": digest_mode,
+            "required_count": len(required_elements),
+            "plan_count": len(chapter_end_practice_plan),
+            "markdown_chars": len(markdown),
+            "candidate_item_count": len(list((candidate or {}).get("items") or [])),
+            "generation_issue": generation_issue,
+            "min_items": min_items,
+            "max_items": max_items,
+        },
+        output=messages,
+    )
+
+
+__all__ = [
+    "build_chapter_unit_test_messages",
+    "build_chapter_unit_test_review_messages",
+]

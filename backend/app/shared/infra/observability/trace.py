@@ -16,9 +16,11 @@ from dataclasses import dataclass
 from typing import Any, Iterator, Literal
 
 import httpx
+from langsmith import run_trees as langsmith_run_trees
 from langsmith import trace as langsmith_trace_run
 from langsmith import traceable
 from langsmith import tracing_context
+from langsmith.run_helpers import get_current_run_tree
 
 from app.shared.infra.observability.defaults import DEFAULT_LANGSMITH_MAX_TEXT_CHARS
 from app.shared.infra.settings import get_settings
@@ -187,6 +189,48 @@ def langsmith_tracing_enabled() -> bool:
     if langsmith_require_endpoint_probe():
         return _langsmith_endpoint_reachable()
     return True
+
+
+def capture_langsmith_parent_headers() -> dict[str, str] | None:
+    """Capture a detached parent trace context for long-lived async work."""
+
+    if not langsmith_tracing_requested():
+        return None
+    try:
+        current = get_current_run_tree()
+        if current is None:
+            return None
+        headers = {
+            str(key): str(value)
+            for key, value in dict(current.to_headers()).items()
+            if str(key) and str(value)
+        }
+        return headers or None
+    except Exception as exc:
+        logger.warning("LangSmith parent context capture failed: %s", exc)
+        return None
+
+
+def _flush_langsmith_traces(timeout_s: float) -> bool:
+    if not langsmith_tracing_enabled():
+        return False
+    # get_cached_client() would create a network client during shutdown even
+    # when this process never emitted a trace.
+    client = getattr(langsmith_run_trees, "_CLIENT", None)
+    if client is None:
+        return False
+    try:
+        client.flush(timeout=max(0.1, float(timeout_s)))
+    except Exception as exc:
+        logger.warning("LangSmith trace flush failed: %s", exc)
+        return False
+    return True
+
+
+async def flush_langsmith_traces(*, timeout_s: float = 5.0) -> bool:
+    """Best-effort flush without blocking the application event loop."""
+
+    return await asyncio.to_thread(_flush_langsmith_traces, timeout_s)
 
 
 def normalize_langsmith_run_type(
@@ -753,6 +797,8 @@ __all__ = [
     "build_langsmith_extra",
     "build_langsmith_metadata",
     "build_langsmith_tags",
+    "capture_langsmith_parent_headers",
+    "flush_langsmith_traces",
     "get_langsmith_max_text_chars",
     "get_langsmith_project_name",
     "get_llm_trace_context",

@@ -254,6 +254,7 @@ def build_review_chapter_node(*, context: WorkflowContext):
                 "passed": report.passed,
                 "review_action_count": len(actions),
                 "coverage_score": report.coverage_score,
+                "coverage_evaluated": report.coverage_evaluated,
                 "evidence_support_score": report.evidence_support_score,
                 "kg_refinement_node_count": int(kg_refinement_item.get("node_count", 0) or 0),
                 "kg_refinement_edge_count": int(kg_refinement_item.get("edge_count", 0) or 0),

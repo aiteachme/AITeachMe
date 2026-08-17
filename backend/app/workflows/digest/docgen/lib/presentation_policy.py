@@ -47,6 +47,17 @@ _TABLE_SEPARATOR_CELL_RE = re.compile(r"\s*:?-{3,}:?\s*")
 _UNPAIRED_HIGHLIGHT_ISSUE = "Markdown 高亮标记 == 未成对闭合。"
 _UNCONTROLLED_HTML_ISSUE = "Markdown 正文包含不受控 HTML 标签。"
 _RAW_HTML_TAG_RE = re.compile(r"</?(?!mark\b|br\b)[A-Za-z][^>\n]{0,120}>", re.IGNORECASE)
+_HEADING_ESCAPED_MATH_RE = re.compile(
+    r"\\\s+(?P<body>.+?)\\(?=\s+(?:型|轴|方向|平面|坐标|$))"
+)
+_INLINE_MATH_SPAN_RE = re.compile(r"(?<!\$)\$(?!\$)(?P<body>[^$\n]+)\$(?!\$)")
+_QUESTION_CALLOUT_START_RE = re.compile(r"^\s*>\s*\[!QUESTION\]", re.IGNORECASE)
+_ANSWER_CALLOUT_START_RE = re.compile(r"^\s*>\s*\[!ANSWER\]", re.IGNORECASE)
+_BODY_SOLUTION_START_RE = re.compile(
+    r"^\s*(?:>\s*)?(?:\*\*)?(?:答案|参考答案|解析|解析步骤|解答|判定依据)"
+    r"(?:\*\*)?\s*[:：]?",
+    re.IGNORECASE,
+)
 
 
 def _split_unescaped_table_cells(line: str) -> list[str]:
@@ -106,6 +117,105 @@ def _protect_docgen_table_inline_code(markdown: str) -> str:
     return "\n".join(fixed)
 
 
+def _normalize_heading_math_artifacts(markdown: str) -> str:
+    fixed: list[str] = []
+    in_fence = False
+    for line in str(markdown or "").splitlines():
+        if line.strip().startswith("```"):
+            in_fence = not in_fence
+        if in_fence or not re.match(r"^\s*#{1,6}\s+", line):
+            fixed.append(line)
+            continue
+
+        def replace(match: re.Match[str]) -> str:
+            body = match.group("body").strip()
+            has_math_signal = bool(
+                len(body) == 1
+                or re.search(r"[0-9=+*/^_{}]|\\[A-Za-z]+", body)
+            )
+            return f"${body}$" if body and len(body) <= 80 and has_math_signal else match.group(0)
+
+        fixed.append(_HEADING_ESCAPED_MATH_RE.sub(replace, line))
+    return "\n".join(fixed)
+
+
+def _normalize_inline_math_connectors(markdown: str) -> str:
+    def replace(match: re.Match[str]) -> str:
+        body = match.group("body")
+        if "且" not in body or r"\text{" in body:
+            return match.group(0)
+        parts = [part.strip() for part in body.split("且")]
+        if len(parts) <= 1 or any(not part for part in parts):
+            return match.group(0)
+        return " 且 ".join(f"${part}$" for part in parts)
+
+    fixed: list[str] = []
+    in_fence = False
+    for line in str(markdown or "").splitlines():
+        boundary = line.strip().removeprefix(">").strip()
+        if boundary.startswith("```"):
+            in_fence = not in_fence
+            fixed.append(line)
+            continue
+        if in_fence:
+            fixed.append(line)
+            continue
+
+        parts: list[str] = []
+        cursor = 0
+        for code_span in _INLINE_CODE_SPAN_RE.finditer(line):
+            parts.append(_INLINE_MATH_SPAN_RE.sub(replace, line[cursor : code_span.start()]))
+            parts.append(code_span.group(0))
+            cursor = code_span.end()
+        parts.append(_INLINE_MATH_SPAN_RE.sub(replace, line[cursor:]))
+        fixed.append("".join(parts))
+    return "\n".join(fixed)
+
+
+def _dedupe_exact_question_callouts(markdown: str) -> str:
+    lines = str(markdown or "").splitlines()
+    fixed: list[str] = []
+    seen: set[str] = set()
+    index = 0
+    while index < len(lines):
+        if not _QUESTION_CALLOUT_START_RE.match(lines[index]):
+            fixed.append(lines[index])
+            index += 1
+            continue
+
+        end = index + 1
+        while end < len(lines) and lines[end].lstrip().startswith(">"):
+            end += 1
+        atomic_end = end
+        followup = end
+        while followup < len(lines) and not lines[followup].strip():
+            followup += 1
+        if followup < len(lines) and _ANSWER_CALLOUT_START_RE.match(lines[followup]):
+            atomic_end = followup + 1
+            while atomic_end < len(lines) and lines[atomic_end].lstrip().startswith(">"):
+                atomic_end += 1
+        elif followup < len(lines) and _BODY_SOLUTION_START_RE.match(lines[followup]):
+            atomic_end = followup + 1
+            while atomic_end < len(lines) and lines[atomic_end].strip():
+                if _QUESTION_CALLOUT_START_RE.match(lines[atomic_end]) or re.match(r"^\s*#{1,6}\s+", lines[atomic_end]):
+                    break
+                atomic_end += 1
+        signature = re.sub(
+            r"\s+",
+            "",
+            "\n".join(
+                re.sub(r"^\s*>\s?", "", line)
+                for line in lines[index:atomic_end]
+            ),
+        )
+        if len(signature) < 24 or signature not in seen:
+            fixed.extend(lines[index:atomic_end])
+            if len(signature) >= 24:
+                seen.add(signature)
+        index = atomic_end
+    return "\n".join(fixed)
+
+
 def _docgen_text_without_code(markdown: str) -> str:
     """Return prose used for highlight validation, excluding code and math."""
 
@@ -123,7 +233,8 @@ def _docgen_text_without_code(markdown: str) -> str:
             continue
         if in_fence or in_math:
             continue
-        visible.append(_INLINE_CODE_SPAN_RE.sub("", raw_line))
+        without_code = _INLINE_CODE_SPAN_RE.sub("", raw_line)
+        visible.append(_INLINE_MATH_SPAN_RE.sub("", without_code))
     return "\n".join(visible)
 
 
@@ -213,6 +324,9 @@ def normalize_docgen_presentation(
         focus_items=focus_items or [],
     )
     cleaned = normalize_educational_callouts(cleaned)
+    cleaned = _normalize_heading_math_artifacts(cleaned)
+    cleaned = _normalize_inline_math_connectors(cleaned)
+    cleaned = _dedupe_exact_question_callouts(cleaned)
     cleaned = normalize_markdown_rendering(cleaned)
     return cleaned
 

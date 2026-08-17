@@ -15,6 +15,7 @@ from app.workflows.digest.planner.lib.store import _ensure_chapter_count_payload
 from app.workflows.digest.docgen.nodes.load_context import _render_diagnose_brief
 from app.workflows.digest.planner.nodes import compose_planner_draft as plan_draft_node
 from app.workflows.digest.planner.nodes import understand_goal_and_materials as understand_node
+import app.workflows.digest.planner.prompts.build_plan_composer as planner_prompt_module
 from app.workflows.digest.planner.nodes.save_planner_draft import (
     _merge_diagnose_resolution,
     _resolve_effective_course_name,
@@ -33,6 +34,8 @@ from app.workflows.digest.planner.prompts.build_plan_composer import (
     SUGGESTION_END,
     SUGGESTION_START,
     build_planner_diagnosis_messages,
+    build_planner_diagnosis_repair_messages,
+    build_planner_repair_messages,
     build_planner_stream_messages,
 )
 
@@ -67,6 +70,23 @@ def _planner_payload(*, chapter_count: int = 3) -> dict[str, object]:
             for index in range(1, chapter_count + 1)
         ],
     }
+
+
+@pytest.mark.parametrize(
+    ("state", "expected"),
+    [
+        ({"planner_operation": "create"}, True),
+        ({"planner_operation": "create", "latest_plan": {"chapters": []}}, False),
+        ({"planner_operation": "create", "diagnose_status": "answered"}, False),
+        ({"planner_operation": "append", "refresh_diagnosis": False}, False),
+        ({"planner_operation": "append", "refresh_diagnosis": True}, True),
+    ],
+)
+def test_planner_diagnosis_generation_decision(
+    state: dict[str, object],
+    expected: bool,
+) -> None:
+    assert plan_draft_node._should_generate_diagnosis_first(state) is expected
 
 
 def test_planner_plan_contract_is_lightweight_and_leaves_execution_strategy_to_docgen() -> None:
@@ -229,7 +249,7 @@ def test_understand_goal_and_materials_reuses_prepared_context_without_auxiliary
                 "course_id": "course_test",
                 "planner_session_id": "planner_test",
                 "planner_operation": "create",
-                "user_prompt": "两天速成线性代数",
+                "user_prompt": "两天速成线性代数。",
                 "digest_mode": "sprint",
                 "material_context": _material_context(),
                 "progress_callback": record_event,
@@ -240,6 +260,7 @@ def test_understand_goal_and_materials_reuses_prepared_context_without_auxiliary
 
     stages = [str(event.get("stage") or "") for event in events]
     assert "两天速成线性代数" in result["planning_note"]
+    assert "。。" not in result["planning_note"]
     assert "用户目标" in result["material_note"]
     assert "planner.analysis.started" in stages
     assert "planner.analysis.ready" in stages
@@ -248,8 +269,8 @@ def test_understand_goal_and_materials_reuses_prepared_context_without_auxiliary
 
 
 def test_compose_planner_diagnosis_raises_when_stream_fails(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def fail_diagnosis(state):
-        del state
+    async def fail_diagnosis(state, *, messages):
+        del state, messages
         raise TimeoutError("diagnosis timed out")
 
     events: list[dict[str, object]] = []
@@ -279,6 +300,44 @@ def test_compose_planner_diagnosis_raises_when_stream_fails(monkeypatch: pytest.
 
     stages = [str(event.get("stage") or "") for event in events]
     assert stages == ["planner.diagnose.failed"]
+
+
+@pytest.mark.parametrize(
+    ("builder", "expected_name"),
+    [
+        (build_planner_repair_messages, "planner_plan_repair"),
+        (build_planner_diagnosis_repair_messages, "planner_diagnosis_repair"),
+    ],
+)
+def test_planner_repair_prompts_are_traced(
+    monkeypatch: pytest.MonkeyPatch,
+    builder,
+    expected_name: str,
+) -> None:
+    trace_calls: list[dict[str, object]] = []
+
+    def fake_trace_prompt_build(name, *, inputs, output):
+        trace_calls.append({"name": name, "inputs": inputs, "output": output})
+        return output
+
+    monkeypatch.setattr(planner_prompt_module, "trace_prompt_build", fake_trace_prompt_build)
+    messages = builder(
+        original_messages=[{"role": "system", "content": "课程上下文"}],
+        invalid_output="broken",
+        error="invalid format",
+    )
+
+    assert trace_calls == [
+        {
+            "name": expected_name,
+            "inputs": {
+                "original_message_count": 1,
+                "invalid_output_chars": 6,
+                "error_chars": 14,
+            },
+            "output": messages,
+        }
+    ]
 
 
 def test_diagnosis_stream_preview_exposes_generated_scope_without_protocol_json() -> None:
@@ -495,6 +554,26 @@ def test_normalize_planner_draft_rejects_wrong_exact_chapter_count() -> None:
             user_prompt="我想学习初中函数，请构建一门 2 章课程，每章要有例题和易错点。",
             requested_digest_mode="sprint",
         )
+
+
+def test_normalize_planner_draft_prefers_current_request_over_stale_count_constraint() -> None:
+    payload = _planner_payload(chapter_count=2)
+
+    draft = normalize_planner_draft(
+        payload,
+        course_id="course_linear_algebra",
+        user_prompt="请把原来的三章方案调整为只有两章。",
+        requested_digest_mode="sprint",
+        latest_plan={
+            "build_constraints": {
+                "requested_chapter_count": 3,
+                "chapter_count_source": "user_request",
+            }
+        },
+    )
+
+    assert len(draft.chapters) == 2
+    assert draft.build_constraints["requested_chapter_count"] == 2
 
 
 def test_normalize_planner_draft_rejects_wrong_count_from_revision_feedback() -> None:
@@ -872,6 +951,110 @@ def test_normalize_planner_diagnosis_draft_skips_empty_model_questions() -> None
     assert normalized["diagnose_status"] == "skipped"
 
 
+def test_normalize_planner_diagnosis_draft_clears_previous_resolution_for_new_questions() -> None:
+    normalized = normalize_planner_diagnosis_draft(
+        {
+            "diagnose": [
+                {
+                    "question": "行列式的几何意义掌握得怎样？",
+                    "purpose": "调整行列式章节的讲解深度。",
+                    "options": ["完全不了解", "只会计算", "理解面积", "能够推广"],
+                },
+            ],
+            "diagnose_status": "pending",
+        },
+        course_id="线性代数",
+        user_prompt="复习矩阵乘法与行列式",
+        requested_digest_mode="systematic",
+        latest_plan={
+            "planning_note": "学习目标：复习矩阵乘法与行列式。。规划节奏：紧凑冲刺。",
+            "diagnose": [
+                {
+                    "question": "矩阵乘法掌握得怎样？",
+                    "purpose": "调整矩阵章节的讲解深度。",
+                    "options": ["完全不了解", "只会公式", "理解规则", "能够应用"],
+                    "answer": "理解规则",
+                },
+            ],
+            "diagnose_status": "answered",
+            "diagnose_note": "使用标准讲解与基础练习，两章均衡。",
+        },
+    )
+
+    assert normalized["diagnose_status"] == "pending"
+    assert normalized["diagnose_note"] == ""
+    assert normalized["planning_note"] == "学习目标：复习矩阵乘法与行列式。规划节奏：紧凑冲刺。"
+    assert normalized["diagnose"][0]["question"] == "行列式的几何意义掌握得怎样？"
+    assert normalized["diagnose"][0]["answer"] == ""
+
+
+def test_refresh_diagnosis_preserves_previous_formal_plan() -> None:
+    latest_plan = _planner_payload(chapter_count=2)
+    latest_plan["build_constraints"] = {
+        "chapter_length_profile": "detailed",
+        "chapter_min_words": 3400,
+        "chapter_target_words": 4200,
+        "chapter_max_words": 5000,
+    }
+
+    normalized = normalize_planner_diagnosis_draft(
+        {
+            "diagnose": [
+                {
+                    "question": "这轮复习最需要加强哪类训练？",
+                    "purpose": "文档落点：调整例题和练习密度。",
+                    "options": ["概念辨析", "步骤计算", "综合应用", "错因复盘"],
+                }
+            ],
+            "diagnose_status": "pending",
+        },
+        course_id="高等数学",
+        user_prompt="保持两章结构和知识点边界不变，同时重新生成前置诊断。",
+        requested_digest_mode="systematic",
+        latest_plan=latest_plan,
+    )
+
+    assert normalized["suggestion"] == latest_plan["suggestion"]
+    assert normalized["plan"] == latest_plan["plan"]
+    assert normalized["chapters"] == latest_plan["chapters"]
+    assert normalized["build_constraints"] == latest_plan["build_constraints"]
+    assert normalized["diagnose_status"] == "pending"
+    assert normalized["diagnose"][0]["question"] == "这轮复习最需要加强哪类训练？"
+
+
+def test_normalize_planner_draft_rejects_locked_knowledge_boundary_changes() -> None:
+    previous = _planner_payload(chapter_count=2)
+    current = _planner_payload(chapter_count=2)
+    current["chapters"][0]["required_elements"] = ["切片 1 的学习任务"]
+
+    with pytest.raises(ValueError, match="locked required_elements"):
+        normalize_planner_draft(
+            current,
+            course_id="高等数学",
+            user_prompt="系统复习高等数学",
+            requested_digest_mode="systematic",
+            latest_plan=previous,
+            revision_feedback="保持两章结构和知识点边界不变。",
+        )
+
+
+def test_normalize_planner_draft_allows_explicit_scope_change_without_lock() -> None:
+    previous = _planner_payload(chapter_count=2)
+    current = _planner_payload(chapter_count=2)
+    current["chapters"][0]["required_elements"] = ["切片 1 的学习任务"]
+
+    draft = normalize_planner_draft(
+        current,
+        course_id="高等数学",
+        user_prompt="系统复习高等数学",
+        requested_digest_mode="systematic",
+        latest_plan=previous,
+        revision_feedback="删除第一章的边界辨析知识点。",
+    )
+
+    assert draft.chapters[0].required_elements == ["切片 1 的学习任务"]
+
+
 def test_partial_chapters_supports_streaming_preview() -> None:
     chapters = plan_draft_node._partial_chapters(
         f'{CHAPTERS_START}[{{"title":"数与式","objective":"掌握代数式与方程变形。","required_elements":["代数式","方程"]}},{{"title":"函数图像","objective":"理解一次函数图像。","required_elements":["一次函数"'
@@ -1110,5 +1293,84 @@ def test_planner_node_uses_llm_repair_instead_of_local_content_rewrite(
     assert [chapter["title"] for chapter in result["build_plan_draft"]["chapters"]] == [
         "函数概念与自变量",
         "一次函数图像",
+    ]
+    assert "planner.plan.repairing" in emitted_events
+
+
+def test_planner_node_repairs_locked_knowledge_boundary_changes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    previous = _planner_payload(chapter_count=2)
+    invalid_output = (
+        f"{COURSE_NAME_START}高数主线重建{COURSE_NAME_END}"
+        f"{PLAN_START}保持两章复习路径。{PLAN_END}"
+        f"{SUGGESTION_START}只调整讲解深度。{SUGGESTION_END}"
+        f'{CHAPTERS_START}['
+        '{"title":"任务切片 1","objective":"理解并完成切片 1 的学习任务。",'
+        '"required_elements":["切片 1 的学习任务"]},'
+        '{"title":"任务切片 2","objective":"理解并完成切片 2 的学习任务。",'
+        '"required_elements":["切片 2 的学习任务","切片 2 的边界"]}'
+        f']{CHAPTERS_END}'
+    )
+    repaired_output = (
+        f"{COURSE_NAME_START}高数主线重建{COURSE_NAME_END}"
+        f"{PLAN_START}保持两章复习路径，只调整讲解深度。{PLAN_END}"
+        f"{SUGGESTION_START}可以继续调整例题密度。{SUGGESTION_END}"
+        f'{CHAPTERS_START}['
+        '{"title":"任务切片 1","objective":"理解并完成切片 1 的学习任务。",'
+        '"required_elements":["切片 1 的学习任务","切片 1 的边界"]},'
+        '{"title":"任务切片 2","objective":"理解并完成切片 2 的学习任务。",'
+        '"required_elements":["切片 2 的学习任务","切片 2 的边界"]}'
+        f']{CHAPTERS_END}'
+    )
+    emitted_events: list[str] = []
+
+    async def fake_stream(state, **kwargs):
+        del state, kwargs
+        return invalid_output
+
+    async def fake_repair(messages, **kwargs):
+        del kwargs
+        prompt_text = "\n".join(message["content"] for message in messages)
+        assert "required_elements 必须逐章原样输出" in prompt_text
+        assert "locked required_elements" in messages[-1]["content"]
+        return repaired_output
+
+    async def fake_emit_event(state, *, event: str, detail: str, payload=None) -> None:
+        del state, detail, payload
+        emitted_events.append(event)
+
+    monkeypatch.setattr(plan_draft_node, "_stream_planner_response", fake_stream)
+    monkeypatch.setattr(plan_draft_node, "acompletion_with_fallback", fake_repair)
+    monkeypatch.setattr(plan_draft_node, "emit_planner_event", fake_emit_event)
+
+    node = plan_draft_node.build_compose_planner_draft_node(context=object())
+    result = asyncio.run(
+        node(
+            {
+                "course_id": "course_test",
+                "planner_session_id": "session_test",
+                "planner_operation": "append",
+                "material_context": _material_context(),
+                "planning_note": "保持原有学习范围。",
+                "material_note": "没有上传资料。",
+                "user_prompt": "系统复习高等数学",
+                "feedback_message": "前置诊断选择：问题：讲解深度；回答：细致推导",
+                "digest_mode": "systematic",
+                "message_history": [
+                    "用户: 保持两章结构和知识点边界不变，同时重新生成前置诊断。",
+                    "规划器: 请先完成新的前置诊断。",
+                    "用户: 前置诊断选择：问题：讲解深度；回答：细致推导",
+                ],
+                "latest_plan": previous,
+            }
+        )
+    )
+
+    assert [chapter["title"] for chapter in result["build_plan_draft"]["chapters"]] == [
+        chapter["title"] for chapter in previous["chapters"]
+    ]
+    assert [chapter["required_elements"] for chapter in result["build_plan_draft"]["chapters"]] == [
+        chapter["required_elements"] for chapter in previous["chapters"]
     ]
     assert "planner.plan.repairing" in emitted_events

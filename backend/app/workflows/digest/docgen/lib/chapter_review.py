@@ -108,7 +108,7 @@ def _rule_review_chapter(
                 constraints=[
                     "`## 单元测试` 必须是本章最后一个二级标题。",
                     "每题必须是一个非空 QUESTION，后面立即跟一个非空 ANSWER；不得有游离答案、空题干、重复题号或重复答案。",
-                    "QUESTION 使用 `Q01｜题型｜难度｜考点` 标头；ANSWER 内必须有独立的 `**答案**` 字段，并默认折叠。",
+                    "QUESTION 使用 `Q01｜题型｜难度｜考点` 标头；ANSWER 内必须有独立且非空的 `**答案**` 与 `**解析步骤**` 字段，并默认折叠。",
                     "只有选择题可以使用 A-D 四个选项；判断、填空、短答、步骤和迁移任务不得显示伪选项。",
                     "不得把其它章节主题补成测试主体。",
                     "传统题不适合时改成案例检查、操作步骤检查、边界辨析或迁移任务。",
@@ -174,6 +174,7 @@ def _rule_review_chapter(
         chapter_index=draft.chapter_index,
         passed=passed,
         coverage_score=coverage_score,
+        coverage_evaluated=False,
         evidence_support_score=support_score,
         quality_score=quality_score,
         missing_elements=missing,

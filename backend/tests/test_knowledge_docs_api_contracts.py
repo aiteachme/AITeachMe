@@ -290,7 +290,13 @@ def test_knowledge_build_spawns_background_docgen_with_accepted_files(monkeypatc
             request=request,
             course_id=COURSE_ID,
             body=DocGenBuildRequest(file_ids=["file-a", "file-b"], prompt="draft", confirmed_plan_id="plan-1"),
-            user=_user(),
+            user=CurrentUserContext(
+                user_id=USER_ID,
+                email="learner@example.com",
+                is_local=False,
+                is_authenticated=True,
+                auth_source="test",
+            ),
             session=SimpleNamespace(get=lambda *_args, **_kwargs: object()),
         )
     )

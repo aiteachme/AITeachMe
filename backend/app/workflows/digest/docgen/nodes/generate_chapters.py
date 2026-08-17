@@ -756,6 +756,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
                     "document_count": int(research.metadata.get("document_count", 0) or 0),
                 },
                 coverage_score=float(research.metadata.get("coverage_score", 0.0) or 0.0),
+                coverage_evaluated=bool(research.metadata.get("coverage_evaluated", False)),
                 gap_notes=list(research.metadata.get("gaps_remaining", []) or []),
             )
         except Exception as exc:
@@ -1020,7 +1021,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
                     chapter_index=task.chapter_index,
                 ),
             )
-            writer_attempt_count += 1
+            writer_attempt_count += 2
             _publish_preview_delta(
                 _chapter_live_preview_markdown(writer_markdown, title=title),
                 status="drafting",

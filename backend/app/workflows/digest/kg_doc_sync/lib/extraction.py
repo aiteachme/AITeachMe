@@ -13,6 +13,7 @@ import structlog
 from app.shared.infra.llm_support import acompletion_structured
 from app.shared.infra.prompt_loader import populate_prompt
 from app.schemas.llm import ChatMessage, SYSTEM, USER
+from app.workflows.common.prompt_tracing import trace_prompt_build
 from app.workflows.digest.kg_doc_sync.lib.model_policy import (
     KGDocSyncModelStep,
     kg_doc_sync_course_context_max_chars,
@@ -331,6 +332,15 @@ async def _repair_docs_extraction_after_empty(
                 "找不到可复习、可教学、可出题的具体知识对象时，继续返回空结果。"
             ),
         }
+    )
+    repair_messages = trace_prompt_build(
+        "kg_doc_sync_empty_repair",
+        inputs={
+            "chunk_title": chunk_title,
+            "header_path": header_path,
+            "base_message_count": len(messages),
+        },
+        output=repair_messages,
     )
     return await acompletion_structured(
         response_model=ChunkExtractionResult,
@@ -717,6 +727,20 @@ async def _extract_candidates_internal(
         {"role": SYSTEM, "content": SYSTEM_PROMPT_KNOWLEDGE_EXTRACT},
         {"role": USER, "content": user_content},
     ]
+    messages = trace_prompt_build(
+        "kg_doc_sync_section_graph",
+        inputs={
+            "chunk_title": chunk_title,
+            "header_path": header_path,
+            "doc_source_type": doc_source_type,
+            "digest_mode": digest_mode,
+            "chunk_chars": len(chunk_content),
+            "llm_chunk_chars": len(llm_chunk_content),
+            "course_context_chars": len(course_context or ""),
+            "llm_course_context_chars": len(llm_course_context),
+        },
+        output=messages,
+    )
 
     if prefer_fast_path:
         logger.info(
