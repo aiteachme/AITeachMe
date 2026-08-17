@@ -41,6 +41,7 @@ COPY --from=docs-builder /app/docs/out/docs /usr/share/nginx/html/docs
 COPY --from=docs-builder /app/docs/out/_next /usr/share/nginx/html/_next
 COPY --from=docs-builder /app/docs/out/screenshots /usr/share/nginx/html/screenshots
 COPY --from=docs-builder /app/docs/out/favicon.ico /usr/share/nginx/html/favicon.ico
+COPY --from=docs-builder /app/docs/out/404.html /usr/share/nginx/html/docs/404.html
 
 # 注入 Kubernetes/Docker 运行时 DNS resolver，避免 Nginx 因 upstream 短暂解析失败而启动退出
 COPY infra/deployment/docker/frontend-nginx-resolver.envsh /docker-entrypoint.d/16-aiteachme-resolver.envsh

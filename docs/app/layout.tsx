@@ -9,7 +9,7 @@ export const metadata: Metadata = {
     default: "AITeachMe Docs",
     template: "%s | AITeachMe Docs",
   },
-  description: "AITeachMe 用户教程和开发者文档。",
+  description: "AITeachMe 用户教程：从资料准备到课程画像，按真实使用顺序完成学习闭环。",
 };
 
 const zhCnTranslations = {
@@ -26,12 +26,21 @@ const zhCnTranslations = {
   "Open Search(search trigger)(aria-label)": "打开搜索",
   "Close Search": "关闭搜索",
   "Close Search(search dialog)(aria-label)": "关闭搜索",
+  "Open Sidebar": "切换目录",
+  "Open Sidebar(sidebar)(aria-label)": "切换目录",
+  "Collapse Sidebar": "收起目录",
+  "Collapse Sidebar(sidebar)(aria-label)": "收起目录",
+  "Copy Anchor Link": "复制标题链接",
+  "Copy Anchor Link(heading anchor)(aria-label)": "复制标题链接",
 } as const;
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="zh-CN" suppressHydrationWarning>
       <body suppressHydrationWarning>
+        <a className="atm-docs-skip-link" href="#nd-page">
+          跳到正文
+        </a>
         <RootProvider
           i18n={{ locale: "zh-CN", translations: zhCnTranslations }}
           search={{

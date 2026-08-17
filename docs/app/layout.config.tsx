@@ -5,16 +5,10 @@ export const baseOptions: BaseLayoutProps = {
     url: "/docs",
     title: (
       <span className="atm-docs-nav-title">
-        <img className="atm-docs-nav-logo" src="/logo.svg" alt="" />
-        <span>AITeachMe</span>
+        <span className="atm-docs-nav-mark" aria-hidden="true" />
+        <span className="atm-docs-nav-name">AITeachMe</span>
       </span>
     ),
   },
-  links: [
-    {
-      text: "GitHub",
-      url: "https://github.com/aiteachme/AITeachMe",
-      external: true,
-    },
-  ],
+  themeSwitch: { enabled: false },
 };
