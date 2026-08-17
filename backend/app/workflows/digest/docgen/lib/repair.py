@@ -13,6 +13,7 @@ from app.shared.infra.tools.builtin.markdown_processing import normalize_markdow
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
 from app.workflows.digest.docgen.lib.models import DocGenBaseModel, RepairTraceItem, ReviewAction, ReviewedChapterDraft
 from app.workflows.digest.docgen.lib.presentation_policy import (
+    _advance_fence_state,
     find_docgen_presentation_issues,
     normalize_docgen_presentation,
 )
@@ -273,8 +274,13 @@ def _question_callout_records(markdown: str) -> list[tuple[str, int, int]]:
 
     lines = str(markdown or "").splitlines()
     records: list[tuple[str, int, int]] = []
+    fence_state: tuple[str, int] | None = None
     index = 0
     while index < len(lines):
+        fence_state, is_fence_boundary = _advance_fence_state(lines[index], fence_state)
+        if is_fence_boundary or fence_state is not None:
+            index += 1
+            continue
         if not _QUESTION_CALLOUT_RE.match(lines[index]):
             index += 1
             continue

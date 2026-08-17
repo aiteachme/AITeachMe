@@ -725,7 +725,7 @@ def build_docgen_kg_draft(
     section_fingerprint_keys: set[tuple[str, str]] = set()
     for record in list(prefetched_records or []):
         payload = getattr(record, "payload", None)
-        if payload is None:
+        if payload is None or str(getattr(record, "error", "") or "").strip():
             continue
         payload_record_count += 1
         section_key = str(getattr(record, "section_key", "") or "").strip()

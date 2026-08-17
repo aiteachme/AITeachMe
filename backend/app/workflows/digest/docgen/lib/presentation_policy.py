@@ -255,8 +255,14 @@ def _dedupe_exact_question_callouts(markdown: str) -> str:
     lines = str(markdown or "").splitlines()
     fixed: list[str] = []
     seen: set[str] = set()
+    fence_state: tuple[str, int] | None = None
     index = 0
     while index < len(lines):
+        fence_state, is_fence_boundary = _advance_fence_state(lines[index], fence_state)
+        if is_fence_boundary or fence_state is not None:
+            fixed.append(lines[index])
+            index += 1
+            continue
         if not _QUESTION_CALLOUT_START_RE.match(lines[index]):
             fixed.append(lines[index])
             index += 1
