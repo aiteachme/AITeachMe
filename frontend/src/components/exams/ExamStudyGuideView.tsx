@@ -393,11 +393,11 @@ export function ExamStudyGuideView({
       <div className="absolute bottom-4 -right-2 top-2 hidden w-full border border-slate-200 bg-white shadow-[0_14px_30px_rgba(15,23,42,0.06)] dark:border-slate-800 dark:bg-slate-900/90 dark:shadow-[0_14px_30px_rgba(0,0,0,0.36)] lg:block" />
 
       <article
-        className="relative min-h-[1470px] overflow-hidden border border-slate-200 bg-white shadow-[0_26px_70px_rgba(15,23,42,0.15)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_28px_76px_-34px_rgba(0,0,0,0.9)]"
+        className="relative overflow-hidden border border-slate-200 bg-white shadow-[0_26px_70px_rgba(15,23,42,0.15)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_28px_76px_-34px_rgba(0,0,0,0.9)]"
         aria-busy={isStreaming || streamedPresentation.hasPendingSection}
       >
         <header className="px-6 pb-6 pt-12 text-center sm:px-10 sm:pt-16 lg:px-16">
-          <h1 className="break-words font-serif text-3xl font-bold tracking-[0.08em] text-slate-950 dark:text-slate-100 sm:text-4xl">
+          <h1 className="break-words font-serif text-3xl font-bold text-slate-950 dark:text-slate-100 sm:text-4xl">
             {getExamPaperDisplayTitle(paper)}
           </h1>
           <div className="mx-auto mt-5 flex max-w-md items-center justify-center gap-3 text-slate-400 dark:text-slate-600">
