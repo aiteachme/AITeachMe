@@ -212,6 +212,20 @@ def test_presentation_dedupe_removes_the_duplicate_question_solution_as_one_bloc
     assert "这是第二份解析" not in fixed
 
 
+@pytest.mark.parametrize("fence", ["````", "~~~~"])
+def test_presentation_dedupe_preserves_question_examples_inside_code_fences(fence: str) -> None:
+    question = "> [!QUESTION]\n> 这个重复题块只是 Markdown 语法示例，不是真实练习。"
+    fenced_example = f"{fence}markdown\n{question}\n\n{question}\n{fence}"
+    raw = f"{fenced_example}\n\n{question}\n\n{question}"
+
+    deduped = presentation_policy._dedupe_exact_question_callouts(raw)
+    fixed = normalize_docgen_presentation(raw)
+
+    assert fenced_example in deduped
+    assert deduped.count("> [!QUESTION]") == 3
+    assert fixed.count("> [!QUESTION]") == 3
+
+
 def test_presentation_dedupe_preserves_ambiguous_prose_after_solution() -> None:
     question = "> [!QUESTION]\n> 计算生命、宇宙及一切的答案。\n\n"
     first = question + "答案：42\n\n解析：第一份解析。"

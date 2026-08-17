@@ -1082,6 +1082,57 @@ def test_docgen_kg_draft_does_not_extract_learning_bullets_as_rule_nodes() -> No
     assert draft["fast_visible_ready"] is False
 
 
+def test_docgen_kg_draft_does_not_count_failed_prefetch_as_complete_payload() -> None:
+    failed_payload = SectionExtractionPayload(
+        units=[],
+        pending_edges=[],
+        candidate_id_to_anchor={},
+        anchors_by_name={},
+        anchors_by_normalized_name={},
+        node_contexts_by_anchor={},
+        section_context=SectionExtractionContext(
+            section_index=1,
+            title="Failed section",
+            header_path="Chapter / Failed section",
+            body_markdown="Content",
+        ),
+        diagnostics={"failed_section_count": 1},
+    )
+    failed_record = SectionExtractionRecord(
+        section_key="ch1:section:failed-section",
+        content_hash="failed-content-hash",
+        task_index=1,
+        source_chapter_index=1,
+        source_kind="section",
+        title="Failed section",
+        payload=failed_payload,
+        error_type="RuntimeError",
+        error="section_extraction_failed",
+    )
+
+    draft = build_docgen_kg_draft(
+        reviewed_chapters=[
+            {
+                "chapter_index": 1,
+                "title": "Chapter",
+                "markdown": "# Chapter\n\n## Failed section\n\nContent",
+            }
+        ],
+        prefetched_records=[failed_record],
+        prefetch_metrics={
+            "prefetch_status": "completed",
+            "prefetch_ready": 1,
+            "prefetch_section_count": 1,
+            "prefetch_failed_section_count": 1,
+        },
+    )
+
+    assert draft["ready"] is True
+    assert draft["prefetch_section_count"] == 1
+    assert draft["prefetch_payload_section_count"] == 0
+    assert draft["section_fingerprints"] == []
+
+
 def test_prepare_knowledge_graph_chapters_keep_markdown_when_metadata_locks_title() -> None:
     chapters = prepare_knowledge_graph._chapters_for_prefetch(  # noqa: SLF001
         {
@@ -2947,6 +2998,31 @@ def test_surface_repair_preserves_exercises_without_explicit_change_request() ->
 
     assert repair._should_preserve_exercise_identity([generic_action], unit_test_patch=False) is True
     assert repair._should_preserve_exercise_identity([add_exercise_action], unit_test_patch=False) is False
+
+
+@pytest.mark.parametrize("fence", ["````", "~~~~"])
+def test_repair_exercise_identity_ignores_question_examples_inside_code_fences(
+    fence: str,
+) -> None:
+    original = (
+        f"{fence}markdown\n"
+        "> [!QUESTION]\n"
+        "> Example syntax before repair.\n"
+        f"{fence}\n\n"
+        "> [!QUESTION]\n"
+        "> Real exercise remains unchanged."
+    )
+    patched = original.replace(
+        "Example syntax before repair.",
+        "Example syntax after repair.",
+    )
+
+    assert len(repair._question_callout_records(original)) == 1
+    assert repair._exercise_patch_contract_reason(
+        original_markdown=original,
+        patched_markdown=patched,
+        preserve_identity=True,
+    ) is None
 
 
 @pytest.mark.anyio
