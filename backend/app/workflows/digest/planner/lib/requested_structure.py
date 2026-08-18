@@ -242,7 +242,8 @@ def _explicit_chapter_title_candidates(text: str) -> list[tuple[int, list[str]]]
         ordinals = [ordinal for _, ordinal, _ in ordinal_group]
         titles = [title for _, _, title in ordinal_group]
         if (
-            ordinals == list(range(1, len(ordinals) + 1))
+            len(titles) >= 2
+            and ordinals == list(range(1, len(ordinals) + 1))
             and len({title.casefold() for title in titles}) == len(titles)
         ):
             candidates.append((ordinal_group[-1][0], titles))
@@ -385,8 +386,10 @@ def extract_explicit_chapter_titles(value: Any) -> list[str]:
 
 def extract_requested_chapter_constraint(
     value: Any,
+    *,
+    infer_from_title_lists: bool = True,
 ) -> tuple[int | None, tuple[int, int] | None]:
-    """Return the latest exact count or range stated by the user."""
+    """Return the latest exact count, range, or optional complete title-list count."""
 
     text = str(value or "")
     if not text.strip():
@@ -402,10 +405,11 @@ def extract_requested_chapter_constraint(
         if any(start < range_end and range_start < end for range_start, range_end in range_spans):
             continue
         candidates.append((start, count, None))
-    candidates.extend(
-        (position, len(titles), None)
-        for position, titles in _explicit_chapter_title_candidates(text)
-    )
+    if infer_from_title_lists:
+        candidates.extend(
+            (position, len(titles), None)
+            for position, titles in _explicit_chapter_title_candidates(text)
+        )
     if candidates:
         _, count, requested_range = max(candidates, key=lambda item: item[0])
         return count, requested_range

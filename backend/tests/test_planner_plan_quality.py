@@ -632,9 +632,10 @@ def test_normalize_planner_draft_prefers_current_request_over_stale_count_constr
 
 def test_normalize_planner_draft_prefers_latest_exact_count_over_earlier_range() -> None:
     payload = _planner_payload(chapter_count=6)
+    revision_feedback = "请严格调整为 6 章。"
     request_text = compose_effective_planner_request_text(
         "请生成 3-5 章课程。",
-        "请严格调整为 6 章。",
+        revision_feedback,
     )
 
     draft = normalize_planner_draft(
@@ -642,6 +643,7 @@ def test_normalize_planner_draft_prefers_latest_exact_count_over_earlier_range()
         course_id="course_linear_algebra",
         user_prompt=request_text,
         requested_digest_mode="sprint",
+        revision_feedback=revision_feedback,
     )
 
     assert len(draft.chapters) == 6
@@ -650,11 +652,12 @@ def test_normalize_planner_draft_prefers_latest_exact_count_over_earlier_range()
     assert draft.build_constraints.get("requested_chapter_max") is None
 
 
-def test_normalize_planner_draft_prefers_latest_title_list_over_earlier_count() -> None:
+def test_normalize_planner_draft_trusts_ai_count_for_title_list_revision() -> None:
     payload = _planner_payload(chapter_count=3)
+    revision_feedback = "请改为：第 1 章集合，第 2 章函数，第 3 章导数。"
     request_text = compose_effective_planner_request_text(
         "请生成 6 章课程。",
-        "请改为：第 1 章集合，第 2 章函数，第 3 章导数。",
+        revision_feedback,
     )
 
     draft = normalize_planner_draft(
@@ -662,17 +665,46 @@ def test_normalize_planner_draft_prefers_latest_title_list_over_earlier_count() 
         course_id="course_linear_algebra",
         user_prompt=request_text,
         requested_digest_mode="sprint",
+        revision_feedback=revision_feedback,
     )
 
     assert len(draft.chapters) == 3
-    assert draft.build_constraints["requested_chapter_count"] == 3
+    assert "requested_chapter_count" not in draft.build_constraints
+
+
+def test_normalize_planner_draft_trusts_ai_count_for_partial_title_revision() -> None:
+    previous = _planner_payload(chapter_count=3)
+    previous["build_constraints"] = {
+        "requested_chapter_count": 3,
+        "chapter_count_source": "user_request",
+    }
+    revision_feedback = "第 1 章改成集合导论。"
+    request_text = compose_effective_planner_request_text(
+        "请生成 3 章课程。",
+        revision_feedback,
+    )
+
+    draft = normalize_planner_draft(
+        _planner_payload(chapter_count=3),
+        course_id="course_linear_algebra",
+        user_prompt=request_text,
+        requested_digest_mode="sprint",
+        latest_plan=previous,
+        revision_feedback=revision_feedback,
+    )
+
+    assert len(draft.chapters) == 3
+    assert draft.build_constraints["min_chapters"] == 3
+    assert draft.build_constraints["max_chapters"] == 3
+    assert "requested_chapter_count" not in draft.build_constraints
 
 
 def test_normalize_planner_draft_rejects_wrong_count_from_revision_feedback() -> None:
     payload = _planner_payload(chapter_count=4)
+    revision_feedback = "跳过诊断。请严格生成 1 章，章节名为：C 指针与变量位置。不要扩展成多章。"
     request_text = compose_effective_planner_request_text(
         "基于上传资料生成一份冲刺复习文档。",
-        "跳过诊断。请严格生成 1 章，章节名为：C 指针与变量位置。不要扩展成多章。",
+        revision_feedback,
     )
 
     with pytest.raises(ValueError, match="does not match requested 1"):
@@ -681,6 +713,7 @@ def test_normalize_planner_draft_rejects_wrong_count_from_revision_feedback() ->
             course_id="course_smoke",
             user_prompt=request_text,
             requested_digest_mode="sprint",
+            revision_feedback=revision_feedback,
         )
 
 

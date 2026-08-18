@@ -137,6 +137,21 @@ def test_partial_chapter_title_revision_does_not_change_total_count() -> None:
 
 
 @pytest.mark.parametrize(
+    "feedback",
+    [
+        "第 1 章改成集合导论。",
+        "第 1 章改成集合，第 2 章改成函数。",
+        "请改为：第 1 章集合，第 2 章函数，第 3 章导数。",
+    ],
+)
+def test_revision_title_edits_do_not_infer_total_chapter_count(feedback: str) -> None:
+    assert extract_requested_chapter_constraint(
+        feedback,
+        infer_from_title_lists=False,
+    ) == (None, None)
+
+
+@pytest.mark.parametrize(
     ("feedback", "expected"),
     [
         ("保持章节结构，只调整例题。", True),
