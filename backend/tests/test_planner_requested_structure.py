@@ -98,6 +98,14 @@ def test_latest_explicit_chapter_count_overrides_an_earlier_count() -> None:
             "请把原来的 3-5 章方案改为严格 6 章。",
             (6, None),
         ),
+        (
+            "请生成 6 章课程。用户最新调整：第 1 章集合，第 2 章函数，第 3 章导数。",
+            (3, None),
+        ),
+        (
+            "请生成 5-7 章课程。用户最新调整：第 1 章集合，第 2 章函数，第 3 章导数。",
+            (3, None),
+        ),
     ],
 )
 def test_latest_chapter_constraint_overrides_earlier_count_or_range(
@@ -110,6 +118,22 @@ def test_latest_chapter_constraint_overrides_earlier_count_or_range(
 def test_chapter_range_is_not_mistaken_for_its_upper_bound() -> None:
     assert extract_requested_chapter_constraint("请生成 3-5 章课程。") == (None, (3, 5))
     assert extract_requested_chapter_count("请生成 3-5 章课程。") is None
+
+
+def test_latest_complete_chapter_title_list_overrides_an_earlier_list() -> None:
+    prompt = (
+        "第 1 章旧集合，第 2 章旧函数，第 3 章旧导数。"
+        "用户最新调整：第 1 章矩阵，第 2 章行列式。"
+    )
+
+    assert extract_explicit_chapter_titles(prompt) == ["矩阵", "行列式"]
+    assert extract_requested_chapter_constraint(prompt) == (2, None)
+
+
+def test_partial_chapter_title_revision_does_not_change_total_count() -> None:
+    prompt = "请生成 3 章课程。用户最新调整：第 2 章必须增加行列式的几何意义。"
+
+    assert extract_requested_chapter_constraint(prompt) == (3, None)
 
 
 @pytest.mark.parametrize(

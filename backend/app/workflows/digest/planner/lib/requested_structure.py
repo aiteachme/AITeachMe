@@ -232,6 +232,51 @@ def _chapter_count_range_matches(
     return matches
 
 
+def _explicit_chapter_title_candidates(text: str) -> list[tuple[int, list[str]]]:
+    candidates: list[tuple[int, list[str]]] = []
+    ordinal_group: list[tuple[int, int, str]] = []
+
+    def finish_ordinal_group() -> None:
+        if not ordinal_group:
+            return
+        ordinals = [ordinal for _, ordinal, _ in ordinal_group]
+        titles = [title for _, _, title in ordinal_group]
+        if (
+            ordinals == list(range(1, len(ordinals) + 1))
+            and len({title.casefold() for title in titles}) == len(titles)
+        ):
+            candidates.append((ordinal_group[-1][0], titles))
+
+    for match in _ORDINAL_CHAPTER_RE.finditer(text):
+        prefix = text[max(0, match.start() - 12) : match.start()]
+        if _NEGATIVE_ORDINAL_PREFIX_RE.search(prefix):
+            continue
+        ordinal = _parse_small_number(match.group("number"))
+        title = _clean_heading(match.group("title"))
+        if ordinal is None or not title:
+            continue
+        if ordinal_group and ordinal <= ordinal_group[-1][1]:
+            finish_ordinal_group()
+            ordinal_group = []
+        ordinal_group.append((match.start(), ordinal, title))
+    finish_ordinal_group()
+
+    for match in _INLINE_CHAPTER_LIST_RE.finditer(text):
+        raw_items = _clean_heading(match.group("items"))
+        titles = [
+            _clean_heading(part)
+            for part in _INLINE_TITLE_SPLIT_RE.split(raw_items)
+            if _clean_heading(part)
+        ]
+        count = _parse_small_number(match.group("count") or "")
+        if count is not None and len(titles) != count:
+            continue
+        if len(titles) < 2 or len({title.casefold() for title in titles}) != len(titles):
+            continue
+        candidates.append((match.end(), titles))
+    return candidates
+
+
 def _clean_heading(value: str) -> str:
     text = _text(value)
     text = _TITLE_TAIL_RE.sub("", text)
@@ -289,6 +334,10 @@ def extract_explicit_chapter_titles(value: Any) -> list[str]:
     text = str(value or "").strip()
     if not text:
         return []
+    candidates = _explicit_chapter_title_candidates(text)
+    if candidates:
+        return max(candidates, key=lambda item: item[0])[1]
+
     result: list[str] = []
     seen: set[str] = set()
     seen_ordinals: set[int] = set()
@@ -353,12 +402,14 @@ def extract_requested_chapter_constraint(
         if any(start < range_end and range_start < end for range_start, range_end in range_spans):
             continue
         candidates.append((start, count, None))
+    candidates.extend(
+        (position, len(titles), None)
+        for position, titles in _explicit_chapter_title_candidates(text)
+    )
     if candidates:
         _, count, requested_range = max(candidates, key=lambda item: item[0])
         return count, requested_range
-
-    titles = extract_explicit_chapter_titles(text)
-    return (len(titles), None) if titles else (None, None)
+    return None, None
 
 
 def extract_requested_chapter_count(value: Any) -> int | None:

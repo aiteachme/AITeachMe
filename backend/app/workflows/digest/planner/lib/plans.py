@@ -13,7 +13,6 @@ from app.workflows.digest.common.runtime_config import get_teaching_runtime_conf
 from app.workflows.digest.common.models import FastTopicHints, SharedInputs, CourseProfile
 from app.workflows.digest.planner.lib.constants import get_planner_mode_contract, normalize_planner_mode
 from app.workflows.digest.planner.lib.requested_structure import (
-    extract_explicit_chapter_titles,
     extract_explicit_learning_topic,
     extract_requested_chapter_constraint,
     requests_preserved_chapter_structure,
@@ -570,7 +569,6 @@ def normalize_planner_draft(
         **_mapping(current.get("build_constraints")),
     }
     mode = _normalize_digest_mode(requested_digest_mode or current.get("digest_mode") or previous.get("digest_mode"))
-    requested_chapter_titles = extract_explicit_chapter_titles(resolved_user_prompt)
     display_course = (
         _text(current.get("course_name") or previous.get("course_name"))
         or extract_explicit_learning_topic(resolved_user_prompt)
@@ -585,8 +583,6 @@ def normalize_planner_draft(
         requested_max = _positive_int(current_constraints.get("requested_chapter_max"))
         if requested_chapter_count is None and requested_min is not None and requested_max is not None:
             requested_chapter_count_range = (min(requested_min, requested_max), max(requested_min, requested_max))
-    if requested_chapter_titles and requested_chapter_count is None and requested_chapter_count_range is None:
-        requested_chapter_count = len(requested_chapter_titles)
 
     current_chapters = _chapter_items(current.get("chapters"))
     previous_chapters = _chapter_items(previous.get("chapters"))
