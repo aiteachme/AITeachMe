@@ -24,6 +24,10 @@ _CHAPTER_UNIT = r"(?:个\s*)?(?:章节|章)"
 _EXPLICIT_CHAPTER_COUNT_RE = re.compile(
     rf"(?P<count>{_NUMBER_TOKEN})\s*{_CHAPTER_UNIT}(?:\s*(?:课程|课|大纲|方案|内容))?"
 )
+_CHAPTER_COUNT_RANGE_RE = re.compile(
+    rf"(?<!\d)(?P<min>\d{{1,2}})\s*(?:[-~—–]|至|到)\s*"
+    rf"(?P<max>\d{{1,2}})\s*{_CHAPTER_UNIT}"
+)
 _ORDINAL_CHAPTER_RE = re.compile(
     rf"第\s*(?P<number>{_NUMBER_TOKEN})\s*章\s*(?P<title>.*?)(?=(?:[，,；;。.!！?？]\s*)?第\s*{_NUMBER_TOKEN}\s*章|[。.!！?？\n]|$)",
     re.S,
@@ -201,6 +205,33 @@ def _parse_small_number(value: str) -> int | None:
     return parsed if 1 <= parsed <= 30 else None
 
 
+def _explicit_chapter_count_matches(text: str) -> list[tuple[int, int, int]]:
+    matches: list[tuple[int, int, int]] = []
+    for match in _EXPLICIT_CHAPTER_COUNT_RE.finditer(text):
+        prefix = text[max(0, match.start() - 4) : match.start()]
+        if "第" in prefix:
+            continue
+        parsed = _parse_small_number(match.group("count"))
+        if parsed is not None:
+            matches.append((match.start(), match.end(), parsed))
+    return matches
+
+
+def _chapter_count_range_matches(
+    text: str,
+) -> list[tuple[int, int, tuple[int, int]]]:
+    matches: list[tuple[int, int, tuple[int, int]]] = []
+    for match in _CHAPTER_COUNT_RANGE_RE.finditer(text):
+        min_count = _parse_small_number(match.group("min"))
+        max_count = _parse_small_number(match.group("max"))
+        if min_count is None or max_count is None:
+            continue
+        if min_count > max_count:
+            min_count, max_count = max_count, min_count
+        matches.append((match.start(), match.end(), (min_count, max_count)))
+    return matches
+
+
 def _clean_heading(value: str) -> str:
     text = _text(value)
     text = _TITLE_TAIL_RE.sub("", text)
@@ -303,30 +334,45 @@ def extract_explicit_chapter_titles(value: Any) -> list[str]:
     return result
 
 
-def extract_requested_chapter_count(value: Any) -> int | None:
-    """Return an exact chapter count stated by the user."""
+def extract_requested_chapter_constraint(
+    value: Any,
+) -> tuple[int | None, tuple[int, int] | None]:
+    """Return the latest exact count or range stated by the user."""
 
     text = str(value or "")
     if not text.strip():
-        return None
-    explicit_count: int | None = None
-    for match in _EXPLICIT_CHAPTER_COUNT_RE.finditer(text):
-        prefix = text[max(0, match.start() - 4) : match.start()]
-        if "第" in prefix:
+        return None, None
+
+    range_matches = _chapter_count_range_matches(text)
+    range_spans = [(start, end) for start, end, _ in range_matches]
+    candidates: list[tuple[int, int | None, tuple[int, int] | None]] = [
+        (start, None, requested_range)
+        for start, _, requested_range in range_matches
+    ]
+    for start, end, count in _explicit_chapter_count_matches(text):
+        if any(start < range_end and range_start < end for range_start, range_end in range_spans):
             continue
-        parsed = _parse_small_number(match.group("count"))
-        if parsed is not None:
-            explicit_count = parsed
-    if explicit_count is not None:
-        return explicit_count
+        candidates.append((start, count, None))
+    if candidates:
+        _, count, requested_range = max(candidates, key=lambda item: item[0])
+        return count, requested_range
+
     titles = extract_explicit_chapter_titles(text)
-    return len(titles) if titles else None
+    return (len(titles), None) if titles else (None, None)
+
+
+def extract_requested_chapter_count(value: Any) -> int | None:
+    """Return an exact chapter count stated by the user."""
+
+    count, _ = extract_requested_chapter_constraint(value)
+    return count
 
 
 __all__ = [
     "extract_explicit_chapter_titles",
     "extract_explicit_course_title",
     "extract_explicit_learning_topic",
+    "extract_requested_chapter_constraint",
     "extract_requested_chapter_count",
     "requests_preserved_chapter_structure",
     "requests_preserved_knowledge_boundaries",

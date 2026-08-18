@@ -15,7 +15,7 @@ from app.workflows.digest.planner.lib.constants import get_planner_mode_contract
 from app.workflows.digest.planner.lib.requested_structure import (
     extract_explicit_chapter_titles,
     extract_explicit_learning_topic,
-    extract_requested_chapter_count,
+    extract_requested_chapter_constraint,
     requests_preserved_chapter_structure,
     requests_preserved_knowledge_boundaries,
 )
@@ -188,30 +188,10 @@ def _positive_int(value: Any) -> int | None:
     return parsed if parsed > 0 else None
 
 
-_CHAPTER_COUNT_UNIT_PATTERN = r"(?:个\s*)?(?:章节|章)"
-_CHAPTER_COUNT_RANGE_RE = re.compile(
-    rf"(?<!\d)(?P<min>\d{{1,2}})\s*(?:[-~—–]|至|到)\s*(?P<max>\d{{1,2}})\s*{_CHAPTER_COUNT_UNIT_PATTERN}"
-)
 def _compact_planner_chapter_title(title: str) -> str:
     """Remove numbering/quote formatting while preserving the model's title semantics."""
 
     return clean_generated_chapter_title(title)
-
-
-def _chapter_count_range_from_text(value: Any) -> tuple[int, int] | None:
-    text = _text(value)
-    match = _CHAPTER_COUNT_RANGE_RE.search(text)
-    if not match:
-        return None
-    min_count = _positive_int(match.group("min"))
-    max_count = _positive_int(match.group("max"))
-    if min_count is None or max_count is None:
-        return None
-    if min_count > max_count:
-        min_count, max_count = max_count, min_count
-    if 1 <= min_count <= max_count <= 30:
-        return (min_count, max_count)
-    return None
 
 
 def _normalize_digest_mode(value: Any) -> str:
@@ -596,11 +576,8 @@ def normalize_planner_draft(
         or extract_explicit_learning_topic(resolved_user_prompt)
         or _resolve_course_name(course_id, shared_inputs=shared, user_prompt=resolved_user_prompt)
     )
-    requested_chapter_count_range = _chapter_count_range_from_text(resolved_user_prompt)
-    requested_chapter_count = (
-        None
-        if requested_chapter_count_range is not None
-        else extract_requested_chapter_count(resolved_user_prompt)
+    requested_chapter_count, requested_chapter_count_range = (
+        extract_requested_chapter_constraint(resolved_user_prompt)
     )
     if requested_chapter_count is None and requested_chapter_count_range is None:
         requested_chapter_count = _positive_int(current_constraints.get("requested_chapter_count"))

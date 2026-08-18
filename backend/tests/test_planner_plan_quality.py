@@ -630,6 +630,26 @@ def test_normalize_planner_draft_prefers_current_request_over_stale_count_constr
     assert draft.build_constraints["requested_chapter_count"] == 2
 
 
+def test_normalize_planner_draft_prefers_latest_exact_count_over_earlier_range() -> None:
+    payload = _planner_payload(chapter_count=6)
+    request_text = compose_effective_planner_request_text(
+        "请生成 3-5 章课程。",
+        "请严格调整为 6 章。",
+    )
+
+    draft = normalize_planner_draft(
+        payload,
+        course_id="course_linear_algebra",
+        user_prompt=request_text,
+        requested_digest_mode="sprint",
+    )
+
+    assert len(draft.chapters) == 6
+    assert draft.build_constraints["requested_chapter_count"] == 6
+    assert draft.build_constraints.get("requested_chapter_min") is None
+    assert draft.build_constraints.get("requested_chapter_max") is None
+
+
 def test_normalize_planner_draft_rejects_wrong_count_from_revision_feedback() -> None:
     payload = _planner_payload(chapter_count=4)
     request_text = compose_effective_planner_request_text(

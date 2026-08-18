@@ -6,6 +6,7 @@ from app.workflows.digest.planner.lib.requested_structure import (
     extract_explicit_chapter_titles,
     extract_explicit_course_title,
     extract_explicit_learning_topic,
+    extract_requested_chapter_constraint,
     extract_requested_chapter_count,
     requests_preserved_chapter_structure,
     requests_preserved_knowledge_boundaries,
@@ -76,6 +77,39 @@ def test_latest_explicit_chapter_count_overrides_an_earlier_count() -> None:
     prompt = "先生成三章课程。用户最新调整：内容太散，请改为只有两章。"
 
     assert extract_requested_chapter_count(prompt) == 2
+
+
+@pytest.mark.parametrize(
+    ("prompt", "expected"),
+    [
+        (
+            "请生成 3-5 章课程。用户最新调整：请严格调整为 6 章。",
+            (6, None),
+        ),
+        (
+            "请生成 3-5 章课程。用户最新调整：请调整为 7-9 章。",
+            (None, (7, 9)),
+        ),
+        (
+            "请生成 6 章课程。用户最新调整：请调整为 3-5 章。",
+            (None, (3, 5)),
+        ),
+        (
+            "请把原来的 3-5 章方案改为严格 6 章。",
+            (6, None),
+        ),
+    ],
+)
+def test_latest_chapter_constraint_overrides_earlier_count_or_range(
+    prompt: str,
+    expected: tuple[int | None, tuple[int, int] | None],
+) -> None:
+    assert extract_requested_chapter_constraint(prompt) == expected
+
+
+def test_chapter_range_is_not_mistaken_for_its_upper_bound() -> None:
+    assert extract_requested_chapter_constraint("请生成 3-5 章课程。") == (None, (3, 5))
+    assert extract_requested_chapter_count("请生成 3-5 章课程。") is None
 
 
 @pytest.mark.parametrize(
