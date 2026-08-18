@@ -303,6 +303,28 @@ def test_deploy_workflow_serializes_and_reconciles_current_successful_main() -> 
     assert "CLOUDFLARE_DEPLOY_KEY" not in workflow
 
 
+def test_deploy_workflow_retries_registry_image_pushes() -> None:
+    repository_root = Path(__file__).resolve().parents[2]
+    workflow = (repository_root / ".github" / "workflows" / "deploy.yml").read_text(
+        encoding="utf-8"
+    )
+    push_script = (
+        repository_root / ".github" / "scripts" / "push-image-tags.sh"
+    ).read_text(encoding="utf-8")
+
+    assert "- name: Build backend image" in workflow
+    assert "- name: Push backend image tags" in workflow
+    assert "- name: Build frontend image" in workflow
+    assert "- name: Push frontend image tags" in workflow
+    assert workflow.count("          load: true") == 2
+    assert (
+        workflow.count('bash .github/scripts/push-image-tags.sh "${IMAGE_TAGS}"') == 2
+    )
+    assert 'if docker push "${image_tag}"; then' in push_script
+    assert "max_attempts=5" in push_script
+    assert "delay=$((30 * (2 ** (attempt - 1))))" in push_script
+
+
 def test_sealos_backend_rollout_waits_for_fastapi_readiness() -> None:
     workflow = (
         Path(__file__).resolve().parents[2] / ".github" / "workflows" / "deploy.yml"

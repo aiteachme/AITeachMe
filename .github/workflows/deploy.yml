@@ -420,14 +420,14 @@ jobs:
           echo "ghcr_image=${ghcr_image}:${version_tag}" >> "$GITHUB_OUTPUT"
           echo "tags=${ghcr_image}:${version_tag},${ghcr_image}:nginx-latest,${acr_image}:${version_tag},${acr_image}:nginx-latest" >> "$GITHUB_OUTPUT"
 
-      - name: Build and push frontend image
+      - name: Build frontend image
         if: steps.optin.outputs.enabled == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
           file: infra/deployment/docker/frontend.Dockerfile
           platforms: linux/amd64
-          push: true
+          load: true
           provenance: false
           build-args: |
             VITE_API_URL=
@@ -438,6 +438,13 @@ jobs:
             org.opencontainers.image.title=AITeachMe frontend nginx
           cache-from: type=gha,scope=frontend-nginx
           cache-to: type=gha,mode=max,scope=frontend-nginx
+
+      - name: Push frontend image tags
+        if: steps.optin.outputs.enabled == 'true'
+        shell: bash
+        env:
+          IMAGE_TAGS: ${{ steps.image.outputs.tags }}
+        run: bash .github/scripts/push-image-tags.sh "${IMAGE_TAGS}"
 
       - name: Set up kubectl
         if: steps.optin.outputs.enabled == 'true'
@@ -839,14 +846,14 @@ jobs:
           echo "ghcr_image=${ghcr_image}:${version_tag}" >> "$GITHUB_OUTPUT"
           echo "tags=${ghcr_image}:${version_tag},${ghcr_image}:slim-latest,${acr_image}:${version_tag},${acr_image}:slim-latest" >> "$GITHUB_OUTPUT"
 
-      - name: Build and push backend image
+      - name: Build backend image
         if: steps.optin.outputs.enabled == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
           file: infra/deployment/docker/backend.Dockerfile
           platforms: linux/amd64
-          push: true
+          load: true
           provenance: false
           tags: ${{ steps.image.outputs.tags }}
           labels: |
@@ -855,6 +862,13 @@ jobs:
             org.opencontainers.image.title=AITeachMe backend slim
           cache-from: type=gha,scope=backend-slim
           cache-to: type=gha,mode=max,scope=backend-slim
+
+      - name: Push backend image tags
+        if: steps.optin.outputs.enabled == 'true'
+        shell: bash
+        env:
+          IMAGE_TAGS: ${{ steps.image.outputs.tags }}
+        run: bash .github/scripts/push-image-tags.sh "${IMAGE_TAGS}"
 
       - name: Set up kubectl
         if: steps.optin.outputs.enabled == 'true'
