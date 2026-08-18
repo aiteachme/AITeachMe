@@ -574,10 +574,18 @@ def normalize_planner_draft(
         or extract_explicit_learning_topic(resolved_user_prompt)
         or _resolve_course_name(course_id, shared_inputs=shared, user_prompt=resolved_user_prompt)
     )
-    requested_chapter_count, requested_chapter_count_range = (
-        extract_requested_chapter_constraint(resolved_user_prompt)
+    # The LLM owns semantic structure changes; revisions only hard-check explicit numeric constraints.
+    resolved_revision_feedback = _text(revision_feedback)
+    constraint_text = resolved_revision_feedback or resolved_user_prompt
+    requested_chapter_count, requested_chapter_count_range = extract_requested_chapter_constraint(
+        constraint_text,
+        infer_from_title_lists=not bool(resolved_revision_feedback),
     )
-    if requested_chapter_count is None and requested_chapter_count_range is None:
+    if (
+        not resolved_revision_feedback
+        and requested_chapter_count is None
+        and requested_chapter_count_range is None
+    ):
         requested_chapter_count = _positive_int(current_constraints.get("requested_chapter_count"))
         requested_min = _positive_int(current_constraints.get("requested_chapter_min"))
         requested_max = _positive_int(current_constraints.get("requested_chapter_max"))
