@@ -700,7 +700,7 @@ def _build_dynamic_langsmith_extra(
     args: tuple[Any, ...],
     kwargs: dict[str, Any],
 ) -> dict[str, Any] | None:
-    if not langsmith_tracing_enabled():
+    if langsmith_child_runs_suppressed() or not langsmith_tracing_enabled():
         return None
 
     context = get_llm_trace_context()
@@ -765,7 +765,7 @@ def traceable_with_context(
                     kwargs=kwargs,
                 )
                 merged_extra = _merge_langsmith_extras(dynamic_extra, langsmith_extra)
-                if not langsmith_tracing_enabled():
+                if langsmith_child_runs_suppressed() or not langsmith_tracing_enabled():
                     return await func(*args, **kwargs)
                 return await traced_func(*args, langsmith_extra=merged_extra, **kwargs)
 
@@ -781,7 +781,7 @@ def traceable_with_context(
                 kwargs=kwargs,
             )
             merged_extra = _merge_langsmith_extras(dynamic_extra, langsmith_extra)
-            if not langsmith_tracing_enabled():
+            if langsmith_child_runs_suppressed() or not langsmith_tracing_enabled():
                 return func(*args, **kwargs)
             return traced_func(*args, langsmith_extra=merged_extra, **kwargs)
 

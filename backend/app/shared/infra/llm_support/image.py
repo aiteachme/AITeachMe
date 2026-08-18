@@ -14,7 +14,10 @@ from pydantic import BaseModel, Field
 from app.shared.infra.env_support import get_env
 from app.shared.infra.exceptions import LLMCallError, LLMTimeoutError
 from app.shared.infra.llm_support.routing import TaskType
-from app.shared.infra.observability.trace import langsmith_trace
+from app.shared.infra.observability.trace import (
+    langsmith_capture_inputs_enabled,
+    langsmith_trace,
+)
 from app.shared.infra.settings.support import (
     get_llm_api_version,
     normalize_llm_provider_name,
@@ -261,6 +264,25 @@ def _metadata_without_image_payload(result: ImageGenerationResult) -> dict[str, 
     }
 
 
+def _langsmith_image_inputs(
+    *,
+    model: str,
+    prompt: str,
+    size: str,
+    image_count: int,
+) -> dict[str, Any]:
+    return {
+        "model": model,
+        "prompt": _sanitize_langsmith_value(
+            prompt,
+            capture_text=langsmith_capture_inputs_enabled(),
+            field_name="prompt",
+        ),
+        "size": size,
+        "n": image_count,
+    }
+
+
 def _response_metadata(response: Any) -> dict[str, Any]:
     metadata = {"response_type": type(response).__name__}
     if isinstance(response, Mapping):
@@ -460,12 +482,12 @@ async def _agenerate_image_impl(
                 with langsmith_trace(
                     name="LLM：文生图",
                     run_type="llm",
-                    inputs={
-                        "model": tracked_model,
-                        "prompt": _sanitize_langsmith_value(prompt_text, capture_text=True, field_name="prompt"),
-                        "size": size,
-                        "n": call_kwargs["n"],
-                    },
+                    inputs=_langsmith_image_inputs(
+                        model=tracked_model,
+                        prompt=prompt_text,
+                        size=size,
+                        image_count=call_kwargs["n"],
+                    ),
                     extra_metadata={
                         "task_type": TaskType.IMAGE_GENERATION,
                         "mode": "image_generation",

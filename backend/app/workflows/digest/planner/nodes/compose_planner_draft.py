@@ -469,6 +469,7 @@ def _normalize_generated_plan(state: BuildPlannerState, parsed: dict[str, Any]) 
         revision_feedback=resolve_planner_revision_feedback(
             state.get("feedback_message"),
             list(state.get("message_history") or []),
+            latest_plan=latest_plan or None,
         ),
     ).model_dump(mode="json")
 

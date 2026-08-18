@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 
 from app.shared.infra.observability import trace as trace_module
+from app.shared.infra.llm_support import image as llm_image
 from app.shared.infra.llm_support import observability as llm_observability
 from app.shared.infra.tools.definition import ToolDefinition
 from app.shared.infra.tools.registry import ToolRegistry, _tool_trace_inputs
@@ -324,6 +325,56 @@ def test_traceable_with_context_defaults_to_traceable_io(monkeypatch) -> None:
         "model": "safe-model",
     }
     assert process_outputs({"content": "private explanation"}) == {"content": "private explanation"}
+
+
+def test_traceable_with_context_respects_child_run_suppression(monkeypatch) -> None:
+    traced_calls: list[str] = []
+    metadata_calls: list[str] = []
+
+    def fake_traceable(**_kwargs):
+        def decorator(func):
+            def wrapper(*args, langsmith_extra=None, **kwargs):
+                del langsmith_extra
+                traced_calls.append("traced")
+                return func(*args, **kwargs)
+
+            return wrapper
+
+        return decorator
+
+    monkeypatch.setattr(trace_module, "traceable", fake_traceable)
+    monkeypatch.setattr(trace_module, "langsmith_tracing_enabled", lambda: True)
+
+    @trace_module.traceable_with_context(
+        name="test.suppressed_trace",
+        metadata_factory=lambda *_args, **_kwargs: metadata_calls.append("metadata") or {},
+    )
+    def traced(value: str) -> str:
+        return value
+
+    with trace_module.suppress_langsmith_child_runs():
+        assert traced("value") == "value"
+
+    assert traced_calls == []
+    assert metadata_calls == []
+
+
+def test_image_trace_inputs_respect_capture_setting(monkeypatch) -> None:
+    monkeypatch.setattr(llm_image, "langsmith_capture_inputs_enabled", lambda: False)
+
+    inputs = llm_image._langsmith_image_inputs(
+        model="image-model",
+        prompt="private image prompt",
+        size="1024x1024",
+        image_count=1,
+    )
+
+    assert inputs == {
+        "model": "image-model",
+        "prompt": "[redacted]",
+        "size": "1024x1024",
+        "n": 1,
+    }
 
 
 def test_expected_trace_exceptions_are_forwarded_and_not_swallowed(monkeypatch) -> None:

@@ -8,6 +8,7 @@ from app.workflows.digest.planner.lib.requested_structure import (
     extract_explicit_learning_topic,
     extract_requested_chapter_constraint,
     extract_requested_chapter_count,
+    resolve_planner_revision_feedback,
 )
 
 
@@ -126,3 +127,35 @@ def test_latest_complete_chapter_title_list_overrides_an_earlier_list() -> None:
 
     assert extract_explicit_chapter_titles(prompt) == ["矩阵", "行列式"]
     assert extract_requested_chapter_constraint(prompt) == (2, None)
+
+
+def test_initial_diagnosis_does_not_turn_original_request_into_revision_feedback() -> None:
+    feedback = resolve_planner_revision_feedback(
+        "前置诊断选择：问题：当前基础；回答：从零开始",
+        ["用户: 请严格生成 2 章课程。"],
+        latest_plan={
+            "planner_stage": "diagnosis",
+            "plan": "",
+            "chapters": [],
+        },
+    )
+
+    assert feedback == ""
+
+
+def test_refreshed_diagnosis_recovers_revision_for_existing_formal_plan() -> None:
+    feedback = resolve_planner_revision_feedback(
+        "前置诊断选择：问题：训练重点；回答：综合应用",
+        [
+            "用户: 请严格生成 2 章课程。",
+            "规划器: 已生成两章方案。",
+            "用户: 请改成 4 章，并重新生成前置诊断。",
+        ],
+        latest_plan={
+            "planner_stage": "diagnosis",
+            "plan": "改成四章后的正式学习方案。",
+            "chapters": [{"chapter_index": index} for index in range(1, 5)],
+        },
+    )
+
+    assert feedback == "请改成 4 章，并重新生成前置诊断。"

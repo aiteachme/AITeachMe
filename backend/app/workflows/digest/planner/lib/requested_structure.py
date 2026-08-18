@@ -106,12 +106,17 @@ def _is_diagnosis_feedback(value: Any) -> bool:
 def resolve_planner_revision_feedback(
     feedback_message: Any,
     message_history: list[str] | None = None,
+    *,
+    latest_plan: dict[str, Any] | None = None,
 ) -> str:
     """Resolve the original revision request across a diagnosis round."""
 
     current = _text(feedback_message)
     if not _is_diagnosis_feedback(current):
         return current
+    previous = latest_plan if isinstance(latest_plan, dict) else {}
+    if not (_text(previous.get("plan")) and isinstance(previous.get("chapters"), list) and previous["chapters"]):
+        return ""
     for raw_message in reversed(message_history or []):
         message = str(raw_message or "").strip()
         match = re.match(r"^用户\s*[:：]\s*(?P<content>.*)$", message, re.S)

@@ -191,6 +191,7 @@ def build_save_planner_draft_node(*, context: WorkflowContext):
             revision_feedback=resolve_planner_revision_feedback(
                 state.get("feedback_message"),
                 list(state.get("message_history") or []),
+                latest_plan=state.get("latest_plan"),
             ),
         )
         if effective_course_name:

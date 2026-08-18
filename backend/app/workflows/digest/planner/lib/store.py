@@ -1106,6 +1106,7 @@ def save_planner_result(
             revision_feedback=resolve_planner_revision_feedback(
                 state.get("feedback_message"),
                 state.get("message_history"),
+                latest_plan=_planner_plan(record),
             ),
         )
         generated_title = _apply_generated_course_identity(
