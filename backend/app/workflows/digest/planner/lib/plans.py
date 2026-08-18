@@ -15,8 +15,6 @@ from app.workflows.digest.planner.lib.constants import get_planner_mode_contract
 from app.workflows.digest.planner.lib.requested_structure import (
     extract_explicit_learning_topic,
     extract_requested_chapter_constraint,
-    requests_preserved_chapter_structure,
-    requests_preserved_knowledge_boundaries,
 )
 
 
@@ -449,39 +447,6 @@ def _normalize_chapter_count(
     return _reindex_chapters(chapters)
 
 
-def _validate_locked_revision_scope(
-    chapters: list[PlannerChapterPlan],
-    previous_chapters: list[PlannerChapterPlan],
-    *,
-    revision_feedback: str | None,
-) -> None:
-    preserve_structure = requests_preserved_chapter_structure(revision_feedback)
-    preserve_boundaries = requests_preserved_knowledge_boundaries(revision_feedback)
-    if not previous_chapters or not (preserve_structure or preserve_boundaries):
-        return
-
-    current_titles = [_text(chapter.title) for chapter in chapters]
-    previous_titles = [_text(chapter.title) for chapter in previous_chapters]
-    if current_titles != previous_titles:
-        raise ValueError(
-            "planner revision changed locked chapter structure; "
-            f"expected={previous_titles}, actual={current_titles}"
-        )
-    if not preserve_boundaries:
-        return
-
-    for current, previous in zip(chapters, previous_chapters, strict=True):
-        current_by_key = {_text(item).casefold(): _text(item) for item in current.required_elements}
-        previous_by_key = {_text(item).casefold(): _text(item) for item in previous.required_elements}
-        missing = [previous_by_key[key] for key in previous_by_key.keys() - current_by_key.keys()]
-        added = [current_by_key[key] for key in current_by_key.keys() - previous_by_key.keys()]
-        if missing or added:
-            raise ValueError(
-                f"planner revision changed locked required_elements for `{previous.title}`; "
-                f"missing={missing}, added={added}"
-            )
-
-
 def _build_constraints(
     *,
     digest_mode: str,
@@ -574,23 +539,20 @@ def normalize_planner_draft(
         or extract_explicit_learning_topic(resolved_user_prompt)
         or _resolve_course_name(course_id, shared_inputs=shared, user_prompt=resolved_user_prompt)
     )
-    # The LLM owns semantic structure changes; revisions only hard-check explicit numeric constraints.
-    resolved_revision_feedback = _text(revision_feedback)
-    constraint_text = resolved_revision_feedback or resolved_user_prompt
-    requested_chapter_count, requested_chapter_count_range = extract_requested_chapter_constraint(
-        constraint_text,
-        infer_from_title_lists=not bool(resolved_revision_feedback),
-    )
-    if (
-        not resolved_revision_feedback
-        and requested_chapter_count is None
-        and requested_chapter_count_range is None
-    ):
-        requested_chapter_count = _positive_int(current_constraints.get("requested_chapter_count"))
-        requested_min = _positive_int(current_constraints.get("requested_chapter_min"))
-        requested_max = _positive_int(current_constraints.get("requested_chapter_max"))
-        if requested_chapter_count is None and requested_min is not None and requested_max is not None:
-            requested_chapter_count_range = (min(requested_min, requested_max), max(requested_min, requested_max))
+    # Revision structure comes directly from the LLM output; do not reinterpret feedback with regexes.
+    is_revision = bool(_text(revision_feedback))
+    requested_chapter_count: int | None = None
+    requested_chapter_count_range: tuple[int, int] | None = None
+    if not is_revision:
+        requested_chapter_count, requested_chapter_count_range = (
+            extract_requested_chapter_constraint(resolved_user_prompt)
+        )
+        if requested_chapter_count is None and requested_chapter_count_range is None:
+            requested_chapter_count = _positive_int(current_constraints.get("requested_chapter_count"))
+            requested_min = _positive_int(current_constraints.get("requested_chapter_min"))
+            requested_max = _positive_int(current_constraints.get("requested_chapter_max"))
+            if requested_chapter_count is None and requested_min is not None and requested_max is not None:
+                requested_chapter_count_range = (min(requested_min, requested_max), max(requested_min, requested_max))
 
     current_chapters = _chapter_items(current.get("chapters"))
     previous_chapters = _chapter_items(previous.get("chapters"))
@@ -604,20 +566,6 @@ def normalize_planner_draft(
         digest_mode=mode,
         requested_chapter_count=requested_chapter_count,
         requested_chapter_count_range=requested_chapter_count_range,
-    )
-    has_revision_scope_lock = bool(
-        requests_preserved_chapter_structure(revision_feedback)
-        or requests_preserved_knowledge_boundaries(revision_feedback)
-    )
-    previous_normalized_chapters = (
-        [_merge_chapter(raw, index) for index, raw in enumerate(previous_chapters, start=1)]
-        if has_revision_scope_lock
-        else []
-    )
-    _validate_locked_revision_scope(
-        chapters,
-        previous_normalized_chapters,
-        revision_feedback=revision_feedback,
     )
     plan_text = _student_facing_text(current.get("plan") or previous.get("plan"))
     if not plan_text:

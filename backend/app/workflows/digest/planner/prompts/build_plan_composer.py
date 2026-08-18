@@ -9,11 +9,6 @@ from app.workflows.digest.common.models import DigestMaterialContext
 from app.workflows.digest.common.diagnose_policy import render_diagnose_action_policy
 from app.workflows.digest.common.prompt_tracing import trace_prompt_build
 from app.workflows.digest.planner.lib.plans import planner_mode_label, render_planner_chapter_contract
-from app.workflows.digest.planner.lib.requested_structure import (
-    requests_preserved_chapter_structure,
-    requests_preserved_knowledge_boundaries,
-    resolve_planner_revision_feedback,
-)
 from app.workflows.digest.planner.prompts.context import (
     render_latest_feedback,
     render_latest_plan,
@@ -62,8 +57,6 @@ def build_planner_stream_messages(
         list((latest_plan or {}).get("diagnose") or []),
         status=str((latest_plan or {}).get("diagnose_status") or ""),
     )
-    scope_feedback = resolve_planner_revision_feedback(latest_feedback, message_history)
-    preservation_contract = _render_revision_preservation_contract(latest_plan, scope_feedback)
     revision_rules = (
         """
 这是调整已有方案。
@@ -138,9 +131,6 @@ def build_planner_stream_messages(
 
 {revision_rules}
 
-本轮保留合同：
-{preservation_contract}
-
 章节规划合同：
 {render_planner_chapter_contract(digest_mode)}
 
@@ -198,40 +188,6 @@ suggestion 字段正文
         },
         output=messages,
     )
-
-
-def _render_revision_preservation_contract(
-    latest_plan: dict[str, Any] | None,
-    revision_feedback: str,
-) -> str:
-    chapters = list((latest_plan or {}).get("chapters") or [])
-    preserve_structure = requests_preserved_chapter_structure(revision_feedback)
-    preserve_boundaries = requests_preserved_knowledge_boundaries(revision_feedback)
-    if not chapters or not (preserve_structure or preserve_boundaries):
-        return "无额外锁定；按用户本轮修改意见更新。"
-
-    titles = [
-        str(chapter.get("title") or "").strip()
-        for chapter in chapters
-        if isinstance(chapter, dict)
-    ]
-    lines = [
-        f"- 章节数量、title 和顺序必须与上一版完全一致：{json.dumps(titles, ensure_ascii=False)}"
-    ]
-    if preserve_boundaries:
-        locked_elements = [
-            {
-                "title": str(chapter.get("title") or "").strip(),
-                "required_elements": list(chapter.get("required_elements") or []),
-            }
-            for chapter in chapters
-            if isinstance(chapter, dict)
-        ]
-        lines.append(
-            "- 每章 required_elements 必须逐章原样输出，不得删减、新增、概括或跨章移动："
-            f"{json.dumps(locked_elements, ensure_ascii=False)}"
-        )
-    return "\n".join(lines)
 
 
 def build_planner_diagnosis_messages(
