@@ -630,8 +630,8 @@ def test_normalize_planner_draft_prefers_current_request_over_stale_count_constr
     assert draft.build_constraints["requested_chapter_count"] == 2
 
 
-def test_normalize_planner_draft_prefers_latest_exact_count_over_earlier_range() -> None:
-    payload = _planner_payload(chapter_count=6)
+def test_normalize_planner_draft_trusts_ai_count_for_numeric_revision() -> None:
+    payload = _planner_payload(chapter_count=4)
     revision_feedback = "请严格调整为 6 章。"
     request_text = compose_effective_planner_request_text(
         "请生成 3-5 章课程。",
@@ -646,15 +646,15 @@ def test_normalize_planner_draft_prefers_latest_exact_count_over_earlier_range()
         revision_feedback=revision_feedback,
     )
 
-    assert len(draft.chapters) == 6
-    assert draft.build_constraints["requested_chapter_count"] == 6
-    assert draft.build_constraints.get("requested_chapter_min") is None
-    assert draft.build_constraints.get("requested_chapter_max") is None
+    assert len(draft.chapters) == 4
+    assert draft.build_constraints["min_chapters"] == 4
+    assert draft.build_constraints["max_chapters"] == 4
+    assert "requested_chapter_count" not in draft.build_constraints
 
 
 def test_normalize_planner_draft_trusts_ai_count_for_title_list_revision() -> None:
     payload = _planner_payload(chapter_count=3)
-    revision_feedback = "请改为：第 1 章集合，第 2 章函数，第 3 章导数。"
+    revision_feedback = "原来的 6 章太多，请改为：第 1 章集合，第 2 章函数，第 3 章导数。"
     request_text = compose_effective_planner_request_text(
         "请生成 6 章课程。",
         revision_feedback,
@@ -697,24 +697,6 @@ def test_normalize_planner_draft_trusts_ai_count_for_partial_title_revision() ->
     assert draft.build_constraints["min_chapters"] == 3
     assert draft.build_constraints["max_chapters"] == 3
     assert "requested_chapter_count" not in draft.build_constraints
-
-
-def test_normalize_planner_draft_rejects_wrong_count_from_revision_feedback() -> None:
-    payload = _planner_payload(chapter_count=4)
-    revision_feedback = "跳过诊断。请严格生成 1 章，章节名为：C 指针与变量位置。不要扩展成多章。"
-    request_text = compose_effective_planner_request_text(
-        "基于上传资料生成一份冲刺复习文档。",
-        revision_feedback,
-    )
-
-    with pytest.raises(ValueError, match="does not match requested 1"):
-        normalize_planner_draft(
-            payload,
-            course_id="course_smoke",
-            user_prompt=request_text,
-            requested_digest_mode="sprint",
-            revision_feedback=revision_feedback,
-        )
 
 
 def test_normalize_planner_draft_ignores_diagnosis_metadata_for_chapter_count() -> None:
@@ -1147,23 +1129,7 @@ def test_refresh_diagnosis_preserves_previous_formal_plan() -> None:
     assert normalized["diagnose"][0]["question"] == "这轮复习最需要加强哪类训练？"
 
 
-def test_normalize_planner_draft_rejects_locked_knowledge_boundary_changes() -> None:
-    previous = _planner_payload(chapter_count=2)
-    current = _planner_payload(chapter_count=2)
-    current["chapters"][0]["required_elements"] = ["切片 1 的学习任务"]
-
-    with pytest.raises(ValueError, match="locked required_elements"):
-        normalize_planner_draft(
-            current,
-            course_id="高等数学",
-            user_prompt="系统复习高等数学",
-            requested_digest_mode="systematic",
-            latest_plan=previous,
-            revision_feedback="保持两章结构和知识点边界不变。",
-        )
-
-
-def test_normalize_planner_draft_allows_explicit_scope_change_without_lock() -> None:
+def test_normalize_planner_draft_trusts_ai_scope_for_preservation_request() -> None:
     previous = _planner_payload(chapter_count=2)
     current = _planner_payload(chapter_count=2)
     current["chapters"][0]["required_elements"] = ["切片 1 的学习任务"]
@@ -1174,7 +1140,7 @@ def test_normalize_planner_draft_allows_explicit_scope_change_without_lock() -> 
         user_prompt="系统复习高等数学",
         requested_digest_mode="systematic",
         latest_plan=previous,
-        revision_feedback="删除第一章的边界辨析知识点。",
+        revision_feedback="保持两章结构和知识点边界不变。",
     )
 
     assert draft.chapters[0].required_elements == ["切片 1 的学习任务"]
@@ -1354,10 +1320,10 @@ def test_planner_node_streams_plan_and_builds_new_draft(monkeypatch: pytest.Monk
     assert progress_payload["plan_preview"]["chapters"][0]["title"] == "目标拆解"
 
 
-def test_planner_node_uses_llm_repair_instead_of_local_content_rewrite(
+def test_planner_node_accepts_ai_revision_without_count_rule_repair(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    invalid_output = (
+    ai_output = (
         f"{COURSE_NAME_START}初中函数{COURSE_NAME_END}"
         f"{PLAN_START}模型第一次误拆成三章。{PLAN_END}"
         f"{SUGGESTION_START}保持两章要求。{SUGGESTION_END}"
@@ -1367,25 +1333,15 @@ def test_planner_node_uses_llm_repair_instead_of_local_content_rewrite(
         '{"title":"额外训练","objective":"完成综合练习。","required_elements":["综合练习"]}'
         f']{CHAPTERS_END}'
     )
-    repaired_output = (
-        f"{COURSE_NAME_START}初中函数{COURSE_NAME_END}"
-        f"{PLAN_START}先建立函数关系，再把参数变化与一次函数图像对应起来。{PLAN_END}"
-        f"{SUGGESTION_START}可继续调整图示和练习密度。{SUGGESTION_END}"
-        f'{CHAPTERS_START}['
-        '{"title":"函数概念与自变量","objective":"理解函数关系并判断自变量范围。","required_elements":["函数关系","自变量取值范围"]},'
-        '{"title":"一次函数图像","objective":"把斜率截距与图像变化对应起来。","required_elements":["斜率的图像意义","截距的图像意义"]}'
-        f']{CHAPTERS_END}'
-    )
     emitted_events: list[str] = []
 
     async def fake_stream(state, **kwargs):
         del state, kwargs
-        return invalid_output
+        return ai_output
 
     async def fake_repair(messages, **kwargs):
-        del kwargs
-        assert "does not match requested 2" in messages[-1]["content"]
-        return repaired_output
+        del messages, kwargs
+        raise AssertionError("valid AI revision must not enter count rule repair")
 
     async def fake_emit_event(state, *, event: str, detail: str, payload=None) -> None:
         del state, detail, payload
@@ -1414,19 +1370,20 @@ def test_planner_node_uses_llm_repair_instead_of_local_content_rewrite(
         )
     )
 
-    assert result["build_plan_draft"]["plan"] == "先建立函数关系，再把参数变化与一次函数图像对应起来。"
+    assert result["build_plan_draft"]["plan"] == "模型第一次误拆成三章。"
     assert [chapter["title"] for chapter in result["build_plan_draft"]["chapters"]] == [
-        "函数概念与自变量",
-        "一次函数图像",
+        "函数概念",
+        "一次函数",
+        "额外训练",
     ]
-    assert "planner.plan.repairing" in emitted_events
+    assert "planner.plan.repairing" not in emitted_events
 
 
-def test_planner_node_repairs_locked_knowledge_boundary_changes(
+def test_planner_node_accepts_ai_scope_without_rule_repair(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     previous = _planner_payload(chapter_count=2)
-    invalid_output = (
+    ai_output = (
         f"{COURSE_NAME_START}高数主线重建{COURSE_NAME_END}"
         f"{PLAN_START}保持两章复习路径。{PLAN_END}"
         f"{SUGGESTION_START}只调整讲解深度。{SUGGESTION_END}"
@@ -1437,29 +1394,15 @@ def test_planner_node_repairs_locked_knowledge_boundary_changes(
         '"required_elements":["切片 2 的学习任务","切片 2 的边界"]}'
         f']{CHAPTERS_END}'
     )
-    repaired_output = (
-        f"{COURSE_NAME_START}高数主线重建{COURSE_NAME_END}"
-        f"{PLAN_START}保持两章复习路径，只调整讲解深度。{PLAN_END}"
-        f"{SUGGESTION_START}可以继续调整例题密度。{SUGGESTION_END}"
-        f'{CHAPTERS_START}['
-        '{"title":"任务切片 1","objective":"理解并完成切片 1 的学习任务。",'
-        '"required_elements":["切片 1 的学习任务","切片 1 的边界"]},'
-        '{"title":"任务切片 2","objective":"理解并完成切片 2 的学习任务。",'
-        '"required_elements":["切片 2 的学习任务","切片 2 的边界"]}'
-        f']{CHAPTERS_END}'
-    )
     emitted_events: list[str] = []
 
     async def fake_stream(state, **kwargs):
         del state, kwargs
-        return invalid_output
+        return ai_output
 
     async def fake_repair(messages, **kwargs):
-        del kwargs
-        prompt_text = "\n".join(message["content"] for message in messages)
-        assert "required_elements 必须逐章原样输出" in prompt_text
-        assert "locked required_elements" in messages[-1]["content"]
-        return repaired_output
+        del messages, kwargs
+        raise AssertionError("valid AI revision must not enter rule repair")
 
     async def fake_emit_event(state, *, event: str, detail: str, payload=None) -> None:
         del state, detail, payload
@@ -1492,10 +1435,7 @@ def test_planner_node_repairs_locked_knowledge_boundary_changes(
         )
     )
 
-    assert [chapter["title"] for chapter in result["build_plan_draft"]["chapters"]] == [
-        chapter["title"] for chapter in previous["chapters"]
+    assert result["build_plan_draft"]["chapters"][0]["required_elements"] == [
+        "切片 1 的学习任务"
     ]
-    assert [chapter["required_elements"] for chapter in result["build_plan_draft"]["chapters"]] == [
-        chapter["required_elements"] for chapter in previous["chapters"]
-    ]
-    assert "planner.plan.repairing" in emitted_events
+    assert "planner.plan.repairing" not in emitted_events

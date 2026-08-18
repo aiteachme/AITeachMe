@@ -8,8 +8,6 @@ from app.workflows.digest.planner.lib.requested_structure import (
     extract_explicit_learning_topic,
     extract_requested_chapter_constraint,
     extract_requested_chapter_count,
-    requests_preserved_chapter_structure,
-    requests_preserved_knowledge_boundaries,
 )
 
 
@@ -128,66 +126,3 @@ def test_latest_complete_chapter_title_list_overrides_an_earlier_list() -> None:
 
     assert extract_explicit_chapter_titles(prompt) == ["矩阵", "行列式"]
     assert extract_requested_chapter_constraint(prompt) == (2, None)
-
-
-def test_partial_chapter_title_revision_does_not_change_total_count() -> None:
-    prompt = "请生成 3 章课程。用户最新调整：第 2 章必须增加行列式的几何意义。"
-
-    assert extract_requested_chapter_constraint(prompt) == (3, None)
-
-
-@pytest.mark.parametrize(
-    "feedback",
-    [
-        "第 1 章改成集合导论。",
-        "第 1 章改成集合，第 2 章改成函数。",
-        "请改为：第 1 章集合，第 2 章函数，第 3 章导数。",
-    ],
-)
-def test_revision_title_edits_do_not_infer_total_chapter_count(feedback: str) -> None:
-    assert extract_requested_chapter_constraint(
-        feedback,
-        infer_from_title_lists=False,
-    ) == (None, None)
-
-
-@pytest.mark.parametrize(
-    ("feedback", "expected"),
-    [
-        ("保持章节结构，只调整例题。", True),
-        ("不要调整章节结构，只增加练习。", True),
-        ("不要再调整章节结构。", True),
-        ("不得修改章节结构。", True),
-        ("禁止改变大纲结构。", True),
-        ("不能修改章节结构。", True),
-        ("章节结构不要修改。", True),
-        ("不需要保持章节结构，请重新拆分。", False),
-        ("不必再保持章节结构，请重新规划。", False),
-        ("不能保持章节结构，请重新拆分。", False),
-        ("无法维持章节结构，请重新规划。", False),
-        ("不要保留大纲结构，全部重做。", False),
-        ("请重新拆分章节结构。", False),
-    ],
-)
-def test_chapter_structure_preservation_respects_negation(feedback: str, expected: bool) -> None:
-    assert requests_preserved_chapter_structure(feedback) is expected
-
-
-@pytest.mark.parametrize(
-    ("feedback", "expected"),
-    [
-        ("保留知识点边界，只调整讲解顺序。", True),
-        ("不要修改知识点范围。", True),
-        ("不要继续修改知识点范围。", True),
-        ("不得增删知识点。", True),
-        ("禁止改变知识边界。", True),
-        ("勿再修改知识范围。", True),
-        ("知识边界保持不变。", True),
-        ("不保留知识边界，请重新规划。", False),
-        ("禁止保留知识边界，请重新规划。", False),
-        ("无需维持知识点范围。", False),
-        ("请扩展知识点范围。", False),
-    ],
-)
-def test_knowledge_boundary_preservation_respects_negation(feedback: str, expected: bool) -> None:
-    assert requests_preserved_knowledge_boundaries(feedback) is expected

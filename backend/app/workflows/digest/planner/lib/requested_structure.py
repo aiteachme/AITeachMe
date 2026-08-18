@@ -90,36 +90,6 @@ _DIAGNOSIS_FEEDBACK_PREFIXES = (
     "前置诊断选择:",
     "跳过前置诊断，请按当前学习目标和资料继续生成可确认的学习方案。",
 )
-_CHAPTER_STRUCTURE_TARGET = (
-    rf"(?:章节|大纲)(?:的)?(?:结构|顺序|划分|框架)|{_NUMBER_TOKEN}\s*章(?:的)?(?:结构|顺序|划分|框架)"
-)
-_KNOWLEDGE_BOUNDARY_TARGET = r"(?:知识点边界|知识边界|知识点范围|知识范围|覆盖范围)"
-_PRESERVE_PREFIX = r"(?:原样保留|保持|保留|维持|沿用)"
-_NEGATION_PREFIX = (
-    r"(?:(?:不(?:再)?(?:需要|必|用|要|得|可|应|允许|能|准|许)?|"
-    r"无需|无须|不用|勿|别|禁止|严禁|避免|无法|没法)"
-    r"(?:再|继续)?)\s*"
-)
-_NO_CHANGE_ACTION = rf"{_NEGATION_PREFIX}(?:增删|调整|改变|修改)"
-_PRESERVE_SUFFIX = rf"(?:保持不变|不变|原样保留|{_NO_CHANGE_ACTION})"
-_PRESERVE_CHAPTER_STRUCTURE_PATTERNS = (
-    re.compile(rf"{_PRESERVE_PREFIX}[^。；;\n]{{0,20}}(?:{_CHAPTER_STRUCTURE_TARGET})"),
-    re.compile(rf"(?:{_CHAPTER_STRUCTURE_TARGET})[^。；;\n]{{0,10}}{_PRESERVE_SUFFIX}"),
-    re.compile(rf"{_NO_CHANGE_ACTION}[^。；;\n]{{0,8}}(?:{_CHAPTER_STRUCTURE_TARGET})"),
-)
-_PRESERVE_KNOWLEDGE_BOUNDARY_PATTERNS = (
-    re.compile(rf"{_PRESERVE_PREFIX}[^。；;\n]{{0,24}}{_KNOWLEDGE_BOUNDARY_TARGET}"),
-    re.compile(rf"{_KNOWLEDGE_BOUNDARY_TARGET}[^。；;\n]{{0,10}}{_PRESERVE_SUFFIX}"),
-    re.compile(rf"{_NO_CHANGE_ACTION}[^。；;\n]{{0,8}}(?:知识点|{_KNOWLEDGE_BOUNDARY_TARGET})"),
-)
-_NEGATED_CHAPTER_PRESERVATION_PATTERNS = (
-    re.compile(rf"{_NEGATION_PREFIX}{_PRESERVE_PREFIX}[^。；;\n]{{0,20}}(?:{_CHAPTER_STRUCTURE_TARGET})"),
-    re.compile(rf"(?:{_CHAPTER_STRUCTURE_TARGET})[^。；;\n]{{0,10}}{_NEGATION_PREFIX}{_PRESERVE_PREFIX}"),
-)
-_NEGATED_KNOWLEDGE_PRESERVATION_PATTERNS = (
-    re.compile(rf"{_NEGATION_PREFIX}{_PRESERVE_PREFIX}[^。；;\n]{{0,24}}{_KNOWLEDGE_BOUNDARY_TARGET}"),
-    re.compile(rf"{_KNOWLEDGE_BOUNDARY_TARGET}[^。；;\n]{{0,10}}{_NEGATION_PREFIX}{_PRESERVE_PREFIX}"),
-)
 
 
 def _text(value: Any) -> str:
@@ -137,7 +107,7 @@ def resolve_planner_revision_feedback(
     feedback_message: Any,
     message_history: list[str] | None = None,
 ) -> str:
-    """Resolve the revision request that owns structure locks across a diagnosis round."""
+    """Resolve the original revision request across a diagnosis round."""
 
     current = _text(feedback_message)
     if not _is_diagnosis_feedback(current):
@@ -151,40 +121,6 @@ def resolve_planner_revision_feedback(
         if content and not _is_diagnosis_feedback(content):
             return content
     return current
-
-
-def requests_preserved_chapter_structure(value: Any) -> bool:
-    text = _text(value)
-    return _has_non_negated_preservation_request(
-        text,
-        patterns=_PRESERVE_CHAPTER_STRUCTURE_PATTERNS,
-        negated_patterns=_NEGATED_CHAPTER_PRESERVATION_PATTERNS,
-    )
-
-
-def requests_preserved_knowledge_boundaries(value: Any) -> bool:
-    text = _text(value)
-    return _has_non_negated_preservation_request(
-        text,
-        patterns=_PRESERVE_KNOWLEDGE_BOUNDARY_PATTERNS,
-        negated_patterns=_NEGATED_KNOWLEDGE_PRESERVATION_PATTERNS,
-    )
-
-
-def _has_non_negated_preservation_request(
-    text: str,
-    *,
-    patterns: tuple[re.Pattern[str], ...],
-    negated_patterns: tuple[re.Pattern[str], ...],
-) -> bool:
-    if not text:
-        return False
-    negated_spans = [match.span() for pattern in negated_patterns for match in pattern.finditer(text)]
-    for pattern in patterns:
-        for match in pattern.finditer(text):
-            if not any(match.start() < end and start < match.end() for start, end in negated_spans):
-                return True
-    return False
 
 
 def _parse_small_number(value: str) -> int | None:
@@ -242,8 +178,7 @@ def _explicit_chapter_title_candidates(text: str) -> list[tuple[int, list[str]]]
         ordinals = [ordinal for _, ordinal, _ in ordinal_group]
         titles = [title for _, _, title in ordinal_group]
         if (
-            len(titles) >= 2
-            and ordinals == list(range(1, len(ordinals) + 1))
+            ordinals == list(range(1, len(ordinals) + 1))
             and len({title.casefold() for title in titles}) == len(titles)
         ):
             candidates.append((ordinal_group[-1][0], titles))
@@ -386,10 +321,8 @@ def extract_explicit_chapter_titles(value: Any) -> list[str]:
 
 def extract_requested_chapter_constraint(
     value: Any,
-    *,
-    infer_from_title_lists: bool = True,
 ) -> tuple[int | None, tuple[int, int] | None]:
-    """Return the latest exact count, range, or optional complete title-list count."""
+    """Return the latest exact count, range, or complete title-list count."""
 
     text = str(value or "")
     if not text.strip():
@@ -405,11 +338,10 @@ def extract_requested_chapter_constraint(
         if any(start < range_end and range_start < end for range_start, range_end in range_spans):
             continue
         candidates.append((start, count, None))
-    if infer_from_title_lists:
-        candidates.extend(
-            (position, len(titles), None)
-            for position, titles in _explicit_chapter_title_candidates(text)
-        )
+    candidates.extend(
+        (position, len(titles), None)
+        for position, titles in _explicit_chapter_title_candidates(text)
+    )
     if candidates:
         _, count, requested_range = max(candidates, key=lambda item: item[0])
         return count, requested_range
@@ -429,7 +361,5 @@ __all__ = [
     "extract_explicit_learning_topic",
     "extract_requested_chapter_constraint",
     "extract_requested_chapter_count",
-    "requests_preserved_chapter_structure",
-    "requests_preserved_knowledge_boundaries",
     "resolve_planner_revision_feedback",
 ]
