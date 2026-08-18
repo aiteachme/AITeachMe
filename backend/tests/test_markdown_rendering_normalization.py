@@ -909,6 +909,17 @@ def test_docgen_math_normalizers_respect_long_fence_boundaries(normalizer) -> No
     assert normalizer(markdown) == markdown
 
 
+@pytest.mark.parametrize(
+    "markdown",
+    [
+        "~~~markdown\n| 表达式 | 结果 |\n| --- | --- |\n| `a|b` | 示例 |\n~~~",
+        "````markdown\n```\n| 表达式 | 结果 |\n| --- | --- |\n| `a|b` | 示例 |\n```\n````",
+    ],
+)
+def test_docgen_table_inline_code_protection_respects_fence_boundaries(markdown: str) -> None:
+    assert presentation_policy._protect_docgen_table_inline_code(markdown) == markdown
+
+
 def test_normalize_flattens_headings_inside_list_items() -> None:
     raw = "- # 数与代数：从运算到表达式的思维跃迁\n1. ### 章节复盘"
 

@@ -502,6 +502,80 @@ def test_save_planner_result_persists_diagnosis_draft_before_plan(managed_planne
     assert result["planner_turns"][-1]["plan_json"]["planner_stage"] == "diagnosis"
 
 
+def test_save_planner_result_preserves_ai_chapter_count_for_revision(
+    managed_planner_session: Session,
+) -> None:
+    _seed_course_and_files(managed_planner_session)
+    planner_store.prepare_planner_run(
+        {
+            "planner_operation": "create",
+            "planner_session_id": "planner-revision-count",
+            "course_id": COURSE_ID,
+            "user_id": USER_ID,
+            "requested_file_ids": ["file-ready"],
+            "user_prompt": "请生成 3-5 章线性代数课程。",
+            "digest_mode": "sprint",
+        }
+    )
+    initial_plan = _plan()
+    chapter_template = initial_plan["chapters"][0]
+    initial_plan["chapters"] = [
+        {**chapter_template, "chapter_index": index, "title": f"初稿第 {index} 章"}
+        for index in range(1, 4)
+    ]
+    initial_plan["build_constraints"] = {
+        "min_chapters": 3,
+        "max_chapters": 3,
+        "target_chapter_count": 3,
+    }
+    planner_store.save_planner_result(
+        {
+            "planner_operation": "create",
+            "planner_session_id": "planner-revision-count",
+            "course_id": COURSE_ID,
+            "user_id": USER_ID,
+        },
+        plan=initial_plan,
+        material_context=_material_context(),
+    )
+
+    revision_feedback = "请严格调整为 6 章。"
+    planner_store.prepare_planner_run(
+        {
+            "planner_operation": "append",
+            "planner_session_id": "planner-revision-count",
+            "course_id": COURSE_ID,
+            "user_id": USER_ID,
+            "feedback_message": revision_feedback,
+        }
+    )
+    revised_plan = _plan()
+    revised_plan["chapters"] = [
+        {**chapter_template, "chapter_index": index, "title": f"修订第 {index} 章"}
+        for index in range(1, 5)
+    ]
+    revised_plan["build_constraints"] = {
+        "min_chapters": 4,
+        "max_chapters": 4,
+        "target_chapter_count": 4,
+    }
+
+    result = planner_store.save_planner_result(
+        {
+            "planner_operation": "append",
+            "planner_session_id": "planner-revision-count",
+            "course_id": COURSE_ID,
+            "user_id": USER_ID,
+            "feedback_message": revision_feedback,
+        },
+        plan=revised_plan,
+        material_context=_material_context(),
+    )
+
+    assert len(result["plan"]["chapters"]) == 4
+    assert result["plan"]["build_constraints"]["target_chapter_count"] == 4
+
+
 def test_revision_prompt_survives_refreshed_diagnosis_round(
     managed_planner_session: Session,
 ) -> None:

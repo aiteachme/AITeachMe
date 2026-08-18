@@ -56,6 +56,7 @@ from app.workflows.digest.planner.lib.plans import (
     normalize_planner_payload,
     planner_mode_label,
 )
+from app.workflows.digest.planner.lib.requested_structure import resolve_planner_revision_feedback
 from app.workflows.support.courses.icons import normalize_course_icon_key, set_course_icon_key
 
 logger = structlog.get_logger(__name__)
@@ -822,6 +823,7 @@ def _normalize_persisted_plan(
     digest_mode: str,
     material_context: Any | None = None,
     latest_plan: dict[str, Any] | None = None,
+    revision_feedback: str = "",
 ) -> dict[str, Any]:
     if _is_diagnosis_draft(plan):
         return normalize_planner_diagnosis_draft(
@@ -839,6 +841,7 @@ def _normalize_persisted_plan(
         requested_digest_mode=digest_mode,
         shared_inputs=material_context,
         latest_plan=latest_plan,
+        revision_feedback=revision_feedback,
     )
 
 
@@ -1100,6 +1103,10 @@ def save_planner_result(
             digest_mode=str(meta.get("digest_mode") or ""),
             material_context=material_context,
             latest_plan=_planner_plan(record),
+            revision_feedback=resolve_planner_revision_feedback(
+                state.get("feedback_message"),
+                state.get("message_history"),
+            ),
         )
         generated_title = _apply_generated_course_identity(
             persisted_plan,

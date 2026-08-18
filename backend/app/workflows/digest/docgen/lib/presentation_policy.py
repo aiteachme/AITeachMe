@@ -103,16 +103,15 @@ def _protect_docgen_table_inline_code(markdown: str) -> str:
 
     lines = str(markdown or "").split("\n")
     fixed: list[str] = []
-    in_fence = False
+    fence_state: tuple[str, int] | None = None
     in_table = False
     for index, line in enumerate(lines):
-        stripped = line.strip()
-        if stripped.startswith("```"):
-            in_fence = not in_fence
+        fence_state, is_fence_boundary = _advance_fence_state(line, fence_state)
+        if is_fence_boundary:
             in_table = False
             fixed.append(line)
             continue
-        if in_fence:
+        if fence_state is not None:
             fixed.append(line)
             continue
         next_line = lines[index + 1] if index + 1 < len(lines) else ""
