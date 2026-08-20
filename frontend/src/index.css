@@ -2219,6 +2219,418 @@
 .dark .knowledge-graph-view .text-slate-300 {
   color: rgb(100 116 139);
 }
+
+/* Parsed document preview: MinerU-like semantic Markdown presentation. */
+.library-markdown {
+  color: #334155;
+  font-size: 15px;
+  line-height: 1.82;
+  overflow-wrap: anywhere;
+}
+
+.library-markdown > :first-child {
+  margin-top: 0;
+}
+
+.library-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.library-markdown-chunk {
+  min-width: 0;
+}
+
+.library-markdown-chunk:first-child > :first-child {
+  margin-top: 0;
+}
+
+.library-markdown-chunk:last-of-type > :last-child {
+  margin-bottom: 0;
+}
+
+.library-markdown-progress {
+  display: flex;
+  min-height: 3.25rem;
+  margin-top: 1rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  border-top: 1px solid #eef2f7;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.library-markdown-progress__spinner {
+  width: 0.9rem;
+  height: 0.9rem;
+  border: 2px solid #cbd5e1;
+  border-top-color: #6366f1;
+  border-radius: 999px;
+  animation: library-markdown-spin 0.8s linear infinite;
+}
+
+@keyframes library-markdown-spin {
+  to { transform: rotate(360deg); }
+}
+
+.library-markdown :where(h1, h2, h3, h4, h5, h6) {
+  color: #0f172a;
+  font-weight: 650;
+  line-height: 1.35;
+  scroll-margin-top: 5rem;
+}
+
+.library-markdown h1 {
+  margin: 0 0 1.65rem;
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: clamp(1.75rem, 3vw, 2.2rem);
+  letter-spacing: -0.035em;
+}
+
+.library-markdown h2 {
+  margin: 2.6rem 0 1rem;
+  padding-left: 0.75rem;
+  border-left: 3px solid #6366f1;
+  font-size: 1.45rem;
+  letter-spacing: -0.025em;
+}
+
+.library-markdown h3 {
+  margin: 2rem 0 0.75rem;
+  font-size: 1.18rem;
+}
+
+.library-markdown :where(h4, h5, h6) {
+  margin: 1.5rem 0 0.6rem;
+  font-size: 1rem;
+}
+
+.library-markdown :where(p, li) {
+  line-height: 1.82;
+}
+
+.library-markdown :where(ul, ol) {
+  margin: 0.9rem 0 1.25rem;
+  padding-left: 1.55rem;
+}
+
+.library-markdown li {
+  padding-left: 0.2rem;
+  margin-block: 0.24rem;
+}
+
+.library-markdown li::marker {
+  color: #64748b;
+  font-weight: 600;
+}
+
+.library-markdown a {
+  color: #4f46e5;
+  font-weight: 520;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(79, 70, 229, 0.28);
+  transition: border-color 120ms ease, color 120ms ease;
+}
+
+.library-markdown a:hover {
+  color: #4338ca;
+  border-bottom-color: currentColor;
+}
+
+.library-markdown hr {
+  margin: 2.25rem 0;
+  border: 0;
+  border-top: 1px solid #e2e8f0;
+}
+
+.library-markdown :not(pre) > code {
+  margin-inline: 0.08em;
+  padding: 0.14em 0.38em;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.35rem;
+  background: #f8fafc;
+  color: #be123c;
+  font-size: 0.88em;
+  font-weight: 500;
+}
+
+.library-markdown :not(pre) > code::before,
+.library-markdown :not(pre) > code::after {
+  content: none;
+}
+
+.library-markdown pre {
+  margin: 1.4rem 0;
+  padding: 1rem 1.1rem;
+  overflow: auto;
+  border: 1px solid #243047;
+  border-radius: 0.75rem;
+  background: #111827;
+  color: #e5e7eb;
+  font-size: 13px;
+  line-height: 1.72;
+  tab-size: 2;
+}
+
+.library-markdown blockquote {
+  margin: 1.35rem 0;
+  padding: 0.85rem 1rem;
+  border-left: 3px solid #94a3b8;
+  border-radius: 0 0.65rem 0.65rem 0;
+  background: #f8fafc;
+  color: #475569;
+  font-style: normal;
+}
+
+.library-markdown-table-shell {
+  width: 100%;
+  margin: 1.6rem 0;
+  overflow-x: auto;
+  border: 1px solid #dbe3ee;
+  border-radius: 0.75rem;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  scrollbar-gutter: stable;
+}
+
+.library-markdown-table-shell table {
+  width: 100%;
+  min-width: 34rem;
+  margin: 0;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.library-markdown-table-shell thead {
+  border-bottom: 1px solid #dbe3ee;
+  background: #f5f7fb;
+}
+
+.library-markdown-table-shell :where(th, td) {
+  padding: 0.72rem 0.9rem;
+  border: 0;
+  border-right: 1px solid #e8edf4;
+  text-align: left;
+  vertical-align: top;
+}
+
+.library-markdown-table-shell :where(th, td) > :first-child {
+  margin-top: 0;
+}
+
+.library-markdown-table-shell :where(th, td) > :last-child {
+  margin-bottom: 0;
+}
+
+.library-markdown-table-shell :where(th, td):last-child {
+  border-right: 0;
+}
+
+.library-markdown-table-shell th {
+  color: #1e293b;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.library-markdown-table-shell tbody tr {
+  border-bottom: 1px solid #edf1f6;
+  transition: background-color 120ms ease;
+}
+
+.library-markdown-table-shell tbody tr:last-child {
+  border-bottom: 0;
+}
+
+.library-markdown-table-shell tbody tr:nth-child(even) {
+  background: #fbfcfe;
+}
+
+.library-markdown-table-shell tbody tr:hover {
+  background: #f4f7fb;
+}
+
+.library-markdown-figure {
+  display: flex;
+  width: 100%;
+  max-width: 100%;
+  margin: 1.75rem auto;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.library-markdown-figure img,
+.library-markdown > img,
+.library-markdown p > img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: min(46rem, 74vh);
+  margin: 0 auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  background: #fff;
+  object-fit: contain;
+  box-shadow: 0 8px 24px -18px rgba(15, 23, 42, 0.35);
+}
+
+.library-markdown-figure__caption {
+  display: block;
+  max-width: 46rem;
+  margin-top: 0.65rem;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.library-markdown .katex {
+  color: #172033;
+  font-size: 1.04em;
+}
+
+.library-markdown .katex .katex-mathml {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.library-markdown .katex .katex-html {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.library-markdown .katex-display {
+  position: relative;
+  margin: 1.45rem 0;
+  padding: 1rem 1.15rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  background: #f8fafc;
+  text-align: center;
+  scrollbar-gutter: stable;
+}
+
+.library-markdown .katex-display::before {
+  content: "";
+  position: absolute;
+  top: 0.75rem;
+  bottom: 0.75rem;
+  left: 0;
+  width: 2px;
+  border-radius: 0 999px 999px 0;
+  background: #c7d2fe;
+}
+
+.library-markdown .katex-error {
+  color: #c2410c;
+  white-space: pre-wrap;
+}
+
+.dark .library-markdown {
+  color: #cbd5e1;
+}
+
+.dark .library-markdown-progress {
+  border-color: #1e293b;
+  color: #94a3b8;
+}
+
+.dark .library-markdown :where(h1, h2, h3, h4, h5, h6) {
+  color: #f1f5f9;
+}
+
+.dark .library-markdown h1,
+.dark .library-markdown-table-shell,
+.dark .library-markdown-table-shell thead,
+.dark .library-markdown-table-shell :where(th, td),
+.dark .library-markdown-table-shell tbody tr {
+  border-color: #273449;
+}
+
+.dark .library-markdown blockquote,
+.dark .library-markdown .katex-display {
+  border-color: #29364b;
+  background: rgba(15, 23, 42, 0.72);
+  color: #cbd5e1;
+}
+
+.dark .library-markdown a {
+  color: #a5b4fc;
+  border-bottom-color: rgba(165, 180, 252, 0.32);
+}
+
+.dark .library-markdown a:hover {
+  color: #c7d2fe;
+}
+
+.dark .library-markdown hr,
+.dark .library-markdown :not(pre) > code {
+  border-color: #29364b;
+}
+
+.dark .library-markdown :not(pre) > code {
+  background: rgba(15, 23, 42, 0.72);
+  color: #fda4af;
+}
+
+.dark .library-markdown .katex-display::before {
+  background: #4f46e5;
+}
+
+.dark .library-markdown-table-shell {
+  background: rgba(2, 6, 23, 0.55);
+}
+
+.dark .library-markdown-table-shell thead,
+.dark .library-markdown-table-shell tbody tr:nth-child(even) {
+  background: rgba(15, 23, 42, 0.8);
+}
+
+.dark .library-markdown-table-shell tbody tr:hover {
+  background: rgba(30, 41, 59, 0.76);
+}
+
+.dark .library-markdown-table-shell th,
+.dark .library-markdown .katex {
+  color: #e2e8f0;
+}
+
+.dark .library-markdown-figure img,
+.dark .library-markdown > img,
+.dark .library-markdown p > img {
+  border-color: #29364b;
+  background: #020617;
+}
+
+@media (max-width: 640px) {
+  .library-markdown {
+    font-size: 14.5px;
+    line-height: 1.75;
+  }
+
+  .library-markdown h1 {
+    font-size: 1.65rem;
+  }
+
+  .library-markdown h2 {
+    margin-top: 2.1rem;
+    font-size: 1.28rem;
+  }
+
+  .library-markdown .katex-display {
+    margin-inline: -0.25rem;
+    padding: 0.85rem 0.8rem;
+  }
+
+  .library-markdown-table-shell table {
+    min-width: 30rem;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

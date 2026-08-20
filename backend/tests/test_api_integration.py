@@ -237,3 +237,136 @@ def test_user_file_detail_returns_single_file_markdown(monkeypatch: pytest.Monke
     assert response.json()["data"]["id"] == "file_api_detail"
     assert response.json()["data"]["markdown_content"].startswith("# 线性代数")
     assert response.json()["data"]["asset_base_url"] == "/api/v1/files/assets/file_api_detail/"
+
+
+def test_user_file_asset_falls_back_to_flattened_parser_filename(monkeypatch: pytest.MonkeyPatch) -> None:
+    app = FastAPI()
+    app.include_router(user_files_api.router)
+    raw_file = RawFile(
+        id="file_api_asset",
+        user_id="api-user",
+        filename="paper.pdf",
+        filetype="pdf",
+        file_path="users/api-user/files/file_api_asset/source.pdf",
+        asset_dir="users/api-user/files/file_api_asset/assets",
+        status=TaskStatus.COMPLETED.value,
+        ingest_status=IngestStatus.READY_FOR_DIGEST.value,
+    )
+    requested_keys: list[str] = []
+
+    class FakeContentStore:
+        async def read_bytes(self, storage_key: str) -> bytes:
+            requested_keys.append(storage_key)
+            if storage_key.endswith("/page 1.png") and "/images/" not in storage_key:
+                return b"png-data"
+            raise FileNotFoundError(storage_key)
+
+    def override_get_db() -> Generator[object, None, None]:
+        yield object()
+
+    def override_current_user_context() -> CurrentUserContext:
+        return CurrentUserContext(user_id="api-user", email=None, is_local=True)
+
+    monkeypatch.setattr(user_files_api, "get_raw_file_by_id_for_user", lambda *_args, **_kwargs: raw_file)
+    monkeypatch.setattr(user_files_api, "get_content_store", lambda: FakeContentStore())
+    app.dependency_overrides[deps.get_db] = override_get_db
+    app.dependency_overrides[deps.get_current_user_context] = override_current_user_context
+
+    with TestClient(app) as client:
+        response = client.get("/api/v1/files/assets/file_api_asset/images/page%201.png")
+
+    assert response.status_code == 200
+    assert response.content == b"png-data"
+    assert response.headers["content-type"] == "image/png"
+    assert requested_keys == [
+        "users/api-user/files/file_api_asset/assets/images/page 1.png",
+        "users/api-user/files/file_api_asset/assets/page 1.png",
+    ]
+
+
+def test_user_file_detail_can_return_metadata_without_loading_markdown(monkeypatch: pytest.MonkeyPatch) -> None:
+    app = FastAPI()
+    app.include_router(user_files_api.router)
+    raw_file = RawFile(
+        id="file_api_metadata",
+        user_id="api-user",
+        filename="large.pdf",
+        filetype="pdf",
+        file_path="users/api-user/files/file_api_metadata/source.pdf",
+        markdown_path="users/api-user/files/file_api_metadata/markdown.md",
+        status=TaskStatus.COMPLETED.value,
+        ingest_status=IngestStatus.READY_FOR_DIGEST.value,
+    )
+    requested_include_values: list[bool] = []
+
+    def override_get_db() -> Generator[object, None, None]:
+        yield object()
+
+    def override_current_user_context() -> CurrentUserContext:
+        return CurrentUserContext(user_id="api-user", email=None, is_local=True)
+
+    def get_file(*_args, **kwargs):
+        requested_include_values.append(bool(kwargs.get("include_markdown_content")))
+        return raw_file
+
+    async def unexpected_resolve(_raw_file: RawFile) -> str:
+        pytest.fail("metadata-only detail must not load the full Markdown")
+
+    monkeypatch.setattr(user_files_api, "get_user_file_or_raise", get_file)
+    monkeypatch.setattr(user_files_api, "resolve_file_markdown_content", unexpected_resolve)
+    app.dependency_overrides[deps.get_db] = override_get_db
+    app.dependency_overrides[deps.get_current_user_context] = override_current_user_context
+
+    with TestClient(app) as client:
+        response = client.get("/api/v1/files/file_api_metadata?include_markdown=false")
+
+    assert response.status_code == 200
+    assert response.json()["data"]["markdown_content"] == ""
+    assert response.json()["data"]["markdown_ready"] is True
+    assert requested_include_values == [False]
+
+
+def test_user_file_markdown_is_returned_in_character_chunks(monkeypatch: pytest.MonkeyPatch) -> None:
+    app = FastAPI()
+    app.include_router(user_files_api.router)
+    markdown = "第一段。\n\n" + ("正文" * 3_000)
+    raw_file = RawFile(
+        id="file_api_chunk",
+        user_id="api-user",
+        filename="large.pdf",
+        filetype="pdf",
+        file_path="users/api-user/files/file_api_chunk/source.pdf",
+        markdown_path="users/api-user/files/file_api_chunk/markdown.md",
+        status=TaskStatus.COMPLETED.value,
+        ingest_status=IngestStatus.READY_FOR_DIGEST.value,
+    )
+
+    def override_get_db() -> Generator[object, None, None]:
+        yield object()
+
+    def override_current_user_context() -> CurrentUserContext:
+        return CurrentUserContext(user_id="api-user", email=None, is_local=True)
+
+    monkeypatch.setattr(user_files_api, "get_user_file_or_raise", lambda *_args, **_kwargs: raw_file)
+    monkeypatch.setattr(
+        user_files_api,
+        "get_raw_file_markdown_chunk_for_user",
+        lambda *_args, **kwargs: (
+            markdown[kwargs["offset"] : kwargs["offset"] + kwargs["limit"]],
+            len(markdown),
+        ),
+    )
+    app.dependency_overrides[deps.get_db] = override_get_db
+    app.dependency_overrides[deps.get_current_user_context] = override_current_user_context
+
+    with TestClient(app) as client:
+        first = client.get("/api/v1/files/file_api_chunk/markdown?offset=0&limit=4096")
+        second = client.get("/api/v1/files/file_api_chunk/markdown?offset=4096&limit=4096")
+
+    assert first.status_code == 200
+    assert first.json()["data"]["content"] == markdown[:4096]
+    assert first.json()["data"]["next_offset"] == 4096
+    assert first.json()["data"]["done"] is False
+    assert second.status_code == 200
+    assert second.json()["data"]["content"] == markdown[4096:]
+    assert second.json()["data"]["done"] is True

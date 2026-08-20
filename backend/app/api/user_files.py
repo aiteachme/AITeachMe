@@ -18,9 +18,16 @@ from sqlmodel import Session
 from app.api.deps import CurrentUserContext, get_current_user_context, get_db
 from app.api.openapi import build_error_responses
 from app.models import TaskStatus
-from app.repositories.files_repo import get_raw_file_by_id_for_user
+from app.repositories.files_repo import get_raw_file_by_id_for_user, get_raw_file_markdown_chunk_for_user
 from app.schemas.common import ApiResponse, ok_response
-from app.schemas.files import FileDeleteData, FileDeleteRequest, FileRecord, FilesData, FilesUploadData
+from app.schemas.files import (
+    FileDeleteData,
+    FileDeleteRequest,
+    FileMarkdownChunk,
+    FileRecord,
+    FilesData,
+    FilesUploadData,
+)
 from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.llm_support import run_llm_tasks
 from app.shared.infra.llm_support.model_choices import normalize_runtime_model_override, use_runtime_model_override
@@ -186,10 +193,19 @@ async def delete_user_files_api(
 )
 async def get_user_file_api(
     file_id: str = Path(...),
+    include_markdown: bool = Query(default=True, description="Include the complete parsed Markdown."),
     user: CurrentUserContext = Depends(get_current_user_context),
     session: Session = Depends(get_db),
 ) -> ApiResponse[FileRecord]:
-    raw_file = get_user_file_or_raise(session, owner_user_id=user.user_id, file_id=file_id)
+    raw_file = get_user_file_or_raise(
+        session,
+        owner_user_id=user.user_id,
+        file_id=file_id,
+        include_markdown_content=include_markdown,
+    )
+    if not include_markdown:
+        return ok_response(build_file_record(raw_file, include_content=False))
+
     markdown_content = await resolve_file_markdown_content(raw_file)
     if (
         raw_file.status == TaskStatus.COMPLETED.value
@@ -201,6 +217,57 @@ async def get_user_file_api(
             detail="资料正文暂时无法读取，请稍后重试。",
         )
     return ok_response(build_file_record(raw_file, markdown_content=markdown_content))
+
+
+@router.get(
+    "/{file_id}/markdown",
+    response_model=ApiResponse[FileMarkdownChunk],
+    summary="Read parsed Markdown progressively",
+    responses=build_error_responses([404, 503]),
+)
+async def get_user_file_markdown_chunk_api(
+    file_id: str = Path(...),
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=65_536, ge=4_096, le=262_144),
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[FileMarkdownChunk]:
+    raw_file = get_user_file_or_raise(
+        session,
+        owner_user_id=user.user_id,
+        file_id=file_id,
+        include_markdown_content=False,
+    )
+    result = get_raw_file_markdown_chunk_for_user(
+        session,
+        user_id=user.user_id,
+        file_id=file_id,
+        offset=offset,
+        limit=limit,
+    )
+
+    if result is None:
+        # Authorization was already checked above; this only protects against a
+        # concurrent delete between the metadata and slice queries.
+        raise HTTPException(status_code=404, detail="资料不存在或已删除。")
+
+    content, total_chars = result
+    if total_chars == 0 and raw_file.markdown_path:
+        recovered = await resolve_file_markdown_content(raw_file)
+        if raw_file.status == TaskStatus.COMPLETED.value and not recovered.strip():
+            raise HTTPException(status_code=503, detail="资料正文暂时无法读取，请稍后重试。")
+        total_chars = len(recovered)
+        content = recovered[offset : offset + limit]
+
+    effective_offset = min(offset, total_chars)
+    next_offset = min(effective_offset + len(content), total_chars)
+    return ok_response(FileMarkdownChunk(
+        content=content,
+        offset=effective_offset,
+        next_offset=next_offset,
+        total_chars=total_chars,
+        done=next_offset >= total_chars,
+    ))
 
 
 @router.get(
@@ -257,15 +324,22 @@ async def serve_user_file_asset(
     if not normalized_asset_path or ".." in FilePath(normalized_asset_path.replace("\\", "/")).parts:
         return Response(status_code=404, content=b"Not found")
 
-    storage_key = f"{base_prefix.rstrip('/')}/{normalized_asset_path}"
-    media_type = mimetypes.guess_type(asset_path)[0] or "application/octet-stream"
-
     cs = get_content_store()
-    try:
-        data = await cs.read_bytes(storage_key)
-        return Response(content=data, media_type=media_type)
-    except Exception:
-        return Response(status_code=404, content=b"Not found")
+    # Current ingestion flattens MinerU/PaddleOCR image directories. Try the
+    # requested relative path first, then its basename for historical results.
+    candidate_paths = [normalized_asset_path]
+    basename = FilePath(normalized_asset_path.replace("\\", "/")).name
+    if basename and basename != normalized_asset_path:
+        candidate_paths.append(basename)
+    for candidate_path in candidate_paths:
+        storage_key = f"{base_prefix.rstrip('/')}/{candidate_path}"
+        try:
+            data = await cs.read_bytes(storage_key)
+            media_type = mimetypes.guess_type(candidate_path)[0] or "application/octet-stream"
+            return Response(content=data, media_type=media_type)
+        except Exception:
+            continue
+    return Response(status_code=404, content=b"Not found")
 
 
 # ── Highlight CRUD ──────────────────────────────────────────────────────────

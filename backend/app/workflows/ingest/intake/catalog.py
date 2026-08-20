@@ -28,7 +28,14 @@ _FILE_MARKDOWN_READ_TIMEOUT_SECONDS = 8.0
 
 
 def _is_markdown_ready(raw_file: RawFile, *, markdown_content: str | None = None) -> bool:
-    content = markdown_content if markdown_content is not None else raw_file.parsed_markdown
+    # Metadata/list queries defer the potentially very large Markdown column.
+    # A persisted Markdown path is sufficient to report readiness without
+    # triggering a lazy full-column read.
+    if markdown_content is None and raw_file.markdown_path:
+        has_content = True
+    else:
+        content = markdown_content if markdown_content is not None else raw_file.parsed_markdown
+        has_content = bool(str(content or "").strip())
     return (
         raw_file.status == TaskStatus.COMPLETED.value
         and raw_file.ingest_status
@@ -38,7 +45,7 @@ def _is_markdown_ready(raw_file: RawFile, *, markdown_content: str | None = None
             IngestStatus.READY_FOR_DIGEST.value,
             IngestStatus.ENHANCE_FAILED.value,
         }
-        and bool(str(content or "").strip() or str(raw_file.markdown_path or "").strip())
+        and (has_content or bool(str(raw_file.markdown_path or "").strip()))
     )
 
 
@@ -83,12 +90,16 @@ def build_file_record(
     markdown_content: str | None = None,
 ) -> FileRecord:
     file_id = require_id(raw_file.id, "RawFile.id")
-    resolved_markdown = (
-        str(raw_file.markdown_content or "")
-        if markdown_content is None
-        else str(markdown_content)
+    if markdown_content is not None:
+        resolved_markdown = str(markdown_content)
+    elif include_content:
+        resolved_markdown = str(raw_file.markdown_content or "")
+    else:
+        resolved_markdown = ""
+    markdown_ready = _is_markdown_ready(
+        raw_file,
+        markdown_content=resolved_markdown if include_content or markdown_content is not None else None,
     )
-    markdown_ready = _is_markdown_ready(raw_file, markdown_content=resolved_markdown)
     asset_dir_value = raw_file.asset_dir
     asset_ready = bool((raw_file.image_count or 0) > 0)
     asset_base_url = f"/api/v1/files/assets/{quote(file_id)}/" if asset_dir_value else None
@@ -140,8 +151,19 @@ def get_course_file_or_raise(session: Session, *, course_id: str, file_id: str) 
     return raw_file
 
 
-def get_user_file_or_raise(session: Session, *, owner_user_id: str, file_id: str) -> RawFile:
-    raw_file = get_raw_file_by_id_for_user(session, user_id=owner_user_id, file_id=file_id)
+def get_user_file_or_raise(
+    session: Session,
+    *,
+    owner_user_id: str,
+    file_id: str,
+    include_markdown_content: bool = True,
+) -> RawFile:
+    raw_file = get_raw_file_by_id_for_user(
+        session,
+        user_id=owner_user_id,
+        file_id=file_id,
+        include_markdown_content=include_markdown_content,
+    )
     if raw_file is None:
         raise RawFileNotFoundError(file_id)
     return raw_file

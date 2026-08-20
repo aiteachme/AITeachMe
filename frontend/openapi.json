@@ -2523,6 +2523,18 @@
               "type": "string",
               "title": "File Id"
             }
+          },
+          {
+            "name": "include_markdown",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include the complete parsed Markdown.",
+              "default": true,
+              "title": "Include Markdown"
+            },
+            "description": "Include the complete parsed Markdown."
           }
         ],
         "responses": {
@@ -2532,6 +2544,91 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ApiResponse_FileRecord_"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "依赖服务当前不可用。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/files/{file_id}/markdown": {
+      "get": {
+        "tags": [
+          "files"
+        ],
+        "summary": "Read parsed Markdown progressively",
+        "operationId": "get_user_file_markdown_chunk_api_api_v1_files__file_id__markdown_get",
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "File Id"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 262144,
+              "minimum": 4096,
+              "default": 65536,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_FileMarkdownChunk_"
                 }
               }
             }
@@ -11313,6 +11410,40 @@
           "message": "ok"
         }
       },
+      "ApiResponse_FileMarkdownChunk_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FileMarkdownChunk"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[FileMarkdownChunk]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
       "ApiResponse_FileRecord_": {
         "properties": {
           "code": {
@@ -18451,6 +18582,48 @@
         "type": "object",
         "title": "FileLinkRequest",
         "description": "Link existing user-library files to a course."
+      },
+      "FileMarkdownChunk": {
+        "properties": {
+          "content": {
+            "type": "string",
+            "title": "Content",
+            "description": "Markdown content for this slice.",
+            "default": ""
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Offset",
+            "description": "Zero-based character offset of this slice."
+          },
+          "next_offset": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Next Offset",
+            "description": "Offset to request next."
+          },
+          "total_chars": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total Chars",
+            "description": "Total Markdown character count."
+          },
+          "done": {
+            "type": "boolean",
+            "title": "Done",
+            "description": "Whether the complete Markdown has been returned."
+          }
+        },
+        "type": "object",
+        "required": [
+          "offset",
+          "next_offset",
+          "total_chars",
+          "done"
+        ],
+        "title": "FileMarkdownChunk",
+        "description": "One character-aligned slice of a parsed Markdown document."
       },
       "FileRecord": {
         "properties": {

@@ -49,6 +49,16 @@ class FileRecord(BaseModel):
     created_at: datetime = Field(description="Created time.")
 
 
+class FileMarkdownChunk(BaseModel):
+    """One character-aligned slice of a parsed Markdown document."""
+
+    content: str = Field(default="", description="Markdown content for this slice.")
+    offset: int = Field(ge=0, description="Zero-based character offset of this slice.")
+    next_offset: int = Field(ge=0, description="Offset to request next.")
+    total_chars: int = Field(ge=0, description="Total Markdown character count.")
+    done: bool = Field(description="Whether the complete Markdown has been returned.")
+
+
 class FilesData(BaseModel):
     """Aggregated files response."""
 

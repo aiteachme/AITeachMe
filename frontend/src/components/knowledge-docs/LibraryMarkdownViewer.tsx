@@ -7,7 +7,15 @@
  * - 图片路径自动拼接 assetBaseUrl
  */
 
-import { useMemo } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentPropsWithoutRef,
+} from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -16,20 +24,23 @@ import rehypeRaw from "rehype-raw";
 import type { Components } from "react-markdown";
 import { rehypeMarkdownSanitize } from "../../lib/markdownSanitize";
 import { preprocessMarkdownForRender } from "../ui/MarkdownViewer";
+import {
+  escapeMathHtmlCharactersForRender,
+  resolveLibraryAssetSrc,
+  splitLibraryMarkdownForRender,
+} from "./libraryMarkdown";
 
 interface LibraryMarkdownViewerProps {
   content: string;
   assetBaseUrl?: string;
+  hasMore?: boolean;
+  isFetchingMore?: boolean;
+  onRequestMore?: () => void;
+  onRenderProgressChange?: (renderedChars: number, complete: boolean) => void;
 }
 
-function resolveAssetSrc(src: string | undefined, assetBaseUrl: string): string {
-  if (!src) return "";
-  if (src.startsWith("http") || src.startsWith("/") || src.startsWith("data:")) {
-    return src;
-  }
-  const filename = src.replace(/^.*[\\/]/, "");
-  return `${assetBaseUrl.replace(/\/$/, "")}/${encodeURIComponent(filename)}`;
-}
+const INITIAL_VISIBLE_CHUNKS = 2;
+const CHUNKS_PER_REVEAL = 2;
 
 /**
  * rehype 插件：rehype-raw 解析 HTML 后，把文本节点中的 $...$ 转成
@@ -100,44 +111,175 @@ function rehypeExtractInlineMath() {
   }
 }
 
-export function LibraryMarkdownViewer({ content, assetBaseUrl }: LibraryMarkdownViewerProps) {
-  const processedContent = useMemo(() => preprocessMarkdownForRender(content), [content]);
+type MarkdownAstNode = {
+  type?: string;
+  value?: string;
+  children?: MarkdownAstNode[];
+};
 
-  const components: Components = {};
+/** 与 MinerU 的 line_breaks=True 对齐，只转换普通段落里的软换行。 */
+function remarkLibrarySoftBreaks() {
+  const splitTextNode = (node: MarkdownAstNode): MarkdownAstNode[] => {
+    const value = String(node.value ?? "");
+    if (!value.includes("\n")) return [node];
 
-  if (assetBaseUrl) {
-    components.img = ({ src, alt, ...props }) => (
-      <img
-        src={resolveAssetSrc(src ?? undefined, assetBaseUrl)}
-        alt={alt ?? ""}
-        className="my-4 max-h-[32rem] w-full rounded-lg object-contain"
-        loading="lazy"
-        {...props}
-      />
-    );
-  }
+    return value.split("\n").flatMap((part, index) => [
+      ...(index > 0 ? [{ type: "break" }] : []),
+      ...(part ? [{ ...node, value: part }] : []),
+    ]);
+  };
+
+  return (tree: MarkdownAstNode) => {
+    const visitNode = (node: MarkdownAstNode) => {
+      if (!Array.isArray(node.children)) return;
+      if (node.type === "paragraph") {
+        node.children = node.children.flatMap((child) => (
+          child.type === "text" ? splitTextNode(child) : [child]
+        ));
+        return;
+      }
+      node.children.forEach((child) => {
+        if (child.type !== "math" && child.type !== "inlineMath") visitNode(child);
+      });
+    };
+    visitNode(tree);
+  };
+}
+
+interface LibraryMarkdownChunkProps {
+  content: string;
+  components: Components;
+  rehypePlugins: any[];
+}
+
+const LibraryMarkdownChunk = memo(function LibraryMarkdownChunk({
+  content,
+  components,
+  rehypePlugins,
+}: LibraryMarkdownChunkProps) {
+  const processedContent = useMemo(
+    () => escapeMathHtmlCharactersForRender(preprocessMarkdownForRender(content)),
+    [content],
+  );
+
+  return (
+    <div className="library-markdown-chunk">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkMath, remarkLibrarySoftBreaks]}
+        rehypePlugins={rehypePlugins}
+        components={components}
+      >
+        {processedContent}
+      </ReactMarkdown>
+    </div>
+  );
+});
+
+export function LibraryMarkdownViewer({
+  content,
+  assetBaseUrl,
+  hasMore = false,
+  isFetchingMore = false,
+  onRequestMore,
+  onRenderProgressChange,
+}: LibraryMarkdownViewerProps) {
+  const chunks = useMemo(() => splitLibraryMarkdownForRender(content), [content]);
+  const [visibleChunkCount, setVisibleChunkCount] = useState(INITIAL_VISIBLE_CHUNKS);
+  const loadSentinelRef = useRef<HTMLDivElement>(null);
+
+  const components = useMemo<Components>(() => {
+    const next: Components = {
+      table: ({ children }: ComponentPropsWithoutRef<"table">) => (
+        <div className="library-markdown-table-shell">
+          <table>{children}</table>
+        </div>
+      ),
+    };
+
+    if (assetBaseUrl) {
+      next.img = ({ src, alt, title, width, height }: ComponentPropsWithoutRef<"img">) => {
+        const resolvedSrc = resolveLibraryAssetSrc(src ?? undefined, assetBaseUrl);
+        if (!resolvedSrc) return null;
+        return (
+          <span className="library-markdown-figure">
+            <img
+              src={resolvedSrc}
+              alt={alt ?? ""}
+              title={title}
+              width={width}
+              height={height}
+              loading="lazy"
+              decoding="async"
+            />
+            {alt ? <span className="library-markdown-figure__caption">{alt}</span> : null}
+          </span>
+        );
+      };
+    }
+    return next;
+  }, [assetBaseUrl]);
 
   const rehypePlugins = useMemo(() => {
     const plugins = [
       rehypeRaw,
       rehypeExtractInlineMath,
       rehypeMarkdownSanitize,
-      rehypeKatex,
+      [rehypeKatex, { throwOnError: false, strict: false, trust: false, errorColor: "#c2410c" }],
       ...(assetBaseUrl ? [rehypeRewriteAssetUrls(assetBaseUrl)] : []),
-    ];
+    ] as any[];
 
     return plugins;
   }, [assetBaseUrl]);
 
+  const revealMore = useCallback(() => {
+    if (visibleChunkCount < chunks.length) {
+      setVisibleChunkCount((current) => Math.min(current + CHUNKS_PER_REVEAL, chunks.length));
+      return;
+    }
+    if (hasMore && !isFetchingMore) {
+      onRequestMore?.();
+    }
+  }, [chunks.length, hasMore, isFetchingMore, onRequestMore, visibleChunkCount]);
+
+  useEffect(() => {
+    const sentinel = loadSentinelRef.current;
+    if (!sentinel || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) revealMore();
+    }, { rootMargin: "900px 0px" });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [revealMore]);
+
+  const renderComplete = visibleChunkCount >= chunks.length && !hasMore;
+  const visibleChunks = useMemo(
+    () => chunks.slice(0, visibleChunkCount),
+    [chunks, visibleChunkCount],
+  );
+  const renderedChars = useMemo(
+    () => visibleChunks.reduce((total, chunk) => total + chunk.length, 0),
+    [visibleChunks],
+  );
+  useEffect(() => {
+    onRenderProgressChange?.(renderedChars, renderComplete);
+  }, [onRenderProgressChange, renderComplete, renderedChars]);
+
   return (
-    <div className="prose prose-slate max-w-none dark:prose-invert">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={rehypePlugins}
-        components={components}
-      >
-        {processedContent}
-      </ReactMarkdown>
+    <div className="library-markdown prose prose-slate max-w-none break-words dark:prose-invert">
+      {visibleChunks.map((chunk, index) => (
+        <LibraryMarkdownChunk
+          key={index}
+          content={chunk}
+          components={components}
+          rehypePlugins={rehypePlugins}
+        />
+      ))}
+      {visibleChunkCount < chunks.length || hasMore || isFetchingMore ? (
+        <div ref={loadSentinelRef} className="library-markdown-progress not-prose" aria-live="polite">
+          <span className="library-markdown-progress__spinner" aria-hidden="true" />
+          <span>{isFetchingMore ? "正在读取后续内容…" : "继续向下滚动以加载后续内容"}</span>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -148,7 +290,7 @@ function rehypeRewriteAssetUrls(assetBaseUrl: string) {
       if (node.tagName === "img" && node.properties?.src) {
         const src = node.properties.src;
         if (!src.startsWith("http") && !src.startsWith("/") && !src.startsWith("data:")) {
-          node.properties.src = resolveAssetSrc(src, assetBaseUrl);
+          node.properties.src = resolveLibraryAssetSrc(src, assetBaseUrl);
         }
       }
     });

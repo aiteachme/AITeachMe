@@ -25,6 +25,14 @@ export interface FileRecord {
   created_at: string;
 }
 
+export interface FileMarkdownChunk {
+  content: string;
+  offset: number;
+  next_offset: number;
+  total_chars: number;
+  done: boolean;
+}
+
 export interface FilesData {
   course_id?: string | null;
   total: number;

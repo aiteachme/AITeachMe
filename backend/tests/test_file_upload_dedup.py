@@ -10,7 +10,11 @@ from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from app.models import RawFile, Course, CourseFileLink, IngestStatus, TaskStatus, User
-from app.repositories.files_repo import list_raw_files_by_user
+from app.repositories.files_repo import (
+    get_raw_file_by_id_for_user,
+    get_raw_file_markdown_chunk_for_user,
+    list_raw_files_by_user,
+)
 from app.shared.infra.exceptions import FileCountLimitError, FileTooLargeError, UnsupportedFileTypeError
 from app.shared.infra.settings import DEFAULT_INGEST_MAX_UPLOAD_SIZE_MB
 from app.shared.infra.storage.course_scope import build_user_file_storage_scope
@@ -63,6 +67,64 @@ def _install_fake_store(monkeypatch) -> _FakeContentStore:
     monkeypatch.setattr(uploads, "get_content_store", lambda: fake_store)
     monkeypatch.setattr(catalog, "get_content_store", lambda: fake_store)
     return fake_store
+
+
+def test_markdown_chunk_query_returns_only_requested_character_slice() -> None:
+    markdown = "标题\n\n" + ("公式与正文" * 2_000)
+    with _session() as session:
+        session.add(User(id="user_chunk", username="user_chunk"))
+        session.add(RawFile(
+            id="file_chunk_query",
+            user_id="user_chunk",
+            filename="large.md",
+            filetype="md",
+            file_path="raw/large.md",
+            markdown_path="parsed/large.md",
+            markdown_content=markdown,
+            status=TaskStatus.COMPLETED.value,
+            ingest_status=IngestStatus.READY_FOR_DIGEST.value,
+        ))
+        session.commit()
+
+        result = get_raw_file_markdown_chunk_for_user(
+            session,
+            user_id="user_chunk",
+            file_id="file_chunk_query",
+            offset=37,
+            limit=257,
+        )
+
+    assert result == (markdown[37:294], len(markdown))
+
+
+def test_metadata_record_does_not_lazy_load_deferred_markdown() -> None:
+    with _session() as session:
+        session.add(User(id="user_metadata", username="user_metadata"))
+        session.add(RawFile(
+            id="file_metadata_query",
+            user_id="user_metadata",
+            filename="large.pdf",
+            filetype="pdf",
+            file_path="raw/large.pdf",
+            markdown_path="parsed/large.md",
+            markdown_content="正文" * 10_000,
+            status=TaskStatus.COMPLETED.value,
+            ingest_status=IngestStatus.READY_FOR_DIGEST.value,
+        ))
+        session.commit()
+        session.expunge_all()
+        raw_file = get_raw_file_by_id_for_user(
+            session,
+            user_id="user_metadata",
+            file_id="file_metadata_query",
+            include_markdown_content=False,
+        )
+        assert raw_file is not None
+        session.expunge(raw_file)
+
+    record = catalog.build_file_record(raw_file, include_content=False)
+    assert record.markdown_ready is True
+    assert record.markdown_content == ""
 
 
 def test_duplicate_user_upload_reuses_existing_file(monkeypatch) -> None:

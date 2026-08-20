@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { createPortal } from "react-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ChatModelSelect,
@@ -9,18 +9,19 @@ import {
 } from "../components/chat/ChatModelSelect";
 import { LibraryMarkdownViewer } from "../components/knowledge-docs/LibraryMarkdownViewer";
 import {
+  createFormulaSearchKeys,
+  mergeLibraryHighlightRects,
+} from "../components/knowledge-docs/libraryMarkdown";
+import {
   AlertCircle,
   ArrowLeft,
   CheckCircle2,
-  Clock3,
-  Database,
   Download,
   FileCode,
   FileImage,
   FileText,
   FileType,
   FolderOpen,
-  HardDrive,
   Highlighter,
   Loader2,
   Maximize2,
@@ -49,15 +50,15 @@ import {
 } from "../lib/fileUpload";
 import { patchHtmlForIframe } from "../lib/interactiveHtml";
 import { cn } from "../lib/utils";
-import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
+import type { FileMarkdownChunk, FileRecord, FilesData, FilesUploadData } from "../types/files";
 
 interface ApiResponse<T> {
   code: number;
   data: T;
 }
 
-type FileStatusFilter = "all" | "ready" | "processing" | "failed";
-type FileStatusKind = Exclude<FileStatusFilter, "all">;
+type LibraryFilter = "all" | "files" | "images" | "failed";
+type FileStatusKind = "ready" | "processing" | "failed";
 type FileSortKey = "updated_desc" | "name_asc" | "size_desc";
 
 interface SelectOption<T extends string> {
@@ -65,12 +66,14 @@ interface SelectOption<T extends string> {
   label: string;
 }
 
-const FILE_STATUS_FILTER_OPTIONS: Array<SelectOption<FileStatusFilter>> = [
-  { value: "all", label: "全部状态" },
-  { value: "ready", label: "已解析" },
-  { value: "processing", label: "解析中" },
-  { value: "failed", label: "失败" },
+const LIBRARY_FILTER_OPTIONS: Array<SelectOption<LibraryFilter>> = [
+  { value: "all", label: "全部" },
+  { value: "files", label: "文件" },
+  { value: "images", label: "图片" },
+  { value: "failed", label: "解析失败" },
 ];
+
+const LIBRARY_IMAGE_EXTENSIONS = new Set(["jpeg", "jpg", "png", "bmp", "webp"]);
 
 const FILE_SORT_OPTIONS: Array<SelectOption<FileSortKey>> = [
   { value: "updated_desc", label: "最近更新" },
@@ -80,6 +83,7 @@ const FILE_SORT_OPTIONS: Array<SelectOption<FileSortKey>> = [
 
 // Backend owns the LLM timeouts; axios should not abort while generation keeps running server-side.
 const LIBRARY_INTERACTIVE_API_TIMEOUT_MS = 0;
+const LIBRARY_MARKDOWN_NETWORK_CHUNK_CHARS = 65_536;
 
 const fileNameCollator = new Intl.Collator("zh-Hans-CN", {
   numeric: true,
@@ -105,9 +109,24 @@ async function fetchLibraryFile(fileId: string, signal?: AbortSignal): Promise<F
   const response = await apiClient<ApiResponse<FileRecord>>({
     method: "GET",
     url: `/api/v1/files/${encodeURIComponent(fileId)}`,
+    params: { include_markdown: false },
     signal,
   });
   return response.data ?? null;
+}
+
+async function fetchLibraryMarkdownChunk(
+  fileId: string,
+  offset: number,
+  signal?: AbortSignal,
+): Promise<FileMarkdownChunk> {
+  const response = await apiClient<ApiResponse<FileMarkdownChunk>>({
+    method: "GET",
+    url: `/api/v1/files/${encodeURIComponent(fileId)}/markdown`,
+    params: { offset, limit: LIBRARY_MARKDOWN_NETWORK_CHUNK_CHARS },
+    signal,
+  });
+  return response.data;
 }
 
 async function uploadLibraryFiles(files: File[]): Promise<FilesUploadData> {
@@ -411,15 +430,41 @@ function highlightSegmentsSpanTooLarge(segments: HighlightSegment[], selectedTex
   return spanHeight > maxExpectedHeight;
 }
 
-function rangeIntersectsSelector(range: Range, root: ParentNode, selector: string): boolean {
-  const elements = Array.from(root.querySelectorAll(selector));
-  return elements.some((element) => {
-    try {
-      return range.intersectsNode(element);
-    } catch {
-      return false;
-    }
-  });
+function rangeIntersectsNode(range: Range, node: Node): boolean {
+  try {
+    return range.intersectsNode(node);
+  } catch {
+    return false;
+  }
+}
+
+function getRangeKatexElements(range: Range, root: ParentNode): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>(".katex"))
+    .filter((element) => !element.parentElement?.closest(".katex"))
+    .filter((element) => rangeIntersectsNode(range, element));
+}
+
+function getKatexSource(element: Element): string {
+  return element.querySelector(".katex-mathml annotation")?.textContent?.trim() ?? "";
+}
+
+function getContainingKatexElement(node: Node): HTMLElement | null {
+  const element = node.nodeType === Node.ELEMENT_NODE
+    ? node as Element
+    : node.parentElement;
+  return element?.closest<HTMLElement>(".katex") ?? null;
+}
+
+/** Selecting any portion of one formula is treated as selecting that formula. */
+function getCanonicalFormulaSelection(range: Range): string | null {
+  const startFormula = getContainingKatexElement(range.startContainer);
+  const endFormula = getContainingKatexElement(range.endContainer);
+  if (!startFormula || startFormula !== endFormula) return null;
+
+  const source = getKatexSource(startFormula);
+  if (!source) return null;
+  const display = Boolean(startFormula.closest(".katex-display"));
+  return display ? `$$${source}$$` : `$${source}$`;
 }
 
 function normalizeSelectionSearchChar(char: string): string {
@@ -674,6 +719,13 @@ function getFileStatusKind(file: FileRecord): FileStatusKind {
   return "processing";
 }
 
+function matchesLibraryFilter(file: FileRecord, filter: LibraryFilter): boolean {
+  if (filter === "all") return true;
+  if (filter === "failed") return getFileStatusKind(file) === "failed";
+  const isImage = LIBRARY_IMAGE_EXTENSIONS.has(normalizeFileExt(file.filetype));
+  return filter === "images" ? isImage : !isImage;
+}
+
 function getFileUpdatedTime(file: FileRecord): number {
   const value = Date.parse(file.latest_updated_at || file.created_at || "");
   return Number.isFinite(value) ? value : 0;
@@ -710,7 +762,7 @@ export function LibraryPage() {
   const [uploadingNames, setUploadingNames] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<FileStatusFilter>("all");
+  const [libraryFilter, setLibraryFilter] = useState<LibraryFilter>("all");
   const [sortKey, setSortKey] = useState<FileSortKey>("updated_desc");
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
@@ -829,24 +881,10 @@ export function LibraryPage() {
 
   const files = filesQuery.data?.items ?? [];
   const hasFiles = files.length > 0;
-  const statusCounts = useMemo<Record<FileStatusFilter, number>>(() => {
-    const counts: Record<FileStatusFilter, number> = {
-      all: files.length,
-      ready: 0,
-      processing: 0,
-      failed: 0,
-    };
-
-    files.forEach((file) => {
-      counts[getFileStatusKind(file)] += 1;
-    });
-
-    return counts;
-  }, [files]);
   const visibleFiles = useMemo(() => {
     const keyword = searchQuery.trim().toLowerCase();
     const next = files.filter((file) => {
-      if (statusFilter !== "all" && getFileStatusKind(file) !== statusFilter) {
+      if (!matchesLibraryFilter(file, libraryFilter)) {
         return false;
       }
       if (!keyword) {
@@ -874,62 +912,54 @@ export function LibraryPage() {
       }
       return getFileUpdatedTime(b) - getFileUpdatedTime(a);
     });
-  }, [files, searchQuery, sortKey, statusFilter]);
+  }, [files, libraryFilter, searchQuery, sortKey]);
   const hasVisibleFiles = visibleFiles.length > 0;
-  const hasActiveFilters = searchQuery.trim().length > 0 || statusFilter !== "all";
-  const visibleCountLabel = visibleFiles.length === files.length ? `${files.length} 份` : `${visibleFiles.length}/${files.length} 份`;
-  const libraryStats = [
-    {
-      label: "全部资料",
-      value: filesQuery.data?.total ?? files.length,
-      icon: <Database className="h-4 w-4" />,
-      tone: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
-    },
-    {
-      label: "已解析",
-      value: filesQuery.data?.ready_count ?? 0,
-      icon: <CheckCircle2 className="h-4 w-4" />,
-      tone: "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-300",
-    },
-    {
-      label: "解析中",
-      value: filesQuery.data?.processing_count ?? 0,
-      icon: <Clock3 className="h-4 w-4" />,
-      tone: "bg-indigo-50 text-indigo-600 dark:bg-indigo-950/30 dark:text-indigo-300",
-    },
-    {
-      label: "失败",
-      value: filesQuery.data?.failed_count ?? 0,
-      icon: <AlertCircle className="h-4 w-4" />,
-      tone: "bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-300",
-    },
-  ];
+  const hasActiveFilters = searchQuery.trim().length > 0 || libraryFilter !== "all";
+  const visibleCountLabel = visibleFiles.length === files.length
+    ? `共 ${files.length} 份资料`
+    : `显示 ${visibleFiles.length} / ${files.length} 份`;
 
   return (
     <div className="min-h-full pb-24 sm:pb-12">
-      <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
-        <div className="space-y-3">
-          <div className="inline-flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400">
-            <FolderOpen className="h-3.5 w-3.5" />
-            我的资料库
-          </div>
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100 sm:text-[32px]">我的资料库</h1>
-            <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
-              集中查看已上传资料、解析状态和文件信息。
-            </p>
-          </div>
+      <div className="flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-950 dark:text-white sm:text-[32px]">资料库</h1>
+          <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
+            管理上传的资料，解析完成后即可用于课程构建和提问。
+          </p>
         </div>
 
-        <div className="flex flex-col gap-2 sm:flex-row">
+        <div className="flex w-full flex-col gap-2 sm:flex-row xl:w-auto xl:min-w-[520px]">
+          <label className="relative block min-w-0 flex-1">
+            <span className="sr-only">搜索资料</span>
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="搜索资料"
+              className="h-11 w-full rounded-full border border-slate-200 bg-slate-100/70 pl-11 pr-10 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-slate-300 focus:bg-white focus:ring-2 focus:ring-slate-200/70 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-slate-600 dark:focus:bg-slate-900 dark:focus:ring-slate-700/60"
+            />
+            {searchQuery ? (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-200/80 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+                aria-label="清空搜索"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            ) : null}
+          </label>
           <button
             type="button"
             onClick={() => filesQuery.refetch()}
             disabled={filesQuery.isFetching}
-            className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:bg-slate-800"
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+            title="刷新资料库"
+            aria-label="刷新资料库"
           >
             <RefreshCw className={cn("h-4 w-4", filesQuery.isFetching && "animate-spin")} />
-            刷新
           </button>
           <input
             ref={fileInputRef}
@@ -949,26 +979,12 @@ export function LibraryPage() {
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={uploadMutation.isPending}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
+            className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-slate-950 px-5 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-100"
           >
             {uploadMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-            上传资料
+            上传
           </button>
         </div>
-      </div>
-
-      <div className="mt-8 grid grid-cols-2 overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 xl:grid-cols-4">
-        {libraryStats.map((item) => (
-          <div key={item.label} className="border-b border-r border-slate-200 px-4 py-4 even:border-r-0 last:border-b-0 dark:border-slate-800 [&:nth-last-child(2)]:border-b-0 xl:border-b-0 xl:even:border-r xl:last:border-r-0">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="text-xs font-medium text-slate-500 dark:text-slate-400">{item.label}</div>
-                <div className="mt-1 text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">{item.value}</div>
-              </div>
-              <div className={cn("flex h-9 w-9 items-center justify-center rounded-lg", item.tone)}>{item.icon}</div>
-            </div>
-          </div>
-        ))}
       </div>
 
       {error ? (
@@ -1020,89 +1036,61 @@ export function LibraryPage() {
       ) : null}
 
       {!filesQuery.isLoading && hasFiles ? (
-        <div className="mt-6 overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-          <div className="border-b border-slate-100 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-900">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-              <div className="min-w-0">
-                <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">文件列表</h2>
-                <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
-                  搜索、筛选和排序资料，解析完成后可直接用于课程构建和提问。
-                </p>
-              </div>
-              <div className="inline-flex w-fit shrink-0 items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs font-medium text-slate-500 dark:bg-slate-800/70 dark:text-slate-400">
-                <HardDrive className="h-3.5 w-3.5" />
-                {visibleCountLabel}
-              </div>
+        <div className="mt-8">
+          <div className="flex flex-col gap-4 border-b border-slate-200 pb-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-center gap-1 overflow-x-auto" role="tablist" aria-label="资料类型筛选">
+              {LIBRARY_FILTER_OPTIONS.map((option) => {
+                const active = libraryFilter === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => setLibraryFilter(option.value)}
+                    className={cn(
+                      "h-9 shrink-0 rounded-full px-4 text-sm font-medium transition",
+                      active
+                        ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-950"
+                        : "text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100",
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
             </div>
 
-            <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-              <label className="relative block min-w-0">
-                <span className="sr-only">搜索资料</span>
-                <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="search"
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder="搜索文件名、类型或状态"
-                  className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50/60 pl-10 pr-10 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-indigo-300 focus:bg-white focus:ring-2 focus:ring-indigo-100 dark:border-slate-700 dark:bg-slate-950/40 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-indigo-500/50 dark:focus:bg-slate-900 dark:focus:ring-indigo-500/10"
-                />
-                {searchQuery ? (
-                  <button
-                    type="button"
-                    onClick={() => setSearchQuery("")}
-                    className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-200/70 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-                    aria-label="清空搜索"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                ) : null}
+            <div className="flex items-center justify-between gap-3 sm:justify-end">
+              <span className="text-xs text-slate-400 dark:text-slate-500">{visibleCountLabel}</span>
+              <label className="block shrink-0">
+                <span className="sr-only">排序方式</span>
+                <select
+                  value={sortKey}
+                  onChange={(event) => setSortKey(event.target.value as FileSortKey)}
+                  className="h-9 rounded-full border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 outline-none transition hover:border-slate-300 focus:border-slate-400 focus:ring-2 focus:ring-slate-200/70 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-600 dark:focus:border-slate-500 dark:focus:ring-slate-700/60"
+                >
+                  {FILE_SORT_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
               </label>
-
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <label className="block min-w-0">
-                  <span className="sr-only">状态筛选</span>
-                  <select
-                    value={statusFilter}
-                    onChange={(event) => setStatusFilter(event.target.value as FileStatusFilter)}
-                    className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 outline-none transition hover:border-slate-300 focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:focus:border-indigo-500/50 dark:focus:ring-indigo-500/10"
-                  >
-                    {FILE_STATUS_FILTER_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label} ({statusCounts[option.value]})
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="block min-w-0">
-                  <span className="sr-only">排序方式</span>
-                  <select
-                    value={sortKey}
-                    onChange={(event) => setSortKey(event.target.value as FileSortKey)}
-                    className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 outline-none transition hover:border-slate-300 focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:focus:border-indigo-500/50 dark:focus:ring-indigo-500/10"
-                  >
-                    {FILE_SORT_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
             </div>
           </div>
 
           {hasVisibleFiles ? (
-            <div className="hidden grid-cols-[minmax(0,1.7fr)_120px_170px_120px_48px] gap-4 border-b border-slate-100 bg-slate-50/80 px-4 py-3 text-xs font-medium text-slate-500 dark:border-slate-800 dark:bg-slate-900/80 dark:text-slate-400 md:grid">
-              <div>文件</div>
-              <div>大小</div>
+            <div className="hidden grid-cols-[minmax(0,1.8fr)_150px_140px_100px_44px] gap-5 border-b border-slate-200 px-2 py-3 text-xs font-medium text-slate-400 dark:border-slate-800 dark:text-slate-500 md:grid">
+              <div>名称</div>
               <div>状态</div>
               <div>更新时间</div>
+              <div>大小</div>
               <div />
             </div>
           ) : null}
 
-          <div className="divide-y divide-slate-100 dark:divide-slate-800">
+          <div className="divide-y divide-slate-200 border-b border-slate-200 dark:divide-slate-800 dark:border-slate-800">
             {visibleFiles.map((file) => {
               const meta = statusMeta(file);
               return (
@@ -1118,15 +1106,15 @@ export function LibraryPage() {
                       navigate(`/library/${encodeURIComponent(file.id)}`);
                     }
                   }}
-                  className="atm-deferred-row group grid cursor-pointer gap-3 px-4 py-4 transition hover:bg-slate-50/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 dark:hover:bg-slate-800/35 dark:focus-visible:ring-slate-600 md:grid-cols-[minmax(0,1.7fr)_120px_170px_120px_48px] md:items-center md:gap-4"
+                  className="atm-deferred-row group grid cursor-pointer gap-3 px-2 py-4 transition hover:bg-slate-50/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-300 dark:hover:bg-slate-800/30 dark:focus-visible:ring-slate-600 md:grid-cols-[minmax(0,1.8fr)_150px_140px_100px_44px] md:items-center md:gap-5"
                   aria-label={`查看资料 ${file.filename}`}
                 >
                   <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800">
                       {fileIcon(file)}
                     </div>
                     <div className="min-w-0">
-                      <div className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{file.filename}</div>
+                      <div className="truncate text-sm font-medium text-slate-900 transition group-hover:text-slate-950 dark:text-slate-100 dark:group-hover:text-white">{file.filename}</div>
                       <div className="mt-1 flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500">
                         <span>{normalizeFileExt(file.filetype).toUpperCase() || "FILE"}</span>
                         {file.estimated_pages ? <span>{file.estimated_pages} 页</span> : null}
@@ -1135,14 +1123,9 @@ export function LibraryPage() {
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between gap-3 text-sm text-slate-500 dark:text-slate-400 md:block">
-                    <span className="text-xs font-medium text-slate-400 md:hidden">大小</span>
-                    <span>{formatFileSize(file.file_size_bytes)}</span>
-                  </div>
-
                   <div className="flex items-start justify-between gap-3 md:block">
                     <span className="pt-1 text-xs font-medium text-slate-400 md:hidden">状态</span>
-                    <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1", meta.className)} title={resolveFileProcessingLabel(file)}>
+                    <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset", meta.className)} title={resolveFileProcessingLabel(file)}>
                       {meta.icon}
                       {meta.label}
                     </span>
@@ -1152,6 +1135,11 @@ export function LibraryPage() {
                   <div className="flex items-center justify-between gap-3 text-xs text-slate-400 dark:text-slate-500 md:block">
                     <span className="font-medium md:hidden">更新</span>
                     <span>{new Date(file.latest_updated_at || file.created_at).toLocaleDateString()}</span>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3 text-sm text-slate-500 dark:text-slate-400 md:block">
+                    <span className="text-xs font-medium text-slate-400 md:hidden">大小</span>
+                    <span>{formatFileSize(file.file_size_bytes)}</span>
                   </div>
 
                   <div className="flex justify-end">
@@ -1169,8 +1157,9 @@ export function LibraryPage() {
                             setOpenMenuId(file.id);
                           }
                         }}
-                        className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+                        className="flex h-9 w-9 items-center justify-center rounded-full text-slate-400 opacity-100 transition hover:bg-slate-200/70 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-200 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
                         title="更多操作"
+                        aria-label={`更多操作：${file.filename}`}
                       >
                         <MoreHorizontal className="h-4 w-4" />
                       </button>
@@ -1182,20 +1171,20 @@ export function LibraryPage() {
           </div>
 
           {!hasVisibleFiles ? (
-            <div className="flex min-h-[220px] flex-col items-center justify-center px-6 py-12 text-center">
+            <div className="flex min-h-[260px] flex-col items-center justify-center border-b border-slate-200 px-6 py-12 text-center dark:border-slate-800">
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100/80 text-slate-500 dark:bg-slate-800/80 dark:text-slate-400">
                 <Search className="h-5 w-5" />
               </div>
               <h2 className="mt-4 text-base font-semibold text-slate-900 dark:text-slate-100">没有匹配的资料</h2>
               <p className="mt-2 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">
-                换个关键词，或切回全部状态查看完整资料库。
+                换个关键词，或切回“全部”查看完整资料库。
               </p>
               {hasActiveFilters ? (
                 <button
                   type="button"
                   onClick={() => {
                     setSearchQuery("");
-                    setStatusFilter("all");
+                    setLibraryFilter("all");
                   }}
                   className="mt-5 inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-600 dark:hover:bg-slate-800"
                 >
@@ -1310,11 +1299,55 @@ export function LibraryFilePage() {
   });
 
   const file = fileQuery.data ?? null;
+  const markdownQuery = useInfiniteQuery({
+    queryKey: ["files-library-file-markdown", decodedFileId, file?.latest_updated_at ?? "pending"],
+    queryFn: ({ pageParam, signal }) => fetchLibraryMarkdownChunk(decodedFileId, pageParam, signal),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => (
+      !lastPage.done && lastPage.next_offset > lastPage.offset
+        ? lastPage.next_offset
+        : undefined
+    ),
+    enabled: decodedFileId.length > 0 && Boolean(file?.markdown_ready),
+    retry: (failureCount, error) => (
+      !isBackendOfflineError(error)
+      && ![401, 403, 404, 422].some((status) => isApiErrorStatus(error, status))
+      && failureCount < 2
+    ),
+    retryDelay: (attemptIndex) => Math.min(700 * 2 ** attemptIndex, 2200),
+  });
   const meta = file ? statusMeta(file) : null;
-  const markdownContent = file?.markdown_content?.trim() ?? "";
+  const markdownContent = useMemo(
+    () => markdownQuery.data?.pages.map((page) => page.content).join("") ?? "",
+    [markdownQuery.data?.pages],
+  );
   const [viewMode, setViewMode] = useState<"rendered" | "source">("rendered");
+  const [isMarkdownRenderComplete, setIsMarkdownRenderComplete] = useState(false);
+  const [renderedMarkdownChars, setRenderedMarkdownChars] = useState(0);
   const assetBaseUrl = file?.asset_base_url ?? null;
   const fileExt = file ? normalizeFileExt(file.filetype).toUpperCase() || "FILE" : "FILE";
+
+  const requestMoreMarkdown = useCallback(() => {
+    if (markdownQuery.hasNextPage && !markdownQuery.isFetchingNextPage) {
+      void markdownQuery.fetchNextPage();
+    }
+  }, [markdownQuery.fetchNextPage, markdownQuery.hasNextPage, markdownQuery.isFetchingNextPage]);
+
+  useEffect(() => {
+    setIsMarkdownRenderComplete(false);
+    setRenderedMarkdownChars(0);
+  }, [decodedFileId]);
+
+  const handleMarkdownRenderProgress = useCallback((renderedChars: number, complete: boolean) => {
+    setRenderedMarkdownChars((current) => current === renderedChars ? current : renderedChars);
+    setIsMarkdownRenderComplete((current) => current === complete ? current : complete);
+  }, []);
+
+  useEffect(() => {
+    if (viewMode === "source") {
+      requestMoreMarkdown();
+    }
+  }, [markdownQuery.data?.pages.length, requestMoreMarkdown, viewMode]);
 
   /* ========== Highlight state ========== */
   const [highlights, setHighlights] = useState<LibraryHighlight[]>([]);
@@ -1387,12 +1420,8 @@ export function LibraryFilePage() {
     if (!container) return [];
     const containerRect = container.getBoundingClientRect();
 
-    if (markdownBodyRef.current && rangeIntersectsSelector(range, markdownBodyRef.current, ".katex")) {
-      const nativeRects = filterHighlightRects(Array.from(range.getClientRects()), containerRect, viewportBand);
-      if (nativeRects.length > 0) {
-        return nativeRects.map(segmentFromViewportRect);
-      }
-    }
+    const contentRoot = markdownBodyRef.current ?? container;
+    const formulaElements = getRangeKatexElements(range, contentRoot);
 
     const rangeRoot = range.commonAncestorContainer.nodeType === Node.TEXT_NODE
       ? range.commonAncestorContainer.parentNode
@@ -1400,13 +1429,16 @@ export function LibraryFilePage() {
     const textNodes: Text[] = [];
 
     if (range.commonAncestorContainer.nodeType === Node.TEXT_NODE) {
-      textNodes.push(range.commonAncestorContainer as Text);
+      const textNode = range.commonAncestorContainer as Text;
+      if (!textNode.parentElement?.closest(".katex")) {
+        textNodes.push(textNode);
+      }
     } else if (rangeRoot) {
       const walker = document.createTreeWalker(rangeRoot, NodeFilter.SHOW_TEXT);
       let current = walker.nextNode();
       while (current) {
         const textNode = current as Text;
-        if ((textNode.nodeValue ?? "").trim()) {
+        if ((textNode.nodeValue ?? "").trim() && !textNode.parentElement?.closest(".katex")) {
           try {
             if (range.intersectsNode(textNode) && !shouldIgnoreLibrarySelectionTextNode(textNode)) {
               textNodes.push(textNode);
@@ -1446,11 +1478,31 @@ export function LibraryFilePage() {
       );
     }
 
-    const rects = textRects.length > 0
-      ? textRects
+    const formulaRects = formulaElements.flatMap((element) => {
+      const visualElement = element.querySelector<HTMLElement>(".katex-html") ?? element;
+      const visualRect = visualElement.getBoundingClientRect();
+      const scrollViewport = element.closest<HTMLElement>(".katex-display")?.getBoundingClientRect();
+      if (!scrollViewport) {
+        return visualRect.width > 1 && visualRect.height > 1 ? [visualRect] : [];
+      }
+
+      // Display formulas can scroll horizontally. Keep the overlay clipped to
+      // the visible formula card so it never spills over the document panel.
+      const left = Math.max(visualRect.left, scrollViewport.left);
+      const top = Math.max(visualRect.top, scrollViewport.top);
+      const right = Math.min(visualRect.right, scrollViewport.right);
+      const bottom = Math.min(visualRect.bottom, scrollViewport.bottom);
+      return right > left && bottom > top
+        ? [new DOMRect(left, top, right - left, bottom - top)]
+        : [];
+    });
+
+    const rects = [...textRects, ...formulaRects];
+    const fallbackRects = rects.length > 0
+      ? rects
       : filterHighlightRects(Array.from(range.getClientRects()), containerRect, viewportBand);
 
-    if (rects.length === 0) {
+    if (fallbackRects.length === 0) {
       const rect = range.getBoundingClientRect();
       if (rect.width < 1 && rect.height < 1) {
         return [];
@@ -1458,18 +1510,21 @@ export function LibraryFilePage() {
       return [segmentFromViewportRect(rect)];
     }
 
-    return rects.map(segmentFromViewportRect);
+    return mergeLibraryHighlightRects(fallbackRects.map(segmentFromViewportRect));
   }, [segmentFromViewportRect]);
 
   const captureElementSegments = useCallback((element: Element): HighlightSegment[] => (
-    Array.from(element.getClientRects())
-      .filter((rect) => rect.width > 1 && rect.height > 1)
-      .map(segmentFromViewportRect)
+    mergeLibraryHighlightRects(
+      Array.from(element.getClientRects())
+        .filter((rect) => rect.width > 1 && rect.height > 1)
+        .map(segmentFromViewportRect),
+    )
   ), [segmentFromViewportRect]);
 
   const buildHighlightSegmentsFromText = useCallback((
     selectedText: string,
     preferredSegments?: HighlightSegment[] | null,
+    existingIndex?: TextSearchIndex,
   ): HighlightSegment[] => {
     const contentRoot = markdownBodyRef.current ?? contentRef.current;
     const target = selectedText.trim();
@@ -1477,7 +1532,7 @@ export function LibraryFilePage() {
       return [];
     }
 
-    const index = buildTextSearchIndex([contentRoot]);
+    const index = existingIndex ?? buildTextSearchIndex([contentRoot]);
     const matchedSegments = findRangesForSelectedText(index, target)
       .map((range) => captureRangeSegments(range))
       .filter((segments) => segments.length > 0 && !highlightSegmentsSpanTooLarge(segments, target));
@@ -1493,26 +1548,32 @@ export function LibraryFilePage() {
       }
     }
 
-    const normalizedTargets = Array.from(new Set([
-      target,
-      stripMathDelimiters(target),
-    ].map((item) => createCondensedSearchText(normalizeSelectionSearchText(item)).text).filter(Boolean)));
-    if (normalizedTargets.length > 0) {
+    const formulaTargets = Array.from(new Set([
+      ...createFormulaSearchKeys(target),
+      createCondensedSearchText(normalizeSelectionSearchText(stripMathDelimiters(target))).text,
+    ].filter(Boolean)));
+    if (formulaTargets.length > 0) {
       const mathCandidates = Array.from(contentRoot.querySelectorAll<HTMLElement>(".katex"));
       const matchedMathSegments: HighlightSegment[][] = [];
       for (const element of mathCandidates) {
-        const elementTexts = Array.from(new Set([
-          element.innerText || "",
-          element.textContent || "",
-          ...Array.from(element.querySelectorAll<HTMLElement>(".katex-mathml annotation")).map((item) => item.textContent || ""),
-        ].map((item) => createCondensedSearchText(normalizeSelectionSearchText(stripMathDelimiters(item))).text).filter(Boolean)));
-        const matched = normalizedTargets.some((normalizedTarget) => (
-          elementTexts.some((normalizedElementText) => (
-            normalizedElementText.includes(normalizedTarget) || normalizedTarget.includes(normalizedElementText)
+        const elementKeys = Array.from(new Set([
+          getKatexSource(element),
+          element.querySelector<HTMLElement>(".katex-html")?.innerText || "",
+        ].flatMap((item) => [
+          ...createFormulaSearchKeys(item),
+          createCondensedSearchText(normalizeSelectionSearchText(stripMathDelimiters(item))).text,
+        ]).filter(Boolean)));
+        const matched = formulaTargets.some((targetKey) => (
+          elementKeys.some((elementKey) => (
+            elementKey === targetKey ||
+            (Math.min(elementKey.length, targetKey.length) >= 2 && (
+              elementKey.includes(targetKey) || targetKey.includes(elementKey)
+            ))
           ))
         ));
         if (matched) {
-          const elementSegments = captureElementSegments(element);
+          const visualElement = element.querySelector<HTMLElement>(".katex-html") ?? element;
+          const elementSegments = captureElementSegments(visualElement);
           if (elementSegments.length > 0) {
             matchedMathSegments.push(elementSegments);
           }
@@ -1531,25 +1592,23 @@ export function LibraryFilePage() {
       setHighlightSegmentsById({});
       return;
     }
+    const contentRoot = markdownBodyRef.current ?? contentRef.current;
+    const searchIndex = contentRoot ? buildTextSearchIndex([contentRoot]) : undefined;
     setHighlightSegmentsById((prev) => {
       let changed = false;
       const next: Record<number, HighlightSegment[]> = {};
       for (const highlight of highlights) {
         const storedSegments = highlight.segments?.length ? highlight.segments : [];
         const previousSegments = prev[highlight.id]?.length ? prev[highlight.id] : [];
-        const isInteractive = isInteractiveHighlight(highlight);
-        const preferredSegments = isInteractive
-          ? storedSegments.length > 0 ? storedSegments : previousSegments
-          : previousSegments.length > 0 ? previousSegments : storedSegments;
-        if (isInteractive && preferredSegments.length > 0) {
-          next[highlight.id] = preferredSegments;
-          if (!highlightSegmentsEqual(prev[highlight.id] ?? [], preferredSegments)) {
-            changed = true;
-          }
-          continue;
-        }
-        const rebuiltSegments = buildHighlightSegmentsFromText(highlight.selected_text, preferredSegments);
-        const segments = rebuiltSegments.length > 0 ? rebuiltSegments : preferredSegments;
+        const preferredSegments = previousSegments.length > 0 ? previousSegments : storedSegments;
+        const rebuiltSegments = buildHighlightSegmentsFromText(
+          highlight.selected_text,
+          preferredSegments,
+          searchIndex,
+        );
+        const segments = rebuiltSegments.length > 0
+          ? rebuiltSegments
+          : isMarkdownRenderComplete ? preferredSegments : [];
         next[highlight.id] = segments;
         if (!highlightSegmentsEqual(prev[highlight.id] ?? [], segments)) {
           changed = true;
@@ -1561,7 +1620,7 @@ export function LibraryFilePage() {
       }
       return changed ? next : prev;
     });
-  }, [buildHighlightSegmentsFromText, highlights, viewMode]);
+  }, [buildHighlightSegmentsFromText, highlights, isMarkdownRenderComplete, viewMode]);
 
   // Load highlights when file is ready
   useEffect(() => {
@@ -1612,6 +1671,8 @@ export function LibraryFilePage() {
     if (observer && contentRef.current) {
       observer.observe(contentRef.current);
     }
+    const markdownBody = markdownBodyRef.current;
+    markdownBody?.addEventListener("scroll", scheduleRefresh, true);
     window.addEventListener("resize", scheduleRefresh);
 
     return () => {
@@ -1619,9 +1680,10 @@ export function LibraryFilePage() {
         window.cancelAnimationFrame(raf);
       }
       observer?.disconnect();
+      markdownBody?.removeEventListener("scroll", scheduleRefresh, true);
       window.removeEventListener("resize", scheduleRefresh);
     };
-  }, [highlights.length, markdownContent, refreshHighlightSegments, viewMode]);
+  }, [highlights.length, markdownContent, refreshHighlightSegments, renderedMarkdownChars, viewMode]);
 
   /* ========== Text selection & floating toolbar ========== */
   const [selectionToolbar, setSelectionToolbar] = useState<{
@@ -1663,8 +1725,9 @@ export function LibraryFilePage() {
 
         const range = sel?.getRangeAt(0);
         if (!range) return;
+        const selectedText = getCanonicalFormulaSelection(range) ?? text;
         selectedRangeRef.current = range.cloneRange();
-        selectedTextRef.current = text;
+        selectedTextRef.current = selectedText;
         const dragStart = selectionDragStartRef.current;
         const rangeRect = range.getBoundingClientRect();
         const minY = dragStart ? Math.min(dragStart.y, event.clientY, rangeRect.top) : rangeRect.top;
@@ -1678,7 +1741,7 @@ export function LibraryFilePage() {
         const top = Math.max(8, rect.top - 52); // above selection
         const left = rect.left + rect.width / 2; // centered
 
-        setSelectionToolbar({ visible: true, top, left, selectedText: text });
+        setSelectionToolbar({ visible: true, top, left, selectedText });
       });
     };
 
@@ -1741,9 +1804,9 @@ export function LibraryFilePage() {
       visible: true,
       highlightId: highlight.id,
       selectedText: highlight.selected_text,
-      selectionSegments: highlight.segments?.length
-        ? highlight.segments
-        : highlightSegmentsById[highlight.id] ?? [],
+      selectionSegments: highlightSegmentsById[highlight.id]?.length
+        ? highlightSegmentsById[highlight.id]
+        : highlight.segments ?? [],
       description: highlight.description ?? "",
       improvePrompt: "",
       improveFormOpen: false,
@@ -1783,14 +1846,24 @@ export function LibraryFilePage() {
   }, [hideSelectionToolbar, openInteractiveHighlight]);
 
   /* ========== Highlight actions ========== */
+  const resolveCurrentSelectionSegments = useCallback((selectedText: string): HighlightSegment[] => {
+    const capturedSegments =
+      selectedTextRef.current === selectedText && selectedRangeRef.current
+        ? captureRangeSegments(selectedRangeRef.current, selectedViewportBandRef.current)
+        : [];
+    if (
+      capturedSegments.length > 0 &&
+      !highlightSegmentsSpanTooLarge(capturedSegments, selectedText)
+    ) {
+      return capturedSegments;
+    }
+    return buildHighlightSegmentsFromText(selectedText);
+  }, [buildHighlightSegmentsFromText, captureRangeSegments]);
+
   const handleHighlight = useCallback(async () => {
     const text = selectionToolbar.selectedText;
     if (!text || !decodedFileId) return;
-    const capturedSegments =
-      selectedTextRef.current === text && selectedRangeRef.current
-        ? captureRangeSegments(selectedRangeRef.current, selectedViewportBandRef.current)
-        : [];
-    const liveSegments = highlightSegmentsSpanTooLarge(capturedSegments, text) ? [] : capturedSegments;
+    const liveSegments = resolveCurrentSelectionSegments(text);
     hideSelectionToolbar();
     try {
       const created = await createHighlight(decodedFileId, {
@@ -1801,17 +1874,17 @@ export function LibraryFilePage() {
       setHighlights((prev) => [...prev, created]);
       setHighlightSegmentsById((prev) => ({
         ...prev,
-        [created.id]: created.segments?.length
-          ? created.segments
-          : liveSegments.length > 0
-            ? liveSegments
+        [created.id]: liveSegments.length > 0
+          ? liveSegments
+          : created.segments?.length
+            ? created.segments
             : buildHighlightSegmentsFromText(created.selected_text),
       }));
       toast({ title: "已高亮", description: "选中文本已高亮标记。" });
     } catch {
       toast({ title: "高亮失败", description: "请稍后重试。", variant: "error" });
     }
-  }, [buildHighlightSegmentsFromText, captureRangeSegments, selectionToolbar.selectedText, decodedFileId, hideSelectionToolbar, toast]);
+  }, [buildHighlightSegmentsFromText, selectionToolbar.selectedText, decodedFileId, hideSelectionToolbar, resolveCurrentSelectionSegments, toast]);
 
   const handleDeleteHighlight = useCallback(
     async (highlightId: number) => {
@@ -1868,11 +1941,7 @@ export function LibraryFilePage() {
     if (selectedRangeRef.current && selectedTextRef.current !== text) {
       selectedRangeRef.current = null;
     }
-    const capturedSegments =
-      selectedTextRef.current === text && selectedRangeRef.current
-        ? captureRangeSegments(selectedRangeRef.current, selectedViewportBandRef.current)
-        : [];
-    const selectionSegments = highlightSegmentsSpanTooLarge(capturedSegments, text) ? [] : capturedSegments;
+    const selectionSegments = resolveCurrentSelectionSegments(text);
     if (selectionSegments.length === 0) {
       toast({ title: "选区定位失败", description: "请重新划选内容后再生成交互。", variant: "error" });
       return;
@@ -1892,7 +1961,7 @@ export function LibraryFilePage() {
       expanded: false,
       mode: "create",
     });
-  }, [captureRangeSegments, selectionToolbar.selectedText, hideSelectionToolbar, toast]);
+  }, [selectionToolbar.selectedText, hideSelectionToolbar, resolveCurrentSelectionSegments, toast]);
 
   const handleGenerateInteractive = useCallback(async () => {
     if (!decodedFileId || !interactiveModal.selectedText || interactiveModal.loading) return;
@@ -2320,8 +2389,13 @@ export function LibraryFilePage() {
                   <>
                     <div ref={markdownBodyRef} onMouseDown={handleMarkdownPointerDown}>
                       <LibraryMarkdownViewer
+                        key={decodedFileId}
                         content={markdownContent}
                         assetBaseUrl={assetBaseUrl ?? undefined}
+                        hasMore={Boolean(markdownQuery.hasNextPage)}
+                        isFetchingMore={markdownQuery.isFetchingNextPage}
+                        onRequestMore={requestMoreMarkdown}
+                        onRenderProgressChange={handleMarkdownRenderProgress}
                       />
                     </div>
                     <div
@@ -2370,11 +2444,38 @@ export function LibraryFilePage() {
                     </div>
                   </>
                 ) : (
-                  <pre className="whitespace-pre-wrap break-words rounded-lg border border-slate-200 bg-slate-50 p-4 font-mono text-sm leading-7 text-slate-800 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-200">
-                    {markdownContent}
-                  </pre>
+                  <>
+                    <pre className="whitespace-pre-wrap break-words rounded-lg border border-slate-200 bg-slate-50 p-4 font-mono text-sm leading-7 text-slate-800 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-200">
+                      {markdownContent}
+                    </pre>
+                    {markdownQuery.hasNextPage || markdownQuery.isFetchingNextPage ? (
+                      <div className="mt-3 flex items-center justify-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        正在读取完整源码…
+                      </div>
+                    ) : null}
+                  </>
                 )}
               </>
+            ) : markdownQuery.isLoading || (file.markdown_ready && markdownQuery.isFetching) ? (
+              <div className="flex min-h-[260px] flex-col items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 px-6 text-center dark:border-slate-800 dark:bg-slate-950/30">
+                <Loader2 className="h-7 w-7 animate-spin text-indigo-500" />
+                <h2 className="mt-4 text-base font-semibold text-slate-900 dark:text-slate-100">正在读取正文首段</h2>
+                <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">首段完成后会立即展示，后续内容将在阅读过程中继续加载。</p>
+              </div>
+            ) : markdownQuery.isError ? (
+              <div className="flex min-h-[260px] flex-col items-center justify-center rounded-lg border border-dashed border-red-200 bg-red-50 px-6 text-center dark:border-red-900/70 dark:bg-red-950/20">
+                <AlertCircle className="h-8 w-8 text-red-500" />
+                <h2 className="mt-4 text-base font-semibold text-red-800 dark:text-red-200">正文加载失败</h2>
+                <p className="mt-2 text-sm text-red-600 dark:text-red-300">{getApiErrorMessage(markdownQuery.error, "请稍后重试")}</p>
+                <button
+                  type="button"
+                  onClick={() => void markdownQuery.refetch()}
+                  className="mt-4 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm font-medium text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200"
+                >
+                  重新加载
+                </button>
+              </div>
             ) : (
               <div className="flex min-h-[260px] flex-col items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 px-6 text-center dark:border-slate-800 dark:bg-slate-950/30">
                 <FileText className="h-8 w-8 text-slate-400" />

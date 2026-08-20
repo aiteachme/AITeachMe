@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Iterable
 
 from sqlalchemy import delete as sa_delete, or_
+from sqlalchemy.orm import defer
 from sqlmodel import Session, func, select
 
 from app.models import RawFile, RawFileAsset, Course, CourseFileLink, TaskStatus
@@ -27,9 +28,39 @@ def get_raw_file_by_id(session: Session, file_id: str) -> RawFile | None:
     return session.get(RawFile, file_id)
 
 
-def get_raw_file_by_id_for_user(session: Session, *, user_id: str, file_id: str) -> RawFile | None:
+def get_raw_file_by_id_for_user(
+    session: Session,
+    *,
+    user_id: str,
+    file_id: str,
+    include_markdown_content: bool = True,
+) -> RawFile | None:
     stmt = select(RawFile).where(RawFile.user_id == user_id, RawFile.id == file_id)
+    if not include_markdown_content:
+        stmt = stmt.options(defer(RawFile.markdown_content))
     return session.exec(stmt).first()
+
+
+def get_raw_file_markdown_chunk_for_user(
+    session: Session,
+    *,
+    user_id: str,
+    file_id: str,
+    offset: int,
+    limit: int,
+) -> tuple[str, int] | None:
+    """Read a character slice without transferring the full Markdown column."""
+
+    markdown = func.coalesce(RawFile.markdown_content, "")
+    stmt = select(
+        func.substr(markdown, offset + 1, limit),
+        func.length(markdown),
+    ).where(RawFile.user_id == user_id, RawFile.id == file_id)
+    row = session.exec(stmt).first()
+    if row is None:
+        return None
+    chunk, total_chars = row
+    return str(chunk or ""), int(total_chars or 0)
 
 
 def get_reusable_raw_file_by_content_hash(
@@ -66,6 +97,7 @@ def get_reusable_raw_file_by_content_hash(
 
     stmt = (
         select(RawFile)
+        .options(defer(RawFile.markdown_content))
         .where(*filters)
         .order_by(RawFile.created_at.asc())  # type: ignore[union-attr]
     )
@@ -159,6 +191,7 @@ def list_raw_files_by_course(
     total = int(session.exec(select(func.count()).select_from(RawFile).where(*filters)).one())
     stmt = (
         select(RawFile)
+        .options(defer(RawFile.markdown_content))
         .where(*filters)
         .order_by(RawFile.created_at.desc())  # type: ignore[union-attr]
         .offset(offset)
@@ -194,6 +227,7 @@ def list_raw_files_by_user(
     total = int(session.exec(select(func.count()).select_from(RawFile).where(*filters)).one())
     stmt = (
         select(RawFile)
+        .options(defer(RawFile.markdown_content))
         .where(*filters)
         .order_by(RawFile.created_at.desc())  # type: ignore[union-attr]
         .offset(offset)

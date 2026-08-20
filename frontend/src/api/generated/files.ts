@@ -26,6 +26,7 @@ import type {
 import type {
   ApiResponseDict,
   ApiResponseFileDeleteData,
+  ApiResponseFileMarkdownChunk,
   ApiResponseFileRecord,
   ApiResponseFilesData,
   ApiResponseFilesUploadData,
@@ -37,6 +38,8 @@ import type {
   ErrorResponse,
   FileDeleteRequest,
   FileLinkRequest,
+  GetUserFileApiApiV1FilesFileIdGetParams,
+  GetUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGetParams,
   HTTPValidationError,
   HighlightCreateRequest,
   InteractiveGenerateRequest,
@@ -465,20 +468,29 @@ export type getUserFileApiApiV1FilesFileIdGetResponseError = (getUserFileApiApiV
 
 export type getUserFileApiApiV1FilesFileIdGetResponse = (getUserFileApiApiV1FilesFileIdGetResponseSuccess | getUserFileApiApiV1FilesFileIdGetResponseError)
 
-export const getGetUserFileApiApiV1FilesFileIdGetUrl = (fileId: string,) => {
+export const getGetUserFileApiApiV1FilesFileIdGetUrl = (fileId: string,
+    params?: GetUserFileApiApiV1FilesFileIdGetParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/v1/files/${fileId}`
+  return stringifiedParams.length > 0 ? `/api/v1/files/${fileId}?${stringifiedParams}` : `/api/v1/files/${fileId}`
 }
 
 /**
  * @summary Get one user library file with parsed Markdown
  */
-export const getUserFileApiApiV1FilesFileIdGet = async (fileId: string, options?: RequestInit): Promise<getUserFileApiApiV1FilesFileIdGetResponse> => {
+export const getUserFileApiApiV1FilesFileIdGet = async (fileId: string,
+    params?: GetUserFileApiApiV1FilesFileIdGetParams, options?: RequestInit): Promise<getUserFileApiApiV1FilesFileIdGetResponse> => {
 
-  return orvalApiClient<getUserFileApiApiV1FilesFileIdGetResponse>(getGetUserFileApiApiV1FilesFileIdGetUrl(fileId),
+  return orvalApiClient<getUserFileApiApiV1FilesFileIdGetResponse>(getGetUserFileApiApiV1FilesFileIdGetUrl(fileId,params),
   {
     ...options,
     method: 'GET'
@@ -491,23 +503,25 @@ export const getUserFileApiApiV1FilesFileIdGet = async (fileId: string, options?
 
 
 
-export const getGetUserFileApiApiV1FilesFileIdGetQueryKey = (fileId: string,) => {
+export const getGetUserFileApiApiV1FilesFileIdGetQueryKey = (fileId: string,
+    params?: GetUserFileApiApiV1FilesFileIdGetParams,) => {
     return [
-    `/api/v1/files/${fileId}`
+    `/api/v1/files/${fileId}`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getGetUserFileApiApiV1FilesFileIdGetQueryOptions = <TData = Awaited<ReturnType<typeof getUserFileApiApiV1FilesFileIdGet>>, TError = ErrorResponse | HTTPValidationError>(fileId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getUserFileApiApiV1FilesFileIdGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+export const getGetUserFileApiApiV1FilesFileIdGetQueryOptions = <TData = Awaited<ReturnType<typeof getUserFileApiApiV1FilesFileIdGet>>, TError = ErrorResponse | HTTPValidationError>(fileId: string,
+    params?: GetUserFileApiApiV1FilesFileIdGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getUserFileApiApiV1FilesFileIdGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetUserFileApiApiV1FilesFileIdGetQueryKey(fileId);
+  const queryKey =  queryOptions?.queryKey ?? getGetUserFileApiApiV1FilesFileIdGetQueryKey(fileId,params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getUserFileApiApiV1FilesFileIdGet>>> = ({ signal }) => getUserFileApiApiV1FilesFileIdGet(fileId, { signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getUserFileApiApiV1FilesFileIdGet>>> = ({ signal }) => getUserFileApiApiV1FilesFileIdGet(fileId,params, { signal, ...requestOptions });
 
 
 
@@ -521,7 +535,8 @@ export type GetUserFileApiApiV1FilesFileIdGetQueryError = ErrorResponse | HTTPVa
 
 
 export function useGetUserFileApiApiV1FilesFileIdGet<TData = Awaited<ReturnType<typeof getUserFileApiApiV1FilesFileIdGet>>, TError = ErrorResponse | HTTPValidationError>(
- fileId: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getUserFileApiApiV1FilesFileIdGet>>, TError, TData>> & Pick<
+ fileId: string,
+    params: undefined |  GetUserFileApiApiV1FilesFileIdGetParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getUserFileApiApiV1FilesFileIdGet>>, TError, TData>> & Pick<
         DefinedInitialDataOptions<
           Awaited<ReturnType<typeof getUserFileApiApiV1FilesFileIdGet>>,
           TError,
@@ -531,7 +546,8 @@ export function useGetUserFileApiApiV1FilesFileIdGet<TData = Awaited<ReturnType<
  , queryClient?: QueryClient
   ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 export function useGetUserFileApiApiV1FilesFileIdGet<TData = Awaited<ReturnType<typeof getUserFileApiApiV1FilesFileIdGet>>, TError = ErrorResponse | HTTPValidationError>(
- fileId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getUserFileApiApiV1FilesFileIdGet>>, TError, TData>> & Pick<
+ fileId: string,
+    params?: GetUserFileApiApiV1FilesFileIdGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getUserFileApiApiV1FilesFileIdGet>>, TError, TData>> & Pick<
         UndefinedInitialDataOptions<
           Awaited<ReturnType<typeof getUserFileApiApiV1FilesFileIdGet>>,
           TError,
@@ -541,7 +557,8 @@ export function useGetUserFileApiApiV1FilesFileIdGet<TData = Awaited<ReturnType<
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 export function useGetUserFileApiApiV1FilesFileIdGet<TData = Awaited<ReturnType<typeof getUserFileApiApiV1FilesFileIdGet>>, TError = ErrorResponse | HTTPValidationError>(
- fileId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getUserFileApiApiV1FilesFileIdGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ fileId: string,
+    params?: GetUserFileApiApiV1FilesFileIdGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getUserFileApiApiV1FilesFileIdGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 /**
@@ -549,11 +566,156 @@ export function useGetUserFileApiApiV1FilesFileIdGet<TData = Awaited<ReturnType<
  */
 
 export function useGetUserFileApiApiV1FilesFileIdGet<TData = Awaited<ReturnType<typeof getUserFileApiApiV1FilesFileIdGet>>, TError = ErrorResponse | HTTPValidationError>(
- fileId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getUserFileApiApiV1FilesFileIdGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ fileId: string,
+    params?: GetUserFileApiApiV1FilesFileIdGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getUserFileApiApiV1FilesFileIdGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
  , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
-  const queryOptions = getGetUserFileApiApiV1FilesFileIdGetQueryOptions(fileId,options)
+  const queryOptions = getGetUserFileApiApiV1FilesFileIdGetQueryOptions(fileId,params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+export type getUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGetResponse200 = {
+  data: ApiResponseFileMarkdownChunk
+  status: 200
+}
+
+export type getUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGetResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type getUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGetResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type getUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGetResponse503 = {
+  data: ErrorResponse
+  status: 503
+}
+
+export type getUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGetResponseSuccess = (getUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGetResponse200) & {
+  headers: Headers;
+};
+export type getUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGetResponseError = (getUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGetResponse404 | getUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGetResponse422 | getUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGetResponse503) & {
+  headers: Headers;
+};
+
+export type getUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGetResponse = (getUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGetResponseSuccess | getUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGetResponseError)
+
+export const getGetUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGetUrl = (fileId: string,
+    params?: GetUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGetParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/files/${fileId}/markdown?${stringifiedParams}` : `/api/v1/files/${fileId}/markdown`
+}
+
+/**
+ * @summary Read parsed Markdown progressively
+ */
+export const getUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGet = async (fileId: string,
+    params?: GetUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGetParams, options?: RequestInit): Promise<getUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGetResponse> => {
+
+  return orvalApiClient<getUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGetResponse>(getGetUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGetUrl(fileId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGetQueryKey = (fileId: string,
+    params?: GetUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGetParams,) => {
+    return [
+    `/api/v1/files/${fileId}/markdown`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGetQueryOptions = <TData = Awaited<ReturnType<typeof getUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGet>>, TError = ErrorResponse | HTTPValidationError>(fileId: string,
+    params?: GetUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGetQueryKey(fileId,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGet>>> = ({ signal }) => getUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGet(fileId,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: fileId !== null && fileId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGet>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGetQueryResult = NonNullable<Awaited<ReturnType<typeof getUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGet>>>
+export type GetUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGetQueryError = ErrorResponse | HTTPValidationError
+
+
+export function useGetUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGet<TData = Awaited<ReturnType<typeof getUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGet>>, TError = ErrorResponse | HTTPValidationError>(
+ fileId: string,
+    params: undefined |  GetUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGetParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGet>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGet>>,
+          TError,
+          Awaited<ReturnType<typeof getUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGet<TData = Awaited<ReturnType<typeof getUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGet>>, TError = ErrorResponse | HTTPValidationError>(
+ fileId: string,
+    params?: GetUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGet>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGet>>,
+          TError,
+          Awaited<ReturnType<typeof getUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGet>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGet<TData = Awaited<ReturnType<typeof getUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGet>>, TError = ErrorResponse | HTTPValidationError>(
+ fileId: string,
+    params?: GetUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Read parsed Markdown progressively
+ */
+
+export function useGetUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGet<TData = Awaited<ReturnType<typeof getUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGet>>, TError = ErrorResponse | HTTPValidationError>(
+ fileId: string,
+    params?: GetUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGetParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGet>>, TError, TData>>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetUserFileMarkdownChunkApiApiV1FilesFileIdMarkdownGetQueryOptions(fileId,params,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
