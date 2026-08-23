@@ -178,6 +178,17 @@ def _compact_graph_outputs(final_state: Any, *, elapsed_ms: int) -> dict[str, An
     )
 
 
+def _end_graph_trace(trace_run: Any | None, final_state: Any, *, elapsed_ms: int) -> None:
+    if trace_run is None:
+        return
+    outputs = _compact_graph_outputs(final_state, elapsed_ms=elapsed_ms)
+    trace_error = outputs.get("error")
+    if trace_error:
+        trace_run.end(outputs=outputs, error=str(trace_error))
+        return
+    trace_run.end(outputs=outputs)
+
+
 async def cancel_tasks_and_drain(tasks: list[asyncio.Task[Any]]) -> None:
     """Cancel spawned tasks and await their termination."""
 
@@ -257,13 +268,11 @@ async def invoke_state_graph(
                 compiled = graph.compile()
                 started_at = perf_counter()
                 final_state = await compiled.ainvoke(initial_state, config=config)
-            if trace_run is not None:
-                trace_run.end(
-                    outputs=_compact_graph_outputs(
-                        final_state,
-                        elapsed_ms=int((perf_counter() - started_at) * 1000),
-                    )
-                )
+            _end_graph_trace(
+                trace_run,
+                final_state,
+                elapsed_ms=int((perf_counter() - started_at) * 1000),
+            )
             return final_state
 
 
@@ -319,8 +328,7 @@ async def run_state_graph(
                         compiled = graph.compile()
                         final_state = await compiled.ainvoke(initial_state, config=config)
                     elapsed_ms = int((perf_counter() - started_at) * 1000)
-                    if trace_run is not None:
-                        trace_run.end(outputs=_compact_graph_outputs(final_state, elapsed_ms=elapsed_ms))
+                    _end_graph_trace(trace_run, final_state, elapsed_ms=elapsed_ms)
             else:
                 with _graph_tracing_context():
                     graph = graph_builder()

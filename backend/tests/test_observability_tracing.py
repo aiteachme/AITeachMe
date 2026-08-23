@@ -295,6 +295,40 @@ def test_node_trace_outputs_summarize_large_values(monkeypatch) -> None:
     assert "chapter_drafts" not in outputs
 
 
+@pytest.mark.anyio
+async def test_workflow_node_trace_marks_returned_error_as_failed(monkeypatch) -> None:
+    trace_end_calls: list[dict[str, Any]] = []
+
+    @contextmanager
+    def fake_langsmith_trace(**_kwargs):
+        yield SimpleNamespace(end=lambda **kwargs: trace_end_calls.append(kwargs))
+
+    @contextmanager
+    def passthrough_context(**_kwargs):
+        yield
+
+    monkeypatch.setattr(workflow_authoring, "langsmith_trace", fake_langsmith_trace)
+    monkeypatch.setattr(workflow_authoring, "tracing_context", passthrough_context)
+    monkeypatch.setattr(
+        workflow_authoring,
+        "sanitize_langsmith_output",
+        lambda value, *, field_name: value,
+    )
+
+    async def fail_node(_state: dict[str, Any]) -> dict[str, str]:
+        return {"error": "logical node failure"}
+
+    traced_node = workflow_authoring.workflow_tracer(workflow="test.workflow").node(
+        fail_node,
+        name="fail_node",
+    )
+    result = await traced_node({"course_id": "course_test"})
+
+    assert result == {"error": "logical node failure"}
+    assert trace_end_calls[0]["outputs"]["status"] == "failed"
+    assert trace_end_calls[0]["error"] == "logical node failure"
+
+
 def test_traceable_with_context_defaults_to_traceable_io(monkeypatch) -> None:
     recorded: dict[str, Any] = {}
 
