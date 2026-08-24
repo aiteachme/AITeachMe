@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-08-17T01:02:47.749852",
-  "total_commits_analyzed": 2106,
+  "generated_at": "2026-08-24T01:03:42.828925",
+  "total_commits_analyzed": 2120,
   "stats": [
     {
       "date": "2026-03-11",
@@ -16849,6 +16849,118 @@
       "code_lines": 279817,
       "other_lines": 50462,
       "message": "fix: 收紧云端设置并统一模型档位语义"
+    },
+    {
+      "date": "2026-08-17",
+      "commit": "bba1a8f",
+      "total_lines": 330279,
+      "code_lines": 279817,
+      "other_lines": 50462,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-08-17",
+      "commit": "f3a03a6",
+      "total_lines": 332988,
+      "code_lines": 282208,
+      "other_lines": 50780,
+      "message": "fix: 完善教学构建链路与题解校验"
+    },
+    {
+      "date": "2026-08-17",
+      "commit": "27e3052",
+      "total_lines": 332988,
+      "code_lines": 282208,
+      "other_lines": 50780,
+      "message": "style: 优化学习指南自适应排版"
+    },
+    {
+      "date": "2026-08-17",
+      "commit": "1b4e37a",
+      "total_lines": 333405,
+      "code_lines": 282603,
+      "other_lines": 50802,
+      "message": "docs: 重构用户指南与文档站界面"
+    },
+    {
+      "date": "2026-08-17",
+      "commit": "9c3988b",
+      "total_lines": 333937,
+      "code_lines": 283067,
+      "other_lines": 50870,
+      "message": "fix: 修复教学链路内容校验与诊断状态"
+    },
+    {
+      "date": "2026-08-18",
+      "commit": "e44e378",
+      "total_lines": 334118,
+      "code_lines": 283230,
+      "other_lines": 50888,
+      "message": "fix: 修复文档规范化与过期预热试卷题目锁定"
+    },
+    {
+      "date": "2026-08-18",
+      "commit": "2c8ba09",
+      "total_lines": 334220,
+      "code_lines": 283321,
+      "other_lines": 50899,
+      "message": "fix: 修复代码围栏题块识别与图谱预取完整性"
+    },
+    {
+      "date": "2026-08-18",
+      "commit": "da1d5ae",
+      "total_lines": 334297,
+      "code_lines": 283383,
+      "other_lines": 50914,
+      "message": "fix: 优先采用最新章节数约束"
+    },
+    {
+      "date": "2026-08-18",
+      "commit": "46104c6",
+      "total_lines": 334386,
+      "code_lines": 283457,
+      "other_lines": 50929,
+      "message": "fix: 优先采用最新章节标题约束"
+    },
+    {
+      "date": "2026-08-18",
+      "commit": "a1defeb",
+      "total_lines": 334446,
+      "code_lines": 283509,
+      "other_lines": 50937,
+      "message": "fix: 让方案修订由 AI 主导章节调整"
+    },
+    {
+      "date": "2026-08-18",
+      "commit": "a19bab0",
+      "total_lines": 334155,
+      "code_lines": 283250,
+      "other_lines": 50905,
+      "message": "fix: 让方案修订完全遵循 AI 输出"
+    },
+    {
+      "date": "2026-08-18",
+      "commit": "8af8a39",
+      "total_lines": 334246,
+      "code_lines": 283334,
+      "other_lines": 50912,
+      "message": "fix: 修复方案修订持久化与 Markdown 围栏处理"
+    },
+    {
+      "date": "2026-08-18",
+      "commit": "033e411",
+      "total_lines": 334360,
+      "code_lines": 283425,
+      "other_lines": 50935,
+      "message": "fix: 修复规划诊断约束与 LangSmith 追踪链路"
+    },
+    {
+      "date": "2026-08-18",
+      "commit": "2c90a03",
+      "total_lines": 334411,
+      "code_lines": 283466,
+      "other_lines": 50945,
+      "message": "fix: 修复镜像推送限流导致的部署失败"
     }
   ]
 }
