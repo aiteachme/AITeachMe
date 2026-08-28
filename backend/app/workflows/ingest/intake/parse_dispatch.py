@@ -15,6 +15,7 @@ from app.shared.infra.database import managed_session
 from app.utils.presenters import require_id
 from app.utils.time import utcnow
 from app.workflows.ingest.intake.catalog import get_course_files_or_raise, get_user_files_or_raise
+from app.workflows.ingest.parsing.progress import serialize_parse_progress
 from app.workflows.ingest.parsing.lib.defaults import DEFAULT_PARSE_CONCURRENCY
 
 logger = structlog.get_logger()
@@ -199,6 +200,7 @@ def _start_parse_for_files(
                 error_message=None,
                 ingest_status=IngestStatus.CLASSIFYING.value,
                 current_step="ingest.parse.queued",
+                parse_progress_json=serialize_parse_progress(stage="waiting"),
                 updated_at=claimed_at,
             )
             .execution_options(synchronize_session=False)
@@ -257,6 +259,7 @@ def mark_parse_files_retry_pending(
                     status=TaskStatus.PENDING.value,
                     ingest_status=IngestStatus.RETRY_PENDING.value,
                     current_step="ingest.parse.retry_pending",
+                    parse_progress_json=serialize_parse_progress(stage="waiting"),
                     error_message=reason,
                     updated_at=utcnow(),
                 )

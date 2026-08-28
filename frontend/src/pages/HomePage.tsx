@@ -33,6 +33,7 @@ import { LONG_RUNNING_API_TIMEOUT_MS, apiClient, getApiErrorMessage } from "../a
 import { cn } from "../lib/utils";
 import { isElectronRuntime } from "../lib/electronRuntime";
 import {
+  buildAlreadyParsedUploadNotice,
   buildUnsupportedFilesMessage,
   buildImageParserUnavailableMessage,
   FILE_ACCEPT,
@@ -54,6 +55,7 @@ import {
   useGlobalChatModelChoice,
 } from "../components/chat/ChatModelSelect";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
+import { CircularFileParseProgress } from "../components/files/FileParseProgress";
 
 /* ── API helpers (same as BuildPlanPage) ── */
 
@@ -332,7 +334,7 @@ function homeFileIcon(file: Pick<FileRecord, "filetype">) {
   return <FileUp className="h-3.5 w-3.5 text-zinc-400" />;
 }
 
-function homeFileStatusMeta(file: Pick<FileRecord, "markdown_ready" | "error_message" | "status">) {
+function homeFileStatusMeta(file: FileRecord) {
   if (file.markdown_ready) {
     return {
       label: "已就绪",
@@ -349,7 +351,7 @@ function homeFileStatusMeta(file: Pick<FileRecord, "markdown_ready" | "error_mes
   }
   return {
     label: "解析中",
-    icon: <Loader2 className="h-3.5 w-3.5 animate-spin text-indigo-500" />,
+    icon: <CircularFileParseProgress file={file} size={16} />,
     tone: "text-indigo-600",
   };
 }
@@ -856,6 +858,10 @@ export function HomePage() {
     setUploadingFileNames(supportedFiles.map((file) => file.name));
     try {
       const result = await uploadFiles(supportedFiles);
+      const alreadyParsedNotice = buildAlreadyParsedUploadNotice(result);
+      if (alreadyParsedNotice) {
+        toast({ ...alreadyParsedNotice, variant: "info" });
+      }
       const uploaded = result.uploaded_items ?? [];
       const uploadedIds = uploaded.map((file) => file.id);
       const nextFileIds = uniqueStrings([...entryFileIds, ...uploadedIds]);

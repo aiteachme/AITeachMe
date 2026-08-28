@@ -18,7 +18,7 @@ from app.repositories.files_repo import (
     list_raw_files_by_user,
     raw_file_belongs_to_course,
 )
-from app.schemas.files import FileRecord, FilesData
+from app.schemas.files import FileParseProgress, FileRecord, FilesData
 from app.shared.infra.exceptions import RawFileNotFoundError
 from app.shared.infra.storage import get_content_store
 from app.utils.presenters import require_id
@@ -64,6 +64,19 @@ def _extract_parser_used(raw_file: RawFile) -> str | None:
 
     parser_used = payload.get("parser_used")
     return str(parser_used) if parser_used else None
+
+
+def _extract_parse_progress(raw_file: RawFile) -> FileParseProgress | None:
+    try:
+        payload = json.loads(raw_file.parse_progress_json or "{}")
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict) or not payload.get("stage"):
+        return None
+    try:
+        return FileParseProgress.model_validate(payload)
+    except ValueError:
+        return None
 
 
 async def resolve_file_markdown_content(raw_file: RawFile) -> str:
@@ -124,6 +137,7 @@ def build_file_record(
         quality_score=raw_file.quality_score,
         digest_current_step=raw_file.digest_current_step,
         parse_metadata_json=raw_file.parse_metadata_json or raw_file.parse_metadata,
+        parse_progress=_extract_parse_progress(raw_file),
         latest_updated_at=raw_file.updated_at,
         created_at=raw_file.created_at,
     )

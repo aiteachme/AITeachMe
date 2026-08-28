@@ -73,6 +73,7 @@ class RawFile(SQLModel, table=True):
     parse_metadata: str | None = Field(default=None, sa_column=sa.Column(sa.Text(), nullable=True))
     material_profile_json: str = Field(default="{}", sa_column=sa.Column(sa.Text(), nullable=False, default="{}"))
     parse_metadata_json: str = Field(default="{}", sa_column=sa.Column(sa.Text(), nullable=False, default="{}"))
+    parse_progress_json: str = Field(default="{}", sa_column=sa.Column(sa.Text(), nullable=False, default="{}"))
     parse_request_signature: str = Field(
         default="default",
         sa_column=sa.Column(sa.String(length=80), nullable=False, server_default="default"),

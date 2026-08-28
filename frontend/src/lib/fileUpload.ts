@@ -3,6 +3,7 @@
  */
 
 import type { SettingsOverviewData } from "../api/generated/model/settingsOverviewData";
+import type { FilesUploadData } from "../types/files";
 import { ensureSystemSettingsOverviewLoaded } from "./systemSettings";
 
 // Frontend-only UX hints. The backend ingest whitelist remains authoritative.
@@ -51,6 +52,11 @@ type UploadLimitConfig = {
 
 export const SUPPORTED_UPLOAD_FORMAT_LABEL = SUPPORTED_UPLOAD_EXTENSIONS.join("、");
 export const IMAGE_UPLOAD_PARSER_UNAVAILABLE_TITLE = "当前无法处理图片上传";
+
+export interface AlreadyParsedUploadNotice {
+  title: string;
+  description: string;
+}
 
 /** For <input accept="..."> attributes: dot-prefixed, comma-separated. */
 export const FILE_ACCEPT = PICKER_EXTENSIONS.map((ext) => `.${ext}`).join(",");
@@ -201,6 +207,33 @@ export function buildImageParserUnavailableMessage(files: File[]): string {
   const suffix = names.length > 3 ? ` 等 ${names.length} 个文件` : "";
   const fileNotice = names.length ? ` 未上传文件：${preview}${suffix}。` : "";
   return `当前无法处理图片上传，请先在设置中配置 PaddleOCR 或 MinerU；配置后也能获得更好的图片解析效果。${fileNotice}`;
+}
+
+export function buildAlreadyParsedUploadNotice(
+  result: Pick<FilesUploadData, "uploaded_items">,
+): AlreadyParsedUploadNotice | null {
+  const parsedItemsById = new Map(
+    (result.uploaded_items ?? [])
+      .filter((item) => item.markdown_ready && item.filename.trim())
+      .map((item) => [item.id, item] as const),
+  );
+  const names = Array.from(parsedItemsById.values(), (item) => item.filename.trim());
+  if (names.length === 0) {
+    return null;
+  }
+  if (names.length === 1) {
+    return {
+      title: "文件已存在于资料库",
+      description: `该文件已完成解析，存在于资料库“${names[0]}”，无需重复解析。`,
+    };
+  }
+
+  const preview = names.slice(0, 3).map((name) => `“${name}”`).join("、");
+  const suffix = names.length > 3 ? `等 ${names.length} 个文件` : "";
+  return {
+    title: `${names.length} 个文件已存在于资料库`,
+    description: `这些文件已完成解析，无需重复解析：${preview}${suffix}。`,
+  };
 }
 
 /**

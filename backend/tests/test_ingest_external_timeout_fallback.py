@@ -19,9 +19,9 @@ from app.workflows.ingest.parsing.lib.types import ParserRunOptions
 
 
 def test_external_parse_timeout_defaults_are_60_seconds() -> None:
-    assert DEFAULT_EXTERNAL_PARSE_TIMEOUT_S == 60
-    assert DEFAULT_PADDLE_OCR_PARSE_TIMEOUT_S == 60
-    assert paddle_ocr_cloud.DEFAULT_PADDLE_OCR_DOWNLOAD_DEADLINE_EXTENSION_S == 30.0
+    assert DEFAULT_EXTERNAL_PARSE_TIMEOUT_S == 90
+    assert DEFAULT_PADDLE_OCR_PARSE_TIMEOUT_S == 90
+    assert paddle_ocr_cloud.DEFAULT_PADDLE_OCR_DOWNLOAD_DEADLINE_EXTENSION_S == 40.0
 
 
 @pytest.mark.anyio
@@ -221,7 +221,7 @@ async def test_paddle_ocr_single_mode_routes_to_cloud_adapter(monkeypatch, tmp_p
 
     monkeypatch.setenv("PADDLE_OCR_PARSE_TIMEOUT_S", "42")
     monkeypatch.setenv("PADDLE_OCR_MODEL", "PaddleOCR-VL-1.5")
-    monkeypatch.delenv("PADDLE_OCR_PARSE_MODE", raising=False)
+    monkeypatch.setenv("PADDLE_OCR_PARSE_MODE", "single")
     monkeypatch.setattr(
         parse_lib,
         "parse_file_to_dir_with_paddle_ocr",
@@ -332,7 +332,7 @@ async def test_paddle_ocr_parallel_mode_routes_to_chunk_adapter(monkeypatch, tmp
 
 
 @pytest.mark.anyio
-async def test_paddle_ocr_parallel_uses_ten_page_chunks_by_default(monkeypatch, tmp_path) -> None:
+async def test_paddle_ocr_defaults_to_parallel_with_ten_page_chunks(monkeypatch, tmp_path) -> None:
     source_path = tmp_path / "source.pdf"
     source_path.write_bytes(b"fake-pdf")
     captured: dict[str, object] = {}
@@ -352,7 +352,7 @@ async def test_paddle_ocr_parallel_uses_ten_page_chunks_by_default(monkeypatch, 
             metadata={"strategy": "parallel"},
         )
 
-    monkeypatch.setenv("PADDLE_OCR_PARSE_MODE", "parallel")
+    monkeypatch.delenv("PADDLE_OCR_PARSE_MODE", raising=False)
     monkeypatch.delenv("PADDLE_OCR_CHUNK_MAX_PAGES", raising=False)
     monkeypatch.setattr(
         parse_lib,

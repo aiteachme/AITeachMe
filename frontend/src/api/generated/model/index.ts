@@ -222,6 +222,7 @@ export * from './fileDeleteData.ts';
 export * from './fileDeleteRequest.ts';
 export * from './fileLinkRequest.ts';
 export * from './fileMarkdownChunk.ts';
+export * from './fileParseProgress.ts';
 export * from './fileRecord.ts';
 export * from './filesData.ts';
 export * from './filesUploadData.ts';

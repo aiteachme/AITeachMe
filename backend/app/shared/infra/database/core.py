@@ -203,6 +203,7 @@ _SQLITE_ADDITIVE_COLUMNS = {
     ),
     "raw_file": (
         ("parse_request_signature", "TEXT NOT NULL DEFAULT 'default'"),
+        ("parse_progress_json", "TEXT NOT NULL DEFAULT '{}'"),
     ),
     "chat_session": (
         ("library_file_id", "TEXT NULL"),

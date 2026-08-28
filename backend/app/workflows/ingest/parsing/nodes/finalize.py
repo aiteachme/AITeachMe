@@ -17,6 +17,7 @@ from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.ingest.parsing.lib.common import workflow_logger
 from app.workflows.ingest.parsing.lib.runtime_helpers import _build_asset_rows
 from app.workflows.ingest.parsing.state import IngestParseState
+from app.workflows.ingest.parsing.progress import serialize_parse_progress
 
 
 def _cleanup_temp_dir(state: IngestParseState) -> None:
@@ -96,6 +97,11 @@ def build_finalize_success_node(
                     checksum_sha256=state.get("content_hash"),
                     markdown_path=state["record_markdown_path"],
                     asset_dir=state["record_asset_dir"],
+                    parse_progress_json=serialize_parse_progress(
+                        stage="completed",
+                        current_pages=state.get("estimated_pages"),
+                        total_pages=state.get("estimated_pages"),
+                    ),
                 )
 
             logger.info(
@@ -140,6 +146,10 @@ def build_finalize_failure_node(*, context: WorkflowContext):
                         status=TaskStatus.FAILED.value,
                         ingest_status=IngestStatus.FAILED.value,
                         digest_current_step="ingest.parse.failed",
+                        parse_progress_json=serialize_parse_progress(
+                            stage="failed",
+                            detail="解析失败",
+                        ),
                     )
         finally:
             _cleanup_temp_dir(state)

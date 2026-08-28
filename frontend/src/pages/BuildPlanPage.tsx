@@ -67,6 +67,7 @@ import {
 import { buildKnowledgeDocStateQueryKey, fetchKnowledgeDocState } from "../lib/knowledgeDocs";
 import { trackCourseAnalyticsEvent } from "../lib/analytics";
 import {
+  buildAlreadyParsedUploadNotice,
   buildUnsupportedFilesMessage,
   buildImageParserUnavailableMessage,
   FILE_ACCEPT,
@@ -78,6 +79,7 @@ import { publicAssetPath } from "../lib/publicAsset";
 import { buildCoursePath } from "../lib/courseNavigation";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
 import { CoursePagePillTitle } from "../components/course/CoursePagePillTitle";
+import { CircularFileParseProgress } from "../components/files/FileParseProgress";
 
 type ChatRole = "user" | "assistant" | "system";
 
@@ -1570,7 +1572,7 @@ function fileMeta(file: FileRecord) {
   }
   return { 
     label: "正在解析文件...", 
-    icon: <Loader2 className="ml-1 h-3.5 w-3.5 animate-spin text-blue-500" />
+    icon: <CircularFileParseProgress file={file} size={16} className="ml-1" />
   };
 }
 
@@ -2601,6 +2603,10 @@ export function BuildPlanPage() {
   const uploadMutation = useMutation({
     mutationFn: (selected: File[]) => uploadFiles(courseId, selected),
     onSuccess: (data) => {
+      const alreadyParsedNotice = buildAlreadyParsedUploadNotice(data);
+      if (alreadyParsedNotice) {
+        toast({ ...alreadyParsedNotice, variant: "info" });
+      }
       trackCourseAnalyticsEvent("course_files_uploaded", courseId, {
         file_count: data.filenames.length,
       });

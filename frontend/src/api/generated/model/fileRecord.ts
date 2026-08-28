@@ -5,6 +5,7 @@
  * 本地优先的 AI 助教后端服务。
  */
 import type { FileAssetItem } from './fileAssetItem.ts';
+import type { FileParseProgress } from './fileParseProgress.ts';
 import type { TaskStatusValue } from './taskStatusValue.ts';
 
 /**
@@ -51,6 +52,8 @@ export interface FileRecord {
   digest_current_step?: string | null;
   /** Parse metadata JSON. */
   parse_metadata_json?: string | null;
+  /** Live parsing progress snapshot. */
+  parse_progress?: FileParseProgress | null;
   /** Last updated time. */
   latest_updated_at: string;
   /** Created time. */

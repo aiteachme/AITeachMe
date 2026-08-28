@@ -30,6 +30,7 @@ from typing import Any
 import structlog
 
 from app.workflows.ingest.parsing.lib.provider_contracts import ExternalProviderTimeoutError
+from app.workflows.ingest.parsing.progress import ParseProgressCallback, notify_parse_progress
 
 DEFAULT_MINERU_BASE_URL = "https://mineru.net"
 logger = structlog.get_logger(__name__)
@@ -114,6 +115,7 @@ def parse_file_to_dir(
     poll_interval_s: float = 2.0,
     poll_timeout_s: float = 600.0,
     total_timeout_s: float | None = None,
+    progress_callback: ParseProgressCallback | None = None,
 ) -> MinerUExtractedResult:
     """调用 MinerU Cloud 解析单个文件，并将 zip 解压到 output_dir。
 
@@ -148,6 +150,12 @@ def parse_file_to_dir(
         enable_table=options.enable_table,
         is_ocr=options.is_ocr,
     )
+    notify_parse_progress(
+        progress_callback,
+        stage="uploading",
+        provider="mineru",
+        detail="上传至 MinerU",
+    )
 
     # 1) 申请预签名上传 URL
     batch_id, upload_url, file_name = _request_batch_upload_url(
@@ -166,6 +174,12 @@ def parse_file_to_dir(
         total_timeout_s=total_timeout_s,
     )
     logger.info("mineru_cloud_upload_completed", batch_id=batch_id, file_name=file_name)
+    notify_parse_progress(
+        progress_callback,
+        stage="queued",
+        provider="mineru",
+        detail="等待 MinerU 解析",
+    )
 
     # 3) 轮询直到 done/failed
     zip_url = _poll_until_done(
@@ -177,6 +191,7 @@ def parse_file_to_dir(
         poll_timeout_s=poll_timeout_s,
         deadline=deadline,
         total_timeout_s=total_timeout_s,
+        progress_callback=progress_callback,
     )
 
     # 4) 下载 zip
@@ -188,6 +203,12 @@ def parse_file_to_dir(
         total_timeout_s=total_timeout_s,
     )
     logger.info("mineru_cloud_result_downloaded", batch_id=batch_id, zip_path=str(zip_path))
+    notify_parse_progress(
+        progress_callback,
+        stage="processing_result",
+        provider="mineru",
+        detail="整理正文与图片",
+    )
 
     # 5) 解压并定位 full.md 与 images/
     with zipfile.ZipFile(zip_path, "r") as zf:
@@ -308,6 +329,7 @@ def _poll_until_done(
     poll_timeout_s: float,
     deadline: float | None,
     total_timeout_s: float | None,
+    progress_callback: ParseProgressCallback | None = None,
 ) -> str:
     # 严格对齐 backend/playground/mineru_test.py：requests.get(..., headers=query_headers)
     requests = _get_requests()
@@ -373,16 +395,34 @@ def _poll_until_done(
             raise RuntimeError("MinerU 轮询返回为空：未找到文件状态")
 
         state = matched.get("state")
+        progress = matched.get("extract_progress") or {}
         if state == "done":
             zip_url = matched.get("full_zip_url")
             if not zip_url:
                 raise RuntimeError("MinerU 返回 done 但缺少 full_zip_url")
             logger.info("mineru_cloud_poll_completed", batch_id=batch_id, file_name=file_name)
+            notify_parse_progress(
+                progress_callback,
+                stage="downloading",
+                provider="mineru",
+                current_pages=progress.get("extracted_pages"),
+                total_pages=progress.get("total_pages"),
+                detail="下载 MinerU 结果",
+            )
             return str(zip_url)
 
         if state == "failed":
             err_msg = matched.get("err_msg") or "unknown"
             raise RuntimeError(f"MinerU 解析失败: {err_msg}")
+
+        notify_parse_progress(
+            progress_callback,
+            stage="parsing" if state == "running" else "queued",
+            provider="mineru",
+            current_pages=progress.get("extracted_pages"),
+            total_pages=progress.get("total_pages"),
+            detail="解析正文" if state == "running" else "等待 MinerU 解析",
+        )
 
         elapsed = time.monotonic() - started_at
         if elapsed >= poll_timeout_s:

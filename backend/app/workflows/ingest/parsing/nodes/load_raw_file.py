@@ -44,6 +44,7 @@ from app.workflows.ingest.parsing.parsers import (
 from app.workflows.ingest.parsing.strategy import ParsePlan, build_parse_plan
 from app.workflows.ingest.parsing.lib.types import ParserRunOptions
 from app.workflows.ingest.parsing.lib.common import workflow_logger
+from app.workflows.ingest.parsing.progress import persist_parse_progress, serialize_parse_progress
 from app.workflows.ingest.parsing.state import IngestParseState
 
 
@@ -345,6 +346,12 @@ def build_classify_file_node(*, context: WorkflowContext):
     async def classify_file_node(state: IngestParseState) -> IngestParseState:
         logger = workflow_logger(context, state)
         try:
+            await asyncio.to_thread(
+                persist_parse_progress,
+                user_id=state["user_id"],
+                file_id=state["file_id"],
+                stage="classifying",
+            )
             classification = await asyncio.to_thread(
                 classify_file,
                 state["file_path"],
@@ -366,6 +373,10 @@ def build_classify_file_node(*, context: WorkflowContext):
                     classification_json=classification_payload,
                     ingest_status=IngestStatus.FAST_PARSING.value,
                     digest_current_step="ingest.fast_parse.running",
+                    parse_progress_json=serialize_parse_progress(
+                        stage="preparing",
+                        total_pages=classification.estimated_pages,
+                    ),
                 )
             logger.info(
                 "ingest_file_classified",

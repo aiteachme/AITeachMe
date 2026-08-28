@@ -9,6 +9,17 @@ from pydantic import BaseModel, Field, model_validator
 from app.schemas.enums import TaskStatusValue
 
 
+class FileParseProgress(BaseModel):
+    """Latest persisted progress snapshot for one parsing task."""
+
+    stage: str = Field(default="waiting", description="Stable parsing stage.")
+    percent: int = Field(default=0, ge=0, le=100, description="Overall parsing progress percentage.")
+    detail: str = Field(default="等待解析", description="User-facing parsing stage label.")
+    provider: str | None = Field(default=None, description="Active parsing provider.")
+    current_pages: int | None = Field(default=None, ge=0, description="Parsed page count when available.")
+    total_pages: int | None = Field(default=None, ge=0, description="Total page count when available.")
+
+
 class FileAssetItem(BaseModel):
     """Public asset descriptor for one extracted file asset."""
 
@@ -45,6 +56,7 @@ class FileRecord(BaseModel):
     quality_score: float | None = Field(default=None, description="Parse quality score.")
     digest_current_step: str | None = Field(default=None, description="Current digest step.")
     parse_metadata_json: str | None = Field(default=None, description="Parse metadata JSON.")
+    parse_progress: FileParseProgress | None = Field(default=None, description="Live parsing progress snapshot.")
     latest_updated_at: datetime = Field(description="Last updated time.")
     created_at: datetime = Field(description="Created time.")
 

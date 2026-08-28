@@ -18625,6 +18625,71 @@
         "title": "FileMarkdownChunk",
         "description": "One character-aligned slice of a parsed Markdown document."
       },
+      "FileParseProgress": {
+        "properties": {
+          "stage": {
+            "type": "string",
+            "title": "Stage",
+            "description": "Stable parsing stage.",
+            "default": "waiting"
+          },
+          "percent": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Percent",
+            "description": "Overall parsing progress percentage.",
+            "default": 0
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "description": "User-facing parsing stage label.",
+            "default": "等待解析"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider",
+            "description": "Active parsing provider."
+          },
+          "current_pages": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Pages",
+            "description": "Parsed page count when available."
+          },
+          "total_pages": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Pages",
+            "description": "Total page count when available."
+          }
+        },
+        "type": "object",
+        "title": "FileParseProgress",
+        "description": "Latest persisted progress snapshot for one parsing task."
+      },
       "FileRecord": {
         "properties": {
           "id": {
@@ -18806,6 +18871,17 @@
             ],
             "title": "Parse Metadata Json",
             "description": "Parse metadata JSON."
+          },
+          "parse_progress": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FileParseProgress"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Live parsing progress snapshot."
           },
           "latest_updated_at": {
             "type": "string",

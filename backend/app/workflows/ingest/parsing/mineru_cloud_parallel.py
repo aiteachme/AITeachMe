@@ -24,6 +24,7 @@ from app.workflows.ingest.parsing.mineru_cloud import (
     MinerURequestOptions,
     parse_file_to_dir as parse_file_to_dir_single,
 )
+from app.workflows.ingest.parsing.progress import ParseProgressCallback
 
 try:  # pragma: no cover - runtime dependency availability
     from pypdf import PdfReader, PdfWriter  # type: ignore
@@ -75,6 +76,7 @@ def parse_file_to_dir_parallel(
     total_timeout_s: float | None = None,
     max_pages_per_chunk: int = DEFAULT_MINERU_MAX_PAGES_PER_CHUNK,
     max_concurrent_jobs: int = DEFAULT_MINERU_CHUNK_CONCURRENCY,
+    progress_callback: ParseProgressCallback | None = None,
 ) -> MinerUExtractedResult:
     """Parse a file with MinerU, chunking PDFs only when they exceed 200 pages."""
 
@@ -87,6 +89,7 @@ def parse_file_to_dir_parallel(
             poll_interval_s=poll_interval_s,
             poll_timeout_s=poll_timeout_s,
             total_timeout_s=total_timeout_s,
+            progress_callback=progress_callback,
         )
 
     total_pages = _get_pdf_page_count(file_path)
@@ -105,6 +108,7 @@ def parse_file_to_dir_parallel(
             poll_interval_s=poll_interval_s,
             poll_timeout_s=poll_timeout_s,
             total_timeout_s=total_timeout_s,
+            progress_callback=progress_callback,
         )
 
     normalized_chunk_pages = min(
@@ -147,6 +151,8 @@ def parse_file_to_dir_parallel(
                 poll_timeout_s=poll_timeout_s,
                 deadline=deadline,
                 total_timeout_s=total_timeout_s,
+                progress_callback=progress_callback,
+                overall_total_pages=total_pages,
             ): chunk
             for chunk in chunks
         }
@@ -161,6 +167,16 @@ def parse_file_to_dir_parallel(
             logger.info("mineru_cloud_chunk_completed", chunk=chunk.label)
 
     results.sort(key=lambda item: item.chunk.start_page)
+    if progress_callback is not None:
+        progress_callback(
+            {
+                "stage": "processing_result",
+                "provider": "mineru",
+                "current_pages": total_pages,
+                "total_pages": total_pages,
+                "detail": "整理正文与图片",
+            }
+        )
     markdown_path, images_dir = _merge_chunk_results(results=results, output_dir=output_dir)
     batch_ids = tuple(result.extracted.batch_id for result in results)
     chunk_page_counts = [result.chunk.page_count for result in results]
@@ -264,7 +280,35 @@ def _process_chunk(
     poll_timeout_s: float,
     deadline: float | None,
     total_timeout_s: float | None,
+    progress_callback: ParseProgressCallback | None,
+    overall_total_pages: int,
 ) -> _ChunkResult:
+    def report_chunk_progress(event):
+        if progress_callback is None:
+            return
+        normalized_event = dict(event)
+        if normalized_event.get("stage") in {"uploading", "queued"}:
+            normalized_event.update(
+                stage="parsing",
+                current_pages=0,
+                total_pages=chunk.page_count,
+                detail="解析正文",
+            )
+        elif normalized_event.get("stage") in {"downloading", "processing_result"}:
+            normalized_event.update(
+                stage="parsing",
+                current_pages=chunk.page_count,
+                total_pages=chunk.page_count,
+                detail="解析正文",
+            )
+        progress_callback(
+            {
+                **normalized_event,
+                "chunk_id": str(chunk.chunk_index),
+                "overall_total_pages": overall_total_pages,
+            }
+        )
+
     extracted = _parse_single(
         file_path=chunk.source_path,
         options=options,
@@ -276,6 +320,7 @@ def _process_chunk(
             deadline=deadline,
             total_timeout_s=total_timeout_s,
         ),
+        progress_callback=report_chunk_progress,
     )
     return _ChunkResult(chunk=chunk, extracted=extracted)
 

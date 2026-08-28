@@ -1,7 +1,7 @@
 """Parallel PaddleOCR Cloud adapter for large PDFs.
 
-This adapter keeps the existing single-job PaddleOCR integration intact and
-adds an opt-in path for large local PDFs:
+This adapter keeps the existing single-job PaddleOCR integration as a fallback
+and provides the default path for large local PDFs:
 - split the PDF into page chunks
 - submit chunk jobs concurrently
 - materialize chunk markdown/assets
@@ -37,6 +37,7 @@ from app.workflows.ingest.parsing.paddle_ocr_cloud import (
     _remaining_timeout_s,
     parse_file_to_dir as parse_file_to_dir_single,
 )
+from app.workflows.ingest.parsing.progress import ParseProgressCallback
 
 try:  # pragma: no cover - exercised through runtime dependency availability
     from pypdf import PdfReader, PdfWriter  # type: ignore
@@ -90,6 +91,7 @@ def parse_file_to_dir_parallel(
     download_deadline_extension_s: float = DEFAULT_PADDLE_OCR_DOWNLOAD_DEADLINE_EXTENSION_S,
     max_pages_per_chunk: int = DEFAULT_PADDLE_OCR_MAX_PAGES_PER_CHUNK,
     max_concurrent_jobs: int = DEFAULT_PADDLE_OCR_CHUNK_CONCURRENCY,
+    progress_callback: ParseProgressCallback | None = None,
 ) -> PaddleOCRExtractedResult:
     """Split large PDFs and run PaddleOCR chunk jobs concurrently."""
 
@@ -119,6 +121,7 @@ def parse_file_to_dir_parallel(
             poll_timeout_s=poll_timeout_s,
             total_timeout_s=total_timeout_s,
             download_deadline_extension_s=download_deadline_extension_s,
+            progress_callback=progress_callback,
         )
 
     try:
@@ -139,6 +142,7 @@ def parse_file_to_dir_parallel(
             poll_timeout_s=poll_timeout_s,
             total_timeout_s=total_timeout_s,
             download_deadline_extension_s=download_deadline_extension_s,
+            progress_callback=progress_callback,
         )
     if total_pages <= normalized_chunk_pages:
         logger.info(
@@ -157,6 +161,7 @@ def parse_file_to_dir_parallel(
             poll_timeout_s=poll_timeout_s,
             total_timeout_s=total_timeout_s,
             download_deadline_extension_s=download_deadline_extension_s,
+            progress_callback=progress_callback,
         )
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -185,6 +190,7 @@ def parse_file_to_dir_parallel(
             poll_timeout_s=poll_timeout_s,
             total_timeout_s=total_timeout_s,
             download_deadline_extension_s=download_deadline_extension_s,
+            progress_callback=progress_callback,
         )
     _raise_timeout_if_deadline_exceeded(
         deadline=deadline,
@@ -219,6 +225,8 @@ def parse_file_to_dir_parallel(
                 total_timeout_s=total_timeout_s,
                 download_deadline_extension_s=download_deadline_extension_s,
                 images_dir=images_dir,
+                progress_callback=progress_callback,
+                overall_total_pages=total_pages,
             ): chunk
             for chunk in chunks
         }
@@ -233,6 +241,16 @@ def parse_file_to_dir_parallel(
 
     results.sort(key=lambda item: item.chunk.start_page)
     merged_markdown = _merge_chunk_markdown([result.markdown for result in results])
+    if progress_callback is not None:
+        progress_callback(
+            {
+                "stage": "processing_result",
+                "provider": "paddle_ocr",
+                "current_pages": total_pages,
+                "total_pages": total_pages,
+                "detail": "整理正文与图片",
+            }
+        )
     markdown_path = output_dir / "full.md"
     markdown_path.write_text(merged_markdown, encoding="utf-8")
 
@@ -325,6 +343,8 @@ def _process_chunk(
     total_timeout_s: float | None,
     download_deadline_extension_s: float,
     images_dir: Path,
+    progress_callback: ParseProgressCallback | None,
+    overall_total_pages: int,
 ) -> _ChunkResult:
     session = _get_session()
     headers = {
@@ -388,6 +408,43 @@ def _process_chunk(
             submit_elapsed_s=submit_elapsed_s,
         )
 
+        def report_chunk_progress(event):
+            if progress_callback is None:
+                return
+            normalized_event = dict(event)
+            if normalized_event.get("stage") in {"uploading", "queued"}:
+                normalized_event.update(
+                    stage="parsing",
+                    current_pages=0,
+                    total_pages=chunk.page_count,
+                    detail="解析正文",
+                )
+            elif normalized_event.get("stage") in {"downloading", "processing_result"}:
+                normalized_event.update(
+                    stage="parsing",
+                    current_pages=chunk.page_count,
+                    total_pages=chunk.page_count,
+                    detail="解析正文",
+                )
+            else:
+                try:
+                    current_pages = int(normalized_event.get("current_pages"))
+                except (TypeError, ValueError):
+                    current_pages = None
+                if current_pages is not None:
+                    normalized_event["current_pages"] = min(
+                        max(current_pages, 0),
+                        chunk.page_count,
+                    )
+                normalized_event["total_pages"] = chunk.page_count
+            progress_callback(
+                {
+                    **normalized_event,
+                    "chunk_id": str(chunk.chunk_index),
+                    "overall_total_pages": overall_total_pages,
+                }
+            )
+
         jsonl_url = _poll_until_done(
             session=session,
             job_url=job_url,
@@ -397,6 +454,7 @@ def _process_chunk(
             poll_timeout_s=poll_timeout_s,
             deadline=deadline,
             total_timeout_s=total_timeout_s,
+            progress_callback=report_chunk_progress,
         )
         download_deadline = _extend_deadline(deadline, download_deadline_extension_s)
         download_timeout_budget_s = _extended_timeout_budget_s(
@@ -417,6 +475,15 @@ def _process_chunk(
             deadline=download_deadline,
             total_timeout_s=download_timeout_budget_s,
             image_name_prefix=f"chunk_{chunk.chunk_index + 1:04d}_",
+        )
+        report_chunk_progress(
+            {
+                "stage": "processing_result",
+                "provider": "paddle_ocr",
+                "current_pages": chunk.page_count,
+                "total_pages": chunk.page_count,
+                "detail": "解析正文",
+            }
         )
     finally:
         try:

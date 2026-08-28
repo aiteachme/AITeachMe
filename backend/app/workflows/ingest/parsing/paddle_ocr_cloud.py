@@ -21,6 +21,7 @@ from urllib.parse import unquote
 import structlog
 
 from app.workflows.ingest.parsing.lib.provider_contracts import ExternalProviderTimeoutError
+from app.workflows.ingest.parsing.progress import ParseProgressCallback, notify_parse_progress
 
 DEFAULT_PADDLE_OCR_JOB_URL = "https://paddleocr.aistudio-app.com/api/v2/ocr/jobs"
 DEFAULT_PADDLE_OCR_MODEL = "PaddleOCR-VL-1.6"
@@ -29,7 +30,7 @@ DEFAULT_PADDLE_OCR_OPTIONAL_PAYLOAD = {
     "useDocUnwarping": False,
     "useChartRecognition": False,
 }
-DEFAULT_PADDLE_OCR_DOWNLOAD_DEADLINE_EXTENSION_S = 30.0
+DEFAULT_PADDLE_OCR_DOWNLOAD_DEADLINE_EXTENSION_S = 40.0
 
 logger = structlog.get_logger(__name__)
 _MARKDOWN_IMAGE_RE = re.compile(r"!\[(?P<alt>[^\]]*)\]\((?P<target>[^)]+)\)")
@@ -117,6 +118,7 @@ def parse_file_to_dir(
     poll_timeout_s: float = 600.0,
     total_timeout_s: float | None = None,
     download_deadline_extension_s: float = DEFAULT_PADDLE_OCR_DOWNLOAD_DEADLINE_EXTENSION_S,
+    progress_callback: ParseProgressCallback | None = None,
 ) -> PaddleOCRExtractedResult:
     """Submit one PaddleOCR Cloud job and materialize a canonical markdown bundle."""
 
@@ -142,6 +144,12 @@ def parse_file_to_dir(
     }
 
     logger.info("paddle_ocr_cloud_parse_requested", file_name=file_path.name, model=options.model)
+    notify_parse_progress(
+        progress_callback,
+        stage="uploading",
+        provider="paddle_ocr",
+        detail="上传至 PaddleOCR",
+    )
 
     submit_started_at = time.monotonic()
     try:
@@ -184,6 +192,12 @@ def parse_file_to_dir(
         submit_elapsed_s=submit_elapsed_s,
         timeout_budget_s=total_timeout_s,
     )
+    notify_parse_progress(
+        progress_callback,
+        stage="queued",
+        provider="paddle_ocr",
+        detail="等待 PaddleOCR 解析",
+    )
 
     jsonl_url = _poll_until_done(
         session=session,
@@ -194,6 +208,7 @@ def parse_file_to_dir(
         poll_timeout_s=poll_timeout_s,
         deadline=deadline,
         total_timeout_s=total_timeout_s,
+        progress_callback=progress_callback,
     )
     download_deadline = _extend_deadline(deadline, download_deadline_extension_s)
     download_timeout_budget_s = _extended_timeout_budget_s(
@@ -206,6 +221,12 @@ def parse_file_to_dir(
         download_deadline_extension_s=download_deadline_extension_s,
         download_timeout_budget_s=download_timeout_budget_s,
     )
+    notify_parse_progress(
+        progress_callback,
+        stage="downloading",
+        provider="paddle_ocr",
+        detail="下载 PaddleOCR 结果",
+    )
     markdown_text = _download_and_materialize_jsonl(
         session=session,
         jsonl_url=jsonl_url,
@@ -215,6 +236,12 @@ def parse_file_to_dir(
     )
     markdown_path = output_dir / "full.md"
     markdown_path.write_text(markdown_text, encoding="utf-8")
+    notify_parse_progress(
+        progress_callback,
+        stage="processing_result",
+        provider="paddle_ocr",
+        detail="整理正文与图片",
+    )
 
     return PaddleOCRExtractedResult(
         markdown_path=markdown_path,
@@ -240,6 +267,7 @@ def _poll_until_done(
     poll_timeout_s: float,
     deadline: float | None,
     total_timeout_s: float | None,
+    progress_callback: ParseProgressCallback | None = None,
 ) -> str:
     started_at = time.monotonic()
     poll_count = 0
@@ -292,6 +320,13 @@ def _poll_until_done(
                 server_start_time=progress.get("startTime"),
                 server_end_time=progress.get("endTime"),
             )
+            notify_parse_progress(
+                progress_callback,
+                stage="parsing",
+                provider="paddle_ocr",
+                current_pages=progress.get("extractedPages"),
+                total_pages=progress.get("totalPages"),
+            )
             return str(jsonl_url)
 
         if state == "failed":
@@ -308,6 +343,13 @@ def _poll_until_done(
             total_pages=progress.get("totalPages"),
             server_start_time=progress.get("startTime"),
             server_end_time=progress.get("endTime"),
+        )
+        notify_parse_progress(
+            progress_callback,
+            stage="parsing",
+            provider="paddle_ocr",
+            current_pages=progress.get("extractedPages"),
+            total_pages=progress.get("totalPages"),
         )
 
         if time.monotonic() - started_at >= poll_timeout_s:

@@ -112,7 +112,7 @@ workflows/ingest/
 - token 不长期落 DB。
 - MinerU 输出会进入同一套 Markdown/asset canonicalize 逻辑。
 - MinerU 遇到超过 200 页的 PDF 时，会按每份最多 199 页拆分并发解析，再按原页序合并 Markdown 和图片；恰好 200 页仍走单任务，分块任务共享原 60 秒总预算。
-- PPTX 默认按 MinerU 优先：配置了 MinerU Token 时先走 MinerU；MinerU 不可用、报错或 60 秒内未完成时回退到本地 MarkItDown。
+- PPTX 默认按 MinerU 优先：配置了 MinerU Token 时先走 MinerU；MinerU 不可用、报错或 90 秒内未完成时回退到本地 MarkItDown。
 
 ## 5.1 默认解析模式
 

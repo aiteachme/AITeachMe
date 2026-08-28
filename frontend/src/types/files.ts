@@ -21,6 +21,14 @@ export interface FileRecord {
   markdown_content?: string;
   asset_base_url?: string | null;
   assets?: FileAssetItem[];
+  parse_progress?: {
+    stage: string;
+    percent: number;
+    detail: string;
+    provider?: string | null;
+    current_pages?: number | null;
+    total_pages?: number | null;
+  } | null;
   latest_updated_at: string;
   created_at: string;
 }

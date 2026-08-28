@@ -39,9 +39,10 @@ import {
 import { apiClient, getApiErrorMessage, isApiErrorStatus, isBackendOfflineError } from "../api/client";
 import { useAiInteraction } from "../components/interaction/AiInteractionProvider";
 import { AI_SCENE_LIBRARY_SELECTION, getLibrarySelectionSource } from "../components/interaction/types";
-import { resolveFileProcessingLabel } from "../components/knowledge-docs/utils";
+import { resolveFileProcessingLabel, resolveFileProgressScore } from "../components/knowledge-docs/utils";
 import { useToast } from "../components/ui/Toast";
 import {
+  buildAlreadyParsedUploadNotice,
   buildImageParserUnavailableMessage,
   buildUnsupportedFilesMessage,
   FILE_ACCEPT,
@@ -754,6 +755,46 @@ function statusMeta(file: FileRecord) {
   };
 }
 
+function LibraryFileStatusCell({ file }: { file: FileRecord }) {
+  const status = getFileStatusKind(file);
+  const label = resolveFileProcessingLabel(file);
+  if (status === "ready") {
+    return (
+      <div className="flex w-full items-center gap-2 text-sm font-medium text-emerald-700 dark:text-emerald-300">
+        <span>解析完成</span>
+        <CheckCircle2 className="h-4 w-4 shrink-0" />
+      </div>
+    );
+  }
+  if (status === "failed") {
+    return (
+      <div className="w-full">
+        <div className="flex items-center gap-2 text-sm font-medium text-red-700 dark:text-red-300">
+          <span>解析失败</span>
+          <AlertCircle className="h-4 w-4 shrink-0" />
+        </div>
+        {file.error_message ? <div className="mt-1 line-clamp-1 text-xs text-red-500">{file.error_message}</div> : null}
+      </div>
+    );
+  }
+
+  const progress = resolveFileProgressScore(file);
+  return (
+    <div className="w-full min-w-[130px]" title={label}>
+      <div className="flex items-center justify-between gap-3">
+        <span className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{label}</span>
+        <span className="shrink-0 text-xs tabular-nums text-slate-400 dark:text-slate-500">{progress}%</span>
+      </div>
+      <div className="mt-2 h-1 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+        <div
+          className="h-full rounded-full bg-indigo-500 transition-[width] duration-500 ease-out"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function LibraryPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
@@ -858,7 +899,11 @@ export function LibraryPage() {
       setError(null);
       setUploadingNames(files.map((file) => file.name));
     },
-    onSuccess: async () => {
+    onSuccess: async (data) => {
+      const notice = buildAlreadyParsedUploadNotice(data);
+      if (notice) {
+        toast({ ...notice, variant: "info" });
+      }
       await queryClient.invalidateQueries({ queryKey: ["files-library"] });
     },
     onError: (err: unknown) => {
@@ -1081,9 +1126,9 @@ export function LibraryPage() {
           </div>
 
           {hasVisibleFiles ? (
-            <div className="hidden grid-cols-[minmax(0,1.8fr)_150px_140px_100px_44px] gap-5 border-b border-slate-200 px-2 py-3 text-xs font-medium text-slate-400 dark:border-slate-800 dark:text-slate-500 md:grid">
+            <div className="hidden grid-cols-[minmax(0,1.8fr)_190px_140px_100px_44px] gap-5 border-b border-slate-200 px-2 py-3 text-xs font-medium text-slate-400 dark:border-slate-800 dark:text-slate-500 md:grid">
               <div>名称</div>
-              <div>状态</div>
+              <div className="justify-self-start">状态</div>
               <div>更新时间</div>
               <div>大小</div>
               <div />
@@ -1092,7 +1137,6 @@ export function LibraryPage() {
 
           <div className="divide-y divide-slate-200 border-b border-slate-200 dark:divide-slate-800 dark:border-slate-800">
             {visibleFiles.map((file) => {
-              const meta = statusMeta(file);
               return (
                 <div
                   key={file.id}
@@ -1106,7 +1150,7 @@ export function LibraryPage() {
                       navigate(`/library/${encodeURIComponent(file.id)}`);
                     }
                   }}
-                  className="atm-deferred-row group grid cursor-pointer gap-3 px-2 py-4 transition hover:bg-slate-50/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-300 dark:hover:bg-slate-800/30 dark:focus-visible:ring-slate-600 md:grid-cols-[minmax(0,1.8fr)_150px_140px_100px_44px] md:items-center md:gap-5"
+                  className="atm-deferred-row group grid cursor-pointer gap-3 px-2 py-4 transition hover:bg-slate-50/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-300 dark:hover:bg-slate-800/30 dark:focus-visible:ring-slate-600 md:grid-cols-[minmax(0,1.8fr)_190px_140px_100px_44px] md:items-center md:gap-5"
                   aria-label={`查看资料 ${file.filename}`}
                 >
                   <div className="flex min-w-0 items-center gap-3">
@@ -1123,13 +1167,9 @@ export function LibraryPage() {
                     </div>
                   </div>
 
-                  <div className="flex items-start justify-between gap-3 md:block">
+                  <div className="flex items-start justify-between gap-3 md:block md:w-full md:justify-self-start">
                     <span className="pt-1 text-xs font-medium text-slate-400 md:hidden">状态</span>
-                    <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset", meta.className)} title={resolveFileProcessingLabel(file)}>
-                      {meta.icon}
-                      {meta.label}
-                    </span>
-                    {file.error_message ? <div className="mt-1 line-clamp-2 text-xs text-red-500">{file.error_message}</div> : null}
+                    <LibraryFileStatusCell file={file} />
                   </div>
 
                   <div className="flex items-center justify-between gap-3 text-xs text-slate-400 dark:text-slate-500 md:block">

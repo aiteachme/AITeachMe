@@ -46,6 +46,7 @@ from app.workflows.ingest.parsing.lib.runtime_helpers import (
     _ExternalFastParseResult,
     _compute_quality_score,
 )
+from app.workflows.ingest.parsing.progress import ParseProgressCallback, ParseProgressTracker
 from app.workflows.ingest.parsing.state import IngestParseState
 
 
@@ -188,10 +189,10 @@ def _paddle_ocr_model() -> str:
 
 
 def _paddle_ocr_parse_mode() -> str:
-    raw_mode = (get_env("PADDLE_OCR_PARSE_MODE") or "").strip().lower()
-    if raw_mode in {"parallel", "split", "chunked", "async"}:
-        return "parallel"
-    return "single"
+    raw_mode = (get_env("PADDLE_OCR_PARSE_MODE") or "parallel").strip().lower()
+    if raw_mode in {"single", "serial", "legacy"}:
+        return "single"
+    return "parallel"
 
 
 def _paddle_ocr_chunk_max_pages() -> int:
@@ -217,6 +218,7 @@ async def _run_mineru_external_parse(
     state: IngestParseState,
     local_asset_dir: Path,
     parse_plan: ParsePlan | None,
+    progress_callback: ParseProgressCallback | None = None,
 ) -> tuple[_ExternalFastParseResult, dict[str, object]]:
     started_at = time.monotonic()
     extracted = await asyncio.to_thread(
@@ -231,6 +233,7 @@ async def _run_mineru_external_parse(
         ),
         output_dir=Path(state["temp_dir"]) / "mineru_output",
         total_timeout_s=DEFAULT_EXTERNAL_PARSE_TIMEOUT_S,
+        progress_callback=progress_callback,
     )
 
     mineru_markdown_raw = extracted.markdown_path.read_text(encoding="utf-8", errors="replace")
@@ -280,6 +283,7 @@ async def _run_paddle_ocr_external_parse(
     state: IngestParseState,
     local_asset_dir: Path,
     parse_plan: ParsePlan | None,
+    progress_callback: ParseProgressCallback | None = None,
 ) -> tuple[_ExternalFastParseResult, dict[str, object]]:
     started_at = time.monotonic()
     timeout_budget_s = _paddle_ocr_parse_timeout_s()
@@ -301,6 +305,7 @@ async def _run_paddle_ocr_external_parse(
             total_timeout_s=timeout_budget_s,
             max_pages_per_chunk=chunk_max_pages,
             max_concurrent_jobs=chunk_concurrency,
+            progress_callback=progress_callback,
         )
     else:
         chunk_max_pages = None
@@ -311,6 +316,7 @@ async def _run_paddle_ocr_external_parse(
             options=request_options,
             output_dir=output_dir,
             total_timeout_s=timeout_budget_s,
+            progress_callback=progress_callback,
         )
 
     paddle_ocr_markdown_raw = extracted.markdown_path.read_text(encoding="utf-8", errors="replace")
@@ -375,6 +381,10 @@ def build_parse_file_node(*, context: WorkflowContext):
         parse_plan = state.get("parse_plan")
         parse_decision = state.get("parse_decision")
         effective_parse_plan = parse_plan
+        progress_tracker = ParseProgressTracker(
+            user_id=state["user_id"],
+            file_id=state["file_id"],
+        )
         logger.info(
             "ingest_fast_parse_started",
             local_markdown_path=str(local_markdown_path),
@@ -388,6 +398,7 @@ def build_parse_file_node(*, context: WorkflowContext):
             provider_metadata: dict[str, object] | None = None
 
             if state.get("is_text_fast_path"):
+                progress_tracker.stage("parsing", percent=10, detail="解析正文")
                 raw_text = Path(state["file_path"]).read_text(encoding="utf-8", errors="replace")
                 if state.get("text_category") == "structured_text" and state.get("text_language_hint"):
                     markdown = f"```{state['text_language_hint']}\n{raw_text}\n```"
@@ -420,6 +431,7 @@ def build_parse_file_node(*, context: WorkflowContext):
                     chars=len(markdown),
                     elapsed_s=elapsed,
                 )
+                progress_tracker.stage("processing_result", detail="整理正文")
                 return {
                     **state,
                     "parse_metadata": parse_metadata,
@@ -460,16 +472,28 @@ def build_parse_file_node(*, context: WorkflowContext):
                     )
                     try:
                         if provider_name == "mineru":
+                            progress_tracker.stage(
+                                "uploading",
+                                provider="mineru",
+                                detail="上传至 MinerU",
+                            )
                             external_result, current_provider_metadata = await _run_mineru_external_parse(
                                 state=state,
                                 local_asset_dir=local_asset_dir,
                                 parse_plan=parse_plan,
+                                progress_callback=progress_tracker.report,
                             )
                         else:
+                            progress_tracker.stage(
+                                "uploading",
+                                provider="paddle_ocr",
+                                detail="上传至 PaddleOCR",
+                            )
                             external_result, current_provider_metadata = await _run_paddle_ocr_external_parse(
                                 state=state,
                                 local_asset_dir=local_asset_dir,
                                 parse_plan=parse_plan,
+                                progress_callback=progress_tracker.report,
                             )
                         parse_result = _ExternalFastParseResult(
                             markdown=external_result.markdown,
@@ -573,6 +597,7 @@ def build_parse_file_node(*, context: WorkflowContext):
                         timeout_provider=timeout_triggered_provider,
                     )
             else:
+                progress_tracker.stage("parsing", percent=10, detail="解析正文")
                 parse_result = await fast_parse_file(
                     file_path=state["file_path"],
                     asset_dir=local_asset_dir,
@@ -582,6 +607,7 @@ def build_parse_file_node(*, context: WorkflowContext):
                 )
 
             local_markdown_path.write_text(parse_result.markdown, encoding="utf-8")
+            progress_tracker.stage("processing_result", detail="整理正文与图片")
             image_count = len(
                 list_asset_files(
                     local_asset_dir,
@@ -636,6 +662,7 @@ def build_parse_file_node(*, context: WorkflowContext):
                 "error": None,
             }
         except Exception as exc:
+            progress_tracker.flush()
             logger.error(
                 "ingest_fast_parse_failed",
                 error=str(exc),

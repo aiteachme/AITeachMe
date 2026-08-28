@@ -417,10 +417,27 @@ export function resolveDocBuildProgressFloor(
 
 /* ---- File Helpers ---- */
 
-export function resolveFileProcessingLabel(file: { error_message?: string | null; digest_current_step?: string | null; markdown_ready?: boolean; asset_ready?: boolean; ingest_status?: string | null; status?: string }): string {
+export function resolveFileProcessingLabel(file: { error_message?: string | null; digest_current_step?: string | null; markdown_ready?: boolean; asset_ready?: boolean; ingest_status?: string | null; status?: string; parse_progress?: { stage?: string; detail?: string; current_pages?: number | null; total_pages?: number | null } | null }): string {
   if (file.error_message?.trim()) return "处理失败";
-  if (file.digest_current_step?.trim()) return `已进入 ${file.digest_current_step.trim()}`;
   if (file.markdown_ready) return file.asset_ready ? "已完成解析与素材抽取" : "已完成正文解析";
+  const parseProgress = file.parse_progress;
+  if (parseProgress?.detail?.trim()) {
+    const hasCurrentPages = parseProgress.current_pages !== null && parseProgress.current_pages !== undefined;
+    const hasTotalPages = parseProgress.total_pages !== null && parseProgress.total_pages !== undefined;
+    const currentPages = Number(parseProgress.current_pages);
+    const totalPages = Number(parseProgress.total_pages);
+    if (
+      parseProgress.stage === "parsing"
+      && hasCurrentPages
+      && hasTotalPages
+      && Number.isFinite(currentPages)
+      && Number.isFinite(totalPages)
+      && totalPages > 0
+    ) {
+      return `${parseProgress.detail.trim()} ${Math.max(0, Math.min(currentPages, totalPages))}/${totalPages} 页`;
+    }
+    return parseProgress.detail.trim();
+  }
   if (file.ingest_status?.trim()) {
     switch (file.ingest_status.trim()) {
       case "classifying": return "正在识别文档类型";
@@ -432,21 +449,22 @@ export function resolveFileProcessingLabel(file: { error_message?: string | null
     }
   }
   if (file.status === "processing") return "上传完成，正在处理";
-  return "等待处理";
+  return "等待解析";
 }
 
-export function resolveFileProgressScore(file: { error_message?: string | null; digest_current_step?: string | null; markdown_ready?: boolean; asset_ready?: boolean; ingest_status?: string | null; status?: string }): number {
+export function resolveFileProgressScore(file: { error_message?: string | null; digest_current_step?: string | null; markdown_ready?: boolean; asset_ready?: boolean; ingest_status?: string | null; status?: string; parse_progress?: { percent?: number } | null }): number {
   if (file.error_message?.trim()) return 100;
-  if (file.digest_current_step?.trim()) return 100;
   if (file.markdown_ready && file.asset_ready) return 92;
   if (file.markdown_ready) return 74;
+  const liveProgress = Number(file.parse_progress?.percent);
+  if (Number.isFinite(liveProgress)) return Math.max(0, Math.min(99, Math.round(liveProgress)));
   switch ((file.ingest_status ?? "").trim()) {
-    case "classifying": return 24;
+    case "classifying": return 4;
     case "fast_parsing":
-    case "parsing": return 46;
-    case "enhancing": return 66;
-    case "ready_for_digest": return 84;
-    default: return file.status === "processing" ? 18 : 8;
+    case "parsing": return 10;
+    case "enhancing": return 94;
+    case "ready_for_digest": return 98;
+    default: return file.status === "processing" ? 2 : 0;
   }
 }
 

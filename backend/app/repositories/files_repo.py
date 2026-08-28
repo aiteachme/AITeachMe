@@ -349,6 +349,7 @@ def update_raw_file(
     parsed_markdown: str | object = _UNSET,
     parser_used: str | None | object = _UNSET,
     parse_metadata_json: str | object = _UNSET,
+    parse_progress_json: str | object = _UNSET,
     parse_request_signature: str | object = _UNSET,
     parse_metadata: str | None | object = _UNSET,
     parse_error_message: str | None | object = _UNSET,
@@ -382,6 +383,8 @@ def update_raw_file(
         raw_file.parser_used = None if parser_used is None else str(parser_used)
     if parse_metadata_json is not _UNSET:
         raw_file.parse_metadata_json = str(parse_metadata_json)
+    if parse_progress_json is not _UNSET:
+        raw_file.parse_progress_json = str(parse_progress_json)
     if parse_request_signature is not _UNSET:
         raw_file.parse_request_signature = str(parse_request_signature)
     if parse_metadata is not _UNSET:

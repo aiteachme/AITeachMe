@@ -7,7 +7,7 @@ import { AlertCircle, CheckCircle2, FileText, Loader2 } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 import type { FileRecord } from "../../api/generated/model";
-import { resolveFileProcessingLabel, resolveFileProgressScore } from "./utils";
+import { CircularFileParseProgress } from "../files/FileParseProgress";
 
 interface Props {
   files: FileRecord[];
@@ -22,8 +22,6 @@ export function BuildMaterialPipeline({ files, isFetching, className }: Props) {
     <div className={cn("space-y-3", className)}>
       {isFetching ? <div className="flex items-center gap-2 text-sm text-zinc-400 dark:text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> 处理中...</div> : null}
         {files.map((file, index) => {
-          const label = resolveFileProcessingLabel(file);
-          const progress = resolveFileProgressScore(file);
           const hasError = Boolean(file.error_message?.trim());
           const isDone = Boolean(file.markdown_ready);
 
@@ -65,24 +63,11 @@ export function BuildMaterialPipeline({ files, isFetching, className }: Props) {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <p className="min-w-0 flex-1 truncate text-[13px] font-medium text-zinc-800 dark:text-slate-100">{file.filename}</p>
-                    {!hasError && !isDone ? (
-                      <span className="shrink-0 text-[11px] font-medium text-zinc-500 dark:text-slate-400">{progress}%</span>
-                    ) : null}
+                    <CircularFileParseProgress file={file} size={22} />
                   </div>
 
-                  <p className={cn("mt-1 text-[12px] leading-snug", hasError ? "text-rose-500 dark:text-rose-300" : "text-zinc-500 dark:text-slate-400")}>
-                    {hasError ? file.error_message : label}
-                  </p>
-
-                  {!hasError && !isDone ? (
-                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white dark:bg-slate-900">
-                      <motion.div
-                        initial={{ width: 0 }}
-                        animate={{ width: `${progress}%` }}
-                        transition={{ duration: 0.45, ease: "easeOut" }}
-                        className="h-full rounded-full bg-gradient-to-r from-blue-400 via-blue-500 to-blue-500"
-                      />
-                    </div>
+                  {hasError ? (
+                    <p className="mt-1 line-clamp-2 text-[12px] leading-snug text-rose-500 dark:text-rose-300">{file.error_message}</p>
                   ) : null}
                 </div>
               </div>

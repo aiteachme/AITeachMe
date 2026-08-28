@@ -28,6 +28,7 @@ import {
 
 import { apiClient, getApiErrorMessage } from "../../../api/client";
 import {
+  buildAlreadyParsedUploadNotice,
   buildUnsupportedFilesMessage,
   buildImageParserUnavailableMessage,
   extractPasteFiles,
@@ -492,6 +493,10 @@ export function AiConversationDraftFileAttachments({
     setUploadingFileNames(supportedFiles.map((file) => file.name));
     try {
       const result = await uploadDraftFiles(supportedFiles);
+      const alreadyParsedNotice = buildAlreadyParsedUploadNotice(result);
+      if (alreadyParsedNotice) {
+        toast({ ...alreadyParsedNotice, variant: "info" });
+      }
       const uploaded = result.uploaded_items ?? [];
       const uploadedIds = uploaded.map((file) => file.id);
       const nextFileIds = uniqueStrings([...fileIds, ...uploadedIds]);
