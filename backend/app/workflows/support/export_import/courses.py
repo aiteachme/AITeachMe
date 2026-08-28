@@ -7,7 +7,6 @@ import posixpath
 import shutil
 import tempfile
 import time
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -32,13 +31,10 @@ from app.workflows.support.export_import.limits import (
 logger = structlog.get_logger()
 
 _DEFAULT_TIMEOUT_S = 15.0
-_PACKAGE_PROBE_TIMEOUT_S = 4.0
-_PACKAGE_PROBE_MAX_WORKERS = 6
 _CATALOG_CACHE_TTL_S = 60.0
 _DEMO_COURSES_BASE_URL = "https://raw.githubusercontent.com/aiteachme/assets/main/demo-courses/"
 _DEMO_COURSES_INDEX_PATH = "catalog/v1/index.json"
 _REMOTE_DESCRIPTOR_CACHE: tuple[float, str, list["_RemoteCourseDescriptor"]] | None = None
-_REMOTE_AVAILABLE_DESCRIPTOR_CACHE: tuple[float, str, list["_RemoteCourseDescriptor"]] | None = None
 
 
 @dataclass(frozen=True)
@@ -66,6 +62,8 @@ def list_available_courses() -> list[CoursePackageItem]:
     """List remote demo courses declared in the public assets catalog."""
 
     try:
+        # The public catalog is the source of truth for the list. Package
+        # availability is validated when a user imports a selected course.
         return [item.to_item() for item in _load_remote_course_descriptors()]
     except DemoCourseCatalogUnavailableError as exc:
         logger.warning(
@@ -133,7 +131,7 @@ def get_remote_course_descriptor(identifier: str) -> _RemoteCourseDescriptor:
     if not normalized:
         raise DemoCoursePackageNotFoundError(identifier)
 
-    for descriptor in _load_remote_course_descriptors(probe_packages=False):
+    for descriptor in _load_remote_course_descriptors():
         if normalized in {descriptor.identifier, descriptor.package_filename}:
             return descriptor
     raise DemoCoursePackageNotFoundError(normalized)
@@ -155,28 +153,9 @@ def _get_demo_courses_timeout_s() -> float:
     return _DEFAULT_TIMEOUT_S
 
 
-def _load_remote_course_descriptors(*, probe_packages: bool = True) -> list[_RemoteCourseDescriptor]:
+def _load_remote_course_descriptors() -> list[_RemoteCourseDescriptor]:
     catalog_url = get_demo_courses_index_url()
-    if not probe_packages:
-        return _load_catalog_descriptors(catalog_url)
-    return _load_available_remote_course_descriptors(catalog_url)
-
-
-def _load_available_remote_course_descriptors(catalog_url: str) -> list[_RemoteCourseDescriptor]:
-    global _REMOTE_AVAILABLE_DESCRIPTOR_CACHE
-
-    now = time.monotonic()
-    if (
-        _REMOTE_AVAILABLE_DESCRIPTOR_CACHE is not None
-        and _REMOTE_AVAILABLE_DESCRIPTOR_CACHE[1] == catalog_url
-        and now - _REMOTE_AVAILABLE_DESCRIPTOR_CACHE[0] <= _CATALOG_CACHE_TTL_S
-    ):
-        return list(_REMOTE_AVAILABLE_DESCRIPTOR_CACHE[2])
-
-    descriptors = _load_catalog_descriptors(catalog_url)
-    available_descriptors = _filter_available_remote_course_descriptors(descriptors)
-    _REMOTE_AVAILABLE_DESCRIPTOR_CACHE = (now, catalog_url, available_descriptors)
-    return list(available_descriptors)
+    return _load_catalog_descriptors(catalog_url)
 
 
 def _load_catalog_descriptors(catalog_url: str) -> list[_RemoteCourseDescriptor]:
@@ -262,35 +241,6 @@ def _sha256_file(path: Path) -> str:
             if chunk:
                 hasher.update(chunk)
     return hasher.hexdigest()
-
-
-def _filter_available_remote_course_descriptors(
-    descriptors: list[_RemoteCourseDescriptor],
-) -> list[_RemoteCourseDescriptor]:
-    if not descriptors:
-        return []
-
-    max_workers = min(_PACKAGE_PROBE_MAX_WORKERS, len(descriptors))
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        availability = list(
-            executor.map(
-                lambda descriptor: _remote_package_exists(descriptor.package_url),
-                descriptors,
-            )
-        )
-
-    available_descriptors: list[_RemoteCourseDescriptor] = []
-    for descriptor, available in zip(descriptors, availability):
-        if available:
-            available_descriptors.append(descriptor)
-            continue
-        logger.warning(
-            "demo_course_catalog_item_skipped",
-            identifier=descriptor.identifier,
-            reason="package_url_unavailable",
-            package_url=descriptor.package_url,
-        )
-    return available_descriptors
 
 
 def _fetch_remote_catalog_payload(catalog_url: str) -> Any:
@@ -548,30 +498,6 @@ def _validate_remote_content_length(response: httpx.Response) -> None:
         return
     if content_length > MAX_IMPORT_PACKAGE_BYTES:
         raise ImportPackageTooLargeError(MAX_IMPORT_PACKAGE_SIZE_MB)
-
-
-def _remote_package_exists(package_url: str) -> bool:
-    timeout = _PACKAGE_PROBE_TIMEOUT_S
-    url = _with_cache_buster(package_url)
-    try:
-        with httpx.Client(timeout=timeout, follow_redirects=True) as client:
-            response = client.head(url)
-            if response.status_code < 400:
-                return True
-            if response.status_code in {404, 410}:
-                return False
-
-            with client.stream("GET", url, headers={"Range": "bytes=0-0"}) as fallback:
-                if fallback.status_code in {404, 410}:
-                    return False
-                return fallback.status_code < 400
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            "demo_course_package_probe_failed",
-            package_url=package_url,
-            error=str(exc),
-        )
-        return False
 
 
 __all__ = [

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   AlertCircle,
+  ArrowRight,
   ArrowUp,
   Atom,
   BookOpen,
@@ -268,7 +269,7 @@ function formatFileSize(bytes?: number | null): string {
 
 const CARD_THEME_INDIGO = {
   shell: "border-slate-200 bg-white hover:border-indigo-300 dark:border-slate-800 dark:bg-slate-950 dark:hover:border-indigo-500/50",
-  icon: "border-indigo-100 bg-indigo-50/85 text-indigo-600 dark:border-indigo-400/20 dark:bg-indigo-400/10 dark:text-indigo-300",
+  icon: "text-indigo-600 dark:text-indigo-300",
   strip: "from-indigo-500 via-sky-400 to-violet-400",
   tagColor: "text-indigo-600 dark:text-indigo-400 bg-indigo-50/60 dark:bg-indigo-950/40",
   label: "计算机科学"
@@ -276,7 +277,7 @@ const CARD_THEME_INDIGO = {
 
 const CARD_THEME_CYAN = {
   shell: "border-slate-200 bg-white hover:border-cyan-300 dark:border-slate-800 dark:bg-slate-950 dark:hover:border-cyan-500/50",
-  icon: "border-cyan-100 bg-cyan-50/85 text-cyan-700 dark:border-cyan-400/20 dark:bg-cyan-400/10 dark:text-cyan-300",
+  icon: "text-cyan-700 dark:text-cyan-300",
   strip: "from-cyan-500 via-emerald-400 to-sky-400",
   tagColor: "text-cyan-700 dark:text-cyan-400 bg-cyan-50/60 dark:bg-cyan-950/40",
   label: "数理科学"
@@ -284,7 +285,7 @@ const CARD_THEME_CYAN = {
 
 const CARD_THEME_VIOLET = {
   shell: "border-slate-200 bg-white hover:border-violet-300 dark:border-slate-800 dark:bg-slate-950 dark:hover:border-violet-500/50",
-  icon: "border-violet-100 bg-violet-50/85 text-violet-600 dark:border-violet-400/20 dark:bg-violet-400/10 dark:text-violet-300",
+  icon: "text-violet-600 dark:text-violet-300",
   strip: "from-violet-500 via-fuchsia-400 to-indigo-400",
   tagColor: "text-violet-600 dark:text-violet-400 bg-violet-50/60 dark:bg-violet-950/40",
   label: "物理力学"
@@ -292,7 +293,7 @@ const CARD_THEME_VIOLET = {
 
 const CARD_THEME_AMBER = {
   shell: "border-slate-200 bg-white hover:border-amber-300 dark:border-slate-800 dark:bg-slate-950 dark:hover:border-amber-500/50",
-  icon: "border-amber-100 bg-amber-50/85 text-amber-700 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-300",
+  icon: "text-amber-700 dark:text-amber-300",
   strip: "from-amber-500 via-orange-400 to-yellow-400",
   tagColor: "text-amber-700 dark:text-amber-400 bg-amber-50/60 dark:bg-amber-950/40",
   label: "概率统计"
@@ -1051,6 +1052,9 @@ export function HomePage() {
   const activePromptStarters = isCourseEntryMode
     ? hasEntryFiles ? HOME_FILE_PROMPT_STARTERS : HOME_PROMPT_STARTERS
     : HOME_CHAT_PROMPT_STARTERS;
+  const promptStarterSectionLabel = isCourseEntryMode
+    ? hasEntryFiles ? "资料成课灵感" : "课程灵感"
+    : "对话起点";
   useEffect(() => {
     if (!isCourseEntryMode || prompt.length > 0 || isWorking) {
       setTypedCourseExample("");
@@ -1291,25 +1295,25 @@ export function HomePage() {
                     disabled={isWorking}
                     aria-label={isUploadingFiles || isCreatingDraftCourse ? "正在上传资料" : "上传资料"}
                     title={isUploadingFiles || isCreatingDraftCourse ? "正在上传资料" : "上传资料"}
-                    className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400/30 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:bg-slate-900"
+                    className="inline-flex h-11 shrink-0 touch-manipulation items-center gap-1.5 rounded-md px-2.5 text-[13px] font-medium text-slate-500 transition-colors hover:bg-slate-100/80 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/35 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-400 dark:hover:bg-slate-800/70 dark:hover:text-slate-100"
                   >
                     {isUploadingFiles ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     ) : (
                       <Paperclip className="h-3.5 w-3.5" />
                     )}
-                    <span>{isUploadingFiles ? "上传中" : "上传资料"}</span>
+                    <span>{isUploadingFiles ? "上传中" : "上传文件"}</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setLibraryPickerOpen(true)}
                     disabled={isWorking}
-                    className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-400/30 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:border-slate-600 dark:hover:bg-slate-900"
+                    className="inline-flex h-11 shrink-0 touch-manipulation items-center gap-1.5 rounded-md px-2.5 text-[13px] font-medium text-slate-500 transition-colors hover:bg-slate-100/80 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/35 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-400 dark:hover:bg-slate-800/70 dark:hover:text-slate-100"
                     aria-label="从资料库选择"
                     title="从我的资料库选择已有文件"
                   >
                     <FolderOpen className="h-3.5 w-3.5" />
-                    <span>选择资料</span>
+                    <span>资料库</span>
                   </button>
                   {isWorking && (
                     <span className="ml-2 flex items-center text-xs font-medium text-zinc-500">
@@ -1350,19 +1354,19 @@ export function HomePage() {
             </div>
           </div>
 
-          <div className="relative mt-5 w-full">
+          <div className="relative mt-6 w-full">
             <button
               type="button"
               onClick={() => setStartersOpen(!startersOpen)}
               aria-expanded={startersOpen}
               aria-controls="home-prompt-starters"
-              className="group flex min-h-11 w-full cursor-pointer items-center justify-between rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/40"
+              className="group flex min-h-10 w-full cursor-pointer items-center justify-between rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/40"
             >
-              <span className="text-[14px] font-semibold text-slate-700 transition-colors group-hover:text-indigo-700 dark:text-slate-200 dark:group-hover:text-indigo-300">
-                {isCourseEntryMode ? hasEntryFiles ? "资料课程样例" : "课程需求样例" : "对话建课样例"}
+              <span className="text-[13px] font-medium text-slate-500 transition-colors group-hover:text-slate-800 dark:text-slate-400 dark:group-hover:text-slate-200">
+                {promptStarterSectionLabel}
               </span>
-              <span className="flex items-center gap-2 text-xs font-medium text-slate-400 transition-colors group-hover:text-slate-600 dark:text-slate-500 dark:group-hover:text-slate-300">
-                {activePromptStarters.length} 个
+              <span className="flex items-center gap-1.5 text-[12px] font-medium text-slate-400 transition-colors group-hover:text-slate-600 dark:text-slate-500 dark:group-hover:text-slate-300">
+                {activePromptStarters.length} 个模板
                 <motion.div
                   animate={{ rotate: startersOpen ? 180 : 0 }}
                   transition={{ duration: 0.2, ease: "easeInOut" }}
@@ -1378,12 +1382,12 @@ export function HomePage() {
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: "auto", opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
+                  transition={{ duration: 0.28, ease: [0.25, 0.1, 0.25, 1] }}
                   id="home-prompt-starters"
                   className="w-full overflow-hidden"
                 >
-                  <div className="grid gap-2.5 pb-1 pt-1.5 sm:grid-cols-2 lg:grid-cols-4">
-                      {activePromptStarters.map((starter) => {
+                  <div className="grid border-y border-slate-200/80 sm:grid-cols-2 dark:border-slate-800/90">
+                      {activePromptStarters.map((starter, index) => {
                         const StarterIcon = starter.icon;
                         return (
                           <button
@@ -1393,24 +1397,27 @@ export function HomePage() {
                             disabled={isWorking}
                             aria-label={`套用${starter.label}提示词示例`}
                             title={starter.prompt}
-                            className="group relative flex min-h-[96px] cursor-pointer flex-col rounded-lg border border-slate-200 bg-slate-50/55 px-3.5 py-3 text-left transition-[border-color,background-color] duration-200 hover:border-indigo-300 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/40 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-800 dark:bg-slate-900/45 dark:hover:border-indigo-500/60 dark:hover:bg-slate-900"
+                            className={cn(
+                              "group relative grid min-h-[80px] touch-manipulation grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-3 border-slate-200/80 px-2 py-3 text-left transition-colors duration-200 hover:bg-slate-50/80 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-400/45 active:bg-slate-100/80 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-800/90 dark:hover:bg-slate-900/55 dark:active:bg-slate-900",
+                              index > 0 && "border-t",
+                              index === 1 && "sm:border-t-0",
+                              index % 2 === 1 ? "sm:border-l sm:pl-5" : "sm:pr-5",
+                            )}
                           >
-                            <span className="flex items-center justify-between gap-3">
-                              <span className="flex min-w-0 items-center gap-2.5">
-                                <span className="flex h-6 w-6 shrink-0 items-center justify-center text-slate-400 transition-colors group-hover:text-indigo-600 dark:text-slate-500 dark:group-hover:text-indigo-400">
-                                  <StarterIcon className="h-3.5 w-3.5" />
-                                </span>
-                                <span className="truncate text-[13px] font-semibold text-slate-800 dark:text-slate-100">
-                                  {starter.label}
-                                </span>
+                            <span className="flex h-8 w-8 shrink-0 items-center justify-center text-slate-400 transition-colors group-hover:text-indigo-600 dark:text-slate-500 dark:group-hover:text-indigo-300" aria-hidden="true">
+                              <StarterIcon className="h-4 w-4" />
+                            </span>
+                            <span className="min-w-0">
+                              <span className="block truncate text-[13px] font-semibold text-slate-800 dark:text-slate-100">
+                                {starter.label}
                               </span>
-                              <span className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-slate-400 transition-colors group-hover:text-indigo-700 dark:text-slate-500 dark:group-hover:text-indigo-300">
-                                填入
-                                <ArrowUp className="h-2.5 w-2.5 rotate-90 transition-transform group-hover:translate-x-0.5" />
+                              <span className="mt-0.5 block line-clamp-2 text-[12px] leading-[18px] text-slate-500 transition-colors group-hover:text-slate-600 sm:line-clamp-1 md:text-[13px] md:leading-5 dark:text-slate-400 dark:group-hover:text-slate-300">
+                                {starter.prompt}
                               </span>
                             </span>
-                            <span className="mt-1.5 line-clamp-2 text-[12px] leading-[18px] text-slate-500 transition-colors group-hover:text-slate-600 dark:text-slate-400 dark:group-hover:text-slate-300">
-                              {starter.prompt}
+                            <span className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-slate-400 transition-colors group-hover:text-indigo-700 dark:text-slate-500 dark:group-hover:text-indigo-300">
+                              填入
+                              <ArrowRight className="h-3 w-3 transition-transform duration-200 group-hover:translate-x-0.5" aria-hidden="true" />
                             </span>
                           </button>
                         );
@@ -1445,7 +1452,7 @@ export function HomePage() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.5 }}
-          className="relative z-10 mt-7 flex w-full max-w-[clamp(1200px,60vw,1500px)] flex-col"
+          className="relative z-10 mt-10 flex w-full max-w-[clamp(1200px,60vw,1500px)] flex-col md:mt-12"
         >
           <button
             type="button"
@@ -1485,7 +1492,7 @@ export function HomePage() {
                     </div>
                   ) : null}
                   {courses.length > 0 && (
-                      <div className="flex gap-3 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                      <div className="grid grid-cols-1 gap-3 pb-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                         {courses.map((course, i) => {
                           const theme = getCardTheme(course.course_name);
                           const CourseIcon = theme.iconComponent;
@@ -1498,25 +1505,25 @@ export function HomePage() {
                               initial={{ opacity: 0, y: 10 }}
                               animate={{ opacity: 1, y: 0 }}
                               transition={{ delay: i * 0.05, duration: 0.3, ease: "easeOut" }}
-                              className="min-w-[230px] flex-1"
+                              className="min-w-0"
                             >
                               <button
                                 type="button"
                                 onClick={() => courseImportMutation.mutate({ filename: course.filename })}
                                 disabled={courseImportMutation.isPending}
                                 className={cn(
-                                  "atm-deferred-card group relative flex min-h-[clamp(118px,6.2vw,140px)] w-full flex-col rounded-xl border px-4 py-4 text-left transition-[border-color,background-color,box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_30px_-24px_rgba(15,23,42,0.45)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 disabled:cursor-wait disabled:hover:translate-y-0",
+                                  "atm-deferred-card group relative flex min-h-[112px] w-full flex-col rounded-lg border px-4 py-4 text-left transition-[border-color,background-color] duration-200 hover:bg-slate-50/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 disabled:cursor-wait dark:hover:bg-slate-900/70",
                                   theme.shell,
                                 )}
                                 title={`导入 ${course.course_name} 到左侧课程列表`}
                                 aria-label={`导入 ${course.course_name}`}
                               >
                                 <div className="flex w-full items-start gap-3">
-                                    <span className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border transition-colors", theme.icon)}>
+                                    <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center transition-colors", theme.icon)}>
                                       {isImportingThisCourse ? (
-                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                        <Loader2 className="h-5 w-5 animate-spin" />
                                       ) : (
-                                        <CourseIcon className="h-4 w-4" />
+                                        <CourseIcon className="h-5 w-5" />
                                       )}
                                     </span>
                                     <span className="line-clamp-2 min-w-0 flex-1 pt-0.5 text-[14px] font-semibold leading-snug text-slate-900 dark:text-slate-100 sm:text-[15px]">
