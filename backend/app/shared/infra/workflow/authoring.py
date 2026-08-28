@@ -218,13 +218,16 @@ class WorkflowTraceBinding:
                     if timing_field and timing_field not in result_mapping:
                         result_mapping = {**result_mapping, timing_field: elapsed_ms}
                     if trace_run is not None:
-                        trace_run.end(
-                            outputs=_node_trace_outputs(
-                                result_mapping,
-                                output_keys=compact_output_keys,
-                                elapsed_ms=elapsed_ms,
-                            )
+                        trace_outputs = _node_trace_outputs(
+                            result_mapping,
+                            output_keys=compact_output_keys,
+                            elapsed_ms=elapsed_ms,
                         )
+                        trace_error = trace_outputs.get("error")
+                        if trace_error:
+                            trace_run.end(outputs=trace_outputs, error=str(trace_error))
+                        else:
+                            trace_run.end(outputs=trace_outputs)
 
                     logger.bind(
                         workflow=workflow_name,

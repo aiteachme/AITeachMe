@@ -1,6 +1,6 @@
 [project]
 name = "aiteachme-backend"
-version = "0.1.5"
+version = "0.1.6"
 requires-python = ">=3.11"
 license = { text = "AGPL-3.0-only" }
 dependencies = [
@@ -21,6 +21,7 @@ dependencies = [
     "Jinja2>=3.1.0",
     "lxml>=6.1.0",
     "markdown-it-py>=4.0.0",
+    "markitdown[pdf,pptx]>=0.1.5",
     "mammoth>=1.11.0",
     "Pillow>=12.0.0",
     "pydantic-settings>=2.2.0",

@@ -23,8 +23,13 @@ class TinyState(TypedDict, total=False):
 
 
 class _FakeTraceRun:
-    def end(self, outputs=None):
+    def __init__(self) -> None:
+        self.outputs = None
+        self.error = None
+
+    def end(self, outputs=None, error=None):
         self.outputs = outputs
+        self.error = error
 
 
 def _patch_manual_graph_trigger_inputs(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -49,6 +54,18 @@ def _build_tiny_graph() -> StateGraph:
     graph.add_node("inc", inc)
     graph.set_entry_point("inc")
     graph.add_edge("inc", END)
+    return graph
+
+
+def _build_logical_failure_graph() -> StateGraph:
+    graph = StateGraph(TinyState)
+
+    async def fail(_state: TinyState) -> dict[str, str]:
+        return {"error": "logical workflow failure"}
+
+    graph.add_node("fail", fail)
+    graph.set_entry_point("fail")
+    graph.add_edge("fail", END)
     return graph
 
 
@@ -187,6 +204,68 @@ async def test_run_state_graph_keeps_root_trace_by_default(monkeypatch) -> None:
     assert not result.failed
     assert result.require_value()["value"] == 2
     assert root_trace_names == ["root graph"]
+
+
+@pytest.mark.anyio
+async def test_run_state_graph_marks_returned_error_on_root_trace(monkeypatch) -> None:
+    trace_runs: list[_FakeTraceRun] = []
+
+    @contextmanager
+    def fake_langsmith_trace(**_kwargs):
+        trace_run = _FakeTraceRun()
+        trace_runs.append(trace_run)
+        yield trace_run
+
+    monkeypatch.setattr(workflow_runtime, "langsmith_trace", fake_langsmith_trace)
+    monkeypatch.setattr(
+        workflow_runtime,
+        "sanitize_langsmith_output",
+        lambda value, *, field_name: value,
+    )
+
+    result = await workflow_runtime.run_state_graph(
+        workflow_name="test.logical_failure",
+        graph_builder=_build_logical_failure_graph,
+        initial_state={},
+        context=WorkflowContext(
+            workflow_name="test.logical_failure",
+            course_id="course_test",
+        ),
+    )
+
+    assert not result.failed
+    assert result.require_value()["error"] == "logical workflow failure"
+    assert trace_runs[0].outputs["error"] == "logical workflow failure"
+    assert trace_runs[0].error == "logical workflow failure"
+
+
+@pytest.mark.anyio
+async def test_invoke_state_graph_marks_returned_error_on_root_trace(monkeypatch) -> None:
+    trace_runs: list[_FakeTraceRun] = []
+
+    @contextmanager
+    def fake_langsmith_trace(**_kwargs):
+        trace_run = _FakeTraceRun()
+        trace_runs.append(trace_run)
+        yield trace_run
+
+    monkeypatch.setattr(workflow_runtime, "langsmith_trace", fake_langsmith_trace)
+    monkeypatch.setattr(
+        workflow_runtime,
+        "sanitize_langsmith_output",
+        lambda value, *, field_name: value,
+    )
+
+    final_state = await workflow_runtime.invoke_state_graph(
+        workflow_name="test.logical_failure",
+        graph_builder=_build_logical_failure_graph,
+        initial_state={},
+        course_id="course_test",
+    )
+
+    assert final_state["error"] == "logical workflow failure"
+    assert trace_runs[0].outputs["error"] == "logical workflow failure"
+    assert trace_runs[0].error == "logical workflow failure"
 
 
 @pytest.mark.anyio

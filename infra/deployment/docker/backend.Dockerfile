@@ -21,8 +21,8 @@ RUN uv sync --locked --no-cache --extra cloud --no-install-project
 COPY backend/ ./
 RUN uv sync --locked --no-cache --extra cloud
 
-# 认证模块在应用启动时即导入 Argon2；构建期验证可避免缺失锁定依赖的镜像进入发布阶段。
-RUN .venv/bin/python -c "from argon2 import PasswordHasher"
+# 构建期验证启动和本地文档兜底所需依赖，避免不完整镜像进入发布阶段。
+RUN .venv/bin/python -c "from argon2 import PasswordHasher; import markitdown, pdfplumber, pptx"
 
 ENV PATH="/app/.venv/bin:$PATH"
 

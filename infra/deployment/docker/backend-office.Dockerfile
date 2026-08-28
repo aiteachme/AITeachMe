@@ -36,8 +36,10 @@ RUN uv sync --locked --no-cache --extra cloud
 
 ENV PATH="/app/.venv/bin:$PATH"
 
-# 构建阶段直接验证 soffice 存在，避免部署后才发现系统依赖缺失。
-RUN command -v soffice && soffice --headless --version
+# 构建阶段直接验证 Office 和本地文档兜底依赖，避免部署后才发现缺失。
+RUN command -v soffice \
+    && soffice --headless --version \
+    && .venv/bin/python -c "import markitdown, pdfplumber, pptx"
 
 RUN groupadd --gid 10001 aiteachme \
     && useradd --uid 10001 --gid 10001 --home-dir /app --shell /usr/sbin/nologin --no-create-home aiteachme \
