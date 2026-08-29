@@ -21,6 +21,7 @@ from pathlib import Path
 
 import structlog
 
+from app.workflows.ingest.parsing.lib.provider_contracts import ExternalProviderTimeoutError
 from app.workflows.ingest.parsing.paddle_ocr_cloud import (
     DEFAULT_PADDLE_OCR_DOWNLOAD_DEADLINE_EXTENSION_S,
     DEFAULT_PADDLE_OCR_JOB_URL,
@@ -236,6 +237,8 @@ def parse_file_to_dir_parallel(
             try:
                 results.append(future.result())
                 logger.info("paddle_ocr_parallel_chunk_completed", chunk=chunk.label)
+            except ExternalProviderTimeoutError:
+                raise
             except Exception as exc:
                 raise RuntimeError(f"PaddleOCR 分块解析失败: {chunk.label}: {exc}") from exc
 

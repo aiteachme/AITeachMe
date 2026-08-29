@@ -152,6 +152,23 @@ def test_parse_progress_tracker_does_not_move_percent_backwards(monkeypatch) -> 
     assert writes[-1]["percent"] == 62
 
 
+def test_parse_progress_tracker_ignores_persistence_failures(monkeypatch) -> None:
+    def fail_persist_parse_progress(**payload: object) -> None:
+        del payload
+        raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr(progress_lib, "persist_parse_progress", fail_persist_parse_progress)
+    tracker = progress_lib.ParseProgressTracker(
+        user_id="user_test",
+        file_id="file_test",
+        min_write_interval_s=60,
+    )
+
+    tracker.stage("uploading", provider="mineru")
+    tracker.report({"stage": "parsing", "provider": "mineru", "percent": 35})
+    tracker.flush()
+
+
 def test_paddle_poll_reports_extracted_pages(monkeypatch) -> None:
     responses = iter(
         [

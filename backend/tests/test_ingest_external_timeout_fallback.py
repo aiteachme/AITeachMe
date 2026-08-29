@@ -10,7 +10,7 @@ from app.workflows.ingest.parsing.lib.defaults import (
     DEFAULT_EXTERNAL_PARSE_TIMEOUT_S,
     DEFAULT_PADDLE_OCR_PARSE_TIMEOUT_S,
 )
-from app.workflows.ingest.parsing import paddle_ocr_cloud
+from app.workflows.ingest.parsing import paddle_ocr_cloud, paddle_ocr_parallel
 from app.workflows.ingest.parsing.nodes import parse_file as parse_lib
 from app.workflows.ingest.parsing.orchestrator import FastParseResult
 from app.workflows.ingest.parsing.lib.provider_contracts import ExternalProviderTimeoutError, ParseDecision
@@ -18,10 +18,42 @@ from app.workflows.ingest.parsing.strategy import ParsePlan
 from app.workflows.ingest.parsing.lib.types import ParserRunOptions
 
 
-def test_external_parse_timeout_defaults_are_60_seconds() -> None:
+def test_external_parse_timeout_defaults_are_90_seconds() -> None:
     assert DEFAULT_EXTERNAL_PARSE_TIMEOUT_S == 90
     assert DEFAULT_PADDLE_OCR_PARSE_TIMEOUT_S == 90
     assert paddle_ocr_cloud.DEFAULT_PADDLE_OCR_DOWNLOAD_DEADLINE_EXTENSION_S == 40.0
+
+
+def test_paddle_ocr_parallel_preserves_timeout_error(monkeypatch, tmp_path) -> None:
+    source_path = tmp_path / "source.pdf"
+    source_path.write_bytes(b"fake-pdf")
+    chunk = paddle_ocr_parallel._OcrChunk(
+        chunk_index=0,
+        source_path=source_path,
+        start_page=1,
+        end_page=10,
+    )
+
+    monkeypatch.setattr(paddle_ocr_parallel, "_get_pdf_page_count", lambda path: 20)
+    monkeypatch.setattr(
+        paddle_ocr_parallel,
+        "_split_pdf_to_chunks",
+        lambda **kwargs: [chunk],
+    )
+
+    def fail_chunk(**kwargs):
+        del kwargs
+        raise ExternalProviderTimeoutError("PaddleOCR", 42)
+
+    monkeypatch.setattr(paddle_ocr_parallel, "_process_chunk", fail_chunk)
+
+    with pytest.raises(ExternalProviderTimeoutError):
+        paddle_ocr_parallel.parse_file_to_dir_parallel(
+            file_path=source_path,
+            options=paddle_ocr_cloud.PaddleOCRRequestOptions(api_token="token"),
+            output_dir=tmp_path / "out",
+            total_timeout_s=42,
+        )
 
 
 @pytest.mark.anyio

@@ -70,6 +70,9 @@ jobs:
       - name: Run frontend security tests
         run: npm run test:security
 
+      - name: Run library Markdown tests
+        run: npm run test:library-markdown
+
       - name: Run SSE parser tests
         run: npm run test:sse
 

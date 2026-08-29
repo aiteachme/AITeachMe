@@ -256,10 +256,34 @@ function countUnescapedDisplayMathDelimiters(line: string): number {
   return count;
 }
 
+function hasUnescapedPipe(line: string): boolean {
+  for (let index = 0; index < line.length; index += 1) {
+    if (line[index] === "|" && !isEscapedAt(line, index)) return true;
+  }
+  return false;
+}
+
+function isGfmTableRow(line: string): boolean {
+  const trimmed = line.trim();
+  return Boolean(trimmed) && hasUnescapedPipe(trimmed);
+}
+
+function isGfmTableDelimiterRow(line: string): boolean {
+  const trimmed = line.trim();
+  if (!hasUnescapedPipe(trimmed)) return false;
+
+  const cells = trimmed
+    .replace(/^\|/u, "")
+    .replace(/\|$/u, "")
+    .split("|")
+    .map((cell) => cell.trim());
+  return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/u.test(cell));
+}
+
 /**
  * Split a large parser result at stable line boundaries. Fenced code,
- * display formulas and HTML tables stay intact so each chunk can be parsed by
- * ReactMarkdown independently without changing their meaning.
+ * display formulas, HTML tables and GFM tables stay intact so each chunk can
+ * be parsed by ReactMarkdown independently without changing their meaning.
  */
 export function splitLibraryMarkdownForRender(
   markdown: string,
@@ -276,6 +300,7 @@ export function splitLibraryMarkdownForRender(
   let fenceMarker: string | null = null;
   let inDisplayMath = false;
   let htmlTableDepth = 0;
+  let inGfmTable = false;
 
   const flush = () => {
     if (!buffer) return;
@@ -297,11 +322,25 @@ export function splitLibraryMarkdownForRender(
       htmlTableDepth += (line.match(/<table\b/giu) ?? []).length;
       htmlTableDepth -= (line.match(/<\/table\s*>/giu) ?? []).length;
       htmlTableDepth = Math.max(0, htmlTableDepth);
+
+      const nextSourceLine = lines[index + 1] ?? "";
+      if (
+        !inGfmTable &&
+        !inDisplayMath &&
+        htmlTableDepth === 0 &&
+        isGfmTableRow(line) &&
+        isGfmTableDelimiterRow(nextSourceLine)
+      ) {
+        inGfmTable = true;
+      }
+      if (inGfmTable && !isGfmTableRow(nextSourceLine)) {
+        inGfmTable = false;
+      }
     }
 
     buffer += line;
     const nextLine = lines[index + 1]?.trim() ?? "";
-    const safeBoundary = !fenceMarker && !inDisplayMath && htmlTableDepth === 0;
+    const safeBoundary = !fenceMarker && !inDisplayMath && htmlTableDepth === 0 && !inGfmTable;
     const semanticBoundary = !trimmed || /^#{1,6}\s+\S/u.test(nextLine);
     if (
       safeBoundary &&

@@ -93,3 +93,21 @@ test("splits large Markdown without cutting fenced code, formulas, or HTML table
   assert.ok(chunks.some((chunk) => chunk.includes("$$\n") && chunk.includes("x_1 + x_2")));
   assert.ok(chunks.some((chunk) => chunk.includes("<table>") && chunk.includes("</table>")));
 });
+
+test("keeps a long GFM table in one render chunk", () => {
+  const tableRows = Array.from(
+    { length: 220 },
+    (_, index) => `| row${index + 1} | value${index + 1} |\n`,
+  ).join("");
+  const table = `| Name | Value |\n| --- | --- |\n${tableRows}`;
+  const markdown = `${"前置正文。".repeat(450)}\n\n${table}\n# 后续章节\n`;
+
+  const chunks = splitLibraryMarkdownForRender(markdown, 2_000);
+  const tableChunk = chunks.find((chunk) => chunk.includes("| Name | Value |"));
+
+  assert.equal(chunks.join(""), markdown);
+  assert.ok(tableChunk);
+  assert.match(tableChunk, /\| row1 \| value1 \|/u);
+  assert.match(tableChunk, /\| row220 \| value220 \|/u);
+  assert.equal(chunks.filter((chunk) => /\| row\d+ \| value\d+ \|/u.test(chunk)).length, 1);
+});

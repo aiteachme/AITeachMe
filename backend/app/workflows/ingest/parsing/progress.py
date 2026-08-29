@@ -8,11 +8,14 @@ import time
 from collections.abc import Callable, Mapping
 from typing import Any, TypeAlias
 
+import structlog
+
 from app.repositories.files_repo import get_raw_file_by_id, update_raw_file
 from app.shared.infra.database import managed_session
 
 
 ParseProgressCallback: TypeAlias = Callable[[Mapping[str, Any]], None]
+logger = structlog.get_logger(__name__)
 
 
 _STAGE_DEFAULTS: dict[str, tuple[int, str]] = {
@@ -206,16 +209,24 @@ class ParseProgressTracker:
 
     def _write(self, payload: Mapping[str, object]) -> None:
         self._highest_percent = max(self._highest_percent, int(payload["percent"]))
-        persist_parse_progress(
-            user_id=self._user_id,
-            file_id=self._file_id,
-            stage=str(payload["stage"]),
-            percent=int(payload["percent"]),
-            detail=str(payload["detail"]),
-            provider=str(payload.get("provider") or "") or None,
-            current_pages=_optional_int(payload.get("current_pages")),
-            total_pages=_optional_int(payload.get("total_pages")),
-        )
+        try:
+            persist_parse_progress(
+                user_id=self._user_id,
+                file_id=self._file_id,
+                stage=str(payload["stage"]),
+                percent=int(payload["percent"]),
+                detail=str(payload["detail"]),
+                provider=str(payload.get("provider") or "") or None,
+                current_pages=_optional_int(payload.get("current_pages")),
+                total_pages=_optional_int(payload.get("total_pages")),
+            )
+        except Exception as exc:
+            logger.warning(
+                "parse_progress_persist_failed",
+                file_id=self._file_id,
+                stage=str(payload["stage"]),
+                error=str(exc),
+            )
 
 
 def _optional_int(value: object) -> int | None:
