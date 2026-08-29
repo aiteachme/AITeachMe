@@ -112,6 +112,43 @@ test("keeps a long GFM table in one render chunk", () => {
   assert.equal(chunks.filter((chunk) => /\| row\d+ \| value\d+ \|/u.test(chunk)).length, 1);
 });
 
+test("keeps four-backtick fences open across nested triple backticks", () => {
+  const fencedCode = [
+    "````text\n",
+    `${"before nested fence $a < b$\n".repeat(120)}`,
+    "```\n",
+    `${"after nested fence $c < d$\n".repeat(120)}`,
+    "````\n",
+  ].join("");
+  const markdown = `${fencedCode}\n# 后续章节\n\n正文 $x < y$。\n`;
+
+  const chunks = splitLibraryMarkdownForRender(markdown, 2_000);
+  const fenceChunk = chunks.find((chunk) => chunk.includes("````text"));
+  const normalized = escapeMathHtmlCharactersForRender(markdown);
+
+  assert.equal(chunks.join(""), markdown);
+  assert.ok(fenceChunk?.includes(fencedCode));
+  assert.match(normalized, /after nested fence \$c < d\$/u);
+  assert.match(normalized, /正文 \$x \\lt  y\$/u);
+});
+
+test("keeps a long raw HTML details block in one render chunk", () => {
+  const details = [
+    "<details>\n",
+    "<summary>展开内容</summary>\n",
+    `${"<div>detail row</div>\n".repeat(240)}`,
+    "</details>\n",
+  ].join("");
+  const markdown = `${"前置正文。".repeat(450)}\n\n${details}\n# 后续章节\n`;
+
+  const chunks = splitLibraryMarkdownForRender(markdown, 2_000);
+  const detailsChunk = chunks.find((chunk) => chunk.includes("<details>"));
+
+  assert.equal(chunks.join(""), markdown);
+  assert.ok(detailsChunk?.includes(details));
+  assert.equal(chunks.filter((chunk) => chunk.includes("detail row")).length, 1);
+});
+
 test("keeps a long ordered list in one render chunk", () => {
   const markdown = Array.from(
     { length: 600 },

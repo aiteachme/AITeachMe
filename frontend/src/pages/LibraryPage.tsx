@@ -1366,8 +1366,26 @@ export function LibraryFilePage() {
   const [renderedMarkdownChars, setRenderedMarkdownChars] = useState(0);
   const assetBaseUrl = file?.asset_base_url ?? null;
   const fileExt = file ? normalizeFileExt(file.filetype).toUpperCase() || "FILE" : "FILE";
+  const markdownLoadMoreError = markdownQuery.isFetchNextPageError
+    ? getApiErrorMessage(markdownQuery.error, "后续内容读取失败，当前正文尚未完整。")
+    : null;
 
   const requestMoreMarkdown = useCallback(() => {
+    if (
+      markdownQuery.hasNextPage
+      && !markdownQuery.isFetchingNextPage
+      && !markdownQuery.isFetchNextPageError
+    ) {
+      void markdownQuery.fetchNextPage();
+    }
+  }, [
+    markdownQuery.fetchNextPage,
+    markdownQuery.hasNextPage,
+    markdownQuery.isFetchingNextPage,
+    markdownQuery.isFetchNextPageError,
+  ]);
+
+  const retryMoreMarkdown = useCallback(() => {
     if (markdownQuery.hasNextPage && !markdownQuery.isFetchingNextPage) {
       void markdownQuery.fetchNextPage();
     }
@@ -2434,7 +2452,9 @@ export function LibraryFilePage() {
                         assetBaseUrl={assetBaseUrl ?? undefined}
                         hasMore={Boolean(markdownQuery.hasNextPage)}
                         isFetchingMore={markdownQuery.isFetchingNextPage}
+                        loadMoreError={markdownLoadMoreError}
                         onRequestMore={requestMoreMarkdown}
+                        onRetryMore={retryMoreMarkdown}
                         onRenderProgressChange={handleMarkdownRenderProgress}
                       />
                     </div>
@@ -2488,7 +2508,24 @@ export function LibraryFilePage() {
                     <pre className="whitespace-pre-wrap break-words rounded-lg border border-slate-200 bg-slate-50 p-4 font-mono text-sm leading-7 text-slate-800 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-200">
                       {markdownContent}
                     </pre>
-                    {markdownQuery.hasNextPage || markdownQuery.isFetchingNextPage ? (
+                    {markdownLoadMoreError ? (
+                      <div
+                        className="mt-3 flex flex-wrap items-center justify-center gap-2 text-xs text-red-600 dark:text-red-300"
+                        role="alert"
+                      >
+                        <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                        <span>{markdownLoadMoreError}</span>
+                        <button
+                          type="button"
+                          onClick={retryMoreMarkdown}
+                          disabled={markdownQuery.isFetchingNextPage}
+                          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-red-200 bg-white px-3 font-medium text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-900 dark:bg-slate-900 dark:text-red-200 dark:hover:bg-red-950/30"
+                        >
+                          <RefreshCw className={cn("h-3.5 w-3.5", markdownQuery.isFetchingNextPage && "animate-spin")} />
+                          重试
+                        </button>
+                      </div>
+                    ) : markdownQuery.hasNextPage || markdownQuery.isFetchingNextPage ? (
                       <div className="mt-3 flex items-center justify-center gap-2 text-xs text-slate-500 dark:text-slate-400">
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
                         正在读取完整源码…

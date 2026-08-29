@@ -86,22 +86,14 @@ function normalizeMathInLine(line: string, startsInDisplayMath: boolean): { line
 export function escapeMathHtmlCharactersForRender(markdown: string): string {
   const lines = String(markdown ?? "").replace(/\r\n?/g, "\n").split("\n");
   const output: string[] = [];
-  let activeFence: string | null = null;
+  let activeFence: MarkdownFenceState | null = null;
   let inDisplayMath = false;
 
   for (const line of lines) {
-    const fenceMatch = line.match(/^\s*(```+|~~~+)/);
-    if (fenceMatch) {
-      if (activeFence === fenceMatch[1][0]) {
-        activeFence = null;
-      } else if (!activeFence) {
-        activeFence = fenceMatch[1][0];
-      }
-      output.push(line);
-      continue;
-    }
-
-    if (activeFence) {
+    const wasInsideFence = Boolean(activeFence);
+    const fenceResult = advanceMarkdownFence(line, activeFence);
+    activeFence = fenceResult.state;
+    if (wasInsideFence || fenceResult.isBoundary) {
       output.push(line);
       continue;
     }
@@ -292,16 +284,83 @@ function isMarkdownBlockquote(line: string): boolean {
   return /^ {0,3}>/u.test(line);
 }
 
-function hasMarkdownReferenceDefinition(lines: string[]): boolean {
-  let fenceMarker: string | null = null;
-  for (const line of lines) {
-    const fenceMatch = line.match(/^ {0,3}(`{3,}|~{3,})/u);
-    if (fenceMatch) {
-      const marker = fenceMatch[1][0];
-      fenceMarker = fenceMarker === marker ? null : fenceMarker ?? marker;
-      continue;
+type MarkdownFenceState = {
+  marker: "`" | "~";
+  length: number;
+};
+
+function advanceMarkdownFence(
+  line: string,
+  activeFence: MarkdownFenceState | null,
+): { state: MarkdownFenceState | null; isBoundary: boolean } {
+  const match = line.match(/^ {0,3}(`{3,}|~{3,})([^\r\n]*)/u);
+  if (!match) return { state: activeFence, isBoundary: false };
+
+  const sequence = match[1];
+  const marker = sequence[0] as MarkdownFenceState["marker"];
+  const suffix = match[2] ?? "";
+  if (activeFence) {
+    const closesFence = (
+      marker === activeFence.marker
+      && sequence.length >= activeFence.length
+      && /^[ \t\r]*$/u.test(suffix)
+    );
+    return {
+      state: closesFence ? null : activeFence,
+      isBoundary: closesFence,
+    };
+  }
+
+  if (marker === "`" && suffix.includes("`")) {
+    return { state: null, isBoundary: false };
+  }
+  return {
+    state: { marker, length: sequence.length },
+    isBoundary: true,
+  };
+}
+
+const MARKDOWN_BLOCK_HTML_CONTAINERS = new Set([
+  "article",
+  "aside",
+  "blockquote",
+  "details",
+  "div",
+  "figure",
+  "footer",
+  "header",
+  "main",
+  "ol",
+  "p",
+  "pre",
+  "section",
+  "table",
+  "ul",
+]);
+
+function updateMarkdownHtmlBlockDepth(line: string, currentDepth: number): number {
+  let depth = currentDepth;
+  const tags = line.matchAll(/<\s*(\/?)\s*([a-z][a-z0-9-]*)\b([^>]*)>/giu);
+  for (const match of tags) {
+    const tagName = match[2].toLowerCase();
+    if (!MARKDOWN_BLOCK_HTML_CONTAINERS.has(tagName)) continue;
+    if (match[1]) {
+      depth -= 1;
+    } else if (!/\/\s*$/u.test(match[3])) {
+      depth += 1;
     }
-    if (!fenceMarker && /^ {0,3}\[[^\]\r\n]+\]:[ \t]*/u.test(line)) {
+  }
+  return Math.max(0, depth);
+}
+
+function hasMarkdownReferenceDefinition(lines: string[]): boolean {
+  let activeFence: MarkdownFenceState | null = null;
+  for (const line of lines) {
+    const wasInsideFence = Boolean(activeFence);
+    const fenceResult = advanceMarkdownFence(line, activeFence);
+    activeFence = fenceResult.state;
+    if (wasInsideFence || fenceResult.isBoundary) continue;
+    if (/^ {0,3}\[[^\]\r\n]+\]:[ \t]*/u.test(line)) {
       return true;
     }
   }
@@ -327,9 +386,9 @@ export function splitLibraryMarkdownForRender(
 
   const chunks: string[] = [];
   let buffer = "";
-  let fenceMarker: string | null = null;
+  let activeFence: MarkdownFenceState | null = null;
   let inDisplayMath = false;
-  let htmlTableDepth = 0;
+  let htmlBlockDepth = 0;
   let inGfmTable = false;
   let inListBlock = false;
   let inBlockquote = false;
@@ -344,23 +403,20 @@ export function splitLibraryMarkdownForRender(
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
     const trimmed = line.trim();
-    const fenceMatch = trimmed.match(/^(`{3,}|~{3,})/u);
-    if (fenceMatch) {
-      const marker = fenceMatch[1][0];
-      fenceMarker = fenceMarker === marker ? null : fenceMarker ?? marker;
-    } else if (!fenceMarker) {
+    const wasInsideFence = Boolean(activeFence);
+    const fenceResult = advanceMarkdownFence(line, activeFence);
+    activeFence = fenceResult.state;
+    if (!wasInsideFence && !fenceResult.isBoundary) {
       if (countUnescapedDisplayMathDelimiters(line) % 2 === 1) {
         inDisplayMath = !inDisplayMath;
       }
-      htmlTableDepth += (line.match(/<table\b/giu) ?? []).length;
-      htmlTableDepth -= (line.match(/<\/table\s*>/giu) ?? []).length;
-      htmlTableDepth = Math.max(0, htmlTableDepth);
+      htmlBlockDepth = updateMarkdownHtmlBlockDepth(line, htmlBlockDepth);
 
       const nextSourceLine = lines[index + 1] ?? "";
       if (
         !inGfmTable &&
         !inDisplayMath &&
-        htmlTableDepth === 0 &&
+        htmlBlockDepth === 0 &&
         isGfmTableRow(line) &&
         isGfmTableDelimiterRow(nextSourceLine)
       ) {
@@ -397,9 +453,9 @@ export function splitLibraryMarkdownForRender(
     buffer += line;
     const nextLine = lines[index + 1]?.trim() ?? "";
     const safeBoundary = (
-      !fenceMarker &&
+      !activeFence &&
       !inDisplayMath &&
-      htmlTableDepth === 0 &&
+      htmlBlockDepth === 0 &&
       !inGfmTable &&
       !inListBlock &&
       !inBlockquote

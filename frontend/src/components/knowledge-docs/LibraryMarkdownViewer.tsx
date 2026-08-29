@@ -17,6 +17,7 @@ import {
   type ComponentPropsWithoutRef,
 } from "react";
 import ReactMarkdown from "react-markdown";
+import { AlertCircle, RefreshCw } from "lucide-react";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
@@ -35,7 +36,9 @@ interface LibraryMarkdownViewerProps {
   assetBaseUrl?: string;
   hasMore?: boolean;
   isFetchingMore?: boolean;
+  loadMoreError?: string | null;
   onRequestMore?: () => void;
+  onRetryMore?: () => void;
   onRenderProgressChange?: (renderedChars: number, complete: boolean) => void;
 }
 
@@ -180,7 +183,9 @@ export function LibraryMarkdownViewer({
   assetBaseUrl,
   hasMore = false,
   isFetchingMore = false,
+  loadMoreError = null,
   onRequestMore,
+  onRetryMore,
   onRenderProgressChange,
 }: LibraryMarkdownViewerProps) {
   const chunks = useMemo(() => splitLibraryMarkdownForRender(content), [content]);
@@ -236,10 +241,10 @@ export function LibraryMarkdownViewer({
       setVisibleChunkCount((current) => Math.min(current + CHUNKS_PER_REVEAL, chunks.length));
       return;
     }
-    if (hasMore && !isFetchingMore) {
+    if (hasMore && !isFetchingMore && !loadMoreError) {
       onRequestMore?.();
     }
-  }, [chunks.length, hasMore, isFetchingMore, onRequestMore, visibleChunkCount]);
+  }, [chunks.length, hasMore, isFetchingMore, loadMoreError, onRequestMore, visibleChunkCount]);
 
   useEffect(() => {
     const sentinel = loadSentinelRef.current;
@@ -274,7 +279,26 @@ export function LibraryMarkdownViewer({
           rehypePlugins={rehypePlugins}
         />
       ))}
-      {visibleChunkCount < chunks.length || hasMore || isFetchingMore ? (
+      {loadMoreError && visibleChunkCount >= chunks.length ? (
+        <div
+          className="library-markdown-progress not-prose flex-wrap text-red-600 dark:text-red-300"
+          role="alert"
+        >
+          <span className="inline-flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <span>{loadMoreError}</span>
+          </span>
+          <button
+            type="button"
+            onClick={onRetryMore}
+            disabled={isFetchingMore}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-red-200 bg-white px-3 text-xs font-medium text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-900 dark:bg-slate-900 dark:text-red-200 dark:hover:bg-red-950/30"
+          >
+            <RefreshCw className={isFetchingMore ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"} />
+            重试
+          </button>
+        </div>
+      ) : visibleChunkCount < chunks.length || hasMore || isFetchingMore ? (
         <div ref={loadSentinelRef} className="library-markdown-progress not-prose" aria-live="polite">
           <span className="library-markdown-progress__spinner" aria-hidden="true" />
           <span>{isFetchingMore ? "正在读取后续内容…" : "继续向下滚动以加载后续内容"}</span>
