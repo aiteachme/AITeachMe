@@ -10,6 +10,7 @@ from html.parser import HTMLParser
 from pathlib import Path as FilePath
 from urllib.parse import quote
 
+import structlog
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Path, Query, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
@@ -51,6 +52,7 @@ from app.workflows.ingest.intake import (
 )
 
 router = APIRouter(prefix="/api/v1/files", tags=["files"])
+logger = structlog.get_logger(__name__)
 _INTERACTIVE_HTML_BLOCKED_TAGS = {
     "base",
     "embed",
@@ -256,6 +258,19 @@ async def get_user_file_markdown_chunk_api(
         recovered = await resolve_file_markdown_content(raw_file)
         if raw_file.status == TaskStatus.COMPLETED.value and not recovered.strip():
             raise HTTPException(status_code=503, detail="资料正文暂时无法读取，请稍后重试。")
+        if recovered:
+            try:
+                raw_file.markdown_content = recovered
+                session.add(raw_file)
+                session.commit()
+            except Exception as exc:
+                session.rollback()
+                logger.warning(
+                    "file_markdown_backfill_failed",
+                    file_id=file_id,
+                    user_id=user.user_id,
+                    error=str(exc),
+                )
         total_chars = len(recovered)
         content = recovered[offset : offset + limit]
 

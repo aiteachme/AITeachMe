@@ -346,12 +346,15 @@ def build_classify_file_node(*, context: WorkflowContext):
     async def classify_file_node(state: IngestParseState) -> IngestParseState:
         logger = workflow_logger(context, state)
         try:
-            await asyncio.to_thread(
-                persist_parse_progress,
-                user_id=state["user_id"],
-                file_id=state["file_id"],
-                stage="classifying",
-            )
+            try:
+                await asyncio.to_thread(
+                    persist_parse_progress,
+                    user_id=state["user_id"],
+                    file_id=state["file_id"],
+                    stage="classifying",
+                )
+            except Exception as exc:
+                logger.warning("parse_progress_persist_failed", error=str(exc))
             classification = await asyncio.to_thread(
                 classify_file,
                 state["file_path"],

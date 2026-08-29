@@ -111,3 +111,55 @@ test("keeps a long GFM table in one render chunk", () => {
   assert.match(tableChunk, /\| row220 \| value220 \|/u);
   assert.equal(chunks.filter((chunk) => /\| row\d+ \| value\d+ \|/u.test(chunk)).length, 1);
 });
+
+test("keeps a long ordered list in one render chunk", () => {
+  const markdown = Array.from(
+    { length: 600 },
+    (_, index) => `1. item ${index + 1} ${"content ".repeat(4)}\n\n   continued details\n\n`,
+  ).join("");
+
+  const chunks = splitLibraryMarkdownForRender(markdown, 2_000);
+
+  assert.equal(chunks.length, 1);
+  assert.equal(chunks[0], markdown);
+});
+
+test("keeps a long blockquote in one render chunk", () => {
+  const markdown = Array.from(
+    { length: 600 },
+    (_, index) => `> quoted paragraph ${index + 1} ${"content ".repeat(3)}\n\n`,
+  ).join("");
+
+  const chunks = splitLibraryMarkdownForRender(markdown, 2_000);
+
+  assert.equal(chunks.length, 1);
+  assert.equal(chunks[0], markdown);
+});
+
+test("keeps reference links with their definitions", () => {
+  const markdown = [
+    "# References\n\n",
+    `${"intro text ".repeat(300)}\n\n`,
+    "Read [OpenAI][openai] for details.\n\n",
+    `${"later text ".repeat(300)}\n\n`,
+    "[openai]: https://openai.com\n",
+  ].join("");
+
+  const chunks = splitLibraryMarkdownForRender(markdown, 2_000);
+
+  assert.equal(chunks.length, 1);
+  assert.equal(chunks[0], markdown);
+});
+
+test("bounds chunks for long plain Markdown without blank lines", () => {
+  const markdown = Array.from(
+    { length: 600 },
+    (_, index) => `plain OCR line ${index + 1} ${"content ".repeat(4)}\n`,
+  ).join("");
+
+  const chunks = splitLibraryMarkdownForRender(markdown, 2_000);
+
+  assert.ok(chunks.length > 1);
+  assert.equal(chunks.join(""), markdown);
+  assert.ok(chunks.every((chunk) => chunk.length < 4_000));
+});

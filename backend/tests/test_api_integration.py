@@ -370,3 +370,114 @@ def test_user_file_markdown_is_returned_in_character_chunks(monkeypatch: pytest.
     assert second.status_code == 200
     assert second.json()["data"]["content"] == markdown[4096:]
     assert second.json()["data"]["done"] is True
+
+
+def test_storage_only_markdown_is_backfilled_after_first_chunk(monkeypatch: pytest.MonkeyPatch) -> None:
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    SQLModel.metadata.create_all(engine, tables=[RawFile.__table__])
+    session = Session(engine, expire_on_commit=False)
+    markdown = "# 存储正文\n\n" + ("分页内容" * 3_000)
+    raw_file = RawFile(
+        id="file_storage_only",
+        user_id="api-user",
+        filename="storage-only.pdf",
+        filetype="pdf",
+        file_path="users/api-user/files/file_storage_only/source.pdf",
+        markdown_path="users/api-user/files/file_storage_only/markdown.md",
+        status=TaskStatus.COMPLETED.value,
+        ingest_status=IngestStatus.READY_FOR_DIGEST.value,
+    )
+    session.add(raw_file)
+    session.commit()
+    session.refresh(raw_file)
+    original_updated_at = raw_file.updated_at
+    storage_reads: list[str] = []
+
+    async def resolve_markdown(raw_file: RawFile) -> str:
+        storage_reads.append(str(raw_file.markdown_path))
+        return markdown
+
+    def override_get_db() -> Generator[Session, None, None]:
+        yield session
+
+    def override_current_user_context() -> CurrentUserContext:
+        return CurrentUserContext(user_id="api-user", email=None, is_local=True)
+
+    monkeypatch.setattr(user_files_api, "resolve_file_markdown_content", resolve_markdown)
+    app = FastAPI()
+    app.include_router(user_files_api.router)
+    app.dependency_overrides[deps.get_db] = override_get_db
+    app.dependency_overrides[deps.get_current_user_context] = override_current_user_context
+
+    try:
+        with TestClient(app) as client:
+            first = client.get("/api/v1/files/file_storage_only/markdown?offset=0&limit=4096")
+            second = client.get("/api/v1/files/file_storage_only/markdown?offset=4096&limit=4096")
+
+        assert first.status_code == 200
+        assert first.json()["data"]["content"] == markdown[:4096]
+        assert second.status_code == 200
+        assert second.json()["data"]["content"] == markdown[4096:8192]
+        assert storage_reads == ["users/api-user/files/file_storage_only/markdown.md"]
+        session.expire_all()
+        persisted = session.get(RawFile, "file_storage_only")
+        assert persisted.markdown_content == markdown
+        assert persisted.updated_at == original_updated_at
+    finally:
+        session.close()
+
+
+def test_storage_only_markdown_is_served_when_backfill_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    app = FastAPI()
+    app.include_router(user_files_api.router)
+    markdown = "# 已恢复正文\n\n正文内容"
+    raw_file = RawFile(
+        id="file_backfill_failure",
+        user_id="api-user",
+        filename="storage-only.pdf",
+        filetype="pdf",
+        file_path="users/api-user/files/file_backfill_failure/source.pdf",
+        markdown_path="users/api-user/files/file_backfill_failure/markdown.md",
+        status=TaskStatus.COMPLETED.value,
+        ingest_status=IngestStatus.READY_FOR_DIGEST.value,
+    )
+
+    class FakeSession:
+        rolled_back = False
+
+        def add(self, _raw_file: RawFile) -> None:
+            raise RuntimeError("database unavailable")
+
+        def commit(self) -> None:
+            raise AssertionError("commit must not run after add fails")
+
+        def rollback(self) -> None:
+            self.rolled_back = True
+
+    session = FakeSession()
+
+    def override_get_db() -> Generator[FakeSession, None, None]:
+        yield session
+
+    def override_current_user_context() -> CurrentUserContext:
+        return CurrentUserContext(user_id="api-user", email=None, is_local=True)
+
+    async def resolve_markdown(_raw_file: RawFile) -> str:
+        return markdown
+
+    monkeypatch.setattr(user_files_api, "get_user_file_or_raise", lambda *_args, **_kwargs: raw_file)
+    monkeypatch.setattr(user_files_api, "get_raw_file_markdown_chunk_for_user", lambda *_args, **_kwargs: ("", 0))
+    monkeypatch.setattr(user_files_api, "resolve_file_markdown_content", resolve_markdown)
+    app.dependency_overrides[deps.get_db] = override_get_db
+    app.dependency_overrides[deps.get_current_user_context] = override_current_user_context
+
+    with TestClient(app) as client:
+        response = client.get("/api/v1/files/file_backfill_failure/markdown?offset=0&limit=4096")
+
+    assert response.status_code == 200
+    assert response.json()["data"]["content"] == markdown
+    assert session.rolled_back is True

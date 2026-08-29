@@ -280,10 +280,38 @@ function isGfmTableDelimiterRow(line: string): boolean {
   return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/u.test(cell));
 }
 
+function isMarkdownListItem(line: string): boolean {
+  return /^ {0,3}(?:[-+*]|\d{1,9}[.)])(?:[ \t]+|$)/u.test(line);
+}
+
+function isNestedMarkdownListItem(line: string): boolean {
+  return /^\s+(?:[-+*]|\d{1,9}[.)])(?:[ \t]+|$)/u.test(line);
+}
+
+function isMarkdownBlockquote(line: string): boolean {
+  return /^ {0,3}>/u.test(line);
+}
+
+function hasMarkdownReferenceDefinition(lines: string[]): boolean {
+  let fenceMarker: string | null = null;
+  for (const line of lines) {
+    const fenceMatch = line.match(/^ {0,3}(`{3,}|~{3,})/u);
+    if (fenceMatch) {
+      const marker = fenceMatch[1][0];
+      fenceMarker = fenceMarker === marker ? null : fenceMarker ?? marker;
+      continue;
+    }
+    if (!fenceMarker && /^ {0,3}\[[^\]\r\n]+\]:[ \t]*/u.test(line)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Split a large parser result at stable line boundaries. Fenced code,
- * display formulas, HTML tables and GFM tables stay intact so each chunk can
- * be parsed by ReactMarkdown independently without changing their meaning.
+ * display formulas, tables, lists, and blockquotes stay intact so each chunk
+ * can be parsed by ReactMarkdown independently without changing its meaning.
  */
 export function splitLibraryMarkdownForRender(
   markdown: string,
@@ -295,12 +323,17 @@ export function splitLibraryMarkdownForRender(
   const safeTarget = Math.max(2_000, targetChars);
   const hardTarget = Math.round(safeTarget * 1.5);
   const lines = source.match(/[^\n]*(?:\n|$)/g)?.filter(Boolean) ?? [source];
+  if (hasMarkdownReferenceDefinition(lines)) return [source];
+
   const chunks: string[] = [];
   let buffer = "";
   let fenceMarker: string | null = null;
   let inDisplayMath = false;
   let htmlTableDepth = 0;
   let inGfmTable = false;
+  let inListBlock = false;
+  let inBlockquote = false;
+  let nextNonBlankIndex = 0;
 
   const flush = () => {
     if (!buffer) return;
@@ -336,11 +369,41 @@ export function splitLibraryMarkdownForRender(
       if (inGfmTable && !isGfmTableRow(nextSourceLine)) {
         inGfmTable = false;
       }
+
+      if (isMarkdownListItem(line)) inListBlock = true;
+      if (isMarkdownBlockquote(line)) inBlockquote = true;
+      if (!trimmed && (inListBlock || inBlockquote)) {
+        if (nextNonBlankIndex <= index) {
+          nextNonBlankIndex = index + 1;
+          while (nextNonBlankIndex < lines.length && !lines[nextNonBlankIndex].trim()) {
+            nextNonBlankIndex += 1;
+          }
+        }
+        const nextNonBlankLine = lines[nextNonBlankIndex] ?? "";
+        if (
+          inListBlock &&
+          !isMarkdownListItem(nextNonBlankLine) &&
+          !isNestedMarkdownListItem(nextNonBlankLine) &&
+          !/^(?: {2,}|\t)\S/u.test(nextNonBlankLine)
+        ) {
+          inListBlock = false;
+        }
+        if (inBlockquote && !isMarkdownBlockquote(nextNonBlankLine)) {
+          inBlockquote = false;
+        }
+      }
     }
 
     buffer += line;
     const nextLine = lines[index + 1]?.trim() ?? "";
-    const safeBoundary = !fenceMarker && !inDisplayMath && htmlTableDepth === 0 && !inGfmTable;
+    const safeBoundary = (
+      !fenceMarker &&
+      !inDisplayMath &&
+      htmlTableDepth === 0 &&
+      !inGfmTable &&
+      !inListBlock &&
+      !inBlockquote
+    );
     const semanticBoundary = !trimmed || /^#{1,6}\s+\S/u.test(nextLine);
     if (
       safeBoundary &&

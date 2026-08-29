@@ -211,6 +211,47 @@ def test_compute_fingerprint_node_reports_success_and_missing_file(tmp_path) -> 
     assert failure["error"].startswith("compute_fingerprint_failed:")
 
 
+def test_classify_file_node_ignores_progress_persistence_failure(monkeypatch) -> None:
+    classification = SimpleNamespace(
+        estimated_pages=3,
+        detected_language="zh",
+        file_category="document",
+        recommended_parser="markitdown",
+        to_dict=lambda: {"file_category": "document"},
+    )
+    raw_file = SimpleNamespace(user_id="user-1")
+    updates: list[dict[str, object]] = []
+
+    @contextmanager
+    def fake_managed_session():
+        yield object()
+
+    def fail_progress_write(**_kwargs: object) -> None:
+        raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr(file_nodes, "persist_parse_progress", fail_progress_write)
+    monkeypatch.setattr(file_nodes, "classify_file", lambda *_args: classification)
+    monkeypatch.setattr(file_nodes, "managed_session", fake_managed_session)
+    monkeypatch.setattr(file_nodes, "get_raw_file_by_id", lambda *_args: raw_file)
+    monkeypatch.setattr(
+        file_nodes,
+        "update_raw_file",
+        lambda _session, _raw_file, **kwargs: updates.append(kwargs),
+    )
+
+    node = file_nodes.build_classify_file_node(context=_context())
+    result = asyncio.run(node({
+        "file_id": "file-1",
+        "user_id": "user-1",
+        "file_path": "lesson.pdf",
+        "filetype": "pdf",
+    }))
+
+    assert result["error"] is None
+    assert result["classification"] is classification
+    assert updates[0]["estimated_pages"] == 3
+
+
 def test_plan_parse_node_routes_external_and_local_fast_paths(monkeypatch) -> None:
     node = file_nodes.build_plan_parse_node(context=_context())
     monkeypatch.setattr(
