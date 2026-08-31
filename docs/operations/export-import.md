@@ -236,6 +236,7 @@ POST /api/v1/demo-courses/{identifier}/import
 demo-courses/
 ├── catalog/
 │   └── v1/
+│       ├── display-order.json
 │       └── index.json
 ├── atmx/
 │   └── <course_slug>.atmx
@@ -246,8 +247,9 @@ demo-courses/
 运行时职责：
 
 - 后端读取 `https://raw.githubusercontent.com/aiteachme/assets/main/demo-courses/catalog/v1/index.json`。
+- assets 仓库生成目录时按 `display-order.json` 的 `packages` 顺序排列课程；未配置的新课程按名称稳定追加，因此无需改前端即可出现。
 - 后端读取 catalog 时必须带 no-cache 请求头和一次性 query，避免拿到旧索引。
-- 前端只消费统一后的演示课程目录 API，并在返回课程后展示演示课程区。
+- 前端只消费统一后的演示课程目录 API，按返回顺序从左到右、逐行展示课程，不维护第二份排序配置。
 - 真正导入时，由后端下载到临时目录后复用同一套 `import_course()` 逻辑。
 - 后端只允许课程包 URL 位于固定 `aiteachme/assets` 演示课程前缀下。
 - 下载时同时检查 catalog 声明大小、HTTP `Content-Length` 和实际流式写入字节数。

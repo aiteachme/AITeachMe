@@ -210,7 +210,7 @@ assets 仓库 -> https://github.com/aiteachme/assets
 
 演示课程页面有两条运行时路径：
 
-- 展示课程：后端读取 assets 仓库 index；目录不可用时 `GET /api/v1/demo-courses` 返回空列表。
+- 展示课程：assets 仓库以 `display-order.json` 生成有序 index，后端保留该顺序并由 `GET /api/v1/demo-courses` 返回；目录不可用时返回空列表。
 - 导入当前环境：`POST /api/v1/demo-courses/{identifier}/import` 由当前连接的后端临时下载 `.atmx` 并导入；成功后出现在左侧课程列表。
 - 离线分发：运维侧用私有脚本下载 `.atmx`，用户侧再通过“上传导入”入口导入。
 
