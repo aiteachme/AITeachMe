@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-08-24T01:03:42.828925",
-  "total_commits_analyzed": 2120,
+  "generated_at": "2026-08-31T03:20:46.560996",
+  "total_commits_analyzed": 2131,
   "stats": [
     {
       "date": "2026-03-11",
@@ -16961,6 +16961,94 @@
       "code_lines": 283466,
       "other_lines": 50945,
       "message": "fix: 修复镜像推送限流导致的部署失败"
+    },
+    {
+      "date": "2026-08-21",
+      "commit": "13a0d82",
+      "total_lines": 335558,
+      "code_lines": 284370,
+      "other_lines": 51188,
+      "message": "feat: 优化资料库渲染与大文件阅读体验"
+    },
+    {
+      "date": "2026-08-24",
+      "commit": "45cb04f",
+      "total_lines": 334411,
+      "code_lines": 283466,
+      "other_lines": 50945,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-08-23",
+      "commit": "b445ab7",
+      "total_lines": 334535,
+      "code_lines": 283563,
+      "other_lines": 50972,
+      "message": "fix: 修正 LangSmith 逻辑失败追踪状态"
+    },
+    {
+      "date": "2026-08-28",
+      "commit": "ecc68c9",
+      "total_lines": 334419,
+      "code_lines": 283463,
+      "other_lines": 50956,
+      "message": "fix: 优化首页内容层级并稳定演示课程列表"
+    },
+    {
+      "date": "2026-08-28",
+      "commit": "eac4c0b",
+      "total_lines": 334419,
+      "code_lines": 283463,
+      "other_lines": 50956,
+      "message": "fix: 确保线上镜像安装 MarkItDown"
+    },
+    {
+      "date": "2026-08-28",
+      "commit": "209207a",
+      "total_lines": 334419,
+      "code_lines": 283463,
+      "other_lines": 50956,
+      "message": "chore: release v0.1.6"
+    },
+    {
+      "date": "2026-08-28",
+      "commit": "24dad02",
+      "total_lines": 335566,
+      "code_lines": 284367,
+      "other_lines": 51199,
+      "message": "chore: 合并主分支 v0.1.6 更新"
+    },
+    {
+      "date": "2026-08-29",
+      "commit": "7c154ac",
+      "total_lines": 336587,
+      "code_lines": 285274,
+      "other_lines": 51313,
+      "message": "feat: 增强文件解析进度与上传反馈"
+    },
+    {
+      "date": "2026-08-29",
+      "commit": "7be6bf6",
+      "total_lines": 336689,
+      "code_lines": 285360,
+      "other_lines": 51329,
+      "message": "fix: 修复文档解析托底与长表格渲染"
+    },
+    {
+      "date": "2026-08-29",
+      "commit": "3a9bef2",
+      "total_lines": 336922,
+      "code_lines": 285559,
+      "other_lines": 51363,
+      "message": "fix: 修复解析进度、文档分页与 Markdown 分块问题"
+    },
+    {
+      "date": "2026-08-29",
+      "commit": "ea0da9b",
+      "total_lines": 337039,
+      "code_lines": 285670,
+      "other_lines": 51369,
+      "message": "fix: 修复 Markdown 分块与分页重试问题"
     }
   ]
 }
