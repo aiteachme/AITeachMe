@@ -187,6 +187,49 @@ async def test_unit_test_review_repairs_an_unusable_initial_structure_once() -> 
     assert "使函数有意义的自变量取值集合" in markdown
 
 
+@pytest.mark.anyio
+async def test_unit_test_review_retries_once_after_invalid_review_contract() -> None:
+    calls = 0
+    review_prompts: list[str] = []
+
+    async def fake_llm(messages, **_kwargs):
+        nonlocal calls
+        calls += 1
+        if calls >= 2:
+            review_prompts.append(str(messages[-1]["content"]))
+        answer = "错误选项" if calls == 2 else "完整正确选项"
+        return ChapterUnitTestSet(
+            chapter_index=1,
+            items=[
+                ChapterUnitTestItem(
+                    type="选择题",
+                    difficulty="基础",
+                    target="定义域",
+                    stem="函数允许输入的集合称为什么？",
+                    options=["完整正确选项", "值域", "函数值", "图像"],
+                    answer=answer,
+                    basis="依据定义判断。",
+                )
+            ],
+        )
+
+    markdown = await generate_chapter_unit_test_markdown(
+        chapter_index=1,
+        chapter_title="函数",
+        digest_mode="systematic",
+        required_elements=["定义域"],
+        chapter_end_practice_plan=[],
+        body_markdown="# 函数\n\n## 定义域\n\n正文。",
+        min_items=1,
+        max_items=1,
+        llm_caller=fake_llm,
+    )
+
+    assert calls == 3
+    assert "unit-test model returned 0 usable items" in review_prompts[-1]
+    assert unit_test_structure_issues(markdown) == []
+
+
 def test_unit_test_contract_rejects_reversed_empty_and_floating_answers() -> None:
     malformed = (
         "# 函数\n\n## 单元测试\n\n"
@@ -272,6 +315,98 @@ def test_unit_test_renderer_preserves_newline_escapes_in_python_strings() -> Non
     assert markdown.count(r'print("\n")') == 2
     assert markdown.count(r'"\n"') >= 4
     assert 'print(" ")' not in markdown
+
+
+def test_presentation_normalization_preserves_fenced_code_inside_unit_test_callouts() -> None:
+    unit_test = render_unit_test_markdown(
+        ChapterUnitTestSet(
+            chapter_index=2,
+            items=[
+                ChapterUnitTestItem(
+                    type="短答题",
+                    difficulty="进阶",
+                    target="嵌套循环输出",
+                    stem=(
+                        "执行下面代码并写出输出：\n\n"
+                        "```python\n"
+                        "for i in range(2):\n"
+                        "    print(i)\n"
+                        "```"
+                    ),
+                    answer="依次输出 0 和 1。",
+                    basis="range(2) 依次产生 0 和 1。",
+                )
+            ],
+        ),
+        title="循环与流程控制",
+        min_items=1,
+        max_items=1,
+        fallback_targets=[],
+    )
+    markdown = "# 循环与流程控制\n\n## 循环基础\n\n正文。\n\n" + unit_test
+
+    normalized = normalize_docgen_presentation(markdown, title="循环与流程控制")
+
+    assert normalized.split("## 单元测试", 1)[1] == markdown.split("## 单元测试", 1)[1]
+    assert unit_test_structure_issues(normalized) == []
+
+
+def test_unit_test_renderer_keeps_long_choice_answer_equal_to_full_option() -> None:
+    full_option = (
+        "读取时逐行检查列数和空值，再捕获 ValueError 转换成绩；写出时使用 utf-8、newline 参数、"
+        "固定表头和 name、score 字段顺序，最后重新读取输出文件核对记录数量与字段内容完全一致。"
+    )
+    markdown = render_unit_test_markdown(
+        ChapterUnitTestSet(
+            chapter_index=6,
+            items=[
+                ChapterUnitTestItem(
+                    type="选择题",
+                    difficulty="进阶",
+                    target="CSV 清洗与写入",
+                    stem="哪项方案能够完整处理 CSV？",
+                    options=[full_option, "只捕获 Exception。", "不写表头。", "不检查空值。"],
+                    answer=full_option,
+                    basis="完整方案覆盖读取、校验、转换、写入和结果核验。",
+                )
+            ],
+        ),
+        title="文件与异常处理",
+        min_items=1,
+        max_items=1,
+        fallback_targets=[],
+    )
+
+    assert markdown.count(full_option) == 2
+    assert unit_test_structure_issues(markdown) == []
+
+
+def test_append_unit_test_closes_truncated_body_code_fence_before_heading() -> None:
+    body = "# Python 变量与分支\n\n## 输入转换\n\n```python\nage ="
+    unit_test = render_unit_test_markdown(
+        ChapterUnitTestSet(
+            chapter_index=1,
+            items=[
+                ChapterUnitTestItem(
+                    type="短答题",
+                    difficulty="基础",
+                    target="输入转换",
+                    stem="如何把年龄输入转换为整数？",
+                    answer="使用 int(input())。",
+                    basis="input 返回字符串，int 完成整数转换。",
+                )
+            ],
+        ),
+        title="Python 变量与分支",
+        min_items=1,
+        max_items=1,
+        fallback_targets=[],
+    )
+
+    published = append_unit_test_markdown(body, unit_test)
+
+    assert "```python\nage =\n```\n\n## 单元测试" in published
+    assert unit_test_structure_issues(published) == []
 
 
 def test_final_chapter_normalization_rejects_question_content_outside_callout() -> None:

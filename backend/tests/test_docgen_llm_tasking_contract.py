@@ -181,6 +181,52 @@ async def test_docgen_writer_calls_single_completion_directly(monkeypatch) -> No
     assert captured_completion_kwargs["max_tokens"] <= 4080
 
 
+@pytest.mark.anyio
+async def test_docgen_writer_retries_truncated_unclosed_code_fence_once() -> None:
+    calls = 0
+
+    async def fake_llm(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return "# Python 分支\n\n## 输入转换\n\n```python\nage ="
+        return (
+            "# Python 分支\n\n"
+            "## 输入转换\n\n"
+            "```python\nage = int(input())\n```\n\n"
+            "## 条件判断\n\n使用 if 判断年龄。\n\n"
+            "## 常见错误\n\n不要直接比较字符串和整数。\n"
+        )
+
+    runtime = DocGenWriterRuntime(
+        TracedExecutionContext(
+            course_id="course_docgen0000",
+            build_session_id="build-1",
+            digest_mode="systematic",
+            llm_caller=fake_llm,
+        )
+    )
+
+    result = await runtime.execute(
+        chapter_plan={
+            "chapter_index": 1,
+            "total_chapters": 1,
+            "title": "Python 分支",
+            "objective": "理解输入转换和分支。",
+            "required_elements": ["输入转换", "条件判断"],
+            "execution_contract": {"min_word_count": 1, "target_word_count": 1200},
+        },
+        dense_context="input 返回字符串，int 可以完成整数转换。",
+        digest_mode="systematic",
+    )
+
+    assert calls == 2
+    assert "age = int(input())" in result.content
+    assert result.content.count("```") % 2 == 0
+    assert result.metadata["fallback_used"] is True
+    assert result.metadata["writer_stream_failure_reason"] == "unclosed_writer_code_fence"
+
+
 def test_docgen_writer_caps_unreasonable_target_word_budget(monkeypatch) -> None:
     monkeypatch.setattr(writer, "WRITER_MAX_EFFECTIVE_TARGET_WORDS", 2400)
 

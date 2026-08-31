@@ -96,56 +96,69 @@ async def generate_chapter_unit_test_markdown(
             error=generation_issue[:240],
         )
 
-    review_messages = build_chapter_unit_test_review_messages(
-        chapter_title=chapter_title,
-        digest_mode=digest_mode,
-        required_elements=required,
-        chapter_end_practice_plan=practice_plan,
-        markdown=body_markdown,
-        candidate=candidate.model_dump(mode="json") if candidate is not None else None,
-        generation_issue=generation_issue,
-        min_items=safe_min,
-        max_items=safe_max,
-    )
-    review_kwargs = docgen_completion_kwargs_with_metadata(
-        DocGenModelStep.CHAPTER_UNIT_TEST_REVIEW,
-        digest_mode=digest_mode,
-        extra_metadata=extra_metadata,
-        docgen_stage="review_chapter_unit_test",
-        chapter_index=chapter_index,
-        repaired_generation=bool(generation_issue),
-    )
-    try:
-        response = await caller(review_messages, **review_kwargs, response_model=ChapterUnitTestSet)
-        reviewed = response if isinstance(response, ChapterUnitTestSet) else ChapterUnitTestSet.model_validate(response)
-        reviewed.chapter_index = chapter_index
-        unit_test_markdown = render_unit_test_markdown(
-            reviewed,
-            title=chapter_title,
+    review_candidate = candidate
+    review_issue = generation_issue
+    last_error: Exception | None = None
+    for review_attempt in range(1, 3):
+        review_messages = build_chapter_unit_test_review_messages(
+            chapter_title=chapter_title,
+            digest_mode=digest_mode,
+            required_elements=required,
+            chapter_end_practice_plan=practice_plan,
+            markdown=body_markdown,
+            candidate=review_candidate.model_dump(mode="json") if review_candidate is not None else None,
+            generation_issue=review_issue,
             min_items=safe_min,
             max_items=safe_max,
-            fallback_targets=required,
         )
-        published = append_unit_test_markdown(body_markdown, unit_test_markdown)
-        issues = unit_test_structure_issues(published)
-        if issues:
-            raise ChapterUnitTestGenerationError("；".join(issues))
-        return published
-    except asyncio.CancelledError:
-        raise
-    except ChapterUnitTestGenerationError:
-        raise
-    except Exception as exc:
+        review_kwargs = docgen_completion_kwargs_with_metadata(
+            DocGenModelStep.CHAPTER_UNIT_TEST_REVIEW,
+            digest_mode=digest_mode,
+            extra_metadata=extra_metadata,
+            docgen_stage="review_chapter_unit_test",
+            chapter_index=chapter_index,
+            repaired_generation=bool(review_issue),
+            unit_test_review_attempt=review_attempt,
+        )
+        try:
+            response = await caller(review_messages, **review_kwargs, response_model=ChapterUnitTestSet)
+            reviewed = response if isinstance(response, ChapterUnitTestSet) else ChapterUnitTestSet.model_validate(response)
+            reviewed.chapter_index = chapter_index
+            review_candidate = reviewed
+            unit_test_markdown = render_unit_test_markdown(
+                reviewed,
+                title=chapter_title,
+                min_items=safe_min,
+                max_items=safe_max,
+                fallback_targets=required,
+            )
+            published = append_unit_test_markdown(body_markdown, unit_test_markdown)
+            issues = unit_test_structure_issues(published)
+            if not issues:
+                return published
+            review_issue = "；".join(issues)
+            last_error = ChapterUnitTestGenerationError(review_issue)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            last_error = exc
+            review_issue = str(exc)[:500] or type(exc).__name__
+
         logger.warning(
             "docgen_chapter_unit_test_review_failed",
             chapter_index=chapter_index,
             title=chapter_title,
-            error=str(exc)[:240],
+            review_attempt=review_attempt,
+            retrying=review_attempt < 2,
+            error=review_issue[:240],
             generation_issue=generation_issue[:240],
         )
-        raise ChapterUnitTestGenerationError(
-            f"LLM failed to review a valid unit test for chapter {chapter_index}."
-        ) from exc
+
+    if isinstance(last_error, ChapterUnitTestGenerationError):
+        raise last_error
+    raise ChapterUnitTestGenerationError(
+        f"LLM failed to review a valid unit test for chapter {chapter_index}."
+    ) from last_error
 
 
 __all__ = ["generate_chapter_unit_test_markdown"]

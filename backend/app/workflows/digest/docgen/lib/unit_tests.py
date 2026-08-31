@@ -339,6 +339,54 @@ def _markdown_text(value: str, *, limit: int | None = None) -> str:
     return text
 
 
+def _close_unterminated_fenced_code_block(markdown: str) -> str:
+    """Close a body-writer fence before appending the fixed unit-test section."""
+
+    text = str(markdown or "").replace("\r\n", "\n").replace("\r", "\n")
+    active_marker = ""
+    for line in text.splitlines():
+        if active_marker:
+            closing = re.compile(
+                rf"^[ \t]{{0,3}}{re.escape(active_marker[0])}{{{len(active_marker)},}}[ \t]*$"
+            )
+            if closing.match(line):
+                active_marker = ""
+            continue
+        opening = _FENCE_OPEN_RE.match(line)
+        if opening is not None:
+            active_marker = opening.group("marker")
+    if not active_marker:
+        return text
+    return text.rstrip() + f"\n{active_marker}\n"
+
+
+def split_final_unit_test_section(markdown: str) -> tuple[str, str]:
+    """Split out the visible canonical final unit-test section, if present."""
+
+    text = str(markdown or "").replace("\r\n", "\n").replace("\r", "\n")
+    active_marker = ""
+    offset = 0
+    unit_start: int | None = None
+    for line in text.splitlines(keepends=True):
+        line_without_newline = line.rstrip("\r\n")
+        if active_marker:
+            closing = re.compile(
+                rf"^[ \t]{{0,3}}{re.escape(active_marker[0])}{{{len(active_marker)},}}[ \t]*$"
+            )
+            if closing.match(line_without_newline):
+                active_marker = ""
+        else:
+            opening = _FENCE_OPEN_RE.match(line_without_newline)
+            if opening is not None:
+                active_marker = opening.group("marker")
+            elif re.fullmatch(r"##\s+单元测试\s*", line_without_newline.strip()):
+                unit_start = offset
+        offset += len(line)
+    if unit_start is None:
+        return text, ""
+    return text[:unit_start].rstrip(), text[unit_start:].strip()
+
+
 def _markdown_explanation_lines(value: str, *, limit: int = 520) -> list[str]:
     text = _markdown_text(value, limit=limit)
     if not text:
@@ -708,10 +756,10 @@ def _render_unit_test_item_markdown(item: ChapterUnitTestItem, *, index: int) ->
     ]
     if _is_choice_unit_test_type(question_type) and item.options:
         lines.extend([">", "> **选项**", ">"])
-        lines.extend([f"> - {label}. {_markdown_text(option, limit=160)}" for label, option in zip("ABCD", item.options)])
+        lines.extend([f"> - {label}. {_markdown_text(option)}" for label, option in zip("ABCD", item.options)])
     explanation_lines = _markdown_explanation_lines(item.basis, limit=720)
     lines.extend(["", "> [!ANSWER]", ">", "> **答案**", ">"])
-    answer_text = _markdown_text(item.answer, limit=720) or "见解析。"
+    answer_text = _markdown_text(item.answer) or "见解析。"
     lines.append(f"> {answer_text}")
     if explanation_lines:
         lines.extend([">", "> **解析步骤**", ">"])
@@ -752,7 +800,7 @@ def render_unit_test_markdown(
 def append_unit_test_markdown(markdown: str, unit_test_markdown: str) -> str:
     """Append a single final unit-test section to body-only chapter markdown."""
 
-    body = strip_existing_unit_test_sections(markdown)
+    body = _close_unterminated_fenced_code_block(strip_existing_unit_test_sections(markdown))
     return body.rstrip() + "\n\n" + unit_test_markdown.strip() + "\n"
 
 
@@ -884,6 +932,7 @@ __all__ = [
     "has_unit_test_heading",
     "normalize_published_unit_test_sections",
     "render_unit_test_markdown",
+    "split_final_unit_test_section",
     "strip_existing_unit_test_sections",
     "unit_test_structure_issues",
 ]

@@ -34,6 +34,7 @@ from app.workflows.digest.docgen.lib.presentation_policy import (
 _PLACEHOLDER_TOKEN_MAP = {
     "asset_request": ASSET_REQUEST_LANGUAGE,
 }
+_UNCLOSED_CODE_FENCE_ISSUE = "Markdown fenced code block 数量不成对。"
 
 STREAM_CALLBACK_MIN_DELTA_CHARS = get_env_bounded_int(
     "DOCGEN_WRITER_STREAM_CALLBACK_MIN_DELTA_CHARS",
@@ -67,6 +68,10 @@ def _positive_int(value: object, *, default: int) -> int:
     except (TypeError, ValueError):
         return default
     return parsed if parsed > 0 else default
+
+
+def _has_unclosed_code_fence(markdown: str) -> bool:
+    return _UNCLOSED_CODE_FENCE_ISSUE in find_docgen_presentation_issues(markdown)
 
 
 def _writer_target_word_count(execution_contract: Mapping[str, Any]) -> int:
@@ -276,6 +281,41 @@ class DocGenWriterRuntime(BaseTracedExecution):
                 raise DocGenWriterNoContentError(
                     f"DocGen writer produced no publishable content for chapter {chapter_index or '?'}: "
                     f"{writer_no_content_reason}"
+                )
+
+        if _has_unclosed_code_fence(markdown):
+            invalid_markdown_reason = "unclosed_writer_code_fence"
+            retry_model_kwargs = dict(writer_model_kwargs)
+            raw_metadata = retry_model_kwargs.get("extra_metadata")
+            retry_metadata = dict(raw_metadata) if isinstance(raw_metadata, Mapping) else {}
+            retry_metadata.update(
+                {
+                    "docgen_writer_fallback": "completion_after_invalid_markdown",
+                    "docgen_writer_stream_failure_reason": invalid_markdown_reason,
+                }
+            )
+            retry_model_kwargs["extra_metadata"] = retry_metadata
+            self.logger.warning(
+                "docgen_writer_invalid_markdown_retry_completion",
+                chapter_index=chapter_index,
+                reason=invalid_markdown_reason,
+            )
+            try:
+                retry_markdown = await asyncio.wait_for(
+                    llm(messages, **retry_model_kwargs),
+                    timeout=WRITER_TASK_TIMEOUT_S,
+                )
+                if str(retry_markdown or "").strip():
+                    markdown = str(retry_markdown)
+                    writer_fallback_used = True
+                    writer_fallback_model_slot = str(retry_model_kwargs.get("model") or "")
+                    stream_failure_reason = invalid_markdown_reason
+            except Exception as exc:
+                self.logger.warning(
+                    "docgen_writer_invalid_markdown_retry_failed",
+                    chapter_index=chapter_index,
+                    reason=invalid_markdown_reason,
+                    error=str(exc)[:180],
                 )
 
         markdown = strip_asset_requests(str(markdown).strip())
