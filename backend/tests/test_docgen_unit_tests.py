@@ -5,7 +5,7 @@ import pytest
 from app.workflows.digest.docgen.lib import unit_tests
 from app.workflows.digest.docgen.lib.unit_test_generation import generate_chapter_unit_test_markdown
 from app.workflows.digest.docgen.lib.presentation_policy import normalize_docgen_presentation
-from app.workflows.digest.docgen.lib.publish import _prepare_chapter_markdown
+from app.workflows.digest.docgen.lib.publish import _prepare_chapter_markdown, build_merged_markdown
 from app.workflows.digest.docgen.lib.unit_tests import (
     ChapterUnitTestItem,
     ChapterUnitTestSet,
@@ -317,38 +317,69 @@ def test_unit_test_renderer_preserves_newline_escapes_in_python_strings() -> Non
     assert 'print(" ")' not in markdown
 
 
-def test_presentation_normalization_preserves_fenced_code_inside_unit_test_callouts() -> None:
-    unit_test = render_unit_test_markdown(
+def test_fenced_code_in_unit_test_survives_full_document_merge() -> None:
+    code_unit_test = render_unit_test_markdown(
+        ChapterUnitTestSet(
+            chapter_index=1,
+            items=[
+                ChapterUnitTestItem(
+                    type="选择题",
+                    difficulty="进阶",
+                    target="输入清洗与分类计数",
+                    stem=(
+                        "阅读代码后判断 valid_count 与 reject_count：\n\n"
+                        "```python\n"
+                        "raw_values = ['72', 'abc', '58']\n"
+                        "valid_values = [int(raw) for raw in raw_values if raw.isdigit()]\n"
+                        "valid_count = len(valid_values)\n"
+                        "reject_count = len(raw_values) - valid_count\n"
+                        "```"
+                    ),
+                    options=["2 和 1", "1 和 2", "3 和 0", "抛出异常"],
+                    answer="2 和 1",
+                    basis="isdigit 过滤掉 abc，剩余两个字符串可以转换为整数。",
+                )
+            ],
+        ),
+        title="输入清洗",
+        min_items=1,
+        max_items=1,
+        fallback_targets=[],
+    )
+    plain_unit_test = render_unit_test_markdown(
         ChapterUnitTestSet(
             chapter_index=2,
             items=[
                 ChapterUnitTestItem(
                     type="短答题",
-                    difficulty="进阶",
-                    target="嵌套循环输出",
-                    stem=(
-                        "执行下面代码并写出输出：\n\n"
-                        "```python\n"
-                        "for i in range(2):\n"
-                        "    print(i)\n"
-                        "```"
-                    ),
-                    answer="依次输出 0 和 1。",
-                    basis="range(2) 依次产生 0 和 1。",
+                    difficulty="基础",
+                    target="返回值",
+                    stem="函数如何返回计算结果？",
+                    answer="使用 return 返回结果。",
+                    basis="return 会结束当前函数并把结果交给调用方。",
                 )
             ],
         ),
-        title="循环与流程控制",
+        title="函数返回值",
         min_items=1,
         max_items=1,
         fallback_targets=[],
     )
-    markdown = "# 循环与流程控制\n\n## 循环基础\n\n正文。\n\n" + unit_test
+    first_chapter = "# 输入清洗\n\n## 分类计数\n\n正文。\n\n" + code_unit_test
+    second_chapter = "# 函数返回值\n\n## 返回流程\n\n正文。\n\n" + plain_unit_test
 
-    normalized = normalize_docgen_presentation(markdown, title="循环与流程控制")
+    merged = build_merged_markdown(
+        [
+            {"chapter_index": 1, "title": "输入清洗", "markdown": first_chapter},
+            {"chapter_index": 2, "title": "函数返回值", "markdown": second_chapter},
+        ]
+    )
+    published_chapters = merged.split("\n\n---\n\n")
 
-    assert normalized.split("## 单元测试", 1)[1] == markdown.split("## 单元测试", 1)[1]
-    assert unit_test_structure_issues(normalized) == []
+    assert len(published_chapters) == 2
+    assert "```" not in code_unit_test
+    assert "`raw_values = ['72', 'abc', '58']" in code_unit_test
+    assert all(unit_test_structure_issues(chapter) == [] for chapter in published_chapters)
 
 
 def test_unit_test_renderer_keeps_long_choice_answer_equal_to_full_option() -> None:

@@ -330,11 +330,39 @@ def strip_existing_unit_test_sections(markdown: str) -> str:
     return _restore_fenced_code_blocks(cleaned, fenced_code_blocks)
 
 
+def _inline_fenced_code_block(block: str) -> str:
+    lines = str(block or "").splitlines()
+    if not lines:
+        return ""
+    opening = _FENCE_OPEN_RE.match(lines[0])
+    if opening is None:
+        return " ".join(str(block or "").split())
+
+    marker = opening.group("marker")
+    body_lines = lines[1:]
+    closing = re.compile(
+        rf"^[ \t]{{0,3}}{re.escape(marker[0])}{{{len(marker)},}}[ \t]*$"
+    )
+    if body_lines and closing.match(body_lines[-1]):
+        body_lines.pop()
+    code = " ".join("\n".join(body_lines).strip().split())
+    if not code:
+        return ""
+    if "``" in code:
+        return code.replace("`", r"\`")
+    delimiter = "``" if "`" in code else "`"
+    padding = " " if code.startswith("`") or code.endswith("`") else ""
+    return f"{delimiter}{padding}{code}{padding}{delimiter}"
+
+
 def _markdown_text(value: str, *, limit: int | None = None) -> str:
-    text = _inline_unit_test_display_math(_sanitize_unit_test_math_text(value))
+    text, fenced_code_blocks = _protect_fenced_code_blocks(_sanitize_unit_test_math_text(value))
+    text = _inline_unit_test_display_math(text)
     text = " ".join(text.strip().split())
     text = _wrap_raw_latex_fragments(text)
-    if limit is not None and len(text) > limit and not _MATH_HINT_RE.search(text):
+    for token, block in fenced_code_blocks.items():
+        text = text.replace(token, _inline_fenced_code_block(block))
+    if limit is not None and len(text) > limit and not fenced_code_blocks and not _MATH_HINT_RE.search(text):
         text = text[: max(1, limit - 1)].rstrip(" ，,。；;、") + "…"
     return text
 
