@@ -1928,6 +1928,7 @@ def update_knowledge_build_lane_status(
     *,
     lane: Literal["docgen", "graph"],
     course_scope: CourseStorageScope | None = None,
+    allow_terminal_failure_correction: bool = False,
     **kwargs: object,
 ) -> KnowledgeBuildRuntimeStatus:
     """Merge updates into one runtime lane and refresh the persisted envelope."""
@@ -1982,11 +1983,20 @@ def update_knowledge_build_lane_status(
 
         previous_status = str(existing.status or "").strip()
         incoming_status = str(payload.get("status") or "").strip()
+        # A sibling post-publish finalizer can fail just after this lane records
+        # success. Ownership checks above still prevent stale builds from using
+        # this narrow correction path.
+        is_terminal_failure_correction = (
+            allow_terminal_failure_correction
+            and previous_status in {"completed", "partial_failed"}
+            and incoming_status in {"failed", "partial_failed"}
+        )
         if (
             not should_reset
             and previous_status in _TERMINAL_BUILD_STATUSES
             and incoming_status
             and incoming_status != previous_status
+            and not is_terminal_failure_correction
         ):
             return existing
         updated = existing.model_copy(update=payload)

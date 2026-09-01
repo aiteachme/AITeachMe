@@ -1610,6 +1610,7 @@ def test_docgen_background_preserves_published_docs_when_downstream_graph_fails(
 
     assert [write["status"] for write in docgen_writes] == ["running", "completed"]
     assert graph_writes[-1]["status"] == "failed"
+    assert graph_writes[-1]["allow_terminal_failure_correction"] is True
     assert plan_statuses == ["building", "completed"]
     assert staging_clears == ["clear"]
     assert releases == [(COURSE_ID, "group-published")]

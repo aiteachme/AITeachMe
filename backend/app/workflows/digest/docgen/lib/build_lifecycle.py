@@ -1290,6 +1290,7 @@ async def run_docgen_background(
                     status="failed" if docgen_published else "skipped",
                     stage="failed" if docgen_published else "blocked_by_docgen_failure",
                     error_message=result.error.detail if docgen_published else None,
+                    allow_terminal_failure_correction=docgen_published,
                     current_stage_description=(
                         "知识文档已发布，但后续图谱构建失败。"
                         if docgen_published
@@ -1533,6 +1534,7 @@ async def run_docgen_background(
                 status="failed" if docgen_published else "skipped",
                 stage="failed" if docgen_published else "blocked_by_docgen_failure",
                 error_message="build_crashed" if docgen_published else None,
+                allow_terminal_failure_correction=docgen_published,
                 current_stage_description=(
                     "知识文档已发布，但后续图谱构建异常失败。"
                     if docgen_published

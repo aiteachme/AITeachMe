@@ -479,6 +479,60 @@ def test_runtime_lane_rejects_stale_owner_and_terminal_regression(
     assert persisted.docgen_runtime == terminal
 
 
+def test_runtime_lane_allows_same_build_terminal_failure_correction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = _JsonStore()
+    scope = _scope()
+    requested_at = datetime.now(timezone.utc)
+    monkeypatch.setattr(build_store, "get_content_store", lambda: store)
+    monkeypatch.setattr(build_store, "_capture_docgen_terminal_analytics_event", lambda **_kwargs: None)
+
+    build_store.update_knowledge_build_lane_status(
+        "course_runtime00001",
+        lane="docgen",
+        course_scope=scope,
+        requested_at=requested_at,
+        build_group_id="group-current",
+        status="completed",
+        stage="completed",
+    )
+
+    completed = build_store.update_knowledge_build_lane_status(
+        "course_runtime00001",
+        lane="graph",
+        course_scope=scope,
+        requested_at=requested_at,
+        build_group_id="group-current",
+        status="completed",
+        stage="completed",
+    )
+    corrected = build_store.update_knowledge_build_lane_status(
+        "course_runtime00001",
+        lane="graph",
+        course_scope=scope,
+        requested_at=requested_at,
+        build_group_id="group-current",
+        status="failed",
+        stage="failed",
+        error_message="build_crashed",
+        allow_terminal_failure_correction=True,
+    )
+
+    assert completed.status == "completed"
+    assert corrected.status == "failed"
+    assert corrected.error_message == "知识图谱构建异常失败。"
+    persisted = build_store.read_knowledge_build_runtime("course_runtime00001", course_scope=scope)
+    assert persisted is not None
+    assert persisted.graph_runtime == corrected
+    aggregate = build_store.read_knowledge_build_aggregate_status(
+        "course_runtime00001",
+        course_scope=scope,
+    )
+    assert aggregate is not None
+    assert aggregate.status == "partial_failed"
+
+
 @pytest.mark.parametrize(
     ("terminal_status", "expected_event"),
     [
