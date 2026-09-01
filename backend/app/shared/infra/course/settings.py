@@ -17,6 +17,7 @@ _LOCAL_LLAMA_INDEX_REF_PREFIX = "llamaindex://sqlite-vec/"
 _POSTGRES_LLAMA_INDEX_REF_PREFIX = "llamaindex://postgres/"
 _POSTGRES_LLAMA_INDEX_NAME_PREFIX = "atm_llamaindex_rag_"
 _POSTGRES_LLAMA_INDEX_DATA_PREFIX = "data_"
+_POSTGRES_IDENTIFIER_MAX_CHARS = 63
 _INVALID_USER_SEGMENT_RE = re.compile(r"[^A-Za-z0-9._-]+")
 
 
@@ -74,12 +75,18 @@ def build_postgres_course_index_data_table_name(
     *,
     owner_user_id: str,
 ) -> str:
-    """Return the concrete PostgreSQL data table used by PGVectorStore."""
+    """Return the concrete PostgreSQL data table used by PGVectorStore.
 
-    return (
+    PGVectorStore prefixes the index name with ``data_``. PostgreSQL silently
+    truncates longer identifiers, so mirror that rule for existence checks and
+    direct SQL queries.
+    """
+
+    table_name = (
         f"{_POSTGRES_LLAMA_INDEX_DATA_PREFIX}"
         f"{build_postgres_course_index_name(course_id, owner_user_id=owner_user_id)}"
     )
+    return table_name[:_POSTGRES_IDENTIFIER_MAX_CHARS]
 
 
 def extract_postgres_course_index_name(vector_ref: str | None) -> str | None:
@@ -98,7 +105,9 @@ def extract_postgres_course_index_data_table_name(vector_ref: str | None) -> str
     index_name = extract_postgres_course_index_name(vector_ref)
     if not index_name:
         return None
-    return f"{_POSTGRES_LLAMA_INDEX_DATA_PREFIX}{index_name}"
+    return f"{_POSTGRES_LLAMA_INDEX_DATA_PREFIX}{index_name}"[
+        :_POSTGRES_IDENTIFIER_MAX_CHARS
+    ]
 
 
 def build_course_index_ref(course_id: str, *, owner_user_id: str) -> str:

@@ -328,10 +328,23 @@ def upsert_chunks(course_id: str, chunks: list[IndexedChunk]) -> None:
         )
         vector_store.add(nodes)
 
+    expected_chunk_ids = {int(chunk.chunk_id) for chunk in chunks}
+    indexed_chunk_ids = list_indexed_chunk_ids(
+        normalized_course_id,
+        sorted(expected_chunk_ids),
+    )
+    if indexed_chunk_ids != expected_chunk_ids:
+        raise RuntimeError(
+            "Vector index write verification failed for course "
+            f"'{normalized_course_id}': expected {len(expected_chunk_ids)} chunks, "
+            f"found {len(indexed_chunk_ids)}."
+        )
+
     logger.info(
         "llamaindex_chunks_upserted",
         course_id=normalized_course_id,
         chunk_count=len(chunks),
+        verified_chunk_count=len(indexed_chunk_ids),
         backend="postgres" if is_cloud_mode() else "sqlite-vec",
     )
 

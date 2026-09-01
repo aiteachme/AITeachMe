@@ -772,13 +772,37 @@ def _rebuild_imported_embeddings(
         return
 
     try:
-        knowledge_repo.bulk_insert_embeddings(
-            session,
+        embedding_dim = len(embeddings[0]) if embeddings else 0
+        with langsmith_trace(
+            name="导入课程：持久化向量索引",
+            run_type="tool",
+            inputs={
+                "course_id": course_id,
+                "chunk_count": len(chunk_rows),
+                "embedding_dim": embedding_dim,
+            },
             course_id=course_id,
-            chunk_ids=[int(chunk.id) for chunk in chunk_rows],
-            embeddings=embeddings,
-            embedding_model=runtime.embedding_model,
-        )
+            workflow="course_import_embeddings",
+            lane="background",
+            node="persist_vector_index",
+            extra_metadata={"vector_persist_phase": "upsert_and_verify"},
+            extra_tags=["phase:vector_persist"],
+        ) as persist_trace:
+            knowledge_repo.bulk_insert_embeddings(
+                session,
+                course_id=course_id,
+                chunk_ids=[int(chunk.id) for chunk in chunk_rows],
+                embeddings=embeddings,
+                embedding_model=runtime.embedding_model,
+            )
+            if persist_trace is not None:
+                persist_trace.end(
+                    outputs={
+                        "status": "verified",
+                        "indexed_chunk_count": len(chunk_rows),
+                        "embedding_dim": embedding_dim,
+                    }
+                )
     except Exception as exc:
         logger.warning(
             "course_import_embedding_rebuild_failed",
