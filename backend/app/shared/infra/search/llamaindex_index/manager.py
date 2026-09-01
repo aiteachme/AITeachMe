@@ -221,6 +221,7 @@ def _load_postgres_store(
             "hnsw_ef_search": 40,
             "hnsw_dist_method": "vector_cosine_ops",
         },
+        initialization_fail_on_error=True,
     )
 
 

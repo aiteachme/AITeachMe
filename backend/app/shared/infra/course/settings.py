@@ -54,11 +54,12 @@ def _normalize_course_index_token(course_id: str, *, owner_user_id: str | None =
     raw_course = (course_id or "").strip().lower()
     raw_user = _sanitize_user_segment(owner_user_id).lower()
     normalized_course = re.sub(r"[^a-z0-9_]+", "_", raw_course).strip("_") or "course"
-    normalized_user = re.sub(r"[^a-z0-9_]+", "_", raw_user).strip("_") or "local"
-    digest = hashlib.sha1(f"{raw_user}:{raw_course}".encode("utf-8")).hexdigest()[:10]
-    trimmed_user = normalized_user[:12]
-    trimmed_course = normalized_course[:16]
-    return f"{trimmed_user}_{trimmed_course}_{digest}"
+    # PGVectorStore derives ``data_<name>_embedding_idx``. Keep that longest
+    # identifier below PostgreSQL's 63-character limit while retaining a
+    # user-and-course-scoped digest.
+    digest = hashlib.sha1(f"{raw_user}:{raw_course}".encode("utf-8")).hexdigest()[:13]
+    trimmed_course = normalized_course[:8]
+    return f"{trimmed_course}_{digest}"
 
 
 def build_postgres_course_index_name(course_id: str, *, owner_user_id: str) -> str:

@@ -46,11 +46,12 @@ def test_postgres_store_preserves_encoded_password_when_switching_drivers(monkey
     assert async_url.drivername == "postgresql+asyncpg"
     assert sync_url.password == "p@ss:word"
     assert async_url.password == "p@ss:word"
+    assert captured["initialization_fail_on_error"] is True
     assert "***" not in str(captured["connection_string"])
     assert "***" not in str(captured["async_connection_string"])
 
 
-def test_postgres_data_table_name_matches_server_identifier_truncation(monkeypatch) -> None:
+def test_postgres_course_index_identifiers_fit_server_limit(monkeypatch) -> None:
     monkeypatch.setattr(course_settings, "is_cloud_mode", lambda: True)
     course_id = "course_oiec86hbufup"
     owner_user_id = "guest_" + "x" * 40
@@ -59,16 +60,32 @@ def test_postgres_data_table_name_matches_server_identifier_truncation(monkeypat
         course_id,
         owner_user_id=owner_user_id,
     )
-    raw_table_name = f"data_{index_name}"
     table_name = course_settings.build_postgres_course_index_data_table_name(
         course_id,
         owner_user_id=owner_user_id,
     )
     vector_ref = f"llamaindex://postgres/{index_name}"
 
-    assert len(raw_table_name) == 64
-    assert table_name == raw_table_name[:63]
+    assert len(table_name) <= 63
+    assert len(f"{index_name}_idx_1") <= 63
+    assert len(f"{table_name}_embedding_idx") <= 63
     assert course_settings.extract_postgres_course_index_data_table_name(vector_ref) == table_name
+    assert index_name != course_settings.build_postgres_course_index_name(
+        course_id,
+        owner_user_id="guest_" + "y" * 40,
+    )
+
+
+def test_legacy_postgres_vector_ref_matches_server_identifier_truncation() -> None:
+    legacy_index_name = (
+        "atm_llamaindex_rag_guest_xxxxxx_course_oiec86hbu_62daf50bca"
+    )
+    raw_table_name = f"data_{legacy_index_name}"
+
+    assert len(raw_table_name) == 64
+    assert course_settings.extract_postgres_course_index_data_table_name(
+        f"llamaindex://postgres/{legacy_index_name}"
+    ) == raw_table_name[:63]
 
 
 def test_upsert_rejects_unverified_vector_write(monkeypatch) -> None:
