@@ -16,12 +16,10 @@ def test_postgres_store_preserves_encoded_password_when_switching_drivers(monkey
     captured: dict[str, object] = {}
     sentinel = object()
 
-    def fake_from_params(**kwargs):
-        captured.update(kwargs)
-        return sentinel
-
     class FakePGVectorStore:
-        from_params = staticmethod(fake_from_params)
+        def __new__(cls, **kwargs):
+            captured.update(kwargs)
+            return sentinel
 
     vector_stores_module = ModuleType("llama_index.vector_stores")
     postgres_module = ModuleType("llama_index.vector_stores.postgres")

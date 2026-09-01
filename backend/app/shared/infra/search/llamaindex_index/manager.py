@@ -209,7 +209,7 @@ def _load_postgres_store(
     async_url = sync_url.set(drivername="postgresql+asyncpg")
     # PGVectorStore coerces URL objects with str(), which masks the password as
     # a literal "***". Render credential-bearing strings explicitly instead.
-    return PGVectorStore.from_params(
+    return PGVectorStore(
         connection_string=sync_url.render_as_string(hide_password=False),
         async_connection_string=async_url.render_as_string(hide_password=False),
         table_name=index_name,
