@@ -127,11 +127,16 @@ const QUESTION_BANK: Record<QuestionType, QuestionTemplateSeed[]> = {
       id: 1502,
       question_type: "multiple_choice",
       difficulty: "hard",
-      stem: "For y=sin x, which statements are correct?",
-      options: ["The derivative is cos x", "The period is 2pi", "The derivative is always positive", "sin 0 = 0"],
+      stem: "已知某反比例函数的图像经过点 $(-3,-4)$。关于这个函数的解析式、定义域和图像特征，下列说法正确的是哪些？",
+      options: [
+        "该反比例函数的解析式可以写成 $y=\\frac{12}{x}$。",
+        "该反比例函数的自变量取值范围是 $x\\ne0$。",
+        "因为图像经过第三象限内的点，所以该反比例函数的图像只在第三象限。",
+        "点 $(2,6)$ 在该反比例函数的图像上。",
+      ],
       answer: "A,B,D",
-      explanation: "sin x has derivative cos x, period 2pi, and sin 0 equals 0. Its derivative is not always positive.",
-      knowledge_unit_id: 107,
+      explanation: "由点 $(-3,-4)$ 得 $k=xy=12$，所以解析式为 $y=\\frac{12}{x}$，定义域为 $x\\ne0$。当 $k>0$ 时图像位于第一、三象限；点 $(2,6)$ 满足解析式。",
+      knowledge_unit_id: 979,
     },
   ],
   true_false: [
@@ -209,6 +214,10 @@ const MOCK_KNOWLEDGE_UNIT_METADATA: Record<number, { name: string; type: string;
   104: { name: "等差数列通项", type: "formula_model", typeLabel: "公式模型" },
   105: { name: "利用导数判断函数极值", type: "skill", typeLabel: "解题技能" },
   107: { name: "正弦函数的性质", type: "concept", typeLabel: "概念术语" },
+  908: { name: "反比例函数复习", type: "topic", typeLabel: "主题模块" },
+  979: { name: "反比例函数 y=\\frac{k}{x}", type: "formula_model", typeLabel: "公式模型" },
+  994: { name: "反比例函数解析式与定义域", type: "concept", typeLabel: "概念术语" },
+  1045: { name: "反比例函数定义域 x\\neq 0", type: "principle", typeLabel: "原理性质" },
 };
 
 const papers = new Map<number, InternalPaper>();
@@ -694,6 +703,30 @@ function buildQuestionTemplates(course: string): Array<Record<string, unknown>> 
     .flat()
     .map((template) => {
       const unitMetadata = MOCK_KNOWLEDGE_UNIT_METADATA[template.knowledge_unit_id];
+      const knowledgeUnitRefs = template.id === 1502
+        ? [
+            { knowledge_unit_id: 908, coverage_weight: 0.3 },
+            { knowledge_unit_id: 979, coverage_weight: 0.25 },
+            { knowledge_unit_id: 994, coverage_weight: 0.25 },
+            { knowledge_unit_id: 1045, coverage_weight: 0.2 },
+          ].map((ref) => {
+            const metadata = MOCK_KNOWLEDGE_UNIT_METADATA[ref.knowledge_unit_id];
+            return {
+              ...ref,
+              knowledge_unit_name: metadata?.name,
+              knowledge_unit_type: metadata?.type,
+              knowledge_unit_type_label: metadata?.typeLabel,
+            };
+          })
+        : [
+            {
+              knowledge_unit_id: template.knowledge_unit_id,
+              knowledge_unit_name: unitMetadata?.name,
+              knowledge_unit_type: unitMetadata?.type,
+              knowledge_unit_type_label: unitMetadata?.typeLabel,
+              coverage_weight: 1,
+            },
+          ];
       return {
         id: template.id,
         course,
@@ -703,16 +736,10 @@ function buildQuestionTemplates(course: string): Array<Record<string, unknown>> 
         options: template.options,
         answer: template.answer,
         explanation: template.explanation,
-        knowledge_unit_refs: [
-          {
-            knowledge_unit_id: template.knowledge_unit_id,
-            knowledge_unit_name: unitMetadata?.name,
-            knowledge_unit_type: unitMetadata?.type,
-            knowledge_unit_type_label: unitMetadata?.typeLabel,
-            coverage_weight: 1,
-          },
-        ],
-        selection_hints: {},
+        knowledge_unit_refs: knowledgeUnitRefs,
+        selection_hints: template.id === 1502
+          ? { rationale: "反比例函数的解析式、定义域和图像象限是常考组合，多选题可同时覆盖公式、性质与辨析。" }
+          : {},
         template_version: 1,
         status: "active",
         is_marked: markedQuestionTemplateIds.has(template.id),
@@ -1238,8 +1265,20 @@ export const examHandlers = [
 
   http.delete("/api/v1/courses/:course/exams/:examPaperId", ({ params }) => {
     const paperId = Number(params.examPaperId);
-    if (!papers.has(paperId)) {
+    const paper = papers.get(paperId);
+    if (!paper) {
       return HttpResponse.json({ code: 404, message: "paper not found", data: null }, { status: 404 });
+    }
+    if (paper.status === "graded") {
+      return HttpResponse.json(
+        {
+          code: 409,
+          error_code: "EXAM_COMPLETED_DELETE_NOT_ALLOWED",
+          message: "系统暂不允许删除已完成的训练记录。",
+          data: null,
+        },
+        { status: 409 },
+      );
     }
     papers.delete(paperId);
     return HttpResponse.json({ code: 0, data: { deleted: true, exam_paper_id: paperId } });
@@ -1256,8 +1295,20 @@ export const examHandlers = [
 
   http.post("/api/v1/courses/:course/exams/:examPaperId/delete", ({ params }) => {
     const paperId = Number(params.examPaperId);
-    if (!papers.has(paperId)) {
+    const paper = papers.get(paperId);
+    if (!paper) {
       return HttpResponse.json({ code: 404, message: "paper not found", data: null }, { status: 404 });
+    }
+    if (paper.status === "graded") {
+      return HttpResponse.json(
+        {
+          code: 409,
+          error_code: "EXAM_COMPLETED_DELETE_NOT_ALLOWED",
+          message: "系统暂不允许删除已完成的训练记录。",
+          data: null,
+        },
+        { status: 409 },
+      );
     }
     papers.delete(paperId);
     return HttpResponse.json({ code: 0, data: { deleted: true, exam_paper_id: paperId } });

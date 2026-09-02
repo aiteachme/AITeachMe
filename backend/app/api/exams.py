@@ -6994,7 +6994,7 @@ async def exam_detail(
     "/{exam_paper_id}",
     response_model=ApiResponse[ExamPaperDeleteResponse],
     summary="Delete exam paper",
-    responses=build_error_responses([400, 404, 500]),
+    responses=build_error_responses([400, 404, 409, 500]),
 )
 async def delete_exam_paper(
     course_id: str = Path(...),
@@ -7007,6 +7007,12 @@ async def delete_exam_paper(
     paper = exams_repo.get_exam_paper_by_id(session, exam_paper_id)
     if paper is None or paper.course_id != normalized or paper.user_id != user.user_id or _is_hidden_exam_paper(paper):
         _raise_not_found(f"Exam paper `{exam_paper_id}` not found.")
+    if paper.status == "graded":
+        raise AITeachMeError(
+            detail="系统暂不允许删除已完成的训练记录。",
+            error_code="EXAM_COMPLETED_DELETE_NOT_ALLOWED",
+            status_code=409,
+        )
 
     exams_repo.delete_exam_paper_cascade(session, paper_id=exam_paper_id)
     return ok_response(ExamPaperDeleteResponse(deleted=True, exam_paper_id=exam_paper_id))

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   BarChart3,
@@ -58,18 +58,26 @@ function graphNodeNameMarkdown(node: KnowledgeUnitResponse): string {
 export function KnowledgeGraphView({
   course,
   stats,
+  initialNodeId,
   onSourceRefClick,
 }: {
   course: string;
   stats: KnowledgeOverviewStats | null;
+  initialNodeId?: number | null;
   onSourceRefClick?: (ref: KnowledgeGraphSourceRefNavigationTarget) => void;
 }) {
-  const [viewMode, setViewMode] = useState<ViewMode>("graph");
+  const [viewMode, setViewMode] = useState<ViewMode>(() => initialNodeId ? "list" : "graph");
   const [nodeType, setNodeType] = useState<string | undefined>(undefined);
   const [page, setPage] = useState(1);
-  const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<number | null>(() => initialNodeId ?? null);
   const [evidenceModalState, setEvidenceModalState] = useState<{ chunkId: number; quoteText: string } | null>(null);
   const pageSize = 30;
+
+  useEffect(() => {
+    if (!initialNodeId) return;
+    setViewMode("list");
+    setSelectedNodeId(initialNodeId);
+  }, [initialNodeId]);
 
   const graphNodeCount = Number(stats?.node_count ?? 0);
   const graphEdgeCount = Number(stats?.edge_count ?? 0);

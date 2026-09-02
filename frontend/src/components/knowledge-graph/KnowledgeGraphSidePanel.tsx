@@ -49,10 +49,12 @@ function TabFallback({ message }: { message: string }) {
 
 export function KnowledgeGraphSidePanel({
   courseId,
+  initialNodeId,
   onClose,
   onSourceRefClick,
 }: {
   courseId: string;
+  initialNodeId?: number | null;
   onClose?: () => void;
   onSourceRefClick?: (ref: KnowledgeGraphSourceRefNavigationTarget) => void;
 }) {
@@ -280,6 +282,7 @@ export function KnowledgeGraphSidePanel({
             <KnowledgeGraphView
               course={courseId}
               stats={overview?.stats ?? null}
+              initialNodeId={initialNodeId}
               onSourceRefClick={onSourceRefClick}
             />
           </Suspense>

@@ -2420,6 +2420,10 @@ export function KnowledgeDocsPage() {
   } = useAiInteraction();
   const location = useLocation();
   const navigate = useNavigate();
+  const requestedGraphNodeId = useMemo(() => {
+    const value = Number(new URLSearchParams(location.search).get("graphNode") ?? 0);
+    return Number.isInteger(value) && value > 0 ? value : null;
+  }, [location.search]);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const {
@@ -2537,7 +2541,7 @@ export function KnowledgeDocsPage() {
   const [tocScrollThumbStyle, setTocScrollThumbStyle] = useState<TocScrollThumbStyle>({ top: 0, height: 0 });
   const [pendingSelectionJumpVersion, setPendingSelectionJumpVersion] = useState(0);
 
-  const [isGraphDrawerOpen, setIsGraphDrawerOpen] = useState(false);
+  const [isGraphDrawerOpen, setIsGraphDrawerOpen] = useState(() => requestedGraphNodeId !== null);
   const graphDrawerRef = useRef<HTMLDivElement>(null);
   const isNarrowInitialViewport = initialViewportWidth < 640;
   const graphDesktopMaxWidth = Math.max(400, initialViewportWidth * 0.94);
@@ -2549,6 +2553,13 @@ export function KnowledgeDocsPage() {
     maxWidth: isNarrowInitialViewport ? initialViewportWidth : graphDesktopMaxWidth,
     liveResizeRef: graphDrawerRef,
   });
+
+  useEffect(() => {
+    if (requestedGraphNodeId !== null) {
+      setIsCardsPanelOpen(false);
+      setIsGraphDrawerOpen(true);
+    }
+  }, [requestedGraphNodeId]);
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -8071,6 +8082,7 @@ export function KnowledgeDocsPage() {
             <Suspense fallback={<GraphPanelFallback />}>
               <KnowledgeGraphSidePanel
                 courseId={courseId}
+                initialNodeId={requestedGraphNodeId}
                 onClose={closeGraphPanel}
                 onSourceRefClick={handleGraphSourceRefClick}
               />

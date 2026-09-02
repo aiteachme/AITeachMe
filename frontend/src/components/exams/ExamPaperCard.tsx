@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent } from "react";
-import { AlertTriangle, Loader2, MoreVertical, Sparkles, Trash2 } from "lucide-react";
+import { createPortal } from "react-dom";
+import { AlertTriangle, FileDown, Loader2, MoreVertical, Sparkles, Trash2 } from "lucide-react";
 
 import type { ExamHistoryItem, PaperPreview, PaperPreviewRow } from "../../api/generated/model";
 import { Button } from "../ui/Button";
@@ -11,6 +12,7 @@ import {
   MASTERY_DRILL_EXAM_MODE,
   parseBackendDateTime,
 } from "./examDisplay";
+import { getExamPaperExportAvailability } from "./examPaperExport";
 
 type PreviewShape = PaperPreviewRow["shape"];
 type PreviewResultStatus = "ungraded" | "correct" | "incorrect";
@@ -25,6 +27,12 @@ interface ExamGenerationProgressView {
 type ExamHistoryItemWithGeneration = ExamHistoryItem & {
   updated_at?: string | null;
   generation_progress?: ExamGenerationProgressView | null;
+};
+
+type ActionsMenuPosition = {
+  left: number;
+  top: number;
+  width: number;
 };
 
 const PREVIEW_ROW_LIMIT = 4;
@@ -702,12 +710,14 @@ export function ExamPaperCard({
   isDeleting,
   onOpen,
   onDelete,
+  onExport,
 }: {
   item: ExamHistoryItemWithGeneration;
   resultDisplayMode: ExamResultDisplayMode;
   isDeleting: boolean;
   onOpen: () => void;
   onDelete: (event: MouseEvent<HTMLButtonElement>) => void;
+  onExport: (event: MouseEvent<HTMLButtonElement>) => void;
 }) {
   const preview = getPaperPreview(item);
   const isGraded = item.status === "graded";
@@ -723,8 +733,78 @@ export function ExamPaperCard({
   const scorePercent = getExamScorePercent(item);
   const generationProgress = getExamGenerationProgress(item, preview);
   const cardTone = getExamHistoryCardTone(item.exam_mode);
+  const exportAvailability = getExamPaperExportAvailability(item.status, item.exam_mode);
+  const [isActionsMenuOpen, setIsActionsMenuOpen] = useState(false);
+  const [actionsMenuPosition, setActionsMenuPosition] = useState<ActionsMenuPosition | null>(null);
+  const [actionsMenuHost, setActionsMenuHost] = useState<HTMLElement | null>(null);
+  const actionsMenuRef = useRef<HTMLDivElement>(null);
+  const actionsMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const actionsMenuItemRef = useRef<HTMLButtonElement>(null);
 
-  const handleCardKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+  useEffect(() => {
+    if (!isActionsMenuOpen) return;
+    const focusFrame = window.requestAnimationFrame(() => {
+      actionsMenuItemRef.current?.focus();
+    });
+    const closeOnOutsidePointer = (event: globalThis.MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (actionsMenuRef.current?.contains(target) || actionsMenuButtonRef.current?.contains(target)) return;
+      setIsActionsMenuOpen(false);
+    };
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setIsActionsMenuOpen(false);
+      actionsMenuButtonRef.current?.focus();
+    };
+    const closeOnViewportChange = () => setIsActionsMenuOpen(false);
+    document.addEventListener("mousedown", closeOnOutsidePointer);
+    document.addEventListener("keydown", closeOnEscape);
+    window.addEventListener("resize", closeOnViewportChange);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      document.removeEventListener("mousedown", closeOnOutsidePointer);
+      document.removeEventListener("keydown", closeOnEscape);
+      window.removeEventListener("resize", closeOnViewportChange);
+    };
+  }, [isActionsMenuOpen]);
+
+  const toggleActionsMenu = () => {
+    if (isActionsMenuOpen) {
+      setIsActionsMenuOpen(false);
+      return;
+    }
+    const buttonRect = actionsMenuButtonRef.current?.getBoundingClientRect();
+    if (!buttonRect) return;
+    const menuHost = actionsMenuButtonRef.current?.closest<HTMLElement>("main") ?? document.body;
+    const hostRect = menuHost.getBoundingClientRect();
+    const hostScrollLeft = menuHost === document.body ? window.scrollX : menuHost.scrollLeft;
+    const hostScrollTop = menuHost === document.body ? window.scrollY : menuHost.scrollTop;
+    const viewportPadding = 12;
+    const menuGap = 8;
+    const labelWidth = Array.from(exportAvailability.label).length * 12;
+    const preferredMenuWidth = exportAvailability.available
+      ? Math.max(112, labelWidth + 44)
+      : 156;
+    const menuWidth = Math.max(
+      112,
+      Math.min(preferredMenuWidth, window.innerWidth - viewportPadding * 2),
+    );
+    const buttonLeftInHost = buttonRect.left - hostRect.left + hostScrollLeft;
+    const buttonRightInHost = buttonRect.right - hostRect.left + hostScrollLeft;
+    const preferredLeft = buttonRightInHost + menuGap;
+    const maximumLeft = hostScrollLeft + menuHost.clientWidth - menuWidth - viewportPadding;
+    const left = preferredLeft <= maximumLeft
+      ? preferredLeft
+      : Math.max(hostScrollLeft + viewportPadding, buttonLeftInHost - menuWidth - menuGap);
+    const top = buttonRect.bottom - hostRect.top + hostScrollTop + menuGap;
+    setActionsMenuHost(menuHost);
+    setActionsMenuPosition({ left, top, width: menuWidth });
+    setIsActionsMenuOpen(true);
+  };
+
+  const handleCardKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.target !== event.currentTarget) return;
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
     onOpen();
@@ -827,7 +907,7 @@ export function ExamPaperCard({
         {showPassMark ? <ExamPaperPassMark /> : null}
         {showMasteryResult ? <MasteryDrillResultMark item={item} /> : null}
 
-        <div className="absolute bottom-4 right-4 z-20 flex items-center gap-2 opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 pointer-events-none group-hover:pointer-events-auto transition-all duration-300">
+        <div className="absolute bottom-4 right-4 z-20 flex translate-y-0 items-center gap-2 opacity-100 transition-all duration-300 pointer-events-auto sm:translate-y-1 sm:opacity-0 sm:pointer-events-none sm:group-hover:pointer-events-auto sm:group-hover:translate-y-0 sm:group-hover:opacity-100 sm:group-focus-within:pointer-events-auto sm:group-focus-within:translate-y-0 sm:group-focus-within:opacity-100">
             <Button
               type="button"
               size="icon"
@@ -841,18 +921,56 @@ export function ExamPaperCard({
               {isDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
             </Button>
             <button
+              ref={actionsMenuButtonRef}
               type="button"
               className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-slate-100 text-slate-600 transition hover:bg-slate-900 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700"
               aria-label={`展开记录操作 ${buildExamTitle(item)}`}
               title="更多操作"
+              aria-haspopup="menu"
+              aria-expanded={isActionsMenuOpen}
               onClick={(event) => {
                 event.stopPropagation();
+                toggleActionsMenu();
               }}
             >
               <MoreVertical className="h-4 w-4" />
             </button>
         </div>
         </div>
+        {isActionsMenuOpen && actionsMenuPosition && actionsMenuHost && typeof document !== "undefined" ? createPortal(
+          <div
+            ref={actionsMenuRef}
+            role="menu"
+            aria-label={`${buildExamTitle(item)}的更多操作`}
+            className="absolute z-[100] overflow-hidden rounded-lg border border-slate-200 bg-white p-0.5 text-left shadow-[0_12px_30px_rgba(15,23,42,0.14)] dark:border-slate-700 dark:bg-slate-900 dark:shadow-[0_18px_38px_rgba(0,0,0,0.4)]"
+            style={actionsMenuPosition}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              ref={actionsMenuItemRef}
+              type="button"
+              role="menuitem"
+              className="flex min-h-9 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 dark:hover:bg-slate-800"
+              onClick={(event) => {
+                event.stopPropagation();
+                setIsActionsMenuOpen(false);
+                onExport(event);
+              }}
+            >
+              <FileDown className={`h-3 w-3 shrink-0 ${exportAvailability.available ? "text-indigo-500" : "text-slate-400"}`} />
+              <span className="min-w-0">
+                <span className="block whitespace-nowrap text-[12px] font-normal text-slate-700 dark:text-slate-200">
+                  {exportAvailability.label}
+                </span>
+                {!exportAvailability.available ? (
+                  <span className="mt-0.5 block text-[10px] leading-[14px] text-slate-500 dark:text-slate-400">
+                    {exportAvailability.description}
+                  </span>
+                ) : null}
+              </span>
+            </button>
+          </div>
+        , actionsMenuHost) : null}
         <style>{`
           .stop-fold-0-${item.id} { stop-color: #d2dbe7; }
           .stop-fold-1-${item.id} { stop-color: #e7edf5; }

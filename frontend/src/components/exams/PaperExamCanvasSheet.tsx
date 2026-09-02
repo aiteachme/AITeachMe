@@ -98,6 +98,7 @@ interface PaperExamCanvasSheetProps {
   onQuestionMarkToggle?: (item: ExamPaperItemResponse, isMarked: boolean) => void;
   markingQuestionTemplateIds?: ReadonlySet<number>;
   activeAiAnchorId?: string | null;
+  printMode?: boolean;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -701,6 +702,7 @@ function PaperExamQuestionBlock({
   markingQuestionTemplateIds,
   score,
   activeAiAnchorId,
+  printMode,
 }: PaperExamCanvasSheetProps & {
   entry: QuestionEntry;
   score?: number;
@@ -720,7 +722,7 @@ function PaperExamQuestionBlock({
   const correctMultiChoice = splitMultiChoiceAnswer(item.correct_answer);
   const isGraded = paper.status === "graded";
   const isReviewStage = isGraded && activeStage === 2;
-  const isReadonly = isGraded || paper.status === "grading_failed";
+  const isReadonly = isGraded || paper.status === "grading_failed" || printMode === true;
   const isCorrect = item.is_correct === true;
   const isSelectedReviewItem = isReviewStage && selectedItemId === item.id;
   const isQuestionHighlighted = highlightedQuestionOrder === item.item_order;
@@ -736,30 +738,43 @@ function PaperExamQuestionBlock({
       id={`exam-question-${item.item_order}`}
       data-question-anchor="true"
       data-question-order={item.item_order}
+      data-paper-print-question-main={printMode ? "true" : undefined}
       onClick={() => {
-        if (isReviewStage) {
+        if (isReviewStage && !printMode) {
           onSelectQuestion?.(item);
         }
       }}
       className={cn(
         "group relative scroll-mt-28 border border-transparent py-0.5 transition",
-        isReviewStage && "cursor-pointer pr-12",
+        isReviewStage && "pr-12",
+        !printMode && isReviewStage && "cursor-pointer",
         (isSelectedReviewItem || isQuestionHighlighted) && "border-slate-300 bg-slate-50/70 px-2 dark:border-slate-700 dark:bg-slate-900/70",
       )}
       aria-selected={isSelectedReviewItem || undefined}
       style={gaokaoTextStyle}
     >
       {isReviewStage ? <CanvasReviewMark item={item} /> : null}
-      <div className="flex items-start gap-2">
-        <div className="w-6 shrink-0 text-right text-[14px] leading-6 text-slate-950 dark:text-slate-100">
+      <div className={cn(printMode ? "relative block pl-8" : "flex items-start gap-2")}>
+        <div className={cn(
+          "text-right text-[14px] leading-6 text-slate-950 dark:text-slate-100",
+          printMode ? "absolute left-0 top-0 w-6" : "w-6 shrink-0",
+        )}>
           {item.item_order}.
         </div>
         <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-start justify-between gap-2">
+          <div
+            data-paper-print-question-prompt={printMode ? "true" : undefined}
+            className={cn(printMode ? "block" : "flex min-w-0 items-start justify-between gap-2")}
+          >
+            {scoreLabel && printMode ? (
+              <span className="float-right ml-3 mt-0.5 shrink-0 whitespace-nowrap text-[11px] leading-5 text-slate-950">
+                {scoreLabel} 分
+              </span>
+            ) : null}
             <div className="min-w-0 break-words text-[14px] leading-6 text-slate-950 dark:text-slate-100 [&_p]:mb-0 [&_p]:text-[14px] [&_p]:leading-6 [&_.katex-display]:my-1 [&_.katex]:font-normal">
               <ExamMarkdown content={item.stem} />
             </div>
-            {scoreLabel ? (
+            {scoreLabel && !printMode ? (
               <span className="shrink-0 whitespace-nowrap text-[11px] leading-5 text-slate-950 dark:text-slate-200">
                 {scoreLabel} 分
               </span>
@@ -773,13 +788,18 @@ function PaperExamQuestionBlock({
             </div>
           ) : isChoice ? (
             <div
-              className="mt-1.5 grid gap-x-7 gap-y-0.5"
+              data-paper-print-options={printMode ? "true" : undefined}
+              className={cn(
+                "mt-1.5 gap-x-7 gap-y-0.5",
+                printMode ? "block space-y-1" : "grid",
+              )}
               role={isMultipleChoice ? "group" : "radiogroup"}
               aria-label={`第 ${item.item_order} 题选项`}
               data-option-column-count={optionColumnCount}
-              style={{ gridTemplateColumns: `repeat(${optionColumnCount}, minmax(0, 1fr))` }}
+              style={printMode ? undefined : { gridTemplateColumns: `repeat(${optionColumnCount}, minmax(0, 1fr))` }}
             >
               {choiceOptions.map((option, optionIndex) => {
+                const optionVisualLength = getOptionVisualLength(option);
                 const optionLabel = isTrueFalse ? option : getOptionLabel(optionIndex);
                 const optionValue = isTrueFalse ? option : optionLabel;
                 const optionDisplay = isTrueFalse ? formatTrueFalseOptionLabel(option) : option;
@@ -791,6 +811,35 @@ function PaperExamQuestionBlock({
                     : (item.correct_answer ?? "") === optionValue;
                 const isWrongSelectedOption = isReviewStage && isSelected && !isCorrectOption;
                 const isRightOption = isReviewStage && isCorrectOption;
+                const optionToneClass = isReviewStage
+                  ? isRightOption
+                    ? "font-bold text-emerald-700 underline decoration-2 underline-offset-4 dark:text-emerald-300"
+                    : isWrongSelectedOption
+                      ? "font-bold text-rose-700 line-through decoration-2 dark:text-rose-300"
+                      : "text-slate-950 dark:text-slate-200"
+                  : isSelected
+                    ? "font-bold underline decoration-2 underline-offset-4"
+                    : "";
+                if (printMode) {
+                  return (
+                    <div
+                      key={`${item.id}-${optionIndex}`}
+                      data-paper-print-option="true"
+                      data-paper-print-option-splittable={optionVisualLength > 280 ? "true" : undefined}
+                      role={isMultipleChoice ? "checkbox" : "radio"}
+                      aria-checked={isSelected}
+                      className={cn(
+                        "relative min-h-6 rounded-none border-0 bg-transparent py-0 pl-6 text-left text-[14px] leading-6 text-slate-950",
+                        optionToneClass,
+                      )}
+                    >
+                      <span className="absolute left-0 top-0">{isTrueFalse ? "" : `${optionLabel}. `}</span>
+                      <div className="min-w-0 [&_p]:mb-0 [&_p]:text-[14px] [&_p]:leading-6">
+                        <ExamMarkdown content={optionDisplay} />
+                      </div>
+                    </div>
+                  );
+                }
                 return (
                   <button
                     key={`${item.id}-${optionIndex}`}
@@ -815,15 +864,7 @@ function PaperExamQuestionBlock({
                     }}
                     className={cn(
                       "flex min-h-6 items-start gap-1.5 rounded-none border-0 bg-transparent px-0 py-0 text-left text-[14px] leading-6 text-slate-950 transition hover:bg-slate-100/60 dark:text-slate-100 dark:hover:bg-slate-900/70",
-                      isReviewStage
-                        ? isRightOption
-                          ? "font-bold text-emerald-700 underline decoration-2 underline-offset-4 dark:text-emerald-300"
-                          : isWrongSelectedOption
-                            ? "font-bold text-rose-700 line-through decoration-2 dark:text-rose-300"
-                            : "text-slate-950 dark:text-slate-200"
-                        : isSelected
-                          ? "font-bold underline decoration-2 underline-offset-4"
-                          : "",
+                      optionToneClass,
                       isReadonly && "cursor-default",
                     )}
                   >
@@ -834,6 +875,22 @@ function PaperExamQuestionBlock({
                   </button>
                 );
               })}
+            </div>
+          ) : printMode ? (
+            <div
+              data-paper-print-answer="true"
+              className={cn(
+                "mt-2 min-h-12 whitespace-pre-wrap break-words border-b border-slate-300 px-1 py-1 text-[14px] leading-6 text-slate-800",
+                isReviewStage && (isCorrect ? "border-emerald-400 text-emerald-950" : "border-rose-400 text-rose-950"),
+              )}
+            >
+              {answerValue ? (
+                <ExamMarkdown content={answerValue} />
+              ) : (
+                <span className="text-slate-300">
+                  {item.question_type === "fill_blank" ? "________________" : "在此作答"}
+                </span>
+              )}
             </div>
           ) : (
             <textarea
@@ -855,7 +912,7 @@ function PaperExamQuestionBlock({
             />
           )}
 
-          <div className="mt-3 flex items-center justify-end gap-2.5 border-t border-dashed border-slate-200/60 dark:border-slate-800/80 pt-2">
+          {!printMode ? <div className="mt-3 flex items-center justify-end gap-2.5 border-t border-dashed border-slate-200/60 dark:border-slate-800/80 pt-2">
             {onQuestionAi ? (
               <button
                 type="button"
@@ -916,7 +973,7 @@ function PaperExamQuestionBlock({
                 解析
               </button>
             ) : null}
-          </div>
+          </div> : null}
         </div>
       </div>
     </div>
@@ -926,22 +983,28 @@ function PaperExamQuestionBlock({
 function PaperExamQuestionReviewBlock({
   entry,
   isContinuation,
+  printMode = false,
 }: {
   entry: QuestionEntry;
   isContinuation: boolean;
+  printMode?: boolean;
 }) {
   if (!entry.item) return null;
   const item = entry.item;
   return (
     <div
+      data-paper-print-review={printMode ? "true" : undefined}
       className={cn(
         "group relative border border-transparent py-0.5 transition",
-        isContinuation && "pl-6 pr-12 border-l-2 border-dashed border-indigo-200/60 dark:border-indigo-800/40"
+        isContinuation && "pl-6 pr-12 border-l-2 border-dashed border-indigo-200/60 dark:border-indigo-800/40",
       )}
       style={gaokaoTextStyle}
     >
-      <div className="flex items-start gap-2">
-        <div className="w-6 shrink-0 text-right text-[14px] leading-6 text-slate-950 dark:text-slate-100 font-bold">
+      <div className={cn(printMode ? "relative block pl-8" : "flex items-start gap-2")}>
+        <div className={cn(
+          "text-right text-[14px] font-bold leading-6 text-slate-950 dark:text-slate-100",
+          printMode ? "absolute left-0 top-0 w-6" : "w-6 shrink-0",
+        )}>
           {isContinuation ? `${item.item_order}.` : ""}
         </div>
         <div className="min-w-0 flex-1">
@@ -951,12 +1014,18 @@ function PaperExamQuestionReviewBlock({
                 [第 {item.item_order} 题解析 · 承前页]
               </div>
             ) : null}
-            <p className="text-xs font-semibold text-slate-400">你的答案</p>
-            <ExamMarkdown content={formatAnswerDisplayValue(item.question_type, item.user_answer)} />
-            <p className="mt-2 text-xs font-semibold text-slate-400">正确答案</p>
-            <ExamMarkdown content={formatAnswerDisplayValue(item.question_type, item.correct_answer, "无标准答案")} />
-            <p className="mt-2 text-xs font-semibold text-slate-400">解析</p>
-            <ExamMarkdown content={item.explanation || "暂无解析"} />
+            <div data-paper-print-review-block={printMode ? "true" : undefined}>
+              <p data-paper-print-review-label={printMode ? "true" : undefined} className="text-xs font-semibold text-slate-400">你的答案</p>
+              <ExamMarkdown content={formatAnswerDisplayValue(item.question_type, item.user_answer)} />
+            </div>
+            <div data-paper-print-review-block={printMode ? "true" : undefined} className="mt-2">
+              <p data-paper-print-review-label={printMode ? "true" : undefined} className="text-xs font-semibold text-slate-400">正确答案</p>
+              <ExamMarkdown content={formatAnswerDisplayValue(item.question_type, item.correct_answer, "无标准答案")} />
+            </div>
+            <div data-paper-print-review-block={printMode ? "true" : undefined} className="mt-2">
+              <p data-paper-print-review-label={printMode ? "true" : undefined} className="text-xs font-semibold text-slate-400">解析</p>
+              <ExamMarkdown content={item.explanation || "暂无解析"} />
+            </div>
           </div>
         </div>
       </div>
@@ -964,7 +1033,94 @@ function PaperExamQuestionReviewBlock({
   );
 }
 
-export function PaperExamCanvasSheet({
+function PaperExamPrintFlow(props: PaperExamCanvasSheetProps) {
+  const {
+    paper,
+    activeStage,
+    questionEntries,
+    showInlineReviewDetails = true,
+  } = props;
+  const layout = getPaperLayout(paper, questionEntries);
+  const entryByOrder = new Map(
+    questionEntries.map((entry) => [getQuestionOrder(entry), entry] as const),
+  );
+  const sectionByNumber = new Map(
+    layout.sections.map((section) => [section.section_number, section] as const),
+  );
+  const allocationByOrder = new Map(
+    layout.question_allocations.map((allocation) => [allocation.item_order, allocation] as const),
+  );
+  const orderedQuestionOrders = getOrderedQuestionOrders(layout, questionEntries);
+  const renderedSections = new Set<number>();
+  const includeReview = paper.status === "graded" && activeStage === 2 && showInlineReviewDetails;
+
+  return (
+    <div data-paper-print-flow="true" className="w-full overflow-visible bg-slate-100 px-4 py-8">
+      <article
+        data-paper-print-document="true"
+        className="mx-auto min-h-[297mm] w-full max-w-[210mm] overflow-visible bg-white px-[14mm] py-[12mm] text-slate-950 shadow-[0_18px_48px_rgba(15,23,42,0.12)]"
+        style={gaokaoTextStyle}
+      >
+        <header data-paper-print-cover="true">
+          <PaperExamCoverIntro paper={paper} layout={layout} />
+        </header>
+
+        <div data-paper-print-question-list="true">
+          {orderedQuestionOrders.map((order) => {
+            const entry = entryByOrder.get(order) ?? null;
+            if (!entry) return null;
+            const sectionNumber = getSectionNumberForOrder(order, layout, allocationByOrder);
+            const section = sectionByNumber.get(sectionNumber);
+            const showSectionHeading = Boolean(section && !renderedSections.has(sectionNumber));
+            if (showSectionHeading) renderedSections.add(sectionNumber);
+
+            return (
+              <section
+                key={`print-question-${order}`}
+                data-paper-print-question="true"
+                className="relative border-b border-slate-200 py-5 last:border-b-0"
+              >
+                {showSectionHeading && section ? (
+                  <h2
+                    data-paper-print-section-title="true"
+                    className="mb-3 text-[15px] font-bold leading-7 text-slate-950"
+                    style={gaokaoHeadingStyle}
+                  >
+                    {getSectionHeadingText(section, allocationByOrder, entryByOrder)}
+                  </h2>
+                ) : null}
+                <PaperExamQuestionBlock
+                  {...props}
+                  entry={entry}
+                  score={allocationByOrder.get(order)?.score}
+                  printMode
+                />
+                {includeReview && entry.item ? (
+                  <PaperExamQuestionReviewBlock
+                    entry={entry}
+                    isContinuation={false}
+                    printMode
+                  />
+                ) : null}
+              </section>
+            );
+          })}
+        </div>
+
+        <footer
+          data-paper-print-document-footer="true"
+          className="mt-6 border-t border-slate-300 pt-3 text-center text-xs text-slate-500"
+        >
+          {paper.status === "graded"
+            ? `批改结果 · 得分 ${paper.score_obtained ?? 0} / ${getExamTotalScore(paper)}`
+            : `空白卷 · 共 ${paper.total_items} 题`}
+        </footer>
+      </article>
+    </div>
+  );
+}
+
+function PaperExamInteractiveCanvasSheet({
   paper,
   answers,
   activeStage,
@@ -979,6 +1135,7 @@ export function PaperExamCanvasSheet({
   onQuestionMarkToggle,
   markingQuestionTemplateIds,
   activeAiAnchorId,
+  printMode = false,
 }: PaperExamCanvasSheetProps) {
   const layout = useMemo(() => getPaperLayout(paper, questionEntries), [paper, questionEntries]);
   const [pageViewMode, setPageViewMode] = useState<"single" | "double">("double");
@@ -998,6 +1155,7 @@ export function PaperExamCanvasSheet({
       setExpandedQuestionIds(new Set());
     }
   }, [activeStage, questionEntries, showInlineReviewDetails]);
+  const effectivePageViewMode = printMode ? "single" : pageViewMode;
 
   const handleToggleQuestionAnalysis = useCallback((itemId: number) => {
     setExpandedQuestionIds((current) => {
@@ -1043,18 +1201,19 @@ export function PaperExamCanvasSheet({
   const renderedPageCount = renderedPages.length;
 
   const pageSpec = useMemo(() => buildPaperPageSpec(layout.pages_per_side), [layout.pages_per_side]);
-  const pagesInRow = pageViewMode === "double" ? 2 : 1;
+  const pagesInRow = effectivePageViewMode === "double" ? 2 : 1;
   const pageScale = useMemo(() => {
+    if (printMode) return 1;
     const availableWidth = Math.max(320, viewerWidth - VIEWER_HORIZONTAL_PADDING);
     const requiredGap = 0;
     const fitScale = (availableWidth - requiredGap) / Math.max(1, pageSpec.pageWidth * pagesInRow);
     return Math.min(1, Math.max(0.38, fitScale));
-  }, [pageSpec.pageWidth, pagesInRow, viewerWidth]);
+  }, [pageSpec.pageWidth, pagesInRow, printMode, viewerWidth]);
   const displayedPageWidth = Math.round(pageSpec.pageWidth * pageScale);
   const displayedPageHeight = Math.round(pageSpec.pageHeight * pageScale);
   const displayedPageGap = Math.max(12, Math.round(pageSpec.pageGap * pageScale));
   const pageSpreads = useMemo<PageSpread[]>(() => {
-    if (pageViewMode === "single") {
+    if (effectivePageViewMode === "single") {
       return renderedPages.map((page) => ({
         key: `page-${page.page_number}`,
         pages: [page],
@@ -1070,7 +1229,7 @@ export function PaperExamCanvasSheet({
       });
     }
     return spreads;
-  }, [pageViewMode, renderedPages]);
+  }, [effectivePageViewMode, renderedPages]);
   const currentSpreadIndex = pageSpreads.findIndex((spread) =>
     spread.pages.some((page) => page.page_number === activePageNumber),
   );
@@ -1181,7 +1340,7 @@ export function PaperExamCanvasSheet({
   const activePageLabel = activeSpread?.pages.length === 2
     ? `第 ${activeSpread.pages[0]?.page_number}-${activeSpread.pages[1]?.page_number} / ${renderedPageCount} 页`
     : `第 ${activePageNumber} / ${renderedPageCount} 页`;
-  const isDoublePageMode = pageViewMode === "double";
+  const isDoublePageMode = effectivePageViewMode === "double";
   const pageTurnDirection: -1 | 1 | 0 = canGoNext ? 1 : canGoPrevious ? -1 : 0;
   const pageTurnLabel = pageTurnDirection === 1
     ? (isDoublePageMode ? "下一组页面" : "下一页")
@@ -1201,8 +1360,14 @@ export function PaperExamCanvasSheet({
   }, [canGoNext, canGoPrevious, goSpread]);
 
   return (
-    <div className="relative flex h-full min-h-0 w-full flex-col overflow-hidden">
-      <div
+    <div
+      data-paper-print={printMode ? "true" : undefined}
+      className={cn(
+        "relative flex min-h-0 w-full flex-col",
+        printMode ? "h-auto overflow-visible bg-white" : "h-full overflow-hidden",
+      )}
+    >
+      {!printMode ? <div
         data-paper-floating-controls="true"
         className="pointer-events-none fixed right-4 top-[10.25rem] z-30 flex flex-col gap-3 xl:right-6"
       >
@@ -1226,17 +1391,25 @@ export function PaperExamCanvasSheet({
         >
           {pageTurnDirection === -1 ? <ChevronLeft className="h-5.5 w-5.5" /> : <ChevronRight className="h-5.5 w-5.5" />}
         </button>
-      </div>
+      </div> : null}
 
       <div
         ref={viewerRef}
         data-paper-viewer="true"
-        className="min-h-0 flex-1 overflow-auto bg-slate-100 px-4 pb-7 pt-3 shadow-inner dark:bg-slate-950"
-        onScroll={handleViewerScroll}
+        className={cn(
+          "min-h-0 flex-1",
+          printMode
+            ? "overflow-visible bg-white p-0 shadow-none"
+            : "overflow-auto bg-slate-100 px-4 pb-7 pt-3 shadow-inner dark:bg-slate-950",
+        )}
+        onScroll={printMode ? undefined : handleViewerScroll}
       >
-        <div className="mx-auto flex min-h-full flex-col items-center gap-8 pb-16">
+        <div className={cn(
+          "mx-auto flex min-h-full flex-col items-center",
+          printMode ? "gap-0 pb-0" : "gap-8 pb-16",
+        )}>
           {pageSpreads.map((spread) => {
-            const isJoinedSpread = pageViewMode === "double";
+            const isJoinedSpread = effectivePageViewMode === "double";
             const shouldRenderBlankRightPage = isJoinedSpread && spread.pages.length === 1;
             return (
             <article
@@ -1344,6 +1517,7 @@ export function PaperExamCanvasSheet({
                                     entry={entry}
                                     score={allocation?.score}
                                     activeAiAnchorId={activeAiAnchorId}
+                                    printMode={printMode}
                                   />
                                 );
                               }
@@ -1410,7 +1584,7 @@ export function PaperExamCanvasSheet({
             </article>
             );
           })}
-          {footerContent ? (
+          {!printMode && footerContent ? (
             <div
               data-paper-action-footer="true"
               className="flex w-full justify-center px-4 pb-14 pt-2"
@@ -1422,4 +1596,10 @@ export function PaperExamCanvasSheet({
       </div>
     </div>
   );
+}
+
+export function PaperExamCanvasSheet(props: PaperExamCanvasSheetProps) {
+  return props.printMode
+    ? <PaperExamPrintFlow {...props} />
+    : <PaperExamInteractiveCanvasSheet {...props} printMode={false} />;
 }

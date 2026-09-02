@@ -5,6 +5,7 @@ import {
   buildQuestionBankSearchText,
   countQuestionBankReviewStatuses,
   filterAndSortQuestionBankEntries,
+  filterQuestionBankEntriesByKnowledgeUnit,
   matchesQuestionBankReviewStatus,
   toggleQuestionBankFilterValue,
 } from "../src/components/exams/questionBankFilters.ts";
@@ -89,4 +90,18 @@ test("复习状态数量分别统计错题、标记题和两者交集", () => {
     marked: 2,
     wrong_marked: 1,
   });
+});
+
+test("同知识点题目严格按图谱节点 ID 筛选", () => {
+  const entries = [
+    createEntry({ id: 1, knowledge_unit_refs: [{ knowledge_unit_id: 979, knowledge_unit_name: "反比例函数" }] }),
+    createEntry({ id: 2, knowledge_unit_refs: [{ knowledge_unit_id: 994, knowledge_unit_name: "反比例函数" }] }),
+    createEntry({ id: 3, knowledge_unit_refs: [{ unit_id: 979, knowledge_unit_name: "同义节点" }] }),
+  ];
+
+  assert.deepEqual(
+    filterQuestionBankEntriesByKnowledgeUnit(entries, 979).map(({ item }) => item.id),
+    [1, 3],
+  );
+  assert.deepEqual(filterQuestionBankEntriesByKnowledgeUnit(entries, null), entries);
 });

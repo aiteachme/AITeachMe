@@ -45,6 +45,7 @@ interface ExamPaperSheetProps {
   onQuestionMarkToggle?: (item: ExamPaperItemResponse, isMarked: boolean) => void;
   markingQuestionTemplateIds?: ReadonlySet<number>;
   activeAiAnchorId?: string | null;
+  isPrintView?: boolean;
 }
 
 function buildGeneratingRows(paper: ExamPaperDetailResponse): PaperPreviewRow[] {
@@ -319,6 +320,7 @@ export function ExamPaperSheet({
   onQuestionMarkToggle,
   markingQuestionTemplateIds,
   activeAiAnchorId,
+  isPrintView = false,
 }: ExamPaperSheetProps) {
   const items = paper.items ?? [];
   const itemsByOrder = new Map(items.map((item: ExamPaperItemResponse) => [item.item_order, item]));
@@ -343,13 +345,19 @@ export function ExamPaperSheet({
         onQuestionMarkToggle={onQuestionMarkToggle}
         markingQuestionTemplateIds={markingQuestionTemplateIds}
         activeAiAnchorId={activeAiAnchorId}
+        printMode={isPrintView}
       />
     );
   }
 
   return (
                 <div
-                  className="relative mx-auto w-full max-w-[1040px] pb-12"
+                  data-exam-paper-sheet="true"
+                  data-exam-paper-print={isPrintView ? "true" : undefined}
+                  className={cn(
+                    "relative mx-auto w-full max-w-[1040px]",
+                    isPrintView ? "pb-0" : "pb-12",
+                  )}
                   style={
                     pageScale < 1
                       ? {
@@ -360,25 +368,43 @@ export function ExamPaperSheet({
                       : undefined
                   }
                 >
-                  <div className="absolute bottom-8 -right-5 top-5 hidden w-full border border-slate-200 bg-white shadow-[0_18px_36px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-900/80 dark:shadow-[0_18px_36px_rgba(0,0,0,0.42)] lg:block" />
-                  <div className="absolute bottom-4 -right-2 top-2 hidden w-full border border-slate-200 bg-white shadow-[0_14px_30px_rgba(15,23,42,0.06)] dark:border-slate-800 dark:bg-slate-900/90 dark:shadow-[0_14px_30px_rgba(0,0,0,0.36)] lg:block" />
-                  <article className="relative min-h-[1470px] overflow-hidden border border-slate-200 bg-white shadow-[0_26px_70px_rgba(15,23,42,0.15)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_28px_76px_-34px_rgba(0,0,0,0.9)]">
-                    <header className="px-6 pb-6 pt-12 text-center sm:px-10 sm:pt-16 lg:px-16">
+                  {!isPrintView ? (
+                    <>
+                      <div className="absolute bottom-8 -right-5 top-5 hidden w-full border border-slate-200 bg-white shadow-[0_18px_36px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-900/80 dark:shadow-[0_18px_36px_rgba(0,0,0,0.42)] lg:block" />
+                      <div className="absolute bottom-4 -right-2 top-2 hidden w-full border border-slate-200 bg-white shadow-[0_14px_30px_rgba(15,23,42,0.06)] dark:border-slate-800 dark:bg-slate-900/90 dark:shadow-[0_14px_30px_rgba(0,0,0,0.36)] lg:block" />
+                    </>
+                  ) : null}
+                  <article className={cn(
+                    "relative border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950",
+                    isPrintView
+                      ? "min-h-0 overflow-visible shadow-none"
+                      : "min-h-[1470px] overflow-hidden shadow-[0_26px_70px_rgba(15,23,42,0.15)] dark:shadow-[0_28px_76px_-34px_rgba(0,0,0,0.9)]",
+                  )}>
+                    <header data-exam-print-header="true" className="px-6 pb-6 pt-12 text-center sm:px-10 sm:pt-16 lg:px-16">
                       <h1 className="font-serif text-3xl font-bold tracking-[0.08em] text-slate-950 dark:text-slate-100 sm:text-4xl">
                         {getExamPaperDisplayTitle(paper)}
                       </h1>
-                      <div className="mx-auto mt-5 flex max-w-md items-center justify-center gap-3 text-slate-400 dark:text-slate-600">
+                      <div data-exam-print-header-divider="true" className="mx-auto mt-5 flex max-w-md items-center justify-center gap-3 text-slate-400 dark:text-slate-600">
                         <span className="h-px flex-1 bg-slate-300 dark:bg-slate-700" />
                         <span className="h-2 w-2 rotate-45 bg-slate-800 dark:bg-slate-300" />
                         <span className="h-px flex-1 bg-slate-300 dark:bg-slate-700" />
                       </div>
-                      <p className="mt-4 font-serif text-base font-semibold text-slate-600 dark:text-slate-400">
+                      <p data-exam-print-summary="true" className="mt-4 font-serif text-base font-semibold text-slate-600 dark:text-slate-400">
                         本试卷共 {paper.total_items} 题，满分 {getExamTotalScore(paper)} 分，预计用时 {getEstimatedExamMinutes(paper)} 分钟
                       </p>
-                      <div className="mt-8 border-y border-dashed border-slate-300 py-5 text-left font-serif text-sm leading-8 text-slate-700 dark:border-slate-700 dark:text-slate-300 sm:text-base">
+                      <div data-exam-print-instructions="true" className="mt-8 border-y border-dashed border-slate-300 py-5 text-left font-serif text-sm leading-8 text-slate-700 dark:border-slate-700 dark:text-slate-300 sm:text-base">
                         <p className="font-bold text-slate-800 dark:text-slate-200">注意事项：</p>
-                        <p>1. 请在作答区内选择或填写答案，系统会自动保存当前选择。</p>
-                        <p>2. 可使用右侧工具调整页面与字体大小；提交前请检查题号导航状态。</p>
+                        {isPrintView ? (
+                          <>
+                            <p>1. 请在答题区域内选择或填写答案。</p>
+                            <p>2. 请检查题号和页面是否完整，并合理安排作答时间。</p>
+                          </>
+                        ) : (
+                          <>
+                            <p>1. 请在作答区内选择或填写答案，系统会自动保存当前选择。</p>
+                            <p>2. 可使用右侧工具调整页面与字体大小；提交前请检查题号导航状态。</p>
+                          </>
+                        )}
                       </div>
                     </header>
 
@@ -408,6 +434,13 @@ export function ExamPaperSheet({
                     const isMarking = Boolean(
                       item.question_template_id && markingQuestionTemplateIds?.has(item.question_template_id),
                     );
+                    const writtenAnswerTone = isReviewStage
+                      ? isCorrect
+                        ? "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-100"
+                        : "border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-100"
+                      : isReadonly
+                        ? "border-slate-200 bg-slate-50 text-slate-900 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300"
+                        : "border-slate-200 bg-white text-slate-900 focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-indigo-500/60 dark:focus:ring-indigo-500/20";
 
                     return (
                       <div
@@ -422,8 +455,8 @@ export function ExamPaperSheet({
                         }}
                         className={cn(
                           "group relative scroll-mt-28 border-b border-slate-100 px-0 py-8 transition-[background-color,box-shadow] duration-300 last:border-b-0 dark:border-slate-900 sm:py-10",
-                          (isReviewStage || isQuestionHighlighted) && "px-4 sm:px-5 lg:px-6",
-                          isReviewStage && "cursor-pointer rounded-xl",
+                          !isPrintView && (isReviewStage || isQuestionHighlighted) && "px-4 sm:px-5 lg:px-6",
+                          !isPrintView && isReviewStage && "cursor-pointer rounded-xl",
                           isSelectedReviewItem && "bg-slate-50/80 outline outline-1 outline-slate-200 dark:bg-slate-900/70 dark:outline-slate-700",
                           isQuestionHighlighted && "rounded-xl bg-slate-50/80 outline outline-1 outline-slate-200 dark:bg-slate-900/70 dark:outline-slate-700",
                         )}
@@ -431,7 +464,8 @@ export function ExamPaperSheet({
                       >
                         {isReviewStage ? <QuestionReviewResultMark item={item} /> : null}
                         <div className="w-full">
-                          <div className="min-w-0 overflow-hidden">
+                          <div data-exam-question-main="true" className="min-w-0 overflow-hidden">
+                            <div data-exam-question-prompt="true">
                             <div className="mb-4 flex items-center gap-4">
                               <div className="flex flex-wrap items-center gap-3">
                                 <div className="font-sans text-lg font-bold text-slate-800 dark:text-slate-200">
@@ -450,9 +484,9 @@ export function ExamPaperSheet({
                                   )} />
                                   {formatQuestionTypeLabel(item.question_type)}
                                 </span>
-                                <span className="text-slate-200 dark:text-slate-800 select-none">|</span>
+                                {!isPrintView ? <span className="select-none text-slate-200 dark:text-slate-800">|</span> : null}
 
-                                <div className={cn(
+                                {!isPrintView ? <div className={cn(
                                   "flex items-center gap-1.5 text-xs font-semibold transition-opacity duration-300",
                                   (isMarked || (selectedItemId === item.id && isReviewAnalysisVisible))
                                     ? "opacity-100"
@@ -520,11 +554,12 @@ export function ExamPaperSheet({
                                       <span>解析</span>
                                     </button>
                                   )}
-                                </div>
+                                </div> : null}
                               </div>
                             </div>
                             <div className={EXAM_QUESTION_TEXT_CLASS}>
                               <ExamMarkdown content={item.stem} />
+                            </div>
                             </div>
                           {!isSupportedQuestionType(item.question_type) ? (
                             <div className="mt-6 flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200" role="alert">
@@ -533,6 +568,7 @@ export function ExamPaperSheet({
                             </div>
                           ) : isChoice ? (
                             <div
+                              data-exam-question-options="true"
                               className={cn(
                                 "mt-6 grid gap-3 max-w-[720px]",
                                 choiceOptions.every((opt: string) => opt.toString().length < 12)
@@ -565,7 +601,7 @@ export function ExamPaperSheet({
                                     type="button"
                                     role={isMultipleChoice ? "checkbox" : "radio"}
                                     aria-checked={isSelected}
-                                    disabled={isReadonly}
+                                    disabled={isReadonly || isPrintView}
                                     onClick={() => {
                                       setAnswers((current) => {
                                         if (!isMultipleChoice) {
@@ -648,49 +684,53 @@ export function ExamPaperSheet({
                               })}
                             </div>
                           ) : (
-                            <div className="mt-6 min-w-0">
+                            <div data-exam-question-answer="true" className="mt-6 min-w-0">
+                              {isPrintView ? (
+                                <div
+                                  className={`min-h-32 w-full max-w-full whitespace-pre-wrap break-words rounded-lg border px-4 py-3 ${EXAM_TEXTAREA_TEXT_CLASS} ${writtenAnswerTone}`}
+                                >
+                                  {answerValue ? (
+                                    <ExamMarkdown content={answerValue} />
+                                  ) : (
+                                    <span className="text-slate-300">{item.question_type === "fill_blank" ? "填写答案" : "在此作答"}</span>
+                                  )}
+                                </div>
+                              ) : (
                               <textarea
-                                className={`min-h-32 w-full max-w-full rounded-lg border px-4 py-3 outline-none transition ${EXAM_TEXTAREA_TEXT_CLASS} ${
-                                  isReviewStage
-                                    ? isCorrect
-                                      ? "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-100"
-                                      : "border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-100"
-                                    : isReadonly
-                                      ? "border-slate-200 bg-slate-50 text-slate-900 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300"
-                                    : "border-slate-200 bg-white text-slate-900 focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-indigo-500/60 dark:focus:ring-indigo-500/20"
-                                }`}
+                                className={`min-h-32 w-full max-w-full rounded-lg border px-4 py-3 outline-none transition ${EXAM_TEXTAREA_TEXT_CLASS} ${writtenAnswerTone}`}
                                 placeholder={item.question_type === "fill_blank" ? "填写答案" : "输入你的作答"}
                                 value={answerValue}
                                 onChange={(event) =>
                                   setAnswers((current) => ({ ...current, [item.item_order]: event.target.value }))
                                 }
-                                disabled={isReadonly}
+                                disabled={isReadonly || isPrintView}
                               />
+                              )}
                             </div>
                           )}
                         </div>
 
                         {isReviewStage && showInlineReviewDetails && (
-                          <div className="mt-6 border-t border-dashed border-slate-200 pt-5 text-sm leading-7 text-slate-600 dark:border-slate-800 dark:text-slate-300">
-                            <div>
+                          <div data-exam-question-review="true" className="mt-6 border-t border-dashed border-slate-200 pt-5 text-sm leading-7 text-slate-600 dark:border-slate-800 dark:text-slate-300">
+                            <div data-exam-review-block="true">
                               <p className="mb-2 font-sans text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">你的答案</p>
                               <div className={EXAM_ANSWER_TEXT_CLASS}>
                                 <ExamMarkdown content={formatAnswerDisplayValue(item.question_type, item.user_answer)} />
                               </div>
                             </div>
-                            <div className="mt-3">
+                            <div data-exam-review-block="true" className="mt-3">
                               <p className="mb-2 font-sans text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">正确答案</p>
                               <div className={EXAM_ANSWER_TEXT_CLASS}>
                                 <ExamMarkdown content={formatAnswerDisplayValue(item.question_type, item.correct_answer, "无标准答案")} />
                               </div>
                             </div>
-                            <div className="mt-3">
+                            <div data-exam-review-block="true" className="mt-3">
                               <p className="mb-2 font-sans text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">解析</p>
                               <div className={EXAM_ANSWER_TEXT_CLASS}>
                                 <ExamMarkdown content={item.explanation || "暂无解析"} />
                               </div>
                             </div>
-                            <div className="mt-4 flex items-center gap-2 border-t border-slate-200 pt-4 dark:border-slate-800">
+                            <div data-exam-review-result="true" className="mt-4 flex items-center gap-2 border-t border-slate-200 pt-4 dark:border-slate-800">
                               <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">结果</span>
                               <span className={item.is_correct ? "font-medium text-emerald-700 dark:text-emerald-300" : "font-medium text-rose-700 dark:text-rose-300"}>
                                 {item.is_correct ? "正确" : "需要继续巩固"}
@@ -704,7 +744,11 @@ export function ExamPaperSheet({
                       })}
                     </div>
                     <div className="border-t border-slate-200 px-6 py-5 text-center font-serif text-base font-semibold text-slate-500 dark:border-slate-800 dark:text-slate-400">
-                      第 1 / 1 页 · 已作答 {getAnsweredCount(paper, answers)} / {paper.total_items} 题
+                      {isPrintView
+                        ? paper.status === "graded"
+                          ? `批改结果 · 得分 ${paper.score_obtained ?? 0} / ${getExamTotalScore(paper)}`
+                          : `空白卷 · 共 ${paper.total_items} 题`
+                        : `第 1 / 1 页 · 已作答 ${getAnsweredCount(paper, answers)} / ${paper.total_items} 题`}
                     </div>
                   </article>
                 </div>

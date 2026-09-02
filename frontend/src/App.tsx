@@ -49,6 +49,9 @@ const ExamsPage = lazy(() => import("./pages/ExamsPage").then((module) => ({ def
 const ExamPaperPage = lazy(() =>
   import("./pages/ExamsPage").then((module) => ({ default: module.ExamPaperPage })),
 );
+const ExamPaperPrintPage = lazy(() =>
+  import("./pages/ExamPaperPrintPage").then((module) => ({ default: module.ExamPaperPrintPage })),
+);
 const MasteryDrillPage = lazy(() =>
   import("./pages/ExamsPage").then((module) => ({ default: module.MasteryDrillPage })),
 );
@@ -245,6 +248,10 @@ function AppRouteTree({
       <ElectronWindowFrame>
         <Routes>
           <Route path="share/courses/:token" element={withRouteFallback(<CourseSharePage />)} />
+          <Route
+            path="courses/:courseId/exams/:examPaperId/print"
+            element={withRouteFallback(<ExamPaperPrintPage />)}
+          />
           <Route path="/" element={<Layout />}>
             <Route index element={withRouteFallback(<HomePage />)} />
             <Route path="assistant" element={withRouteFallback(<GlobalAssistantPage />)} />

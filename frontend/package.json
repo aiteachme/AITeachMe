@@ -26,6 +26,7 @@
     "build": "tsc && vite build",
     "build:desktop": "tsc && vite build --base=./",
     "test:exam-submission-flow": "node --experimental-strip-types tests/exam-submission-flow.test.mjs",
+    "test:exam-paper-export": "node --experimental-strip-types tests/exam-paper-export.test.mjs",
     "test:mastery-drill-progress": "node --experimental-strip-types tests/mastery-drill-progress.test.mjs",
     "test:question-bank-filters": "node --experimental-strip-types tests/question-bank-filters.test.mjs",
     "test:question-template-detail": "node --experimental-strip-types tests/question-template-detail.test.mjs",

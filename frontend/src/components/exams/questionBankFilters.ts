@@ -126,6 +126,19 @@ export function countQuestionBankReviewStatuses(
   return counts;
 }
 
+export function filterQuestionBankEntriesByKnowledgeUnit<T extends QuestionBankIndexedEntry>(
+  entries: readonly T[],
+  knowledgeUnitId: number | null | undefined,
+): T[] {
+  if (!knowledgeUnitId || knowledgeUnitId <= 0) return [...entries];
+  return entries.filter(({ item }) =>
+    (item.knowledge_unit_refs ?? []).some((ref) => {
+      const value = Number(ref.knowledge_unit_id ?? ref.unit_id ?? 0);
+      return Number.isFinite(value) && value === knowledgeUnitId;
+    }),
+  );
+}
+
 export function filterAndSortQuestionBankEntries<T extends QuestionBankIndexedEntry>(
   entries: readonly T[],
   filters: QuestionBankFilterState,

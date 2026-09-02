@@ -6,12 +6,26 @@ import { cn } from "../../lib/utils";
 interface ModalProps {
   open: boolean;
   onClose: () => void;
-  title?: string;
+  title?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
+  headerActions?: React.ReactNode;
+  headerClassName?: string;
+  titleClassName?: string;
+  bodyClassName?: string;
 }
 
-export function Modal({ open, onClose, title, children, className }: ModalProps) {
+export function Modal({
+  open,
+  onClose,
+  title,
+  children,
+  className,
+  headerActions,
+  headerClassName,
+  titleClassName,
+  bodyClassName,
+}: ModalProps) {
   const titleId = React.useId();
   React.useEffect(() => {
     if (!open) return;
@@ -43,19 +57,24 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
           aria-labelledby={title ? titleId : undefined}
         >
           {title && (
-            <div className="flex shrink-0 items-center justify-between border-b border-zinc-100 px-4 py-3 dark:border-slate-800 sm:px-6 sm:py-4">
-              <h2 id={titleId} className="truncate pr-4 text-[15px] font-semibold text-zinc-900 dark:text-slate-100">{title}</h2>
-              <button
-                type="button"
-                onClick={onClose}
-                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-900 active:scale-95 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-100 sm:h-8 sm:w-8"
-                aria-label="关闭弹窗"
-              >
-                <X className="h-4 w-4" />
-              </button>
+            <div className={cn("flex shrink-0 items-center justify-between border-b border-zinc-100 px-4 py-3 dark:border-slate-800 sm:px-6 sm:py-4", headerClassName)}>
+              <h2 id={titleId} className={cn("min-w-0 truncate pr-4 text-[15px] font-semibold text-zinc-900 dark:text-slate-100", titleClassName)}>
+                {title}
+              </h2>
+              <div className="flex shrink-0 items-center gap-1.5">
+                {headerActions}
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-900 active:scale-95 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-100 sm:h-8 sm:w-8"
+                  aria-label="关闭弹窗"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           )}
-          <div className="flex-1 overflow-y-auto p-4 sm:p-6">{children}</div>
+          <div className={cn("flex-1 overflow-y-auto p-4 sm:p-6", bodyClassName)}>{children}</div>
         </div>
       </div>
     </div>

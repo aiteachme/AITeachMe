@@ -3,6 +3,8 @@ import test from "node:test";
 
 import {
   buildQuestionTemplateKnowledgeRefs,
+  formatQuestionTemplateKnowledgeNameMarkdown,
+  formatQuestionTemplateKnowledgeSummaryMarkdown,
   formatQuestionTemplateErrorCause,
   formatQuestionTemplateHistoryMode,
   formatQuestionTemplateStatus,
@@ -21,7 +23,7 @@ test("题目状态、训练模式、版本和错因不暴露英文内部代码",
   assert.equal(formatQuestionTemplateErrorCause("new_internal_code"), "需要进一步分析");
 });
 
-test("知识点完整显示名称、类型、角色和百分比", () => {
+test("知识点完整显示名称、类型和本题覆盖权重，不推断考查角色", () => {
   const refs = buildQuestionTemplateKnowledgeRefs([
     {
       knowledge_unit_id: 136,
@@ -38,22 +40,48 @@ test("知识点完整显示名称、类型、角色和百分比", () => {
   ]);
 
   assert.deepEqual(
-    refs.map(({ name, typeLabel, roleLabel, weightLabel }) => ({ name, typeLabel, roleLabel, weightLabel })),
+    refs.map(({ name, typeLabel, isTopic, weightLabel }) => ({ name, typeLabel, isTopic, weightLabel })),
     [
       {
         name: "折线图中的分段函数建模",
         typeLabel: "解题技能",
-        roleLabel: "主要考查",
-        weightLabel: "考查侧重 45%",
+        isTopic: false,
+        weightLabel: "本题覆盖 45%",
       },
       {
         name: "一次函数解析式",
         typeLabel: "公式模型",
-        roleLabel: "关联考查",
-        weightLabel: "考查侧重 30%",
+        isTopic: false,
+        weightLabel: "本题覆盖 30%",
       },
     ],
   );
+});
+
+test("知识点规范名称中的裸 LaTeX 只在显示层补充数学定界符", () => {
+  assert.equal(
+    formatQuestionTemplateKnowledgeNameMarkdown("反比例函数 y=\\frac{k}{x}"),
+    "反比例函数 $y=\\frac{k}{x}$",
+  );
+  assert.equal(
+    formatQuestionTemplateKnowledgeNameMarkdown("反比例函数定义域 x\\neq 0"),
+    "反比例函数定义域 $x\\neq 0$",
+  );
+  assert.equal(formatQuestionTemplateKnowledgeNameMarkdown("k=0不是反比例函数"), "k=0不是反比例函数");
+  assert.equal(formatQuestionTemplateKnowledgeNameMarkdown("已有 $x\\neq0$"), "已有 $x\\neq0$");
+});
+
+test("主题节点的章节 Markdown 被压缩为安全的行内摘要", () => {
+  const summary = formatQuestionTemplateKnowledgeSummaryMarkdown(
+    "# 二次函数图像性质、解析式互化与最值应用 | 学习主线 | 本章要解决的问题 | |---|---| | 解析式结构 | 从 $y=ax^2+bx+c$ 中读取参数 | | 图像性质 | 判断开口方向与顶点 | ## 二次函数一般式结构",
+  );
+
+  assert.equal(summary.includes("#"), false);
+  assert.equal(summary.includes("|"), false);
+  assert.equal(summary.includes("---"), false);
+  assert.equal(summary.includes("二次函数一般式结构"), false);
+  assert.match(summary, /二次函数图像性质、解析式互化与最值应用/);
+  assert.match(summary, /\$y=ax\^2\+bx\+c\$/);
 });
 
 test("仅有编号或占位名称时给出明确的未同步提示状态", () => {

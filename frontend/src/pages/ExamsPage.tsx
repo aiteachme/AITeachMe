@@ -1,4 +1,4 @@
-import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { memo, useCallback, useDeferredValue, useEffect, useId, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -7,9 +7,12 @@ import {
   ChevronDown,
   CloudOff,
   FileText,
+  Info,
+  Link2,
   ClipboardCheck,
   Layers3,
   Loader2,
+  Network,
   Play,
   Search,
   SlidersHorizontal,
@@ -18,18 +21,20 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import {
   getExamHistoryApiV1CoursesCourseIdExamsHistoryGetQueryKey,
   useExamHistoryApiV1CoursesCourseIdExamsHistoryGet,
   useGenerateExamApiV1CoursesCourseIdExamsGeneratePost,
 } from "../api/generated/exams";
+import { graphKnowledgeUnitDetailApiV1CoursesCourseIdKnowledgeGraphKnowledgeUnitsDetailPost } from "../api/generated/knowledge";
 import type { ExamHistoryItem } from "../api/generated/model";
 import type {
   ExamNodeLinkResponse,
   ExamPaperDetailResponse,
   ExamPaperItemResponse,
+  KnowledgeUnitDetailResponse,
 } from "../api/generated/model";
 import {
   LONG_RUNNING_API_TIMEOUT_MS,
@@ -108,6 +113,7 @@ import {
   buildQuestionBankSearchText,
   countQuestionBankReviewStatuses,
   filterAndSortQuestionBankEntries,
+  filterQuestionBankEntriesByKnowledgeUnit,
   toggleQuestionBankFilterValue,
   type QuestionBankFilterState,
   type QuestionBankReviewStatus,
@@ -117,19 +123,22 @@ import {
   buildQuestionTemplateKnowledgeRefs,
   formatQuestionTemplateErrorCause,
   formatQuestionTemplateHistoryMode,
-  formatQuestionTemplateStatus,
-  formatQuestionTemplateVersion,
+  formatQuestionTemplateKnowledgeSummaryMarkdown,
   shouldShowQuestionTemplateFeedback,
   summarizeQuestionTemplateHistory,
+  type QuestionTemplateKnowledgeRefView,
 } from "../components/exams/questionTemplateDetail";
+import { getExamPaperExportAvailability } from "../components/exams/examPaperExport";
 import { useApiAuthGeneration } from "../hooks/useApiAuthGeneration";
 import {
   parseExamGenerationSnapshot,
   patchExamHistoryQueryData,
 } from "../components/exams/examGenerationStream";
 import { useExamResultDisplayPreference } from "../lib/examResultDisplayPreference";
+import { buildRuntimeRouteUrl } from "../lib/electronRuntime";
 import { AUTH_SESSION_QUERY_KEY, AUTH_SESSION_STALE_TIME_MS, fetchAuthSession } from "../lib/authSession";
 import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
+import { cn } from "../lib/utils";
 import { buildCoursePath, buildCourseSubPath } from "../lib/courseNavigation";
 import { useCourseDisplayName } from "../hooks/useCourseDisplayName";
 import {
@@ -139,6 +148,7 @@ import {
   CoursePageHeader,
 } from "../components/course/CoursePageHeader";
 import { CoursePagePillTitle } from "../components/course/CoursePagePillTitle";
+import { DEFAULT_COLOR, NODE_COLORS, relationLabel } from "../components/knowledge-graph/knowledgeGraphVisual";
 
 
 interface ExamPaperDeleteResponse {
@@ -267,6 +277,7 @@ const EXAM_HISTORY_LIST_PARAMS = { page: 1, size: 24 } as const;
 const EXAM_HISTORY_STABLE_CACHE_PREFIX = "aiteachme.exam.historyStable.v1";
 const EXAM_HISTORY_EMPTY_RETRY_LIMIT = 4;
 const EXAM_HISTORY_EMPTY_RETRY_DELAY_MS = 500;
+const QUESTION_TEMPLATE_HISTORY_TIMEOUT_MS = 10_000;
 const EXAM_HISTORY_ACTIVE_REFRESH_MS = 4000;
 const EXAM_HISTORY_ACTIVE_STATUSES = new Set(["submitted", "generating", "grading"]);
 
@@ -488,6 +499,7 @@ async function getQuestionTemplateAnswerHistory(courseId: string, templateId: nu
     {
       method: "GET",
       signal,
+      timeout: QUESTION_TEMPLATE_HISTORY_TIMEOUT_MS,
     },
   );
 }
@@ -579,6 +591,7 @@ function getMasteryDrillStatusBadge(
 export function ExamsPage() {
   const apiAuthGeneration = useApiAuthGeneration();
   const { courseId } = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -1276,6 +1289,34 @@ export function ExamsPage() {
                             if (!confirmed) return;
                             deleteExamMutation.mutate(item.id);
                           };
+                          const handleExportExam = (event: MouseEvent<HTMLButtonElement>) => {
+                            event.stopPropagation();
+                            const availability = getExamPaperExportAvailability(item.status, item.exam_mode);
+                            if (!availability.available) {
+                              toast({
+                                title: "暂不允许导出",
+                                description: "题目尚未完整生成",
+                                variant: "info",
+                              });
+                              return;
+                            }
+                            const searchParams = new URLSearchParams({ auto: "1" });
+                            if (new URLSearchParams(location.search).get("mock") === "1") {
+                              searchParams.set("mock", "1");
+                            }
+                            const exportPath = `${buildCourseSubPath(courseId, "exams", item.id, "print")}?${searchParams.toString()}`;
+                            const exportUrl = buildRuntimeRouteUrl(exportPath);
+                            const exportWindow = window.open(exportUrl, "_blank");
+                            if (exportWindow) {
+                              exportWindow.opener = null;
+                              return;
+                            }
+                            toast({
+                              title: "无法打开 PDF 预览",
+                              description: "请允许浏览器打开新窗口后重试。",
+                              variant: "error",
+                            });
+                          };
 
                           return (
                             <ExamPaperCard
@@ -1285,6 +1326,7 @@ export function ExamsPage() {
                               isDeleting={isDeleting}
                               onOpen={() => navigate(buildCourseSubPath(courseId, "exams", item.id))}
                               onDelete={handleDeleteExam}
+                              onExport={handleExportExam}
                             />
                           );
                         })}
@@ -2034,7 +2076,297 @@ function JsonBadge({ value }: { value: unknown }) {
   );
 }
 
-const KnowledgeRefCards = memo(function KnowledgeRefCards({ refs }: { refs: Array<Record<string, unknown>> }) {
+type QuestionKnowledgeNavigationTarget = {
+  knowledgeUnitId: number;
+  knowledgeUnitName: string;
+};
+
+function QuestionKnowledgeWeightExplanation() {
+  const [isOpen, setIsOpen] = useState(false);
+  const wrapperRef = useRef<HTMLSpanElement>(null);
+  const tooltipId = useId();
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handlePointerDown = (event: Event) => {
+      const target = event.target;
+      if (target instanceof Node && wrapperRef.current?.contains(target)) return;
+      setIsOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsOpen(false);
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen]);
+
+  return (
+    <span
+      ref={wrapperRef}
+      className="relative inline-flex"
+      onMouseEnter={() => setIsOpen(true)}
+      onMouseLeave={() => setIsOpen(false)}
+      onBlur={(event) => {
+        const nextTarget = event.relatedTarget;
+        if (!(nextTarget instanceof Node) || !event.currentTarget.contains(nextTarget)) {
+          setIsOpen(false);
+        }
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => setIsOpen(true)}
+        onFocus={() => setIsOpen(true)}
+        aria-expanded={isOpen}
+        aria-describedby={isOpen ? tooltipId : undefined}
+        className="inline-flex min-h-7 cursor-help items-center gap-1 rounded-md px-1 text-slate-400 outline-none transition-colors hover:bg-slate-100 hover:text-slate-600 focus-visible:ring-2 focus-visible:ring-indigo-300 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+      >
+        <Info className="h-3.5 w-3.5" />
+        权重说明
+      </button>
+      {isOpen ? (
+        <span
+          id={tooltipId}
+          role="tooltip"
+          className="absolute bottom-0 left-full z-30 ml-2 w-96 max-w-[calc(100vw-2rem)] rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-left text-xs font-normal leading-5 text-slate-600 shadow-lg dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+        >
+          <span className="block sm:whitespace-nowrap">覆盖权重用于将本题得分和作答结果按比例计入对应知识单元，</span>
+          <span className="block sm:whitespace-nowrap">用于掌握度与复习指南计算，不代表题目分值占比。</span>
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+const QuestionKnowledgeRefRow = memo(function QuestionKnowledgeRefRow({
+  courseId,
+  knowledgeRef,
+  relatedQuestionCount,
+  onFilterRelatedQuestions,
+  onOpenKnowledgeUnit,
+}: {
+  courseId: string;
+  knowledgeRef: QuestionTemplateKnowledgeRefView;
+  relatedQuestionCount: number;
+  onFilterRelatedQuestions: (target: QuestionKnowledgeNavigationTarget) => void;
+  onOpenKnowledgeUnit: (target: QuestionKnowledgeNavigationTarget) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const knowledgeUnitId = Number(knowledgeRef.knowledgeUnitId ?? 0);
+  const canLoadDetail = Number.isFinite(knowledgeUnitId) && knowledgeUnitId > 0;
+  const detailQuery = useQuery({
+    queryKey: ["question-knowledge-unit-detail", courseId, knowledgeUnitId],
+    enabled: isOpen && canLoadDetail,
+    staleTime: 5 * 60_000,
+    retry: false,
+    queryFn: async ({ signal }) =>
+      unwrapOrvalResponse<KnowledgeUnitDetailResponse>(
+        await graphKnowledgeUnitDetailApiV1CoursesCourseIdKnowledgeGraphKnowledgeUnitsDetailPost(
+          courseId,
+          { knowledge_unit_id: knowledgeUnitId },
+          { signal },
+        ),
+      ),
+  });
+  const visualStyle = NODE_COLORS[knowledgeRef.typeKey ?? ""] ?? DEFAULT_COLOR;
+  const detail = detailQuery.data ?? null;
+  const summary = formatQuestionTemplateKnowledgeSummaryMarkdown(
+    detail?.current_revision?.summary,
+  );
+  const incidentEdges = detail?.incident_edges ?? [];
+  const sourceLabels = Array.from(
+    new Set(
+      (detail?.source_refs ?? []).map((sourceRef) =>
+        sourceRef.chapter_title?.trim() ||
+        (sourceRef.chapter_index ? `第 ${sourceRef.chapter_index} 章` : "课程知识文档"),
+      ),
+    ),
+  ).slice(0, 3);
+  const navigationTarget = {
+    knowledgeUnitId,
+    knowledgeUnitName: knowledgeRef.name,
+  };
+
+  return (
+    <details
+      open={isOpen}
+      onToggle={(event) => setIsOpen(event.currentTarget.open)}
+      className="group border-t border-slate-100 first:border-t-0 dark:border-slate-800"
+    >
+      <summary className="flex min-h-14 cursor-pointer list-none items-center gap-3 px-3.5 py-2.5 outline-none transition-colors hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-200 dark:hover:bg-slate-900/70 dark:focus-visible:ring-indigo-500/30 [&::-webkit-details-marker]:hidden">
+        <span
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-lg"
+          style={{ backgroundColor: visualStyle.soft, color: visualStyle.dark }}
+        >
+          <Tags className="h-4 w-4" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="break-words text-sm font-medium leading-6 text-slate-700 dark:text-slate-200 [&_p]:mb-0 [&_p]:text-sm [&_p]:leading-6">
+            <ExamMarkdown content={knowledgeRef.nameMarkdown} />
+          </div>
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] leading-4 text-slate-400 dark:text-slate-500">
+            <span>{knowledgeRef.typeLabel ?? "知识单元"}</span>
+            {knowledgeRef.knowledgeUnitId ? <span>图谱 #{knowledgeRef.knowledgeUnitId}</span> : null}
+          </div>
+        </div>
+        {knowledgeRef.weightLabel ? (
+          <span className="shrink-0 text-xs font-medium tabular-nums text-slate-500 dark:text-slate-400">
+            {Math.round((knowledgeRef.weight ?? 0) * 100)}%
+          </span>
+        ) : null}
+        <ChevronDown className="h-4 w-4 shrink-0 -rotate-90 text-slate-400 transition-transform group-open:rotate-0" />
+      </summary>
+
+      <div className="border-t border-slate-100 bg-slate-50/55 px-4 py-3.5 text-xs leading-5 text-slate-500 dark:border-slate-800 dark:bg-slate-900/45 dark:text-slate-400">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          <span>知识单元类型：{knowledgeRef.typeLabel ?? "未标注"}</span>
+          {knowledgeRef.weightLabel ? <span>{knowledgeRef.weightLabel}</span> : null}
+        </div>
+        {knowledgeRef.weight != null && knowledgeRef.weightLabel ? (
+          <div className="mt-2 flex items-center gap-3">
+            <div
+              className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-slate-200/70 dark:bg-slate-800"
+              role="progressbar"
+              aria-label={`${knowledgeRef.name}${knowledgeRef.weightLabel}`}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(knowledgeRef.weight * 100)}
+            >
+              <div
+                className="h-full rounded-full"
+                style={{
+                  width: `${Math.round(knowledgeRef.weight * 100)}%`,
+                  backgroundColor: visualStyle.fill,
+                }}
+              />
+            </div>
+            <span className="shrink-0 tabular-nums">{Math.round(knowledgeRef.weight * 100)}%</span>
+          </div>
+        ) : null}
+
+        {!knowledgeRef.hasResolvedName ? (
+          <p className="mt-2 text-amber-600 dark:text-amber-300">知识点名称暂未同步</p>
+        ) : null}
+
+        {detailQuery.isLoading ? (
+          <div className="mt-3 flex items-center gap-2 text-slate-400">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            正在加载知识图谱详情...
+          </div>
+        ) : detailQuery.error ? (
+          <p className="mt-3 text-rose-600 dark:text-rose-300">知识图谱详情暂时无法加载。</p>
+        ) : detail ? (
+          <div className="mt-3 space-y-3 border-t border-slate-200/70 pt-3 dark:border-slate-800">
+            {summary ? (
+              <div>
+                <p className="mb-1 font-semibold text-slate-600 dark:text-slate-300">知识点摘要</p>
+                <div className="overflow-hidden text-sm leading-6 text-slate-600 dark:text-slate-300 [&_p]:mb-0 [&_p]:line-clamp-5 [&_p]:text-sm [&_p]:leading-6">
+                  <ExamMarkdown content={summary} />
+                </div>
+              </div>
+            ) : null}
+
+            {incidentEdges.length > 0 ? (
+              <div>
+                <p className="mb-1.5 flex items-center gap-1 font-semibold text-slate-600 dark:text-slate-300">
+                  <Link2 className="h-3.5 w-3.5" />
+                  图谱关系
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {incidentEdges.slice(0, 4).map((edge) => (
+                    <span
+                      key={edge.id}
+                      className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1 dark:border-slate-700 dark:bg-slate-950"
+                    >
+                      <span className="shrink-0 text-[10px] text-slate-400">{relationLabel(edge.edge_type)}</span>
+                      <span className="truncate text-slate-600 dark:text-slate-300">{edge.other_node_name}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {sourceLabels.length > 0 ? (
+              <p className="text-slate-500 dark:text-slate-400">来源：{sourceLabels.join("、")}</p>
+            ) : null}
+          </div>
+        ) : null}
+
+        {canLoadDetail ? (
+          <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-200/70 pt-3 dark:border-slate-800">
+            <button
+              type="button"
+              onClick={() => onOpenKnowledgeUnit(navigationTarget)}
+              className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 font-medium text-slate-600 outline-none transition-colors hover:border-indigo-200 hover:text-indigo-600 focus-visible:ring-2 focus-visible:ring-indigo-300 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:border-indigo-500/40 dark:hover:text-indigo-300"
+            >
+              <Network className="h-3.5 w-3.5" />
+              查看图谱
+            </button>
+            <button
+              type="button"
+              onClick={() => onFilterRelatedQuestions(navigationTarget)}
+              className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 font-medium text-slate-600 outline-none transition-colors hover:border-indigo-200 hover:text-indigo-600 focus-visible:ring-2 focus-visible:ring-indigo-300 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:border-indigo-500/40 dark:hover:text-indigo-300"
+            >
+              <Search className="h-3.5 w-3.5" />
+              同知识点题目 {relatedQuestionCount}
+            </button>
+          </div>
+        ) : null}
+      </div>
+    </details>
+  );
+});
+
+const QuestionKnowledgeRefGroup = memo(function QuestionKnowledgeRefGroup({
+  refs,
+  courseId,
+  relatedQuestionCountByUnitId,
+  onFilterRelatedQuestions,
+  onOpenKnowledgeUnit,
+}: {
+  refs: QuestionTemplateKnowledgeRefView[];
+  courseId: string;
+  relatedQuestionCountByUnitId: ReadonlyMap<number, number>;
+  onFilterRelatedQuestions: (target: QuestionKnowledgeNavigationTarget) => void;
+  onOpenKnowledgeUnit: (target: QuestionKnowledgeNavigationTarget) => void;
+}) {
+  if (!refs.length) return null;
+  return (
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
+      {refs.map((knowledgeRef) => {
+        const knowledgeUnitId = Number(knowledgeRef.knowledgeUnitId ?? 0);
+        return (
+          <QuestionKnowledgeRefRow
+            key={knowledgeRef.key}
+            courseId={courseId}
+            knowledgeRef={knowledgeRef}
+            relatedQuestionCount={relatedQuestionCountByUnitId.get(knowledgeUnitId) ?? 0}
+            onFilterRelatedQuestions={onFilterRelatedQuestions}
+            onOpenKnowledgeUnit={onOpenKnowledgeUnit}
+          />
+        );
+      })}
+    </div>
+  );
+});
+
+const KnowledgeRefCards = memo(function KnowledgeRefCards({
+  refs,
+  courseId,
+  relatedQuestionCountByUnitId,
+  onFilterRelatedQuestions,
+  onOpenKnowledgeUnit,
+}: {
+  refs: Array<Record<string, unknown>>;
+  courseId: string;
+  relatedQuestionCountByUnitId: ReadonlyMap<number, number>;
+  onFilterRelatedQuestions: (target: QuestionKnowledgeNavigationTarget) => void;
+  onOpenKnowledgeUnit: (target: QuestionKnowledgeNavigationTarget) => void;
+}) {
   if (!refs.length) {
     return (
       <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-400">
@@ -2044,57 +2376,22 @@ const KnowledgeRefCards = memo(function KnowledgeRefCards({ refs }: { refs: Arra
   }
 
   const knowledgeRefs = buildQuestionTemplateKnowledgeRefs(refs);
-  return (
-    <div className={`grid gap-3 ${knowledgeRefs.length > 1 ? "sm:grid-cols-2" : ""}`}>
-      {knowledgeRefs.map((ref) => {
-        const roleClass = ref.roleTone === "primary"
-          ? "border-indigo-200 bg-indigo-50/60 text-indigo-700 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-200"
-          : ref.roleTone === "prerequisite"
-            ? "border-amber-200 bg-amber-50/60 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
-            : "border-slate-200 bg-slate-50/80 text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300";
+  const totalWeight = knowledgeRefs.reduce((total, knowledgeRef) => total + (knowledgeRef.weight ?? 0), 0);
 
-        return (
-          <article
-            key={ref.key}
-            className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-[0_10px_24px_-24px_rgba(15,23,42,0.45)] dark:border-slate-800 dark:bg-slate-950"
-          >
-            <div className="flex flex-wrap items-center gap-2">
-              <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${roleClass}`}>
-                {ref.roleLabel}
-              </span>
-              {ref.typeLabel ? (
-                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-300">
-                  {ref.typeLabel}
-                </span>
-              ) : null}
-              {ref.knowledgeUnitId ? (
-                <span className="ml-auto text-[11px] font-medium text-slate-400">编号 #{ref.knowledgeUnitId}</span>
-              ) : null}
-            </div>
-            <p className="mt-3 break-words text-[15px] font-semibold leading-6 text-slate-950 dark:text-slate-100">
-              {ref.name}
-            </p>
-            {!ref.hasResolvedName ? (
-              <p className="mt-1 text-xs leading-5 text-amber-600 dark:text-amber-300">知识点名称暂未同步</p>
-            ) : null}
-            {ref.weight != null && ref.weightLabel ? (
-              <div className="mt-3 flex items-center gap-3">
-                <div
-                  className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"
-                  role="progressbar"
-                  aria-label={`${ref.name}${ref.weightLabel}`}
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-valuenow={Math.round(ref.weight * 100)}
-                >
-                  <div className="h-full rounded-full bg-indigo-400" style={{ width: `${Math.round(ref.weight * 100)}%` }} />
-                </div>
-                <span className="shrink-0 text-xs font-medium text-slate-500 dark:text-slate-400">{ref.weightLabel}</span>
-              </div>
-            ) : null}
-          </article>
-        );
-      })}
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+        <span>关联 {knowledgeRefs.length} 个图谱节点</span>
+        {totalWeight > 0 ? <span>· 覆盖权重合计 {Math.round(totalWeight * 100)}%</span> : null}
+        <QuestionKnowledgeWeightExplanation />
+      </div>
+      <QuestionKnowledgeRefGroup
+        refs={knowledgeRefs}
+        courseId={courseId}
+        relatedQuestionCountByUnitId={relatedQuestionCountByUnitId}
+        onFilterRelatedQuestions={onFilterRelatedQuestions}
+        onOpenKnowledgeUnit={onOpenKnowledgeUnit}
+      />
     </div>
   );
 });
@@ -2105,25 +2402,29 @@ function QuestionTemplatePlainSection({
   description,
   children,
   showDivider = true,
+  className,
+  contentClassName,
 }: {
   sectionNumber?: number;
   title: string;
   description?: string;
   children: ReactNode;
   showDivider?: boolean;
+  className?: string;
+  contentClassName?: string;
 }) {
   return (
-    <section className={showDivider ? "border-t border-slate-200 pt-5 dark:border-slate-800" : ""}>
-      <h3 className="flex items-center gap-1.5 font-serif text-lg font-bold leading-6 text-slate-950 dark:text-slate-100">
+    <section className={cn(showDivider ? "border-t border-slate-200 pt-6 dark:border-slate-800" : "", className)}>
+      <h3 className="flex items-baseline gap-1.5 text-[17px] font-semibold leading-7 text-slate-950 dark:text-slate-100 sm:text-lg">
         {sectionNumber != null ? (
-          <span className="inline-flex min-w-[1.25rem] shrink-0 items-center justify-end font-['Times_New_Roman',Times,serif] text-[17px] font-bold leading-none tabular-nums tracking-tight">
+          <span className="inline-flex min-w-[1.25rem] shrink-0 items-center justify-end font-['Times_New_Roman',Times,serif] text-lg font-bold leading-none tabular-nums tracking-tight sm:text-[19px]">
             {sectionNumber}.
           </span>
         ) : null}
-        <span className="leading-6">{title}</span>
+        <span>{title}</span>
       </h3>
-      {description ? <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">{description}</p> : null}
-      <div className="mt-3 break-words text-sm leading-8 text-slate-700 dark:text-slate-300 [&_p]:mb-2 [&_.katex-display]:my-3">
+      {description ? <p className="mt-1 text-[13px] leading-5 text-slate-500 dark:text-slate-400">{description}</p> : null}
+      <div className={cn("mt-3.5 break-words text-[15px] leading-7 text-slate-700 dark:text-slate-300 [&_p]:mb-2 [&_p]:text-[15px] [&_p]:leading-7 [&_.katex-display]:my-3", contentClassName)}>
         {children}
       </div>
     </section>
@@ -2213,30 +2514,6 @@ function getQuestionTemplateHistoryResultLabel(item: QuestionTemplateAnswerHisto
   return "待批改";
 }
 
-function getQuestionTemplateHistoryResultClass(item: QuestionTemplateAnswerHistoryItem) {
-  if (item.is_correct === true) {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200";
-  }
-  if (item.is_correct === false) {
-    return "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200";
-  }
-  return "border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300";
-}
-
-function getQuestionTemplateStatusClass(status: string) {
-  const normalized = status.trim().toLowerCase();
-  if (normalized === "active") {
-    return "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200";
-  }
-  if (normalized === "failed" || normalized === "generation_failed") {
-    return "bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-200";
-  }
-  if (normalized === "draft") {
-    return "bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-200";
-  }
-  return "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300";
-}
-
 function formatQuestionTemplateScore(item: QuestionTemplateAnswerHistoryItem) {
   if (item.score_obtained == null || item.score_max == null) return null;
   return `${item.score_obtained}/${item.score_max} 分`;
@@ -2245,16 +2522,19 @@ function formatQuestionTemplateScore(item: QuestionTemplateAnswerHistoryItem) {
 function getQuestionTemplateHistoryDescription(items: QuestionTemplateAnswerHistoryItem[]) {
   if (!items.length) return "汇总这道题在测验和考卷中的历史表现。";
   const summary = summarizeQuestionTemplateHistory(items);
-  const parts = [`累计作答 ${summary.attemptCount} 次`];
+  const parts = [`共作答 ${summary.attemptCount} 次`];
   if (summary.gradedCount > 0) {
-    parts.push(`答对 ${summary.correctCount} 次`, `正确率 ${summary.accuracy}%`);
+    parts.push(`正确率 ${summary.accuracy}%`);
   }
-  if (summary.pendingCount > 0) parts.push(`待批改 ${summary.pendingCount} 次`);
+  const latest = items[0];
+  if (latest?.is_correct === true) parts.push("最近一次答对");
+  else if (latest?.is_correct === false) parts.push("最近一次答错");
+  else if (summary.pendingCount > 0) parts.push(`待批改 ${summary.pendingCount} 次`);
   return parts.join(" · ");
 }
 
 function getQuestionTypeBadgeClass(_typeKey?: string) {
-  return "border-slate-200/90 bg-slate-100/80 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300";
+  return "border-indigo-100 bg-indigo-50/80 text-indigo-600 dark:border-indigo-500/25 dark:bg-indigo-500/10 dark:text-indigo-300";
 }
 
 function getDifficultyBadgeClass(_difficulty?: string) {
@@ -2287,24 +2567,24 @@ const QuestionTemplateCard = memo(function QuestionTemplateCard({
   const knowledgeUnitLabel = getPrimaryKnowledgeUnitLabel(item);
 
   return (
-    <article className="group relative flex h-[320px] flex-col overflow-hidden rounded-[22px] border border-slate-200/90 bg-white p-5 shadow-[0_4px_20px_-8px_rgba(15,23,42,0.06)] transition-all duration-200 hover:-translate-y-1 hover:border-indigo-300/80 hover:shadow-[0_16px_32px_-12px_rgba(79,70,229,0.18)] dark:border-slate-800 dark:bg-slate-950 dark:hover:border-indigo-500/50 dark:hover:shadow-[0_16px_32px_-12px_rgba(0,0,0,0.5)] [content-visibility:auto] [contain-intrinsic-size:320px]">
+    <article className="group relative flex min-h-[198px] flex-col overflow-hidden rounded-[16px] border border-slate-200/90 bg-white p-5 shadow-none transition-colors duration-200 hover:border-indigo-200/90 hover:bg-indigo-50/[0.12] dark:border-slate-800 dark:bg-slate-950 dark:hover:border-indigo-500/35 dark:hover:bg-indigo-500/[0.035] [content-visibility:auto] [contain-intrinsic-size:220px]">
       <button
         type="button"
         onClick={handleOpen}
-        className="absolute inset-0 z-10 rounded-[22px] outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-indigo-200 dark:focus-visible:ring-indigo-500/25"
-        aria-label={`查看题库题目 ${item.id}`}
+        className="absolute inset-0 z-10 rounded-[16px] outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-indigo-100 dark:focus-visible:ring-indigo-500/20"
+        aria-label={`查看题目 ${item.id}：${previewText.slice(0, 72)}`}
       />
 
       {/* Top Bar: Type Badge, ID, and Bookmark Button */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <span
-            className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold ${typeBadgeClass}`}
+            className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[13px] font-semibold leading-4 ${typeBadgeClass}`}
           >
             <FileText className="h-3.5 w-3.5 shrink-0 opacity-85" />
             <span className="truncate">{questionTypeLabel}</span>
           </span>
-          <span className="rounded-md border border-slate-100 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-400 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-500">
+          <span className="text-[13px] font-medium tabular-nums text-slate-400 dark:text-slate-500">
             #{item.id}
           </span>
         </div>
@@ -2315,10 +2595,10 @@ const QuestionTemplateCard = memo(function QuestionTemplateCard({
           disabled={isMarking}
           aria-pressed={item.is_marked === true}
           aria-label={item.is_marked ? `取消标记题目 ${item.id}` : `标记题目 ${item.id}`}
-          className={`relative z-20 grid h-8 w-8 place-items-center rounded-xl border outline-none transition-all duration-150 focus-visible:ring-2 focus-visible:ring-indigo-300 disabled:cursor-wait disabled:opacity-60 ${
+          className={`relative z-20 grid h-11 w-11 place-items-center rounded-xl border outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-indigo-300 disabled:cursor-wait disabled:opacity-60 ${
             item.is_marked
               ? "border-amber-200 bg-amber-50 text-amber-600 shadow-sm hover:bg-amber-100 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-300"
-              : "border-transparent bg-transparent text-slate-300 hover:border-slate-200 hover:bg-slate-100 hover:text-slate-600 dark:text-slate-600 dark:hover:border-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+              : "border-slate-200/70 bg-white text-slate-400 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-500 dark:hover:border-slate-700 dark:hover:bg-slate-900 dark:hover:text-slate-300"
           }`}
         >
           {isMarking ? (
@@ -2330,26 +2610,31 @@ const QuestionTemplateCard = memo(function QuestionTemplateCard({
       </div>
 
       {/* Stem Content Preview */}
-      <div className="pointer-events-none relative mt-3.5 min-h-0 flex-1 overflow-hidden text-[14px] leading-relaxed text-slate-800 dark:text-slate-200 font-normal">
-        {renderMarkdownPreview ? <ExamMarkdown content={previewContent} /> : previewText}
-        <span className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-white via-white/90 to-transparent dark:from-slate-950 dark:via-slate-950/90" />
+      <div className="pointer-events-none mt-3 min-h-0 flex-1 font-serif text-[15px] font-normal leading-7 text-slate-800 dark:text-slate-200">
+        {renderMarkdownPreview ? (
+          <div className="max-h-[7rem] overflow-hidden">
+            <ExamMarkdown content={previewContent} />
+          </div>
+        ) : (
+          <p className="line-clamp-4">{previewText}</p>
+        )}
       </div>
 
       {/* Footer: Difficulty, Need Review, Knowledge Point */}
-      <div className="pointer-events-none mt-3.5 border-t border-slate-100/90 pt-3 dark:border-slate-800/90">
-        <div className="flex items-center gap-1.5">
+      <div className="pointer-events-none mt-4 flex flex-col gap-2.5 border-t border-slate-100/90 pt-3 dark:border-slate-800/90 sm:flex-row sm:items-end sm:justify-between">
+        <div className="flex shrink-0 items-center gap-1.5">
           <span
-            className={`rounded-md border px-2 py-0.5 text-[11px] font-semibold ${difficultyBadgeClass}`}
+            className={`rounded-md border px-2 py-0.5 text-xs font-semibold ${difficultyBadgeClass}`}
           >
             {formatDifficultyLabel(item.difficulty)}
           </span>
           {item.has_wrong_attempt ? (
-            <span className="rounded-md border border-rose-200/80 bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-600 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">
+            <span className="rounded-md border border-orange-200/80 bg-orange-50/80 px-2 py-0.5 text-xs font-semibold text-orange-600 dark:border-orange-500/25 dark:bg-orange-500/10 dark:text-orange-300">
               需复习
             </span>
           ) : null}
         </div>
-        <div className="mt-2 flex items-center gap-1.5 truncate text-xs text-slate-500 dark:text-slate-400">
+        <div className="flex min-w-0 items-center gap-1.5 truncate text-xs text-slate-500 dark:text-slate-400 sm:justify-end">
           <Tags className="h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-slate-500" />
           <span className="truncate">{knowledgeUnitLabel}</span>
         </div>
@@ -2362,60 +2647,94 @@ const QuestionTemplateHistoryCard = memo(function QuestionTemplateHistoryCard({
   record,
   questionType,
   explanation,
+  attemptNumber,
 }: {
   record: QuestionTemplateAnswerHistoryItem;
   questionType: string;
   explanation: string;
+  attemptNumber: number;
 }) {
   const scoreText = formatQuestionTemplateScore(record);
   const errorCause = formatQuestionTemplateErrorCause(record.error_cause_label);
   const showFeedback = shouldShowQuestionTemplateFeedback(record.feedback_text, explanation);
+  const resultTextClass = record.is_correct === true
+    ? "text-emerald-600 dark:text-emerald-300"
+    : record.is_correct === false
+      ? "text-rose-600 dark:text-rose-300"
+      : "text-slate-500 dark:text-slate-400";
 
   return (
-    <article className="rounded-2xl border border-slate-200 bg-slate-50/60 px-4 py-4 dark:border-slate-800 dark:bg-slate-900/60">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${getQuestionTemplateHistoryResultClass(record)}`}>
-          {getQuestionTemplateHistoryResultLabel(record)}
-        </span>
-        <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-inset ring-slate-200 dark:bg-slate-950 dark:text-slate-300 dark:ring-slate-800">
-          {getQuestionTemplateHistoryModeLabel(record.exam_mode)}
-        </span>
-        <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-          第 {record.item_order} 题 · 记录 #{record.exam_paper_id}
-        </span>
-        {scoreText ? <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{scoreText}</span> : null}
-        <span className="ml-auto text-xs font-medium text-slate-400">
+    <details className="group overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
+      <summary className="grid min-h-11 cursor-pointer list-none grid-cols-[72px_minmax(0,1fr)_auto_auto] items-center gap-3 px-4 py-2 text-xs outline-none transition-colors hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-200 dark:hover:bg-slate-900/70 dark:focus-visible:ring-indigo-500/30 sm:grid-cols-[72px_150px_90px_minmax(0,1fr)_auto] [&::-webkit-details-marker]:hidden">
+        <span className="font-medium text-slate-600 dark:text-slate-300">第 {attemptNumber} 次</span>
+        <span className="truncate text-slate-400">
           {formatQuestionTemplateHistoryTime(record.answered_at ?? record.submitted_at ?? record.created_at)}
         </span>
-      </div>
+        <span className={`font-semibold ${resultTextClass}`}>
+          {getQuestionTemplateHistoryResultLabel(record)}
+        </span>
+        <span className="hidden min-w-0 truncate text-slate-500 dark:text-slate-400 sm:block">
+          {getQuestionTemplateHistoryModeLabel(record.exam_mode)}
+          {scoreText ? ` · ${scoreText}` : ""}
+        </span>
+        <ChevronDown className="h-4 w-4 shrink-0 -rotate-90 text-slate-400 transition-transform group-open:rotate-0" />
+      </summary>
 
-      <div className="mt-4 grid gap-3 border-t border-slate-200 pt-4 sm:grid-cols-2 dark:border-slate-800">
-        <div className="rounded-xl bg-white px-4 py-3 ring-1 ring-inset ring-slate-200 dark:bg-slate-950 dark:ring-slate-800">
-          <p className="mb-2 text-xs font-semibold text-slate-400">我的答案</p>
-          <ExamMarkdown content={formatAnswerDisplayValue(questionType, record.user_answer)} />
+      <div className="border-t border-slate-100 bg-slate-50/50 px-4 py-4 dark:border-slate-800 dark:bg-slate-900/45">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-950">
+            <p className="mb-2 text-xs font-semibold text-slate-400">我的答案</p>
+            <ExamMarkdown content={formatAnswerDisplayValue(questionType, record.user_answer)} />
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-950">
+            <p className="mb-2 text-xs font-semibold text-slate-400">参考答案</p>
+            <ExamMarkdown content={formatAnswerDisplayValue(questionType, record.correct_answer, "暂无答案")} />
+          </div>
         </div>
-        <div className="rounded-xl bg-white px-4 py-3 ring-1 ring-inset ring-slate-200 dark:bg-slate-950 dark:ring-slate-800">
-          <p className="mb-2 text-xs font-semibold text-slate-400">参考答案</p>
-          <ExamMarkdown content={formatAnswerDisplayValue(questionType, record.correct_answer, "暂无答案")} />
-        </div>
-      </div>
 
-      {errorCause || showFeedback ? (
-        <div className="mt-3 rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-950">
-          {errorCause ? (
-            <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-              错因判断：<span className="text-rose-600 dark:text-rose-300">{errorCause}</span>
-            </p>
-          ) : null}
-          {showFeedback ? (
-            <div className={errorCause ? "mt-2" : ""}>
-              <p className="mb-1 text-xs font-semibold text-slate-400">批改反馈</p>
-              <ExamMarkdown content={record.feedback_text ?? ""} />
-            </div>
-          ) : null}
+        {errorCause || showFeedback ? (
+          <div className="mt-3 text-sm leading-7 text-slate-600 dark:text-slate-300">
+            {errorCause ? (
+              <p className="font-medium">
+                错因判断：<span className="text-rose-600 dark:text-rose-300">{errorCause}</span>
+              </p>
+            ) : null}
+            {showFeedback ? (
+              <div className={errorCause ? "mt-2" : ""}>
+                <p className="mb-1 text-xs font-semibold text-slate-400">批改反馈</p>
+                <ExamMarkdown content={record.feedback_text ?? ""} />
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </details>
+  );
+});
+
+const QuestionTemplateOptionRows = memo(function QuestionTemplateOptionRows({
+  options,
+}: {
+  options: readonly string[];
+}) {
+  if (!options.length) return null;
+
+  return (
+    <div className="mt-4 space-y-2.5" aria-label="题目选项">
+      {options.map((option, index) => (
+        <div
+          key={`${index}-${option}`}
+          className="flex min-h-14 items-start gap-3 rounded-[10px] border border-slate-200 bg-white px-3.5 py-2.5 text-slate-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 sm:items-center sm:px-4"
+        >
+          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-slate-200 text-sm font-semibold text-slate-500 dark:border-slate-700 dark:text-slate-300">
+            {formatOptionLabel(index)}
+          </span>
+          <div className="min-w-0 flex-1 font-serif text-[15px] leading-[26px] [&_p]:mb-0 [&_p]:text-[15px] [&_p]:leading-[26px] [&_.katex-display]:my-1">
+            <ExamMarkdown content={option} />
+          </div>
         </div>
-      ) : null}
-    </article>
+      ))}
+    </div>
   );
 });
 
@@ -2425,6 +2744,9 @@ function QuestionTemplateDetailCard({
   questionTypeLabel,
   onClose,
   onToggleMark,
+  relatedQuestionCountByUnitId,
+  onFilterRelatedQuestions,
+  onOpenKnowledgeUnit,
   isMarking,
 }: {
   item: QuestionTemplateItem | null;
@@ -2432,9 +2754,11 @@ function QuestionTemplateDetailCard({
   questionTypeLabel: string;
   onClose: () => void;
   onToggleMark: (item: QuestionTemplateItem) => void;
+  relatedQuestionCountByUnitId: ReadonlyMap<number, number>;
+  onFilterRelatedQuestions: (target: QuestionKnowledgeNavigationTarget) => void;
+  onOpenKnowledgeUnit: (target: QuestionKnowledgeNavigationTarget) => void;
   isMarking: boolean;
 }) {
-  const questionContent = item ? buildQuestionTemplateContent(item, "暂无题干") : "";
   const historyQuery = useQuery({
     queryKey: ["question-template-answer-history", courseId, item?.id],
     enabled: Boolean(courseId && item?.id),
@@ -2442,95 +2766,104 @@ function QuestionTemplateDetailCard({
       const response = await getQuestionTemplateAnswerHistory(courseId, item?.id ?? 0, signal);
       return unwrapOrvalResponse<QuestionTemplateAnswerHistoryItem[]>(response) ?? [];
     },
+    retry: false,
   });
   const historyItems = historyQuery.data ?? [];
   const historyDescription = getQuestionTemplateHistoryDescription(historyItems);
   const rationale = item ? getQuestionTemplateRationale(item) : null;
-  const answerHistorySectionNumber = rationale ? 5 : 4;
 
   return (
     <Modal
       open={Boolean(item)}
       onClose={onClose}
-      title={item ? `题目详情 #${item.id}` : undefined}
-      className="max-w-4xl rounded-[26px]"
+      title={item ? (
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="shrink-0 text-lg font-semibold">题目 #{item.id}</span>
+          <span className={`rounded-md border px-2.5 py-1 text-[13px] font-semibold ${getQuestionTypeBadgeClass(item.question_type)}`}>
+            {questionTypeLabel}
+          </span>
+          <span className={`rounded-md border px-2.5 py-1 text-[13px] font-semibold ${getDifficultyBadgeClass(item.difficulty)}`}>
+            {formatDifficultyLabel(item.difficulty)}
+          </span>
+          {item.has_wrong_attempt ? (
+            <span className="rounded-md border border-rose-200/80 bg-rose-50 px-2.5 py-1 text-[13px] font-semibold text-rose-600 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">
+              需复习
+            </span>
+          ) : null}
+        </span>
+      ) : undefined}
+      headerActions={item ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => onToggleMark(item)}
+          disabled={isMarking}
+          aria-pressed={item.is_marked === true}
+          className={`border-transparent bg-transparent shadow-none ${
+            item.is_marked
+              ? "text-amber-600 hover:bg-amber-50 hover:text-amber-700 dark:text-amber-300 dark:hover:bg-amber-500/10"
+              : "text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+          }`}
+        >
+          {isMarking ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Bookmark className={`h-4 w-4 ${item.is_marked ? "fill-current text-amber-500" : ""}`} />
+          )}
+          {item.is_marked ? "已标记" : "标记"}
+        </Button>
+      ) : null}
+      className="max-w-[940px] rounded-[18px] sm:max-h-[88vh]"
+      headerClassName="py-3.5 sm:px-6 sm:py-4"
+      titleClassName="text-lg"
+      bodyClassName="p-4 sm:px-6 sm:pb-8 sm:pt-6"
     >
       {item ? (
-        <div className="space-y-6">
-          <header className="border-b border-slate-200 pb-5 dark:border-slate-800">
-            <div className="min-w-0">
-              <h3 className="font-serif text-2xl font-bold text-slate-950 dark:text-slate-100">
-                {questionTypeLabel}
-              </h3>
-              <div className="mt-3 break-words text-[15px] leading-8 text-slate-700 dark:text-slate-300 [&_p]:mb-2 [&_.katex-display]:my-3">
-                <ExamMarkdown content={questionContent} />
-              </div>
+        <div className="mx-auto w-full max-w-[840px]">
+          <section className="pb-6">
+            <div className="break-words font-serif text-base leading-[30px] text-slate-700 dark:text-slate-200 [&_p]:mb-2 [&_p]:text-base [&_p]:leading-[30px] [&_.katex-display]:my-3">
+              <ExamMarkdown content={item.stem || "暂无题干"} />
             </div>
-            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
-                <span className={`rounded-md border px-2.5 py-1 ${getDifficultyBadgeClass(item.difficulty)}`}>
-                  {formatDifficultyLabel(item.difficulty)}
-                </span>
-                {item.has_wrong_attempt ? (
-                  <span className="rounded-md border border-rose-200/80 bg-rose-50 px-2.5 py-1 text-rose-600 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">
-                    需复习
-                  </span>
-                ) : null}
-                <span className={`rounded-md border border-transparent px-2.5 py-1 ${getQuestionTemplateStatusClass(item.status)}`}>
-                  {formatQuestionTemplateStatus(item.status)}
-                </span>
-                <span className="rounded-md border border-slate-200 bg-slate-100 px-2.5 py-1 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                  {formatQuestionTemplateVersion(item.template_version)}
-                </span>
-                <span className="text-slate-400">
-                  更新于 {formatQuestionTemplateHistoryTime(item.updated_at || item.created_at)}
-                </span>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => onToggleMark(item)}
-                disabled={isMarking}
-                aria-pressed={item.is_marked === true}
-                className={item.is_marked ? "border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100" : ""}
-              >
-                {isMarking ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Bookmark className={`h-4 w-4 ${item.is_marked ? "fill-current" : ""}`} />
-                )}
-                {item.is_marked ? "取消标记" : "标记题目"}
-              </Button>
-            </div>
-          </header>
+            <QuestionTemplateOptionRows options={item.options ?? []} />
+          </section>
 
-          <QuestionTemplatePlainSection sectionNumber={1} title="标准答案" showDivider={false}>
-            <div className="rounded-2xl border border-emerald-100 bg-emerald-50/50 px-4 py-3 text-slate-800 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-slate-100">
-              <ExamMarkdown content={formatAnswerDisplayValue(item.question_type, item.answer, "暂无答案")} />
+          <QuestionTemplatePlainSection sectionNumber={1} title="标准答案">
+            <div className="flex min-h-12 items-center rounded-[10px] border border-emerald-100 bg-emerald-50/45 px-3.5 py-2.5 dark:border-emerald-500/20 dark:bg-emerald-500/10 sm:px-4">
+              <span className="shrink-0 pr-4 text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+                正确答案
+              </span>
+              <span className="min-h-7 w-px shrink-0 bg-emerald-100 dark:bg-emerald-500/20" />
+              <div className="min-w-0 flex-1 pl-4 font-serif text-[16px] leading-7 text-slate-800 dark:text-slate-100 [&_p]:mb-0 [&_p]:text-[16px] [&_p]:leading-7">
+                <ExamMarkdown content={formatAnswerDisplayValue(item.question_type, item.answer, "暂无答案")} />
+              </div>
             </div>
           </QuestionTemplatePlainSection>
 
-          <QuestionTemplatePlainSection sectionNumber={2} title="解析">
+          <QuestionTemplatePlainSection
+            sectionNumber={2}
+            title="解析"
+            contentClassName="font-serif text-[15px] leading-8 [&_p]:text-[15px] [&_p]:leading-8"
+          >
             <ExamMarkdown content={item.explanation || "暂无解析"} />
           </QuestionTemplatePlainSection>
 
-          <QuestionTemplatePlainSection
-            sectionNumber={3}
-            title="本题知识点"
-            description="按考查侧重排序，完整展示本题涉及的知识点。"
-          >
-            <KnowledgeRefCards refs={item.knowledge_unit_refs} />
+          <QuestionTemplatePlainSection sectionNumber={3} title="本题知识点">
+            <KnowledgeRefCards
+              refs={item.knowledge_unit_refs}
+              courseId={courseId}
+              relatedQuestionCountByUnitId={relatedQuestionCountByUnitId}
+              onFilterRelatedQuestions={onFilterRelatedQuestions}
+              onOpenKnowledgeUnit={onOpenKnowledgeUnit}
+            />
           </QuestionTemplatePlainSection>
 
-          {rationale ? (
-            <QuestionTemplatePlainSection sectionNumber={4} title="考查说明" description="说明这道题被选入题库的考查意图。">
-              <p>{rationale}</p>
-            </QuestionTemplatePlainSection>
-          ) : null}
+          <QuestionTemplatePlainSection sectionNumber={4} title="考查说明">
+            <p>{rationale || "暂无考查说明。"}</p>
+          </QuestionTemplatePlainSection>
 
           <QuestionTemplatePlainSection
-            sectionNumber={answerHistorySectionNumber}
+            sectionNumber={5}
             title="作答记录"
             description={historyDescription}
           >
@@ -2540,17 +2873,29 @@ function QuestionTemplateDetailCard({
                 正在加载历史记录...
               </div>
             ) : historyQuery.error ? (
-              <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
-                {getApiErrorMessage(historyQuery.error, "历史记录加载失败")}
+              <div className="flex flex-col gap-3 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200 sm:flex-row sm:items-center sm:justify-between">
+                <span>{getApiErrorMessage(historyQuery.error, "历史记录加载失败")}</span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void historyQuery.refetch()}
+                  disabled={historyQuery.isFetching}
+                  className="shrink-0 border-red-200 bg-white text-red-700 hover:border-red-300 hover:bg-red-50 dark:border-red-500/40 dark:bg-slate-950 dark:text-red-200 dark:hover:bg-red-500/10"
+                >
+                  {historyQuery.isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  {historyQuery.isFetching ? "重新加载中" : "重新加载"}
+                </Button>
               </div>
             ) : historyItems.length > 0 ? (
-              <div className="space-y-4">
-                {historyItems.map((record) => (
+              <div className="space-y-2">
+                {historyItems.map((record, index) => (
                   <QuestionTemplateHistoryCard
                     key={`${record.exam_paper_id}-${record.exam_paper_item_id}`}
                     record={record}
                     questionType={item.question_type}
                     explanation={item.explanation}
+                    attemptNumber={historyItems.length - index}
                   />
                 ))}
               </div>
@@ -2665,34 +3010,35 @@ const QuestionTypeCard = memo(function QuestionTypeCard({
   const gradingLabel = getQuestionTypeGradingLabel(item.grading_method);
 
   return (
-    <article className="group relative flex h-[320px] flex-col overflow-hidden rounded-[22px] border border-slate-200/90 bg-white p-5 shadow-[0_4px_20px_-8px_rgba(15,23,42,0.06)] transition-all duration-200 hover:-translate-y-1 hover:border-indigo-300/80 hover:shadow-[0_16px_32px_-12px_rgba(79,70,229,0.18)] dark:border-slate-800 dark:bg-slate-950 dark:hover:border-indigo-500/50 dark:hover:shadow-[0_16px_32px_-12px_rgba(0,0,0,0.5)] [content-visibility:auto] [contain-intrinsic-size:320px]">
+    <article className="group relative flex min-h-[220px] flex-col overflow-hidden rounded-[16px] border border-slate-200/90 bg-white p-5 shadow-none transition-colors duration-200 hover:border-indigo-200/90 hover:bg-indigo-50/[0.12] dark:border-slate-800 dark:bg-slate-950 dark:hover:border-indigo-500/35 dark:hover:bg-indigo-500/[0.035] [content-visibility:auto] [contain-intrinsic-size:220px]">
       <button
         type="button"
         onClick={handleOpen}
-        className="absolute inset-0 z-10 rounded-[22px] outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-indigo-200 dark:focus-visible:ring-indigo-500/25"
+        className="absolute inset-0 z-10 rounded-[16px] outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-indigo-100 dark:focus-visible:ring-indigo-500/20"
         aria-label={`查看题型 ${typeLabel}`}
       />
 
       <div className="pointer-events-none flex items-center justify-between gap-2">
-        <span className="inline-flex min-w-0 items-center gap-1.5 rounded-lg border border-slate-200/90 bg-slate-100/80 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+        <span className="inline-flex min-w-0 items-center gap-1.5 rounded-lg border border-indigo-100 bg-indigo-50/80 px-2.5 py-1 text-[13px] font-semibold leading-4 text-indigo-600 dark:border-indigo-500/25 dark:bg-indigo-500/10 dark:text-indigo-300">
           <Tags className="h-3.5 w-3.5 shrink-0 opacity-85" />
           <span className="truncate">{typeLabel}</span>
         </span>
-        <span className="rounded-md border border-slate-100 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-400 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-500">
+        <span className="text-[13px] font-medium tabular-nums text-slate-400 dark:text-slate-500">
           #{item.id}
         </span>
       </div>
 
-      <div className="pointer-events-none relative mt-3.5 min-h-0 flex-1 overflow-hidden text-[14px] leading-relaxed text-slate-700 dark:text-slate-300 font-normal">
-        <p className="line-clamp-3">{description}</p>
-        <div className="mt-3.5 border-t border-slate-100/90 pt-3 dark:border-slate-800/90">
-          <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500">作答要求</p>
-          <p className="mt-1 line-clamp-2 text-xs text-slate-600 dark:text-slate-300">{answerFormat}</p>
+      <div className="pointer-events-none mt-3 min-h-0 flex-1 text-slate-700 dark:text-slate-300">
+        <p className="line-clamp-2 text-[15px] font-normal leading-7">{description}</p>
+        <div className="mt-3 border-t border-slate-100/90 pt-3 dark:border-slate-800/90">
+          <p className="text-xs font-semibold text-slate-400 dark:text-slate-500">作答要求</p>
+          <p className="mt-1 line-clamp-2 text-[13px] font-normal leading-6 text-slate-600 dark:text-slate-300">
+            {answerFormat}
+          </p>
         </div>
-        <span className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-white via-white/90 to-transparent dark:from-slate-950 dark:via-slate-950/90" />
       </div>
 
-      <div className="pointer-events-none mt-3.5 flex flex-wrap items-center gap-1.5 border-t border-slate-100/90 pt-3 text-[11px] font-semibold dark:border-slate-800/90">
+      <div className="pointer-events-none mt-4 flex flex-wrap items-center gap-1.5 border-t border-slate-100/90 pt-3 text-xs font-semibold dark:border-slate-800/90">
         <span className="rounded-md border border-slate-200/80 bg-slate-50 px-2 py-0.5 text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
           {getQuestionTypeScopeLabel(item.scope)}
         </span>
@@ -2815,8 +3161,8 @@ function ExamCatalogShell({
         <header>
           <TrainingCenterBackButton onClick={() => navigate(buildCoursePath(courseId, "exams"))} />
           <div className="mt-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <h1 className="text-3xl font-semibold text-slate-950 dark:text-slate-100 sm:text-[34px]">
+          <div>
+              <h1 className="text-[32px] font-semibold leading-tight text-slate-950 dark:text-slate-100 sm:text-[36px]">
                 {title}
               </h1>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500 dark:text-slate-400 sm:text-[15px]">
@@ -2843,6 +3189,15 @@ const QUESTION_BANK_REVIEW_OPTIONS: ReadonlyArray<{
   { value: "wrong_marked", label: "已标记且需复习" },
 ];
 
+const QUESTION_BANK_STATUS_FILTER_OPTIONS: ReadonlyArray<{
+  value: Exclude<QuestionBankReviewStatus, "all">;
+  label: string;
+}> = [
+  { value: "marked", label: "已标记" },
+  { value: "wrong", label: "需复习" },
+  { value: "wrong_marked", label: "已标记且需复习" },
+];
+
 const QUESTION_BANK_SORT_OPTIONS: ReadonlyArray<{
   value: QuestionBankSortMode;
   label: string;
@@ -2852,6 +3207,9 @@ const QUESTION_BANK_SORT_OPTIONS: ReadonlyArray<{
   { value: "question_type", label: "按题型" },
   { value: "difficulty", label: "按难度" },
 ];
+
+const EXAM_CATALOG_TOOL_CONTROL_CLASS =
+  "h-11 rounded-xl border border-slate-200 bg-white text-[13px] font-semibold leading-5 text-slate-600 shadow-sm shadow-slate-200/60 outline-none transition-[border-color,box-shadow,color] focus:border-[#8da2c2] focus:ring-2 focus:ring-slate-200/70 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:shadow-none dark:focus:border-slate-500 dark:focus:ring-slate-700/50";
 
 const QUESTION_TYPE_SORT_OPTIONS: ReadonlyArray<{
   value: QuestionTypeSortMode;
@@ -2872,112 +3230,200 @@ const QUESTION_TYPE_GRADING_FILTER_OPTIONS: ReadonlyArray<{
   { value: "other", label: "其他判分" },
 ];
 
-type MetricTone = "blue" | "purple" | "teal" | "amber" | "rose" | "indigo" | "default";
-
-const METRIC_TONE_STYLES: Record<MetricTone, { iconContainer: string; borderHover: string }> = {
-  blue: {
-    iconContainer: "bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-300",
-    borderHover: "hover:border-blue-200 dark:hover:border-blue-800/60",
-  },
-  purple: {
-    iconContainer: "bg-purple-50 text-purple-600 dark:bg-purple-500/15 dark:text-purple-300",
-    borderHover: "hover:border-purple-200 dark:hover:border-purple-800/60",
-  },
-  teal: {
-    iconContainer: "bg-teal-50 text-teal-600 dark:bg-teal-500/15 dark:text-teal-300",
-    borderHover: "hover:border-teal-200 dark:hover:border-teal-800/60",
-  },
-  amber: {
-    iconContainer: "bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300",
-    borderHover: "hover:border-amber-200 dark:hover:border-amber-800/60",
-  },
-  rose: {
-    iconContainer: "bg-rose-50 text-rose-600 dark:bg-rose-500/15 dark:text-rose-300",
-    borderHover: "hover:border-rose-200 dark:hover:border-rose-800/60",
-  },
-  indigo: {
-    iconContainer: "bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300",
-    borderHover: "hover:border-indigo-200 dark:hover:border-indigo-800/60",
-  },
-  default: {
-    iconContainer: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
-    borderHover: "hover:border-slate-300 dark:hover:border-slate-700",
-  },
-};
-
-function ExamCatalogMetric({
-  icon,
-  label,
-  value,
-  tone = "indigo",
-}: {
-  icon: ReactNode;
+type ExamCatalogOverviewMetric = {
+  key: string;
   label: string;
   value: number;
-  tone?: MetricTone;
+  icon: ReactNode;
+  iconClass: string;
+  valueClass?: string;
+};
+
+function ExamCatalogOverview({
+  ariaLabel,
+  testIdPrefix,
+  metrics,
+}: {
+  ariaLabel: string;
+  testIdPrefix: string;
+  metrics: readonly ExamCatalogOverviewMetric[];
 }) {
-  const toneStyle = METRIC_TONE_STYLES[tone] ?? METRIC_TONE_STYLES.default;
   return (
-    <div
-      className={`group flex min-w-0 items-center gap-3.5 rounded-2xl border border-slate-200/80 bg-white/90 p-4 shadow-sm backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:bg-slate-900/80 sm:p-5 ${toneStyle.borderHover}`}
+    <section
+      aria-label={ariaLabel}
+      className="rounded-[18px] border border-slate-200/90 bg-white px-4 py-4 shadow-[0_2px_12px_-10px_rgba(15,23,42,0.25)] dark:border-slate-800 dark:bg-slate-950/80 sm:px-6"
     >
-      <span
-        className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl transition-transform duration-200 group-hover:scale-105 ${toneStyle.iconContainer}`}
-      >
-        {icon}
-      </span>
-      <span className="min-w-0">
-        <span className="block text-2xl font-black tabular-nums leading-none tracking-tight text-slate-950 dark:text-slate-100">
-          {value}
-        </span>
-        <span className="mt-1.5 block truncate text-xs font-semibold text-slate-500 dark:text-slate-400">
-          {label}
-        </span>
-      </span>
-    </div>
+      <div className="mx-auto grid w-full max-w-[1320px] grid-cols-2 items-center gap-y-2 sm:grid-cols-4 sm:divide-x sm:divide-slate-100 dark:sm:divide-slate-800">
+        {metrics.map((metric) => (
+          <div
+            key={metric.key}
+            data-testid={`${testIdPrefix}-metric-${metric.key}`}
+            className="flex min-h-16 w-full min-w-0 items-center justify-center gap-2 px-1 sm:gap-3 sm:px-2"
+          >
+            <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl sm:h-12 sm:w-12 sm:rounded-[14px] ${metric.iconClass}`}>
+              {metric.icon}
+            </span>
+            <span className="flex min-w-0 items-baseline gap-1.5 text-left sm:gap-2">
+              <span className={`shrink-0 text-2xl font-semibold leading-none tracking-[-0.025em] tabular-nums sm:text-[26px] ${metric.valueClass ?? "text-slate-950 dark:text-slate-100"}`}>
+                {metric.value}
+              </span>
+              <span className="truncate text-xs font-medium leading-4 text-slate-500 dark:text-slate-400 sm:text-[13px]">
+                {metric.label}
+              </span>
+            </span>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
-function ExamCatalogFilterChip({
-  selected,
+function QuestionBankOverview({
+  totalCount,
+  questionTypeCount,
+  markedCount,
+  reviewCount,
+}: {
+  totalCount: number;
+  questionTypeCount: number;
+  markedCount: number;
+  reviewCount: number;
+}) {
+  const metrics = [
+    {
+      key: "all",
+      label: "题目总数",
+      value: totalCount,
+      icon: <BookOpen className="h-5 w-5" />,
+      iconClass: "bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300",
+      valueClass: "text-slate-950 dark:text-slate-100",
+    },
+    {
+      key: "types",
+      label: "题型覆盖",
+      value: questionTypeCount,
+      icon: <Tags className="h-5 w-5" />,
+      iconClass: "bg-violet-50 text-violet-500 dark:bg-violet-500/10 dark:text-violet-300",
+      valueClass: "text-slate-950 dark:text-slate-100",
+    },
+    {
+      key: "marked",
+      label: "已标记",
+      value: markedCount,
+      icon: <Bookmark className="h-5 w-5" />,
+      iconClass: "bg-amber-50 text-amber-500 dark:bg-amber-500/10 dark:text-amber-300",
+      valueClass: "text-slate-950 dark:text-slate-100",
+    },
+    {
+      key: "review",
+      label: "需复习",
+      value: reviewCount,
+      icon: <XCircle className="h-5 w-5" />,
+      iconClass: "bg-rose-50 text-rose-500 dark:bg-rose-500/10 dark:text-rose-300",
+      valueClass: "text-slate-950 dark:text-slate-100",
+    },
+  ];
+
+  return (
+    <ExamCatalogOverview
+      ariaLabel="题库概览"
+      testIdPrefix="question-bank"
+      metrics={metrics}
+    />
+  );
+}
+
+function QuestionTypeOverview({
+  totalCount,
+  globalCount,
+  courseCount,
+  gradingMethodCount,
+}: {
+  totalCount: number;
+  globalCount: number;
+  courseCount: number;
+  gradingMethodCount: number;
+}) {
+  const metrics: ExamCatalogOverviewMetric[] = [
+    {
+      key: "all",
+      label: "题型总数",
+      value: totalCount,
+      icon: <Tags className="h-5 w-5" />,
+      iconClass: "bg-violet-50 text-violet-500 dark:bg-violet-500/10 dark:text-violet-300",
+    },
+    {
+      key: "global",
+      label: "基础题型",
+      value: globalCount,
+      icon: <BookOpen className="h-5 w-5" />,
+      iconClass: "bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300",
+    },
+    {
+      key: "course",
+      label: "课程题型",
+      value: courseCount,
+      icon: <Layers3 className="h-5 w-5" />,
+      iconClass: "bg-teal-50 text-teal-600 dark:bg-teal-500/10 dark:text-teal-300",
+    },
+    {
+      key: "grading",
+      label: "判分方式",
+      value: gradingMethodCount,
+      icon: <ClipboardCheck className="h-5 w-5" />,
+      iconClass: "bg-amber-50 text-amber-500 dark:bg-amber-500/10 dark:text-amber-300",
+    },
+  ];
+
+  return (
+    <ExamCatalogOverview
+      ariaLabel="题型概览"
+      testIdPrefix="question-type"
+      metrics={metrics}
+    />
+  );
+}
+
+function ExamCatalogFilterCheckbox({
+  checked,
   label,
   count,
-  onClick,
+  onChange,
 }: {
-  selected: boolean;
+  checked: boolean;
   label: string;
   count?: number;
-  onClick: () => void;
+  onChange: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={selected}
-      className={`group inline-flex min-h-9 items-center justify-center gap-2 rounded-xl border px-3 py-1.5 text-sm font-medium outline-none transition-all duration-150 focus-visible:ring-2 focus-visible:ring-indigo-300 ${
-        selected
-          ? "border-indigo-600 bg-indigo-600 font-semibold text-white shadow-sm shadow-indigo-500/25 dark:border-indigo-500 dark:bg-indigo-500 dark:shadow-none"
-          : "border-slate-200/90 bg-slate-50/70 text-slate-600 hover:border-indigo-200 hover:bg-indigo-50/50 hover:text-indigo-700 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-300 dark:hover:border-indigo-500/40 dark:hover:bg-indigo-500/10 dark:hover:text-indigo-200"
+    <label
+      className={`inline-flex min-h-7 cursor-pointer items-center gap-1.5 text-xs leading-4 transition-colors hover:text-slate-900 dark:hover:text-slate-100 ${
+        checked
+          ? "font-semibold text-slate-800 dark:text-slate-100"
+          : "font-medium text-slate-600 dark:text-slate-300"
       }`}
     >
-      <span>{label}</span>
-      {count !== undefined ? (
-        <span
-          className={`rounded-full px-1.5 py-0.2 text-xs tabular-nums transition-colors ${
-            selected
-              ? "bg-white/20 font-semibold text-white"
-              : "bg-slate-200/70 text-slate-500 dark:bg-slate-800 dark:text-slate-400 group-hover:bg-indigo-100 group-hover:text-indigo-700 dark:group-hover:bg-indigo-500/20 dark:group-hover:text-indigo-300"
-          }`}
-        >
-          {count}
-        </span>
-      ) : null}
-    </button>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onChange}
+        className="h-4 w-4 shrink-0 cursor-pointer rounded border-slate-300 accent-indigo-600 outline-none focus-visible:ring-2 focus-visible:ring-indigo-200 focus-visible:ring-offset-1 dark:border-slate-600 dark:bg-slate-900 dark:focus-visible:ring-indigo-500/40"
+      />
+      <span className="inline-flex items-baseline gap-1 whitespace-nowrap">
+        <span>{label}</span>
+        {count !== undefined ? (
+          <span className="text-[11px] font-normal tabular-nums text-slate-400 dark:text-slate-500">
+            ({count})
+          </span>
+        ) : null}
+      </span>
+    </label>
   );
 }
 
 export function QuestionTemplatesPage() {
   const { courseId } = useParams();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const {
@@ -2986,12 +3432,15 @@ export function QuestionTemplatesPage() {
     finish: finishQuestionTemplateMark,
   } = useQuestionTemplateMarkRequestGuard();
   const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
+  const [selectedKnowledgeUnitFilter, setSelectedKnowledgeUnitFilter] = useState<QuestionKnowledgeNavigationTarget | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedQuestionTypes, setSelectedQuestionTypes] = useState<string[]>([]);
   const [selectedDifficulties, setSelectedDifficulties] = useState<string[]>([]);
   const [reviewStatus, setReviewStatus] = useState<QuestionBankReviewStatus>("all");
   const [sortMode, setSortMode] = useState<QuestionBankSortMode>("newest");
+  const [isAdvancedFiltersOpen, setIsAdvancedFiltersOpen] = useState(false);
   const [visibleLimit, setVisibleLimit] = useState(QUESTION_BANK_PAGE_SIZE);
+  const sortPointerInteractionRef = useRef(false);
   const templatesQueryKey = useMemo(() => ["exam-question-templates", courseId] as const, [courseId]);
 
   const templatesQuery = useQuery({
@@ -3011,6 +3460,20 @@ export function QuestionTemplatesPage() {
     () => new Set(templates.map((item) => item.question_type).filter(Boolean)).size,
     [templates],
   );
+  const relatedQuestionCountByUnitId = useMemo(() => {
+    const counts = new Map<number, number>();
+    for (const template of templates) {
+      const linkedUnitIds = new Set(
+        template.knowledge_unit_refs
+          .map((ref) => getTemplateKnowledgeUnitId(ref))
+          .filter((knowledgeUnitId) => knowledgeUnitId > 0),
+      );
+      for (const knowledgeUnitId of linkedUnitIds) {
+        counts.set(knowledgeUnitId, (counts.get(knowledgeUnitId) ?? 0) + 1);
+      }
+    }
+    return counts;
+  }, [templates]);
 
   const typesQuery = useQuery({
     queryKey: ["exam-question-types", courseId],
@@ -3098,10 +3561,18 @@ export function QuestionTemplatesPage() {
     [reviewStatus, searchQuery, selectedDifficulties, selectedQuestionTypes, sortMode],
   );
   const deferredFilterState = useDeferredValue(currentFilterState);
-  const isFiltering = currentFilterState !== deferredFilterState;
+  const deferredKnowledgeUnitFilter = useDeferredValue(selectedKnowledgeUnitFilter);
+  const isFiltering =
+    currentFilterState !== deferredFilterState ||
+    selectedKnowledgeUnitFilter !== deferredKnowledgeUnitFilter;
   const visibleTemplates = useMemo(() => {
-    return filterAndSortQuestionBankEntries(indexedTemplates, deferredFilterState);
-  }, [deferredFilterState, indexedTemplates]);
+    const filtered = filterAndSortQuestionBankEntries(indexedTemplates, deferredFilterState);
+    if (!deferredKnowledgeUnitFilter) return filtered;
+    return filterQuestionBankEntriesByKnowledgeUnit(
+      filtered,
+      deferredKnowledgeUnitFilter.knowledgeUnitId,
+    );
+  }, [deferredFilterState, deferredKnowledgeUnitFilter, indexedTemplates]);
   const renderedTemplates = useMemo(
     () => visibleTemplates.slice(0, visibleLimit),
     [visibleLimit, visibleTemplates],
@@ -3114,12 +3585,20 @@ export function QuestionTemplatesPage() {
     (searchQuery.trim() ? 1 : 0) +
     selectedQuestionTypes.length +
     selectedDifficulties.length +
-    (reviewStatus === "all" ? 0 : 1);
+    (reviewStatus === "all" ? 0 : 1) +
+    (selectedKnowledgeUnitFilter ? 1 : 0);
   const hasCustomizedControls = activeFilterCount > 0 || sortMode !== "newest";
+  const advancedFilterCount =
+    selectedQuestionTypes.length +
+    selectedDifficulties.length +
+    (reviewStatus === "all" ? 0 : 1);
+  const selectedReviewOption = QUESTION_BANK_REVIEW_OPTIONS.find(
+    (option) => option.value === reviewStatus,
+  );
 
   useEffect(() => {
     setVisibleLimit(QUESTION_BANK_PAGE_SIZE);
-  }, [deferredFilterState]);
+  }, [deferredFilterState, deferredKnowledgeUnitFilter]);
 
   const handleOpenTemplate = useCallback((item: QuestionTemplateItem) => {
     setSelectedTemplateId(item.id);
@@ -3129,9 +3608,26 @@ export function QuestionTemplatesPage() {
     setSelectedQuestionTypes([]);
     setSelectedDifficulties([]);
     setReviewStatus("all");
+    setSelectedKnowledgeUnitFilter(null);
     setSortMode("newest");
+    setIsAdvancedFiltersOpen(false);
   }, []);
-
+  const handleFilterRelatedQuestions = useCallback((target: QuestionKnowledgeNavigationTarget) => {
+    setSearchQuery("");
+    setSelectedQuestionTypes([]);
+    setSelectedDifficulties([]);
+    setReviewStatus("all");
+    setSelectedKnowledgeUnitFilter(target);
+    setSelectedTemplateId(null);
+  }, []);
+  const handleOpenKnowledgeUnit = useCallback((target: QuestionKnowledgeNavigationTarget) => {
+    if (!courseId) return;
+    setSelectedTemplateId(null);
+    navigate({
+      pathname: buildCoursePath(courseId, "knowledge-docs"),
+      search: `?graphNode=${encodeURIComponent(String(target.knowledgeUnitId))}`,
+    });
+  }, [courseId, navigate]);
   const questionTemplateMarkMutation = useMutation({
     mutationFn: ({ questionTemplateId, isMarked }: QuestionTemplateMarkVariables) => {
       if (!courseId) throw new Error("缺少课程标识，无法标记题目。");
@@ -3237,163 +3733,260 @@ export function QuestionTemplatesPage() {
 
       {templates.length > 0 ? (
         <>
-          <section
-            aria-label="题库概览"
-            className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4"
-          >
-            <ExamCatalogMetric icon={<BookOpen className="h-5 w-5" />} label="题目总数" value={templates.length} tone="blue" />
-            <ExamCatalogMetric icon={<Tags className="h-5 w-5" />} label="题型覆盖" value={questionTypeCount} tone="purple" />
-            <ExamCatalogMetric icon={<Bookmark className="h-5 w-5" />} label="已标记" value={reviewStatusCounts.marked} tone="amber" />
-            <ExamCatalogMetric icon={<XCircle className="h-5 w-5" />} label="需复习" value={reviewStatusCounts.wrong} tone="rose" />
-          </section>
+          <div className="space-y-3">
+            <h2 className="text-xl font-semibold tracking-[-0.02em] text-slate-900 dark:text-slate-100">
+              题库概览
+            </h2>
+            <QuestionBankOverview
+              totalCount={templates.length}
+              questionTypeCount={questionTypeCount}
+              markedCount={reviewStatusCounts.marked}
+              reviewCount={reviewStatusCounts.wrong}
+            />
+          </div>
 
-          <section
-            aria-label="筛选题库"
-            className="rounded-[22px] border border-slate-200/80 bg-white/80 p-4 shadow-sm backdrop-blur-sm dark:border-slate-800 dark:bg-slate-950/70 sm:p-6"
-          >
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="relative min-w-0 flex-1">
-                <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  aria-label="搜索题库"
-                  placeholder="搜索题干、题型、难度、知识点或题号"
-                  className="h-11 w-full rounded-xl border border-slate-200/90 bg-slate-50/70 py-2 pl-10 pr-10 text-sm font-medium text-slate-700 outline-none transition-all placeholder:text-slate-400 focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-100/70 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-200 dark:focus:border-indigo-500 dark:focus:bg-slate-950 dark:focus:ring-indigo-500/20"
-                />
-                {searchQuery ? (
+          <div className="space-y-3">
+            <h2 className="text-xl font-semibold tracking-[-0.02em] text-slate-900 dark:text-slate-100">
+              搜索筛选
+            </h2>
+            <section
+              aria-label="筛选题库"
+              className="rounded-[18px] border border-slate-200/90 bg-[#f8fbff] p-4 shadow-none dark:border-slate-800 dark:bg-slate-950/70 sm:p-5"
+            >
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="relative min-w-0 flex-1 lg:max-w-3xl">
+                  <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    aria-label="搜索题库"
+                    placeholder="搜索题干、题型、难度、知识点或题号"
+                    className="h-11 w-full rounded-xl border border-slate-200 bg-white py-2 pl-10 pr-10 text-sm font-medium text-slate-700 outline-none transition-colors placeholder:text-slate-400 focus:border-[#8da2c2] focus:ring-4 focus:ring-slate-200/60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:focus:border-slate-500 dark:focus:ring-slate-700/40"
+                  />
+                  {searchQuery ? (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-2.5 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-lg text-slate-400 outline-none transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-indigo-300 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                      aria-label="清空搜索"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  ) : null}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setSearchQuery("")}
-                    className="absolute right-2.5 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-lg text-slate-400 outline-none transition-colors hover:bg-slate-200 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-indigo-300 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-                    aria-label="清空搜索"
+                    onClick={() => setIsAdvancedFiltersOpen((current) => !current)}
+                    onPointerUp={(event) => event.currentTarget.blur()}
+                    aria-expanded={isAdvancedFiltersOpen}
+                    aria-controls="question-bank-advanced-filters"
+                    className={`inline-flex items-center gap-2 px-4 ${EXAM_CATALOG_TOOL_CONTROL_CLASS} ${
+                      isAdvancedFiltersOpen
+                        ? "border-indigo-200 text-indigo-700 hover:border-indigo-300 dark:border-indigo-500/40 dark:text-indigo-200 dark:hover:border-indigo-500/60"
+                        : "hover:border-slate-300 hover:text-slate-900 dark:hover:border-slate-600 dark:hover:text-slate-100"
+                    }`}
                   >
-                    <X className="h-3.5 w-3.5" />
+                    <SlidersHorizontal className="h-4 w-4" />
+                    筛选
+                    {advancedFilterCount > 0 ? (
+                      <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-xs tabular-nums text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                        {advancedFilterCount}
+                      </span>
+                    ) : null}
                   </button>
-                ) : null}
-              </div>
-              <label className="flex shrink-0 items-center gap-2 text-sm font-semibold text-slate-600 dark:text-slate-300">
-                <span className="text-xs font-bold text-slate-400 dark:text-slate-500">排序</span>
-                <span className="relative block">
-                  <select
-                    value={sortMode}
-                    onChange={(event) => setSortMode(event.target.value as QuestionBankSortMode)}
-                    aria-label="题目排序"
-                    className="h-11 min-w-32 appearance-none rounded-xl border border-slate-200/90 bg-slate-50/70 py-2 pl-3.5 pr-9 text-sm font-semibold text-slate-700 outline-none transition-all hover:border-slate-300 focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-100/70 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-200 dark:focus:border-indigo-500 dark:focus:bg-slate-950 dark:focus:ring-indigo-500/20"
-                  >
-                    {QUESTION_BANK_SORT_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
-                    ))}
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                </span>
-              </label>
-            </div>
 
-            <div className="mt-5 space-y-3.5 border-t border-slate-100 pt-4 dark:border-slate-800/80">
-              <div className="grid gap-2 sm:grid-cols-[68px_1fr] sm:items-center">
-                <p className="text-xs font-bold text-slate-400 dark:text-slate-500">题型</p>
-                <div className="flex flex-wrap gap-2" role="group" aria-label="按题型筛选">
-                  <ExamCatalogFilterChip
-                    selected={selectedQuestionTypes.length === 0}
-                    label="全部"
-                    onClick={() => setSelectedQuestionTypes([])}
-                  />
-                  {questionTypeOptions.map((option) => (
-                    <ExamCatalogFilterChip
-                      key={option.value}
-                      selected={selectedQuestionTypes.includes(option.value)}
-                      label={option.label}
-                      count={option.count}
-                      onClick={() =>
-                        setSelectedQuestionTypes((current) =>
-                          toggleQuestionBankFilterValue(current, option.value),
-                        )
-                      }
-                    />
-                  ))}
-                </div>
-              </div>
-
-              <div className="grid gap-2 sm:grid-cols-[68px_1fr] sm:items-center">
-                <p className="text-xs font-bold text-slate-400 dark:text-slate-500">难度</p>
-                <div className="flex flex-wrap gap-2" role="group" aria-label="按难度筛选">
-                  <ExamCatalogFilterChip
-                    selected={selectedDifficulties.length === 0}
-                    label="全部"
-                    onClick={() => setSelectedDifficulties([])}
-                  />
-                  {difficultyOptions.map((option) => (
-                    <ExamCatalogFilterChip
-                      key={option.value}
-                      selected={selectedDifficulties.includes(option.value)}
-                      label={option.label}
-                      count={option.count}
-                      onClick={() =>
-                        setSelectedDifficulties((current) =>
-                          toggleQuestionBankFilterValue(current, option.value),
-                        )
-                      }
-                    />
-                  ))}
-                </div>
-              </div>
-
-              <div className="grid gap-2 sm:grid-cols-[68px_1fr] sm:items-center">
-                <p className="text-xs font-bold text-slate-400 dark:text-slate-500">复习状态</p>
-                <div className="flex flex-wrap gap-2" role="group" aria-label="按复习状态筛选">
-                  {QUESTION_BANK_REVIEW_OPTIONS.map((option) => (
-                    <ExamCatalogFilterChip
-                      key={option.value}
-                      selected={reviewStatus === option.value}
-                      label={option.label}
-                      count={option.value === "all" ? undefined : reviewStatusCounts[option.value]}
-                      onClick={() => setReviewStatus(option.value)}
-                    />
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-4 flex flex-col gap-2 border-t border-slate-100 pt-3.5 text-xs text-slate-500 dark:border-slate-800/80 dark:text-slate-400 sm:flex-row sm:items-center sm:justify-between">
-              <span className="inline-flex items-center gap-2 font-medium" aria-live="polite">
-                {isFiltering ? <Loader2 className="h-3.5 w-3.5 animate-spin text-indigo-500" /> : null}
-                {isFiltering ? "正在筛选..." : (
-                  <>
-                    找到 <span className="font-bold text-slate-800 dark:text-slate-200">{visibleTemplates.length}</span> 道题目
-                  </>
-                )}
-              </span>
-              <span className="flex flex-wrap items-center gap-3">
-                {activeFilterCount > 0 ? (
-                  <span className="rounded-md bg-indigo-50 px-2 py-0.5 font-medium text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300">
-                    已启用 {activeFilterCount} 项筛选
+                  <span className="relative block min-w-32 flex-1 sm:flex-none">
+                    <select
+                      value={sortMode}
+                      onPointerDown={() => {
+                        sortPointerInteractionRef.current = true;
+                      }}
+                      onKeyDown={() => {
+                        sortPointerInteractionRef.current = false;
+                      }}
+                      onChange={(event) => {
+                        setSortMode(event.target.value as QuestionBankSortMode);
+                        if (sortPointerInteractionRef.current) {
+                          event.currentTarget.blur();
+                        }
+                        sortPointerInteractionRef.current = false;
+                      }}
+                      aria-label="题目排序"
+                      className={`w-full appearance-none py-2 pl-3.5 pr-9 hover:border-slate-300 hover:text-slate-900 dark:hover:border-slate-600 dark:hover:text-slate-100 sm:min-w-36 ${EXAM_CATALOG_TOOL_CONTROL_CLASS}`}
+                    >
+                      {QUESTION_BANK_SORT_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   </span>
-                ) : null}
-                {hasCustomizedControls ? (
-                  <button
-                    type="button"
-                    onClick={resetFilters}
-                    className="font-semibold text-indigo-600 outline-none hover:text-indigo-700 hover:underline focus-visible:rounded focus-visible:ring-2 focus-visible:ring-indigo-300 dark:text-indigo-400"
-                  >
-                    恢复默认
-                  </button>
-                ) : null}
-              </span>
-            </div>
-          </section>
+                </div>
+              </div>
 
-          <section className="space-y-4">
-            <div className="px-1">
-              <h2 className="text-xl font-black text-slate-950 dark:text-slate-100">题目列表</h2>
-              <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                点击题目查看答案与历史记录；右上角可直接标记重点题。
-              </p>
+              <div className="mt-3 h-10 overflow-hidden border-t border-slate-200/70 dark:border-slate-800/80">
+                {activeFilterCount > 0 ? (
+                  <div className="flex h-full items-center gap-2 overflow-x-auto whitespace-nowrap text-xs text-slate-500 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden dark:text-slate-400">
+                    <span className="shrink-0 font-medium">已选条件：</span>
+                    {selectedKnowledgeUnitFilter ? (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedKnowledgeUnitFilter(null)}
+                        title={selectedKnowledgeUnitFilter.knowledgeUnitName}
+                        className="inline-flex min-h-8 max-w-full shrink-0 items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50/70 px-2.5 font-medium text-indigo-700 outline-none hover:border-indigo-300 focus-visible:ring-2 focus-visible:ring-indigo-300 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300"
+                      >
+                        <span className="max-w-48 truncate">知识点：#{selectedKnowledgeUnitFilter.knowledgeUnitId}</span>
+                        <X className="h-3 w-3 shrink-0" />
+                      </button>
+                    ) : null}
+                    {searchQuery.trim() ? (
+                      <button
+                        type="button"
+                        onClick={() => setSearchQuery("")}
+                        className="inline-flex min-h-8 max-w-full shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 font-medium text-slate-600 outline-none hover:border-slate-300 focus-visible:ring-2 focus-visible:ring-indigo-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                      >
+                        <span className="max-w-48 truncate">关键词：{searchQuery.trim()}</span>
+                        <X className="h-3 w-3 shrink-0" />
+                      </button>
+                    ) : null}
+                    {reviewStatus !== "all" ? (
+                      <button
+                        type="button"
+                        onClick={() => setReviewStatus("all")}
+                        className="inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 font-medium text-slate-600 outline-none hover:border-slate-300 focus-visible:ring-2 focus-visible:ring-indigo-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                      >
+                        {selectedReviewOption?.label ?? "复习状态"}
+                        <X className="h-3 w-3" />
+                      </button>
+                    ) : null}
+                    {selectedQuestionTypes.map((value) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setSelectedQuestionTypes((current) => current.filter((item) => item !== value))}
+                        className="inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 font-medium text-slate-600 outline-none hover:border-slate-300 focus-visible:ring-2 focus-visible:ring-indigo-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                      >
+                        题型：{getQuestionTypeLabel(value)}
+                        <X className="h-3 w-3" />
+                      </button>
+                    ))}
+                    {selectedDifficulties.map((value) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setSelectedDifficulties((current) => current.filter((item) => item !== value))}
+                        className="inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 font-medium text-slate-600 outline-none hover:border-slate-300 focus-visible:ring-2 focus-visible:ring-indigo-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                      >
+                        难度：{formatDifficultyLabel(value)}
+                        <X className="h-3 w-3" />
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={resetFilters}
+                      className="min-h-8 shrink-0 px-1 font-semibold text-indigo-600 outline-none hover:text-indigo-700 hover:underline focus-visible:rounded focus-visible:ring-2 focus-visible:ring-indigo-300 dark:text-indigo-400"
+                    >
+                      清空全部
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex h-full items-center text-xs font-medium text-slate-400 dark:text-slate-500">
+                    当前范围：全部题目
+                  </div>
+                )}
+              </div>
+
+              {isAdvancedFiltersOpen ? (
+                <div
+                  id="question-bank-advanced-filters"
+                  className="mt-3 space-y-1.5 border-t border-slate-200/70 pt-2.5 dark:border-slate-800/80"
+                >
+                  <div className="grid gap-1 sm:grid-cols-[56px_1fr] sm:items-center">
+                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">题型</p>
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5" role="group" aria-label="按题型筛选">
+                      <ExamCatalogFilterCheckbox
+                        checked={selectedQuestionTypes.length === 0}
+                        label="全部"
+                        onChange={() => setSelectedQuestionTypes([])}
+                      />
+                      {questionTypeOptions.map((option) => (
+                        <ExamCatalogFilterCheckbox
+                          key={option.value}
+                          checked={selectedQuestionTypes.includes(option.value)}
+                          label={option.label}
+                          count={option.count}
+                          onChange={() =>
+                            setSelectedQuestionTypes((current) =>
+                              toggleQuestionBankFilterValue(current, option.value),
+                            )
+                          }
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid gap-1 sm:grid-cols-[56px_1fr] sm:items-center">
+                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">难度</p>
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5" role="group" aria-label="按难度筛选">
+                      <ExamCatalogFilterCheckbox
+                        checked={selectedDifficulties.length === 0}
+                        label="全部"
+                        onChange={() => setSelectedDifficulties([])}
+                      />
+                      {difficultyOptions.map((option) => (
+                        <ExamCatalogFilterCheckbox
+                          key={option.value}
+                          checked={selectedDifficulties.includes(option.value)}
+                          label={option.label}
+                          count={option.count}
+                          onChange={() =>
+                            setSelectedDifficulties((current) =>
+                              toggleQuestionBankFilterValue(current, option.value),
+                            )
+                          }
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid gap-1 sm:grid-cols-[56px_1fr] sm:items-center">
+                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">状态</p>
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5" role="group" aria-label="按状态筛选">
+                      {QUESTION_BANK_STATUS_FILTER_OPTIONS.map((option) => (
+                        <ExamCatalogFilterCheckbox
+                          key={option.value}
+                          checked={reviewStatus === option.value}
+                          label={option.label}
+                          count={reviewStatusCounts[option.value]}
+                          onChange={() =>
+                            setReviewStatus((current) =>
+                              current === option.value ? "all" : option.value,
+                            )
+                          }
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </section>
+          </div>
+
+          <section className="space-y-3">
+            <div className="flex items-end justify-between gap-4">
+              <h2 className="text-xl font-semibold tracking-[-0.02em] text-slate-900 dark:text-slate-100">
+                题目列表
+              </h2>
+              <span className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 dark:text-slate-400" aria-live="polite">
+                {isFiltering ? <Loader2 className="h-3.5 w-3.5 animate-spin text-indigo-500" /> : null}
+                {isFiltering ? "正在筛选..." : `共 ${visibleTemplates.length} 道题`}
+              </span>
             </div>
 
             {visibleTemplates.length > 0 ? (
               <div aria-busy={isFiltering} className={isFiltering ? "opacity-65 transition-opacity" : "transition-opacity"}>
-                <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4 pb-2">
+                <div className="grid grid-cols-1 gap-3 pb-2 lg:grid-cols-2">
                   {renderedTemplates.map(({ item, questionTypeLabel, previewContent, previewText, renderMarkdownPreview }) => (
                     <QuestionTemplateCard
                       key={item.id}
@@ -3448,6 +4041,9 @@ export function QuestionTemplatesPage() {
         questionTypeLabel={selectedTemplate ? getQuestionTypeLabel(selectedTemplate.question_type) : ""}
         onClose={() => setSelectedTemplateId(null)}
         onToggleMark={handleToggleTemplateMark}
+        relatedQuestionCountByUnitId={relatedQuestionCountByUnitId}
+        onFilterRelatedQuestions={handleFilterRelatedQuestions}
+        onOpenKnowledgeUnit={handleOpenKnowledgeUnit}
         isMarking={selectedTemplate ? markingQuestionTemplateIds.has(selectedTemplate.id) : false}
       />
     </ExamCatalogShell>
@@ -3461,6 +4057,8 @@ export function QuestionTypesPage() {
   const [scopeFilter, setScopeFilter] = useState<QuestionTypeScopeFilter>("all");
   const [gradingFilter, setGradingFilter] = useState<QuestionTypeGradingFilter>("all");
   const [sortMode, setSortMode] = useState<QuestionTypeSortMode>("default");
+  const [isTypeFiltersOpen, setIsTypeFiltersOpen] = useState(false);
+  const typeSortPointerInteractionRef = useRef(false);
 
   const typesQuery = useQuery({
     queryKey: ["exam-question-types", courseId],
@@ -3550,12 +4148,19 @@ export function QuestionTypesPage() {
     Number(Boolean(searchQuery.trim())) +
     Number(scopeFilter !== "all") +
     Number(gradingFilter !== "all");
+  const advancedTypeFilterCount =
+    Number(scopeFilter !== "all") + Number(gradingFilter !== "all");
   const hasCustomizedControls = appliedFilterCount > 0 || sortMode !== "default";
+  const selectedScopeLabel = scopeFilter === "global" ? "基础题型" : "课程题型";
+  const selectedGradingLabel = QUESTION_TYPE_GRADING_FILTER_OPTIONS.find(
+    (option) => option.value === gradingFilter,
+  )?.label;
   const resetFilters = useCallback(() => {
     setSearchQuery("");
     setScopeFilter("all");
     setGradingFilter("all");
     setSortMode("default");
+    setIsTypeFiltersOpen(false);
   }, []);
   const handleOpenType = useCallback((item: QuestionTypeRegistryItem) => {
     setSelectedType(item);
@@ -3609,125 +4214,213 @@ export function QuestionTypesPage() {
             </div>
           ) : (
             <>
-              <section
-                aria-label="题型概览"
-                className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4"
-              >
-                <ExamCatalogMetric icon={<Tags className="h-5 w-5" />} label="题型总数" value={rows.length} tone="purple" />
-                <ExamCatalogMetric icon={<BookOpen className="h-5 w-5" />} label="基础题型" value={globalRows.length} tone="blue" />
-                <ExamCatalogMetric icon={<Layers3 className="h-5 w-5" />} label="课程题型" value={courseRows.length} tone="teal" />
-                <ExamCatalogMetric icon={<ClipboardCheck className="h-5 w-5" />} label="判分方式" value={gradingMethodCount} tone="amber" />
-              </section>
+              <div className="space-y-3">
+                <h2 className="text-xl font-semibold tracking-[-0.02em] text-slate-900 dark:text-slate-100">
+                  题型概览
+                </h2>
+                <QuestionTypeOverview
+                  totalCount={rows.length}
+                  globalCount={globalRows.length}
+                  courseCount={courseRows.length}
+                  gradingMethodCount={gradingMethodCount}
+                />
+              </div>
 
-              <section
-                aria-label="筛选题型"
-                className="rounded-[22px] border border-slate-200/80 bg-white/80 p-4 shadow-sm backdrop-blur-sm dark:border-slate-800 dark:bg-slate-950/70 sm:p-6"
-              >
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                  <div className="relative min-w-0 flex-1">
-                    <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                    <input
-                      value={searchQuery}
-                      onChange={(event) => setSearchQuery(event.target.value)}
-                      aria-label="搜索题型"
-                      placeholder="搜索题型名称、说明、作答要求、判分方式或标识"
-                      className="h-11 w-full rounded-xl border border-slate-200/90 bg-slate-50/70 py-2 pl-10 pr-10 text-sm font-medium text-slate-700 outline-none transition-all placeholder:text-slate-400 focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-100/70 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-200 dark:focus:border-indigo-500 dark:focus:bg-slate-950 dark:focus:ring-indigo-500/20"
-                    />
-                    {searchQuery ? (
+              <div className="space-y-3">
+                <h2 className="text-xl font-semibold tracking-[-0.02em] text-slate-900 dark:text-slate-100">
+                  搜索筛选
+                </h2>
+                <section
+                  aria-label="筛选题型"
+                  className="rounded-[18px] border border-slate-200/90 bg-[#f8fbff] p-4 shadow-none dark:border-slate-800 dark:bg-slate-950/70 sm:p-5"
+                >
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="relative min-w-0 flex-1 lg:max-w-3xl">
+                      <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      <input
+                        value={searchQuery}
+                        onChange={(event) => setSearchQuery(event.target.value)}
+                        aria-label="搜索题型"
+                        placeholder="搜索题型名称、说明、作答要求、判分方式或标识"
+                        className="h-11 w-full rounded-xl border border-slate-200 bg-white py-2 pl-10 pr-10 text-sm font-medium text-slate-700 outline-none transition-colors placeholder:text-slate-400 focus:border-[#8da2c2] focus:ring-4 focus:ring-slate-200/60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:focus:border-slate-500 dark:focus:ring-slate-700/40"
+                      />
+                      {searchQuery ? (
+                        <button
+                          type="button"
+                          onClick={() => setSearchQuery("")}
+                          className="absolute right-2.5 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-lg text-slate-400 outline-none transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-indigo-300 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                          aria-label="清空搜索"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      ) : null}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => setSearchQuery("")}
-                        className="absolute right-2.5 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-lg text-slate-400 outline-none transition-colors hover:bg-slate-200 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-indigo-300 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-                        aria-label="清空搜索"
+                        onClick={() => setIsTypeFiltersOpen((current) => !current)}
+                        onPointerUp={(event) => event.currentTarget.blur()}
+                        aria-expanded={isTypeFiltersOpen}
+                        aria-controls="question-type-advanced-filters"
+                        className={`inline-flex items-center gap-2 px-4 ${EXAM_CATALOG_TOOL_CONTROL_CLASS} ${
+                          isTypeFiltersOpen
+                            ? "border-indigo-200 text-indigo-700 hover:border-indigo-300 dark:border-indigo-500/40 dark:text-indigo-200 dark:hover:border-indigo-500/60"
+                            : "hover:border-slate-300 hover:text-slate-900 dark:hover:border-slate-600 dark:hover:text-slate-100"
+                        }`}
                       >
-                        <X className="h-3.5 w-3.5" />
+                        <SlidersHorizontal className="h-4 w-4" />
+                        筛选
+                        {advancedTypeFilterCount > 0 ? (
+                          <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-xs tabular-nums text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                            {advancedTypeFilterCount}
+                          </span>
+                        ) : null}
                       </button>
-                    ) : null}
-                  </div>
-                  <label className="flex shrink-0 items-center gap-2 text-sm font-semibold text-slate-600 dark:text-slate-300">
-                    <span className="text-xs font-bold text-slate-400 dark:text-slate-500">排序</span>
-                    <span className="relative block">
-                      <select
-                        value={sortMode}
-                        onChange={(event) => setSortMode(event.target.value as QuestionTypeSortMode)}
-                        aria-label="题型排序"
-                        className="h-11 min-w-32 appearance-none rounded-xl border border-slate-200/90 bg-slate-50/70 py-2 pl-3.5 pr-9 text-sm font-semibold text-slate-700 outline-none transition-all hover:border-slate-300 focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-100/70 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-200 dark:focus:border-indigo-500 dark:focus:bg-slate-950 dark:focus:ring-indigo-500/20"
-                      >
-                        {QUESTION_TYPE_SORT_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
-                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                    </span>
-                  </label>
-                </div>
 
-                <div className="mt-5 space-y-3.5 border-t border-slate-100 pt-4 dark:border-slate-800/80">
-                  <div className="grid gap-2 sm:grid-cols-[68px_1fr] sm:items-center">
-                    <p className="text-xs font-bold text-slate-400 dark:text-slate-500">题型来源</p>
-                    <div className="flex flex-wrap gap-2" role="group" aria-label="按题型来源筛选">
-                      <ExamCatalogFilterChip selected={scopeFilter === "all"} label="全部" onClick={() => setScopeFilter("all")} />
-                      <ExamCatalogFilterChip selected={scopeFilter === "global"} label="基础题型" count={globalRows.length} onClick={() => setScopeFilter("global")} />
-                      <ExamCatalogFilterChip selected={scopeFilter === "course"} label="课程题型" count={courseRows.length} onClick={() => setScopeFilter("course")} />
-                    </div>
-                  </div>
-
-                  <div className="grid gap-2 sm:grid-cols-[68px_1fr] sm:items-center">
-                    <p className="text-xs font-bold text-slate-400 dark:text-slate-500">判分方式</p>
-                    <div className="flex flex-wrap gap-2" role="group" aria-label="按判分方式筛选">
-                      <ExamCatalogFilterChip selected={gradingFilter === "all"} label="全部" onClick={() => setGradingFilter("all")} />
-                      {gradingFilterOptions.map((option) => (
-                        <ExamCatalogFilterChip
-                          key={option.value}
-                          selected={gradingFilter === option.value}
-                          label={option.label}
-                          count={option.count}
-                          onClick={() => setGradingFilter(option.value)}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-4 flex flex-col gap-2 border-t border-slate-100 pt-3.5 text-xs text-slate-500 dark:border-slate-800/80 dark:text-slate-400 sm:flex-row sm:items-center sm:justify-between">
-                  <span className="inline-flex items-center gap-2 font-medium" aria-live="polite">
-                    {isFiltering ? <Loader2 className="h-3.5 w-3.5 animate-spin text-indigo-500" /> : null}
-                    {isFiltering ? "正在筛选..." : (
-                      <>
-                        找到 <span className="font-bold text-slate-800 dark:text-slate-200">{visibleTypes.length}</span> 类题型
-                      </>
-                    )}
-                  </span>
-                  <span className="flex flex-wrap items-center gap-3">
-                    {appliedFilterCount > 0 ? (
-                      <span className="rounded-md bg-indigo-50 px-2 py-0.5 font-medium text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300">
-                        已应用 {appliedFilterCount} 项筛选
+                      <span className="relative block min-w-32 flex-1 sm:flex-none">
+                        <select
+                          value={sortMode}
+                          onPointerDown={() => {
+                            typeSortPointerInteractionRef.current = true;
+                          }}
+                          onKeyDown={() => {
+                            typeSortPointerInteractionRef.current = false;
+                          }}
+                          onChange={(event) => {
+                            setSortMode(event.target.value as QuestionTypeSortMode);
+                            if (typeSortPointerInteractionRef.current) {
+                              event.currentTarget.blur();
+                            }
+                            typeSortPointerInteractionRef.current = false;
+                          }}
+                          aria-label="题型排序"
+                          className={`w-full appearance-none py-2 pl-3.5 pr-9 hover:border-slate-300 hover:text-slate-900 dark:hover:border-slate-600 dark:hover:text-slate-100 sm:min-w-36 ${EXAM_CATALOG_TOOL_CONTROL_CLASS}`}
+                        >
+                          {QUESTION_TYPE_SORT_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                          ))}
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                       </span>
-                    ) : null}
-                    {hasCustomizedControls ? (
-                      <button
-                        type="button"
-                        onClick={resetFilters}
-                        className="font-semibold text-indigo-600 outline-none hover:text-indigo-700 hover:underline focus-visible:rounded focus-visible:ring-2 focus-visible:ring-indigo-300 dark:text-indigo-400"
-                      >
-                        恢复默认
-                      </button>
-                    ) : null}
-                  </span>
-                </div>
-              </section>
+                    </div>
+                  </div>
 
-              <section className="space-y-4">
-                <div className="px-1">
-                  <h2 className="text-xl font-black text-slate-950 dark:text-slate-100">题型列表</h2>
-                  <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                    点击题型查看作答要求、判分方式、选项配置和判分规则。
-                  </p>
+                  <div className="mt-3 h-10 overflow-hidden border-t border-slate-200/70 dark:border-slate-800/80">
+                    {appliedFilterCount > 0 ? (
+                      <div className="flex h-full items-center gap-2 overflow-x-auto whitespace-nowrap text-xs text-slate-500 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden dark:text-slate-400">
+                        <span className="shrink-0 font-medium">已选条件：</span>
+                        {searchQuery.trim() ? (
+                          <button
+                            type="button"
+                            onClick={() => setSearchQuery("")}
+                            className="inline-flex min-h-8 max-w-full shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 font-medium text-slate-600 outline-none hover:border-slate-300 focus-visible:ring-2 focus-visible:ring-indigo-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                          >
+                            <span className="max-w-48 truncate">关键词：{searchQuery.trim()}</span>
+                            <X className="h-3 w-3 shrink-0" />
+                          </button>
+                        ) : null}
+                        {scopeFilter !== "all" ? (
+                          <button
+                            type="button"
+                            onClick={() => setScopeFilter("all")}
+                            className="inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 font-medium text-slate-600 outline-none hover:border-slate-300 focus-visible:ring-2 focus-visible:ring-indigo-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                          >
+                            来源：{selectedScopeLabel}
+                            <X className="h-3 w-3" />
+                          </button>
+                        ) : null}
+                        {gradingFilter !== "all" ? (
+                          <button
+                            type="button"
+                            onClick={() => setGradingFilter("all")}
+                            className="inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 font-medium text-slate-600 outline-none hover:border-slate-300 focus-visible:ring-2 focus-visible:ring-indigo-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                          >
+                            判分：{selectedGradingLabel ?? "其他判分"}
+                            <X className="h-3 w-3" />
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={resetFilters}
+                          className="min-h-8 shrink-0 px-1 font-semibold text-indigo-600 outline-none hover:text-indigo-700 hover:underline focus-visible:rounded focus-visible:ring-2 focus-visible:ring-indigo-300 dark:text-indigo-400"
+                        >
+                          清空全部
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex h-full items-center text-xs font-medium text-slate-400 dark:text-slate-500">
+                        当前范围：全部题型
+                      </div>
+                    )}
+                  </div>
+
+                  {isTypeFiltersOpen ? (
+                    <div
+                      id="question-type-advanced-filters"
+                      className="mt-3 space-y-1.5 border-t border-slate-200/70 pt-2.5 dark:border-slate-800/80"
+                    >
+                      <div className="grid gap-1 sm:grid-cols-[68px_1fr] sm:items-center">
+                        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">题型来源</p>
+                        <div className="flex flex-wrap gap-x-3 gap-y-0.5" role="group" aria-label="按题型来源筛选">
+                          <ExamCatalogFilterCheckbox
+                            checked={scopeFilter === "all"}
+                            label="全部"
+                            onChange={() => setScopeFilter("all")}
+                          />
+                          <ExamCatalogFilterCheckbox
+                            checked={scopeFilter === "global"}
+                            label="基础题型"
+                            count={globalRows.length}
+                            onChange={() => setScopeFilter((current) => current === "global" ? "all" : "global")}
+                          />
+                          <ExamCatalogFilterCheckbox
+                            checked={scopeFilter === "course"}
+                            label="课程题型"
+                            count={courseRows.length}
+                            onChange={() => setScopeFilter((current) => current === "course" ? "all" : "course")}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid gap-1 sm:grid-cols-[68px_1fr] sm:items-center">
+                        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">判分方式</p>
+                        <div className="flex flex-wrap gap-x-3 gap-y-0.5" role="group" aria-label="按判分方式筛选">
+                          <ExamCatalogFilterCheckbox
+                            checked={gradingFilter === "all"}
+                            label="全部"
+                            onChange={() => setGradingFilter("all")}
+                          />
+                          {gradingFilterOptions.map((option) => (
+                            <ExamCatalogFilterCheckbox
+                              key={option.value}
+                              checked={gradingFilter === option.value}
+                              label={option.label}
+                              count={option.count}
+                              onChange={() => setGradingFilter((current) => current === option.value ? "all" : option.value)}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                </section>
+              </div>
+
+              <section className="space-y-3">
+                <div className="flex items-end justify-between gap-4">
+                  <h2 className="text-xl font-semibold tracking-[-0.02em] text-slate-900 dark:text-slate-100">
+                    题型列表
+                  </h2>
+                  <span className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 dark:text-slate-400" aria-live="polite">
+                    {isFiltering ? <Loader2 className="h-3.5 w-3.5 animate-spin text-indigo-500" /> : null}
+                    {isFiltering ? "正在筛选..." : `共 ${visibleTypes.length} 类题型`}
+                  </span>
                 </div>
 
                 {visibleTypes.length > 0 ? (
                   <div aria-busy={isFiltering} className={isFiltering ? "opacity-65 transition-opacity" : "transition-opacity"}>
-                    <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4 pb-2">
+                    <div className="grid grid-cols-1 gap-3 pb-2 lg:grid-cols-2">
                       {visibleTypes.map(({ item, typeLabel }) => (
                         <QuestionTypeCard
                           key={item.id}

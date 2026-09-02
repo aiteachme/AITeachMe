@@ -1968,6 +1968,11 @@ export type deleteExamPaperApiV1CoursesCourseIdExamsExamPaperIdDeleteResponse404
   status: 404
 }
 
+export type deleteExamPaperApiV1CoursesCourseIdExamsExamPaperIdDeleteResponse409 = {
+  data: ErrorResponse
+  status: 409
+}
+
 export type deleteExamPaperApiV1CoursesCourseIdExamsExamPaperIdDeleteResponse422 = {
   data: HTTPValidationError
   status: 422
@@ -1981,7 +1986,7 @@ export type deleteExamPaperApiV1CoursesCourseIdExamsExamPaperIdDeleteResponse500
 export type deleteExamPaperApiV1CoursesCourseIdExamsExamPaperIdDeleteResponseSuccess = (deleteExamPaperApiV1CoursesCourseIdExamsExamPaperIdDeleteResponse200) & {
   headers: Headers;
 };
-export type deleteExamPaperApiV1CoursesCourseIdExamsExamPaperIdDeleteResponseError = (deleteExamPaperApiV1CoursesCourseIdExamsExamPaperIdDeleteResponse400 | deleteExamPaperApiV1CoursesCourseIdExamsExamPaperIdDeleteResponse404 | deleteExamPaperApiV1CoursesCourseIdExamsExamPaperIdDeleteResponse422 | deleteExamPaperApiV1CoursesCourseIdExamsExamPaperIdDeleteResponse500) & {
+export type deleteExamPaperApiV1CoursesCourseIdExamsExamPaperIdDeleteResponseError = (deleteExamPaperApiV1CoursesCourseIdExamsExamPaperIdDeleteResponse400 | deleteExamPaperApiV1CoursesCourseIdExamsExamPaperIdDeleteResponse404 | deleteExamPaperApiV1CoursesCourseIdExamsExamPaperIdDeleteResponse409 | deleteExamPaperApiV1CoursesCourseIdExamsExamPaperIdDeleteResponse422 | deleteExamPaperApiV1CoursesCourseIdExamsExamPaperIdDeleteResponse500) & {
   headers: Headers;
 };
 

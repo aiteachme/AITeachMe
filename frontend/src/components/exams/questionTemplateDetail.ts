@@ -2,9 +2,10 @@ export interface QuestionTemplateKnowledgeRefView {
   key: string;
   knowledgeUnitId: string | null;
   name: string;
+  nameMarkdown: string;
+  typeKey: string | null;
   typeLabel: string | null;
-  roleLabel: string;
-  roleTone: "primary" | "related" | "prerequisite";
+  isTopic: boolean;
   weight: number | null;
   weightLabel: string | null;
   hasResolvedName: boolean;
@@ -74,14 +75,6 @@ const KNOWLEDGE_UNIT_TYPE_LABELS: Record<string, string> = {
   resource: "学习资源",
 };
 
-const KNOWLEDGE_ROLE_LABELS: Record<string, { label: string; tone: QuestionTemplateKnowledgeRefView["roleTone"] }> = {
-  primary: { label: "主要考查", tone: "primary" },
-  core: { label: "主要考查", tone: "primary" },
-  prerequisite: { label: "前置要求", tone: "prerequisite" },
-  supporting: { label: "辅助知识", tone: "related" },
-  related: { label: "关联考查", tone: "related" },
-};
-
 function nonEmptyString(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
@@ -118,6 +111,57 @@ function getKnowledgeUnitTypeLabel(ref: Record<string, unknown>) {
   return KNOWLEDGE_UNIT_TYPE_LABELS[rawType] ?? null;
 }
 
+export function formatQuestionTemplateKnowledgeNameMarkdown(value: unknown) {
+  const text = String(value ?? "").trim();
+  if (!text || /(?:\$|\\\(|\\\[)/.test(text)) return text;
+
+  const match = text.match(
+    /^([\s\S]*?)([A-Za-z][A-Za-z0-9]*\s*(?:=|\\(?:neq|ne|frac|sqrt|le|ge))[A-Za-z0-9\s{}\\=<>+\-*/^(),.]*)$/,
+  );
+  if (!match) return text;
+  const prefix = match[1].trimEnd();
+  const expression = match[2].trim();
+  if (!expression || /[\u3400-\u9fff]/.test(expression)) return text;
+  return `${prefix}${prefix ? " " : ""}$${expression}$`;
+}
+
+function cleanKnowledgeSummaryFragment(value: string) {
+  return value
+    .replace(/^\s*#{1,6}\s+/, "")
+    .replace(/!\[[^\]]*]\([^)]*\)/g, " ")
+    .replace(/\[([^\]]+)]\([^)]*\)/g, "$1")
+    .replace(/`([^`]*)`/g, "$1")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/~~([^~]+)~~/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function formatQuestionTemplateKnowledgeSummaryMarkdown(value: unknown, maxChars = 360) {
+  const raw = String(value ?? "").replace(/\r\n?/g, "\n").trim();
+  if (!raw) return "";
+
+  const sectionBreak = raw.search(/(?:^|\s)#{2,6}\s+/);
+  const primarySection = sectionBreak > 0 ? raw.slice(0, sectionBreak).trim() : raw;
+  const fragments = primarySection.includes("|")
+    ? primarySection
+        .split("|")
+        .map(cleanKnowledgeSummaryFragment)
+        .filter((fragment) => fragment && !/^:?-{3,}:?$/.test(fragment))
+    : primarySection
+        .split("\n")
+        .map(cleanKnowledgeSummaryFragment)
+        .filter(Boolean);
+  const summary = fragments.join(" · ").replace(/(?:\s*·\s*){2,}/g, " · ").trim();
+  if (summary.length <= maxChars) return summary;
+
+  const clipped = summary.slice(0, Math.max(1, maxChars - 1)).trimEnd();
+  const safeBoundary = Math.max(clipped.lastIndexOf("。"), clipped.lastIndexOf("；"), clipped.lastIndexOf(" · "));
+  const bounded = safeBoundary >= Math.floor(maxChars * 0.55) ? clipped.slice(0, safeBoundary + 1) : clipped;
+  return `${bounded.trimEnd()}…`;
+}
+
 export function formatQuestionTemplateStatus(value: unknown) {
   const raw = String(value ?? "").trim();
   if (!raw) return "状态未标注";
@@ -151,42 +195,36 @@ export function buildQuestionTemplateKnowledgeRefs(
     const rawId = ref.knowledge_unit_id ?? ref.unit_id;
     const knowledgeUnitId = rawId == null || String(rawId).trim() === "" ? null : String(rawId);
     const name = getKnowledgeUnitName(ref);
-    const role = normalizedCode(ref.role);
+    const typeKey = normalizedCode(ref.knowledge_unit_type ?? ref.unit_type) || null;
     const weight = parseKnowledgeWeight(ref.coverage_weight ?? ref.weight);
     return {
       index,
       knowledgeUnitId,
       name,
+      typeKey,
       typeLabel: getKnowledgeUnitTypeLabel(ref),
-      role,
       weight,
     };
   });
 
   normalized.sort((left, right) => {
-    const leftPrimary = left.role === "primary" || left.role === "core" ? 1 : 0;
-    const rightPrimary = right.role === "primary" || right.role === "core" ? 1 : 0;
-    if (leftPrimary !== rightPrimary) return rightPrimary - leftPrimary;
     if ((left.weight ?? -1) !== (right.weight ?? -1)) return (right.weight ?? -1) - (left.weight ?? -1);
     return left.index - right.index;
   });
 
-  const hasExplicitPrimary = normalized.some((item) => item.role === "primary" || item.role === "core");
-  return normalized.map((item, index) => {
-    const fallbackRole = !hasExplicitPrimary && index === 0
-      ? KNOWLEDGE_ROLE_LABELS.primary
-      : KNOWLEDGE_ROLE_LABELS.related;
-    const role = KNOWLEDGE_ROLE_LABELS[item.role] ?? fallbackRole;
+  return normalized.map((item) => {
     const fallbackName = item.knowledgeUnitId ? `知识点 #${item.knowledgeUnitId}` : "未命名知识点";
+    const displayName = item.name ?? fallbackName;
     return {
-      key: `${item.knowledgeUnitId ?? "unknown"}-${item.role || "related"}-${item.index}`,
+      key: `${item.knowledgeUnitId ?? "unknown"}-${item.typeKey ?? "unknown"}-${item.index}`,
       knowledgeUnitId: item.knowledgeUnitId,
-      name: item.name ?? fallbackName,
+      name: displayName,
+      nameMarkdown: formatQuestionTemplateKnowledgeNameMarkdown(displayName),
+      typeKey: item.typeKey,
       typeLabel: item.typeLabel,
-      roleLabel: role.label,
-      roleTone: role.tone,
+      isTopic: item.typeKey === "topic",
       weight: item.weight,
-      weightLabel: item.weight == null ? null : `考查侧重 ${Math.round(item.weight * 100)}%`,
+      weightLabel: item.weight == null ? null : `本题覆盖 ${Math.round(item.weight * 100)}%`,
       hasResolvedName: item.name != null,
     };
   });

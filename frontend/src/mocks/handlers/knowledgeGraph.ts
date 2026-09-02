@@ -54,6 +54,21 @@ const mockGraphNodes = layerSeeds.flatMap((group, groupIndex) =>
   })),
 );
 
+const mockExamKnowledgeNodes = [
+  { id: 101, course_id: "mock", knowledge_unit_type: "concept", canonical_name: "导数基础", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
+  { id: 102, course_id: "mock", knowledge_unit_type: "principle", canonical_name: "导数的性质与判断", status: "active", confidence: 0.88, created_at: nowIso, updated_at: nowIso },
+  { id: 103, course_id: "mock", knowledge_unit_type: "procedure", canonical_name: "函数代入求值", status: "active", confidence: 0.87, created_at: nowIso, updated_at: nowIso },
+  { id: 104, course_id: "mock", knowledge_unit_type: "formula_model", canonical_name: "等差数列通项", status: "active", confidence: 0.89, created_at: nowIso, updated_at: nowIso },
+  { id: 105, course_id: "mock", knowledge_unit_type: "skill", canonical_name: "利用导数判断函数极值", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
+  { id: 107, course_id: "mock", knowledge_unit_type: "concept", canonical_name: "正弦函数的性质", status: "active", confidence: 0.88, created_at: nowIso, updated_at: nowIso },
+  { id: 908, course_id: "mock", knowledge_unit_type: "topic", canonical_name: "反比例函数复习", status: "active", confidence: 0.9, created_at: nowIso, updated_at: nowIso },
+  { id: 979, course_id: "mock", knowledge_unit_type: "formula_model", canonical_name: "反比例函数 y=\\frac{k}{x}", status: "active", confidence: 0.88, created_at: nowIso, updated_at: nowIso },
+  { id: 994, course_id: "mock", knowledge_unit_type: "concept", canonical_name: "反比例函数解析式与定义域", status: "active", confidence: 0.88, created_at: nowIso, updated_at: nowIso },
+  { id: 1045, course_id: "mock", knowledge_unit_type: "principle", canonical_name: "反比例函数定义域 x\\neq 0", status: "active", confidence: 0.88, created_at: nowIso, updated_at: nowIso },
+];
+
+const mockDetailNodes = [...mockExamKnowledgeNodes, ...mockGraphNodes];
+
 function nodeIdsByType(type: string) {
   return mockGraphNodes.filter((node) => node.knowledge_unit_type === type).map((node) => node.id);
 }
@@ -130,14 +145,18 @@ function paginatedNodes(page: number, size: number, nodeType?: string | null) {
 }
 
 function buildNodeDetail(nodeId: number) {
-  const node = mockGraphNodes.find((item) => item.id === nodeId) ?? mockGraphNodes[0];
-  const incidentEdges = mockGraphEdges
+  const node = mockDetailNodes.find((item) => item.id === nodeId) ?? mockGraphNodes[0];
+  const isExamKnowledgeNode = mockExamKnowledgeNodes.some((item) => item.id === node.id);
+  const detailSummary = node.id === 908
+    ? "# 二次函数图像性质、解析式互化与最值应用 | 学习主线 | 本章要解决的问题 | |---|---| | 解析式结构 | 从 $y=ax^2+bx+c$ 中读出参数作用 | | 图像性质 | 判断开口方向、对称轴、顶点与最值 | | 解析式互化 | 识别一般式、顶点式与交点式 | ## 二次函数一般式结构与图像性质"
+    : `${node.canonical_name} 是当前课程图谱中的一个关键知识点，适合作为练习、讲解和复习的锚点。`;
+  const incidentEdges = (isExamKnowledgeNode ? [] : mockGraphEdges)
     .filter((edge) => edge.source_node_id === node.id || edge.target_node_id === node.id)
     .slice(0, 8)
     .map((edge) => {
       const isOutgoing = edge.source_node_id === node.id;
       const otherNodeId = isOutgoing ? edge.target_node_id : edge.source_node_id;
-      const otherNode = mockGraphNodes.find((item) => item.id === otherNodeId);
+      const otherNode = mockDetailNodes.find((item) => item.id === otherNodeId);
 
       return {
         id: edge.id,
@@ -167,7 +186,7 @@ function buildNodeDetail(nodeId: number) {
     ],
     current_revision: {
       title: node.canonical_name,
-      summary: `${node.canonical_name} 是当前课程图谱中的一个关键知识点，适合作为练习、讲解和复习的锚点。`,
+      summary: detailSummary,
       body: `- 类型：${node.knowledge_unit_type}\n- 建议：先确认定义边界，再沿关联关系查看前置知识和应用场景。`,
     },
     evidence: [

@@ -6,6 +6,9 @@ import type {
   ExamPaperItemResponse,
 } from "../../api/generated/model";
 import { buildExamQuestionAnchorId } from "../interaction/types";
+import { parseBackendDateTime } from "./examDateTime";
+
+export { parseBackendDateTime };
 
 export const MASTERY_DRILL_EXAM_MODE = "mastery_drill";
 export const MASTERY_DRILL_QUESTION_COUNT = 10;
@@ -38,12 +41,6 @@ export const DIFFICULTIES = [
   { value: "medium", label: "中" },
   { value: "hard", label: "难" },
 ] as const;
-
-export function parseBackendDateTime(value: string) {
-  const normalized = value.trim();
-  const hasExplicitTimeZone = /(?:z|[+-]\d{2}:?\d{2})$/i.test(normalized);
-  return new Date(hasExplicitTimeZone ? normalized : `${normalized}Z`);
-}
 
 export function formatDateTime(value?: string | null) {
   if (!value) return "暂无记录";

@@ -1835,6 +1835,7 @@ def delete_exam_paper_cascade(session: Session, *, paper_id: int) -> bool:
 
     session.exec(sa.delete(ExamPaperItem).where(ExamPaperItem.exam_paper_id == paper_id))
     session.exec(sa.delete(MasteryDrillSession).where(MasteryDrillSession.exam_paper_id == paper_id))
+    session.exec(sa.delete(ExamStudyGuideCache).where(ExamStudyGuideCache.exam_paper_id == paper_id))
     session.exec(sa.delete(ExamProfileSync).where(ExamProfileSync.exam_paper_id == paper_id))
 
     session.delete(paper)
