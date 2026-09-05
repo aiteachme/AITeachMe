@@ -44,7 +44,8 @@ const PRINT_PAGE_STYLES = `
   @media print {
     html,
     body,
-    #root {
+    #root,
+    #app {
       width: auto !important;
       min-width: 0 !important;
       height: auto !important;
@@ -325,7 +326,6 @@ export function ExamPaperPrintPage() {
 
   useEffect(() => {
     if (!autoPrint || !exportPaper || !exportAvailability.available || hasAutoPrintedRef.current) return;
-    hasAutoPrintedRef.current = true;
     let cancelled = false;
     const controller = new AbortController();
     const printWhenReady = async () => {
@@ -338,7 +338,10 @@ export function ExamPaperPrintPage() {
       ]);
       await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
       await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
-      if (!cancelled) window.print();
+      if (!cancelled) {
+        hasAutoPrintedRef.current = true;
+        window.print();
+      }
     };
     void printWhenReady();
     return () => {

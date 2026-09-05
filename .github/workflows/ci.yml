@@ -88,6 +88,9 @@ jobs:
       - name: Run exam submission flow tests
         run: npm run test:exam-submission-flow
 
+      - name: Run exam paper export tests
+        run: npm run test:exam-paper-export
+
       - name: Run study guide stream tests
         run: npm run test:study-guide-stream
 

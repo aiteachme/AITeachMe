@@ -908,18 +908,20 @@ export function ExamPaperCard({
         {showMasteryResult ? <MasteryDrillResultMark item={item} /> : null}
 
         <div className="absolute bottom-4 right-4 z-20 flex translate-y-0 items-center gap-2 opacity-100 transition-all duration-300 pointer-events-auto sm:translate-y-1 sm:opacity-0 sm:pointer-events-none sm:group-hover:pointer-events-auto sm:group-hover:translate-y-0 sm:group-hover:opacity-100 sm:group-focus-within:pointer-events-auto sm:group-focus-within:translate-y-0 sm:group-focus-within:opacity-100">
-            <Button
-              type="button"
-              size="icon"
-              variant="outline"
-              className="!h-8 !w-8 shrink-0 rounded-full border-slate-200 bg-white text-slate-900 hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:border-red-500/40 dark:hover:bg-red-950/30 dark:hover:text-red-300"
-              aria-label={`删除记录 ${buildExamTitle(item)}`}
-              title="删除记录"
-              disabled={isDeleting}
-              onClick={onDelete}
-            >
-              {isDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-            </Button>
+            {!isGraded ? (
+              <Button
+                type="button"
+                size="icon"
+                variant="outline"
+                className="!h-8 !w-8 shrink-0 rounded-full border-slate-200 bg-white text-slate-900 hover:border-red-200 hover:bg-red-50 hover:text-red-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:border-red-500/40 dark:hover:bg-red-950/30 dark:hover:text-red-300"
+                aria-label={`删除记录 ${buildExamTitle(item)}`}
+                title="删除记录"
+                disabled={isDeleting}
+                onClick={onDelete}
+              >
+                {isDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+              </Button>
+            ) : null}
             <button
               ref={actionsMenuButtonRef}
               type="button"
