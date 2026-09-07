@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-08-31T03:20:46.560996",
-  "total_commits_analyzed": 2131,
+  "generated_at": "2026-09-07T02:40:57.379852",
+  "total_commits_analyzed": 2142,
   "stats": [
     {
       "date": "2026-03-11",
@@ -17049,6 +17049,94 @@
       "code_lines": 285670,
       "other_lines": 51369,
       "message": "fix: 修复 Markdown 分块与分页重试问题"
+    },
+    {
+      "date": "2026-08-31",
+      "commit": "9279f9a",
+      "total_lines": 337039,
+      "code_lines": 285670,
+      "other_lines": 51369,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-09-01",
+      "commit": "274f90c",
+      "total_lines": 337041,
+      "code_lines": 285672,
+      "other_lines": 51369,
+      "message": "docs: 补充演示课程排序契约"
+    },
+    {
+      "date": "2026-09-01",
+      "commit": "0fc8a39",
+      "total_lines": 337328,
+      "code_lines": 285926,
+      "other_lines": 51402,
+      "message": "fix: 修复知识文档单元测试构建失败"
+    },
+    {
+      "date": "2026-09-01",
+      "commit": "0a5cdd9",
+      "total_lines": 337387,
+      "code_lines": 285982,
+      "other_lines": 51405,
+      "message": "fix: 修复代码题干破坏单元测试结构"
+    },
+    {
+      "date": "2026-09-01",
+      "commit": "994e8ae",
+      "total_lines": 337492,
+      "code_lines": 286068,
+      "other_lines": 51424,
+      "message": "fix: 修复向量索引认证与构建状态失真"
+    },
+    {
+      "date": "2026-09-01",
+      "commit": "5825bf5",
+      "total_lines": 337503,
+      "code_lines": 286078,
+      "other_lines": 51425,
+      "message": "test: 移除向量索引回归测试的云端依赖"
+    },
+    {
+      "date": "2026-09-01",
+      "commit": "67a1b39",
+      "total_lines": 337602,
+      "code_lines": 286166,
+      "other_lines": 51436,
+      "message": "fix: 修复云端向量索引表名截断误判"
+    },
+    {
+      "date": "2026-09-01",
+      "commit": "e6ca526",
+      "total_lines": 337621,
+      "code_lines": 286179,
+      "other_lines": 51442,
+      "message": "fix: 限制 PGVector 派生标识符长度"
+    },
+    {
+      "date": "2026-09-01",
+      "commit": "6d1d92f",
+      "total_lines": 337619,
+      "code_lines": 286178,
+      "other_lines": 51441,
+      "message": "fix: 修复 PGVector 存储初始化参数传递"
+    },
+    {
+      "date": "2026-09-02",
+      "commit": "1824dc0",
+      "total_lines": 339539,
+      "code_lines": 287971,
+      "other_lines": 51568,
+      "message": "feat: 优化题库功能与知识点展示"
+    },
+    {
+      "date": "2026-09-05",
+      "commit": "067ace4",
+      "total_lines": 339544,
+      "code_lines": 287975,
+      "other_lines": 51569,
+      "message": "fix: 修复训练记录删除与打印流程"
     }
   ]
 }
