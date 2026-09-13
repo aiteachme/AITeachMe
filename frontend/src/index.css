@@ -2514,6 +2514,14 @@
   scrollbar-gutter: stable;
 }
 
+/* KaTeX positions equation numbers against this full-width box. The global
+   inline-block fallback shrinks it to the formula and makes \tag overlap the tail. */
+.library-markdown .katex-display > .katex {
+  display: block;
+  max-width: none;
+  text-align: center;
+}
+
 .library-markdown .katex-display::before {
   content: "";
   position: absolute;
