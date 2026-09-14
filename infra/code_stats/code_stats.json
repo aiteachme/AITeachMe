@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-09-07T02:40:57.379852",
-  "total_commits_analyzed": 2142,
+  "generated_at": "2026-09-14T03:10:00.876540",
+  "total_commits_analyzed": 2143,
   "stats": [
     {
       "date": "2026-03-11",
@@ -17137,6 +17137,14 @@
       "code_lines": 287975,
       "other_lines": 51569,
       "message": "fix: 修复训练记录删除与打印流程"
+    },
+    {
+      "date": "2026-09-07",
+      "commit": "655b5fa",
+      "total_lines": 339544,
+      "code_lines": 287975,
+      "other_lines": 51569,
+      "message": "chore: update code statistics [skip ci]"
     }
   ]
 }
