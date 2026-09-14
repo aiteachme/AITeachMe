@@ -73,6 +73,9 @@ jobs:
       - name: Run library Markdown tests
         run: npm run test:library-markdown
 
+      - name: Run knowledge document recovery tests
+        run: npm run test:knowledge-doc-recovery
+
       - name: Run SSE parser tests
         run: npm run test:sse
 

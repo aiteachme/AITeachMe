@@ -1057,7 +1057,9 @@ async def knowledge_build_cancel(
     summary="Fetch aggregate/docgen/graph runtime state",
     responses=build_error_responses([400, 404, 500]),
 )
-async def knowledge_build_runtime(
+# These read routes are synchronous so FastAPI offloads the entire operation,
+# including authorization and session lifetime, rather than blocking its event loop.
+def knowledge_build_runtime(
     request: Request,
     response: Response,
     course_id: str = Path(...),
@@ -1076,7 +1078,7 @@ async def knowledge_build_runtime(
     summary="SSE stream for live build progress snapshots",
     responses=build_error_responses([400, 404, 500]),
 )
-async def knowledge_build_stream(
+def knowledge_build_stream(
     request: Request,
     response: Response,
     course_id: str = Path(...),
@@ -1096,6 +1098,15 @@ async def knowledge_build_stream(
         "SSE_BUILD_SNAPSHOT_FALLBACK_INTERVAL_S",
         default=2.0,
     )
+
+    def read_snapshot() -> KnowledgeBuildRuntimeResponse:
+        # Each snapshot owns its session inside the worker, including cleanup.
+        with managed_session() as snapshot_session:
+            return get_knowledge_build_runtime_result(
+                snapshot_session,
+                course_id=normalized,
+                course_scope=course_scope,
+            )
 
     async def event_generator():
         last_hash: str | None = None
@@ -1164,12 +1175,7 @@ async def knowledge_build_stream(
         async def build_snapshot_events(*, force: bool = False) -> tuple[list[str], bool]:
             nonlocal last_hash
             try:
-                with managed_session() as snapshot_session:
-                    result = get_knowledge_build_runtime_result(
-                        snapshot_session,
-                        course_id=normalized,
-                        course_scope=course_scope,
-                    )
+                result = await run_in_threadpool(read_snapshot)
             except Exception:
                 return [], False
 
@@ -1248,7 +1254,7 @@ async def knowledge_build_stream(
     summary="Fetch knowledge docs and minimal build state",
     responses=build_error_responses([400, 404, 500]),
 )
-async def knowledge_docs(
+def knowledge_docs(
     request: Request,
     response: Response,
     course_id: str = Path(...),
@@ -1266,8 +1272,7 @@ async def knowledge_docs(
         user = get_current_user_context(request, response, session)
         course_record = get_course_record(session, normalized, owner_user_id=user.user_id)
         course_scope = _storage_scope_for_course_record(course_record)
-    result = await run_in_threadpool(
-        get_docgen_result,
+    result = get_docgen_result(
         course_id=normalized,
         course_scope=course_scope,
         include_markdown=include_markdown,
@@ -1361,7 +1366,7 @@ async def knowledge_docs_vector_index_rebuild(
     summary="Fetch the current published knowledge-doc manifest",
     responses=build_error_responses([400, 404, 409, 500, 503]),
 )
-async def knowledge_docs_manifest(
+def knowledge_docs_manifest(
     request: Request,
     response: Response,
     course_id: str = Path(...),
@@ -1390,7 +1395,7 @@ async def knowledge_docs_manifest(
     summary="Fetch one chunk from an exact current knowledge-doc publication",
     responses=build_error_responses([400, 404, 409, 422, 500, 503]),
 )
-async def knowledge_docs_publication_chunk(
+def knowledge_docs_publication_chunk(
     request: Request,
     response: Response,
     course_id: str = Path(...),

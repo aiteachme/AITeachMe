@@ -236,10 +236,10 @@ export function notifyApiAuthChanged(): void {
   }
 }
 
-function abortTrackedApiRequests(): void {
+function abortTrackedApiRequests(reason?: Error): void {
   for (const controller of Array.from(activeRequestControllers)) {
     if (!controller.signal.aborted) {
-      controller.abort();
+      controller.abort(reason);
     }
   }
 }
@@ -313,13 +313,13 @@ export function markBackendOnline(): void {
 
 export function markBackendOffline(reason = "network_error"): void {
   if (backendOffline) {
-    abortTrackedApiRequests();
+    abortTrackedApiRequests(createBackendOfflineError());
     return;
   }
 
   backendOffline = true;
   recoveryProbeAttempt = 0;
-  abortTrackedApiRequests();
+  abortTrackedApiRequests(createBackendOfflineError());
   startBackendRecoveryProbe();
   dispatchBackendConnectionEvent(BACKEND_OFFLINE_EVENT, { reason });
 }
@@ -1052,6 +1052,12 @@ instance.interceptors.response.use(
   },
   (error) => {
     cleanupTrackedRequest(error?.config);
+    // Preserve why a request was stopped even if connectivity recovers before
+    // Axios delivers its cancellation. Explicit caller/auth cancellation stays cancelled.
+    const abortReason = error?.config?.signal?.reason;
+    if (error?.code === "ERR_CANCELED" && isBackendOfflineError(abortReason)) {
+      return Promise.reject(abortReason);
+    }
     if (isBackendDisconnectError(error)) {
       markBackendOffline("axios_disconnect");
     }
@@ -1162,6 +1168,11 @@ export function getApiErrorMessage(
     apiError.response?.data?.message ??
     apiError.response?.data?.detail ??
     apiError.message;
+
+  if ([502, 503, 504].includes(apiError.response?.status ?? 0) &&
+      (!message || /^Request failed with status code \d+$/.test(String(message)))) {
+    return "服务暂时无法响应，后台任务可能仍在执行。请稍后重试加载。";
+  }
 
   if (typeof message === "string" && message.trim()) {
     return sanitizeErrorText(message, fallback);

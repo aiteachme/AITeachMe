@@ -15,6 +15,12 @@ import {
   hasKnowledgeBuildDraftFallback,
 } from "../../../lib/knowledgeBuildRuntime";
 import { formatDigestModeLabel } from "../../../lib/digestMode";
+import {
+  blockingDocumentReadError,
+  documentReadRecoveryDelay,
+  isTransientDocumentReadError,
+  retryDocumentRead,
+} from "../documentReadRecovery";
 import type {
   ApiResponse,
   DocGenBuildStatus,
@@ -193,6 +199,8 @@ export interface DocMarkdownState {
   isLoadingNextChunk: boolean;
   publicationError: unknown;
   draftError: unknown;
+  documentLoadError: unknown;
+  documentReadNotice: string | null;
   loadNextChunk: () => Promise<boolean>;
   ensureHeadingLoaded: (headingId: string) => Promise<boolean>;
   ensureAllChunksLoaded: () => Promise<string>;
@@ -208,12 +216,17 @@ export function useDocMarkdown(): DocMarkdownState {
     [location.search],
   );
   const requestedAtMs = useMemo(() => parseIsoTimestamp(requestedAt), [requestedAt]);
+  const documentScope = useMemo(() => ({ courseId, requestedAt }), [courseId, requestedAt]);
+  const documentScopeRef = useRef(documentScope);
+  documentScopeRef.current = documentScope;
 
   const [docViewMode, setDocViewMode] = useState<DocViewMode>("live");
   const [publicationChunks, setPublicationChunks] = useState<KnowledgeDocPublicationChunk[]>([]);
   const [publicationError, setPublicationError] = useState<unknown>(null);
   const [isLoadingNextChunk, setIsLoadingNextChunk] = useState(false);
   const [terminalRefreshRetryNonce, setTerminalRefreshRetryNonce] = useState(0);
+  const [readRecoveryAttempt, setReadRecoveryAttempt] = useState(0);
+  const [readRecoveryPending, setReadRecoveryPending] = useState(false);
   const lastTerminalDocRefreshKeyRef = useRef<string | null>(null);
   const lastPublicationMetadataRefreshKeyRef = useRef<string | null>(null);
   const publicationManifestRef = useRef<KnowledgeDocPublicationManifest | undefined>(undefined);
@@ -261,7 +274,10 @@ export function useDocMarkdown(): DocMarkdownState {
     },
     enabled: Boolean(courseId),
     staleTime: 30000,
+    retry: retryDocumentRead,
     refetchInterval: (query) => {
+      // The bounded recovery effect handles errors, including a missing first response.
+      if (query.state.error) return false;
       const data = query.state.data;
       const build = data?.build;
       const status = (build?.status ?? "").trim();
@@ -318,14 +334,17 @@ export function useDocMarkdown(): DocMarkdownState {
     queryFn: () => fetchPublicationManifest(courseId as string),
     enabled: Boolean(courseId),
     staleTime: 30000,
-    retry: (failureCount, error) => !isDeterministicPublicationFailure(error) && failureCount < 2,
+    // A concurrent publication switch has no pinned ID here; fetching again is safe.
+    retry: (failureCount, error) => (getHttpStatus(error) === 409 && failureCount < 2) || retryDocumentRead(failureCount, error),
     refetchOnWindowFocus: (query) => !isDeterministicPublicationFailure(query.state.error),
     refetchOnReconnect: (query) => !isDeterministicPublicationFailure(query.state.error),
   });
   publicationManifestRef.current = publicationManifestQuery.data;
   const refetchPublicationManifest = publicationManifestQuery.refetch;
 
-  const buildMeta = runtimeQuery.data?.docgen ?? docMarkdownQuery.data?.build ?? runtimeQuery.data?.aggregate ?? null;
+  // A failed runtime refresh retains cached data; prefer a working metadata read.
+  const buildMeta = (runtimeQuery.isError ? null : runtimeQuery.data?.docgen)
+    ?? docMarkdownQuery.data?.build ?? runtimeQuery.data?.docgen ?? runtimeQuery.data?.aggregate ?? null;
   const buildPreview = runtimeQuery.data?.docgen_preview ?? docMarkdownQuery.data?.build_preview ?? null;
   const buildMetrics = runtimeQuery.data?.docgen_metrics ?? docMarkdownQuery.data?.build_metrics ?? null;
   const buildStatus = buildMeta?.status ?? null;
@@ -357,9 +376,9 @@ export function useDocMarkdown(): DocMarkdownState {
     },
     enabled: Boolean(courseId && draftAvailable),
     staleTime: 5000,
-    refetchInterval: docViewMode === "draft" && buildStatus && ACTIVE_DOC_BUILD_STATUSES.has(buildStatus)
-      ? 5000
-      : false,
+    retry: retryDocumentRead,
+    refetchInterval: (query) => !query.state.error && docViewMode === "draft" && buildStatus && ACTIVE_DOC_BUILD_STATUSES.has(buildStatus)
+      ? 5000 : false,
   });
 
   const resetPublicationChunks = useCallback((publicationId: string | null) => {
@@ -423,11 +442,7 @@ export function useDocMarkdown(): DocMarkdownState {
           return chunk;
         },
         staleTime: Number.POSITIVE_INFINITY,
-        retry: (failureCount, error) => (
-          getHttpStatus(error) !== 409 &&
-          !isDeterministicPublicationFailure(error) &&
-          failureCount < 2
-        ),
+        retry: retryDocumentRead,
       }).then((chunk) => {
         if (
           !publicationMountedRef.current ||
@@ -526,40 +541,45 @@ export function useDocMarkdown(): DocMarkdownState {
   }, [docViewMode, draftMarkdownQuery.data?.draft_markdown, ensureChunkIndexLoaded]);
 
   const refreshDocument = useCallback(async (): Promise<void> => {
+    const isCurrentRead = () => publicationMountedRef.current && documentScopeRef.current === documentScope;
+    if (!isCurrentRead()) return;
     const previousLoadedChunkCount = publicationChunksRef.current.length;
-    const metadataResult = await docMarkdownQuery.refetch();
+    const retryChunkIndex = publicationError ? previousLoadedChunkCount : previousLoadedChunkCount - 1;
+    const metadataResult = await docMarkdownQuery.refetch({ cancelRefetch: false });
+    if (!isCurrentRead()) return;
     if (metadataResult.isError) {
       throw metadataResult.error ?? new Error("知识文档状态刷新失败。");
     }
-    if (!publicationMountedRef.current) return;
     if (draftAvailable) {
-      const draftResult = await draftMarkdownQuery.refetch();
+      const draftResult = await draftMarkdownQuery.refetch({ cancelRefetch: false });
+      if (!isCurrentRead()) return;
       if (draftResult.isError) {
         throw draftResult.error ?? new Error("知识文档草稿刷新失败。");
       }
-      if (!publicationMountedRef.current) return;
     }
-    const manifestResult = await refetchPublicationManifest();
+    const manifestResult = await refetchPublicationManifest({ cancelRefetch: false });
+    if (!isCurrentRead()) return;
     if (manifestResult.isError) {
       throw manifestResult.error ?? new Error("知识文档发布清单刷新失败。");
     }
-    if (!publicationMountedRef.current) return;
     const publicationId = manifestResult.data?.publication_id ?? null;
-    resetPublicationChunks(publicationId);
+    if (activePublicationIdRef.current !== publicationId) resetPublicationChunks(publicationId);
     publicationManifestRef.current = manifestResult.data;
     const totalChunks = manifestResult.data?.chunks.length ?? 0;
     if (publicationId && totalChunks > 0) {
-      const targetChunkIndex = Math.max(0, Math.min(previousLoadedChunkCount - 1, totalChunks - 1));
+      const targetChunkIndex = Math.max(0, Math.min(retryChunkIndex, totalChunks - 1));
       const loaded = await ensureChunkIndexLoaded(targetChunkIndex);
-      if (!loaded && publicationMountedRef.current) {
+      if (!loaded && isCurrentRead()) {
         throw new Error("知识文档章节刷新失败。");
       }
     }
   }, [
+    documentScope,
     docMarkdownQuery.refetch,
     draftAvailable,
     draftMarkdownQuery.refetch,
     ensureChunkIndexLoaded,
+    publicationError,
     refetchPublicationManifest,
     resetPublicationChunks,
   ]);
@@ -621,10 +641,9 @@ export function useDocMarkdown(): DocMarkdownState {
     () => parseIsoTimestamp(buildMeta?.requested_at),
     [buildMeta?.requested_at],
   );
-  const targetRequestedAtMs =
-    buildStatus && buildStatus !== "idle"
-      ? requestedAtMs ?? buildRequestedAtMs
-      : null;
+  const targetRequestedAtMs = requestedAtMs ?? (
+    buildStatus && buildStatus !== "idle" ? buildRequestedAtMs : null
+  );
   const fallbackRequestedBuildReady = hasRequestedPublishedDocument(docMarkdownQuery.data, {
     status: buildStatus ?? "",
     targetRequestedAtMs,
@@ -652,6 +671,40 @@ export function useDocMarkdown(): DocMarkdownState {
       isBuildReadyStatus ||
       targetRequestedAtMs !== null
     );
+
+  const readErrors = [docMarkdownQuery.error, publicationManifestQuery.error, publicationError,
+    draftAvailable ? draftMarkdownQuery.error : null];
+  const readError = blockingDocumentReadError(readErrors, false);
+  const documentLoadError = blockingDocumentReadError(readErrors, isBuildActive || isWaitingForRequestedBuild || isBuildFailure);
+  const recoverableReadError = Boolean(readError && isTransientDocumentReadError(readError));
+  const recoveryDelay = documentReadRecoveryDelay(readRecoveryAttempt);
+  const documentReadNotice = recoverableReadError
+    ? recoveryDelay !== null || readRecoveryPending
+      ? "连接暂时异常，正在重试读取文档与进度。"
+      : "暂时无法读取最新文档与进度，请点击重试加载。"
+    : null;
+
+  useEffect(() => {
+    setReadRecoveryAttempt(0);
+    setReadRecoveryPending(false);
+  }, [documentScope]);
+  useEffect(() => {
+    if (!readError && !readRecoveryPending) setReadRecoveryAttempt(0);
+    if (!courseId || !recoverableReadError || readRecoveryPending || recoveryDelay === null) return;
+    const timer = window.setTimeout(() => {
+      setReadRecoveryAttempt((attempt) => attempt + 1);
+      setReadRecoveryPending(true);
+      // Read requests only: never re-submit a build when connectivity is uncertain.
+      void refreshDocument()
+        .catch(() => { /* Query/chunk state retains the error. */ })
+        .finally(() => {
+          if (publicationMountedRef.current && documentScopeRef.current === documentScope) {
+            setReadRecoveryPending(false);
+          }
+        });
+    }, recoveryDelay);
+    return () => window.clearTimeout(timer);
+  }, [courseId, documentScope, readError, recoverableReadError, readRecoveryPending, recoveryDelay, refreshDocument]);
 
   useEffect(() => {
     const vectorStatus = docMarkdownQuery.data?.vector_status;
@@ -701,6 +754,8 @@ export function useDocMarkdown(): DocMarkdownState {
   useEffect(() => {
     if (!courseId || docMarkdownQuery.isFetching) return;
     if (!isBuildReadyStatus) return;
+    // Temporary read errors use the recovery budget above; permanent errors stop here.
+    if (readError) return;
     const terminalRequestedAtMs = parseIsoTimestamp(buildMeta?.requested_at ?? null);
     const currentPublicationUpdatedAtMs = parseIsoTimestamp(publicationManifestQuery.data?.updated_at ?? null);
     if (
@@ -771,6 +826,7 @@ export function useDocMarkdown(): DocMarkdownState {
     refreshDocument,
     requestedAt,
     terminalRefreshRetryNonce,
+    readError,
   ]);
 
   const effectiveDocViewMode: DocViewMode =
@@ -869,22 +925,19 @@ export function useDocMarkdown(): DocMarkdownState {
       (!runtimeQuery.data && runtimeQuery.isLoading)
     );
   const showDocGeneratingState =
-    !docMarkdownQuery.isError &&
-    !hasPublicationLoadError &&
+    !documentLoadError &&
     !hasLiveDocMarkdown &&
     !hasDraftDocMarkdown &&
     !showDocLoadingState &&
     (isBuildActive || isWaitingForRequestedBuild);
   const showDocBuildFailureState =
-    !docMarkdownQuery.isError &&
-    !hasPublicationLoadError &&
+    !documentLoadError &&
     !hasLiveDocMarkdown &&
     !hasDraftDocMarkdown &&
     !showDocLoadingState &&
     isBuildFailure;
   const showDocEmptyState =
-    !docMarkdownQuery.isError &&
-    !hasPublicationLoadError &&
+    !documentLoadError &&
     !hasLiveDocMarkdown &&
     !hasDraftDocMarkdown &&
     !showDocLoadingState &&
@@ -892,8 +945,7 @@ export function useDocMarkdown(): DocMarkdownState {
     !isWaitingForRequestedBuild &&
     !isBuildFailure;
   const showDocUpdatingBanner =
-    !docMarkdownQuery.isError &&
-    !hasPublicationLoadError &&
+    !documentLoadError &&
     hasRenderedMarkdown &&
     !isGraphSyncActive &&
     (effectiveDocViewMode === "draft" || isWaitingForRequestedBuild);
@@ -950,6 +1002,8 @@ export function useDocMarkdown(): DocMarkdownState {
     isLoadingNextChunk,
     publicationError: publicationManifestQuery.error ?? publicationError,
     draftError: draftAvailable ? draftMarkdownQuery.error : null,
+    documentLoadError,
+    documentReadNotice,
     loadNextChunk,
     ensureHeadingLoaded,
     ensureAllChunksLoaded,

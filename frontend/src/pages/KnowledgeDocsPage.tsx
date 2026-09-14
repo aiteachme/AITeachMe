@@ -2462,7 +2462,8 @@ export function KnowledgeDocsPage() {
     hasNextChunk,
     isLoadingNextChunk,
     publicationError,
-    draftError,
+    documentLoadError,
+    documentReadNotice,
     loadNextChunk,
     ensureHeadingLoaded,
     ensureAllChunksLoaded,
@@ -2478,9 +2479,6 @@ export function KnowledgeDocsPage() {
     isRequestedBuildReady,
     isWaitingForRequestedBuild,
   });
-  const documentLoadError = docMarkdownQuery.error ?? publicationError ?? (
-    !hasRenderedMarkdown && !isBuildActive ? draftError : null
-  );
   const hasSavedReadingPosition = useMemo(() => {
     const saved = readKnowledgeDocsReadingPosition(courseId);
     return Boolean(courseId && saved && (saved.scrollTop > 0 || Boolean(saved.headingId)));
@@ -7269,6 +7267,19 @@ export function KnowledgeDocsPage() {
     !isRequestedBuildReady &&
     (isBuildActive || isWaitingForRequestedBuild || showDocGeneratingState)
   );
+  const documentReadNoticePanel = documentReadNotice ? (
+    <div role="status" className="flex shrink-0 items-center justify-center gap-3 bg-amber-50 px-4 py-2 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+      <span>{documentReadNotice}</span>
+      <button
+        type="button"
+        className="underline"
+        disabled={reloadDocumentMutation.isPending}
+        onClick={() => reloadDocumentMutation.mutate()}
+      >
+        {reloadDocumentMutation.isPending ? "正在重试" : "重试加载"}
+      </button>
+    </div>
+  ) : null;
   const showFloatingActions = Boolean(courseId && !isBuildActive && !showDocLoadingState && !showDocGeneratingState && !isAssistantOpen && !isGraphDrawerOpen);
 
   if (
@@ -7283,6 +7294,7 @@ export function KnowledgeDocsPage() {
           className="shrink-0 bg-white/92 backdrop-blur-md dark:bg-slate-900/92"
           href={courseId ? buildCoursePath(courseId, "nav") : undefined}
         />
+        {documentReadNoticePanel}
         <div className="relative flex-1 min-h-0 w-full overflow-hidden">
           <BuildView
             className="h-full"
@@ -7336,12 +7348,12 @@ export function KnowledgeDocsPage() {
             retryErrorMessage={reloadDocumentMutation.error
               ? getApiErrorMessage(reloadDocumentMutation.error, "请稍后再试，或重新构建课程。")
               : null}
-            secondaryAction={{
+            secondaryAction={isBuildFailure ? {
               label: failedBuildConfirmedPlanId ? "重新构建" : "返回方案重新构建",
               pendingLabel: "正在重新构建",
               onClick: handleFailedBuildRetry,
               isPending: isRetryKnowledgeBuildPending,
-            }}
+            } : undefined}
           />
         </div>
       </div>
@@ -7581,6 +7593,7 @@ export function KnowledgeDocsPage() {
                       isReadingPositionRestoring && "invisible",
                     )}
                   >
+                  {documentReadNoticePanel}
                   <CourseVectorNotice
                     status={docMarkdownQuery.data?.vector_status}
                     className="mb-3"
@@ -7604,12 +7617,12 @@ export function KnowledgeDocsPage() {
                       retryErrorMessage={reloadDocumentMutation.error
                         ? getApiErrorMessage(reloadDocumentMutation.error, "请稍后再试，或重新构建课程。")
                         : null}
-                      secondaryAction={{
+                      secondaryAction={isBuildFailure ? {
                         label: failedBuildConfirmedPlanId ? "重新构建" : "返回方案重新构建",
                         pendingLabel: "正在重新构建",
                         onClick: handleFailedBuildRetry,
                         isPending: isRetryKnowledgeBuildPending,
-                      }}
+                      } : undefined}
                     />
                   ) : showDocLoadingState ? (
                     <DocLoadingState />

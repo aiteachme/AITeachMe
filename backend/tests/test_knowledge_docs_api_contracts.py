@@ -4,8 +4,11 @@ import asyncio
 from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime, timezone
 from types import SimpleNamespace
+from threading import Event, get_ident
 
 import pytest
+import httpx
+from fastapi import FastAPI
 
 from app.api import knowledge_docs as api
 from app.api.deps import CurrentUserContext
@@ -27,6 +30,10 @@ from app.schemas.knowledge import (
     DocGenBuildRequest,
     KnowledgeDocInteractiveSelectionRequest,
     KnowledgeGraphBuildData,
+    KnowledgeBuildRuntimeResponse,
+    KnowledgeBuildLaneRuntimeResponse,
+    KnowledgeDocsPublishedManifestResponse,
+    KnowledgeDocPublishedChunkResponse,
 )
 
 
@@ -370,7 +377,7 @@ def test_knowledge_build_checks_credit_before_mutating_build_state(monkeypatch) 
     assert trigger_called is False
 
 
-def test_knowledge_docs_offloads_blocking_docgen_read(monkeypatch) -> None:
+def test_knowledge_docs_passes_body_read_options(monkeypatch) -> None:
     calls: list[dict[str, object]] = []
     expected = DocGenGetResponse(exists=True, markdown="# Ready")
     course_scope = SimpleNamespace(course_id=COURSE_ID)
@@ -379,11 +386,8 @@ def test_knowledge_docs_offloads_blocking_docgen_read(monkeypatch) -> None:
     def fake_managed_session():
         yield object()
 
-    async def fake_run_in_threadpool(func, *args, **kwargs):
-        calls.append({"func": func, "args": args, "kwargs": kwargs})
-        return func(*args, **kwargs)
-
     def fake_get_docgen_result(**kwargs):
+        calls.append(kwargs)
         assert kwargs["course_id"] == COURSE_ID
         assert kwargs["course_scope"] is course_scope
         return expected
@@ -393,31 +397,112 @@ def test_knowledge_docs_offloads_blocking_docgen_read(monkeypatch) -> None:
     monkeypatch.setattr(api, "get_course_record", lambda _session, course_id, owner_user_id: _course(course_id))
     monkeypatch.setattr(api, "_storage_scope_for_course_record", lambda _course_record: course_scope)
     monkeypatch.setattr(api, "get_docgen_result", fake_get_docgen_result)
-    monkeypatch.setattr(api, "run_in_threadpool", fake_run_in_threadpool)
-
-    response = asyncio.run(
-        api.knowledge_docs(
-            request=_request(),
-            response=SimpleNamespace(),
-            course_id=COURSE_ID,
-            include_markdown=True,
-            include_draft=True,
-        )
+    response = api.knowledge_docs(
+        request=_request(),
+        response=SimpleNamespace(),
+        course_id=COURSE_ID,
+        include_markdown=True,
+        include_draft=True,
     )
 
     assert response.data is expected
     assert calls == [
         {
-            "func": fake_get_docgen_result,
-            "args": (),
-            "kwargs": {
-                "course_id": COURSE_ID,
-                "course_scope": course_scope,
-                "include_markdown": True,
-                "include_draft": True,
-            },
+            "course_id": COURSE_ID,
+            "course_scope": course_scope,
+            "include_markdown": True,
+            "include_draft": True,
         }
     ]
+
+
+@pytest.mark.parametrize("method,path,reader,expected", [
+    ("POST", "/docs", "get_docgen_result", DocGenGetResponse(exists=False)),
+    ("POST", "/build/runtime", "get_knowledge_build_runtime_result", KnowledgeBuildRuntimeResponse()),
+    ("GET", "/docs/manifest", "get_published_doc_manifest", KnowledgeDocsPublishedManifestResponse()),
+    ("GET", "/docs/publications/pub-test/chunks/0", "get_published_doc_chunk",
+     KnowledgeDocPublishedChunkResponse(publication_id="pub-test", version_no=1, chunk_index=0,
+                                       chapter_index=1, title="Intro", markdown="# Intro")),
+    ("GET", "/build/stream", "get_knowledge_build_runtime_result",
+     KnowledgeBuildRuntimeResponse(aggregate=KnowledgeBuildLaneRuntimeResponse(lane="aggregate", status="completed", stage="completed"))),
+])
+@pytest.mark.parametrize("slow_phase", ["authorization", "read"])
+def test_document_read_does_not_block_other_requests_or_move_sessions_between_threads(
+    monkeypatch, method, path, reader, expected, slow_phase,
+) -> None:
+    app = FastAPI()
+    app.include_router(api.router, prefix="/courses/{course_id}/knowledge")
+
+    @app.get("/test-health")
+    async def health():
+        return {"status": "ok"}
+
+    async def scenario():
+        loop = asyncio.get_running_loop()
+        loop_thread = get_ident()
+        started = asyncio.Event()
+        release = Event()
+        session_threads = []
+
+        def block_until_health_responds():
+            loop.call_soon_threadsafe(started.set)
+            if not release.wait(2):
+                raise RuntimeError("Concurrent health request could not run")
+
+        @contextmanager
+        def managed():
+            thread = get_ident()
+            session_threads.append(thread)
+            try:
+                yield SimpleNamespace(thread=thread)
+            finally:
+                assert get_ident() == thread
+
+        def authenticate(request, response, session):
+            assert get_ident() == session.thread
+            if slow_phase == "authorization":
+                block_until_health_responds()
+            response.set_cookie("test-session", "retained")
+            return _user()
+
+        def authorize(session, course_id, owner_user_id):
+            assert get_ident() == session.thread
+            assert owner_user_id == USER_ID
+            return _course(course_id)
+
+        def slow_read(*args, **kwargs):
+            assert get_ident() == session_threads[-1]
+            if args:  # runtime retains a session for the duration of its read.
+                assert args[0].thread == get_ident()
+            if slow_phase == "read":
+                block_until_health_responds()
+            return expected
+
+        monkeypatch.setattr(api, "managed_session", managed)
+        monkeypatch.setattr(api, "get_current_user_context", authenticate)
+        monkeypatch.setattr(api, "get_course_record", authorize)
+        monkeypatch.setattr(api, "_storage_scope_for_course_record", lambda course: SimpleNamespace(course_id=course.id))
+        monkeypatch.setattr(api, reader, slow_read)
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+            pending = asyncio.create_task(client.request(method, f"/courses/{COURSE_ID}/knowledge{path}"))
+            try:
+                await asyncio.wait_for(started.wait(), 1)
+                healthy = await asyncio.wait_for(client.get("/test-health"), 1)
+                assert healthy.json() == {"status": "ok"}
+                assert not pending.done(), "Other requests must run while document storage is waiting"
+            finally:
+                release.set()
+                response = await pending
+            assert response.status_code == 200
+            assert response.cookies.get("test-session") == "retained"
+            if path == "/build/stream":
+                assert "event: snapshot\n" in response.text
+                assert "event: done\n" in response.text
+            else:
+                assert response.json()["data"] == expected.model_dump(mode="json")
+            assert session_threads and all(thread != loop_thread for thread in session_threads)
+
+    asyncio.run(scenario())
 
 
 def test_knowledge_docs_vector_rebuild_reindexes_published_content_and_verifies_status(
