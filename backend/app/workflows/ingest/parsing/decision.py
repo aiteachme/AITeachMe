@@ -154,7 +154,7 @@ def build_parse_decision(
 
     Current default behavior:
     - text / markdown stay local;
-    - supported document types auto-route as PaddleOCR -> MinerU -> local;
+    - supported document types auto-route as MinerU -> PaddleOCR -> local;
     - pptx auto-routes to MinerU when configured, otherwise local MarkItDown;
     - docx stays local-only even when external providers are available;
     - doc is treated as unsupported;
@@ -194,27 +194,27 @@ def build_parse_decision(
             "mineru_available": mineru.available,
         }
 
-        if paddle_ocr.available and paddle_ocr_supports_extension:
-            fallback_chain = ["mineru"] if mineru.available and mineru_supports_extension else []
+        if mineru.available and mineru_supports_extension:
+            fallback_chain = ["paddle_ocr"] if paddle_ocr.available and paddle_ocr_supports_extension else []
             return ParseDecision(
                 requested_provider=normalized_request,
-                primary_provider="paddle_ocr",
+                primary_provider="mineru",
                 primary_reason=(
-                    "图片上传仅走外部解析链路；已检测到 PaddleOCR Token，"
-                    "优先使用 PaddleOCR，失败后尝试 MinerU。"
+                    "图片上传仅走外部解析链路；已检测到 MinerU Token，"
+                    "优先使用 MinerU，失败后尝试 PaddleOCR。"
                 ),
                 fallback_chain=fallback_chain,
                 can_preview_before_primary=False,
                 metadata=image_metadata,
             )
 
-        if mineru.available and mineru_supports_extension:
+        if paddle_ocr.available and paddle_ocr_supports_extension:
             return ParseDecision(
                 requested_provider=normalized_request,
-                primary_provider="mineru",
+                primary_provider="paddle_ocr",
                 primary_reason=(
-                    "图片上传仅走外部解析链路；PaddleOCR 未配置或不可用，"
-                    "自动改用 MinerU。"
+                    "图片上传仅走外部解析链路；MinerU 未配置或不可用，"
+                    "自动改用 PaddleOCR。"
                 ),
                 fallback_chain=[],
                 can_preview_before_primary=False,
@@ -479,38 +479,18 @@ def build_parse_decision(
         mineru_supports_extension = mineru.supports(normalized_extension)
         paddle_ocr_supports_extension = paddle_ocr.supports(normalized_extension)
 
-        if paddle_ocr.available and paddle_ocr_supports_extension:
-            fallback_chain = ["local"]
-            if mineru.available and mineru_supports_extension:
-                fallback_chain = ["mineru", "local"]
-            return ParseDecision(
-                requested_provider=None,
-                primary_provider="paddle_ocr",
-                primary_reason=(
-                    "当前文件类型支持文档解析增强，且已检测到 PaddleOCR Token；"
-                    "优先使用 PaddleOCR，失败后自动回退到 MinerU 或本地解析。"
-                ),
-                fallback_chain=fallback_chain,
-                can_preview_before_primary=False,
-                metadata={
-                    "extension": normalized_extension,
-                    "route_mode": "auto_external_then_local",
-                    "paddle_ocr_supported": True,
-                    "paddle_ocr_available": True,
-                    "mineru_supported": mineru_supports_extension,
-                    "mineru_available": mineru.available,
-                },
-            )
-
         if mineru.available and mineru_supports_extension:
+            fallback_chain = ["local"]
+            if paddle_ocr.available and paddle_ocr_supports_extension:
+                fallback_chain = ["paddle_ocr", "local"]
             return ParseDecision(
                 requested_provider=None,
                 primary_provider="mineru",
                 primary_reason=(
-                    "当前文件类型支持文档解析增强，但 PaddleOCR 不可用；"
-                    "自动改用 MinerU，失败后回退到本地解析。"
+                    "当前文件类型支持文档解析增强，且已检测到 MinerU Token；"
+                    "优先使用 MinerU，失败后自动回退到 PaddleOCR 或本地解析。"
                 ),
-                fallback_chain=["local"],
+                fallback_chain=fallback_chain,
                 can_preview_before_primary=False,
                 metadata={
                     "extension": normalized_extension,
@@ -519,6 +499,26 @@ def build_parse_decision(
                     "paddle_ocr_available": paddle_ocr.available,
                     "mineru_supported": True,
                     "mineru_available": True,
+                },
+            )
+
+        if paddle_ocr.available and paddle_ocr_supports_extension:
+            return ParseDecision(
+                requested_provider=None,
+                primary_provider="paddle_ocr",
+                primary_reason=(
+                    "当前文件类型支持文档解析增强，但 MinerU 不可用；"
+                    "自动改用 PaddleOCR，失败后回退到本地解析。"
+                ),
+                fallback_chain=["local"],
+                can_preview_before_primary=False,
+                metadata={
+                    "extension": normalized_extension,
+                    "route_mode": "auto_external_then_local",
+                    "paddle_ocr_supported": True,
+                    "paddle_ocr_available": True,
+                    "mineru_supported": mineru_supports_extension,
+                    "mineru_available": mineru.available,
                 },
             )
 

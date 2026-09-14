@@ -112,6 +112,48 @@ def test_pptx_auto_routes_to_mineru_when_available_otherwise_markitdown() -> Non
     assert mineru_missing.metadata["route_mode"] == "auto_local_only"
 
 
+def test_pdf_auto_routes_to_mineru_then_paddle_ocr_then_local() -> None:
+    both_available = build_parse_decision(
+        extension=".pdf",
+        requested_provider=None,
+        mineru_available=True,
+        paddle_ocr_available=True,
+        markitdown_available=True,
+    )
+    mineru_missing = build_parse_decision(
+        extension=".pdf",
+        requested_provider=None,
+        mineru_available=False,
+        paddle_ocr_available=True,
+        markitdown_available=True,
+    )
+
+    assert both_available.primary_provider == "mineru"
+    assert both_available.fallback_chain == ["paddle_ocr", "local"]
+    assert mineru_missing.primary_provider == "paddle_ocr"
+    assert mineru_missing.fallback_chain == ["local"]
+
+
+def test_image_auto_routes_to_mineru_then_paddle_ocr_without_local_fallback() -> None:
+    both_available = build_parse_decision(
+        extension=".png",
+        requested_provider=None,
+        mineru_available=True,
+        paddle_ocr_available=True,
+    )
+    mineru_missing = build_parse_decision(
+        extension=".png",
+        requested_provider=None,
+        mineru_available=False,
+        paddle_ocr_available=True,
+    )
+
+    assert both_available.primary_provider == "mineru"
+    assert both_available.fallback_chain == ["paddle_ocr"]
+    assert mineru_missing.primary_provider == "paddle_ocr"
+    assert mineru_missing.fallback_chain == []
+
+
 def test_load_raw_file_state_materializes_file_and_persists_sanitized_metadata(monkeypatch, tmp_path) -> None:
     materialized_dir = tmp_path / "materialized"
     updates: list[dict[str, object]] = []

@@ -162,6 +162,10 @@ asset_name_prefix
 
 动作：进入文本快通道、外部 provider 或本地 parser chain；规范 Markdown 图片引用并抽取 assets。
 
+默认自动路由：PDF 使用 `MinerU -> PaddleOCR -> 本地解析`，图片使用
+`MinerU -> PaddleOCR`（无本地兜底），PPTX 使用 `MinerU -> 本地解析`，DOCX、TXT 和
+Markdown 使用本地解析。用户显式指定且 provider 可用时，仍优先尊重显式选择。
+
 输出：
 
 ```text
@@ -190,7 +194,7 @@ needs_asset_ocr
 外部解析超时：
 
 - MinerU 沿用快速回退预算，默认 90 秒内未拿到最终结果则按策略 fallback。
-- MinerU 解析 PDF 时会先读取页数；超过 200 页则按每份最多 199 页拆分，最多 4 个分块并发解析，全部完成后按原页序合并 Markdown 和图片。恰好 200 页不拆分，所有分块共享同一份 60 秒总预算。
+- MinerU 解析 PDF 时会先读取页数；超过 200 页则按每份最多 199 页拆分，最多 4 个分块并发解析，全部完成后按原页序合并 Markdown 和图片。恰好 200 页不拆分，所有分块共享同一份 90 秒总预算。
 - PaddleOCR Cloud 是异步 job API，默认等待预算为 90 秒，可通过 `PADDLE_OCR_PARSE_TIMEOUT_S` 配置，范围 15-600 秒。
 - PaddleOCR 默认每 1 秒轮询一次任务状态，尽快发现服务端已完成的 job 并进入结果下载。
 - PaddleOCR 模型默认由后端代码决定，可通过 `PADDLE_OCR_MODEL` 覆盖，便于对比不同模型的速度和质量。
