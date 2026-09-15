@@ -194,6 +194,25 @@ def build_parse_decision(
             "mineru_available": mineru.available,
         }
 
+        requested_image_provider = {"mineru": mineru, "paddle_ocr": paddle_ocr}.get(normalized_request or "")
+        if (
+            requested_image_provider is not None
+            and requested_image_provider.available
+            and requested_image_provider.supports(normalized_extension)
+        ):
+            provider_label = "MinerU" if normalized_request == "mineru" else "PaddleOCR"
+            return ParseDecision(
+                requested_provider=normalized_request,
+                primary_provider=requested_image_provider.name,
+                primary_reason=f"图片上传仅走外部解析链路；用户显式选择 {provider_label}，且该服务可用并支持当前图片格式。",
+                fallback_chain=[
+                    provider.name for provider in (mineru, paddle_ocr)
+                    if provider.name != normalized_request and provider.available and provider.supports(normalized_extension)
+                ],
+                can_preview_before_primary=False,
+                metadata=image_metadata,
+            )
+
         if mineru.available and mineru_supports_extension:
             fallback_chain = ["paddle_ocr"] if paddle_ocr.available and paddle_ocr_supports_extension else []
             return ParseDecision(

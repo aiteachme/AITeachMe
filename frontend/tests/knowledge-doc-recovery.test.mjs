@@ -11,7 +11,7 @@ import {
   retryDocumentRead,
 } from "../src/components/knowledge-docs/documentReadRecovery.ts";
 import { CanceledError } from "axios";
-import { apiClient, getApiErrorMessage, markBackendOffline, markBackendOnline } from "../src/api/client.ts";
+import { apiClient, getApiErrorCode, getApiErrorMessage, markBackendOffline, markBackendOnline } from "../src/api/client.ts";
 
 const httpError = (status, error_code) => Object.assign(new Error(`Request failed with status code ${status}`), {
   response: { status, data: error_code ? { error_code } : "<html>Bad Gateway</html>" },
@@ -66,10 +66,10 @@ test("explicit caller cancellation is not treated as an outage to retry", async 
 // state setters are replaced. No browser or additional renderer dependency.
 const hookPath = new URL("../src/components/knowledge-docs/hooks/useDocMarkdown.ts", import.meta.url);
 const source = ts.createSourceFile(hookPath.pathname, fs.readFileSync(hookPath, "utf8"), ts.ScriptTarget.Latest, true);
-function find(predicate) {
+function find(predicate, sourceFile = source) {
   let found;
   function visit(node) { if (!found && predicate(node)) found = node; if (!found) ts.forEachChild(node, visit); }
-  visit(source);
+  visit(sourceFile);
   assert.ok(found, "Hook recovery source must be present");
   return found;
 }
@@ -77,12 +77,69 @@ const refreshCallback = find(node => ts.isVariableDeclaration(node) && node.name
 const recoveryEffect = find(node => ts.isCallExpression(node) && node.expression.getText(source) === "useEffect" &&
   node.arguments[0]?.getText(source).includes("setReadRecoveryPending(true)")).arguments[0];
 function evaluate(node, scope) {
-  const code = ts.transpileModule(`(${node.getText(source)})`, {
+  const code = ts.transpileModule(`(${node.getText(node.getSourceFile())})`, {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None },
   }).outputText;
   const documentScope = {};
   return vm.runInNewContext(code, { documentScope, documentScopeRef: { current: documentScope }, ...scope });
 }
+
+const pagePath = new URL("../src/pages/KnowledgeDocsPage.tsx", import.meta.url);
+const pageSource = ts.createSourceFile(pagePath.pathname, fs.readFileSync(pagePath, "utf8"),
+  ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+const errorPanelActions = [];
+function collectErrorPanelActions(node) {
+  if (ts.isJsxSelfClosingElement(node) && node.tagName.getText(pageSource) === "DocLoadErrorState") {
+    const action = node.attributes.properties.find(property => property.name?.getText(pageSource) === "secondaryAction");
+    if (action) errorPanelActions.push(action.initializer.expression);
+  }
+  ts.forEachChild(node, collectErrorPanelActions);
+}
+collectErrorPanelActions(pageSource);
+const rebuildCallback = find(node => ts.isVariableDeclaration(node) &&
+  node.name.getText(pageSource) === "handleFailedBuildRetry", pageSource).initializer.arguments[0];
+
+test("both document error panels offer a working rebuild action for structural corruption", () => {
+  assert.equal(errorPanelActions.length, 2);
+  for (const actionExpression of errorPanelActions) {
+    for (const confirmedPlanId of ["plan-1", null]) {
+      let rebuilds = 0;
+      const navigations = [];
+      const handleFailedBuildRetry = evaluate(rebuildCallback, {
+        courseId: "course-test", failedBuildConfirmedPlanId: confirmedPlanId,
+        retryKnowledgeBuild: () => rebuilds++, navigate: path => navigations.push(path),
+        buildCoursePath: (courseId, page) => `/courses/${courseId}/${page}`,
+      });
+      const action = evaluate(actionExpression, {
+        isBuildFailure: false,
+        documentLoadError: httpError(503, "PUBLISHED_DOCUMENT_STRUCTURE_INVALID"),
+        getApiErrorCode, failedBuildConfirmedPlanId: confirmedPlanId,
+        handleFailedBuildRetry, isRetryKnowledgeBuildPending: false,
+      });
+      assert.ok(action, "A completed build with corrupt publication must allow rebuilding");
+      assert.equal(action.label, confirmedPlanId ? "重新构建" : "返回方案重新构建");
+      action.onClick();
+      assert.equal(rebuilds, confirmedPlanId ? 1 : 0);
+      assert.deepEqual(navigations, confirmedPlanId ? [] : ["/courses/course-test/build"]);
+    }
+  }
+});
+
+test("temporary reads do not offer a rebuild unless the build itself has failed", () => {
+  for (const actionExpression of errorPanelActions) {
+    for (const documentLoadError of [httpError(502), httpError(503), { code: "ERR_NETWORK" }]) {
+      const scope = {
+        isBuildFailure: false, documentLoadError, getApiErrorCode,
+        failedBuildConfirmedPlanId: "plan-1", handleFailedBuildRetry() {},
+        isRetryKnowledgeBuildPending: true,
+      };
+      assert.equal(evaluate(actionExpression, scope), undefined);
+      const failedAction = evaluate(actionExpression, { ...scope, isBuildFailure: true });
+      assert.equal(failedAction.label, "重新构建");
+      assert.equal(failedAction.isPending, true);
+    }
+  }
+});
 
 test("publication switches retry the manifest but never retry a chunk under its stale ID", () => {
   const options = find(node => ts.isVariableDeclaration(node) && node.name.getText(source) === "publicationManifestQuery").initializer.arguments[0];

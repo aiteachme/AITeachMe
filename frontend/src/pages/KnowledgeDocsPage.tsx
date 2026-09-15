@@ -30,7 +30,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { cn } from "../lib/utils";
-import { getApiErrorMessage, LONG_RUNNING_API_TIMEOUT_MS, postSseJson } from "../api/client";
+import { getApiErrorCode, getApiErrorMessage, LONG_RUNNING_API_TIMEOUT_MS, postSseJson } from "../api/client";
 import { apiClient } from "../api/client";
 import { AI_SCENE_DOCUMENT_SELECTION, useAiInteraction } from "../components/interaction";
 import { useResizablePanel } from "../hooks/useResizablePanel";
@@ -7348,7 +7348,7 @@ export function KnowledgeDocsPage() {
             retryErrorMessage={reloadDocumentMutation.error
               ? getApiErrorMessage(reloadDocumentMutation.error, "请稍后再试，或重新构建课程。")
               : null}
-            secondaryAction={isBuildFailure ? {
+            secondaryAction={isBuildFailure || getApiErrorCode(documentLoadError) === "PUBLISHED_DOCUMENT_STRUCTURE_INVALID" ? {
               label: failedBuildConfirmedPlanId ? "重新构建" : "返回方案重新构建",
               pendingLabel: "正在重新构建",
               onClick: handleFailedBuildRetry,
@@ -7617,7 +7617,7 @@ export function KnowledgeDocsPage() {
                       retryErrorMessage={reloadDocumentMutation.error
                         ? getApiErrorMessage(reloadDocumentMutation.error, "请稍后再试，或重新构建课程。")
                         : null}
-                      secondaryAction={isBuildFailure ? {
+                      secondaryAction={isBuildFailure || getApiErrorCode(documentLoadError) === "PUBLISHED_DOCUMENT_STRUCTURE_INVALID" ? {
                         label: failedBuildConfirmedPlanId ? "重新构建" : "返回方案重新构建",
                         pendingLabel: "正在重新构建",
                         onClick: handleFailedBuildRetry,

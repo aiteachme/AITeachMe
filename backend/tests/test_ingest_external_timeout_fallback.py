@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.shared.infra.workflow.context import WorkflowContext
+from app.workflows.ingest.parsing.decision import build_parse_decision
 from app.workflows.ingest.parsing.lib.defaults import (
     DEFAULT_EXTERNAL_PARSE_TIMEOUT_S,
     DEFAULT_PADDLE_OCR_PARSE_TIMEOUT_S,
@@ -209,12 +210,11 @@ async def test_image_paddle_timeout_falls_back_to_mineru_without_local_parse(mon
             decision_reason="test",
             options=ParserRunOptions(),
         ),
-        "parse_decision": ParseDecision(
-            primary_provider="paddle_ocr",
-            primary_reason="test",
-            fallback_chain=["mineru"],
-            can_preview_before_primary=False,
-            metadata={"image_external_required": True},
+        "parse_decision": build_parse_decision(
+            extension=".png",
+            requested_provider="paddle_ocr",
+            mineru_available=True,
+            paddle_ocr_available=True,
         ),
     }
 

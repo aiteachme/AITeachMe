@@ -6,6 +6,8 @@ import json
 from contextlib import contextmanager
 from types import SimpleNamespace
 
+import pytest
+
 from app.shared.infra.workflow.context import WorkflowContext
 from app.workflows.ingest.parsing.nodes import load_raw_file as file_nodes
 from app.workflows.ingest.parsing.decision import (
@@ -152,6 +154,59 @@ def test_image_auto_routes_to_mineru_then_paddle_ocr_without_local_fallback() ->
     assert both_available.fallback_chain == ["paddle_ocr"]
     assert mineru_missing.primary_provider == "paddle_ocr"
     assert mineru_missing.fallback_chain == []
+
+
+@pytest.mark.parametrize("extension", [".png", ".jpg", ".jpeg", ".bmp"])
+@pytest.mark.parametrize("requested_provider, fallback", [
+    ("mineru", "paddle_ocr"),
+    ("paddle_ocr", "mineru"),
+])
+def test_image_explicit_provider_takes_priority_over_auto_order(
+    extension: str, requested_provider: str, fallback: str,
+) -> None:
+    decision = build_parse_decision(
+        extension=extension,
+        requested_provider=requested_provider,
+        mineru_available=True,
+        paddle_ocr_available=True,
+    )
+
+    assert decision.primary_provider == requested_provider
+    assert decision.fallback_chain == [fallback]
+    assert decision.can_preview_before_primary is False
+    assert decision.metadata["image_external_required"] is True
+
+
+@pytest.mark.parametrize("requested_provider", [None, "mineru", "paddle_ocr"])
+@pytest.mark.parametrize("mineru_available, paddle_ocr_available, expected", [
+    (True, False, "mineru"),
+    (False, True, "paddle_ocr"),
+    (False, False, None),
+])
+def test_image_selection_only_uses_available_external_providers(
+    requested_provider: str | None,
+    mineru_available: bool,
+    paddle_ocr_available: bool,
+    expected: str | None,
+) -> None:
+    decision = build_parse_decision(
+        extension=".png",
+        requested_provider=requested_provider,
+        mineru_available=mineru_available,
+        paddle_ocr_available=paddle_ocr_available,
+    )
+
+    assert decision.fallback_chain == []
+    assert decision.metadata["image_external_required"] is True
+    if expected is not None:
+        assert decision.primary_provider == expected
+    else:
+        node = file_nodes.build_plan_parse_node(context=_context())
+        result = asyncio.run(node({
+            "file_id": "file-image", "filetype": ".png", "file_path": "image.png",
+            "parse_decision": decision,
+        }))
+        assert result["error"].startswith("image_external_parser_unavailable:")
 
 
 def test_load_raw_file_state_materializes_file_and_persists_sanitized_metadata(monkeypatch, tmp_path) -> None:
