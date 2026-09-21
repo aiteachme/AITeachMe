@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-09-14T03:10:00.876540",
-  "total_commits_analyzed": 2143,
+  "generated_at": "2026-09-21T03:07:15.453709",
+  "total_commits_analyzed": 2151,
   "stats": [
     {
       "date": "2026-03-11",
@@ -17145,6 +17145,70 @@
       "code_lines": 287975,
       "other_lines": 51569,
       "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-09-09",
+      "commit": "88ca809",
+      "total_lines": 339590,
+      "code_lines": 288014,
+      "other_lines": 51576,
+      "message": "feat: 调整文档解析服务优先级"
+    },
+    {
+      "date": "2026-09-13",
+      "commit": "f670881",
+      "total_lines": 339590,
+      "code_lines": 288014,
+      "other_lines": 51576,
+      "message": "fix: 修复资料库公式编号渲染重叠"
+    },
+    {
+      "date": "2026-09-14",
+      "commit": "ad93f4c",
+      "total_lines": 339544,
+      "code_lines": 287975,
+      "other_lines": 51569,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-09-14",
+      "commit": "c86d729",
+      "total_lines": 339740,
+      "code_lines": 288142,
+      "other_lines": 51598,
+      "message": "fix: 完善知识库构建异常恢复并消除进度读取阻塞"
+    },
+    {
+      "date": "2026-09-14",
+      "commit": "92a2775",
+      "total_lines": 339740,
+      "code_lines": 288142,
+      "other_lines": 51598,
+      "message": "chore: 同步远程主分支代码统计"
+    },
+    {
+      "date": "2026-09-14",
+      "commit": "4f74cd1",
+      "total_lines": 339786,
+      "code_lines": 288181,
+      "other_lines": 51605,
+      "message": "chore: 合并解析优先级与资料库公式修复"
+    },
+    {
+      "date": "2026-09-14",
+      "commit": "d883f7b",
+      "total_lines": 339779,
+      "code_lines": 288174,
+      "other_lines": 51605,
+      "message": "fix: 移除设置页过时的解析顺序说明"
+    },
+    {
+      "date": "2026-09-15",
+      "commit": "ff28674",
+      "total_lines": 339853,
+      "code_lines": 288240,
+      "other_lines": 51613,
+      "message": "fix: 恢复文档重建入口并尊重显式解析服务选择"
     }
   ]
 }
