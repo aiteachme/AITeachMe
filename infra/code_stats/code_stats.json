@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-09-21T03:07:15.453709",
-  "total_commits_analyzed": 2151,
+  "generated_at": "2026-09-28T03:24:10.154181",
+  "total_commits_analyzed": 2152,
   "stats": [
     {
       "date": "2026-03-11",
@@ -17209,6 +17209,14 @@
       "code_lines": 288240,
       "other_lines": 51613,
       "message": "fix: 恢复文档重建入口并尊重显式解析服务选择"
+    },
+    {
+      "date": "2026-09-21",
+      "commit": "3eea699",
+      "total_lines": 339853,
+      "code_lines": 288240,
+      "other_lines": 51613,
+      "message": "chore: update code statistics [skip ci]"
     }
   ]
 }
