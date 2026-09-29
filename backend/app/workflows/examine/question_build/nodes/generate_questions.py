@@ -83,6 +83,7 @@ def build_generate_questions_node(*, context: WorkflowContext):
                     "user_intent": str(state.get("course_user_intent") or ""),
                 },
                 system_constraints=str(state.get("system_constraints") or ""),
+                question_type_runtimes=list(state.get("question_type_runtimes") or []),
                 on_question_generated=handle_question_generated,
                 on_question_failed=handle_question_failed,
                 allow_partial=True,

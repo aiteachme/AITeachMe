@@ -4,6 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
+import type { QuestionTemplateGradeResponseGradingDetail } from './questionTemplateGradeResponseGradingDetail.ts';
 import type { QuestionTemplateGradeResponseGradingMode } from './questionTemplateGradeResponseGradingMode.ts';
 
 export interface QuestionTemplateGradeResponse {
@@ -16,4 +17,5 @@ export interface QuestionTemplateGradeResponse {
   error_cause_label?: string | null;
   grading_mode: QuestionTemplateGradeResponseGradingMode;
   correct_answer: string;
+  grading_detail?: QuestionTemplateGradeResponseGradingDetail;
 }

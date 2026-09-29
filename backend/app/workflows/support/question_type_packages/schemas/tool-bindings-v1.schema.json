@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aiteachme.local/schemas/tool-bindings-v1.schema.json",
+  "title": "AITeachMe Question Type Tool Bindings V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "tools"],
+  "properties": {
+    "schema": {"const": "aiteachme.question-skill-tools/v1"},
+    "tools": {
+      "type": "array",
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "required"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z][a-z0-9_]{2,63}$"},
+          "required": {"type": "boolean"}
+        }
+      }
+    }
+  }
+}

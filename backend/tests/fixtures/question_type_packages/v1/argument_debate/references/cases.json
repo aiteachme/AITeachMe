@@ -1,0 +1,35 @@
+{
+  "schema": "aiteachme.question-skill-cases/v1",
+  "cases": [
+    {
+      "id": "recursion-or-iteration",
+      "knowledge_unit": {"name": "递归与迭代", "type": "concept", "summary": "递归和迭代表达重复计算的方式不同，并具有不同的可读性与资源开销。"},
+      "question": {"stem": "辩题：树结构问题应优先使用递归而不是迭代。请选择立场并回应最强反方观点。", "reference_answer": "立场本身不决定得分。高质量论证应比较问题结构、代码可读性、调用栈深度、显式栈控制和语言限制，并准确回应另一方案的优势。", "explanation": "评价重点是权衡条件和反驳质量，不要求固定站队。"},
+      "answers": [
+        {"label": "strong", "content": {"stance": "多数深度优先树遍历可优先递归，但不是无条件。", "evidence": "递归直接对应树的自相似结构，代码通常更短且易验证。", "counterargument": "深树可能导致调用栈溢出，迭代用显式栈还能控制暂停和恢复。", "rebuttal": "因此应在深度可控且可读性重要时优先递归；深度未知或需精细控制时改用迭代。"}, "expected_score": {"min": 0.8, "max": 1.0}, "expected_pass": true},
+        {"label": "partial", "content": {"stance": "应该用递归。", "evidence": "递归代码短。", "counterargument": "迭代速度可能快。", "rebuttal": "代码短更重要。"}, "expected_score": {"min": 0.3, "max": 0.59}, "expected_pass": false},
+        {"label": "wrong", "content": {"stance": "只能使用递归。", "evidence": "树不能用循环访问。", "counterargument": "反方没有理由。", "rebuttal": "迭代不可能实现树遍历。"}, "expected_score": {"min": 0.0, "max": 0.2}, "expected_pass": false}
+      ]
+    },
+    {
+      "id": "normalization-tradeoff",
+      "knowledge_unit": {"name": "数据库规范化与反规范化", "type": "principle", "summary": "规范化降低冗余，反规范化可在明确一致性代价下优化读取。"},
+      "question": {"stem": "辩题：业务数据库应始终坚持第三范式，不能反规范化。", "reference_answer": "可支持或反对，但需讨论冗余、更新异常、一致性、读写模式和性能证据；反规范化必须是受控且可维护的权衡。", "explanation": "不能把规范化或性能当作绝对规则。"},
+      "answers": [
+        {"label": "strong", "content": {"stance": "不应把第三范式视为不可突破的绝对要求。", "evidence": "规范化能减少更新异常，但某些稳定的高频聚合读取可能因多表连接付出显著成本。", "counterargument": "反规范化会制造重复数据和一致性风险，使写入与维护更复杂。", "rebuttal": "只有在性能数据证明收益、更新路径可控并有一致性校验时才反规范化，否则保持规范化。"}, "expected_score": {"min": 0.8, "max": 1.0}, "expected_pass": true},
+        {"label": "partial", "content": {"stance": "有时可以反规范化。", "evidence": "这样查询会更快。", "counterargument": "数据会重复。", "rebuttal": "做好同步即可。"}, "expected_score": {"min": 0.3, "max": 0.59}, "expected_pass": false},
+        {"label": "wrong", "content": {"stance": "永远不要规范化。", "evidence": "表越少越好。", "counterargument": "规范化没有优点。", "rebuttal": "重复数据不会产生问题。"}, "expected_score": {"min": 0.0, "max": 0.2}, "expected_pass": false}
+      ]
+    },
+    {
+      "id": "formula-versus-concept",
+      "knowledge_unit": {"name": "公式记忆与概念理解", "type": "skill", "summary": "公式运用依赖对变量意义、条件和推导关系的理解。"},
+      "question": {"stem": "辩题：备考时熟记公式比理解推导过程更重要。", "reference_answer": "可选择任一立场，但应比较时间约束、迁移题、适用条件、错误检测和长期保持，并承认不同任务下权重可能不同。", "explanation": "高质量回答需要条件化观点，而不是把记忆和理解简单对立。"},
+      "answers": [
+        {"label": "strong", "content": {"stance": "短期基础题训练可先保证公式熟练，但整体上不能替代理解。", "evidence": "理解变量关系和适用条件才能处理变式、发现代入错误并迁移到新情境。", "counterargument": "考试时间有限，完整推导每个公式的投入可能降低覆盖效率。", "rebuttal": "可以分层：核心公式理解来源和边界，高频使用达到熟练；非核心推导不必全部背诵。"}, "expected_score": {"min": 0.8, "max": 1.0}, "expected_pass": true},
+        {"label": "partial", "content": {"stance": "理解更重要。", "evidence": "理解以后不容易忘。", "counterargument": "背公式更快。", "rebuttal": "还是应该理解。"}, "expected_score": {"min": 0.3, "max": 0.59}, "expected_pass": false},
+        {"label": "wrong", "content": {"stance": "只需要背公式。", "evidence": "所有题都能直接代入。", "counterargument": "理解完全浪费时间。", "rebuttal": "考试不会出现变式。"}, "expected_score": {"min": 0.0, "max": 0.2}, "expected_pass": false}
+      ]
+    }
+  ]
+}

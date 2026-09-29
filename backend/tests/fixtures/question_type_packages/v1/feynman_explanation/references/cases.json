@@ -1,0 +1,47 @@
+{
+  "schema": "aiteachme.question-skill-cases/v1",
+  "cases": [
+    {
+      "id": "derivative-meaning",
+      "knowledge_unit": {"name": "导数的几何意义", "type": "concept", "summary": "导数表示曲线在一点处切线的斜率。"},
+      "question": {
+        "stem": "请面向第一次接触微积分的学习者，用自己的话说明导数的几何意义，并回答：\n\n(1) 导数在几何上表示什么？\n\n(2) 为什么它与极限有关？\n\n(3) 请给出一个具体例子。\n\n(4) 请说明一个适用边界。",
+        "reference_answer": "导数描述函数在一点附近的瞬时变化率，几何上是该点切线的斜率。它来自差商在增量趋近于零时的极限；例如位移函数的导数是瞬时速度。若函数在该点不可导，就不能使用该点导数描述切线斜率。",
+        "explanation": "完整回答应包含瞬时变化率、切线斜率、极限依据、例子和不可导边界。"
+      },
+      "answers": [
+        {"label": "strong", "content": "导数是函数在一点的瞬时变化率，几何上等于该点切线斜率，它由附近差商的极限得到。例如位移对时间的导数是瞬时速度；尖点处可能不存在导数。", "expected_score": {"min": 0.8, "max": 1.0}, "expected_pass": true},
+        {"label": "partial", "content": "导数就是切线的斜率，也能表示速度。", "expected_score": {"min": 0.3, "max": 0.59}, "expected_pass": false},
+        {"label": "wrong", "content": "导数就是函数在这一点的函数值。", "expected_score": {"min": 0.0, "max": 0.2}, "expected_pass": false}
+      ]
+    },
+    {
+      "id": "newton-second-law",
+      "knowledge_unit": {"name": "牛顿第二定律", "type": "principle", "summary": "物体加速度由合外力和质量共同决定。"},
+      "question": {
+        "stem": "请用自己的话解释牛顿第二定律，并回答：\n\n(1) 定律描述了力、质量和加速度之间什么关系？\n\n(2) 为什么应关注合外力？\n\n(3) 请给出一个生活中的具体例子。\n\n(4) 请说明一个使用条件或适用边界。",
+        "reference_answer": "在惯性参考系中，物体所受合外力等于质量与加速度的乘积，合力决定加速度的方向和大小。同样推购物车时，质量越小加速度越大。应用时需要分析合外力，并注意经典力学与惯性系条件。",
+        "explanation": "应区分合外力和单个力，并说明质量、加速度及适用条件。"
+      },
+      "answers": [
+        {"label": "strong", "content": "在惯性系里，所有外力的矢量和等于 ma，因此加速度跟合力同向。同样用力推空车比满车加速快。若漏掉摩擦等外力，结论就会用错。", "expected_score": {"min": 0.8, "max": 1.0}, "expected_pass": true},
+        {"label": "partial", "content": "牛顿第二定律是 F=ma，力越大加速度越大。", "expected_score": {"min": 0.3, "max": 0.59}, "expected_pass": false},
+        {"label": "wrong", "content": "物体只要受到力就一定做匀速运动。", "expected_score": {"min": 0.0, "max": 0.2}, "expected_pass": false}
+      ]
+    },
+    {
+      "id": "database-transaction",
+      "knowledge_unit": {"name": "数据库事务", "type": "concept", "summary": "事务把一组数据库操作作为一致的工作单元。"},
+      "question": {
+        "stem": "请面向没有数据库背景的学习者解释数据库事务，并回答：\n\n(1) 事务为什么存在？\n\n(2) 它如何避免转账过程出现数据不一致？\n\n(3) 请结合一次转账给出具体说明。\n\n(4) 请说明事务不能解决的一类问题。",
+        "reference_answer": "事务保证一组操作要么整体成功，要么在失败时整体回滚。转账需要扣款和入账同时完成，否则会出现数据不一致。事务不能替代业务校验，也不能自动保证外部系统与数据库同步。",
+        "explanation": "核心是原子性和一致性，并区分数据库事务与跨系统协调。"
+      },
+      "answers": [
+        {"label": "strong", "content": "事务像一个不可拆的操作包。转账时扣款和收款必须一起成功，否则全部回滚，避免钱凭空减少；但它只保护事务覆盖的数据库操作，外部短信或其他系统还需额外协调。", "expected_score": {"min": 0.8, "max": 1.0}, "expected_pass": true},
+        {"label": "partial", "content": "事务可以在失败时回滚，例如转账失败就取消。", "expected_score": {"min": 0.3, "max": 0.59}, "expected_pass": false},
+        {"label": "wrong", "content": "事务的作用只是让数据库查询速度更快。", "expected_score": {"min": 0.0, "max": 0.2}, "expected_pass": false}
+      ]
+    }
+  ]
+}

@@ -17,7 +17,6 @@ import hashlib
 import json
 from pathlib import Path
 import re
-import shutil
 from typing import Generator
 
 import sqlalchemy as sa
@@ -27,7 +26,6 @@ from sqlmodel import Session, SQLModel, create_engine, select
 from app.shared.infra.settings import (
     clear_system_settings_override,
     get_settings,
-    reset_project_settings_cache,
     set_system_settings_override,
     split_runtime_settings_payload,
 )
@@ -59,6 +57,11 @@ from app.models.exam import (
     QuestionKnowledgeUnitLink,
     QuestionTemplate,
     QuestionTypeRegistry,
+)
+from app.models.question_type_package import (
+    QuestionTypePackageAsset,
+    QuestionTypePackageImport,
+    QuestionTypePackageVersion,
 )
 from app.models.knowledge import RetrievalChunk
 from app.models.knowledge_doc import KnowledgeDocument
@@ -101,6 +104,9 @@ _SCHEMA_MODELS = (
     KnowledgeGraphSyncRun,
     KnowledgeGraphSourceRef,
     QuestionTypeRegistry,
+    QuestionTypePackageVersion,
+    QuestionTypePackageAsset,
+    QuestionTypePackageImport,
     QuestionTemplate,
     ExamPaper,
     CourseInitialExamJob,
@@ -182,6 +188,24 @@ _SQLITE_ADDITIVE_COLUMNS = {
     ),
     "question_template": (
         ("is_marked", "BOOLEAN NOT NULL DEFAULT 0"),
+        ("identity_hash", "TEXT NULL"),
+        (
+            "question_type_registry_id",
+            "INTEGER NULL REFERENCES question_type_registry(id)",
+        ),
+        (
+            "question_type_version_id",
+            "INTEGER NULL REFERENCES question_type_package_version(id)",
+        ),
+        ("public_payload_json", "TEXT NOT NULL DEFAULT '{}'"),
+        ("answer_schema_json", "TEXT NOT NULL DEFAULT '{}'"),
+        ("reference_answer_json", "TEXT NOT NULL DEFAULT '{}'"),
+        ("grading_spec_json", "TEXT NOT NULL DEFAULT '{}'"),
+        ("runtime_snapshot_json", "TEXT NOT NULL DEFAULT '{}'"),
+        ("profile_eligible", "BOOLEAN NOT NULL DEFAULT 1"),
+    ),
+    "question_type_registry": (
+        ("status", "TEXT NOT NULL DEFAULT 'active'"),
     ),
     "exam_paper": (
         ("visibility", "TEXT NOT NULL DEFAULT 'visible'"),
@@ -197,6 +221,30 @@ _SQLITE_ADDITIVE_COLUMNS = {
         ("grading_lease_expires_at", "DATETIME NULL"),
         ("grading_attempts", "INTEGER NOT NULL DEFAULT 0"),
         ("grading_last_error", "TEXT NOT NULL DEFAULT ''"),
+    ),
+    "exam_paper_item": (
+        (
+            "question_type_registry_id",
+            "INTEGER NULL REFERENCES question_type_registry(id)",
+        ),
+        (
+            "question_type_version_id",
+            "INTEGER NULL REFERENCES question_type_package_version(id)",
+        ),
+        ("public_payload_snapshot_json", "TEXT NOT NULL DEFAULT '{}'"),
+        ("answer_schema_snapshot_json", "TEXT NOT NULL DEFAULT '{}'"),
+        ("reference_answer_snapshot_json", "TEXT NOT NULL DEFAULT '{}'"),
+        ("grading_spec_snapshot_json", "TEXT NOT NULL DEFAULT '{}'"),
+        ("runtime_snapshot_json", "TEXT NOT NULL DEFAULT '{}'"),
+        ("profile_eligible", "BOOLEAN NOT NULL DEFAULT 1"),
+        ("answer_payload_json", "TEXT NOT NULL DEFAULT '{}'"),
+        ("grading_detail_json", "TEXT NOT NULL DEFAULT '{}'"),
+        ("grading_status", "TEXT NOT NULL DEFAULT 'pending'"),
+        ("grading_error_code", "TEXT NOT NULL DEFAULT ''"),
+    ),
+    "mastery_drill_attempt": (
+        ("answer_payload_json", "TEXT NOT NULL DEFAULT '{}'"),
+        ("grading_detail_json", "TEXT NOT NULL DEFAULT '{}'"),
     ),
     "course_initial_exam_job": (
         ("model_override", "TEXT NOT NULL DEFAULT ''"),
@@ -228,6 +276,36 @@ _SQLITE_ADDITIVE_INDEXES = {
             "status = 'active'",
         ),
     ),
+    "question_type_registry": (
+        ("ix_question_type_registry_status", ("status",), False, ""),
+    ),
+    "question_template": (
+        ("ix_question_template_identity_hash", ("identity_hash",), False, ""),
+        (
+            "ix_question_template_question_type_registry_id",
+            ("question_type_registry_id",),
+            False,
+            "",
+        ),
+        (
+            "ix_question_template_question_type_version_id",
+            ("question_type_version_id",),
+            False,
+            "",
+        ),
+        (
+            "ix_question_template_profile_eligible",
+            ("profile_eligible",),
+            False,
+            "",
+        ),
+        (
+            "uq_template_course_identity",
+            ("course_id", "identity_hash"),
+            True,
+            "identity_hash IS NOT NULL",
+        ),
+    ),
     "exam_paper": (
         (
             "ix_exam_paper_grading_lease_expires_at",
@@ -241,6 +319,22 @@ _SQLITE_ADDITIVE_INDEXES = {
             False,
             "",
         ),
+    ),
+    "exam_paper_item": (
+        (
+            "ix_exam_paper_item_question_type_registry_id",
+            ("question_type_registry_id",),
+            False,
+            "",
+        ),
+        (
+            "ix_exam_paper_item_question_type_version_id",
+            ("question_type_version_id",),
+            False,
+            "",
+        ),
+        ("ix_exam_paper_item_profile_eligible", ("profile_eligible",), False, ""),
+        ("ix_exam_paper_item_grading_status", ("grading_status",), False, ""),
     ),
     "raw_file": (
         (
@@ -274,34 +368,6 @@ def _json_dumps(value: object) -> str:
 
 def _json_loads(value: str) -> object:
     return json.loads(value)
-
-
-def reset_runtime_state() -> None:
-    """Reset runtime singletons before rebuilding the local SQLite database.
-
-    Schema drift recovery deletes the SQLite files and immediately recreates the
-    engine. On Windows, the old engine must be disposed first or the file can
-    stay locked. We also clear in-memory settings/search caches so rebuilt
-    startup does not reuse state derived from the old database.
-    """
-
-    global _engine
-
-    stale_engine = _engine
-    _engine = None
-    if stale_engine is not None:
-        try:
-            stale_engine.dispose()
-        except Exception as exc:  # pragma: no cover - defensive cleanup only
-            logger.warning("database_engine_dispose_failed_during_reset", error=str(exc))
-
-    reset_project_settings_cache()
-    clear_system_settings_override()
-
-    from app.shared.infra.search import reset_search_runtime_caches
-
-    reset_search_runtime_caches()
-    logger.info("runtime_state_reset_for_local_db_rebuild")
 
 
 def _is_allowed_runtime_table(table_name: str) -> bool:
@@ -346,48 +412,6 @@ def _inspect_sqlite_schema_drift(engine: sa.Engine) -> dict[str, object] | None:
         "missing_columns": missing_columns,
         "unexpected_columns": unexpected_columns,
     }
-
-
-def _sqlite_file_paths(db_path: Path) -> tuple[Path, ...]:
-    return tuple(Path(f"{db_path}{suffix}") for suffix in ("", "-shm", "-wal"))
-
-
-def _backup_sqlite_files_before_rebuild(db_path: Path) -> Path | None:
-    existing_paths = [path for path in _sqlite_file_paths(db_path) if path.exists()]
-    if not existing_paths:
-        return None
-
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    backup_root = db_path.parent / "backups"
-    backup_dir = backup_root / f"{db_path.name}.schema-drift.{timestamp}"
-    counter = 1
-    while backup_dir.exists():
-        counter += 1
-        backup_dir = backup_root / f"{db_path.name}.schema-drift.{timestamp}.{counter}"
-
-    backup_dir.mkdir(parents=True, exist_ok=False)
-    try:
-        for path in existing_paths:
-            shutil.copy2(path, backup_dir / path.name)
-    except Exception:
-        logger.exception(
-            "local_sqlite_database_backup_failed",
-            db_path=str(db_path),
-            backup_dir=str(backup_dir),
-        )
-        raise
-
-    logger.warning(
-        "local_sqlite_database_backup_created",
-        db_path=str(db_path),
-        backup_dir=str(backup_dir),
-    )
-    return backup_dir
-
-
-def _remove_sqlite_files(db_path: Path) -> None:
-    for path in _sqlite_file_paths(db_path):
-        path.unlink(missing_ok=True)
 
 
 def _drop_sqlite_indexes_for_columns(
@@ -1151,6 +1175,25 @@ def _backfill_sqlite_raw_file_parse_signatures(engine: sa.Engine) -> None:
             )
 
 
+def _backfill_sqlite_question_identity_hashes(engine: sa.Engine) -> None:
+    inspector = sa.inspect(engine)
+    if "question_template" not in set(inspector.get_table_names()):
+        return
+    existing_columns = {
+        column["name"]
+        for column in inspector.get_columns("question_template")
+    }
+    if not {"identity_hash", "stem_hash"} <= existing_columns:
+        return
+    with engine.begin() as connection:
+        connection.execute(
+            sa.text(
+                "UPDATE question_template SET identity_hash = stem_hash "
+                "WHERE identity_hash IS NULL OR identity_hash = ''"
+            )
+        )
+
+
 def _backfill_sqlite_library_chat_sessions(engine: sa.Engine) -> None:
     inspector = sa.inspect(engine)
     existing_tables = set(inspector.get_table_names())
@@ -1320,6 +1363,7 @@ def _ensure_local_sqlite_schema(engine: sa.Engine) -> sa.Engine:
     if "course_initial_exam_job" in created_tables:
         _backfill_new_sqlite_course_initial_exam_table(engine)
     _backfill_sqlite_raw_file_parse_signatures(engine)
+    _backfill_sqlite_question_identity_hashes(engine)
     _backfill_sqlite_library_chat_sessions(engine)
     _deduplicate_sqlite_active_course_shares(engine)
     _apply_sqlite_additive_index_updates(engine)
@@ -1327,31 +1371,22 @@ def _ensure_local_sqlite_schema(engine: sa.Engine) -> sa.Engine:
     if drift is None:
         return engine
 
-    if not is_local_mode():
-        raise RuntimeError(
-            "Database schema drift detected for non-local mode. "
-            f"db_path={db_path}, unexpected_tables={drift['unexpected_tables']}, "
-            f"missing_columns={drift['missing_columns']}, "
-            f"unexpected_columns={drift['unexpected_columns']}"
-        )
-
-    logger.warning(
-        "local_sqlite_schema_drift_detected",
+    mode = "local" if is_local_mode() else "non-local"
+    logger.error(
+        "sqlite_schema_drift_blocked",
         db_path=str(db_path),
+        mode=mode,
         unexpected_tables=drift["unexpected_tables"],
         missing_columns=drift["missing_columns"],
         unexpected_columns=drift["unexpected_columns"],
     )
-    reset_runtime_state()
-    backup_dir = _backup_sqlite_files_before_rebuild(db_path)
-    _remove_sqlite_files(db_path)
-    rebuilt_engine = get_engine()
-    logger.warning(
-        "local_sqlite_database_rebuilt",
-        db_path=str(db_path),
-        backup_dir=str(backup_dir) if backup_dir else "",
+    raise RuntimeError(
+        "Database schema drift detected; automatic rebuild is disabled to protect "
+        f"existing data. mode={mode}, db_path={db_path}, "
+        f"unexpected_tables={drift['unexpected_tables']}, "
+        f"missing_columns={drift['missing_columns']}, "
+        f"unexpected_columns={drift['unexpected_columns']}"
     )
-    return rebuilt_engine
 
 
 def _build_sqlite_engine() -> sa.Engine:

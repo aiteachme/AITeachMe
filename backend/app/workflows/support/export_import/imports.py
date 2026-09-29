@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
 import json
 import time
 import tempfile
@@ -17,7 +19,19 @@ from langsmith import tracing_context
 from pydantic import ValidationError
 from sqlmodel import Session, select
 
-from app.models import ChatSession, Course, KnowledgeDocument, RawFile, RetrievalChunk
+from app.models import (
+    ChatSession,
+    Course,
+    ExamPaper,
+    ExamPaperItem,
+    KnowledgeDocument,
+    QuestionTypePackageAsset,
+    QuestionTypePackageVersion,
+    QuestionTypeRegistry,
+    QuestionTemplate,
+    RawFile,
+    RetrievalChunk,
+)
 from app.repositories.knowledge import knowledge_repo
 from app.repositories import initial_exam_repo
 from app.schemas.export_import import ImportOptions, ImportResultData
@@ -44,6 +58,23 @@ from app.shared.infra.exceptions import (
 from app.shared.kernel.question_types import (
     UnsupportedQuestionTypeError,
     require_supported_question_type_key,
+)
+from app.shared.kernel.question_type_runtime import assess_custom_question_type_runtime
+from app.workflows.support.question_type_packages.contracts import (
+    ALLOWED_GRADER_KEYS,
+    ALLOWED_RENDERER_KEYS,
+    ALLOWED_RUNTIME_KEYS,
+    ALLOWED_TEMPLATE_KEYS,
+    ALLOWED_V2_TEMPLATE_KEYS,
+    ATQSKILL_SCHEMA_ID,
+    ATQSKILL_SCHEMA_ID_V2,
+    CompiledAsset,
+    CompiledQuestionTypeDefinition,
+)
+from app.workflows.support.question_type_packages.installer import build_public_definition
+from app.workflows.support.question_type_packages.validator import (
+    validate_compiled_asset_content,
+    validate_compiled_question_type_definition,
 )
 from app.workflows.digest.docgen.lib.published_manifest import ensure_published_knowledge_manifest
 from app.shared.infra.llm_support.common import build_completion_contexts
@@ -75,13 +106,32 @@ _IMPORT_EMBEDDING_GLOBAL_FRACTION_DIVISOR = 3
 def _validate_imported_question_types(table_name: str, records: list[dict[str, Any]]) -> None:
     """Reject runtime records whose question type is not implemented."""
 
+    if table_name == "question_type_package_version":
+        _validate_imported_question_type_versions(records)
+        return
+    if table_name == "question_type_package_asset":
+        _validate_imported_question_type_assets(records)
+        return
+
     if table_name not in {"question_template", "exam_paper_item", "question_type_registry"}:
         return
 
     for record in records:
+        field_name = "type_key" if table_name == "question_type_registry" else "question_type"
+        question_type = str(record.get(field_name) or "").strip().lower()
+        if question_type.startswith("custom_"):
+            if table_name == "question_type_registry":
+                if record.get("scope") != "course" or record.get("source") != "upload":
+                    raise InvalidImportPackageError(
+                        f"课程题型 `{record.get('id', 'unknown')}` 的来源或作用域无效。"
+                    )
+            elif not record.get("question_type_version_id"):
+                raise InvalidImportPackageError(
+                    f"数据表 `{table_name}` 的记录 `{record.get('id', 'unknown')}` 缺少题型版本。"
+                )
+            continue
         if table_name == "question_type_registry" and not bool(record.get("is_active", True)):
             continue
-        field_name = "type_key" if table_name == "question_type_registry" else "question_type"
         try:
             record[field_name] = require_supported_question_type_key(record.get(field_name))
         except UnsupportedQuestionTypeError as exc:
@@ -90,6 +140,328 @@ def _validate_imported_question_types(table_name: str, records: list[dict[str, A
             raise InvalidImportPackageError(
                 f"数据表 `{table_name}` 的记录 `{record_id}` 包含不支持的题型 `{question_type}`。"
             ) from exc
+
+
+def _validate_imported_question_type_versions(records: list[dict[str, Any]]) -> None:
+    for record in records:
+        record_id = record.get("id", "unknown")
+        try:
+            compiled = CompiledQuestionTypeDefinition.model_validate_json(
+                str(record.get("compiled_definition_json") or "{}")
+            )
+        except Exception as exc:
+            raise InvalidImportPackageError(
+                f"题型包版本 `{record_id}` 的编译定义无效。"
+            ) from exc
+        if (
+            compiled.schema_version not in {ATQSKILL_SCHEMA_ID, ATQSKILL_SCHEMA_ID_V2}
+            or (
+                compiled.template_key not in ALLOWED_TEMPLATE_KEYS
+                and compiled.template_key not in ALLOWED_V2_TEMPLATE_KEYS
+            )
+            or compiled.runtime_key not in ALLOWED_RUNTIME_KEYS
+            or compiled.renderer_key not in ALLOWED_RENDERER_KEYS
+            or compiled.grader_key not in ALLOWED_GRADER_KEYS
+        ):
+            raise InvalidImportPackageError(
+                f"题型包版本 `{record_id}` 使用了不支持的运行合同。"
+            )
+        semantic_issues = validate_compiled_question_type_definition(compiled)
+        if semantic_issues:
+            issue = semantic_issues[0]
+            raise InvalidImportPackageError(
+                f"题型包版本 `{record_id}` 未通过语义校验：{issue.message}"
+            )
+        expected = {
+            "package_key": compiled.package_key,
+            "type_key": compiled.type_key,
+            "version": compiled.version,
+            "package_hash": compiled.package_sha256,
+        }
+        if any(str(record.get(key) or "") != value for key, value in expected.items()):
+            raise InvalidImportPackageError(
+                f"题型包版本 `{record_id}` 的身份字段与编译定义不一致。"
+            )
+        try:
+            public_preview = json.loads(str(record.get("public_preview_json") or "{}"))
+        except json.JSONDecodeError as exc:
+            raise InvalidImportPackageError(
+                f"题型包版本 `{record_id}` 的公开预览不是有效 JSON。"
+            ) from exc
+        if public_preview != build_public_definition(compiled):
+            raise InvalidImportPackageError(
+                f"题型包版本 `{record_id}` 的公开预览与编译定义不一致。"
+            )
+
+
+def _validate_imported_question_type_assets(records: list[dict[str, Any]]) -> None:
+    for record in records:
+        record_id = record.get("id", "unknown")
+        try:
+            content = base64.b64decode(str(record.get("content_base64") or ""), validate=True)
+            declared_size = int(record.get("size_bytes") or 0)
+            compiled_asset = CompiledAsset(
+                path=str(record.get("path") or ""),
+                role=record.get("role"),
+                media_type=str(record.get("media_type") or ""),
+                sha256=str(record.get("sha256") or ""),
+                size_bytes=declared_size,
+                width=int(record.get("width") or 0),
+                height=int(record.get("height") or 0),
+            )
+        except (ValueError, TypeError, ValidationError) as exc:
+            raise InvalidImportPackageError(
+                f"题型包资源 `{record_id}` 的内容编码无效。"
+            ) from exc
+        digest = hashlib.sha256(content).hexdigest()
+        if len(content) != declared_size or digest != str(record.get("sha256") or ""):
+            raise InvalidImportPackageError(
+                f"题型包资源 `{record_id}` 的大小或哈希不一致。"
+            )
+        asset_issues = validate_compiled_asset_content(compiled_asset, content)
+        if asset_issues:
+            raise InvalidImportPackageError(
+                f"题型包资源 `{record_id}` 未通过安全校验：{asset_issues[0].message}"
+            )
+
+
+def _strict_json_object(raw: str, *, label: str) -> dict[str, Any]:
+    try:
+        value = json.loads(raw or "{}")
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise InvalidImportPackageError(f"{label}不是有效 JSON。") from exc
+    if not isinstance(value, dict):
+        raise InvalidImportPackageError(f"{label}必须是 JSON 对象。")
+    return value
+
+
+def _validate_imported_custom_question_snapshot(
+    record: QuestionTemplate | ExamPaperItem,
+    *,
+    version: QuestionTypePackageVersion,
+    compiled: CompiledQuestionTypeDefinition,
+) -> None:
+    record_id = record.id or "unknown"
+    table_name = "question_template" if isinstance(record, QuestionTemplate) else "exam_paper_item"
+    prefix = f"数据表 `{table_name}` 的记录 `{record_id}`"
+    if (
+        record.question_type_registry_id != version.registry_id
+        or record.question_type != version.type_key
+        or bool(record.profile_eligible) != bool(version.profile_eligible)
+    ):
+        raise InvalidImportPackageError(f"{prefix}与冻结题型版本的身份信息不一致。")
+
+    is_template = isinstance(record, QuestionTemplate)
+    public_payload = _strict_json_object(
+        record.public_payload_json if is_template else record.public_payload_snapshot_json,
+        label=f"{prefix}的公开题目数据",
+    )
+    answer_schema = _strict_json_object(
+        record.answer_schema_json if is_template else record.answer_schema_snapshot_json,
+        label=f"{prefix}的作答结构",
+    )
+    reference_answer = _strict_json_object(
+        record.reference_answer_json if is_template else record.reference_answer_snapshot_json,
+        label=f"{prefix}的参考答案",
+    )
+    grading_spec = _strict_json_object(
+        record.grading_spec_json if is_template else record.grading_spec_snapshot_json,
+        label=f"{prefix}的评分规则",
+    )
+    runtime_snapshot = _strict_json_object(
+        record.runtime_snapshot_json,
+        label=f"{prefix}的运行时快照",
+    )
+    expected_public_payload = {
+        "display_name": compiled.display_name,
+        "description": compiled.description,
+        "renderer_key": compiled.renderer_key,
+        "hints": compiled.hints,
+        "immediate_feedback": compiled.immediate_feedback,
+    }
+    expected_answer_schema = {
+        "fields": [item.model_dump(mode="json") for item in compiled.answer_fields]
+    }
+    expected_grading_spec = {
+        "grader_key": compiled.grader_key,
+        "pass_score": compiled.pass_score,
+        "rubric": [item.model_dump(mode="json") for item in compiled.rubric],
+        "grade_prompt": compiled.prompts.get("grade", ""),
+        "feedback_prompt": compiled.prompts.get("feedback", ""),
+        "reference_cases": [item.model_dump(mode="json") for item in compiled.reference_cases],
+        "tool_bindings": [item.model_dump(mode="json") for item in compiled.tool_bindings],
+    }
+    expected_runtime_snapshot = {
+        "registry_id": version.registry_id,
+        "version_id": version.id,
+        "type_key": compiled.type_key,
+        "version": compiled.version,
+        "package_hash": compiled.package_sha256,
+        "template_key": compiled.template_key,
+        "runtime_key": compiled.runtime_key,
+        "renderer_key": compiled.renderer_key,
+        "grader_key": compiled.grader_key,
+        "profile_eligible": bool(version.profile_eligible),
+    }
+    if public_payload != expected_public_payload or answer_schema != expected_answer_schema:
+        raise InvalidImportPackageError(f"{prefix}的公开合同与冻结题型版本不一致。")
+    if grading_spec != expected_grading_spec or runtime_snapshot != expected_runtime_snapshot:
+        raise InvalidImportPackageError(f"{prefix}的评分或运行合同与冻结题型版本不一致。")
+
+    answer_text = record.answer if is_template else record.answer_snapshot
+    answer_keys = [item.key for item in compiled.answer_fields]
+    if set(reference_answer) != set(answer_keys):
+        raise InvalidImportPackageError(f"{prefix}的参考答案字段与冻结作答结构不一致。")
+    if any(not isinstance(reference_answer[key], str) for key in answer_keys):
+        raise InvalidImportPackageError(f"{prefix}的参考答案字段必须是文本。")
+    if len(answer_keys) == 1 and reference_answer[answer_keys[0]] != answer_text:
+        raise InvalidImportPackageError(f"{prefix}的参考答案与兼容文本不一致。")
+
+
+def _validate_imported_question_type_package_relationships(
+    session: Session,
+    *,
+    course_id: str,
+) -> None:
+    versions = list(
+        session.exec(
+            select(QuestionTypePackageVersion).where(
+                QuestionTypePackageVersion.course_id == course_id
+            )
+        ).all()
+    )
+    assets = list(
+        session.exec(
+            select(QuestionTypePackageAsset).where(
+                QuestionTypePackageAsset.course_id == course_id
+            )
+        ).all()
+    )
+    assets_by_version: dict[int, list[QuestionTypePackageAsset]] = {}
+    for asset in assets:
+        assets_by_version.setdefault(asset.package_version_id, []).append(asset)
+
+    compiled_by_version_id: dict[int, CompiledQuestionTypeDefinition] = {}
+    for version in versions:
+        try:
+            compiled = CompiledQuestionTypeDefinition.model_validate_json(
+                version.compiled_definition_json
+            )
+        except Exception as exc:  # already checked before insertion
+            raise InvalidImportPackageError(
+                f"题型包版本 `{version.id}` 的编译定义无效。"
+            ) from exc
+        compiled_by_version_id[int(version.id or 0)] = compiled
+        expected_assets = {
+            item.path: (
+                item.role,
+                item.media_type,
+                item.sha256,
+                item.size_bytes,
+                item.width,
+                item.height,
+            )
+            for item in compiled.assets
+        }
+        imported_assets = {
+            item.path: (
+                item.role,
+                item.media_type,
+                item.sha256,
+                item.size_bytes,
+                item.width,
+                item.height,
+            )
+            for item in assets_by_version.get(version.id or 0, [])
+        }
+        if imported_assets != expected_assets:
+            raise InvalidImportPackageError(
+                f"题型包版本 `{version.id}` 的资源清单不完整或已被修改。"
+            )
+
+    registries = list(
+        session.exec(
+            select(QuestionTypeRegistry).where(
+                QuestionTypeRegistry.course_id == course_id,
+                QuestionTypeRegistry.scope == "course",
+                QuestionTypeRegistry.is_system == False,  # noqa: E712
+            )
+        ).all()
+    )
+    versions_by_registry: dict[int, list[QuestionTypePackageVersion]] = {}
+    for version in versions:
+        versions_by_registry.setdefault(version.registry_id, []).append(version)
+    for registry in registries:
+        if registry.source != "upload" and not registry.type_key.startswith("custom_"):
+            continue
+        registry_versions = versions_by_registry.get(registry.id or 0, [])
+        if registry.source != "upload" or not registry_versions:
+            raise InvalidImportPackageError(
+                f"课程题型 `{registry.id}` 缺少可信的安装版本。"
+            )
+        if registry.status not in {"active", "inactive", "archived"}:
+            raise InvalidImportPackageError(
+                f"课程题型 `{registry.id}` 的状态无效。"
+            )
+        if bool(registry.is_active) != (registry.status == "active"):
+            raise InvalidImportPackageError(f"课程题型 `{registry.id}` 的启用状态不一致。")
+        if any(item.type_key != registry.type_key for item in registry_versions):
+            raise InvalidImportPackageError(
+                f"课程题型 `{registry.id}` 与安装版本的类型标识不一致。"
+            )
+        if sum(1 for item in registry_versions if item.is_current) != 1:
+            raise InvalidImportPackageError(
+                f"课程题型 `{registry.id}` 必须且只能有一个当前版本。"
+            )
+        current_version = next(item for item in registry_versions if item.is_current)
+        current_definition = compiled_by_version_id[int(current_version.id or 0)]
+        if registry.is_active and not assess_custom_question_type_runtime(
+            current_definition.model_dump(mode="json")
+        ).ready:
+            raise InvalidImportPackageError(
+                f"课程题型 `{registry.id}` 当前版本没有可用的运行能力。"
+            )
+        if any(item.profile_eligible for item in registry_versions):
+            raise InvalidImportPackageError(
+                f"课程题型 `{registry.id}` 在第一版不能写入长期掌握度。"
+            )
+
+    versions_by_id = {int(item.id or 0): item for item in versions}
+    templates = list(
+        session.exec(
+            select(QuestionTemplate).where(
+                QuestionTemplate.course_id == course_id,
+            )
+        ).all()
+    )
+    paper_items = list(
+        session.exec(
+            select(ExamPaperItem)
+            .join(ExamPaper, ExamPaperItem.exam_paper_id == ExamPaper.id)
+            .where(ExamPaper.course_id == course_id)
+        ).all()
+    )
+    for record in [*templates, *paper_items]:
+        # An unresolved import FK becomes None. Select records by course, not
+        # by that FK, so broken custom questions cannot evade this validation.
+        if record.question_type_version_id is None:
+            if str(record.question_type or "").strip().lower().startswith("custom_"):
+                raise InvalidImportPackageError(
+                    f"自定义题目 `{record.id or 'unknown'}` 缺少有效的题型版本。"
+                )
+            continue
+        version_id = int(record.question_type_version_id or 0)
+        version = versions_by_id.get(version_id)
+        compiled = compiled_by_version_id.get(version_id)
+        if version is None or compiled is None:
+            raise InvalidImportPackageError(
+                f"自定义题目 `{record.id or 'unknown'}` 引用了当前课程之外的题型版本。"
+            )
+        _validate_imported_custom_question_snapshot(
+            record,
+            version=version,
+            compiled=compiled,
+        )
 
 
 def _import_embedding_rebuild_concurrency_limit(global_limit: int | None = None) -> int:
@@ -194,6 +566,11 @@ def import_course(
                     warnings=warnings,
                 )
                 imported_counts[spec.name] = count
+
+            _validate_imported_question_type_package_relationships(
+                session,
+                course_id=new_course_id,
+            )
 
             legacy_plan_count = _import_legacy_confirmed_build_plans(
                 session,

@@ -10,18 +10,21 @@ from __future__ import annotations
 import asyncio
 import re
 from collections.abc import Awaitable, Callable, Mapping
-from typing import Literal, TypeVar
+from typing import Annotated, Literal, TypeVar
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, create_model, field_validator, model_validator
 
 from app.models.knowledge_unit import KnowledgeUnit
 from app.shared.kernel.question_types import (
-    QuestionTypeLiteral,
+    CANONICAL_QUESTION_TYPE_KEYS,
     UnsupportedQuestionTypeError,
     require_supported_question_type_key,
 )
 from app.shared.infra.exceptions import LLMTimeoutError
-from app.shared.infra.llm_support import acompletion_with_fallback, run_llm_tasks
+from app.shared.infra.llm_support import run_llm_tasks
+from app.workflows.examine.question_types.llm import llm as acompletion_with_fallback
+from app.workflows.examine.question_types.answers import normalize_custom_reference_answer
+from app.shared.kernel.question_type_compatibility import requires_reference_answer_payload
 from app.workflows.examine.question_build.lib.model_policy import (
     QuestionBuildModelStep,
     question_build_attempt_max_tokens,
@@ -34,8 +37,16 @@ from app.workflows.examine.question_build.prompts import (
     build_exam_question_messages,
     build_text_exam_messages,
 )
+from app.workflows.examine.question_types.generation import (
+    build_custom_question_messages,
+    validate_custom_question_stem,
+)
 
 DifficultyLiteral = Literal["easy", "medium", "hard"]
+RuntimeQuestionType = Annotated[
+    str,
+    Field(min_length=1, max_length=120, pattern=r"^[a-z][a-z0-9_]*$"),
+]
 T = TypeVar("T")
 
 _BLANK_TOKEN = "{{blank}}"
@@ -286,7 +297,7 @@ class ExamQuestionGenerationSpec(BaseModel):
     item_order: int = Field(ge=1)
     knowledge_unit_id: int = Field(ge=1)
     knowledge_unit_ids: list[int] = Field(default_factory=list)
-    question_type: QuestionTypeLiteral
+    question_type: RuntimeQuestionType
     difficulty: DifficultyLiteral
     allocation_rationale: str = Field(default="", max_length=500)
     generation_prompt: str = Field(default="", max_length=1200)
@@ -319,7 +330,7 @@ class ExamQuestionBlueprint(BaseModel):
 
     item_order: int = Field(ge=1)
     knowledge_unit_ids: list[int] = Field(default_factory=list, min_length=1)
-    question_type: QuestionTypeLiteral
+    question_type: RuntimeQuestionType
     difficulty: DifficultyLiteral
     rationale: str = Field(default="", max_length=500)
     generation_prompt: str = Field(default="", max_length=1200)
@@ -397,7 +408,7 @@ class ExamQuestionRequirementPlan(BaseModel):
     """Per-question type and prompt constraints derived from the user's exam request."""
 
     item_order: int = Field(ge=1)
-    question_type: QuestionTypeLiteral
+    question_type: RuntimeQuestionType
     generation_prompt: str = Field(min_length=1, max_length=1200)
 
     @field_validator("generation_prompt")
@@ -453,7 +464,7 @@ def _build_mastery_drill_requirement_plans(
     question_count: int,
     user_prompt: str,
 ) -> tuple[list[ExamQuestionRequirementPlan], str]:
-    question_types: list[QuestionTypeLiteral] = [
+    question_types: list[str] = [
         "single_choice",
         "true_false",
         "fill_blank",
@@ -486,13 +497,21 @@ def _build_configured_question_requirement_plans(
     *,
     exam_mode: str,
     question_count: int,
-    question_types: list[QuestionTypeLiteral],
+    question_types: list[str],
     user_prompt: str,
+    question_type_counts: dict[str, int] | None = None,
 ) -> tuple[list[ExamQuestionRequirementPlan], str]:
     cleaned_prompt = str(user_prompt or "").strip() or "无"
     normalized_count = max(1, question_count)
-    if str(exam_mode or "").strip().lower() == "paper_exam":
-        paper_type_order: tuple[QuestionTypeLiteral, ...] = (
+    if question_type_counts:
+        if set(question_type_counts) != set(question_types) or sum(question_type_counts.values()) != normalized_count or any(value < 1 for value in question_type_counts.values()):
+            raise ValueError("Question type quotas must match the selected types and total count.")
+        if str(exam_mode or "").strip().lower() == "paper_exam":
+            allocated_types = [key for key in question_types for _ in range(question_type_counts[key])]
+        else:
+            allocated_types = [key for index in range(max(question_type_counts.values())) for key in question_types if index < question_type_counts[key]]
+    elif str(exam_mode or "").strip().lower() == "paper_exam":
+        paper_type_order: tuple[str, ...] = (
             "single_choice",
             "multiple_choice",
             "true_false",
@@ -500,6 +519,7 @@ def _build_configured_question_requirement_plans(
             "short_answer",
         )
         ordered_types = [item for item in paper_type_order if item in question_types]
+        ordered_types.extend(item for item in question_types if item not in ordered_types)
         base_count, remainder = divmod(normalized_count, len(ordered_types))
         allocated_types = [
             question_type
@@ -526,7 +546,7 @@ class ExamQuestionDraft(BaseModel):
     """One validated exam question returned by the LLM workflow."""
 
     item_order: int = Field(ge=1)
-    question_type: QuestionTypeLiteral
+    question_type: RuntimeQuestionType
     difficulty: DifficultyLiteral
     stem: str = Field(min_length=8, max_length=1000)
     options: list[str] | None = Field(
@@ -541,11 +561,19 @@ class ExamQuestionDraft(BaseModel):
     correct_answer: str = Field(
         default="",
         min_length=1,
-        max_length=500,
+        max_length=4000,
         description=(
             "Derived answer text. For single_choice and multiple_choice, prefer correct_indices "
             "and omit this field; the backend converts indices to A/B/C/D labels. "
             "For true_false use True or False; fill_blank and short_answer use concise answer text."
+        ),
+    )
+    reference_answer_payload: dict[str, str] | None = Field(
+        default=None,
+        description=(
+            "For custom structured question types, return the complete reference answer "
+            "keyed by the frozen answer_schema field keys. Single-field V1 packages may omit "
+            "this field and use correct_answer."
         ),
     )
     correct_indices: list[int] | None = Field(
@@ -603,6 +631,25 @@ class ExamQuestionDraft(BaseModel):
             return "True" if value else "False"
         cleaned = _clean_multiline_text(value)
         return _escape_text_underscore_placeholders(cleaned) if cleaned else ""
+
+    @field_validator("reference_answer_payload", mode="before")
+    @classmethod
+    def _normalize_reference_answer_payload(cls, value: object) -> dict[str, str] | None:
+        if value is None or value == "":
+            return None
+        if isinstance(value, BaseModel):
+            value = value.model_dump(by_alias=True)
+        if not isinstance(value, dict):
+            raise ValueError("reference_answer_payload must be an object keyed by answer fields")
+        normalized: dict[str, str] = {}
+        for raw_key, raw_value in value.items():
+            key = str(raw_key or "").strip()
+            if not key or not re.fullmatch(r"[a-z][a-z0-9_]{1,31}", key):
+                raise ValueError("reference_answer_payload contains an invalid field key")
+            if not isinstance(raw_value, str):
+                raise ValueError("reference answer fields must be strings")
+            normalized[key] = raw_value.strip()
+        return normalized or None
 
     @field_validator("correct_indices", mode="before")
     @classmethod
@@ -847,7 +894,7 @@ class ExamQuestionGenerationFailure(BaseModel):
     """One question-generation request that reached a terminal failed state."""
 
     item_order: int = Field(ge=1)
-    question_type: QuestionTypeLiteral
+    question_type: RuntimeQuestionType
     difficulty: DifficultyLiteral
     knowledge_unit_ids: list[int] = Field(default_factory=list)
     error_message: str = Field(default="", max_length=1200)
@@ -1020,6 +1067,28 @@ def _spec_payload(spec: ExamQuestionGenerationSpec) -> dict[str, object]:
     return spec.model_dump(mode="json", exclude={"knowledge_unit_id", "generation_prompt"})
 
 
+def _custom_generation_response_model(runtime: Mapping[str, object] | None) -> type[ExamSingleQuestionResponse]:
+    definition = (runtime or {}).get("definition") or {}
+    fields = list(definition.get("answer_fields") or [])
+    if not requires_reference_answer_payload(definition):
+        return ExamSingleQuestionResponse
+    field_specs = {
+        # Package keys are data, not Python attribute names. Aliases also allow
+        # legitimate keys such as model_dump and model_config to round-trip.
+        f"answer_field_{index}": (str, Field(
+            default=... if field.get("required") else "",
+            alias=str(field["key"]),
+            min_length=max(1, int(field.get("min_length") or 0)) if field.get("required") else 0,
+            max_length=int(field.get("max_length") or 20000),
+            description=str(field.get("label") or field["key"]), strict=True,
+        )) for index, field in enumerate(fields)
+    }
+    reference_model = create_model("CustomReferenceAnswer", __config__=ConfigDict(extra="forbid"), **field_specs)
+    draft_model = create_model("CustomQuestionDraft", __base__=ExamQuestionDraft,
+        reference_answer_payload=(reference_model, ...))
+    return create_model("CustomQuestionResponse", __base__=ExamSingleQuestionResponse, question=(draft_model, ...))
+
+
 def _validate_batch_alignment(
     *,
     generated: list[ExamQuestionDraft],
@@ -1157,12 +1226,15 @@ def _validate_generation_prompts(
     *,
     generated: list[ExamQuestionRequirementPlan],
     question_count: int,
+    allowed_question_types: set[str] | None = None,
 ) -> list[ExamQuestionRequirementPlan]:
     by_order = {item.item_order: item for item in generated if item.item_order >= 1}
     normalized: list[ExamQuestionRequirementPlan] = []
     for order in range(1, max(1, question_count) + 1):
         item = by_order.get(order)
         if item is None:
+            continue
+        if allowed_question_types is not None and item.question_type not in allowed_question_types:
             continue
         normalized.append(
             ExamQuestionRequirementPlan(
@@ -1366,16 +1438,27 @@ async def plan_exam_question_requirements(
     question_count: int,
     user_prompt: str = "",
     configured_question_types: list[str] | None = None,
+    configured_question_counts: dict[str, int] | None = None,
+    custom_question_type_keys: list[str] | None = None,
 ) -> tuple[list[ExamQuestionRequirementPlan], str]:
     """Plan per-question generation prompts from the user's global and item-specific constraints."""
 
     normalized_count = max(1, int(question_count or 1))
-    normalized_question_types: list[QuestionTypeLiteral] = []
+    normalized_question_types: list[str] = []
+    allowed_custom_types = {
+        str(item or "").strip().lower()
+        for item in list(custom_question_type_keys or [])
+        if str(item or "").strip()
+    }
     for value in configured_question_types or []:
-        try:
-            question_type = require_supported_question_type_key(value)
-        except UnsupportedQuestionTypeError:
-            continue
+        normalized_value = str(value or "").strip().lower()
+        if normalized_value in allowed_custom_types:
+            question_type = normalized_value
+        else:
+            try:
+                question_type = require_supported_question_type_key(value)
+            except UnsupportedQuestionTypeError:
+                continue
         if question_type not in normalized_question_types:
             normalized_question_types.append(question_type)
     if normalized_question_types:
@@ -1384,6 +1467,7 @@ async def plan_exam_question_requirements(
             question_count=normalized_count,
             question_types=normalized_question_types,
             user_prompt=user_prompt,
+            question_type_counts=configured_question_counts,
         )
 
     if str(exam_mode or "").strip().lower() == "mastery_drill":
@@ -1415,6 +1499,7 @@ async def plan_exam_question_requirements(
         prompts = _validate_generation_prompts(
             generated=result.prompts,
             question_count=normalized_count,
+            allowed_question_types=set(CANONICAL_QUESTION_TYPE_KEYS),
         )
         return prompts, result.rationale
     except (LLMTimeoutError, TimeoutError):
@@ -1429,15 +1514,27 @@ async def _generate_one_exam_question(
     spec: ExamQuestionGenerationSpec,
     course_profile: dict[str, str] | None = None,
     system_constraints: str = "",
+    custom_runtime: Mapping[str, object] | None = None,
 ) -> ExamQuestionDraft:
     batch_units = [unit_by_id[unit_id] for unit_id in spec.knowledge_unit_ids if unit_id in unit_by_id]
-    messages = build_exam_question_messages(
-        units=[_unit_payload(unit) for unit in batch_units],
-        spec=_spec_payload(spec),
-        generation_prompt=spec.generation_prompt,
-        course_profile=course_profile,
-        system_constraints=system_constraints,
-    )
+    unit_payloads = [_unit_payload(unit) for unit in batch_units]
+    if custom_runtime is not None:
+        messages = build_custom_question_messages(
+            runtime=custom_runtime,
+            units=unit_payloads,
+            spec=_spec_payload(spec),
+            generation_prompt=spec.generation_prompt,
+            course_profile=course_profile,
+            system_constraints=system_constraints,
+        )
+    else:
+        messages = build_exam_question_messages(
+            units=unit_payloads,
+            spec=_spec_payload(spec),
+            generation_prompt=spec.generation_prompt,
+            course_profile=course_profile,
+            system_constraints=system_constraints,
+        )
     last_error: Exception | None = None
     attempt_count = len(question_build_attempt_max_tokens(QuestionBuildModelStep.GENERATE_ONE)) or 1
     for attempt in range(1, attempt_count + 1):
@@ -1451,13 +1548,38 @@ async def _generate_one_exam_question(
                         "substep": "exam.question_build.generate_one",
                         "item_order": spec.item_order,
                         "unit_count": len(batch_units),
+                        "question_type_registry_id": (
+                            custom_runtime.get("registry_id") if custom_runtime else None
+                        ),
+                        "question_type_version_id": (
+                            custom_runtime.get("version_id") if custom_runtime else None
+                        ),
                         "attempt": attempt,
                     },
                 ),
-                response_model=ExamSingleQuestionResponse,
+                response_model=_custom_generation_response_model(custom_runtime),
             )
             assert isinstance(result, ExamSingleQuestionResponse)
-            return _validate_batch_alignment(generated=[result.question], requested_specs=[spec])[0]
+            question = _validate_batch_alignment(
+                generated=[ExamQuestionDraft.model_validate(result.question.model_dump(by_alias=True))],
+                requested_specs=[spec],
+            )[0]
+            if custom_runtime is not None:
+                validate_custom_question_stem(
+                    runtime=custom_runtime,
+                    stem=question.stem,
+                )
+                raw_definition = custom_runtime.get("definition")
+                definition = raw_definition if isinstance(raw_definition, Mapping) else {}
+                answer_schema = {"fields": list(definition.get("answer_fields") or [])}
+                normalized_reference = normalize_custom_reference_answer(
+                    answer_schema,
+                    answer=question.correct_answer,
+                    answer_payload=question.reference_answer_payload,
+                )
+                question.reference_answer_payload = normalized_reference.payload
+                question.correct_answer = normalized_reference.display_text
+            return question
         except Exception as exc:
             last_error = exc
     raise ValueError(
@@ -1472,12 +1594,31 @@ async def generate_exam_questions_for_units(
     specs: list[ExamQuestionGenerationSpec],
     course_profile: dict[str, str] | None = None,
     system_constraints: str = "",
+    question_type_runtimes: list[dict[str, object]] | None = None,
     on_question_generated: Callable[[ExamQuestionDraft], Awaitable[None]] | None = None,
     on_question_failed: Callable[[ExamQuestionGenerationFailure], Awaitable[None]] | None = None,
     allow_partial: bool = False,
 ) -> list[ExamQuestionDraft]:
     """Generate exam questions for selected KnowledgeUnits via one LLM call per item."""
 
+    runtime_by_type = {
+        str(item.get("type_key") or "").strip().lower(): item
+        for item in list(question_type_runtimes or [])
+        if str(item.get("type_key") or "").strip()
+    }
+    unresolved_custom_types = sorted(
+        {
+            spec.question_type
+            for spec in specs
+            if spec.question_type not in CANONICAL_QUESTION_TYPE_KEYS
+            and spec.question_type not in runtime_by_type
+        }
+    )
+    if unresolved_custom_types:
+        raise ValueError(
+            "custom question runtime was not resolved for: "
+            + ", ".join(unresolved_custom_types)
+        )
     unit_by_id = {
         int(unit.id): unit
         for unit in units
@@ -1503,6 +1644,7 @@ async def generate_exam_questions_for_units(
                     spec=spec,
                     course_profile=course_profile,
                     system_constraints=system_constraints,
+                    custom_runtime=runtime_by_type.get(spec.question_type),
                 ),
                 timeout=_QUESTION_GENERATION_TOTAL_TIMEOUT_S,
             )

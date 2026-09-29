@@ -6,6 +6,7 @@
  */
 import type { ExamGenerateRequestDifficulty } from './examGenerateRequestDifficulty.ts';
 import type { ExamGenerateRequestQuestionTypesItem } from './examGenerateRequestQuestionTypesItem.ts';
+import type { QuestionTypeSelection } from './questionTypeSelection.ts';
 
 /**
  * Trigger exam generation request.
@@ -24,6 +25,13 @@ export interface ExamGenerateRequest {
      * @maxItems 5
      */
   question_types?: ExamGenerateRequestQuestionTypesItem[];
+  /**
+     * Optional course custom-question-type registry IDs. They can be combined with built-in question_types; the server freezes the resolved versions for this run.
+     * @maxItems 20
+     */
+  question_type_registry_ids?: number[];
+  /** @maxItems 25 */
+  question_type_selections?: QuestionTypeSelection[];
   /** Optional overall difficulty preference. Auto lets the planner choose per question. */
   difficulty?: ExamGenerateRequestDifficulty;
   /** Optional paper layout mode for paper_exam: auto | standard_two_page | gaokao_four_page | gaokao_six_page | gaokao_eight_page. */

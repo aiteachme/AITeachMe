@@ -1,7 +1,20 @@
+import { buildQuestionTypeSelections } from "../components/exams/questionTypeSelection";
+import { refreshQuestionTypeCatalogAfterUpdate } from "../components/exams/questionTypeCatalogCache";
+import {
+  countQuestionTypesForMode,
+  getQuestionTypeStatusCategory,
+  getQuestionTypeStatusDescription,
+  getQuestionTypeStatusLabel,
+  isCustomQuestionTypeAvailable,
+  isCustomQuestionTypeReady,
+  type QuestionTypeStatusCategory,
+} from "../components/exams/questionTypeAvailability";
 import { memo, useCallback, useDeferredValue, useEffect, useId, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
+  SquarePen,
+  Archive,
   BookOpen,
   Bookmark,
   ChevronDown,
@@ -13,7 +26,7 @@ import {
   Layers3,
   Loader2,
   Network,
-  Play,
+  PackageCheck,
   Search,
   SlidersHorizontal,
   Sparkles,
@@ -29,12 +42,19 @@ import {
   useGenerateExamApiV1CoursesCourseIdExamsGeneratePost,
 } from "../api/generated/exams";
 import { graphKnowledgeUnitDetailApiV1CoursesCourseIdKnowledgeGraphKnowledgeUnitsDetailPost } from "../api/generated/knowledge";
+import {
+  listQuestionTypesApiApiV1CoursesCourseIdQuestionTypesGet,
+  patchQuestionTypeApiApiV1CoursesCourseIdQuestionTypesRegistryIdPatch,
+} from "../api/generated/question-type-packages";
 import type { ExamHistoryItem } from "../api/generated/model";
 import type {
   ExamNodeLinkResponse,
   ExamPaperDetailResponse,
   ExamPaperItemResponse,
   KnowledgeUnitDetailResponse,
+  QuestionTemplateAnswerHistoryItem,
+  QuestionTypeCatalogItemResponse,
+  QuestionTypeCatalogPatchRequest,
 } from "../api/generated/model";
 import {
   LONG_RUNNING_API_TIMEOUT_MS,
@@ -61,8 +81,15 @@ import {
   formatDifficultyLabel,
   loadCreateExamConfig,
   toExamGenerateRequest,
-  isSupportedQuestionType,
 } from "../components/exams";
+import { CustomRubricBreakdown } from "../components/exams/CustomRubricBreakdown";
+import {
+  getAnswerPayload,
+  getAnswerText,
+  isCustomQuestionItem,
+  isRenderableQuestionItem,
+  type AnswerState,
+} from "../components/exams/questionTypes";
 import type { CreateExamConfig } from "../components/exams/CreateExamModal";
 import {
   DEFAULT_MASTERY_DRILL_CONFIG,
@@ -72,6 +99,8 @@ import {
   type MasteryDrillConfig,
 } from "../components/exams/masteryDrillConfig";
 import {
+  filterMasteryDrillCatalogTemplates,
+  filterMasteryDrillSelectedTemplates,
   interleaveMasteryDrillCandidateIdsByType,
   loadLastMasteryDrillTemplateIds,
   saveLastMasteryDrillTemplateIds,
@@ -129,6 +158,12 @@ import {
   type QuestionTemplateKnowledgeRefView,
 } from "../components/exams/questionTemplateDetail";
 import { getExamPaperExportAvailability } from "../components/exams/examPaperExport";
+import {
+  QuestionTypeExamplesModal,
+  QuestionTypeImportModal,
+  QuestionTypePackageHeaderActions,
+  formatQuestionTypeModeLabel,
+} from "../components/exams/QuestionTypePackageModals";
 import { useApiAuthGeneration } from "../hooks/useApiAuthGeneration";
 import {
   parseExamGenerationSnapshot,
@@ -171,6 +206,12 @@ interface QuestionTemplateItem {
   status: string;
   is_marked?: boolean;
   has_wrong_attempt?: boolean;
+  question_type_registry_id?: number | null;
+  question_type_version_id?: number | null;
+  renderer_key?: string | null;
+  public_payload?: Record<string, unknown>;
+  answer_schema?: Record<string, unknown>;
+  profile_eligible?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -184,43 +225,7 @@ interface IndexedQuestionTemplate {
   searchText: string;
 }
 
-interface QuestionTemplateAnswerHistoryItem {
-  exam_paper_id: number;
-  exam_paper_item_id: number;
-  item_order: number;
-  exam_mode: string;
-  exam_status: string;
-  submitted_at?: string | null;
-  graded_at?: string | null;
-  answered_at?: string | null;
-  user_answer: string;
-  correct_answer: string;
-  is_correct?: boolean | null;
-  score_obtained?: number | null;
-  score_max?: number | null;
-  error_cause_label?: string | null;
-  feedback_text?: string | null;
-  created_at: string;
-}
-
-interface QuestionTypeRegistryItem {
-  id: number;
-  type_key: string;
-  display_name: string;
-  scope: string;
-  course: string;
-  description: string;
-  answer_format: string;
-  grading_method: string;
-  option_schema: Record<string, unknown>;
-  rubric: Record<string, unknown>;
-  source: string;
-  confidence: number;
-  is_system: boolean;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-}
+type QuestionTypeRegistryItem = QuestionTypeCatalogItemResponse;
 
 interface IndexedQuestionType {
   item: QuestionTypeRegistryItem;
@@ -230,6 +235,7 @@ interface IndexedQuestionType {
 
 type QuestionTypeScopeFilter = "all" | "global" | "course";
 type QuestionTypeGradingFilter = "all" | "automatic" | "ai" | "manual" | "other";
+type QuestionTypeStatusFilter = "all" | QuestionTypeStatusCategory;
 type QuestionTypeSortMode = "default" | "name" | "scope";
 
 interface QuestionTemplateMarkResponse {
@@ -289,19 +295,19 @@ const TRAINING_MODE_CARD_TONE_CLASS: Record<
     card: "",
     icon: "bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400",
     badge: "border-blue-100 bg-blue-50/80 text-blue-700 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300",
-    meta: "text-slate-600 dark:text-slate-300",
+    meta: "text-slate-500 dark:text-slate-400",
   },
   paper: {
     card: "",
     icon: "bg-violet-100/70 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300",
     badge: "border-violet-200 bg-violet-50/90 text-violet-700 dark:border-violet-500/25 dark:bg-violet-500/10 dark:text-violet-300",
-    meta: "text-slate-600 dark:text-slate-300",
+    meta: "text-slate-500 dark:text-slate-400",
   },
   mastery: {
     card: "",
     icon: "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400",
     badge: "border-emerald-100 bg-emerald-50/80 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300",
-    meta: "text-slate-600 dark:text-slate-300",
+    meta: "text-slate-500 dark:text-slate-400",
   },
   disabled: {
     card: "cursor-not-allowed",
@@ -319,7 +325,7 @@ const TRAINING_MODE_STATUS_BADGE_CLASS: Record<TrainingModeStatusTone, string> =
 };
 
 const TRAINING_PRIMARY_ACTION_CLASS =
-  "w-full min-w-0 gap-1.5 rounded-lg bg-slate-950 px-4 text-sm font-semibold tracking-[0.01em] shadow-none hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-100";
+  "w-full min-w-0 gap-1.5 rounded-lg border border-blue-200 bg-white px-4 text-sm font-semibold tracking-[0.01em] text-slate-700 shadow-none hover:border-blue-300 hover:bg-blue-50 focus-visible:ring-blue-300 dark:border-blue-500/30 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-blue-400/50 dark:hover:bg-blue-500/10";
 const TRAINING_CONFIG_ACTION_CLASS =
   "w-full min-w-0 gap-1.5 rounded-lg border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 shadow-none hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-600 dark:hover:bg-slate-800";
 
@@ -352,7 +358,9 @@ function TrainingModeCard({
 
   return (
     <article
-      className={`grid min-w-0 grid-cols-1 gap-4 px-1 py-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.7fr)_220px] ${toneClass.card} ${
+      data-training-mode={variant}
+      data-training-disabled={disabled}
+      className={`grid min-w-0 grid-cols-1 gap-4 rounded-xl border border-slate-200/60 bg-white px-4 py-5 dark:border-slate-800/60 dark:bg-slate-900/40 md:grid-cols-[minmax(0,1fr)_auto] md:items-center lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_minmax(252px,0.72fr)] ${toneClass.card} ${
         disabled ? "opacity-60" : ""
       } ${className}`}
     >
@@ -375,19 +383,20 @@ function TrainingModeCard({
             <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">{description}</p>
           </div>
       </div>
-          <div className="grid grid-cols-3 divide-x divide-slate-200 md:col-span-1 lg:col-span-1 dark:divide-slate-800">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 md:col-span-1 lg:col-span-1">
             {meta.map((item, index) => (
               <span
                 key={item}
-                className={`inline-flex min-w-0 items-center justify-center px-2 text-center text-[12px] font-medium leading-5 ${toneClass.meta} ${
+                className={`inline-flex min-w-0 items-center gap-2 text-sm font-medium leading-6 ${toneClass.meta} ${
                   index === 0 ? "tabular-nums" : ""
                 }`}
               >
+                {index > 0 ? <span aria-hidden="true" className="text-slate-300 dark:text-slate-600">·</span> : null}
                 {item}
               </span>
             ))}
           </div>
-          <div className="grid w-full grid-cols-2 items-center gap-2 md:col-span-2 md:max-w-[220px] md:justify-self-end lg:col-span-1">{actions}</div>
+          <div className="grid w-full grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] items-center gap-2 md:col-span-2 md:max-w-[252px] md:justify-self-end lg:col-span-1 lg:justify-self-start">{actions}</div>
     </article>
   );
 }
@@ -485,7 +494,7 @@ async function prepareMasteryDrill(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         num_questions: normalizedConfig.numQuestions,
-        question_types: normalizedConfig.questionTypes,
+        question_type_selections: buildQuestionTypeSelections(normalizedConfig.questionTypes, normalizedConfig.customQuestionTypes),
       }),
       signal,
       timeout: LONG_RUNNING_API_TIMEOUT_MS,
@@ -500,16 +509,6 @@ async function getQuestionTemplateAnswerHistory(courseId: string, templateId: nu
       method: "GET",
       signal,
       timeout: QUESTION_TEMPLATE_HISTORY_TIMEOUT_MS,
-    },
-  );
-}
-
-async function getQuestionTypes(courseId: string, signal?: AbortSignal) {
-  return orvalApiClient<{ data?: { code?: number; message?: string; data?: QuestionTypeRegistryItem[] } }>(
-    `/api/v1/courses/${courseId}/exams/question-types`,
-    {
-      method: "GET",
-      signal,
     },
   );
 }
@@ -638,10 +637,11 @@ export function ExamsPage() {
       practiceGenerateRequest.num_questions,
       practiceGenerateRequest.paper_layout_mode,
       practiceGenerateRequest.question_types.join(","),
+      JSON.stringify(practiceGenerateRequest.question_type_selections),
       practiceGenerateRequest.difficulty,
       practiceGenerateRequest.user_prompt,
     ],
-    enabled: Boolean(courseId),
+    enabled: Boolean(courseId) && practiceCreateConfig.customQuestionTypes.length === 0,
     queryFn: async ({ signal }) => {
       if (!courseId) return null;
       const response = await getExamPrewarmStatus(courseId, practiceCreateConfig, signal);
@@ -661,10 +661,11 @@ export function ExamsPage() {
       paperGenerateRequest.num_questions,
       paperGenerateRequest.paper_layout_mode,
       paperGenerateRequest.question_types.join(","),
+      JSON.stringify(paperGenerateRequest.question_type_selections),
       paperGenerateRequest.difficulty,
       paperGenerateRequest.user_prompt,
     ],
-    enabled: Boolean(courseId),
+    enabled: Boolean(courseId) && paperCreateConfig.customQuestionTypes.length === 0,
     queryFn: async ({ signal }) => {
       if (!courseId) return null;
       const response = await getExamPrewarmStatus(courseId, paperCreateConfig, signal);
@@ -683,20 +684,56 @@ export function ExamsPage() {
     },
     staleTime: 30_000,
   });
+  const runtimeQuestionTypesQuery = useQuery({
+    queryKey: ["question-type-catalog", courseId],
+    enabled: Boolean(courseId),
+    queryFn: async ({ signal }) => {
+      if (!courseId) return [];
+      const response = await listQuestionTypesApiApiV1CoursesCourseIdQuestionTypesGet(
+        courseId,
+        { signal },
+      );
+      return unwrapOrvalResponse<QuestionTypeRegistryItem[]>(response) ?? [];
+    },
+    staleTime: 30_000,
+  });
+  const availableCustomQuestionTypes = useMemo(
+    () => (runtimeQuestionTypesQuery.data ?? []).filter(isCustomQuestionTypeAvailable),
+    [runtimeQuestionTypesQuery.data],
+  );
+  const createCustomQuestionTypeOptions = useMemo(
+    () => availableCustomQuestionTypes.map((item) => ({
+      registryId: item.id,
+      typeKey: item.type_key,
+      label: item.display_name,
+      modes: item.modes ?? [],
+    })),
+    [availableCustomQuestionTypes],
+  );
+  const reusableMasteryTemplates = useMemo(
+    () => filterMasteryDrillCatalogTemplates(
+      masteryTemplatesQuery.data ?? [],
+      runtimeQuestionTypesQuery.data ?? [],
+    ),
+    [masteryTemplatesQuery.data, runtimeQuestionTypesQuery.data],
+  );
   const masteryDrillQuestionTypeOptions = useMemo(
-    () => buildMasteryDrillQuestionTypeOptions(masteryTemplatesQuery.data ?? []),
-    [masteryTemplatesQuery.data],
+    () => buildMasteryDrillQuestionTypeOptions(
+      reusableMasteryTemplates,
+      availableCustomQuestionTypes.filter((item) => (item.modes ?? []).includes("mastery_drill")),
+    ),
+    [availableCustomQuestionTypes, reusableMasteryTemplates],
   );
   const masteryDrillTotalUsableCount = useMemo(
-    () => getAllMasteryDrillUsableTemplates(masteryTemplatesQuery.data ?? []).length,
-    [masteryTemplatesQuery.data],
+    () => getMasteryDrillUsableTemplates(reusableMasteryTemplates, masteryDrillConfig).length,
+    [reusableMasteryTemplates, masteryDrillConfig],
   );
   const masteryDrillAvailableCount = useMemo(
-    () => selectMasteryDrillTemplates(masteryTemplatesQuery.data ?? [], 0, masteryDrillConfig).length,
-    [masteryDrillConfig, masteryTemplatesQuery.data],
+    () => selectMasteryDrillTemplates(reusableMasteryTemplates, 0, masteryDrillConfig).length,
+    [masteryDrillConfig, reusableMasteryTemplates],
   );
-  const isMasteryDrillChecking = masteryTemplatesQuery.isLoading;
-  const isMasteryDrillError = masteryTemplatesQuery.isError;
+  const isMasteryDrillChecking = masteryTemplatesQuery.isLoading || runtimeQuestionTypesQuery.isLoading;
+  const isMasteryDrillError = masteryTemplatesQuery.isError || runtimeQuestionTypesQuery.isError;
   const isMasteryDrillReady =
     masteryDrillAvailableCount >= masteryDrillConfig.numQuestions && !isMasteryDrillChecking && !isMasteryDrillError;
   const canStartMasteryDrill =
@@ -715,7 +752,9 @@ export function ExamsPage() {
     : "开始";
   const masteryDrillQuestionTypeMeta = masteryDrillConfig.questionTypes.length
     ? `${masteryDrillConfig.questionTypes.length} 种题型`
-    : "智能题型";
+    : masteryDrillConfig.customQuestionTypes.length
+      ? "自定义题型"
+      : "智能题型";
   const authSessionQuery = useQuery({
     queryKey: AUTH_SESSION_QUERY_KEY,
     queryFn: ({ signal }) => fetchAuthSession(signal),
@@ -1085,7 +1124,7 @@ export function ExamsPage() {
               </div>
             </div>
 
-            <div className="divide-y divide-slate-200 border-y border-slate-200 dark:divide-slate-800 dark:border-slate-800">
+            <div className="training-mode-list flex flex-col gap-3">
               <TrainingModeCard
                 icon={<ClipboardCheck className="h-6 w-6" />}
                 title={practiceLabel}
@@ -1108,13 +1147,12 @@ export function ExamsPage() {
                     >
                       {isPracticeExamGenerating ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Play className="h-3.5 w-3.5 fill-current" />
-                      )}
+                      ) : null}
+                      {!isPracticeExamGenerating ? <SquarePen aria-hidden="true" className="h-4 w-4" strokeWidth={1.75} /> : null}
                       {practicePrimaryLabel}
                     </Button>
                     <Button size="sm" variant="outline" className={TRAINING_CONFIG_ACTION_CLASS} onClick={() => openCreateConfig("web_practice")}>
-                      <SlidersHorizontal className="h-4 w-4" strokeWidth={2} />
+                      <SlidersHorizontal className="h-[18px] w-[18px] shrink-0" strokeWidth={2} />
                       出题配置
                     </Button>
                   </>
@@ -1143,13 +1181,12 @@ export function ExamsPage() {
                     >
                       {isPaperExamGenerating ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Play className="h-3.5 w-3.5 fill-current" />
-                      )}
+                      ) : null}
+                      {!isPaperExamGenerating ? <SquarePen aria-hidden="true" className="h-4 w-4" strokeWidth={1.75} /> : null}
                       {paperPrimaryLabel}
                     </Button>
                     <Button size="sm" variant="outline" className={TRAINING_CONFIG_ACTION_CLASS} onClick={() => openCreateConfig("paper_exam")}>
-                      <SlidersHorizontal className="h-4 w-4" strokeWidth={2} />
+                      <SlidersHorizontal className="h-[18px] w-[18px] shrink-0" strokeWidth={2} />
                       出题配置
                     </Button>
                   </>
@@ -1192,11 +1229,10 @@ export function ExamsPage() {
                     >
                       {isMasteryDrillChecking ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : canStartMasteryDrill ? (
-                        <Play className="h-3.5 w-3.5 fill-current" />
-                      ) : (
+                      ) : !canStartMasteryDrill ? (
                         <CloudOff className="h-4 w-4" strokeWidth={2} />
-                      )}
+                      ) : null}
+                      {canStartMasteryDrill ? <SquarePen aria-hidden="true" className="h-4 w-4" strokeWidth={1.75} /> : null}
                       {masteryDrillButtonLabel}
                     </Button>
                     <Button
@@ -1205,7 +1241,7 @@ export function ExamsPage() {
                       className={TRAINING_CONFIG_ACTION_CLASS}
                       onClick={() => setIsMasteryConfigOpen(true)}
                     >
-                      <SlidersHorizontal className="h-4 w-4" strokeWidth={2} />
+                      <SlidersHorizontal className="h-[18px] w-[18px] shrink-0" strokeWidth={2} />
                       出题配置
                     </Button>
                   </>
@@ -1344,6 +1380,7 @@ export function ExamsPage() {
         open={isCreateConfigOpen}
         courseId={courseId}
         initialExamMode={createConfigInitialMode}
+        customQuestionTypes={createCustomQuestionTypeOptions}
         onClose={() => {
           setIsCreateConfigOpen(false);
           setCreateConfigInitialMode(null);
@@ -1429,7 +1466,7 @@ function sortMasteryDrillCandidates(
 
 function isMasteryDrillTemplateUsable(template: QuestionTemplateItem): boolean {
   return Boolean(
-    isSupportedQuestionType(template.question_type) &&
+    isRenderableQuestionItem(template) &&
     template.stem.trim() &&
     template.answer.trim() &&
     template.status === "active"
@@ -1448,11 +1485,16 @@ function getMasteryDrillUsableTemplates(
   seed = 0,
 ): QuestionTemplateItem[] {
   const normalizedConfig = normalizeMasteryDrillConfig(config);
-  const usableTemplates = getAllMasteryDrillUsableTemplates(templates);
+  const usableTemplates = filterMasteryDrillSelectedTemplates(
+    getAllMasteryDrillUsableTemplates(templates), normalizedConfig.customQuestionTypes,
+  );
+  const configuredQuestionTypes = [
+    ...normalizedConfig.questionTypes, ...normalizedConfig.customQuestionTypes.map((item) => item.typeKey),
+  ];
   const selectedTypeSet = new Set(
     selectMasteryDrillQuestionTypes(
       usableTemplates.map((template) => template.question_type),
-      normalizedConfig.questionTypes,
+      configuredQuestionTypes,
       seed,
       normalizedConfig.numQuestions,
     ),
@@ -1460,16 +1502,28 @@ function getMasteryDrillUsableTemplates(
   return usableTemplates.filter((template) => selectedTypeSet.has(template.question_type));
 }
 
-function buildMasteryDrillQuestionTypeOptions(templates: QuestionTemplateItem[]): MasteryDrillQuestionTypeOption[] {
+function buildMasteryDrillQuestionTypeOptions(
+  templates: QuestionTemplateItem[],
+  customQuestionTypes: QuestionTypeRegistryItem[] = [],
+): MasteryDrillQuestionTypeOption[] {
   const countsByType = new Map<string, number>();
   getAllMasteryDrillUsableTemplates(templates).forEach((template) => {
     countsByType.set(template.question_type, (countsByType.get(template.question_type) ?? 0) + 1);
   });
-  return CREATE_EXAM_QUESTION_TYPE_OPTIONS.map(({ value, label }) => ({
-    value,
-    label,
-    count: countsByType.get(value) ?? 0,
-  }));
+  return [
+    ...CREATE_EXAM_QUESTION_TYPE_OPTIONS.map(({ value, label }) => ({
+      value,
+      label,
+      count: countsByType.get(value) ?? 0,
+    })),
+    ...customQuestionTypes.map((item) => ({
+      value: item.type_key,
+      label: item.display_name,
+      count: countsByType.get(item.type_key) ?? 0,
+      registryId: item.id,
+      typeKey: item.type_key,
+    })),
+  ];
 }
 
 function selectMasteryDrillTemplates(
@@ -1481,6 +1535,18 @@ function selectMasteryDrillTemplates(
   const normalizedConfig = normalizeMasteryDrillConfig(config);
   const usableTemplates = getMasteryDrillUsableTemplates(templates, normalizedConfig, seed);
   const sortedTemplates = sortMasteryDrillCandidates(usableTemplates, seed);
+  const configuredTypes = [...normalizedConfig.questionTypes, ...normalizedConfig.customQuestionTypes.map((item) => item.typeKey)];
+  if (configuredTypes.length) {
+    const quotas = Object.fromEntries(configuredTypes.map((key, index) => [key,
+      Math.floor(normalizedConfig.numQuestions / configuredTypes.length) + (index < normalizedConfig.numQuestions % configuredTypes.length ? 1 : 0),
+    ]));
+    const selected = configuredTypes.flatMap((key) => selectNextMasteryDrillCandidateIds(
+      sortedTemplates.filter((item) => item.question_type === key).map((item) => item.id), previousTemplateIds, quotas[key],
+    ));
+    const byId = new Map(sortedTemplates.map((item) => [item.id, item]));
+    return interleaveMasteryDrillCandidateIdsByType(selected.map((id) => ({ id, questionType: byId.get(id)!.question_type })))
+      .map((id) => byId.get(id)!);
+  }
   const previousTemplateIdSet = new Set(previousTemplateIds);
   const orderedTemplateIds = [
     ...interleaveMasteryDrillCandidateIdsByType(
@@ -1541,6 +1607,16 @@ function buildStandaloneMasteryDrillPaper(
     score_max: 1,
     error_cause_label: null,
     is_marked: template.is_marked === true,
+    question_type_registry_id: template.question_type_registry_id ?? null,
+    question_type_version_id: template.question_type_version_id ?? null,
+    renderer_key: template.renderer_key ?? null,
+    public_payload: template.public_payload ?? {},
+    answer_schema: template.answer_schema ?? {},
+    user_answer_payload: {},
+    grading_detail: {},
+    grading_status: "pending",
+    grading_error_code: "",
+    profile_eligible: template.profile_eligible ?? true,
   }));
 
   return {
@@ -1597,7 +1673,7 @@ export function MasteryDrillPage() {
     isSidebarOpen,
     sidebarRequest,
   } = useAiInteraction();
-  const [answers, setAnswers] = useState<Record<number, string>>({});
+  const [answers, setAnswers] = useState<AnswerState>({});
   const [drillPaper, setDrillPaper] = useState<ExamPaperDetailResponse | null>(null);
   const [sessionSeed, setSessionSeed] = useState(() => Date.now());
   const [sessionTemplateSelection, setSessionTemplateSelection] = useState<{
@@ -1654,7 +1730,9 @@ export function MasteryDrillPage() {
   );
   const prepareQuery = useQuery({
     queryKey: prepareQueryKey,
-    enabled: Boolean(courseId),
+    // The current round owns its frozen question list. Reconnecting should
+    // resume grading without starting another bank preparation request.
+    enabled: Boolean(courseId) && !drillPaper,
     queryFn: async ({ signal }) => {
       const response = await prepareMasteryDrill(courseId ?? "", masteryDrillConfig, signal);
       return unwrapOrvalResponse<MasteryDrillPrepareResponse>(response);
@@ -1675,7 +1753,9 @@ export function MasteryDrillPage() {
     if (!preparedResult) {
       return;
     }
-    queryClient.setQueryData<QuestionTemplateItem[]>(templatesQueryKey, preparedResult.templates);
+    // A prepare response contains only this round's eligible types/versions.
+    // It must not replace the shared, complete question-bank cache.
+    void queryClient.invalidateQueries({ queryKey: templatesQueryKey });
     if (preparedResult.generated_count <= 0) {
       return;
     }
@@ -1940,6 +2020,7 @@ export function MasteryDrillPage() {
   const gradeEphemeralAnswer = async (
     item: ExamPaperItemResponse,
     answer: string,
+    answerPayload?: Record<string, string>,
   ): Promise<QuestionTemplateGradeResult> => {
     if (!courseId || !item.question_template_id) {
       throw new Error("缺少题目标识，无法判题");
@@ -1950,7 +2031,13 @@ export function MasteryDrillPage() {
         item.question_template_id,
         answer,
         item.question_type,
-        { ephemeral: true },
+        {
+          ephemeral: true,
+          rendererKey: item.renderer_key,
+          answerPayload: isCustomQuestionItem(item)
+            ? (answerPayload ?? getAnswerPayload(item, answer))
+            : undefined,
+        },
       );
     } catch (error) {
       toast({
@@ -1963,7 +2050,7 @@ export function MasteryDrillPage() {
   };
 
   const handleEphemeralDrillComplete = (
-    finalAnswers: Record<number, string>,
+    finalAnswers: AnswerState,
     summary: import("../components/exams/ExamMasteryDrillSession").MasteryDrillCompletionSummary,
   ) => {
     if (!drillPaper || !courseId) {
@@ -1983,7 +2070,10 @@ export function MasteryDrillPage() {
     });
   };
 
-  const hasRoundProgress = Object.values(answers).some((answer) => answer.trim().length > 0);
+  const hasRoundProgress = Object.entries(answers).some(([rawOrder, answer]) => {
+    const item = drillPaper?.items?.find((candidate) => candidate.item_order === Number(rawOrder));
+    return Boolean(item && getAnswerText(item, answer).trim().length > 0);
+  });
   const backToTrainingCenter = () => {
     if (!courseId) return;
     navigate(buildCoursePath(courseId, "exams"));
@@ -2013,14 +2103,14 @@ export function MasteryDrillPage() {
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-5">
         <TrainingCenterBackButton onClick={backToTrainingCenter} />
 
-        {!prepareQuery.error && (!hasFreshPrepareResult || !drillPaper) ? (
+        {!drillPaper && !prepareQuery.error ? (
           <div className="rounded-2xl border border-slate-200 bg-white px-6 py-12 text-center text-sm text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-950/80 dark:text-slate-400">
             <Loader2 className="mx-auto mb-3 h-5 w-5 animate-spin" />
             {!hasFreshPrepareResult ? "正在检查题库并补齐本轮题目..." : "正在准备本轮题目..."}
           </div>
         ) : null}
 
-        {prepareQuery.error ? (
+        {!drillPaper && prepareQuery.error ? (
           <div className="rounded-2xl border border-red-200 bg-red-50 px-6 py-4 text-sm text-red-700 shadow-sm dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
             {getApiErrorMessage(prepareQuery.error, "准备闯关题目失败")}
           </div>
@@ -2692,6 +2782,8 @@ const QuestionTemplateHistoryCard = memo(function QuestionTemplateHistoryCard({
           </div>
         </div>
 
+        <CustomRubricBreakdown detail={record.grading_detail} className="mt-3" />
+
         {errorCause || showFeedback ? (
           <div className="mt-3 text-sm leading-7 text-slate-600 dark:text-slate-300">
             {errorCause ? (
@@ -2919,7 +3011,7 @@ function isGlobalQuestionTypeScope(scope: string) {
 function getQuestionTypeScopeLabel(scope: string) {
   const normalized = String(scope || "").trim().toLowerCase();
   if (isGlobalQuestionTypeScope(normalized)) return "基础题型";
-  if (normalized === "course") return "课程题型";
+  if (normalized === "course") return "自定义题型";
   return normalized ? "其他题型" : "未分组";
 }
 
@@ -2927,6 +3019,7 @@ function getQuestionTypeSourceLabel(source: string) {
   const normalized = String(source || "").trim().toLowerCase();
   if (!normalized) return "未标注来源";
   if (normalized === "system") return "系统内置";
+  if (normalized === "upload") return "用户上传";
   if (normalized === "sample") return "样卷学习";
   if (normalized === "manual") return "人工配置";
   if (normalized === "mock") return "示例数据";
@@ -2983,6 +3076,11 @@ function getQuestionTypeGradingLabel(method: string) {
 
 function getQuestionTypeRecordCount(value: unknown) {
   if (!value || typeof value !== "object") return 0;
+  if (Array.isArray(value)) return value.length;
+  const nestedItems = (value as { items?: unknown }).items;
+  if (Array.isArray(nestedItems)) return nestedItems.length;
+  const nestedFields = (value as { fields?: unknown }).fields;
+  if (Array.isArray(nestedFields)) return nestedFields.length;
   return Object.keys(value).length;
 }
 
@@ -3008,6 +3106,7 @@ const QuestionTypeCard = memo(function QuestionTypeCard({
   const description = getQuestionTypeDescription(item);
   const answerFormat = getQuestionTypeAnswerFormatLabel(item);
   const gradingLabel = getQuestionTypeGradingLabel(item.grading_method);
+  const statusLabel = getQuestionTypeStatusLabel(item);
 
   return (
     <article className="group relative flex min-h-[220px] flex-col overflow-hidden rounded-[16px] border border-slate-200/90 bg-white p-5 shadow-none transition-colors duration-200 hover:border-indigo-200/90 hover:bg-indigo-50/[0.12] dark:border-slate-800 dark:bg-slate-950 dark:hover:border-indigo-500/35 dark:hover:bg-indigo-500/[0.035] [content-visibility:auto] [contain-intrinsic-size:220px]">
@@ -3024,7 +3123,7 @@ const QuestionTypeCard = memo(function QuestionTypeCard({
           <span className="truncate">{typeLabel}</span>
         </span>
         <span className="text-[13px] font-medium tabular-nums text-slate-400 dark:text-slate-500">
-          #{item.id}
+          {item.current_version ? `v${item.current_version}` : `#${item.id}`}
         </span>
       </div>
 
@@ -3045,6 +3144,16 @@ const QuestionTypeCard = memo(function QuestionTypeCard({
         <span className="rounded-md border border-slate-200/80 bg-slate-50 px-2 py-0.5 text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
           {gradingLabel}
         </span>
+        {item.source === "upload" ? (
+          <span className="rounded-md border border-slate-200/80 bg-slate-50 px-2 py-0.5 text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+            {(item.modes ?? []).length} 个场景
+          </span>
+        ) : null}
+        {!item.is_system ? (
+          <span className="rounded-md border border-amber-200/80 bg-amber-50 px-2 py-0.5 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+            {statusLabel}
+          </span>
+        ) : null}
       </div>
     </article>
   );
@@ -3079,7 +3188,19 @@ function QuestionTypeConfigSection({
   );
 }
 
-function QuestionTypeDetailCard({ item, onClose }: { item: QuestionTypeRegistryItem | null; onClose: () => void }) {
+function QuestionTypeDetailCard({
+  item,
+  onClose,
+  onUpdate,
+  onImportVersion,
+  isUpdating,
+}: {
+  item: QuestionTypeRegistryItem | null;
+  onClose: () => void;
+  onUpdate: (item: QuestionTypeRegistryItem, change: QuestionTypeCatalogPatchRequest) => void;
+  onImportVersion: () => void;
+  isUpdating: boolean;
+}) {
   const typeLabel = item ? getRegistryQuestionTypeLabel(item) : undefined;
 
   return (
@@ -3106,6 +3227,11 @@ function QuestionTypeDetailCard({ item, onClose }: { item: QuestionTypeRegistryI
                 系统内置
               </span>
             )}
+            {!item.is_system ? (
+              <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-200">
+                {getQuestionTypeStatusLabel(item)}
+              </span>
+            ) : null}
             <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
               {getQuestionTypeConfidenceLabel(item.confidence)}
             </span>
@@ -3137,6 +3263,111 @@ function QuestionTypeDetailCard({ item, onClose }: { item: QuestionTypeRegistryI
               emptyText="暂无额外判分规则，系统会按题型默认规则处理。"
             />
           </div>
+
+          {!item.is_system && item.source === "upload" ? (
+            <section className="rounded-2xl border border-slate-200 bg-slate-50/70 px-5 py-4 dark:border-slate-800 dark:bg-slate-900/70">
+              <div className="flex flex-col gap-3">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-950 dark:text-slate-100">安装版本</h3>
+                  <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
+                    {getQuestionTypeStatusDescription(item)}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {item.status !== "archived" ? (
+                    <Button
+                      type="button"
+                      variant={isCustomQuestionTypeAvailable(item) ? "outline" : "default"}
+                      size="sm"
+                      className={isCustomQuestionTypeAvailable(item) ? undefined : "border border-transparent"}
+                      disabled={isUpdating || !isCustomQuestionTypeReady(item)}
+                      onClick={() => onUpdate(item, {
+                        status: isCustomQuestionTypeAvailable(item) ? "inactive" : "active",
+                      })}
+                    >
+                      {isCustomQuestionTypeAvailable(item) ? "停用题型" : "启用题型"}
+                    </Button>
+                  ) : null}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={isUpdating}
+                    onClick={onImportVersion}
+                  >
+                    <PackageCheck className="h-4 w-4" />导入新版本
+                  </Button>
+                  {item.status === "archived" ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={isUpdating}
+                      onClick={() => onUpdate(item, { status: "inactive" })}
+                    >
+                      恢复到目录
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={isUpdating}
+                      onClick={() => onUpdate(item, { status: "archived" })}
+                      className="text-slate-500"
+                    >
+                      <Archive className="h-4 w-4" />归档题型
+                    </Button>
+                  )}
+                </div>
+              </div>
+              <div className="mt-4 space-y-2">
+                {(item.versions ?? []).map((version) => (
+                  <label
+                    key={version.id}
+                    className="flex cursor-pointer items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-950"
+                  >
+                    <span className="flex min-w-0 items-center gap-3">
+                      <input
+                        type="radio"
+                        name={`question-type-version-${item.id}`}
+                        checked={Boolean(version.is_current)}
+                        disabled={isUpdating}
+                        onChange={() => onUpdate(item, { current_version_id: version.id })}
+                        className="h-4 w-4 accent-indigo-600"
+                      />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">
+                          版本 {version.version}
+                        </span>
+                        <span className="mt-0.5 block truncate text-xs text-slate-400">
+                          {version.source_filename || version.package_hash.slice(0, 12)}
+                        </span>
+                      </span>
+                    </span>
+                    {version.is_current ? (
+                      <span className="shrink-0 rounded-md bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300">
+                        当前版本
+                      </span>
+                    ) : null}
+                  </label>
+                ))}
+              </div>
+              <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-800">
+                <p className="text-xs font-semibold text-slate-400">声明支持场景</p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {(item.modes ?? []).map((mode) => (
+                    <span
+                      key={mode}
+                      className="rounded-md bg-white px-2 py-1 text-xs font-medium text-slate-600 ring-1 ring-slate-200 dark:bg-slate-950 dark:text-slate-300 dark:ring-slate-700"
+                    >
+                      {formatQuestionTypeModeLabel(mode)}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </section>
+          ) : null}
         </div>
       ) : null}
     </Modal>
@@ -3148,11 +3379,13 @@ function ExamCatalogShell({
   title,
   description,
   children,
+  actions,
 }: {
   courseId: string;
   title: string;
   description: string;
   children: ReactNode;
+  actions?: ReactNode;
 }) {
   const navigate = useNavigate();
   return (
@@ -3161,7 +3394,7 @@ function ExamCatalogShell({
         <header>
           <TrainingCenterBackButton onClick={() => navigate(buildCoursePath(courseId, "exams"))} />
           <div className="mt-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
+            <div>
               <h1 className="text-[32px] font-semibold leading-tight text-slate-950 dark:text-slate-100 sm:text-[36px]">
                 {title}
               </h1>
@@ -3169,6 +3402,7 @@ function ExamCatalogShell({
                 {description}
               </p>
             </div>
+            {actions ? <div className="shrink-0">{actions}</div> : null}
           </div>
         </header>
         {children}
@@ -3228,6 +3462,16 @@ const QUESTION_TYPE_GRADING_FILTER_OPTIONS: ReadonlyArray<{
   { value: "ai", label: "AI 判分" },
   { value: "manual", label: "人工判分" },
   { value: "other", label: "其他判分" },
+];
+
+const QUESTION_TYPE_STATUS_FILTER_OPTIONS: ReadonlyArray<{
+  value: Exclude<QuestionTypeStatusFilter, "all">;
+  label: string;
+}> = [
+  { value: "available", label: "可用" },
+  { value: "inactive", label: "已停用" },
+  { value: "pending", label: "待接入" },
+  { value: "archived", label: "已归档" },
 ];
 
 type ExamCatalogOverviewMetric = {
@@ -3361,7 +3605,7 @@ function QuestionTypeOverview({
     },
     {
       key: "course",
-      label: "课程题型",
+      label: "自定义题型",
       value: courseCount,
       icon: <Layers3 className="h-5 w-5" />,
       iconClass: "bg-teal-50 text-teal-600 dark:bg-teal-500/10 dark:text-teal-300",
@@ -3476,15 +3720,26 @@ export function QuestionTemplatesPage() {
   }, [templates]);
 
   const typesQuery = useQuery({
-    queryKey: ["exam-question-types", courseId],
+    queryKey: ["question-type-catalog", courseId],
     enabled: Boolean(courseId),
     queryFn: async ({ signal }) => {
-      const response = await getQuestionTypes(courseId ?? "", signal);
+      const response = await listQuestionTypesApiApiV1CoursesCourseIdQuestionTypesGet(
+        courseId ?? "",
+        { signal },
+      );
       return unwrapOrvalResponse<QuestionTypeRegistryItem[]>(response) ?? [];
     },
   });
   const questionTypeLabelByKey = useMemo(() => {
     const labels = new Map<string, string>();
+    // Saved names also cover catalog loading, failures, and historical types.
+    for (const item of templates) {
+      const key = item.question_type.trim();
+      const displayName = item.public_payload?.display_name;
+      if (key && typeof displayName === "string" && displayName.trim() && !labels.has(key)) {
+        labels.set(key, displayName.trim());
+      }
+    }
     for (const item of typesQuery.data ?? []) {
       const key = item.type_key?.trim();
       const label = getRegistryQuestionTypeLabel(item);
@@ -3493,7 +3748,7 @@ export function QuestionTemplatesPage() {
       }
     }
     return labels;
-  }, [typesQuery.data]);
+  }, [templates, typesQuery.data]);
   const getQuestionTypeLabel = useCallback(
     (typeKey: string) => questionTypeLabelByKey.get(typeKey) ?? formatQuestionTypeLabel(typeKey),
     [questionTypeLabelByKey],
@@ -3751,7 +4006,7 @@ export function QuestionTemplatesPage() {
             </h2>
             <section
               aria-label="筛选题库"
-              className="rounded-[18px] border border-slate-200/90 bg-[#f8fbff] p-4 shadow-none dark:border-slate-800 dark:bg-slate-950/70 sm:p-5"
+              className="rounded-[18px] border border-slate-200/90 bg-white p-4 shadow-none dark:border-slate-800 dark:bg-slate-950/70 sm:p-5"
             >
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div className="relative min-w-0 flex-1 lg:max-w-3xl">
@@ -4052,20 +4307,79 @@ export function QuestionTemplatesPage() {
 
 export function QuestionTypesPage() {
   const { courseId } = useParams();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const activeCourseIdRef = useRef(courseId);
+  activeCourseIdRef.current = courseId;
   const [selectedType, setSelectedType] = useState<QuestionTypeRegistryItem | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [scopeFilter, setScopeFilter] = useState<QuestionTypeScopeFilter>("all");
   const [gradingFilter, setGradingFilter] = useState<QuestionTypeGradingFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<QuestionTypeStatusFilter>("all");
   const [sortMode, setSortMode] = useState<QuestionTypeSortMode>("default");
   const [isTypeFiltersOpen, setIsTypeFiltersOpen] = useState(false);
+  const [isImportOpen, setIsImportOpen] = useState(false);
+  const [isExamplesOpen, setIsExamplesOpen] = useState(false);
   const typeSortPointerInteractionRef = useRef(false);
+  const catalogQueryKey = useMemo(
+    () => ["question-type-catalog", courseId] as const,
+    [courseId],
+  );
+  useEffect(() => {
+    setSelectedType(null);
+  }, [courseId]);
 
   const typesQuery = useQuery({
-    queryKey: ["exam-question-types", courseId],
+    queryKey: catalogQueryKey,
     enabled: Boolean(courseId),
     queryFn: async ({ signal }) => {
-      const response = await getQuestionTypes(courseId ?? "", signal);
+      const response = await listQuestionTypesApiApiV1CoursesCourseIdQuestionTypesGet(
+        courseId ?? "",
+        { signal },
+      );
       return unwrapOrvalResponse<QuestionTypeRegistryItem[]>(response) ?? [];
+    },
+  });
+  const updateTypeMutation = useMutation({
+    mutationFn: async ({
+      courseId: mutationCourseId,
+      item,
+      change,
+    }: {
+      courseId: string;
+      item: QuestionTypeRegistryItem;
+      change: QuestionTypeCatalogPatchRequest;
+    }) => {
+      const response = await patchQuestionTypeApiApiV1CoursesCourseIdQuestionTypesRegistryIdPatch(
+        mutationCourseId,
+        item.id,
+        change,
+      );
+      const updated = unwrapOrvalResponse<QuestionTypeRegistryItem>(response);
+      if (!updated) throw new Error("题型更新结果为空。");
+      return updated;
+    },
+    onSuccess: async (updated, { courseId: mutationCourseId, change }) => {
+      await refreshQuestionTypeCatalogAfterUpdate(queryClient, mutationCourseId, updated);
+      if (activeCourseIdRef.current !== mutationCourseId) return;
+      setSelectedType((current) => current?.id === updated.id ? updated : current);
+      toast({
+        title: change.status === "archived" ? "题型已归档"
+          : change.status === "active" ? "题型已启用"
+          : change.status === "inactive" ? "题型已停用" : "题型已更新",
+        description: change.status
+          ? getQuestionTypeStatusDescription(updated)
+          : `当前版本为 ${updated.current_version ?? "默认版本"}。`,
+        variant: "success",
+      });
+    },
+    onError: (error, { courseId: mutationCourseId }) => {
+      if (activeCourseIdRef.current !== mutationCourseId) return;
+      toast({
+        title: "题型更新失败",
+        description: getApiErrorMessage(error, "请稍后重试"),
+        variant: "error",
+      });
     },
   });
   const rows = useMemo(() => typesQuery.data ?? [], [typesQuery.data]);
@@ -4091,6 +4405,14 @@ export function QuestionTypesPage() {
       .filter((option) => option.count > 0),
     [gradingCounts],
   );
+  const statusCounts = useMemo(() => {
+    const counts = new Map<Exclude<QuestionTypeStatusFilter, "all">, number>();
+    for (const item of rows) {
+      const category = getQuestionTypeStatusCategory(item);
+      counts.set(category, (counts.get(category) ?? 0) + 1);
+    }
+    return counts;
+  }, [rows]);
   const indexedTypes = useMemo<IndexedQuestionType[]>(() => {
     return rows.map((item) => {
       const typeLabel = getRegistryQuestionTypeLabel(item);
@@ -4110,6 +4432,9 @@ export function QuestionTypesPage() {
         gradingLabel,
         getQuestionTypeScopeLabel(item.scope),
         getQuestionTypeSourceLabel(item.source),
+        getQuestionTypeStatusLabel(item),
+        item.status,
+        item.current_version,
       ]
         .filter(Boolean)
         .join(" ")
@@ -4129,6 +4454,9 @@ export function QuestionTypesPage() {
         ({ item }) => getQuestionTypeGradingCategory(item.grading_method) === gradingFilter,
       );
     }
+    if (statusFilter !== "all") {
+      result = result.filter(({ item }) => getQuestionTypeStatusCategory(item) === statusFilter);
+    }
     if (normalizedSearchQuery) {
       result = result.filter((entry) => entry.searchText.includes(normalizedSearchQuery));
     }
@@ -4142,29 +4470,41 @@ export function QuestionTypesPage() {
       });
     }
     return result;
-  }, [gradingFilter, indexedTypes, normalizedSearchQuery, scopeFilter, sortMode]);
+  }, [gradingFilter, indexedTypes, normalizedSearchQuery, scopeFilter, sortMode, statusFilter]);
   const isFiltering = searchQuery !== deferredSearchQuery;
   const appliedFilterCount =
     Number(Boolean(searchQuery.trim())) +
     Number(scopeFilter !== "all") +
-    Number(gradingFilter !== "all");
+    Number(gradingFilter !== "all") +
+    Number(statusFilter !== "all");
   const advancedTypeFilterCount =
-    Number(scopeFilter !== "all") + Number(gradingFilter !== "all");
+    Number(scopeFilter !== "all") + Number(gradingFilter !== "all") + Number(statusFilter !== "all");
   const hasCustomizedControls = appliedFilterCount > 0 || sortMode !== "default";
-  const selectedScopeLabel = scopeFilter === "global" ? "基础题型" : "课程题型";
+  const selectedScopeLabel = scopeFilter === "global" ? "基础题型" : "自定义题型";
   const selectedGradingLabel = QUESTION_TYPE_GRADING_FILTER_OPTIONS.find(
     (option) => option.value === gradingFilter,
+  )?.label;
+  const selectedStatusLabel = QUESTION_TYPE_STATUS_FILTER_OPTIONS.find(
+    (option) => option.value === statusFilter,
   )?.label;
   const resetFilters = useCallback(() => {
     setSearchQuery("");
     setScopeFilter("all");
     setGradingFilter("all");
+    setStatusFilter("all");
     setSortMode("default");
     setIsTypeFiltersOpen(false);
   }, []);
   const handleOpenType = useCallback((item: QuestionTypeRegistryItem) => {
     setSelectedType(item);
   }, []);
+  const handleTypeInstalled = useCallback(async () => {
+    setScopeFilter("course");
+    setSearchQuery("");
+    setGradingFilter("all");
+    setStatusFilter("all");
+    await queryClient.invalidateQueries({ queryKey: catalogQueryKey });
+  }, [catalogQueryKey, queryClient]);
 
   if (!courseId) {
     return (
@@ -4179,7 +4519,7 @@ export function QuestionTypesPage() {
   const emptyTitle = normalizedSearchQuery ? "没有匹配的题型" : "暂无题型";
   const emptyDescription = normalizedSearchQuery
     ? "换个关键词试试，支持搜索题型名称、说明、作答要求、判分方式和标识。"
-    : gradingFilter !== "all" || scopeFilter !== "all"
+    : gradingFilter !== "all" || scopeFilter !== "all" || statusFilter !== "all"
       ? "当前筛选条件下没有题型，可以恢复默认筛选后再查看。"
       : "当前课程还没有可展示的题型。";
 
@@ -4187,7 +4527,13 @@ export function QuestionTypesPage() {
     <ExamCatalogShell
       courseId={courseId}
       title="课程题型"
-      description="这里展示当前课程可用的出题规则。测验、考卷和闯关会按这些题型组织题目、作答要求和判分方式。"
+      description="这里统一展示系统题型与当前课程安装的题型包。出题配置只展示已启用、可用且支持对应场景的题型。"
+      actions={(
+        <QuestionTypePackageHeaderActions
+          onOpenExamples={() => setIsExamplesOpen(true)}
+          onOpenImport={() => setIsImportOpen(true)}
+        />
+      )}
     >
       {typesQuery.isLoading && (
         <div className="rounded-2xl border border-slate-200 bg-white px-6 py-12 text-center text-sm text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-950/80 dark:text-slate-400">
@@ -4224,6 +4570,12 @@ export function QuestionTypesPage() {
                   courseCount={courseRows.length}
                   gradingMethodCount={gradingMethodCount}
                 />
+                <p className="text-sm leading-6 text-slate-500 dark:text-slate-400" aria-label="出题可用题型统计">
+                  当前可用于出题：测验 {countQuestionTypesForMode(rows, "web_practice")} 种 · 考卷 {countQuestionTypesForMode(rows, "paper_exam")} 种 · 闯关 {countQuestionTypesForMode(rows, "mastery_drill")} 种。
+                  {(statusCounts.get("inactive") ?? 0) > 0 ? ` 已停用 ${statusCounts.get("inactive")} 种，可在题型详情中启用。` : ""}
+                  {(statusCounts.get("pending") ?? 0) > 0 ? ` 待接入 ${statusCounts.get("pending")} 种。` : ""}
+                  {(statusCounts.get("archived") ?? 0) > 0 ? ` 已归档 ${statusCounts.get("archived")} 种。` : ""}
+                </p>
               </div>
 
               <div className="space-y-3">
@@ -4232,7 +4584,7 @@ export function QuestionTypesPage() {
                 </h2>
                 <section
                   aria-label="筛选题型"
-                  className="rounded-[18px] border border-slate-200/90 bg-[#f8fbff] p-4 shadow-none dark:border-slate-800 dark:bg-slate-950/70 sm:p-5"
+                  className="rounded-[18px] border border-slate-200/90 bg-white p-4 shadow-none dark:border-slate-800 dark:bg-slate-950/70 sm:p-5"
                 >
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <div className="relative min-w-0 flex-1 lg:max-w-3xl">
@@ -4340,6 +4692,16 @@ export function QuestionTypesPage() {
                             <X className="h-3 w-3" />
                           </button>
                         ) : null}
+                        {statusFilter !== "all" ? (
+                          <button
+                            type="button"
+                            onClick={() => setStatusFilter("all")}
+                            className="inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 font-medium text-slate-600 outline-none hover:border-slate-300 focus-visible:ring-2 focus-visible:ring-indigo-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                          >
+                            状态：{selectedStatusLabel ?? "其他状态"}
+                            <X className="h-3 w-3" />
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           onClick={resetFilters}
@@ -4376,7 +4738,7 @@ export function QuestionTypesPage() {
                           />
                           <ExamCatalogFilterCheckbox
                             checked={scopeFilter === "course"}
-                            label="课程题型"
+                            label="自定义题型"
                             count={courseRows.length}
                             onChange={() => setScopeFilter((current) => current === "course" ? "all" : "course")}
                           />
@@ -4398,6 +4760,28 @@ export function QuestionTypesPage() {
                               label={option.label}
                               count={option.count}
                               onChange={() => setGradingFilter((current) => current === option.value ? "all" : option.value)}
+                            />
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="grid gap-1 sm:grid-cols-[68px_1fr] sm:items-center">
+                        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">题型状态</p>
+                        <div className="flex flex-wrap gap-x-3 gap-y-0.5" role="group" aria-label="按题型状态筛选">
+                          <ExamCatalogFilterCheckbox
+                            checked={statusFilter === "all"}
+                            label="全部"
+                            onChange={() => setStatusFilter("all")}
+                          />
+                          {QUESTION_TYPE_STATUS_FILTER_OPTIONS.map((option) => (
+                            <ExamCatalogFilterCheckbox
+                              key={option.value}
+                              checked={statusFilter === option.value}
+                              label={option.label}
+                              count={statusCounts.get(option.value) ?? 0}
+                              onChange={() => setStatusFilter((current) => (
+                                current === option.value ? "all" : option.value
+                              ))}
                             />
                           ))}
                         </div>
@@ -4448,7 +4832,27 @@ export function QuestionTypesPage() {
           )}
         </>
       )}
-      <QuestionTypeDetailCard item={selectedType} onClose={() => setSelectedType(null)} />
+      <QuestionTypeDetailCard
+        item={selectedType}
+        onClose={() => setSelectedType(null)}
+        onUpdate={(item, change) => updateTypeMutation.mutate({ courseId, item, change })}
+        onImportVersion={() => {
+          setSelectedType(null);
+          setIsImportOpen(true);
+        }}
+        isUpdating={updateTypeMutation.isPending}
+      />
+      <QuestionTypeImportModal
+        courseId={courseId}
+        open={isImportOpen}
+        onClose={() => setIsImportOpen(false)}
+        onInstalled={handleTypeInstalled}
+      />
+      <QuestionTypeExamplesModal
+        courseId={courseId}
+        open={isExamplesOpen}
+        onClose={() => setIsExamplesOpen(false)}
+      />
     </ExamCatalogShell>
   );
 }

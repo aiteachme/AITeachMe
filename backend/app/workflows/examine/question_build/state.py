@@ -16,6 +16,8 @@ class QuestionBuildGraphInput(TypedDict, total=False):
     course_context: str
     user_prompt: str
     configured_question_types: list[str]
+    configured_question_counts: dict[str, int]
+    question_type_runtimes: list[dict[str, object]]
     configured_difficulty: str
     system_constraints: str
     question_count: int

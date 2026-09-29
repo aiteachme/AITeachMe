@@ -1,3 +1,4 @@
+import { QuestionAnswerFields } from "./QuestionAnswerFields";
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import {
   ArrowLeft,
@@ -18,7 +19,7 @@ import { Button } from "../ui/Button";
 import { ExamMarkdown } from "./ExamMarkdown";
 import {
   formatAnswerDisplayValue,
-  formatQuestionTypeLabel,
+  formatExamItemQuestionTypeLabel,
   formatTrueFalseOptionLabel,
   getOptionLabel,
   isTrueFalseAnswerMatch,
@@ -27,7 +28,16 @@ import {
 } from "./examDisplay";
 import { isAiGradedQuestionType, type QuestionTemplateGradeResult } from "./questionTemplateGrading";
 import { getMasteryDrillQuestionNumber } from "./masteryDrillProgress";
-import { isSupportedQuestionType } from "./questionTypes";
+import {
+  getAnswerPayload,
+  getAnswerText,
+  getCustomAnswerField,
+  getCustomAnswerFields,
+  isRenderableQuestionItem,
+  updateAnswerField,
+  type AnswerState,
+} from "./questionTypes";
+import { CustomRubricBreakdown } from "./CustomRubricBreakdown";
 
 export interface MasteryDrillCompletionSummary {
   totalAttemptCount: number;
@@ -36,13 +46,13 @@ export interface MasteryDrillCompletionSummary {
 
 interface ExamMasteryDrillSessionProps {
   paper: ExamPaperDetailResponse;
-  answers: Record<number, string>;
-  setAnswers: Dispatch<SetStateAction<Record<number, string>>>;
-  onComplete: (finalAnswers: Record<number, string>, summary: MasteryDrillCompletionSummary) => void;
+  answers: AnswerState;
+  setAnswers: Dispatch<SetStateAction<AnswerState>>;
+  onComplete: (finalAnswers: AnswerState, summary: MasteryDrillCompletionSummary) => void;
   onBack?: () => void;
   onRestart?: () => void;
   completionDescription?: string;
-  onGradeAnswer: (item: ExamPaperItemResponse, answer: string) => Promise<QuestionTemplateGradeResult>;
+  onGradeAnswer: (item: ExamPaperItemResponse, answer: string, answerPayload?: Record<string, string>) => Promise<QuestionTemplateGradeResult>;
   onQuestionAi?: (item: ExamPaperItemResponse, isReviewStage: boolean, answerValue: string) => void;
   onQuestionMarkToggle?: (item: ExamPaperItemResponse, isMarked: boolean) => void;
   markingQuestionTemplateIds?: ReadonlySet<number>;
@@ -51,12 +61,14 @@ interface ExamMasteryDrillSessionProps {
 interface DrillFeedback {
   itemId: number;
   answer: string;
+  answerPayload?: Record<string, string>;
   isCorrect: boolean;
   feedbackText?: string | null;
   scoreObtained?: number | null;
   scoreMax?: number | null;
   errorCauseLabel?: string | null;
   gradingMode?: string | null;
+  gradingDetail?: Record<string, unknown>;
 }
 
 interface AttemptStats {
@@ -162,28 +174,52 @@ export function ExamMasteryDrillSession({
   }, [itemIdsKey, paper.id]);
 
   const currentItem = queue.length ? itemById.get(queue[0]) ?? null : null;
-  const answerValue = currentItem ? answers[currentItem.item_order] ?? "" : "";
+  const answerStateValue = currentItem ? answers[currentItem.item_order] ?? "" : "";
+  const answerValue = currentItem ? getAnswerText(currentItem, answerStateValue) : "";
   const completedCount = completedIds.size;
   const wrongAttemptCount = Object.values(attemptStats).reduce((total, item) => total + item.wrong, 0);
   const isCurrentAnswered = answerValue.trim().length > 0;
-  const isCurrentSupported = currentItem ? isSupportedQuestionType(currentItem.question_type) : false;
+  const isCurrentSupported = isRenderableQuestionItem(currentItem);
   const isCheckingAnswer = currentItem ? checkingItemId === currentItem.id : false;
-  const checkingAnswerLabel = currentItem && isAiGradedQuestionType(currentItem.question_type)
+  const checkingAnswerLabel = currentItem && isAiGradedQuestionType(
+    currentItem.question_type,
+    currentItem.renderer_key,
+  )
     ? "AI 判题中"
     : "判题中";
+  const customAnswerField = getCustomAnswerField(currentItem);
+  const customAnswerFields = getCustomAnswerFields(currentItem);
+  const customAnswerPayload = getAnswerPayload(currentItem, answerStateValue);
+  const isCurrentAnswerValid = isCurrentAnswered && (
+    !customAnswerFields.length || customAnswerFields.every((field) => {
+      const value = customAnswerPayload[field.key] ?? "";
+      if (!value.trim()) return !field.required;
+      return value.trim().length >= field.minLength;
+    })
+  );
 
   const setCurrentAnswer = (item: ExamPaperItemResponse, value: string) => {
     setAnswers((current) => ({ ...current, [item.item_order]: value }));
   };
 
+  const setCurrentAnswerField = (item: ExamPaperItemResponse, fieldKey: string, value: string) => {
+    setAnswers((current) => ({
+      ...current,
+      [item.item_order]: updateAnswerField(item, current[item.item_order], fieldKey, value),
+    }));
+  };
+
   const handleCheckAnswer = async () => {
-    if (!currentItem || !isCurrentSupported || feedback || !isCurrentAnswered || isCheckingAnswer) return;
+    if (!currentItem || !isCurrentSupported || feedback || !isCurrentAnswerValid || isCheckingAnswer) return;
     const submittedAnswer = answerValue.trim();
+    const submittedPayload = customAnswerFields.length
+      ? customAnswerPayload
+      : undefined;
     setCheckingItemId(currentItem.id);
     let gradeResult: Partial<QuestionTemplateGradeResult> | null = null;
     try {
-      gradeResult = isAiGradedQuestionType(currentItem.question_type)
-        ? await onGradeAnswer(currentItem, submittedAnswer)
+      gradeResult = isAiGradedQuestionType(currentItem.question_type, currentItem.renderer_key)
+        ? await onGradeAnswer(currentItem, submittedAnswer, submittedPayload)
         : { is_correct: isObjectiveDrillAnswerCorrect(currentItem, submittedAnswer) };
     } catch {
       return;
@@ -205,12 +241,14 @@ export function ExamMasteryDrillSession({
     setFeedback({
       itemId: currentItem.id,
       answer: submittedAnswer,
+      answerPayload: submittedPayload,
       isCorrect,
       feedbackText: gradeResult.feedback_text,
       scoreObtained: gradeResult.score_obtained,
       scoreMax: gradeResult.score_max,
       errorCauseLabel: gradeResult.error_cause_label,
       gradingMode: gradeResult.grading_mode,
+      gradingDetail: gradeResult.grading_detail,
     });
   };
 
@@ -220,7 +258,7 @@ export function ExamMasteryDrillSession({
     if (feedback.isCorrect) {
       const finalAnswers = {
         ...answers,
-        [currentItem.item_order]: feedback.answer,
+        [currentItem.item_order]: feedback.answerPayload ?? feedback.answer,
       };
       const finalAttemptStats = {
         ...attemptStats,
@@ -311,7 +349,7 @@ export function ExamMasteryDrillSession({
     currentItem.question_template_id && markingQuestionTemplateIds?.has(currentItem.question_template_id),
   );
 
-  const footerHint = useMemo(() => {
+  const footerHint = (() => {
     if (activeFeedback) {
       return activeFeedback.isCorrect
         ? "回答正确！请阅读解析并点击“下一题”继续。"
@@ -329,9 +367,11 @@ export function ExamMasteryDrillSession({
       }
       return "请在上方输入你的作答。";
     }
+    if (!isCurrentAnswerValid && customAnswerField) {
+      return "请补齐必填字段，并满足各字段的最少字数。";
+    }
     return "已选定答案，点击“确认答案”提交。";
-  }, [activeFeedback, isCurrentAnswered, isCurrentSupported, isMultipleChoice, isTrueFalse, currentItem]);
-
+  })();
   return (
     <div className="mx-auto w-full max-w-5xl space-y-4">
       {onBack ? (
@@ -398,7 +438,7 @@ export function ExamMasteryDrillSession({
                         ? "bg-teal-500"
                         : "bg-slate-500"
                 )} />
-                {formatQuestionTypeLabel(currentItem.question_type)}
+                {formatExamItemQuestionTypeLabel(currentItem)}
               </span>
               <span className="text-slate-200 dark:text-slate-800 select-none">|</span>
 
@@ -545,14 +585,27 @@ export function ExamMasteryDrillSession({
                 );
               })}
             </div>
+          ) : customAnswerFields.length > 0 ? (
+              <QuestionAnswerFields item={currentItem} value={customAnswerPayload} readOnly={Boolean(hasFeedback) || isCheckingAnswer}
+                onChange={(key, value) => setCurrentAnswerField(currentItem, key, value)} />
           ) : (
-            <textarea
-              className={`min-h-28 w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-indigo-500/60 dark:focus:ring-indigo-500/20 dark:disabled:bg-slate-900/70 ${DRILL_TEXTAREA_TEXT_CLASS}`}
-              placeholder="输入你的作答"
-              value={answerValue}
-              disabled={Boolean(hasFeedback) || isCheckingAnswer}
-              onChange={(event) => setCurrentAnswer(currentItem, event.target.value)}
-            />
+            <div>
+              <textarea
+                className={`${customAnswerField ? "min-h-44" : "min-h-28"} w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-indigo-500/60 dark:focus:ring-indigo-500/20 dark:disabled:bg-slate-900/70 ${DRILL_TEXTAREA_TEXT_CLASS}`}
+                placeholder={customAnswerField?.placeholder ?? "输入你的作答"}
+                aria-label={customAnswerField?.label ?? "当前题目作答"}
+                maxLength={customAnswerField?.maxLength}
+                value={answerValue}
+                disabled={Boolean(hasFeedback) || isCheckingAnswer}
+                onChange={(event) => setCurrentAnswer(currentItem, event.target.value)}
+              />
+              {customAnswerField && !hasFeedback ? (
+                <div className="mt-1 flex justify-between gap-3 text-xs text-slate-400">
+                  <span>建议至少 {customAnswerField.minLength} 字</span>
+                  <span className="tabular-nums">{answerValue.length}/{customAnswerField.maxLength}</span>
+                </div>
+              ) : null}
+            </div>
           )}
 
           {activeFeedback ? (
@@ -586,6 +639,11 @@ export function ExamMasteryDrillSession({
                   <DrillAnswerBlock title="判题反馈" content={activeFeedback.feedbackText} />
                 </div>
               ) : null}
+              <CustomRubricBreakdown
+                detail={activeFeedback.gradingDetail}
+                compact
+                className="mt-2.5 border-rose-200/70 dark:border-rose-500/20"
+              />
               <div className="mt-2.5">
                 <DrillAnswerBlock title="解析" content={currentItem.explanation || "暂无解析"} />
               </div>
@@ -609,7 +667,7 @@ export function ExamMasteryDrillSession({
             <Button
               className="h-11 w-full rounded-full bg-black px-5 text-sm font-semibold dark:bg-slate-100 dark:text-slate-900 sm:w-auto"
               onClick={handleCheckAnswer}
-              disabled={!isCurrentSupported || !isCurrentAnswered || isCheckingAnswer}
+              disabled={!isCurrentSupported || !isCurrentAnswerValid || isCheckingAnswer}
             >
               {isCheckingAnswer ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               {isCheckingAnswer ? checkingAnswerLabel : "确认答案"}

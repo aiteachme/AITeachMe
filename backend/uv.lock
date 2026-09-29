@@ -185,6 +185,7 @@ dependencies = [
     { name = "httpx" },
     { name = "instructor" },
     { name = "jinja2" },
+    { name = "jsonschema" },
     { name = "langgraph" },
     { name = "langsmith" },
     { name = "litellm" },
@@ -198,6 +199,7 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "pyjwt", extra = ["crypto"] },
     { name = "pypdf" },
+    { name = "pyyaml" },
     { name = "pysqlite3-binary", marker = "sys_platform == 'linux'" },
     { name = "python-dotenv" },
     { name = "python-multipart" },
@@ -205,6 +207,7 @@ dependencies = [
     { name = "sqlite-vec" },
     { name = "sqlmodel" },
     { name = "structlog" },
+    { name = "tenacity" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -238,6 +241,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28.0" },
     { name = "instructor", specifier = ">=1.3.0" },
     { name = "jinja2", specifier = ">=3.1.0" },
+    { name = "jsonschema", specifier = ">=4.23.0" },
     { name = "langgraph", specifier = ">=0.1.0" },
     { name = "langgraph-cli", extras = ["inmem"], marker = "extra == 'dev'", specifier = ">=0.4.19" },
     { name = "langsmith", specifier = ">=0.8.0" },
@@ -256,6 +260,7 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.2.0" },
     { name = "pyjwt", extras = ["crypto"], specifier = ">=2.9.0" },
     { name = "pypdf", specifier = ">=5.0.0" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "pysqlite3-binary", marker = "sys_platform == 'linux'", specifier = ">=0.5.4" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.0.0" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
@@ -264,6 +269,7 @@ requires-dist = [
     { name = "sqlite-vec", specifier = ">=0.1.1" },
     { name = "sqlmodel", specifier = ">=0.0.19" },
     { name = "structlog", specifier = ">=24.1.0" },
+    { name = "tenacity", specifier = ">=8.2.3" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.29.0" },
 ]
 provides-extras = ["cloud", "dev"]

@@ -11,7 +11,14 @@ from sqlmodel import Session, SQLModel, create_engine
 from app.api import deps
 from app.api import exams as exams_api
 from app.api.deps import CurrentUserContext
-from app.models import Course, ExamPaper, ExamPaperItem, QuestionKnowledgeUnitLink, QuestionTemplate
+from app.models import (
+    Course,
+    ExamPaper,
+    ExamPaperItem,
+    QuestionKnowledgeUnitLink,
+    QuestionTemplate,
+    QuestionTypeRegistry,
+)
 from app.repositories import exams_repo
 from app.utils.time import utcnow
 from app.workflows.examine.exam_grade.lib.grader import ExamItemGradeDecision
@@ -40,6 +47,7 @@ def _api_engine():
         engine,
         tables=[
             Course.__table__,
+            QuestionTypeRegistry.__table__,
             QuestionTemplate.__table__,
             ExamPaper.__table__,
             ExamPaperItem.__table__,
@@ -187,6 +195,60 @@ def test_question_template_grade_api_reuses_exam_grade_workflow(monkeypatch: pyt
         assert len(analytics_events) == 1
     finally:
         session.close()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("status", ["inactive", "archived"])
+async def test_disabled_custom_type_cannot_start_question_bank_grading(
+    monkeypatch: pytest.MonkeyPatch,
+    status: str,
+) -> None:
+    engine = _api_engine()
+    with Session(engine, expire_on_commit=False) as session:
+        course = Course(id="course_custom000000", user_id="api-user", name="Calculus")
+        registry = QuestionTypeRegistry(
+            type_key="custom_feynman_explanation",
+            display_name="费曼解释题",
+            scope="course",
+            course_id=course.id,
+            source="upload",
+            status=status,
+            is_system=False,
+            is_active=False,
+        )
+        session.add(course)
+        session.add(registry)
+        session.flush()
+        template = QuestionTemplate(
+            course_id=course.id,
+            question_type="custom_feynman_explanation",
+            question_type_registry_id=registry.id,
+            question_type_version_id=1,
+            difficulty="medium",
+            stem="请解释函数极限。",
+            stem_hash=f"disabled-custom-{status}",
+            answer="参考解释",
+            explanation="评分说明",
+        )
+        session.add(template)
+        session.commit()
+        session.refresh(template)
+
+        async def fail_if_graded(**_kwargs):
+            raise AssertionError("disabled custom type must not reach grading")
+
+        monkeypatch.setattr(exams_api, "run_exam_grade_workflow", fail_if_graded)
+        with pytest.raises(exams_api.AITeachMeError) as error:
+            await exams_api.grade_question_template_answer(
+                course_id=course.id,
+                question_template_id=int(template.id or 0),
+                body=exams_api.QuestionTemplateGradeRequest(answer="我的解释"),
+                user=CurrentUserContext(user_id="api-user", email=None, is_local=True),
+                session=session,
+            )
+
+        assert error.value.error_code == "QUESTION_TYPE_NOT_ACTIVE"
+        assert error.value.status_code == 409
 
 
 @pytest.mark.anyio

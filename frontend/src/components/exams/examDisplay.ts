@@ -7,6 +7,8 @@ import type {
 } from "../../api/generated/model";
 import { buildExamQuestionAnchorId } from "../interaction/types";
 import { parseBackendDateTime } from "./examDateTime";
+import type { AnswerState } from "./questionTypes";
+import { hasAnswerValue } from "./questionTypes";
 
 export { parseBackendDateTime };
 
@@ -100,6 +102,17 @@ export function formatQuestionTypeLabel(type: string) {
   return labels[normalized] ?? normalized;
 }
 
+export function formatExamItemQuestionTypeLabel(item: {
+  question_type: string;
+  public_payload?: unknown;
+}) {
+  const publicPayload = typeof item.public_payload === "object" && item.public_payload !== null
+    ? item.public_payload as Record<string, unknown>
+    : null;
+  const displayName = String(publicPayload?.display_name ?? "").trim();
+  return displayName || formatQuestionTypeLabel(item.question_type);
+}
+
 export function getOptionLabel(index: number) {
   return String.fromCharCode(65 + index);
 }
@@ -177,9 +190,8 @@ export function buildKnowledgeLabel(item: ExamPaperItemResponse) {
   );
 }
 
-export function hasAnsweredQuestion(item: ExamPaperItemResponse, answers: Record<number, string>) {
-  const value = answers[item.item_order] ?? "";
-  return value.trim().length > 0;
+export function hasAnsweredQuestion(item: ExamPaperItemResponse, answers: AnswerState) {
+  return hasAnswerValue(item, answers[item.item_order]);
 }
 
 export function getQuestionMaxScore(item: ExamPaperItemResponse) {
@@ -199,7 +211,7 @@ export function getEstimatedExamMinutes(paper: ExamPaperDetailResponse) {
   return Math.max(8, Math.ceil(itemCount * minutesPerItem));
 }
 
-export function getAnsweredCount(paper: ExamPaperDetailResponse, answers: Record<number, string>) {
+export function getAnsweredCount(paper: ExamPaperDetailResponse, answers: AnswerState) {
   return (paper.items ?? []).filter((item) => hasAnsweredQuestion(item, answers)).length;
 }
 

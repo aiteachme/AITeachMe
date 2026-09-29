@@ -1,0 +1,6 @@
+{
+  "schema": "aiteachme.question-skill-tools/v1",
+  "tools": [
+    {"id": "rubric_coverage_v1", "required": true}
+  ]
+}

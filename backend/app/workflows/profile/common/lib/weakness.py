@@ -44,6 +44,7 @@ def _recent_error_stats_by_knowledge_unit(
                 ExamPaper.user_id == user_id,
                 ExamPaper.course_id == course_id,
                 ExamPaperItem.is_correct.is_not(None),
+                ExamPaperItem.profile_eligible == True,  # noqa: E712
                 ExamPaperItem.answered_at >= since,
             )
         ).all()

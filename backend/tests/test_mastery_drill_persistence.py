@@ -63,6 +63,149 @@ def _assert_ephemeral_only(error: pytest.ExceptionInfo[AITeachMeError]) -> None:
     assert error.value.error_code == "MASTERY_DRILL_EPHEMERAL_ONLY"
 
 
+def _custom_runtime_snapshot(
+    *,
+    registry_id: int,
+    version_id: int,
+    type_key: str,
+    package_hash: str,
+) -> str:
+    return json.dumps(
+        {
+            "registry_id": registry_id,
+            "version_id": version_id,
+            "type_key": type_key,
+            "version": "1.0.0",
+            "package_hash": package_hash,
+            "template_key": "feynman_explanation_v1",
+            "runtime_key": "structured_subjective_v1",
+            "renderer_key": "long_text_v1",
+            "grader_key": "rubric_llm_v1",
+            "profile_eligible": False,
+        }
+    )
+
+
+@pytest.mark.anyio
+async def test_mastery_drill_auto_selection_excludes_uploaded_question_types(
+    session: Session,
+    user: CurrentUserContext,
+) -> None:
+    session.add_all(
+        [
+            Course(id=COURSE_ID, user_id=USER_ID, name="Auto selection course"),
+            QuestionTemplate(
+                course_id=COURSE_ID,
+                question_type="single_choice",
+                difficulty="easy",
+                stem="Built-in bank question?",
+                stem_hash="auto-built-in",
+                options_json=json.dumps(["A", "B"]),
+                answer="A",
+                explanation="Built-in explanation.",
+            ),
+            QuestionTemplate(
+                course_id=COURSE_ID,
+                question_type="custom_feynman_explanation",
+                question_type_registry_id=7,
+                question_type_version_id=11,
+                difficulty="medium",
+                stem="Explain the custom concept.",
+                stem_hash="auto-custom",
+                answer="Reference explanation.",
+                explanation="Custom explanation.",
+                runtime_snapshot_json=_custom_runtime_snapshot(
+                    registry_id=7,
+                    version_id=11,
+                    type_key="custom_feynman_explanation",
+                    package_hash="current-package",
+                ),
+            ),
+        ]
+    )
+    session.commit()
+
+    response = await exams_api.prepare_mastery_drill(
+        course_id=COURSE_ID,
+        body=MasteryDrillPrepareRequest(num_questions=1),
+        user=user,
+        session=session,
+    )
+
+    assert [template.question_type for template in response.data.templates] == ["single_choice"]
+
+
+@pytest.mark.anyio
+async def test_mastery_drill_custom_selection_reuses_only_selected_frozen_version(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+    user: CurrentUserContext,
+) -> None:
+    type_key = "custom_feynman_explanation"
+    session.add_all(
+        [
+            Course(id=COURSE_ID, user_id=USER_ID, name="Custom selection course"),
+            QuestionTemplate(
+                course_id=COURSE_ID,
+                question_type=type_key,
+                question_type_registry_id=7,
+                question_type_version_id=10,
+                difficulty="medium",
+                stem="Old custom question.",
+                stem_hash="custom-old-version",
+                answer="Old reference answer.",
+                explanation="Old explanation.",
+                runtime_snapshot_json=_custom_runtime_snapshot(
+                    registry_id=7,
+                    version_id=10,
+                    type_key=type_key,
+                    package_hash="old-package",
+                ),
+            ),
+            QuestionTemplate(
+                course_id=COURSE_ID,
+                question_type=type_key,
+                question_type_registry_id=7,
+                question_type_version_id=11,
+                difficulty="medium",
+                stem="Current custom question.",
+                stem_hash="custom-current-version",
+                answer="Current reference answer.",
+                explanation="Current explanation.",
+                runtime_snapshot_json=_custom_runtime_snapshot(
+                    registry_id=7,
+                    version_id=11,
+                    type_key=type_key,
+                    package_hash="current-package",
+                ),
+            ),
+        ]
+    )
+    session.commit()
+    runtime = SimpleNamespace(
+        registry_id=7,
+        version_id=11,
+        type_key=type_key,
+        package_hash="current-package",
+    )
+    monkeypatch.setattr(
+        "app.workflows.examine.question_types.selection.resolve_course_question_type_runtimes",
+        lambda *_args, **_kwargs: [runtime],
+    )
+
+    response = await exams_api.prepare_mastery_drill(
+        course_id=COURSE_ID,
+        body=MasteryDrillPrepareRequest(
+            num_questions=1,
+            question_type_registry_ids=[7],
+        ),
+        user=user,
+        session=session,
+    )
+
+    assert [template.stem for template in response.data.templates] == ["Current custom question."]
+
+
 @pytest.mark.anyio
 async def test_durable_mastery_drill_endpoints_are_retired_without_writes(
     session: Session,
@@ -135,6 +278,39 @@ async def test_generic_generation_also_rejects_mastery_drill(
         )
     _assert_ephemeral_only(error)
     assert session.exec(select(ExamPaper)).all() == []
+
+
+@pytest.mark.anyio
+async def test_prepare_mastery_drill_checks_course_ownership_before_custom_registry(
+    monkeypatch: pytest.MonkeyPatch,
+    session: Session,
+    user: CurrentUserContext,
+) -> None:
+    session.add(Course(id=COURSE_ID, user_id="another-user", name="Private course"))
+    session.commit()
+
+    def fail_if_registry_is_resolved(*_args, **_kwargs):
+        raise AssertionError("custom registry state must not be exposed before ownership is checked")
+
+    monkeypatch.setattr(
+        exams_api,
+        "_resolve_question_selection_for_api",
+        fail_if_registry_is_resolved,
+    )
+
+    with pytest.raises(AITeachMeError) as error:
+        await exams_api.prepare_mastery_drill(
+            course_id=COURSE_ID,
+            body=MasteryDrillPrepareRequest(
+                num_questions=1,
+                question_type_registry_ids=[999],
+            ),
+            user=user,
+            session=session,
+        )
+
+    assert error.value.status_code == 404
+    assert error.value.error_code == "COURSE_NOT_FOUND"
 
 
 @pytest.mark.anyio
@@ -411,9 +587,11 @@ async def test_cloud_mastery_drill_backfill_settles_one_reservation(
         user_id: str,
         question_count: int,
         question_types: list[str],
+        question_type_runtimes: list[object],
     ) -> set[int]:
         assert course.id == COURSE_ID
         assert user_id == USER_ID
+        assert question_type_runtimes == []
         for index in range(question_count):
             worker_session.add(
                 QuestionTemplate(
@@ -538,6 +716,7 @@ async def test_concurrent_mastery_drill_prepare_generates_bank_shortage_once(
         user_id: str,
         question_count: int,
         question_types: list[str],
+        question_type_runtimes: list[object],
     ) -> list[QuestionTemplate]:
         nonlocal generation_calls
         generation_calls += 1
@@ -545,6 +724,7 @@ async def test_concurrent_mastery_drill_prepare_generates_bank_shortage_once(
         assert user_id == USER_ID
         assert question_count == 1
         assert question_types == ["single_choice"]
+        assert question_type_runtimes == []
         generation_started.set()
         await release_generation.wait()
         template = QuestionTemplate(

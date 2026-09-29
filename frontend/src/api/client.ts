@@ -1137,6 +1137,32 @@ export async function orvalApiClient<T>(
   } as T;
 }
 
+export async function downloadApiFile(url: string, fallbackFilename: string): Promise<void> {
+  const response = await instance.get<Blob>(url, { responseType: "blob" });
+  const disposition = String(response.headers?.["content-disposition"] ?? "");
+  const encodedMatch = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  const plainMatch = disposition.match(/filename="?([^";]+)"?/i);
+  let filename = fallbackFilename;
+  try {
+    filename = decodeURIComponent(encodedMatch?.[1] ?? plainMatch?.[1] ?? fallbackFilename);
+  } catch {
+    filename = fallbackFilename;
+  }
+
+  const objectUrl = URL.createObjectURL(response.data);
+  try {
+    const anchor = document.createElement("a");
+    anchor.href = objectUrl;
+    anchor.download = filename;
+    anchor.style.display = "none";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+  } finally {
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  }
+}
+
 export function getApiErrorMessage(
   error: unknown,
   fallback = "请求失败，请稍后重试",

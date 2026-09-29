@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 
 import sqlalchemy as sa
@@ -20,12 +21,56 @@ from app.models import (
     QuestionTemplate,
     UserKnowledgeState,
 )
-from app.shared.kernel.question_types import require_supported_question_type_key
+from app.shared.kernel.question_type_runtime import assess_custom_question_type_runtime
+from app.shared.kernel.question_types import (
+    UnsupportedQuestionTypeError,
+    require_supported_question_type_key,
+)
 from app.utils.time import ensure_utc_datetime, utcnow
 
 
+def _require_persistable_question_type(
+    *,
+    question_type: str,
+    registry_id: int | None,
+    version_id: int | None,
+    runtime_snapshot_json: str,
+) -> str:
+    try:
+        return require_supported_question_type_key(question_type)
+    except UnsupportedQuestionTypeError:
+        normalized = str(question_type or "").strip().lower()
+        try:
+            runtime = json.loads(runtime_snapshot_json or "{}")
+        except (TypeError, json.JSONDecodeError):
+            runtime = {}
+        try:
+            runtime_registry_id = int(runtime.get("registry_id") or 0) if isinstance(runtime, dict) else 0
+            runtime_version_id = int(runtime.get("version_id") or 0) if isinstance(runtime, dict) else 0
+        except (TypeError, ValueError):
+            runtime_registry_id = 0
+            runtime_version_id = 0
+        if (
+            normalized.startswith("custom_")
+            and isinstance(runtime, dict)
+            and int(registry_id or 0) > 0
+            and int(version_id or 0) > 0
+            and runtime_registry_id == int(registry_id or 0)
+            and runtime_version_id == int(version_id or 0)
+            and str(runtime.get("type_key") or "") == normalized
+            and assess_custom_question_type_runtime(runtime).ready
+        ):
+            return normalized
+        raise
+
+
 def create_question_template(session: Session, template: QuestionTemplate) -> QuestionTemplate:
-    template.question_type = require_supported_question_type_key(template.question_type)
+    template.question_type = _require_persistable_question_type(
+        question_type=template.question_type,
+        registry_id=template.question_type_registry_id,
+        version_id=template.question_type_version_id,
+        runtime_snapshot_json=template.runtime_snapshot_json,
+    )
     session.add(template)
     session.commit()
     session.refresh(template)
@@ -360,7 +405,12 @@ def create_exam_paper_items(
     auto_commit: bool = True,
 ) -> list[ExamPaperItem]:
     for item in items:
-        item.question_type = require_supported_question_type_key(item.question_type)
+        item.question_type = _require_persistable_question_type(
+            question_type=item.question_type,
+            registry_id=item.question_type_registry_id,
+            version_id=item.question_type_version_id,
+            runtime_snapshot_json=item.runtime_snapshot_json,
+        )
         session.add(item)
     if auto_commit:
         session.commit()

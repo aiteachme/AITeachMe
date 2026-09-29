@@ -197,6 +197,33 @@ def test_update_mastery_uses_partial_credit_ratio(session: Session) -> None:
     assert state.correct_attempts == 0
 
 
+def test_custom_scores_do_not_enter_mastery_or_profile_via_mixed_paper_totals(session: Session) -> None:
+    from app.workflows.profile.common.lib import course_profile, user_profile
+    paper, builtin, unit = _seed_graded_paper(session)
+    template = QuestionTemplate(course_id=COURSE_ID, question_type="custom_experiment_design",
+        difficulty="medium", stem="Custom task", stem_hash="mixed-profile-custom", answer="Reference",
+        explanation="Explanation", profile_eligible=False)
+    session.add(template)
+    session.flush()
+    custom = ExamPaperItem(exam_paper_id=paper.id, question_template_id=template.id, item_order=2, question_type="custom_experiment_design",
+        difficulty="medium", stem_snapshot="Custom task", answer_snapshot="Reference", explanation_snapshot="Explanation",
+        profile_eligible=False, is_correct=False, score=99, score_max=99, score_obtained=0,
+        grading_status="graded", answered_at=utcnow())
+    session.add(custom)
+    session.flush()
+    session.add(QuestionKnowledgeUnitLink(exam_paper_item_id=custom.id, knowledge_unit_id=unit.id, coverage_weight=1))
+    paper.total_items = 2
+    paper.total_score = 100
+    paper.score_obtained = 1
+    session.commit()
+    result = update_mastery_from_exam(session, paper.id)
+    state = session.get(UserKnowledgeState, result.updated_state_ids[0])
+    assert state.mastery_score == pytest.approx(1)
+    assert state.total_attempts == 1
+    assert [row.id for row in course_profile._load_recent_exam_items(session, course_id=COURSE_ID, user_id=USER_ID)] == [builtin.id]
+    assert [row.id for row in user_profile._load_recent_exam_items(session, user_id=USER_ID)] == [builtin.id]
+
+
 def test_compare_and_set_knowledge_state_rejects_stale_version(session: Session) -> None:
     _seed_user_course(session)
     unit, _template = _seed_template(session)

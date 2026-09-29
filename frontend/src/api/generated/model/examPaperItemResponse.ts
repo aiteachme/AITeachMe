@@ -5,7 +5,11 @@
  * 本地优先的 AI 助教后端服务。
  */
 import type { ExamNodeLinkResponse } from './examNodeLinkResponse.ts';
+import type { ExamPaperItemResponseAnswerSchema } from './examPaperItemResponseAnswerSchema.ts';
+import type { ExamPaperItemResponseGradingDetail } from './examPaperItemResponseGradingDetail.ts';
+import type { ExamPaperItemResponsePublicPayload } from './examPaperItemResponsePublicPayload.ts';
 import type { ExamPaperItemResponseSelectionContext } from './examPaperItemResponseSelectionContext.ts';
+import type { ExamPaperItemResponseUserAnswerPayload } from './examPaperItemResponseUserAnswerPayload.ts';
 
 export interface ExamPaperItemResponse {
   id: number;
@@ -25,4 +29,14 @@ export interface ExamPaperItemResponse {
   score_max?: number | null;
   error_cause_label?: string | null;
   is_marked?: boolean;
+  question_type_registry_id?: number | null;
+  question_type_version_id?: number | null;
+  renderer_key?: string | null;
+  public_payload?: ExamPaperItemResponsePublicPayload;
+  answer_schema?: ExamPaperItemResponseAnswerSchema;
+  user_answer_payload?: ExamPaperItemResponseUserAnswerPayload;
+  grading_detail?: ExamPaperItemResponseGradingDetail;
+  grading_status?: string;
+  grading_error_code?: string;
+  profile_eligible?: boolean;
 }

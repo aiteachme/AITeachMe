@@ -1,6 +1,6 @@
 # Examine 工作流
 
-最后更新：2026-06-15
+最后更新：2026-09-29
 
 `examine/` 负责考试引擎：从知识图谱生成题目，再根据用户答案判卷，并把结果交给 Profile 更新掌握度。
 
@@ -19,6 +19,8 @@ KnowledgeUnit + KnowledgeRelation + Profile mastery
 examine/
   question_build/   # 生成结构化题目
   exam_grade/       # 判卷和学习指南
+  question_types/   # 冻结版本解析、选择配额、字段验证、生成/评分 prompt 和 LLM 薄适配
+  errors.py         # 面向用户的错误说明；原始诊断留在内部状态和日志
   prewarm.py        # 默认隐藏练习卷预生成
   exports.py        # 稳定导出面
 ```
@@ -27,6 +29,11 @@ examine/
 
 - [question_build/README.md](question_build/README.md)
 - [exam_grade/README.md](exam_grade/README.md)
+- [V2 题型包规范](../../../../docs/standards/atqskill-v2.md)
+
+自定义题型的包导入与编译归属 `support/question_type_packages`；本引擎只消费已校验的冻结版本。生成器返回草稿，API 负责权限、持久化和快照。内置客观题使用规则判分，内置主观题与上传题型使用各自评分合同。上传题型固定 `profile_eligible=false`，混合卷的长期画像只消费可纳入画像的内置题。
+
+用户请求生成试卷的额度由 `credit_lifecycle.py` 结算。即时结算与恢复结算共用 `support.credits.EXAM_GENERATION_COMPLETED_STATUSES`：试卷生成成功后，即使另一请求已将它推进到作答、交卷、评分或归档状态，生成额度仍只结算一次；评分失败不撤销已经成功交付的生成费用。生成失败或取消则释放预留额度。
 
 ## 三条链路
 

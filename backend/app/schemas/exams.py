@@ -5,7 +5,40 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+
+class QuestionTypeSelection(BaseModel):
+    """One built-in type or installed package, with optional version and quota."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    question_type: Literal["single_choice", "multiple_choice", "true_false", "fill_blank", "short_answer"] | None = None
+    registry_id: int | None = Field(default=None, ge=1)
+    version_id: int | None = Field(default=None, ge=1)
+    count: int | None = Field(default=None, ge=1, le=200)
+
+    @model_validator(mode="after")
+    def validate_reference(self) -> "QuestionTypeSelection":
+        if (self.question_type is None) == (self.registry_id is None):
+            raise ValueError("每个题型选择须指定 question_type 或 registry_id，不能同时指定。")
+        if self.version_id is not None and self.registry_id is None:
+            raise ValueError("只有自定义题型可以指定 version_id。")
+        return self
+
+
+def _validate_selection_request(request: Any) -> None:
+    selections = request.question_type_selections
+    if not selections:
+        return
+    if request.question_types or request.question_type_registry_ids:
+        raise ValueError("question_type_selections 不能与旧题型选择字段同时使用。")
+    identities = [(item.question_type, item.registry_id) for item in selections]
+    if len(set(identities)) != len(identities):
+        raise ValueError("同一题型不能重复选择或同时选择多个版本。")
+    counts = [item.count for item in selections]
+    if any(count is not None for count in counts) and not all(count is not None for count in counts):
+        raise ValueError("指定数量时，须为每个题型提供 count。")
 
 
 class ExamGenerateRequest(BaseModel):
@@ -27,6 +60,15 @@ class ExamGenerateRequest(BaseModel):
         max_length=5,
         description="Optional allowed question types. Empty means automatic type planning.",
     )
+    question_type_registry_ids: list[int] = Field(
+        default_factory=list,
+        max_length=20,
+        description=(
+            "Optional course custom-question-type registry IDs. They can be combined with "
+            "built-in question_types; the server freezes the resolved versions for this run."
+        ),
+    )
+    question_type_selections: list[QuestionTypeSelection] = Field(default_factory=list, max_length=25)
     difficulty: Literal["auto", "easy", "medium", "hard"] = Field(
         default="auto",
         description="Optional overall difficulty preference. Auto lets the planner choose per question.",
@@ -36,13 +78,29 @@ class ExamGenerateRequest(BaseModel):
         description="Optional paper layout mode for paper_exam: auto | standard_two_page | gaokao_four_page | gaokao_six_page | gaokao_eight_page.",
     )
 
+    @model_validator(mode="after")
+    def validate_selection(self) -> "ExamGenerateRequest":
+        _validate_selection_request(self)
+        return self
 
 class ExamSubmitAnswerItem(BaseModel):
     """One submitted answer item."""
 
     exam_paper_item_id: int | None = Field(default=None, description="Exam paper item ID.")
     item_order: int | None = Field(default=None, ge=1, description="Fallback key: item order.")
-    answer: str = Field(description="User answer.")
+    answer: str | None = Field(default=None, max_length=20000, description="Legacy plain-text answer.")
+    answer_payload: dict[str, str] | None = Field(
+        default=None,
+        description="Structured answer keyed by the frozen answer schema.",
+    )
+
+    @model_validator(mode="after")
+    def require_one_answer_shape(self) -> "ExamSubmitAnswerItem":
+        if self.answer is None and self.answer_payload is None:
+            raise ValueError("必须提供 answer 或 answer_payload。")
+        if self.answer is not None and self.answer_payload is not None:
+            raise ValueError("answer 与 answer_payload 不能同时提供。")
+        return self
 
 
 class ExamSubmitRequest(BaseModel):
@@ -77,6 +135,17 @@ class MasteryDrillPrepareRequest(BaseModel):
         max_length=5,
         description="Allowed question types. Empty means an automatic mix.",
     )
+    question_type_registry_ids: list[int] = Field(
+        default_factory=list,
+        max_length=20,
+        description="Optional course custom-question-type registry IDs; can be mixed with built-in types.",
+    )
+    question_type_selections: list[QuestionTypeSelection] = Field(default_factory=list, max_length=25)
+
+    @model_validator(mode="after")
+    def validate_selection(self) -> "MasteryDrillPrepareRequest":
+        _validate_selection_request(self)
+        return self
 
 
 class MasteryDrillAttemptRequest(BaseModel):
@@ -111,11 +180,23 @@ class QuestionTemplateMarkResponse(BaseModel):
 class QuestionTemplateGradeRequest(BaseModel):
     """Grade one answer against a question template."""
 
-    answer: str = Field(description="Submitted answer.")
+    answer: str | None = Field(default=None, max_length=20000, description="Legacy plain-text answer.")
+    answer_payload: dict[str, str] | None = Field(
+        default=None,
+        description="Structured answer keyed by the frozen answer schema.",
+    )
     ephemeral: bool = Field(
         default=False,
         description="Whether this one-time grading result must skip analytics recording.",
     )
+
+    @model_validator(mode="after")
+    def require_one_answer_shape(self) -> "QuestionTemplateGradeRequest":
+        if self.answer is None and self.answer_payload is None:
+            raise ValueError("必须提供 answer 或 answer_payload。")
+        if self.answer is not None and self.answer_payload is not None:
+            raise ValueError("answer 与 answer_payload 不能同时提供。")
+        return self
 
 
 class QuestionTemplateGradeResponse(BaseModel):
@@ -126,8 +207,14 @@ class QuestionTemplateGradeResponse(BaseModel):
     score_max: float
     feedback_text: str
     error_cause_label: str | None = None
-    grading_mode: Literal["objective_rule", "subjective_llm", "subjective_fallback"]
+    grading_mode: Literal[
+        "objective_rule",
+        "subjective_llm",
+        "subjective_fallback",
+        "custom_rubric_llm",
+    ]
     correct_answer: str
+    grading_detail: dict[str, Any] = Field(default_factory=dict)
 
 
 class MasteryDrillAttemptResponse(BaseModel):
@@ -139,12 +226,14 @@ class MasteryDrillAttemptResponse(BaseModel):
     attempt_key: str
     status: Literal["grading", "graded", "failed"]
     answer: str
+    answer_payload: dict[str, str] = Field(default_factory=dict)
     is_correct: bool | None = None
     score_obtained: float | None = None
     score_max: float | None = None
     feedback_text: str | None = None
     error_cause_label: str | None = None
     grading_mode: str | None = None
+    grading_detail: dict[str, Any] = Field(default_factory=dict)
     time_spent_seconds: int | None = None
     hint_used: bool = False
     confidence_self_report: int | None = None
@@ -341,6 +430,12 @@ class QuestionTemplateItemResponse(BaseModel):
     status: str
     is_marked: bool = False
     has_wrong_attempt: bool = False
+    question_type_registry_id: int | None = None
+    question_type_version_id: int | None = None
+    renderer_key: str | None = None
+    public_payload: dict[str, Any] = Field(default_factory=dict)
+    answer_schema: dict[str, Any] = Field(default_factory=dict)
+    profile_eligible: bool = True
     created_at: datetime
     updated_at: datetime
 
@@ -349,6 +444,7 @@ class MasteryDrillPrepareResponse(BaseModel):
     requested_count: int
     available_count: int
     generated_count: int
+    question_type_counts: dict[str, int] = Field(default_factory=dict)
     templates: list[QuestionTemplateItemResponse] = Field(default_factory=list)
 
 
@@ -368,6 +464,8 @@ class QuestionTemplateAnswerHistoryItem(BaseModel):
     score_max: float | None = None
     error_cause_label: str | None = None
     feedback_text: str | None = None
+    user_answer_payload: dict[str, str] = Field(default_factory=dict)
+    grading_detail: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
 
 
@@ -415,6 +513,16 @@ class ExamPaperItemResponse(BaseModel):
     score_max: float | None = None
     error_cause_label: str | None = None
     is_marked: bool = False
+    question_type_registry_id: int | None = None
+    question_type_version_id: int | None = None
+    renderer_key: str | None = None
+    public_payload: dict[str, Any] = Field(default_factory=dict)
+    answer_schema: dict[str, Any] = Field(default_factory=dict)
+    user_answer_payload: dict[str, str] = Field(default_factory=dict)
+    grading_detail: dict[str, Any] = Field(default_factory=dict)
+    grading_status: str = "pending"
+    grading_error_code: str = ""
+    profile_eligible: bool = True
 
 
 class ExamPaperDetailResponse(BaseModel):

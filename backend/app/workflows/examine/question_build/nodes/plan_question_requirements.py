@@ -1,4 +1,4 @@
-﻿"""Plan per-question type constraints and generation prompts."""
+"""Plan per-question type constraints and generation prompts."""
 
 from __future__ import annotations
 
@@ -31,6 +31,12 @@ def build_plan_question_requirements_node(*, context: WorkflowContext):
                 question_count=int(state.get("question_count") or 1),
                 user_prompt=str(state.get("user_prompt") or ""),
                 configured_question_types=list(state.get("configured_question_types") or []),
+                **({"configured_question_counts": state["configured_question_counts"]} if state.get("configured_question_counts") else {}),
+                custom_question_type_keys=[
+                    str(item.get("type_key") or "")
+                    for item in list(state.get("question_type_runtimes") or [])
+                    if isinstance(item, dict)
+                ],
             )
             prompt_payload = [item.model_dump(mode="json") for item in planned]
 

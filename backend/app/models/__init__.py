@@ -49,6 +49,11 @@ from app.models.knowledge_graph_sync import KnowledgeGraphSourceRef, KnowledgeGr
 from app.models.knowledge_relation import EdgeRevision, EvidenceLink, KnowledgeEdge
 from app.models.knowledge_unit import KnowledgeAlias, KnowledgeRevision, KnowledgeUnit
 from app.models.profile import UserKnowledgeState
+from app.models.question_type_package import (
+    QuestionTypePackageAsset,
+    QuestionTypePackageImport,
+    QuestionTypePackageVersion,
+)
 from app.models.raw_file import RawFile, RawFileAsset, CourseFileLink
 from app.models.course import Course
 from app.models.course_share import CourseShare
@@ -105,6 +110,9 @@ __all__ = [
     "QuestionTemplateStatus",
     "QuestionType",
     "QuestionTypeRegistry",
+    "QuestionTypePackageAsset",
+    "QuestionTypePackageImport",
+    "QuestionTypePackageVersion",
     "RawFile",
     "RawFileAsset",
     "RetrievalChunk",

@@ -77,3 +77,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
+
+# Local test artifacts and synchronization backups
+/backend/tmp/
+/backend/pytest-tmp-*/
+/.playwright-cli/
+/output/playwright/
+/output/git-sync-*

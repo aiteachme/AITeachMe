@@ -6,7 +6,11 @@ from collections.abc import Coroutine
 
 from app.repositories import exams_repo
 from app.shared.infra.database import managed_session
-from app.workflows.support.credits import release_reservation, settle_reservation
+from app.workflows.support.credits import (
+    EXAM_GENERATION_COMPLETED_STATUSES,
+    release_reservation,
+    settle_reservation,
+)
 
 
 def release_exam_reservation(reservation_id: str | None) -> None:
@@ -34,7 +38,7 @@ async def run_reserved_exam_generation(
         raise
     with managed_session() as session:
         paper = exams_repo.get_exam_paper_by_id(session, paper_id)
-        if paper is not None and paper.status in {"ready", "completed"}:
+        if paper is not None and paper.status in EXAM_GENERATION_COMPLETED_STATUSES:
             settle_reservation(session, reservation_id=reservation_id)
         else:
             release_reservation(session, reservation_id=reservation_id)

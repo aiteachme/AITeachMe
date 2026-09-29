@@ -181,6 +181,10 @@ def collect_runtime_datas() -> list[tuple[str, str]]:
 
     for package_name in DATA_PACKAGES:
         datas += collect_data_files(package_name)
+    datas += collect_data_files(
+        "app.workflows.support.question_type_packages",
+        includes=["schemas/*.json", "example_packages/*.atqskill"],
+    )
 
     datas += collect_data_files("litellm", includes=list(LITELLM_DATA_INCLUDES))
     datas += collect_data_files("litellm.containers", includes=["endpoints.json"])

@@ -5,6 +5,7 @@
  * 本地优先的 AI 助教后端服务。
  */
 import type { MasteryDrillPrepareRequestQuestionTypesItem } from './masteryDrillPrepareRequestQuestionTypesItem.ts';
+import type { QuestionTypeSelection } from './questionTypeSelection.ts';
 
 /**
  * Prepare an ephemeral mastery drill from the reusable question bank.
@@ -20,4 +21,11 @@ export interface MasteryDrillPrepareRequest {
      * @maxItems 5
      */
   question_types?: MasteryDrillPrepareRequestQuestionTypesItem[];
+  /**
+     * Optional course custom-question-type registry IDs; can be mixed with built-in types.
+     * @maxItems 20
+     */
+  question_type_registry_ids?: number[];
+  /** @maxItems 25 */
+  question_type_selections?: QuestionTypeSelection[];
 }

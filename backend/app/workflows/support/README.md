@@ -1,6 +1,6 @@
 # Support 工作流
 
-最后更新：2026-06-15
+最后更新：2026-09-07
 
 `support/` 承接不属于五大 AI 引擎、但仍属于后端业务层的 API-facing 用例。
 
@@ -17,6 +17,7 @@ support/
   auth/           # 访客、注册登录、token、验证码
   courses/        # 课程 CRUD、删除、图标、学习上下文
   export_import/  # .atmx 课程包导入导出、demo course
+  question_type_packages/ # .atqskill 校验、编译、安装与版本目录
   system/         # 前端初始化、设置页、运行时信息
 ```
 
@@ -25,6 +26,7 @@ support/
 - [auth/README.md](auth/README.md)
 - [courses/README.md](courses/README.md)
 - [export_import/README.md](export_import/README.md)
+- [question_type_packages/README.md](question_type_packages/README.md)
 - [system/README.md](system/README.md)
 
 ## 边界
@@ -42,6 +44,7 @@ Support 不放进 `api/`，也不下沉到 `shared.infra`；它是业务用例�
 | `auth` | 登录注册、访客身份、验证码请求 | 用户身份、token、会话响应 |
 | `courses` | 课程创建/更新/删除请求 | Course、删除预览、学习上下文 |
 | `export_import` | `.atmx` 包、课程 ID、demo course 标识 | 导出包、导入课程、demo course 列表 |
+| `question_type_packages` | `.atqskill`、课程与用户 | 安全预览、不可变版本、课程题型目录 |
 | `system` | 当前运行环境和设置请求 | 前端初始化 payload、设置页数据 |
 
 ## 文件规则

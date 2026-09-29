@@ -4,7 +4,9 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
+import type { QuestionTemplateItemResponseAnswerSchema } from './questionTemplateItemResponseAnswerSchema.ts';
 import type { QuestionTemplateItemResponseKnowledgeUnitRefsItem } from './questionTemplateItemResponseKnowledgeUnitRefsItem.ts';
+import type { QuestionTemplateItemResponsePublicPayload } from './questionTemplateItemResponsePublicPayload.ts';
 import type { QuestionTemplateItemResponseSelectionHints } from './questionTemplateItemResponseSelectionHints.ts';
 
 export interface QuestionTemplateItemResponse {
@@ -22,6 +24,12 @@ export interface QuestionTemplateItemResponse {
   status: string;
   is_marked?: boolean;
   has_wrong_attempt?: boolean;
+  question_type_registry_id?: number | null;
+  question_type_version_id?: number | null;
+  renderer_key?: string | null;
+  public_payload?: QuestionTemplateItemResponsePublicPayload;
+  answer_schema?: QuestionTemplateItemResponseAnswerSchema;
+  profile_eligible?: boolean;
   created_at: string;
   updated_at: string;
 }

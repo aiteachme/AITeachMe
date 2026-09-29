@@ -18,6 +18,8 @@ export interface ExportPreviewStats {
   knowledge_graph_source_ref_count?: number;
   confirmed_build_plan_count?: number;
   question_type_registry_count?: number;
+  question_type_package_version_count?: number;
+  question_type_package_asset_count?: number;
   question_template_count?: number;
   exam_paper_count?: number;
   chat_session_count?: number;

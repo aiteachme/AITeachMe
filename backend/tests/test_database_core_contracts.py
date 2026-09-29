@@ -92,6 +92,37 @@ def test_schema_drift_ignores_runtime_tables_and_reports_real_mismatches(tmp_pat
     assert "memory_entries" not in drift["unexpected_tables"]
 
 
+def test_unresolved_local_schema_drift_never_rebuilds_database(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "preserved.db"
+    db_path.write_bytes(b"existing-course-data")
+    drift = {
+        "unexpected_tables": ["unexpected_table"],
+        "missing_columns": {},
+        "unexpected_columns": {},
+    }
+
+    monkeypatch.setattr(db_core, "_get_db_path", lambda: db_path)
+    monkeypatch.setattr(db_core, "is_local_mode", lambda: True)
+    monkeypatch.setattr(db_core, "_migrate_sqlite_course_schema", lambda _engine: None)
+    monkeypatch.setattr(db_core, "_drop_sqlite_removed_schema", lambda _engine: None)
+    monkeypatch.setattr(db_core, "_create_sqlite_missing_schema_tables", lambda _engine: set())
+    monkeypatch.setattr(db_core, "_apply_sqlite_additive_schema_updates", lambda _engine: None)
+    monkeypatch.setattr(db_core, "_backfill_sqlite_raw_file_parse_signatures", lambda _engine: None)
+    monkeypatch.setattr(db_core, "_backfill_sqlite_question_identity_hashes", lambda _engine: None)
+    monkeypatch.setattr(db_core, "_backfill_sqlite_library_chat_sessions", lambda _engine: None)
+    monkeypatch.setattr(db_core, "_deduplicate_sqlite_active_course_shares", lambda _engine: None)
+    monkeypatch.setattr(db_core, "_apply_sqlite_additive_index_updates", lambda _engine: None)
+    monkeypatch.setattr(db_core, "_inspect_sqlite_schema_drift", lambda _engine: drift)
+
+    with pytest.raises(RuntimeError, match="automatic rebuild is disabled"):
+        db_core._ensure_local_sqlite_schema(object())
+
+    assert db_path.read_bytes() == b"existing-course-data"
+
+
 def test_sqlite_exam_grading_columns_and_recovery_index_are_added(tmp_path: Path) -> None:
     engine = _file_sqlite_engine(tmp_path, "exam-grading-upgrade.db")
     with engine.begin() as connection:

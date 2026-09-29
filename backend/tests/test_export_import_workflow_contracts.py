@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
+import shutil
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -11,6 +14,7 @@ from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
 import app.models  # noqa: F401 - ensure all SQLModel tables are registered
+from app.api import exams as exams_api
 from app.models import (
     ChatMessage,
     ChatSession,
@@ -24,6 +28,8 @@ from app.models import (
     MasteryDrillAttempt,
     MasteryDrillSession,
     QuestionTemplate,
+    QuestionTypePackageVersion,
+    QuestionTypeRegistry,
     RawFile,
     RetrievalChunk,
 )
@@ -35,6 +41,18 @@ from app.utils.time import utcnow
 from app.workflows.digest.docgen.lib import build_lifecycle as docgen_build_lifecycle
 from app.workflows.support.export_import import exports as export_module
 from app.workflows.support.export_import import imports as import_module
+from app.workflows.support.question_type_packages import build_atqskill_archive, validate_atqskill
+from app.workflows.support.question_type_packages.contracts import (
+    CompiledQuestionTypeDefinition,
+)
+from app.workflows.support.question_type_packages.installer import (
+    create_pending_import,
+    install_pending_import,
+)
+from app.workflows.examine.question_types.runtime import (
+    resolve_course_question_type_runtimes,
+    resolve_question_type_version,
+)
 
 
 COURSE_ID = "course_math00000000"
@@ -44,6 +62,9 @@ EMPTY_DOCS_COURSE_ID = "course_emptydocs000"
 LEGACY_DOCS_COURSE_ID = "course_legacydocs00"
 PUBLISHED_COVER_FILENAME = "cover.published123.png"
 UNPUBLISHED_COVER_FILENAME = "cover.unpublished999.png"
+EXAMPLE_QUESTION_TYPE_ROOT = (
+    Path(__file__).resolve().parents[2] / "examples" / "question-type-skills"
+)
 
 
 class _FakeStore:
@@ -1117,6 +1138,52 @@ def test_import_archive_validation_rejects_bad_shapes_and_paths(tmp_path: Path) 
         export_module._read_manifest(bad_manifest_dir)
 
 
+def test_course_import_rejects_tampered_question_type_semantics(tmp_path: Path) -> None:
+    package = build_atqskill_archive(
+        EXAMPLE_QUESTION_TYPE_ROOT / "feynman_explanation",
+        tmp_path / "feynman-semantics.atqskill",
+    )
+    result = validate_atqskill(package)
+    assert result.compiled_definition is not None
+    payload = result.compiled_definition.model_dump(mode="json")
+    payload["rubric"][0]["weight"] = 0.3
+    payload["manifest"]["grading"]["rubric"][0]["weight"] = 0.3
+    tampered = CompiledQuestionTypeDefinition.model_validate(payload)
+    record = {
+        "id": 17,
+        "package_key": tampered.package_key,
+        "type_key": tampered.type_key,
+        "version": tampered.version,
+        "package_hash": tampered.package_sha256,
+        "compiled_definition_json": tampered.model_dump_json(),
+        "public_preview_json": json.dumps(
+            import_module.build_public_definition(tampered),
+            ensure_ascii=False,
+        ),
+    }
+
+    with pytest.raises(InvalidImportPackageError, match="语义校验"):
+        import_module._validate_imported_question_type_versions([record])
+
+
+def test_course_import_rejects_non_image_question_type_asset() -> None:
+    content = b"<script>document.body.dataset.compromised='true'</script>"
+    record = {
+        "id": 19,
+        "path": "assets/payload.html",
+        "role": "illustration",
+        "media_type": "text/html",
+        "sha256": hashlib.sha256(content).hexdigest(),
+        "size_bytes": len(content),
+        "width": 1,
+        "height": 1,
+        "content_base64": base64.b64encode(content).decode("ascii"),
+    }
+
+    with pytest.raises(InvalidImportPackageError, match="安全校验"):
+        import_module._validate_imported_question_type_assets([record])
+
+
 def test_public_share_asset_extraction_accepts_docgen_relative_prefix() -> None:
     documents = [
         {
@@ -1344,3 +1411,549 @@ def test_imported_embedding_rebuild_reserves_foreground_llm_slots(
     assert captured["course_id"] == IMPORTED_COURSE_ID
     assert captured["embedding_count"] == 5
     assert captured["embedding_model"] == "text-embedding-v4"
+
+
+def test_course_package_preserves_installed_question_type_without_exam_history(
+    session: Session,
+    export_import_store: _FakeStore,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    del export_import_store
+    _seed_course_graph(session)
+    source_package = build_atqskill_archive(
+        EXAMPLE_QUESTION_TYPE_ROOT / "feynman_explanation",
+        tmp_path / "feynman.atqskill",
+    )
+    validation = validate_atqskill(source_package)
+    import_record, _preview = create_pending_import(
+        session,
+        course_id=COURSE_ID,
+        user_id="user-1",
+        original_filename=source_package.name,
+        archive_bytes=source_package.read_bytes(),
+        result=validation,
+    )
+    assert import_record is not None
+    install_pending_import(
+        session,
+        course_id=COURSE_ID,
+        user_id="user-1",
+        import_id=import_record.id,
+    )
+    session.commit()
+
+    package_path = export_module.export_course(
+        session,
+        course_id=COURSE_ID,
+        options=ExportOptions(
+            include_raw_markdowns=False,
+            include_knowledge_docs=False,
+            include_chat_history=False,
+            include_exam_history=False,
+            include_profile=False,
+        ),
+    )
+    target_engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    SQLModel.metadata.create_all(target_engine)
+    monkeypatch.setattr(import_module, "_create_unique_course_id", lambda _session: IMPORTED_COURSE_ID)
+
+    try:
+        with zipfile.ZipFile(package_path, "r") as exported:
+            names = set(exported.namelist())
+            assert "db/question_type_registry.json" in names
+            assert "db/question_type_package_version.json" in names
+            assert "db/question_type_package_asset.json" in names
+            assert "db/question_template.json" not in names
+
+        with Session(target_engine, expire_on_commit=False) as target_session:
+            result = import_module.import_course(
+                target_session,
+                file_path=package_path,
+                options=ImportOptions(
+                    new_course_name="Imported with question type",
+                    rebuild_embeddings=False,
+                ),
+                user_id="user-2",
+            )
+            registry = target_session.exec(
+                select(QuestionTypeRegistry).where(
+                    QuestionTypeRegistry.course_id == IMPORTED_COURSE_ID,
+                    QuestionTypeRegistry.type_key == "custom_feynman_explanation",
+                )
+            ).one()
+            version = target_session.exec(
+                select(QuestionTypePackageVersion).where(
+                    QuestionTypePackageVersion.course_id == IMPORTED_COURSE_ID,
+                    QuestionTypePackageVersion.registry_id == registry.id,
+                )
+            ).one()
+
+        assert registry.is_active is True
+        assert version.version == "2.0.0"
+        assert version.user_id == "user-2"
+        assert result.imported_counts["question_type_package_version"] == 1
+    finally:
+        package_path.unlink(missing_ok=True)
+
+
+@pytest.mark.parametrize("example_name", ["legacy_feynman_explanation", "feynman_explanation", "oral_defense", "scenario_interview", "argument_debate", "experiment_design", "case_analysis"])
+def test_course_package_remaps_custom_question_runtime_snapshots(
+    example_name: str,
+    session: Session,
+    export_import_store: _FakeStore,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    del export_import_store
+    _seed_course_graph(session)
+    source = (
+        Path(__file__).parent / "fixtures/question_type_packages/v1/feynman_explanation"
+        if example_name == "legacy_feynman_explanation"
+        else EXAMPLE_QUESTION_TYPE_ROOT / example_name
+    )
+    source_package = build_atqskill_archive(
+        source,
+        tmp_path / "feynman-runtime.atqskill",
+    )
+    validation = validate_atqskill(source_package)
+    import_record, _preview = create_pending_import(
+        session,
+        course_id=COURSE_ID,
+        user_id="user-1",
+        original_filename=source_package.name,
+        archive_bytes=source_package.read_bytes(),
+        result=validation,
+    )
+    assert import_record is not None
+    installed = install_pending_import(
+        session,
+        course_id=COURSE_ID,
+        user_id="user-1",
+        import_id=import_record.id,
+    )
+    session.commit()
+    runtime = resolve_course_question_type_runtimes(
+        session,
+        course_id=COURSE_ID,
+        registry_ids=[installed.registry_id],
+        mode="web_practice",
+    )[0]
+    unit = session.exec(
+        select(KnowledgeUnit).where(KnowledgeUnit.course_id == COURSE_ID)
+    ).first()
+    assert unit is not None
+    reference = runtime.definition.reference_cases[0].question["reference_answer"]
+    custom_reference = reference if isinstance(reference, dict) else None
+    template = exams_api._upsert_generated_template(
+        session,
+        course_id=COURSE_ID,
+        unit=unit,
+        question_type=runtime.type_key,
+        difficulty="medium",
+        stem="请向初学者解释矩阵，并给出一个具体例子和适用边界。",
+        answer="矩阵是按行列排列的数表，可表示线性变换；矩阵乘法需要维度匹配。",
+        explanation="应说明矩阵含义、例子以及运算维度限制。",
+        options=None,
+        custom_runtime=runtime.workflow_payload(),
+        answer_payload=custom_reference,
+    )
+    if custom_reference and len(custom_reference) == 1:
+        assert template.answer == next(iter(custom_reference.values()))
+    paper = ExamPaper(
+        course_id=COURSE_ID,
+        user_id="user-1",
+        exam_mode="web_practice",
+        status="graded",
+        total_items=1,
+        config_snapshot_json=json.dumps(
+            {"question_type_runtimes": [runtime.snapshot_payload()]},
+            ensure_ascii=False,
+        ),
+    )
+    session.add(paper)
+    session.commit()
+    session.refresh(paper)
+    session.add(
+        ExamPaperItem(
+            exam_paper_id=int(paper.id or 0),
+            question_template_id=int(template.id or 0),
+            question_type_registry_id=template.question_type_registry_id,
+            question_type_version_id=template.question_type_version_id,
+            item_order=1,
+            stem_snapshot=template.stem,
+            options_snapshot_json=template.options_json,
+            answer_snapshot=template.answer,
+            explanation_snapshot=template.explanation,
+            public_payload_snapshot_json=template.public_payload_json,
+            answer_schema_snapshot_json=template.answer_schema_json,
+            reference_answer_snapshot_json=template.reference_answer_json,
+            grading_spec_snapshot_json=template.grading_spec_json,
+            runtime_snapshot_json=template.runtime_snapshot_json,
+            profile_eligible=template.profile_eligible,
+            difficulty=template.difficulty,
+            question_type=template.question_type,
+            answer_content="矩阵是数表，也能表示线性变换。",
+            answer_payload_json=json.dumps(
+                custom_reference or {"explanation": "矩阵是数表，也能表示线性变换。"},
+                ensure_ascii=False,
+            ),
+            grading_status="graded",
+        )
+    )
+    session.commit()
+
+    package_path = export_module.export_course(
+        session,
+        course_id=COURSE_ID,
+        options=ExportOptions(
+            include_raw_markdowns=False,
+            include_knowledge_docs=False,
+            include_chat_history=False,
+            include_exam_history=True,
+            include_profile=False,
+        ),
+    )
+    target_engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    SQLModel.metadata.create_all(target_engine)
+    monkeypatch.setattr(import_module, "_create_unique_course_id", lambda _session: IMPORTED_COURSE_ID)
+
+    try:
+        with Session(target_engine, expire_on_commit=False) as target_session:
+            import_module.import_course(
+                target_session,
+                file_path=package_path,
+                options=ImportOptions(
+                    new_course_name="Imported custom runtime",
+                    rebuild_embeddings=False,
+                ),
+                user_id="user-2",
+            )
+            imported_registry = target_session.exec(
+                select(QuestionTypeRegistry).where(
+                    QuestionTypeRegistry.course_id == IMPORTED_COURSE_ID,
+                    QuestionTypeRegistry.type_key == runtime.type_key,
+                )
+            ).one()
+            imported_version = target_session.exec(
+                select(QuestionTypePackageVersion).where(
+                    QuestionTypePackageVersion.course_id == IMPORTED_COURSE_ID,
+                    QuestionTypePackageVersion.registry_id == imported_registry.id,
+                )
+            ).one()
+            imported_template = target_session.exec(
+                select(QuestionTemplate).where(
+                    QuestionTemplate.course_id == IMPORTED_COURSE_ID,
+                    QuestionTemplate.question_type == runtime.type_key,
+                )
+            ).one()
+            imported_item = target_session.exec(
+                select(ExamPaperItem).where(
+                    ExamPaperItem.question_template_id == imported_template.id
+                )
+            ).one()
+
+        assert imported_template.question_type_registry_id == imported_registry.id
+        assert imported_template.question_type_version_id == imported_version.id
+        assert imported_item.question_type_registry_id == imported_registry.id
+        assert imported_item.question_type_version_id == imported_version.id
+        template_runtime = json.loads(imported_template.runtime_snapshot_json)
+        item_runtime = json.loads(imported_item.runtime_snapshot_json)
+        assert template_runtime["registry_id"] == imported_registry.id
+        assert template_runtime["version_id"] == imported_version.id
+        assert item_runtime == template_runtime
+        assert imported_template.reference_answer_json == template.reference_answer_json
+        assert imported_item.answer_schema_snapshot_json == template.answer_schema_json
+        if custom_reference:
+            assert json.loads(imported_item.answer_payload_json) == custom_reference
+    finally:
+        package_path.unlink(missing_ok=True)
+
+
+@pytest.mark.parametrize("reserved_version_id", [1, 10])
+def test_imported_custom_questions_reuse_their_own_version_after_regeneration(
+    reserved_version_id: int,
+    session: Session,
+    export_import_store: _FakeStore,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Remapped IDs must neither duplicate questions nor overwrite another version."""
+    _seed_course_graph(session)
+    package_source = tmp_path / "case_analysis"
+    shutil.copytree(EXAMPLE_QUESTION_TYPE_ROOT / "case_analysis", package_source)
+    skill = package_source / "SKILL.md"
+    original_skill = skill.read_text(encoding="utf-8")
+    stem = "Compare the evidence for the two explanations and justify your conclusion."
+    source_version_ids: list[int] = []
+    for version_label in ["2.0.0", "2.0.1"]:
+        skill.write_text(original_skill.replace("version: 2.0.0", f"version: {version_label}"), encoding="utf-8")
+        archive = build_atqskill_archive(package_source, tmp_path / f"case-{version_label}.atqskill")
+        validation = validate_atqskill(archive)
+        assert validation.valid, validation.errors
+        pending, _preview = create_pending_import(
+            session,
+            course_id=COURSE_ID,
+            user_id="user-1",
+            original_filename=archive.name,
+            archive_bytes=archive.read_bytes(),
+            result=validation,
+        )
+        assert pending is not None
+        installed = install_pending_import(
+            session, course_id=COURSE_ID, user_id="user-1", import_id=pending.id,
+        )
+        session.commit()
+        runtime = resolve_course_question_type_runtimes(
+            session, course_id=COURSE_ID, registry_ids=[installed.registry_id], mode="web_practice",
+        )[0]
+        source_version_ids.append(runtime.version_id)
+        exams_api._upsert_generated_template(
+            session,
+            course_id=COURSE_ID,
+            unit=None,
+            question_type=runtime.type_key,
+            difficulty="medium",
+            stem=stem,
+            answer="Reference answer",
+            answer_payload=runtime.definition.reference_cases[0].question["reference_answer"],
+            explanation=f"Frozen explanation for {version_label}",
+            options=None,
+            custom_runtime=runtime.workflow_payload(),
+        )
+
+    # Occupy a target ID so imports receive 2/3 (overlap) or 11/12 (no overlap)
+    # instead of their original IDs 1/2.
+    target_engine = create_engine("sqlite://", poolclass=StaticPool)
+    SQLModel.metadata.create_all(target_engine)
+    monkeypatch.setattr(import_module, "_create_unique_course_id", lambda _session: IMPORTED_COURSE_ID)
+    package_path = export_module.export_course(
+        session,
+        course_id=COURSE_ID,
+        options=ExportOptions(
+            include_raw_markdowns=False,
+            include_knowledge_docs=False,
+            include_chat_history=False,
+            include_exam_history=True,
+            include_profile=False,
+        ),
+    )
+    try:
+        with Session(target_engine, expire_on_commit=False) as target:
+            target.add(Course(id="reserved-course", user_id="user-2", name="Existing course"))
+            registry = QuestionTypeRegistry(
+                id=1, course_id="reserved-course", scope="course", source="upload",
+                is_system=False, type_key=runtime.type_key, display_name="Existing type",
+            )
+            target.add(registry)
+            source_version = session.get(QuestionTypePackageVersion, source_version_ids[0])
+            assert source_version is not None
+            target.add(QuestionTypePackageVersion.model_validate({
+                **source_version.model_dump(),
+                "id": reserved_version_id,
+                "registry_id": registry.id,
+                "course_id": "reserved-course",
+                "user_id": "user-2",
+            }))
+            target.commit()
+            result = import_module.import_course(
+                target,
+                file_path=package_path,
+                options=ImportOptions(new_course_name="Imported versions", rebuild_embeddings=False),
+                user_id="user-2",
+            )
+            assert result.imported_counts["question_template"] == 2
+            imported = target.exec(select(QuestionTemplate).where(
+                QuestionTemplate.course_id == IMPORTED_COURSE_ID,
+            ).order_by(QuestionTemplate.question_type_version_id)).all()
+            assert [item.question_type_version_id for item in imported] == [
+                reserved_version_id + 1, reserved_version_id + 2,
+            ]
+            frozen_contracts = {
+                item.id: (
+                    item.question_type_version_id,
+                    json.loads(item.runtime_snapshot_json),
+                    json.loads(item.grading_spec_json),
+                )
+                for item in imported
+            }
+            for item in imported:
+                imported_runtime = resolve_question_type_version(
+                    target, course_id=IMPORTED_COURSE_ID,
+                    version_id=item.question_type_version_id, mode="web_practice",
+                )
+                regenerated = exams_api._upsert_generated_template(
+                    target,
+                    course_id=IMPORTED_COURSE_ID,
+                    unit=None,
+                    question_type=imported_runtime.type_key,
+                    difficulty="medium",
+                    stem=stem,
+                    answer="Reference answer",
+                    answer_payload=imported_runtime.definition.reference_cases[0].question["reference_answer"],
+                    explanation=item.explanation,
+                    options=None,
+                    custom_runtime=imported_runtime.workflow_payload(),
+                )
+                assert regenerated.id == item.id
+            target.expire_all()
+            remaining = target.exec(select(QuestionTemplate).where(
+                QuestionTemplate.course_id == IMPORTED_COURSE_ID,
+            )).all()
+            assert len(remaining) == 2
+            assert {
+                item.id: (
+                    item.question_type_version_id,
+                    json.loads(item.runtime_snapshot_json),
+                    json.loads(item.grading_spec_json),
+                )
+                for item in remaining
+            } == frozen_contracts
+    finally:
+        package_path.unlink(missing_ok=True)
+        target_engine.dispose()
+
+
+@pytest.fixture
+def custom_question_course_archive(
+    session: Session,
+    export_import_store: _FakeStore,
+    tmp_path: Path,
+):
+    _seed_course_graph(session)
+    skill_archive = build_atqskill_archive(
+        EXAMPLE_QUESTION_TYPE_ROOT / "case_analysis", tmp_path / "case.atqskill",
+    )
+    pending, _preview = create_pending_import(
+        session, course_id=COURSE_ID, user_id="user-1",
+        original_filename=skill_archive.name,
+        archive_bytes=skill_archive.read_bytes(),
+        result=validate_atqskill(skill_archive),
+    )
+    assert pending is not None
+    installed = install_pending_import(
+        session, course_id=COURSE_ID, user_id="user-1", import_id=pending.id,
+    )
+    session.commit()
+    runtime = resolve_course_question_type_runtimes(
+        session, course_id=COURSE_ID, registry_ids=[installed.registry_id], mode="web_practice",
+    )[0]
+    template = exams_api._upsert_generated_template(
+        session, course_id=COURSE_ID, unit=None, question_type=runtime.type_key,
+        difficulty="medium", stem="Compare the two cases and justify your conclusion.",
+        answer="Reference answer", explanation="Explain the supporting evidence.", options=None,
+        answer_payload=runtime.definition.reference_cases[0].question["reference_answer"],
+        custom_runtime=runtime.workflow_payload(),
+    )
+    paper = ExamPaper(course_id=COURSE_ID, user_id="user-1", exam_mode="web_practice", status="ready", total_items=1)
+    session.add(paper)
+    session.flush()
+    session.add(ExamPaperItem(
+        exam_paper_id=paper.id, question_template_id=template.id, item_order=1,
+        question_type=template.question_type, difficulty=template.difficulty,
+        question_type_registry_id=template.question_type_registry_id,
+        question_type_version_id=template.question_type_version_id,
+        stem_snapshot=template.stem, answer_snapshot=template.answer,
+        explanation_snapshot=template.explanation,
+        public_payload_snapshot_json=template.public_payload_json,
+        answer_schema_snapshot_json=template.answer_schema_json,
+        reference_answer_snapshot_json=template.reference_answer_json,
+        grading_spec_snapshot_json=template.grading_spec_json,
+        runtime_snapshot_json=template.runtime_snapshot_json,
+        profile_eligible=template.profile_eligible,
+    ))
+    session.commit()
+    package_path = export_module.export_course(
+        session, course_id=COURSE_ID,
+        options=ExportOptions(
+            include_raw_markdowns=False, include_knowledge_docs=False,
+            include_chat_history=False, include_exam_history=True, include_profile=False,
+        ),
+    )
+    try:
+        yield package_path
+    finally:
+        package_path.unlink(missing_ok=True)
+
+
+@pytest.mark.parametrize(("table_name", "broken_reference"), [
+    ("question_template", "missing"),
+    ("exam_paper_item", "missing"),
+    ("question_template", "unknown"),
+    ("exam_paper_item", "unknown"),
+    ("question_template", "missing_packages"),
+])
+def test_course_import_rejects_unresolved_custom_question_versions(
+    table_name: str,
+    broken_reference: str,
+    custom_question_course_archive: Path,
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    broken_archive = tmp_path / "broken.atmx"
+    with zipfile.ZipFile(custom_question_course_archive) as source, zipfile.ZipFile(broken_archive, "w") as target:
+        for member in source.infolist():
+            if broken_reference == "missing_packages" and member.filename in {
+                "db/question_type_registry.json",
+                "db/question_type_package_version.json",
+                "db/question_type_package_asset.json",
+            }:
+                continue
+            data = source.read(member.filename)
+            if member.filename == f"db/{table_name}.json" and broken_reference != "missing_packages":
+                payload = json.loads(data)
+                for record in payload["records"]:
+                    record["question_type_version_id"] = None if broken_reference == "missing" else 99999
+                data = json.dumps(payload).encode("utf-8")
+            target.writestr(member, data)
+    monkeypatch.setattr(import_module, "_create_unique_course_id", lambda _session: IMPORTED_COURSE_ID)
+
+    with pytest.raises(InvalidImportPackageError, match="题型版本|缺少题型版本"):
+        import_module.import_course(
+            session, file_path=broken_archive, user_id="user-2",
+            options=ImportOptions(new_course_name="Broken custom version", rebuild_embeddings=False),
+        )
+
+    # A failed import must leave no partial course, bank or exam behind.
+    assert session.get(Course, IMPORTED_COURSE_ID) is None
+    assert session.exec(select(QuestionTemplate).where(QuestionTemplate.course_id == IMPORTED_COURSE_ID)).first() is None
+    assert session.exec(select(ExamPaper).where(ExamPaper.course_id == IMPORTED_COURSE_ID)).first() is None
+    assert session.get(Course, COURSE_ID) is not None
+
+
+def test_custom_question_relationship_validation_is_scoped_to_course(session: Session) -> None:
+    session.add_all([
+        Course(id=COURSE_ID, user_id="user-1", name="Valid built-in course"),
+        Course(id="unrelated-course", user_id="user-2", name="Unrelated course"),
+    ])
+    for course_id, question_type, version_id in [
+        (COURSE_ID, "short_answer", None),
+        ("unrelated-course", "custom_broken", 99999),
+    ]:
+        template = QuestionTemplate(
+            course_id=course_id, question_type=question_type, difficulty="medium",
+            stem="Explain this concept.", stem_hash=f"stem-{course_id}",
+            answer="Reference answer.", explanation="Reference explanation.",
+            question_type_version_id=version_id,
+        )
+        paper = ExamPaper(course_id=course_id, user_id="user-1", exam_mode="web_practice")
+        session.add_all([template, paper])
+        session.flush()
+        session.add(ExamPaperItem(
+            exam_paper_id=paper.id, question_template_id=template.id, item_order=1,
+            question_type=question_type, question_type_version_id=version_id, difficulty="medium",
+            stem_snapshot=template.stem, answer_snapshot=template.answer,
+            explanation_snapshot=template.explanation,
+        ))
+    session.commit()
+
+    import_module._validate_imported_question_type_package_relationships(session, course_id=COURSE_ID)

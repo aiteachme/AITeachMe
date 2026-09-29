@@ -20,6 +20,12 @@ SIGNUP_GRANT = 300
 DOCGEN_BUILD_COST = 30
 EXAM_GENERATION_COST = 5
 EXAM_GENERATION_STALE_AFTER = timedelta(minutes=20)
+# Submission and grading may advance a delivered paper before its generation
+# reservation settles, especially when API workers run in separate processes.
+EXAM_GENERATION_COMPLETED_STATUSES = frozenset({
+    "ready", "in_progress", "submitted", "grading", "grading_failed",
+    "graded", "archived", "completed",
+})
 
 
 def ensure_credits_enabled() -> None:
@@ -332,10 +338,7 @@ def _reservation_recovery_action(
         paper = session.get(ExamPaper, paper_id)
         if paper is None:
             return "release"
-        if paper.status in {
-            "ready", "in_progress", "submitted", "grading", "grading_failed",
-            "graded", "archived", "completed",
-        }:
+        if paper.status in EXAM_GENERATION_COMPLETED_STATUSES:
             return "settle"
         if paper.status in {"failed", "draft", "cancelled"}:
             return "release"

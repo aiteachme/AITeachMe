@@ -4,11 +4,13 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
+import type { MasteryDrillPrepareResponseQuestionTypeCounts } from './masteryDrillPrepareResponseQuestionTypeCounts.ts';
 import type { QuestionTemplateItemResponse } from './questionTemplateItemResponse.ts';
 
 export interface MasteryDrillPrepareResponse {
   requested_count: number;
   available_count: number;
   generated_count: number;
+  question_type_counts?: MasteryDrillPrepareResponseQuestionTypeCounts;
   templates?: QuestionTemplateItemResponse[];
 }
