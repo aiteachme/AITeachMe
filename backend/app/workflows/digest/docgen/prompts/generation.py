@@ -155,6 +155,7 @@ def build_docgen_writer_messages(
     contract_summary = (
         f"- 目标字数：{execution_contract.get('target_word_count') or '未指定'}\n"
         f"- 最低字数：{execution_contract.get('min_word_count') or '未指定'}\n"
+        f"- 正文字数上限：{execution_contract.get('max_word_count') or '未指定'}（不含后续生成的章末测试）\n"
         f"- 最低覆盖分：{execution_contract.get('min_coverage_score') or '未指定'}\n"
         f"- 最低证据支撑：{execution_contract.get('min_evidence_support') or '未指定'}\n"
         f"- 解释深度：{execution_contract.get('explanation_depth') or '未指定'}\n"
@@ -201,7 +202,7 @@ def build_docgen_writer_messages(
 5. 执行合同中的“本章边界外主题”只作必要前后联系，不扩写成独立小节。
 6. 学习者画像只调整解释节奏、练习密度、文档内解析方式和易错提醒；如果含前置诊断信号，把它落实到讲解起点、例题、练习、错因提醒、例题/练习解析和章末检测配置中，不在正文复述问卷，也不要写成真实考试后的反馈流程。
 7. 只有当概念关系、方法流程、几何/坐标/结构关系、实验路径等靠文字不直观时，才请求 Mermaid 图示；不要为公式展开、三步文字清单、单条箭头线或纯文字关系生成图。只允许使用 Mermaid 代码块表达图示，不请求图片、SVG、HTML 图或交互图。代码块只用于代码、命令、伪代码或 Mermaid。
-8. 目标字数是保证讲解充分的建议基线，不是要求提前收尾的硬上限。优先讲清前提、推理、例题与易错边界；只有出现重复解释或同质例题时才合并，不得为了卡字数删去“必须逐项覆盖”的内容。
+8. 按目标字数分配正文篇幅；执行合同给出上限时须在上限内覆盖核心概念、推理和边界，不得把目标当作无限扩写的起点。用户明确要求的篇幅、例题和练习数量优先于模式参考中的默认密度；短篇合并重复说明与同质例题，用必要的短例说明要求，不套用长篇活动数量。
 9. 较长章节自然加入 2-3 个短提示块：`> [!IMPORTANT]` 写关键前提/结论，`> [!TIP]` 写快速抓手，`> [!WARNING]` 写易错边界；正文中的题干或短练习可用 `> [!QUESTION]` 轻底色题块，解析、步骤和答案保持普通正文。
 10. 正文在最后一个完整知识小节、总结或迁移提示处自然收尾；不要提前写章末测试、答案汇总或供渲染器识别的 QUESTION/ANSWER 协议。
 

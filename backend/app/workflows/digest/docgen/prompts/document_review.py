@@ -165,7 +165,7 @@ def build_document_review_messages(
 4. 逐步核对题解：每一步推理、计算、符号、定义域、边界、单位和充分/必要条件都成立，题解最终结论与给定答案一致。发现歧义、错解、答案与选项不符或无法由本章材料确认时，必须对该章 `单元测试`/对应例题输出 `section_patch`，不得仅记录 warning 后放行。
 5. 检查是否能承接 examine/profile：核心概念、方法、易错点、题型/任务和章末练习是否足够结构化，是否存在无法被考试链路定位的空泛段落。
 6. 只输出真实问题。不要因为想更优雅、更多例子或更长篇幅而输出 action。
-7. 局部章节问题用 `section_patch` 或 `evidence_patch`，必须带 `chapter_index` 和 `target_anchor`。
+7. 局部章节问题用 `section_patch` 或 `evidence_patch`，必须带 `chapter_index` 和 `target_anchor`。章末题的 target_anchor 固定为 `## 单元测试`；正文错误指向实际小节标题，不要因需要保留测试就把正文动作指向测试模块。
 8. 纯记录或后续观察用 `record_only`；资料分配明显错用 `re_dispatch`；全局术语/符号骨架明显冲突才用 `rebuild_backbone`。
 9. 不要在 instruction 里直接写可复制的新标题或完整正文；只描述需要修复的学习问题、约束和预期效果。
 10. 如果没有影响正确性或学习闭环的问题，返回 passed=true、issues=[]、actions=[]。

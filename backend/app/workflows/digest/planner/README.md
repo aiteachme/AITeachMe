@@ -86,9 +86,12 @@ chapter_length_profile
 chapter_min_words
 chapter_target_words
 chapter_max_words
+target_total_words
 ```
 
 篇幅档位由正式方案 LLM 根据用户原始要求和已回答诊断输出为数字合同：精炼提纲约 `1400/1800/2200`，标准讲解约 `2400/3000/3600`（默认），细致推导约 `3400/4200/5000`，从零铺垫约 `4200/5200/6200`。三个数字分别是每章最低、目标和上限；用户显式给出的整门课程 `target_total_words` 仍具有更高优先级。
+
+显式短篇支持小于 800 字的正整数预算，不会被提升到默认档位。`target_total_words` 由 LLM 读取明确的正文总字数要求；`null` 表示未指定或撤销旧限制。DocGen 将每章上限传给正文 Writer，后续章末测试不计入正文预算。
 
 正式方案 LLM 只生成用户需要确认的 `course_name / plan / suggestion` 和每章 `title / objective / required_elements`。其中 `required_elements` 表示确认覆盖的具体概念、方法、题型或易错对象，不负责开篇方式、讲解顺序、资料落点、例题数量、练习或小测策略；这些执行决策由 DocGen 在拥有完整资料路由和诊断答案后统一生成。Planner 本地只做标签/JSON 解析、显式章数校验、去编号等格式规范；字段缺失、重复章节、章数不符或出现长 OCR/代码碎片时调用一次 LLM repair，不用固定模板补教学语义，也不合并或改写模型章节。
 

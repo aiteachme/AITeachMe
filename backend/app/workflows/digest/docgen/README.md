@@ -177,7 +177,7 @@ user_profile.prompt_addendum
 
 输入：`reviewed_chapter_drafts`, `review_actions`, `document_consistency_report`
 
-动作：执行确定性的 Markdown 展示修复，并只对缺少/损坏的章末测试、正文显著低于字数合同等可客观验证的问题生成有界局部补丁。坏测试必须由 LLM 返回一个完整 replacement block，替换旧 `## 单元测试` 后再次通过同一协议校验；不能在旧测试后追加第二份。其它语义内容不因关键词覆盖率触发补写。低 evidence binding 只保留证据分数和 warning。正文实际变化的 section 由最终 KG 同步按内容哈希补抽。
+动作：执行确定性的 Markdown 展示修复，对缺少/损坏的章末测试、正文显著低于字数合同，以及结构化复核明确标记的 `error` 执行有界局部修补，紧凑模式也不跳过正确性错误。正文纠错支持 `replace_section`，只能替换复核动作定位的现有小节，保留标题与题目数量，避免旧错解和新答案并存。测试修补依据显式目标标题或规则动作 ID 路由，不通过描述中是否提到“单元测试”判断；必须完整替换旧 `## 单元测试` 并再次通过同一协议校验。每章最多三轮 LLM 修补。其它语义内容不因关键词覆盖率触发补写。低 evidence binding 只保留证据分数和 warning。正文实际变化的 section 由最终 KG 同步按内容哈希补抽。
 
 输出：`reviewed_chapter_drafts`, `repair_trace`, `unresolved_warnings`, `kg_refinement_items`, `kg_prefetch_status`
 

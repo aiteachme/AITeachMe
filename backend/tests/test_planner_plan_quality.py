@@ -1,4 +1,5 @@
 import asyncio
+import json
 from collections.abc import Iterator
 
 import pytest
@@ -951,6 +952,43 @@ def test_parse_planner_response_reads_marker_protocol() -> None:
     assert parsed["chapters"][0]["title"] == "数与式基础"
     assert parsed["chapters"][0]["required_elements"] == ["实数与代数式", "方程基本变形"]
     assert "writing_instructions" not in parsed["chapters"][0]
+
+
+@pytest.mark.parametrize(
+    ("minimum", "target", "maximum", "total"),
+    [(480, 600, 720, 600), (1400, 1800, 2200, 3600)],
+)
+def test_planner_word_contract_survives_parsing_and_normalization(
+    minimum, target, maximum, total,
+) -> None:
+    constraints = {
+        "chapter_length_profile": "outline",
+        "chapter_min_words": minimum,
+        "chapter_target_words": target,
+        "chapter_max_words": maximum,
+        "target_total_words": total,
+    }
+    parsed = plan_draft_node._parse_build_constraints(json.dumps(constraints))
+    draft = normalize_planner_draft(
+        {**_planner_payload(chapter_count=2), "build_constraints": parsed},
+        course_id="course_short", requested_digest_mode="sprint",
+    )
+    assert {key: draft.build_constraints.get(key) for key in constraints} == constraints
+
+
+def test_planner_can_remove_an_earlier_total_word_constraint() -> None:
+    constraints = {
+        "chapter_length_profile": "standard", "chapter_min_words": 2400,
+        "chapter_target_words": 3000, "chapter_max_words": 3600,
+        "target_total_words": None,
+    }
+    parsed = plan_draft_node._parse_build_constraints(json.dumps(constraints))
+    draft = normalize_planner_draft(
+        {**_planner_payload(), "build_constraints": parsed},
+        course_id="course_revised", requested_digest_mode="systematic",
+        latest_plan={"build_constraints": {"target_total_words": 600}},
+    )
+    assert draft.build_constraints.get("target_total_words") is None
 
 
 def test_parse_diagnosis_response_reads_four_choice_questions() -> None:

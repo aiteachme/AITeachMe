@@ -152,7 +152,8 @@ def build_planner_stream_messages(
     - 标准讲解：`standard`，约 2400/3000/3600 字；这是没有明确选择时的默认值；
     - 细致推导：`detailed`，约 3400/4200/5000 字；
     - 从零铺垫：`foundation`，约 4200/5200/6200 字。
-    选项文案可能不同，要按语义映射；用户明确给出篇幅时优先遵守。三个数字必须满足 min <= target <= max，不要只在 plan 文案里描述篇幅。
+    选项文案可能不同，要按语义映射；用户明确给出篇幅时优先遵守，可以小于 800 字，不得提高到默认档位。三个数字必须满足 1 <= min <= target <= max <= 8000，不要只在 plan 文案里描述篇幅。
+    - target_total_words：只有用户明确给出整份正文的总字数时才填正整数，并按章节分配每章预算；例如一章正文约 600 字，应填总数 600、每章 480/600/720。未指定总数或已撤销旧的总字数限制时填 null，不要把单章字数误当总数。
 
 严格按以下格式输出：
 {COURSE_NAME_START}课程短标题{COURSE_NAME_END}
@@ -163,7 +164,7 @@ plan 字段正文
 suggestion 字段正文
 {SUGGESTION_END}
 {BUILD_CONSTRAINTS_START}
-{{"chapter_length_profile":"standard","chapter_min_words":2400,"chapter_target_words":3000,"chapter_max_words":3600}}
+{{"chapter_length_profile":"standard","chapter_min_words":2400,"chapter_target_words":3000,"chapter_max_words":3600,"target_total_words":null}}
 {BUILD_CONSTRAINTS_END}
 {CHAPTERS_START}
 [{{"title":"知识块名称","objective":"本章独有的可观察学习结果","required_elements":["具体概念、方法、题型或易错对象"]}}]

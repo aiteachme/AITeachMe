@@ -679,6 +679,7 @@ class ChapterGenerationTask(DocGenBaseModel):
     practice_seed_policy: dict[str, Any] = Field(default_factory=dict)
     min_word_count: int = 700
     target_word_count: int = 1200
+    max_word_count: int | None = Field(default=None, ge=1)
     budget_policy: ChapterBudgetPolicy = Field(default_factory=ChapterBudgetPolicy)
 
     @field_validator("confirmed_title", "enhanced_title", "objective", mode="before")

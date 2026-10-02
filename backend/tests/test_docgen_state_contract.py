@@ -468,16 +468,25 @@ def test_sprint_plan_expands_one_writer_budget_for_dense_confirmed_contract() ->
     assert task.target_word_count == 2250
 
 
-def test_chapter_generation_plan_uses_planner_per_chapter_word_contract() -> None:
+@pytest.mark.parametrize(
+    ("minimum", "target", "maximum", "total", "expected"),
+    [(2400, 3000, 3600, None, (2400, 3000, 3600)),
+     (480, 600, 720, None, (480, 600, 720)),
+     (2400, 3000, 3600, 600, (600, 600, 600))],
+)
+def test_chapter_generation_plan_uses_planner_per_chapter_word_contract(
+    minimum, target, maximum, total, expected,
+) -> None:
     plan = chapter_planning.assemble_chapter_generation_plan(
         docgen_context=DocGenContext(
             course_name="函数",
             digest_mode="systematic",
             build_constraints={
                 "chapter_length_profile": "standard",
-                "chapter_min_words": 2400,
-                "chapter_target_words": 3000,
-                "chapter_max_words": 3600,
+                "chapter_min_words": minimum,
+                "chapter_target_words": target,
+                "chapter_max_words": maximum,
+                "target_total_words": total,
             },
         ),
         confirmed_chapters=[
@@ -499,8 +508,16 @@ def test_chapter_generation_plan_uses_planner_per_chapter_word_contract() -> Non
         chapter_execution_briefs=[ChapterExecutionBrief(chapter_index=1)],
     )
 
-    assert plan.chapters[0].min_word_count == 2400
-    assert plan.chapters[0].target_word_count == 3000
+    from app.workflows.digest.docgen.nodes.generate_chapters import _execution_contract_for_writer
+
+    task = plan.chapters[0]
+    contract = _execution_contract_for_writer(
+        task, required_elements=task.required_elements, media_hints={"mermaid": []},
+        claim_ledger=None, claim_evidence_map=None, conflict_report=None,
+    )
+    assert tuple(contract[key] for key in (
+        "min_word_count", "target_word_count", "max_word_count",
+    )) == expected
 
 
 def test_chapter_generation_plan_preserves_planner_writing_instructions() -> None:
@@ -3064,7 +3081,7 @@ async def test_repair_rejects_surface_patch_that_breaks_existing_unit_test(monke
     assert updated_actions[0].status == "downgraded"
     assert unresolved
     assert traces[0].changed is False
-    assert "修补后单元测试未通过题答合同" in traces[0].detail
+    assert "单元测试补丁必须包含" in traces[0].detail
 
 
 @pytest.mark.anyio
@@ -3157,6 +3174,96 @@ async def test_sprint_repair_still_appends_required_unit_test(monkeypatch) -> No
     assert unresolved == []
     assert traces[0].changed is True
     assert traces[0].llm_attempted is True
+
+
+@pytest.mark.parametrize(
+    ("anchor", "instruction", "expected"),
+    [("## 单元测试", "修正 Q04 的边界条件和答案。", True),
+     ("# 二分查找", "统一本章符号，保留单元测试内容。", False)],
+)
+def test_repair_routes_by_section_anchor_instead_of_prose(anchor, instruction, expected) -> None:
+    action = ReviewAction(
+        action_id="review-boundary", action_type="section_patch", chapter_index=1,
+        target_anchor=anchor, instruction=instruction,
+    )
+    assert repair._is_unit_test_action(action) is expected
+
+
+@pytest.mark.parametrize(
+    ("body_size", "test_size", "patch_size", "allowed"),
+    [(100, 2500, 2450, True), (10000, 100, 3000, False), (100, 7000, 8000, False)],
+)
+def test_unit_test_replacement_budget_depends_on_target_module(
+    body_size, test_size, patch_size, allowed,
+) -> None:
+    original = "# 知识\n\n## 正文\n\n" + "文" * body_size + "\n\n## 单元测试\n\n" + "题" * test_size
+    patch = "## 单元测试\n\n" + "答" * patch_size
+    reason = repair._local_patch_risk_reason(
+        original_markdown=original, patch_markdown=patch,
+        append_to_end=True, unit_test_patch=True,
+    )
+    assert (reason is None) is allowed
+
+
+@pytest.mark.anyio
+async def test_sprint_repair_replaces_incorrect_section_without_retaining_old_claim(monkeypatch) -> None:
+    async def fake_completion(*args, **kwargs):
+        return repair._LocalMarkdownPatch(
+            operation="replace_section", target_anchor="## 边界条件",
+            patch_markdown="## 边界条件\n\n单元素小于目标时移动左边界，大于目标时移动右边界。",
+        )
+
+    monkeypatch.setattr(repair, "acompletion_with_fallback", fake_completion)
+    chapter = ReviewedChapterDraft(
+        chapter_index=1, title="二分查找",
+        markdown="# 二分查找\n\n## 边界条件\n\n单元素不匹配时总是移动左边界。\n\n## 返回值\n\n未命中返回 -1。",
+    )
+    action = ReviewAction(
+        action_id="boundary-error", action_type="section_patch", chapter_index=1,
+        severity="error", target_anchor="## 边界条件",
+        reason="单元素的两个比较分支处理混淆。", instruction="分别说明两个分支。",
+    )
+    repaired, actions, unresolved, traces = await repair.repair_or_route_review_actions(
+        reviewed_chapters=[chapter], review_actions=[action], allow_llm_patches=False,
+    )
+    assert actions[0].status == "applied"
+    assert traces[0].llm_attempted is True
+    assert unresolved == []
+    assert "总是移动左边界" not in repaired[0].markdown
+    assert "大于目标时移动右边界" in repaired[0].markdown
+    assert repaired[0].markdown.count("## 边界条件") == 1
+    assert "## 返回值\n\n未命中返回 -1。" in repaired[0].markdown
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("target", "replacement"),
+    [("## 返回值", "## 返回值\n\n不得修改的相邻小节。"),
+     ("## 边界条件", "## 新标题\n\n不得重新命名目标小节。")],
+)
+async def test_repair_replacement_cannot_change_another_section_or_rename_target(
+    monkeypatch, target, replacement,
+) -> None:
+    async def fake_completion(*args, **kwargs):
+        return repair._LocalMarkdownPatch(
+            operation="replace_section", target_anchor=target, patch_markdown=replacement,
+        )
+
+    monkeypatch.setattr(repair, "acompletion_with_fallback", fake_completion)
+    chapter = ReviewedChapterDraft(
+        chapter_index=1, title="二分查找",
+        markdown="# 二分查找\n\n## 边界条件\n\n原有条件。\n\n## 返回值\n\n未命中返回 -1。",
+    )
+    action = ReviewAction(
+        action_id="boundary-error", action_type="section_patch", chapter_index=1,
+        severity="error", target_anchor="## 边界条件", instruction="修正条件。",
+    )
+    repaired, actions, unresolved, _ = await repair.repair_or_route_review_actions(
+        reviewed_chapters=[chapter], review_actions=[action], allow_llm_patches=False,
+    )
+    assert repaired[0].markdown == chapter.markdown
+    assert actions[0].status == "downgraded"
+    assert unresolved
 
 
 @pytest.mark.anyio

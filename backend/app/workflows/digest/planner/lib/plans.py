@@ -486,7 +486,7 @@ def _build_constraints(
     chapter_min = _positive_int(raw_overrides.get("chapter_min_words")) or default_min
     chapter_target = _positive_int(raw_overrides.get("chapter_target_words")) or default_target
     chapter_max = _positive_int(raw_overrides.get("chapter_max_words")) or default_max
-    if 800 <= chapter_min <= chapter_target <= chapter_max <= 8000:
+    if 1 <= chapter_min <= chapter_target <= chapter_max <= 8000:
         constraints.update(
             {
                 "chapter_length_profile": profile,

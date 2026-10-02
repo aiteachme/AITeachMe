@@ -55,8 +55,8 @@ def build_repair_or_route_node(*, context: WorkflowContext):
         allow_llm_patches = str(state.get("digest_mode") or "").strip().lower() != "sprint"
         # Sprint normally keeps one semantic writing pass. Deterministic
         # presentation repairs, malformed unit tests and objectively short
-        # chapters are the bounded exceptions; other semantic gaps remain
-        # visible as warnings.
+        # chapters and structured review errors are bounded exceptions.
+        # Optional semantic refinements remain visible as warnings.
         repaired, updated_actions, unresolved, repair_trace = await repair_or_route_review_actions(
             reviewed_chapters=reviewed,
             review_actions=actions,

@@ -344,6 +344,7 @@ def _execution_contract_for_writer(
     return {
         "target_word_count": task.target_word_count,
         "min_word_count": task.min_word_count,
+        "max_word_count": task.max_word_count,
         "coverage_requirements": required_elements,
         "min_coverage_score": task.coverage_threshold,
         "min_evidence_support": task.evidence_support_threshold,

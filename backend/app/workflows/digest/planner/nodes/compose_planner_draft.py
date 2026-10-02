@@ -353,12 +353,19 @@ def _parse_build_constraints(value: str) -> dict[str, Any]:
             parsed = int(decoded.get(key) or 0)
         except (TypeError, ValueError) as exc:
             raise ValueError(f"{key} must be an integer") from exc
-        if not 800 <= parsed <= 8000:
-            raise ValueError(f"{key} must be between 800 and 8000")
+        if not 1 <= parsed <= 8000:
+            raise ValueError(f"{key} must be between 1 and 8000")
         values[key] = parsed
     if not values["chapter_min_words"] <= values["chapter_target_words"] <= values["chapter_max_words"]:
         raise ValueError("chapter word constraints must satisfy min <= target <= max")
-    return {"chapter_length_profile": profile, **values}
+    constraints: dict[str, Any] = {"chapter_length_profile": profile, **values}
+    if "target_total_words" in decoded:
+        total = decoded["target_total_words"]
+        if total is not None and (type(total) is not int or total <= 0):
+            raise ValueError("target_total_words must be a positive integer or null")
+        # Preserve null so a revision can remove an earlier explicit total.
+        constraints["target_total_words"] = total
+    return constraints
 
 
 def _parse_planner_response(text: str) -> dict[str, Any]:

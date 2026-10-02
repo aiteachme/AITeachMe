@@ -337,16 +337,21 @@ def assemble_chapter_generation_plan(
         )
         required_element_count = min(8, len(clean_string_list(seed.required_elements)))
         extra_coverage_units = max(0, required_element_count - 4)
+        try:
+            configured_cap = int(build_constraints.get("chapter_max_words") or 0)
+        except (TypeError, ValueError):
+            configured_cap = 0
         if extra_coverage_units and not explicit_total_words:
             # Extra coverage may expand a budget, but must never shrink an
             # explicit user-provided total that already exceeds the soft cap.
-            try:
-                configured_cap = int(build_constraints.get("chapter_max_words") or 0)
-            except (TypeError, ValueError):
-                configured_cap = 0
             target_cap = max(target_words, configured_cap or target_words + 600)
             target_words = min(target_cap, target_words + extra_coverage_units * 150)
             min_words = min(target_words, min_words + extra_coverage_units * 100)
+        max_words = (
+            target_words if explicit_total_words
+            else max(target_words, configured_cap) if configured_cap > 0
+            else None
+        )
         affinity = _affinity_for_chapter(
             chapter_index=chapter_index,
             source_affinity_by_chapter=source_affinity_by_chapter,
@@ -496,6 +501,7 @@ def assemble_chapter_generation_plan(
             patch_tolerance=mode_profile.patch_tolerance,
             min_word_count=min_words,
             target_word_count=target_words,
+            max_word_count=max_words,
             budget_policy=ChapterBudgetPolicy(**mode_profile.budget_policy()),
         )
         tasks.append(task)
