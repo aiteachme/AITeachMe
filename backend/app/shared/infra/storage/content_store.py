@@ -163,6 +163,9 @@ class ContentStore:
     async def list_prefix(self, prefix: str) -> list[str]:
         return await self._inner.list_prefix(prefix)
 
+    async def list_prefix_sizes(self, prefix: str) -> dict[str, int]:
+        return await self._inner.list_prefix_sizes(prefix)
+
     async def materialize(self, key: str, temp_dir: Path) -> Path:
         """将文件物化到本地临时目录。local 模式零拷贝。"""
         return await self._inner.materialize_to_temp(key, temp_dir)

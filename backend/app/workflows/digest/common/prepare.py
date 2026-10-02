@@ -10,6 +10,7 @@ import structlog
 
 from app.shared.infra.database import managed_session
 from app.shared.infra.storage import get_content_store, resolve_course_storage_scope
+from app.shared.infra.workflow.runtime import await_shielded_and_drain, cancel_tasks_and_drain, run_sync_and_drain
 from app.models import RawFile
 from app.repositories.files_repo import list_raw_files_by_ids
 from app.workflows.digest.common.material_profile import (
@@ -27,6 +28,7 @@ logger = structlog.get_logger()
 INLINE_FORMULA_PATTERN = re.compile(r"\$[^$\n]+\$|\$\$[^$]+\$\$", re.DOTALL)
 TABLE_PATTERN = re.compile(r"^\s*\|.+\|\s*$", re.MULTILINE)
 IMAGE_PATTERN = re.compile(r"!\[[^\]]*\]\(([^)]+)\)|<img[^>]+src=[\"']([^\"']+)[\"']", re.IGNORECASE)
+_SOURCE_READ_CONCURRENCY = 8
 
 
 async def prepare_shared_inputs(
@@ -43,6 +45,14 @@ async def prepare_shared_inputs(
         logger.warning("shared_prepare_empty", course_id=course_id)
         return DigestMaterialContext()
 
+    return await run_sync_and_drain(
+        _prepare_material_context, course_id, source_packets, user_prompt=user_prompt,
+    )
+
+
+def _prepare_material_context(
+    course_id: str, source_packets: list[SourcePacket], *, user_prompt: str | None,
+) -> DigestMaterialContext:
     section_packets = [
         section
         for packet in source_packets
@@ -118,13 +128,23 @@ async def load_source_packets(course_id: str, file_ids: list[str]) -> list[Sourc
     """Load parsed raw markdown and normalize it into source packets."""
 
     cs = get_content_store()
-    course_scope = resolve_course_storage_scope(course_id)
     requested_order = {file_id: index for index, file_id in enumerate(file_ids)}
-    with managed_session() as session:
-        raw_files = sorted(
-            list_raw_files_by_ids(session, course_id, file_ids),
-            key=lambda raw_file: requested_order.get(raw_file.id, len(requested_order)),
-        )
+
+    def load_records():
+        course_scope = resolve_course_storage_scope(course_id)
+        with managed_session() as session:
+            raw_files = sorted(
+                list_raw_files_by_ids(session, course_id, file_ids),
+                key=lambda raw_file: requested_order.get(raw_file.id, len(requested_order)),
+            )
+            # Fully loaded, detached records can be read after the worker's
+            # session closes, including when its commit expires ORM objects.
+            for raw_file in raw_files:
+                session.expunge(raw_file)
+        return course_scope, raw_files
+
+    course_scope, raw_files = await run_sync_and_drain(load_records)
+    storage_reads = asyncio.Semaphore(_SOURCE_READ_CONCURRENCY)
 
     async def load_one(raw_file: RawFile) -> SourcePacket | None:
         if not raw_file.id:
@@ -136,11 +156,12 @@ async def load_source_packets(course_id: str, file_ids: list[str]) -> list[Sourc
             file_id=raw_file.id,
             filename=raw_file.original_filename,
         )
-        content = await cs.read_text(md_key, default="") or ""
-
-        # fallback 到 DB 中的 parsed_markdown
-        if not content.strip() and raw_file.parsed_markdown and raw_file.parsed_markdown.strip():
-            content = raw_file.parsed_markdown
+        # Ingest and Markdown edits persist the authoritative body in the DB.
+        # Object storage is only needed for older records without that body.
+        content = raw_file.parsed_markdown or ""
+        if not content.strip():
+            async with storage_reads:
+                content = await cs.read_text(md_key, default="") or ""
 
         markdown_path_str = md_key
         asset_dir_str = getattr(raw_file, "asset_dir", None) or file_scope.asset_prefix(
@@ -167,7 +188,12 @@ async def load_source_packets(course_id: str, file_ids: list[str]) -> list[Sourc
             image_refs=image_refs,
         )
 
-    packets = await asyncio.gather(*(load_one(raw_file) for raw_file in raw_files))
+    tasks = [asyncio.create_task(load_one(raw_file)) for raw_file in raw_files]
+    try:
+        packets = await asyncio.gather(*tasks)
+    except BaseException:
+        await await_shielded_and_drain(cancel_tasks_and_drain(tasks))
+        raise
     return [packet for packet in packets if packet is not None]
 
 

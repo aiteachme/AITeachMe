@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 from time import perf_counter
-from typing import Any, TypeVar
+from typing import Any, ParamSpec, TypeVar
 
 import structlog
 from langsmith import tracing_context
@@ -28,6 +28,7 @@ from app.shared.infra.workflow.result import WorkflowResult, err_result, ok_resu
 logger = structlog.get_logger(__name__)
 
 T = TypeVar("T")
+P = ParamSpec("P")
 
 _GRAPH_STATE_SCALAR_FIELDS = (
     "course_id",
@@ -221,6 +222,15 @@ async def await_shielded_and_drain(awaitable: Awaitable[T]) -> T:
     if cancelled_error is not None:
         raise cancelled_error
     return result
+
+
+async def run_sync_and_drain(handler: Callable[P, T], /, *args: P.args, **kwargs: P.kwargs) -> T:
+    """Run blocking work off the loop; finish its transaction before cancellation.
+
+    The handler must own its database session. to_thread copies trace/model
+    context, and draining prevents an abandoned worker from committing later.
+    """
+    return await await_shielded_and_drain(asyncio.to_thread(handler, *args, **kwargs))
 
 
 async def invoke_state_graph(

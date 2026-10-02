@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import functools
+import inspect
 from collections.abc import Mapping
 from typing import Any
 
 from app.shared.infra.workflow import WorkflowTraceBinding
+from app.shared.infra.workflow.runtime import run_sync_and_drain
 
 
 def named_route(fn, name: str):
@@ -51,6 +54,14 @@ def traced_digest_node(
     timing_field: str | None = None,
 ):
     """Wrap one digest node with consistent trace metadata."""
+
+    if not inspect.iscoroutinefunction(handler):
+        sync_handler = handler
+
+        @functools.wraps(sync_handler)
+        async def handler(state):
+            result = await run_sync_and_drain(sync_handler, state)
+            return await result if inspect.isawaitable(result) else result
 
     input_keys = list(details.get("input_keys") or [])
     output_keys = list(details.get("output_keys") or [])

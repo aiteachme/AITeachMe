@@ -97,6 +97,16 @@ class LocalArtifactStore(ArtifactStore):
         shutil.rmtree(base_os_path, ignore_errors=True)
         return count
 
+    async def list_prefix_sizes(self, prefix: str) -> dict[str, int]:
+        sizes: dict[str, int] = {}
+        for key in await self.list_prefix(prefix):
+            try:
+                sizes[key] = os.stat(_to_os_path(self._resolve(key))).st_size
+            except FileNotFoundError:
+                # A file can disappear between enumeration and stat.
+                continue
+        return sizes
+
     async def materialize_to_temp(self, storage_key: str, temp_dir: Path) -> Path:
         # 本地模式：直接返回原始路径，零拷贝
         path = self._resolve(storage_key)

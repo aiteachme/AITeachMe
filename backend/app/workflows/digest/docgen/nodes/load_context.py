@@ -10,6 +10,7 @@ from app.shared.infra.settings import get_settings
 from app.shared.infra.knowledge.build_store import append_knowledge_build_recent_event, update_knowledge_build_status
 from app.utils.time import utcnow
 from app.shared.infra.workflow.context import WorkflowContext
+from app.shared.infra.workflow.runtime import run_sync_and_drain
 from app.workflows.digest.docgen.nodes.common import (
     get_effective_chapter_title,
     normalize_confirmed_plan_contract,
@@ -143,7 +144,8 @@ def build_load_context_node(*, context: WorkflowContext):
             or ""
         ).strip()
         try:
-            learner_profile_context = load_docgen_learner_profile_context(
+            learner_profile_context = await run_sync_and_drain(
+                load_docgen_learner_profile_context,
                 course_id=state["course_id"],
                 user_id=state.get("user_id") or None,
             )

@@ -320,7 +320,10 @@ class S3ArtifactStore(ArtifactStore):
             return False
 
     async def list_prefix(self, prefix: str) -> list[str]:
-        keys: list[str] = []
+        return list(await self.list_prefix_sizes(prefix))
+
+    async def list_prefix_sizes(self, prefix: str) -> dict[str, int]:
+        sizes: dict[str, int] = {}
         continuation_token = None
 
         while True:
@@ -337,13 +340,13 @@ class S3ArtifactStore(ArtifactStore):
                 lambda client: client.list_objects_v2(**kwargs),
             )
 
-            keys.extend(obj["Key"] for obj in resp.get("Contents", []))
+            sizes.update({obj["Key"]: int(obj.get("Size") or 0) for obj in resp.get("Contents", [])})
 
             if not resp.get("IsTruncated"):
                 break
             continuation_token = resp.get("NextContinuationToken")
 
-        return keys
+        return sizes
 
     async def delete_prefix(self, prefix: str) -> int:
         safe_prefix = validate_delete_prefix(prefix)

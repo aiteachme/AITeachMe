@@ -55,6 +55,10 @@ class ArtifactStore(ABC):
         """列出指定前缀下的所有 storage_key。"""
 
     @abstractmethod
+    async def list_prefix_sizes(self, prefix: str) -> dict[str, int]:
+        """列出指定前缀的文件及字节数，不下载文件内容。"""
+
+    @abstractmethod
     async def delete_prefix(self, prefix: str) -> int:
         """删除指定前缀下的所有文件，返回删除数量。"""
 

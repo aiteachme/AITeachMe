@@ -20,27 +20,28 @@ def build_asset_registry(course_id: str, source_packets: list[SourcePacket]) -> 
     asset_dir = source_packets[0].asset_dir
     assets: list[AssetItem] = []
     missing_assets = 0
+    sizes_by_prefix: dict[str, dict[str, int]] = {}
 
     for packet in source_packets:
+        if not packet.image_refs:
+            continue
         prefix = packet.asset_dir.rstrip("/") + "/"
-        stored_keys = run_store_sync(cs.list_prefix, prefix, default=[]) or []
-        key_by_name = {key.rsplit("/", 1)[-1]: key for key in stored_keys}
+        if prefix not in sizes_by_prefix:
+            sizes_by_prefix[prefix] = run_store_sync(cs.list_prefix_sizes, prefix, default={}) or {}
+        stored_sizes = sizes_by_prefix[prefix]
+        key_by_name = {key.rsplit("/", 1)[-1]: key for key in stored_sizes}
         for asset_name in dict.fromkeys(packet.image_refs):
             asset_key = key_by_name.get(asset_name)
             asset_exists = bool(asset_key)
             if not asset_exists:
                 missing_assets += 1
-            file_size = 0
-            if asset_key:
-                data = run_store_sync(cs.read_bytes, asset_key, default=None)
-                file_size = len(data) if data is not None else 0
             assets.append(
                 AssetItem(
                     filename=asset_name,
                     file_id=packet.file_id,
                     page_number=_extract_page_number(asset_name),
                     asset_type=_detect_asset_type(asset_name),
-                    file_size=file_size,
+                    file_size=stored_sizes.get(asset_key or "", 0),
                     ocr_available=asset_exists,
                 )
             )

@@ -103,19 +103,10 @@ def run_store_sync(
     coro = coro_fn(*args, **kwargs)
 
     try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = None
-
-    try:
-        if loop is not None and loop.is_running():
-            # 已在异步上下文中（FastAPI / LangGraph node 等）时，不能嵌套
-            # asyncio.run。复用后台事件循环，避免每次同步桥调用都创建
-            # Windows socketpair，长流程频繁写进度时会触发 WinError 10055。
-            future = asyncio.run_coroutine_threadsafe(coro, _get_background_loop())
-            return future.result()
-        else:
-            return asyncio.run(coro)
+        # 同步工作线程也复用后台事件循环，避免每次存储读写都创建
+        # Windows socketpair；长文档的图片和进度读写尤其频繁。
+        future = asyncio.run_coroutine_threadsafe(coro, _get_background_loop())
+        return future.result()
     except concurrent.futures.CancelledError:
         coro.close()
         if default is not _MISSING:
