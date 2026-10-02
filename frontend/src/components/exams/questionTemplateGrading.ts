@@ -10,12 +10,17 @@ export interface QuestionTemplateGradeResult {
   score_max: number;
   feedback_text: string;
   error_cause_label?: string | null;
-  grading_mode: "objective_rule" | "subjective_llm" | "subjective_fallback";
+  grading_mode: "objective_rule" | "subjective_llm" | "subjective_fallback" | "custom_rubric_llm";
   correct_answer: string;
+  grading_detail?: Record<string, unknown>;
 }
 
-export function isAiGradedQuestionType(questionType?: string | null): boolean {
-  return ["fill_blank", "short_answer"].includes(normalizeQuestionTypeKey(questionType));
+export function isAiGradedQuestionType(
+  questionType?: string | null,
+  rendererKey?: string | null,
+): boolean {
+  return rendererKey === "long_text_v1" || rendererKey === "structured_text_v1" ||
+    ["fill_blank", "short_answer"].includes(normalizeQuestionTypeKey(questionType));
 }
 
 export async function gradeQuestionTemplateAnswer(
@@ -23,9 +28,17 @@ export async function gradeQuestionTemplateAnswer(
   questionTemplateId: number,
   answer: string,
   questionType?: string | null,
-  options?: { ephemeral?: boolean },
+  options?: {
+    ephemeral?: boolean;
+    rendererKey?: string | null;
+    answerPayload?: Record<string, string>;
+  },
 ): Promise<QuestionTemplateGradeResult> {
-  if (questionType !== undefined) {
+  if (
+    questionType !== undefined &&
+    options?.rendererKey !== "long_text_v1" &&
+    options?.rendererKey !== "structured_text_v1"
+  ) {
     requireSupportedQuestionType(questionType);
   }
   const response = await orvalApiClient<{ data?: { code?: number; message?: string; data?: QuestionTemplateGradeResult } }>(
@@ -33,7 +46,10 @@ export async function gradeQuestionTemplateAnswer(
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ answer, ephemeral: options?.ephemeral === true }),
+      body: JSON.stringify({
+        ...(options?.answerPayload ? { answer_payload: options.answerPayload } : { answer }),
+        ephemeral: options?.ephemeral === true,
+      }),
       timeout: LONG_RUNNING_API_TIMEOUT_MS,
     },
   );

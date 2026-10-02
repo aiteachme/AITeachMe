@@ -1,6 +1,6 @@
 # Examine Exam Grade 链路
 
-最后更新：2026-06-15
+最后更新：2026-09-29
 
 职责：批改考试、生成逐题反馈，并基于批改结果生成考试学习指南。
 
@@ -96,8 +96,7 @@ explanation_snapshot
 
 ```text
 1. 规则判断对错
-2. LLM 生成反馈和错因标签
-3. LLM 失败时使用默认反馈
+2. 使用规则结果与已有解析生成反馈，不额外调用 LLM
 ```
 
 输出：
@@ -126,7 +125,6 @@ grading_mode = objective_rule
 ```text
 fill_blank
 short_answer
-未知题型
 ```
 
 输入：
@@ -144,7 +142,7 @@ score
 ```text
 1. 未作答直接判 0 分
 2. 已作答调用 LLM 结构化判分
-3. LLM 失败时退回文本精确匹配
+3. 模型调用或结构校验失败时保留为评分失败，允许重试，不退回文本匹配
 ```
 
 输出：
@@ -155,7 +153,7 @@ score_obtained
 score_max
 feedback_text
 error_cause_label
-grading_mode = subjective_llm 或 subjective_fallback
+grading_mode = subjective_llm
 ```
 
 关键字段：
@@ -164,7 +162,15 @@ grading_mode = subjective_llm 或 subjective_fallback
 | --- | --- |
 | `score_obtained` | Profile 掌握度更新的核心得分证据 |
 | `error_cause_label` | 错因统计和学习指南会使用 |
-| `grading_mode` | 标记本题是规则判分、LLM 判分还是兜底判分 |
+| `grading_mode` | 标记本题是规则判分、内置主观题判分还是自定义 rubric 判分 |
+
+### 上传题型判定
+
+带 `question_type_version_id` 的题目使用冻结的作答结构、参考答案、rubric 和评分 prompt。学生答案按字段校验并存储；整卷中省略某道题视为未作答，显式提交的对象仍需符合字段合同。
+
+每个 rubric 维度须完整返回，正分必须有可在对应作答字段中定位的原文证据。服务端使用冻结权重计算总分和通过结果；导入与评分共用 `0.001` 的权重总和容差，只在评分视图中归一化舍入误差。空白回答直接判 0 分，模型或证据失败保留为评分失败。
+
+`feedback_prompt` 在同次评分请求中指导反馈表达，不新增一次模型调用。返回模式为 `custom_rubric_llm`，`grading_detail` 保存维度分数、证据和字段标签。未知且没有可用冻结运行合同的题型禁止执行。
 
 ## 4. API 写回判卷结果
 
@@ -202,6 +208,8 @@ course_id
 ```
 
 Profile 会继续读取：
+
+只消费 `profile_eligible=true` 的题目。上传题型的成绩计入本次试卷，但不参与长期掌握度、课程或用户画像更新。
 
 ```text
 ExamPaperItem.is_correct

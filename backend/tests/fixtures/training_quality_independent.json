@@ -1,0 +1,61 @@
+{
+  "schema": "aiteachme.training-acceptance/v1",
+  "authorship": "Agent-authored held-out cases; independent of package authors and provider outputs. Evaluated with the production automatic LLM grader; human approval is not required.",
+  "cases": [
+    {
+      "id": "feynman-randomization", "example": "feynman_explanation",
+      "stem": "向初学者解释随机分组为什么有助于比较两种教学方法。说明机制，举一个例子，并指出不能保证的事情。",
+      "reference_answer": "用抽签将学生分组，减少原有水平等因素的系统差异；相同课时下比较两种教学方法的测试成绩。随机化不保证每个小样本完全平衡，也不自动解决退出偏差和结论外推。",
+      "answers": [
+        {"label": "strong", "content": "随机分组就像抽签分队，目的是让原有水平等因素不要总偏向某一队。把学生抽签分到两种教学法，在相同课时、同一测验下比较成绩，就更能判断差异是否来自教法。它减少混杂，但小样本仍可能不平衡，退出偏差也要检查，不能自动推广到所有学校。", "expected_score": {"min": 0.8, "max": 1}, "expected_pass": true},
+        {"label": "partial", "content": "随机分组就是抽签分组，这样比较公平。", "expected_score": {"min": 0.15, "max": 0.6}, "expected_pass": false},
+        {"label": "wrong", "content": "把成绩最高的人都放在新方法组就叫随机分组，新方法组分数高就证明教法有效，适用于所有人。", "expected_score": {"min": 0, "max": 0.2}, "expected_pass": false}
+      ]
+    },
+    {
+      "id": "defense-confounded-light", "example": "oral_defense",
+      "stem": "十株幼苗中，五株放在窗边每天浇水，五株放在室内每周浇水。窗边长得更快。答辩：这是否证明光照造成差异？给出结论、依据和边界。",
+      "answers": [
+        {"label": "strong", "content": {"claim": "现有比较不能单独证明光照造成生长差异。", "evidence": "光照与浇水频率同时改变，水分是混杂因素。应随机分组，统一浇水、品种、土壤和温度，只改变光照，比较预定时间内的生长量。", "boundary": "五株一组存在随机波动，结论只能限于所测品种和条件，需要更多独立幼苗重复实验。"}, "expected_score": {"min": 0.8, "max": 1}, "expected_pass": true},
+        {"label": "partial", "content": {"claim": "暂时不能证明光照造成差异。", "evidence": "还有其他因素可能不同。", "boundary": "没有进一步考虑。"}, "expected_score": {"min": 0.2, "max": 0.65}, "expected_pass": false},
+        {"label": "wrong", "content": {"claim": "已经证明光照是唯一原因。", "evidence": "只要长得更快就能确认因果，不需要看浇水条件。", "boundary": "任何植物、任何环境都可以照搬这一结论。"}, "expected_score": {"min": 0, "max": 0.2}, "expected_pass": false}
+      ]
+    },
+    {
+      "id": "interview-repeated-readings", "example": "scenario_interview",
+      "stem": "研究员对同一杯水重复测量温度30次，称已获得30个独立水样。你如何分析、处理并给出最终建议？",
+      "answers": [
+        {"label": "strong", "content": {"analysis": "这是同一实验单位的重复读数，只反映测量波动，独立水样数仍为一，不能把30次读数当作独立样本。", "steps": "保留每次读数并检查仪器校准；先汇总该杯的测量误差，再按取样方案独立采集多杯水，分别测量并区分杯内和杯间差异。", "conclusion": "报告一杯水的30次重复测量；如需推断水样总体，须增加独立采样数量。"}, "expected_score": {"min": 0.8, "max": 1}, "expected_pass": true},
+        {"label": "partial", "content": {"analysis": "这些测量可能并不独立。", "steps": "多测几次并检查仪器。", "conclusion": "目前的结论要谨慎。"}, "expected_score": {"min": 0.2, "max": 0.65}, "expected_pass": false},
+        {"label": "wrong", "content": {"analysis": "读数不同就说明是不同的独立水样。", "steps": "把30次读数直接当作30个独立单位进行总体推断。", "conclusion": "继续测同一杯即可获得任意大的独立样本量。"}, "expected_score": {"min": 0, "max": 0.2}, "expected_pass": false}
+      ]
+    },
+    {
+      "id": "debate-drop-unfavorable-data", "example": "argument_debate",
+      "stem": "辩题：为了得到清晰的实验结论，可以在看到结果后删除不支持假设的数据。表明立场，给出依据，公平陈述最强反方观点并回应。",
+      "answers": [
+        {"label": "strong", "content": {"stance": "反对仅因数据不支持假设就将其删除。", "evidence": "根据结果方向挑选数据会改变样本并夸大支持程度，破坏推断的可信度，应透明报告所有预定结果。", "counterargument": "反方最强理由是仪器故障或记录错误确实可能污染数据，保留这些记录也会误导。", "rebuttal": "应依据与结果方向无关的预定规则、校准记录等证据处理错误，说明删除原因并报告敏感性分析；不能把不支持假设等同于错误。"}, "expected_score": {"min": 0.8, "max": 1}, "expected_pass": true},
+        {"label": "partial", "content": {"stance": "我反对删除。", "evidence": "数据应该如实保留。", "counterargument": "别人可能希望结果更好看。", "rebuttal": "如实记录更重要。"}, "expected_score": {"min": 0.2, "max": 0.65}, "expected_pass": false},
+        {"label": "wrong", "content": {"stance": "应该删除所有不支持假设的数据。", "evidence": "假设必然正确，因此不同结果必然是错误。", "counterargument": "保留数据没有合理理由。", "rebuttal": "删完后统计显著就能证明研究可信。"}, "expected_score": {"min": 0, "max": 0.2}, "expected_pass": false}
+      ]
+    },
+    {
+      "id": "experiment-paper-airplane", "example": "experiment_design",
+      "stem": "设计实验检验纸飞机翼宽是否影响飞行距离。填写假设、步骤、变量与对照，以及支持或不支持假设的结果应如何解释。",
+      "answers": [
+        {"label": "strong", "content": {"hypothesis": "在纸张、机身和投掷条件一致时，宽翼飞机的平均飞行距离大于窄翼飞机。", "procedure": "按两种翼宽各制作多架独立纸飞机，统一纸张和机身，随机安排投掷顺序，在室内用固定装置从同一高度和角度发射，测量落点水平距离并记录所有结果。每架重复飞行后先计算架内均值，再比较两组独立飞机的平均距离与离散程度。", "controls": "自变量为翼宽，因变量为飞行距离；固定纸张质量、机身长度、投掷力度角度高度和环境，窄翼组作对照。重复投同一架不增加独立飞机数。", "interpretation": "若宽翼组距离稳定更大且差异超过随机波动，则支持假设；若差异很小或窄翼更远则不支持。结论限于此次材料和翼宽范围，不能推广到任意飞机。"}, "expected_score": {"min": 0.8, "max": 1}, "expected_pass": true},
+        {"label": "partial", "content": {"hypothesis": "我认为宽翼纸飞机能够飞得更远。", "procedure": "分别折一架宽翼和窄翼飞机，各投一次，测量距离后比较。", "controls": "使用同一张规格的纸，其他条件没有记录。", "interpretation": "比较两架飞机的飞行距离来判断哪个更好。"}, "expected_score": {"min": 0.25, "max": 0.69}, "expected_pass": false},
+        {"label": "wrong", "content": {"hypothesis": "不需要实验，任何宽翼飞机都必然飞得最远。", "procedure": "只投一架宽翼飞机，给它更大力度，删除所有飞得近的记录，不测量窄翼飞机。", "controls": "纸张、力度和机身全部随意改变，不必设置对照。", "interpretation": "只保留最远的一次就能证明全部飞机的规律。"}, "expected_score": {"min": 0, "max": 0.2}, "expected_pass": false}
+      ]
+    },
+    {
+      "id": "case-route-confounding", "example": "case_analysis",
+      "stem": "小林周一早高峰乘公交花40分钟，周日午后骑车花20分钟，便断言骑车在任何时间都能节省一半时间。请给出处理建议，说明依据与限制。",
+      "answers": [
+        {"label": "strong", "content": {"recommendation": "在相同路线和相近时段多次比较两种交通方式，再决定通勤方案。", "reasoning": "两次出行的星期和时段同时不同，交通拥堵是混杂因素，单次时间差不能归因于交通方式。固定起终点、控制时段并记录天气等条件，重复比较时间分布；个人体力和天气也限制结论外推。"}, "expected_score": {"min": 0.8, "max": 1}, "expected_pass": true},
+        {"label": "partial", "content": {"recommendation": "先多观察几次再作决定。", "reasoning": "一次结果可能偶然，还需要更多数据，但我没有说明两次出行条件的差别。"}, "expected_score": {"min": 0.2, "max": 0.65}, "expected_pass": false},
+        {"label": "wrong", "content": {"recommendation": "立即告诉所有人骑车一定快一倍。", "reasoning": "两次观察已严格证明骑车总能省一半时间，不必考虑路线、时段、天气或个人体力。"}, "expected_score": {"min": 0, "max": 0.2}, "expected_pass": false}
+      ]
+    }
+  ]
+}

@@ -33,6 +33,9 @@ from app.models import (
     KnowledgeUnit,
     QuestionKnowledgeUnitLink,
     QuestionTemplate,
+    QuestionTypePackageAsset,
+    QuestionTypePackageImport,
+    QuestionTypePackageVersion,
     QuestionTypeRegistry,
     RawFile,
     RetrievalChunk,
@@ -91,6 +94,21 @@ def collect_course_delete_counts(session: Session, *, course_id: str) -> dict[st
         "chat_session": _count_rows(session, ChatSession, ChatSession.course_id == course_id),
         "question_template": _count_rows(session, QuestionTemplate, QuestionTemplate.course_id == course_id),
         "question_type_registry": _count_rows(session, QuestionTypeRegistry, QuestionTypeRegistry.course_id == course_id),
+        "question_type_package_version": _count_rows(
+            session,
+            QuestionTypePackageVersion,
+            QuestionTypePackageVersion.course_id == course_id,
+        ),
+        "question_type_package_asset": _count_rows(
+            session,
+            QuestionTypePackageAsset,
+            QuestionTypePackageAsset.course_id == course_id,
+        ),
+        "question_type_package_import": _count_rows(
+            session,
+            QuestionTypePackageImport,
+            QuestionTypePackageImport.course_id == course_id,
+        ),
         "exam_paper": _count_rows(session, ExamPaper, ExamPaper.course_id == course_id),
         "course_initial_exam_job": _count_rows(
             session,
@@ -355,6 +373,9 @@ def _delete_exam_records(session: Session, *, course_id: str) -> None:
     _bulk_delete_by_course(session, CourseInitialExamJob, course_id=course_id)
     _bulk_delete_by_course(session, ExamPaper, course_id=course_id)
     _bulk_delete_by_course(session, QuestionTemplate, course_id=course_id)
+    _bulk_delete_by_course(session, QuestionTypePackageImport, course_id=course_id)
+    _bulk_delete_by_course(session, QuestionTypePackageAsset, course_id=course_id)
+    _bulk_delete_by_course(session, QuestionTypePackageVersion, course_id=course_id)
     _bulk_delete_by_course(session, QuestionTypeRegistry, course_id=course_id)
 
 

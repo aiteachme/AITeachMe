@@ -7740,6 +7740,16 @@
               }
             }
           },
+          "502": {
+            "description": "上游模型调用失败。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -9159,6 +9169,656 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/courses/{course_id}/question-types": {
+      "get": {
+        "tags": [
+          "question-type-packages"
+        ],
+        "summary": "列出课程题型目录",
+        "operationId": "list_question_types_api_api_v1_courses__course_id__question_types_get",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_list_QuestionTypeCatalogItemResponse__"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/courses/{course_id}/question-types/imports": {
+      "post": {
+        "tags": [
+          "question-type-packages"
+        ],
+        "summary": "上传并校验课程题型包",
+        "operationId": "preview_question_type_import_api_api_v1_courses__course_id__question_types_imports_post",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_preview_question_type_import_api_api_v1_courses__course_id__question_types_imports_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_QuestionTypePackagePreviewData_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "上传文件超出大小限制。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "业务校验未通过。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "接口可能返回业务错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/courses/{course_id}/question-types/imports/{import_id}/confirm": {
+      "post": {
+        "tags": [
+          "question-type-packages"
+        ],
+        "summary": "确认安装已校验的课程题型包",
+        "operationId": "confirm_question_type_import_api_api_v1_courses__course_id__question_types_imports__import_id__confirm_post",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          },
+          {
+            "name": "import_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Import Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuestionTypePackageInstallRequest",
+                "default": {
+                  "set_current": true
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_QuestionTypePackageInstallData_"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态不允许执行该操作。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "接口可能返回业务错误。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "上传文件超出大小限制。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/courses/{course_id}/question-types/examples": {
+      "get": {
+        "tags": [
+          "question-type-packages"
+        ],
+        "summary": "列出官方题型包示例",
+        "operationId": "list_question_type_examples_api_api_v1_courses__course_id__question_types_examples_get",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_list_QuestionTypeExampleResponse__"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/courses/{course_id}/question-types/examples/{example_id}": {
+      "get": {
+        "tags": [
+          "question-type-packages"
+        ],
+        "summary": "下载官方题型包示例",
+        "operationId": "download_question_type_example_api_api_v1_courses__course_id__question_types_examples__example_id__get",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          },
+          {
+            "name": "example_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Example Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/courses/{course_id}/question-types/assets/{asset_id}": {
+      "get": {
+        "tags": [
+          "question-type-packages"
+        ],
+        "summary": "读取已安装题型包资源",
+        "operationId": "question_type_asset_api_api_v1_courses__course_id__question_types_assets__asset_id__get",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          },
+          {
+            "name": "asset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "title": "Asset Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态不允许执行该操作。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/courses/{course_id}/question-types/{registry_id}": {
+      "get": {
+        "tags": [
+          "question-type-packages"
+        ],
+        "summary": "读取课程题型详情",
+        "operationId": "get_question_type_api_api_v1_courses__course_id__question_types__registry_id__get",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          },
+          {
+            "name": "registry_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "title": "Registry Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_QuestionTypeCatalogItemResponse_"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "question-type-packages"
+        ],
+        "summary": "修改课程上传题型状态或当前版本",
+        "operationId": "patch_question_type_api_api_v1_courses__course_id__question_types__registry_id__patch",
+        "parameters": [
+          {
+            "name": "course_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Course Id"
+            }
+          },
+          {
+            "name": "registry_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "title": "Registry Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuestionTypeCatalogPatchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_QuestionTypeCatalogItemResponse_"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "当前资源状态不允许执行该操作。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "业务校验未通过。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -12610,6 +13270,108 @@
           "message": "ok"
         }
       },
+      "ApiResponse_QuestionTypeCatalogItemResponse_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuestionTypeCatalogItemResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[QuestionTypeCatalogItemResponse]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_QuestionTypePackageInstallData_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuestionTypePackageInstallData"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[QuestionTypePackageInstallData]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_QuestionTypePackagePreviewData_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuestionTypePackagePreviewData"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[QuestionTypePackagePreviewData]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
       "ApiResponse_RetrievalDebugResponse_": {
         "properties": {
           "code": {
@@ -13227,6 +13989,82 @@
           "message": "ok"
         }
       },
+      "ApiResponse_list_QuestionTypeCatalogItemResponse__": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/QuestionTypeCatalogItemResponse"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data",
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[list[QuestionTypeCatalogItemResponse]]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
+      "ApiResponse_list_QuestionTypeExampleResponse__": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "业务码，0 表示成功。",
+            "default": 0
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "响应消息。",
+            "default": "ok"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/QuestionTypeExampleResponse"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data",
+            "description": "业务数据。"
+          }
+        },
+        "type": "object",
+        "title": "ApiResponse[list[QuestionTypeExampleResponse]]",
+        "example": {
+          "code": 0,
+          "data": {},
+          "message": "ok"
+        }
+      },
       "ApiResponse_list_QuestionTypeRegistryItemResponse__": {
         "properties": {
           "code": {
@@ -13504,6 +14342,21 @@
           "file"
         ],
         "title": "Body_import_uploaded_course_api_api_v1_courses_import_post"
+      },
+      "Body_preview_question_type_import_api_api_v1_courses__course_id__question_types_imports_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "description": ".atqskill 题型包或兼容 ZIP。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_preview_question_type_import_api_api_v1_courses__course_id__question_types_imports_post"
       },
       "Body_upload_files_api_v1_courses__course_id__files_upload_post": {
         "properties": {
@@ -17218,6 +18071,23 @@
             "title": "Question Types",
             "description": "Optional allowed question types. Empty means automatic type planning."
           },
+          "question_type_registry_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Question Type Registry Ids",
+            "description": "Optional course custom-question-type registry IDs. They can be combined with built-in question_types; the server freezes the resolved versions for this run."
+          },
+          "question_type_selections": {
+            "items": {
+              "$ref": "#/components/schemas/QuestionTypeSelection"
+            },
+            "type": "array",
+            "maxItems": 25,
+            "title": "Question Type Selections"
+          },
           "difficulty": {
             "type": "string",
             "enum": [
@@ -17868,6 +18738,76 @@
             "type": "boolean",
             "title": "Is Marked",
             "default": false
+          },
+          "question_type_registry_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question Type Registry Id"
+          },
+          "question_type_version_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question Type Version Id"
+          },
+          "renderer_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Renderer Key"
+          },
+          "public_payload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Public Payload"
+          },
+          "answer_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Answer Schema"
+          },
+          "user_answer_payload": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "User Answer Payload"
+          },
+          "grading_detail": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Grading Detail"
+          },
+          "grading_status": {
+            "type": "string",
+            "title": "Grading Status",
+            "default": "pending"
+          },
+          "grading_error_code": {
+            "type": "string",
+            "title": "Grading Error Code",
+            "default": ""
+          },
+          "profile_eligible": {
+            "type": "boolean",
+            "title": "Profile Eligible",
+            "default": true
           }
         },
         "type": "object",
@@ -18226,15 +19166,35 @@
             "description": "Fallback key: item order."
           },
           "answer": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20000
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Answer",
-            "description": "User answer."
+            "description": "Legacy plain-text answer."
+          },
+          "answer_payload": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer Payload",
+            "description": "Structured answer keyed by the frozen answer schema."
           }
         },
         "type": "object",
-        "required": [
-          "answer"
-        ],
         "title": "ExamSubmitAnswerItem",
         "description": "One submitted answer item."
       },
@@ -18383,6 +19343,16 @@
           "question_type_registry_count": {
             "type": "integer",
             "title": "Question Type Registry Count",
+            "default": 0
+          },
+          "question_type_package_version_count": {
+            "type": "integer",
+            "title": "Question Type Package Version Count",
+            "default": 0
+          },
+          "question_type_package_asset_count": {
+            "type": "integer",
+            "title": "Question Type Package Asset Count",
             "default": 0
           },
           "question_template_count": {
@@ -21770,6 +22740,13 @@
             "type": "string",
             "title": "Answer"
           },
+          "answer_payload": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Answer Payload"
+          },
           "is_correct": {
             "anyOf": [
               {
@@ -21835,6 +22812,11 @@
               }
             ],
             "title": "Grading Mode"
+          },
+          "grading_detail": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Grading Detail"
           },
           "time_spent_seconds": {
             "anyOf": [
@@ -22007,6 +22989,23 @@
             "maxItems": 5,
             "title": "Question Types",
             "description": "Allowed question types. Empty means an automatic mix."
+          },
+          "question_type_registry_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Question Type Registry Ids",
+            "description": "Optional course custom-question-type registry IDs; can be mixed with built-in types."
+          },
+          "question_type_selections": {
+            "items": {
+              "$ref": "#/components/schemas/QuestionTypeSelection"
+            },
+            "type": "array",
+            "maxItems": 25,
+            "title": "Question Type Selections"
           }
         },
         "type": "object",
@@ -22029,6 +23028,13 @@
           "generated_count": {
             "type": "integer",
             "title": "Generated Count"
+          },
+          "question_type_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Question Type Counts"
           },
           "templates": {
             "items": {
@@ -23047,6 +24053,18 @@
             ],
             "title": "Feedback Text"
           },
+          "user_answer_payload": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "User Answer Payload"
+          },
+          "grading_detail": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Grading Detail"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -23069,9 +24087,32 @@
       "QuestionTemplateGradeRequest": {
         "properties": {
           "answer": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20000
+              },
+              {
+                "type": "null"
+              }
+            ],
             "title": "Answer",
-            "description": "Submitted answer."
+            "description": "Legacy plain-text answer."
+          },
+          "answer_payload": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer Payload",
+            "description": "Structured answer keyed by the frozen answer schema."
           },
           "ephemeral": {
             "type": "boolean",
@@ -23081,9 +24122,6 @@
           }
         },
         "type": "object",
-        "required": [
-          "answer"
-        ],
         "title": "QuestionTemplateGradeRequest",
         "description": "Grade one answer against a question template."
       },
@@ -23129,13 +24167,19 @@
             "enum": [
               "objective_rule",
               "subjective_llm",
-              "subjective_fallback"
+              "subjective_fallback",
+              "custom_rubric_llm"
             ],
             "title": "Grading Mode"
           },
           "correct_answer": {
             "type": "string",
             "title": "Correct Answer"
+          },
+          "grading_detail": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Grading Detail"
           }
         },
         "type": "object",
@@ -23226,6 +24270,54 @@
             "title": "Has Wrong Attempt",
             "default": false
           },
+          "question_type_registry_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question Type Registry Id"
+          },
+          "question_type_version_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question Type Version Id"
+          },
+          "renderer_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Renderer Key"
+          },
+          "public_payload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Public Payload"
+          },
+          "answer_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Answer Schema"
+          },
+          "profile_eligible": {
+            "type": "boolean",
+            "title": "Profile Eligible",
+            "default": true
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -23285,6 +24377,619 @@
           "is_marked"
         ],
         "title": "QuestionTemplateMarkResponse"
+      },
+      "QuestionTypeAnswerFieldResponse": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "control": {
+            "type": "string",
+            "title": "Control"
+          },
+          "required": {
+            "type": "boolean",
+            "title": "Required"
+          },
+          "min_length": {
+            "type": "integer",
+            "title": "Min Length",
+            "default": 0
+          },
+          "max_length": {
+            "type": "integer",
+            "title": "Max Length",
+            "default": 1
+          },
+          "placeholder": {
+            "type": "string",
+            "title": "Placeholder",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "control",
+          "required"
+        ],
+        "title": "QuestionTypeAnswerFieldResponse"
+      },
+      "QuestionTypeCatalogItemResponse": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "type_key": {
+            "type": "string",
+            "title": "Type Key"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "scope": {
+            "type": "string",
+            "title": "Scope"
+          },
+          "course_id": {
+            "type": "string",
+            "title": "Course Id"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "answer_format": {
+            "type": "string",
+            "title": "Answer Format"
+          },
+          "grading_method": {
+            "type": "string",
+            "title": "Grading Method"
+          },
+          "option_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Option Schema"
+          },
+          "rubric": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "items": {},
+                "type": "array"
+              }
+            ],
+            "title": "Rubric"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "confidence": {
+            "type": "number",
+            "title": "Confidence"
+          },
+          "is_system": {
+            "type": "boolean",
+            "title": "Is System"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "package_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Package Key"
+          },
+          "current_version_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Version Id"
+          },
+          "current_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Version"
+          },
+          "template_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Key"
+          },
+          "runtime_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runtime Key"
+          },
+          "renderer_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Renderer Key"
+          },
+          "grader_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grader Key"
+          },
+          "modes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Modes"
+          },
+          "runtime_ready": {
+            "type": "boolean",
+            "title": "Runtime Ready",
+            "default": true
+          },
+          "runtime_message": {
+            "type": "string",
+            "title": "Runtime Message",
+            "default": ""
+          },
+          "answer_fields": {
+            "items": {
+              "$ref": "#/components/schemas/QuestionTypeAnswerFieldResponse"
+            },
+            "type": "array",
+            "title": "Answer Fields"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/QuestionTypePackageVersionResponse"
+            },
+            "type": "array",
+            "title": "Versions"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "type_key",
+          "display_name",
+          "scope",
+          "course_id",
+          "description",
+          "answer_format",
+          "grading_method",
+          "source",
+          "confidence",
+          "is_system",
+          "is_active",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "QuestionTypeCatalogItemResponse"
+      },
+      "QuestionTypeCatalogPatchRequest": {
+        "properties": {
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "inactive",
+                  "archived"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "current_version_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Version Id"
+          }
+        },
+        "type": "object",
+        "title": "QuestionTypeCatalogPatchRequest"
+      },
+      "QuestionTypeExampleResponse": {
+        "properties": {
+          "example_id": {
+            "type": "string",
+            "title": "Example Id"
+          },
+          "template_key": {
+            "type": "string",
+            "title": "Template Key",
+            "description": "兼容旧客户端的示例下载标识；使用 example_id。此字段不是包内的运行模板。",
+            "deprecated": true
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          }
+        },
+        "type": "object",
+        "required": [
+          "example_id",
+          "template_key",
+          "name",
+          "filename"
+        ],
+        "title": "QuestionTypeExampleResponse"
+      },
+      "QuestionTypePackageInstallData": {
+        "properties": {
+          "registry_id": {
+            "type": "integer",
+            "title": "Registry Id"
+          },
+          "version_id": {
+            "type": "integer",
+            "title": "Version Id"
+          },
+          "type_key": {
+            "type": "string",
+            "title": "Type Key"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "runtime_ready": {
+            "type": "boolean",
+            "title": "Runtime Ready"
+          },
+          "already_installed": {
+            "type": "boolean",
+            "title": "Already Installed",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "registry_id",
+          "version_id",
+          "type_key",
+          "version",
+          "status",
+          "runtime_ready"
+        ],
+        "title": "QuestionTypePackageInstallData"
+      },
+      "QuestionTypePackageInstallRequest": {
+        "properties": {
+          "set_current": {
+            "type": "boolean",
+            "title": "Set Current",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "QuestionTypePackageInstallRequest"
+      },
+      "QuestionTypePackageIssueResponse": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "path",
+          "message"
+        ],
+        "title": "QuestionTypePackageIssueResponse"
+      },
+      "QuestionTypePackagePreviewData": {
+        "properties": {
+          "import_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Import Id"
+          },
+          "valid": {
+            "type": "boolean",
+            "title": "Valid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "valid",
+              "invalid"
+            ],
+            "title": "Status"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "package_hash": {
+            "type": "string",
+            "title": "Package Hash",
+            "default": ""
+          },
+          "package_key": {
+            "type": "string",
+            "title": "Package Key",
+            "default": ""
+          },
+          "type_key": {
+            "type": "string",
+            "title": "Type Key",
+            "default": ""
+          },
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "default": ""
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "default": ""
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "template_key": {
+            "type": "string",
+            "title": "Template Key",
+            "default": ""
+          },
+          "runtime_key": {
+            "type": "string",
+            "title": "Runtime Key",
+            "default": ""
+          },
+          "renderer_key": {
+            "type": "string",
+            "title": "Renderer Key",
+            "default": ""
+          },
+          "grader_key": {
+            "type": "string",
+            "title": "Grader Key",
+            "default": ""
+          },
+          "modes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Modes"
+          },
+          "answer_fields": {
+            "items": {
+              "$ref": "#/components/schemas/QuestionTypeAnswerFieldResponse"
+            },
+            "type": "array",
+            "title": "Answer Fields"
+          },
+          "rubric": {
+            "items": {
+              "$ref": "#/components/schemas/QuestionTypeRubricItemResponse"
+            },
+            "type": "array",
+            "title": "Rubric"
+          },
+          "tool_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tool Ids"
+          },
+          "asset_count": {
+            "type": "integer",
+            "title": "Asset Count",
+            "default": 0
+          },
+          "conflict": {
+            "type": "string",
+            "enum": [
+              "none",
+              "already_installed",
+              "version_conflict",
+              "new_version"
+            ],
+            "title": "Conflict",
+            "default": "none"
+          },
+          "existing_version_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Existing Version Id"
+          },
+          "runtime_ready": {
+            "type": "boolean",
+            "title": "Runtime Ready",
+            "default": false
+          },
+          "runtime_message": {
+            "type": "string",
+            "title": "Runtime Message",
+            "default": ""
+          },
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/QuestionTypePackageIssueResponse"
+            },
+            "type": "array",
+            "title": "Errors"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/QuestionTypePackageIssueResponse"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "valid",
+          "status"
+        ],
+        "title": "QuestionTypePackagePreviewData"
+      },
+      "QuestionTypePackageVersionResponse": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "package_hash": {
+            "type": "string",
+            "title": "Package Hash"
+          },
+          "source_filename": {
+            "type": "string",
+            "title": "Source Filename"
+          },
+          "is_current": {
+            "type": "boolean",
+            "title": "Is Current"
+          },
+          "profile_eligible": {
+            "type": "boolean",
+            "title": "Profile Eligible"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "version",
+          "package_hash",
+          "source_filename",
+          "is_current",
+          "profile_eligible",
+          "created_at"
+        ],
+        "title": "QuestionTypePackageVersionResponse"
       },
       "QuestionTypeRegistryItemResponse": {
         "properties": {
@@ -23375,6 +25080,97 @@
           "updated_at"
         ],
         "title": "QuestionTypeRegistryItemResponse"
+      },
+      "QuestionTypeRubricItemResponse": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "weight": {
+            "type": "number",
+            "title": "Weight"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "weight",
+          "description"
+        ],
+        "title": "QuestionTypeRubricItemResponse"
+      },
+      "QuestionTypeSelection": {
+        "properties": {
+          "question_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "single_choice",
+                  "multiple_choice",
+                  "true_false",
+                  "fill_blank",
+                  "short_answer"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question Type"
+          },
+          "registry_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Registry Id"
+          },
+          "version_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version Id"
+          },
+          "count": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 200.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Count"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "QuestionTypeSelection",
+        "description": "One built-in type or installed package, with optional version and quota."
       },
       "RegisterRequest": {
         "properties": {

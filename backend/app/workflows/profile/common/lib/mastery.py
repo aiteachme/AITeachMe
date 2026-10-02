@@ -407,7 +407,7 @@ def update_mastery_from_exam(
             if attempt.status != "graded" or attempt.is_correct is None:
                 continue
             item = item_by_id.get(int(attempt.exam_paper_item_id or 0))
-            if item is None:
+            if item is None or not item.profile_eligible:
                 continue
             answered_at = attempt.answered_at or attempt.updated_at or attempt.created_at
             knowledge_unit_links = _normalize_knowledge_unit_links(
@@ -434,7 +434,7 @@ def update_mastery_from_exam(
                 )
     else:
         for item in items:
-            if item.is_correct is None:
+            if item.is_correct is None or not item.profile_eligible:
                 continue
             answered_at = item.answered_at or item.updated_at or item.created_at
             knowledge_unit_links = _normalize_knowledge_unit_links(links_by_item_id.get(int(item.id or 0), []))

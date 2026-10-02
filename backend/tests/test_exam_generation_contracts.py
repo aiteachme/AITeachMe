@@ -114,6 +114,85 @@ def _workflow_result(payload: dict[str, object]) -> SimpleNamespace:
     )
 
 
+@pytest.mark.anyio
+@pytest.mark.parametrize("question_type", ["short_answer", "custom_case_analysis"])
+async def test_configured_requirements_reach_question_generation_model(
+    monkeypatch: pytest.MonkeyPatch,
+    question_type: str,
+) -> None:
+    requirement = "请使用 Python 列表去重的代码案例，不要使用数学公式。"
+    plans, _ = generator._build_configured_question_requirement_plans(
+        exam_mode="web_practice",
+        question_count=1,
+        question_types=[question_type],
+        user_prompt=requirement,
+    )
+    spec = generator.ExamQuestionGenerationSpec(
+        item_order=plans[0].item_order,
+        knowledge_unit_id=1,
+        knowledge_unit_ids=[1],
+        question_type=plans[0].question_type,
+        difficulty="medium",
+        generation_prompt=plans[0].generation_prompt,
+    )
+    custom_runtime = None
+    if question_type.startswith("custom_"):
+        custom_runtime = {
+            "type_key": question_type,
+            "definition": {
+                "template_key": "generic_text_form_v2",
+                "runtime_key": "structured_subjective_v1",
+                "answer_fields": [
+                    {
+                        "key": "reasoning",
+                        "label": "原因分析",
+                        "control": "long_text",
+                        "required": True,
+                        "min_length": 5,
+                        "max_length": 1000,
+                    }
+                ],
+                "rubric": [],
+                "prompts": {"generate": "结合课程知识出一道案例分析题。"},
+            },
+        }
+    captured_messages: list[dict[str, object]] = []
+
+    async def complete(messages, *, response_model, **_kwargs):
+        captured_messages.extend(messages)
+        question = {
+            "item_order": 1,
+            "question_type": question_type,
+            "difficulty": "medium",
+            "stem": "请分析 Python 列表去重实现中需要保留哪些数据。",
+            "correct_answer": "保留每个不同元素首次出现时的数据。",
+            "explanation": "去重需要判断元素是否已经出现，并按要求保留原有顺序。",
+            "knowledge_unit_refs": [{"knowledge_unit_id": 1, "coverage_weight": 1.0}],
+        }
+        if custom_runtime is not None:
+            question["reference_answer_payload"] = {
+                "reasoning": "保留每个不同元素首次出现时的数据。"
+            }
+        return response_model.model_validate({"question": question})
+
+    monkeypatch.setattr(generator, "acompletion_with_fallback", complete)
+    draft = await generator._generate_one_exam_question(
+        unit_by_id={
+            1: KnowledgeUnit(
+                id=1,
+                course_id=COURSE_ID,
+                canonical_name="列表与集合",
+                summary="序列去重及元素顺序。",
+            )
+        },
+        spec=spec,
+        custom_runtime=custom_runtime,
+    )
+
+    assert draft.question_type == question_type
+    assert any(requirement in str(message.get("content", "")) for message in captured_messages)
+
+
 def test_text_exam_prompt_keeps_source_until_context_safety_limit() -> None:
     marker = "SOURCE_MIDDLE_MARKER"
     messages = question_prompts.build_text_exam_messages(
@@ -337,6 +416,10 @@ def test_exam_response_helpers_include_generated_items_and_preview_payloads() ->
                         "stem": "Which matrix is invertible?",
                         "options": ["A", "B", "C", "D"],
                         "correct_answer": "A",
+                        "reference_answer_payload": {
+                            "hypothesis": "internal reference",
+                            "procedure": "internal procedure",
+                        },
                         "correct_indices": [0],
                         "explanation": "Because determinant is non-zero.",
                         "option_judgements": [True, False, False, False],
@@ -374,11 +457,13 @@ def test_exam_response_helpers_include_generated_items_and_preview_payloads() ->
     assert payload["failed_question_count"] == 1
     assert payload["stage"] == "generating"
     assert "correct_answer" not in payload["generated_questions"][0]
+    assert "reference_answer_payload" not in payload["generated_questions"][0]
     assert "correct_indices" not in payload["generated_questions"][0]
     assert "explanation" not in payload["generated_questions"][0]
     assert "option_judgements" not in payload["generated_questions"][0]
     public_context = payload["selection_context"]
     assert "correct_answer" not in public_context["generated_questions"][0]
+    assert "reference_answer_payload" not in public_context["generated_questions"][0]
     assert "correct_indices" not in public_context["generated_questions"][0]
     assert "explanation" not in public_context["generated_questions"][0]
     assert "option_judgements" not in public_context["generated_questions"][0]

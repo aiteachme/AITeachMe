@@ -78,8 +78,11 @@ from app.schemas.exams import (
     MasteryDrillStartRequest,
 )
 from app.shared.infra.analytics.posthog import capture_product_event_later
+from app.shared.infra.workflow.result import WorkflowError
 from app.shared.infra.exceptions import AITeachMeError
 from app.shared.infra.database import managed_session
+from app.shared.kernel.question_identity import custom_question_identity_hash
+from app.shared.kernel.question_type_runtime import assess_custom_question_type_runtime
 from app.shared.kernel.question_types import (
     CANONICAL_QUESTION_TYPE_KEYS,
     UnsupportedQuestionTypeError,
@@ -98,6 +101,17 @@ from app.workflows.examine import (
     run_question_build_workflow,
 )
 from app.workflows.examine.credit_lifecycle import release_exam_reservation, run_reserved_exam_generation
+from app.workflows.examine.errors import public_exam_error_message
+from app.workflows.examine.question_types.runtime import (
+    QuestionTypeRuntimeError,
+    ResolvedQuestionTypeRuntime,
+    resolve_question_type_version,
+)
+from app.workflows.examine.question_types.answers import (
+    AnswerPayloadError,
+    normalize_custom_answer,
+    normalize_custom_reference_answer,
+)
 from app.workflows.support.credits import (
     EXAM_GENERATION_COST,
     release_reservation,
@@ -193,39 +207,195 @@ def _require_generic_exam_mode(mode: str) -> str:
 
 def _require_supported_exam_items(items: list[ExamPaperItem]) -> None:
     for item in items:
+        if is_supported_question_type(item.question_type):
+            continue
+        runtime_snapshot = _json_dict(item.runtime_snapshot_json)
+        availability = assess_custom_question_type_runtime(runtime_snapshot)
+        if (
+            item.question_type_version_id is not None
+            and str(runtime_snapshot.get("type_key") or "") == item.question_type
+            and availability.ready
+        ):
+            continue
         _require_supported_question_type_for_api(item.question_type)
+
+
+def _require_question_template_runtime_active(
+    session: Session,
+    *,
+    course_id: str,
+    template: QuestionTemplate,
+) -> None:
+    if template.question_type_version_id is None:
+        return
+    registry = session.get(QuestionTypeRegistry, template.question_type_registry_id)
+    if (
+        registry is None
+        or registry.course_id != course_id
+        or registry.scope != "course"
+        or registry.source != "upload"
+        or registry.type_key != template.question_type
+    ):
+        raise AITeachMeError(
+            detail="题目引用的自定义题型已不存在，不能开始新的单题练习。",
+            error_code="QUESTION_TYPE_NOT_ACTIVE",
+            status_code=409,
+        )
+    if registry.status != "active" or not registry.is_active:
+        raise AITeachMeError(
+            detail=f"题型“{registry.display_name}”已停用或归档，不能开始新的单题练习。",
+            error_code="QUESTION_TYPE_NOT_ACTIVE",
+            status_code=409,
+        )
+
+
+def _resolve_question_selection_for_api(
+    session: Session, *, course_id: str, mode: str, question_count: int,
+    body: ExamGenerateRequest | MasteryDrillPrepareRequest,
+) -> tuple[list[str], list[ResolvedQuestionTypeRuntime], dict[str, int]]:
+    from app.workflows.examine.question_types.selection import resolve_question_type_selection
+    try:
+        resolved = resolve_question_type_selection(
+            session, course_id=course_id, mode=mode, question_count=question_count,
+            selections=body.question_type_selections,
+            legacy_types=_normalized_exam_question_types(body.question_types),
+            legacy_registry_ids=body.question_type_registry_ids,
+        )
+        if not body.question_type_selections and not resolved[1]:
+            return resolved[0], resolved[1], {}
+        return resolved
+    except QuestionTypeRuntimeError as exc:
+        raise AITeachMeError(detail=str(exc), error_code=exc.code, status_code=409) from exc
+
+
+def _resolve_snapshot_question_type_runtimes(
+    session: Session,
+    *,
+    course_id: str,
+    config_snapshot: dict[str, object] | None,
+    mode: str,
+) -> list[ResolvedQuestionTypeRuntime]:
+    raw_items = (
+        config_snapshot.get("question_type_runtimes")
+        if isinstance(config_snapshot, dict)
+        else None
+    )
+    if not isinstance(raw_items, list):
+        return []
+    resolved: list[ResolvedQuestionTypeRuntime] = []
+    for raw_item in raw_items:
+        if not isinstance(raw_item, dict):
+            raise AITeachMeError(
+                detail="自定义题型配置快照格式无效。",
+                error_code="QUESTION_TYPE_SNAPSHOT_INVALID",
+                status_code=409,
+            )
+        version_id = _positive_int(raw_item.get("version_id"))
+        try:
+            runtime = resolve_question_type_version(
+                session,
+                course_id=course_id,
+                version_id=version_id,
+                mode=mode,
+            )
+        except QuestionTypeRuntimeError as exc:
+            raise AITeachMeError(
+                detail=str(exc),
+                error_code=exc.code,
+                status_code=409,
+            ) from exc
+        if (
+            runtime.registry_id != _positive_int(raw_item.get("registry_id"))
+            or runtime.type_key != str(raw_item.get("type_key") or "")
+            or runtime.package_hash != str(raw_item.get("package_hash") or "")
+        ):
+            raise AITeachMeError(
+                detail="自定义题型配置快照与已安装版本不一致。",
+                error_code="QUESTION_TYPE_SNAPSHOT_MISMATCH",
+                status_code=409,
+            )
+        resolved.append(runtime)
+    return resolved
+
+
+def _resolve_exam_submission_values(
+    items: list[ExamPaperItem],
+    body: ExamSubmitRequest,
+) -> tuple[dict[int, str], dict[int, dict[str, str]], str, str]:
+    answer_by_id = {
+        int(item.exam_paper_item_id): item
+        for item in body.answers
+        if item.exam_paper_item_id is not None
+    }
+    answer_by_order = {
+        int(item.item_order): item
+        for item in body.answers
+        if item.item_order is not None
+    }
+    resolved: dict[int, str] = {}
+    resolved_payloads: dict[int, dict[str, str]] = {}
+    canonical_items: list[dict[str, object]] = []
+    for item in items:
+        item_id = int(item.id or 0)
+        submitted = answer_by_id.get(item_id) or answer_by_order.get(item.item_order)
+        raw_answer = submitted.answer if submitted is not None else ""
+        raw_payload = submitted.answer_payload if submitted is not None else None
+        canonical_item: dict[str, object] = {
+            "exam_paper_item_id": item_id,
+            "item_order": int(item.item_order),
+        }
+        if item.question_type_version_id is not None:
+            answer_schema = _json_dict(item.answer_schema_snapshot_json)
+            if submitted is None:
+                # A missing item in a whole-paper submission means unanswered,
+                # just as it does for built-ins. Explicit payloads stay strict.
+                raw_payload = {
+                    str(field.get("key") or ""): ""
+                    for field in list(answer_schema.get("fields") or [])
+                    if isinstance(field, dict)
+                }
+            try:
+                normalized = normalize_custom_answer(
+                    answer_schema,
+                    answer=raw_answer,
+                    answer_payload=raw_payload,
+                )
+            except AnswerPayloadError as exc:
+                raise AITeachMeError(
+                    detail=str(exc),
+                    error_code=exc.code,
+                    status_code=400,
+                ) from exc
+            answer = normalized.display_text
+            resolved_payloads[item_id] = normalized.payload
+            canonical_item["answer_payload"] = normalized.payload
+        else:
+            if raw_payload is not None:
+                raise AITeachMeError(
+                    detail="基础题型请使用 answer 字段提交答案。",
+                    error_code="QUESTION_ANSWER_PAYLOAD_UNSUPPORTED",
+                    status_code=400,
+                )
+            answer = str(raw_answer or "")
+            canonical_item["answer"] = answer
+        resolved[item_id] = answer
+        canonical_items.append(canonical_item)
+    canonical_json = json.dumps(canonical_items, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    submission_hash = hashlib.sha256(canonical_json.encode("utf-8")).hexdigest()
+    submission_key = str(body.submission_key or "").strip() or submission_hash
+    return resolved, resolved_payloads, submission_hash, submission_key
 
 
 def _resolve_exam_submission_answers(
     items: list[ExamPaperItem],
     body: ExamSubmitRequest,
 ) -> tuple[dict[int, str], str, str]:
-    answer_by_id = {
-        int(item.exam_paper_item_id): str(item.answer or "")
-        for item in body.answers
-        if item.exam_paper_item_id is not None
-    }
-    answer_by_order = {
-        int(item.item_order): str(item.answer or "")
-        for item in body.answers
-        if item.item_order is not None
-    }
-    resolved: dict[int, str] = {}
-    canonical_items: list[dict[str, object]] = []
-    for item in items:
-        item_id = int(item.id or 0)
-        answer = answer_by_id[item_id] if item_id in answer_by_id else answer_by_order.get(item.item_order, "")
-        resolved[item_id] = answer
-        canonical_items.append(
-            {
-                "exam_paper_item_id": item_id,
-                "item_order": int(item.item_order),
-                "answer": answer,
-            }
-        )
-    canonical_json = json.dumps(canonical_items, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    submission_hash = hashlib.sha256(canonical_json.encode("utf-8")).hexdigest()
-    submission_key = str(body.submission_key or "").strip() or submission_hash
+    """Compatibility wrapper retained for callers that only consume plain answers."""
+
+    resolved, _payloads, submission_hash, submission_key = _resolve_exam_submission_values(
+        items,
+        body,
+    )
     return resolved, submission_hash, submission_key
 
 
@@ -305,7 +475,7 @@ def _exam_grade_response_from_paper(session: Session, paper: ExamPaper) -> ExamG
     return ExamGradeResponse(
         id=int(paper.id or 0),
         status="completed" if paper.status == "graded" else paper.status,
-        error_message=paper.grading_last_error or None,
+        error_message=public_exam_error_message(paper.grading_last_error) or None,
         created_at=paper.created_at,
         updated_at=paper.updated_at,
         exam_paper_id=int(paper.id or 0),
@@ -486,6 +656,14 @@ def _json_dict(raw: str | None) -> dict[str, object]:
     return payload if isinstance(payload, dict) else {}
 
 
+def _json_string_dict(raw: str | None) -> dict[str, str]:
+    return {
+        str(key): str(value)
+        for key, value in _json_dict(raw).items()
+        if isinstance(value, str)
+    }
+
+
 def _hash_stem(stem: str) -> str:
     return hashlib.sha1(stem.encode("utf-8")).hexdigest()
 
@@ -604,9 +782,12 @@ def _build_exam_config_snapshot(
     mastery_fingerprint: str,
     paper_layout_mode: str | None = None,
     question_types: list[str] | None = None,
+    question_type_runtimes: list[ResolvedQuestionTypeRuntime] | None = None,
     difficulty: str | None = None,
+    question_type_counts: dict[str, int] | None = None,
 ) -> dict[str, object]:
     return {
+        **({"question_type_counts": dict(question_type_counts)} if question_type_counts else {}),
         "version": EXAM_PREWARM_CONFIG_VERSION,
         "course_id": course_id,
         "user_id": user_id,
@@ -614,6 +795,10 @@ def _build_exam_config_snapshot(
         "num_questions": int(question_count),
         "user_prompt": _normalize_exam_user_prompt(user_prompt),
         "question_types": _normalized_exam_question_types(question_types),
+        "question_type_runtimes": [
+            runtime.snapshot_payload()
+            for runtime in list(question_type_runtimes or [])
+        ],
         "difficulty": _normalized_exam_difficulty(difficulty),
         "sample_file_ids": _normalized_sample_file_ids(sample_file_ids),
         "knowledge_unit_ids": sorted({int(unit_id) for unit_id in knowledge_unit_ids if int(unit_id or 0) > 0}),
@@ -1402,6 +1587,9 @@ def _public_generated_question_payload(
     payload = dict(raw_item)
     if not reveal_solutions:
         payload.pop("correct_answer", None)
+        # Multi-field custom references are internal grading data and must
+        # never be returned through generation/progress payloads.
+        payload.pop("reference_answer_payload", None)
         payload.pop("correct_indices", None)
         payload.pop("explanation", None)
         payload.pop("option_judgements", None)
@@ -1465,6 +1653,17 @@ def _public_paper_selection_context(
     reveal_solutions: bool,
 ) -> dict[str, object]:
     payload = dict(context)
+    if "error_message" in payload:
+        payload["error_message"] = public_exam_error_message(payload["error_message"])
+    if payload.get("filter_strategy") in {"llm_graph_failed", "llm_graph_cancelled"}:
+        payload["filter_rationale"] = public_exam_error_message(payload.get("filter_rationale"))
+    failed_questions = context.get("failed_questions")
+    if isinstance(failed_questions, list):
+        payload["failed_questions"] = [
+            {**item, "error_message": public_exam_error_message(item.get("error_message"))}
+            for item in failed_questions
+            if isinstance(item, dict)
+        ]
     generated_questions = context.get("generated_questions")
     if isinstance(generated_questions, list):
         payload["generated_questions"] = [
@@ -1496,7 +1695,9 @@ def _paper_generation_event_payload(
         "num_questions": paper.total_items,
         "paper_preview": effective_preview.model_dump(mode="json"),
         "selection_context": public_context,
-        "error_message": error_message if error_message is not None else context.get("error_message"),
+        "error_message": public_exam_error_message(
+            error_message if error_message is not None else context.get("error_message")
+        ) or None,
         "updated_at": paper.updated_at,
         "generation_progress": _exam_generation_progress_for_response(
             paper,
@@ -1510,7 +1711,7 @@ def _paper_generation_event_payload(
             item for item in generated_questions if isinstance(item, dict)
         ]
         payload["generated_question_count"] = len(payload["generated_questions"])
-    failed_questions = context.get("failed_questions")
+    failed_questions = public_context.get("failed_questions")
     if isinstance(failed_questions, list):
         payload["failed_questions"] = [
             item for item in failed_questions if isinstance(item, dict)
@@ -2163,6 +2364,78 @@ def _build_inferred_failed_question(
     }
 
 
+def _custom_runtime_persistence_payload(
+    runtime: dict[str, object] | None,
+    *,
+    answer: str,
+    answer_payload: dict[str, str] | None = None,
+) -> dict[str, object]:
+    if not runtime:
+        return {}
+    raw_definition = runtime.get("definition")
+    definition = raw_definition if isinstance(raw_definition, dict) else {}
+    answer_fields = [
+        dict(item)
+        for item in list(definition.get("answer_fields") or [])
+        if isinstance(item, dict)
+    ]
+    normalized_reference = normalize_custom_reference_answer(
+        {"fields": answer_fields},
+        answer=answer,
+        answer_payload=answer_payload,
+    )
+    prompts = definition.get("prompts") if isinstance(definition.get("prompts"), dict) else {}
+    runtime_snapshot = {
+        "registry_id": _positive_int(runtime.get("registry_id")),
+        "version_id": _positive_int(runtime.get("version_id")),
+        "type_key": str(runtime.get("type_key") or ""),
+        "version": str(runtime.get("version") or ""),
+        "package_hash": str(runtime.get("package_hash") or ""),
+        "template_key": str(definition.get("template_key") or ""),
+        "runtime_key": str(definition.get("runtime_key") or ""),
+        "renderer_key": str(definition.get("renderer_key") or ""),
+        "grader_key": str(definition.get("grader_key") or ""),
+        "profile_eligible": bool(runtime.get("profile_eligible")),
+    }
+    return {
+        "registry_id": runtime_snapshot["registry_id"],
+        "version_id": runtime_snapshot["version_id"],
+        "public_payload": {
+            "display_name": str(definition.get("display_name") or ""),
+            "description": str(definition.get("description") or ""),
+            "renderer_key": runtime_snapshot["renderer_key"],
+            "hints": bool(definition.get("hints")),
+            "immediate_feedback": bool(definition.get("immediate_feedback")),
+        },
+        "answer_schema": {"fields": answer_fields},
+        "reference_answer": normalized_reference.payload,
+        "reference_answer_text": normalized_reference.display_text,
+        "grading_spec": {
+            "grader_key": runtime_snapshot["grader_key"],
+            "pass_score": float(definition.get("pass_score") or 0.0),
+            "rubric": [
+                dict(item)
+                for item in list(definition.get("rubric") or [])
+                if isinstance(item, dict)
+            ],
+            "grade_prompt": str(prompts.get("grade") or ""),
+            "feedback_prompt": str(prompts.get("feedback") or ""),
+            "reference_cases": [
+                dict(item)
+                for item in list(definition.get("reference_cases") or [])
+                if isinstance(item, dict)
+            ],
+            "tool_bindings": [
+                dict(item)
+                for item in list(definition.get("tool_bindings") or [])
+                if isinstance(item, dict)
+            ],
+        },
+        "runtime_snapshot": runtime_snapshot,
+        "profile_eligible": bool(runtime.get("profile_eligible")),
+    }
+
+
 def _upsert_generated_template(
     session: Session,
     *,
@@ -2172,26 +2445,65 @@ def _upsert_generated_template(
     difficulty: str,
     stem: str,
     answer: str,
+    answer_payload: dict[str, str] | None = None,
     explanation: str,
     options: list[str] | None,
     knowledge_unit_refs: list[dict[str, object]] | None = None,
     rationale: str = "",
+    custom_runtime: dict[str, object] | None = None,
 ) -> QuestionTemplate:
-    question_type = require_supported_question_type_key(question_type)
-    stem_hash = _hash_stem(stem)
+    custom_payload = _custom_runtime_persistence_payload(
+        custom_runtime,
+        answer=answer,
+        answer_payload=answer_payload,
+    )
+    if custom_payload:
+        expected_type = str((custom_runtime or {}).get("type_key") or "")
+        if question_type != expected_type:
+            raise ValueError("custom question type does not match its frozen runtime")
+        # The field mapping is authoritative, including for one-field forms.
+        # Keep legacy display/export text a projection of that same reference.
+        answer = str(custom_payload["reference_answer_text"])
+        identity_hash = custom_question_identity_hash(
+            stem=stem,
+            version_id=int(custom_payload["version_id"]),
+        )
+        # Legacy local databases still have the old course/stem unique index.
+        stem_hash = identity_hash
+    else:
+        question_type = require_supported_question_type_key(question_type)
+        stem_hash = _hash_stem(stem)
+        identity_hash = stem_hash
     refs = (
         list(knowledge_unit_refs)
         if knowledge_unit_refs is not None
         else ([{"knowledge_unit_id": unit.id, "coverage_weight": 1.0}] if unit is not None else [])
     )
     selection_hints = {"rationale": rationale.strip()} if rationale.strip() else {}
-    existing = (
-        exams_repo.find_template_by_stem_hash(session, course_id, int(unit.id or 0), stem_hash)
-        if unit is not None
-        else None
-    )
-    if existing is None:
-        existing = exams_repo.find_template_by_course_stem_hash(session, course_id, stem_hash)
+    if custom_payload:
+        existing = session.exec(
+            select(QuestionTemplate).where(
+                QuestionTemplate.course_id == course_id,
+                QuestionTemplate.identity_hash == identity_hash,
+            )
+        ).first()
+    else:
+        existing = (
+            exams_repo.find_template_by_stem_hash(
+                session,
+                course_id,
+                int(unit.id or 0),
+                stem_hash,
+            )
+            if unit is not None
+            else None
+        )
+        if existing is None:
+            existing = exams_repo.find_template_by_course_stem_hash(
+                session,
+                course_id,
+                stem_hash,
+            )
     if existing is not None:
         existing_refs = exams_repo.find_knowledge_unit_links_by_template(session, int(existing.id or 0))
         refs_by_unit_id: dict[int, dict[str, object]] = {}
@@ -2215,6 +2527,26 @@ def _upsert_generated_template(
         existing.answer = answer
         existing.explanation = explanation
         existing.options_json = json.dumps(options, ensure_ascii=False) if options else None
+        existing.identity_hash = identity_hash
+        if custom_payload:
+            existing.question_type_registry_id = int(custom_payload["registry_id"])
+            existing.question_type_version_id = int(custom_payload["version_id"])
+            existing.public_payload_json = json.dumps(
+                custom_payload["public_payload"], ensure_ascii=False
+            )
+            existing.answer_schema_json = json.dumps(
+                custom_payload["answer_schema"], ensure_ascii=False
+            )
+            existing.reference_answer_json = json.dumps(
+                custom_payload["reference_answer"], ensure_ascii=False
+            )
+            existing.grading_spec_json = json.dumps(
+                custom_payload["grading_spec"], ensure_ascii=False
+            )
+            existing.runtime_snapshot_json = json.dumps(
+                custom_payload["runtime_snapshot"], ensure_ascii=False
+            )
+            existing.profile_eligible = bool(custom_payload["profile_eligible"])
         existing_hints = _json_dict(existing.selection_hints_json)
         if selection_hints:
             existing_hints.update(selection_hints)
@@ -2237,9 +2569,32 @@ def _upsert_generated_template(
         difficulty=difficulty,
         stem=stem,
         stem_hash=stem_hash,
+        identity_hash=identity_hash,
+        question_type_registry_id=(
+            int(custom_payload["registry_id"]) if custom_payload else None
+        ),
+        question_type_version_id=(
+            int(custom_payload["version_id"]) if custom_payload else None
+        ),
         answer=answer,
         explanation=explanation,
         options_json=json.dumps(options, ensure_ascii=False) if options else None,
+        public_payload_json=json.dumps(
+            custom_payload.get("public_payload", {}), ensure_ascii=False
+        ),
+        answer_schema_json=json.dumps(
+            custom_payload.get("answer_schema", {}), ensure_ascii=False
+        ),
+        reference_answer_json=json.dumps(
+            custom_payload.get("reference_answer", {}), ensure_ascii=False
+        ),
+        grading_spec_json=json.dumps(
+            custom_payload.get("grading_spec", {}), ensure_ascii=False
+        ),
+        runtime_snapshot_json=json.dumps(
+            custom_payload.get("runtime_snapshot", {}), ensure_ascii=False
+        ),
+        profile_eligible=bool(custom_payload.get("profile_eligible", True)),
         selection_hints_json=json.dumps(selection_hints, ensure_ascii=False),
     )
     template = exams_repo.create_question_template(session, template)
@@ -2337,8 +2692,13 @@ def _mastery_drill_usable_templates(
     course_id: str,
     user_id: str,
     question_types: list[str],
+    question_type_runtimes: list[ResolvedQuestionTypeRuntime] | None = None,
 ) -> list[QuestionTemplate]:
     allowed_types = set(question_types) if question_types else None
+    custom_runtimes = {
+        runtime.type_key: runtime
+        for runtime in list(question_type_runtimes or [])
+    }
     rows = exams_repo.list_active_question_templates(
         session,
         course_id=course_id,
@@ -2350,14 +2710,43 @@ def _mastery_drill_usable_templates(
         user_id=user_id,
         template_ids=[int(template.id or 0) for template in rows],
     )
-    return [
-        template
-        for template in rows
-        if int(template.id or 0) not in locked_template_ids
-        and is_supported_question_type(template.question_type)
-        and bool(_clean_exam_text(template.stem))
-        and bool(_clean_exam_text(template.answer))
-    ]
+    usable: list[QuestionTemplate] = []
+    for template in rows:
+        if int(template.id or 0) in locked_template_ids:
+            continue
+        if not _clean_exam_text(template.stem) or not _clean_exam_text(template.answer):
+            continue
+        if custom_runtimes:
+            runtime = custom_runtimes.get(template.question_type)
+            if runtime is not None:
+                snapshot = _json_dict(template.runtime_snapshot_json)
+                if (
+                    template.question_type_registry_id != runtime.registry_id
+                    or template.question_type_version_id != runtime.version_id
+                    or _positive_int(snapshot.get("registry_id")) != runtime.registry_id
+                    or _positive_int(snapshot.get("version_id")) != runtime.version_id
+                    or str(snapshot.get("type_key") or "") != runtime.type_key
+                    or str(snapshot.get("package_hash") or "") != runtime.package_hash
+                    or not assess_custom_question_type_runtime(snapshot).ready
+                ):
+                    continue
+            elif not is_supported_question_type(template.question_type):
+                # A custom template is eligible only when its exact frozen
+                # runtime was selected above; built-in templates remain valid
+                # members of a mixed selection.
+                continue
+        elif not is_supported_question_type(template.question_type):
+            # Automatic and built-in-only drills must never opt the learner into
+            # an uploaded runtime without an explicit registry selection.
+            continue
+        usable.append(template)
+    return usable
+
+
+def _mastery_drill_type_deficits(templates: list[QuestionTemplate], quotas: dict[str, int]) -> dict[str, int]:
+    from collections import Counter
+    available = Counter(str(template.question_type) for template in templates)
+    return {key: count - available[key] for key, count in quotas.items() if count > available[key]}
 
 
 def _mastery_drill_backfill_plan(
@@ -2365,14 +2754,18 @@ def _mastery_drill_backfill_plan(
     templates: list[QuestionTemplate],
     requested_count: int,
     configured_question_types: list[str],
+    question_type_counts: dict[str, int] | None = None,
 ) -> tuple[int, list[str]]:
     """Return the number and ordered types needed to make the bank satisfy a drill config."""
+
+    if question_type_counts:
+        deficits = _mastery_drill_type_deficits(templates, question_type_counts)
+        return sum(deficits.values()), list(deficits)
 
     normalized_count = max(1, int(requested_count or 1))
     available_types = {
         str(template.question_type)
         for template in templates
-        if is_supported_question_type(template.question_type)
     }
     missing_required_types: list[str] = []
 
@@ -2413,6 +2806,8 @@ async def _generate_mastery_drill_template_backfill(
     user_id: str,
     question_count: int,
     question_types: list[str],
+    question_type_counts: dict[str, int] | None = None,
+    question_type_runtimes: list[ResolvedQuestionTypeRuntime] | None = None,
 ) -> set[int]:
     units = _list_exam_eligible_units(session, course_id=course.id)
     if not units:
@@ -2473,6 +2868,11 @@ async def _generate_mastery_drill_template_backfill(
         course_context=course_context,
         user_prompt="用于一次性闯关补题；题目应适合逐题作答，并给出清晰、完整的解析。",
         configured_question_types=question_types,
+        **({"configured_question_counts": question_type_counts} if question_type_counts else {}),
+        question_type_runtimes=[
+            runtime.workflow_payload()
+            for runtime in list(question_type_runtimes or [])
+        ],
         configured_difficulty="auto",
         system_constraints=system_constraints,
     )
@@ -2486,6 +2886,10 @@ async def _generate_mastery_drill_template_backfill(
     )
 
     persisted_template_ids: set[int] = set()
+    runtime_by_type = {
+        runtime.type_key: runtime.workflow_payload()
+        for runtime in list(question_type_runtimes or [])
+    }
     for order in sorted(generated_by_order):
         generated = generated_by_order[order]
         blueprint = blueprint_by_order.get(order, {})
@@ -2529,10 +2933,16 @@ async def _generate_mastery_drill_template_backfill(
             difficulty=str(generated["difficulty"]),
             stem=str(generated["stem"]),
             answer=str(generated["correct_answer"]),
+            answer_payload=(
+                dict(generated.get("reference_answer_payload") or {})
+                if isinstance(generated.get("reference_answer_payload"), dict)
+                else None
+            ),
             explanation=str(generated["explanation"]),
             options=list(generated.get("options") or []) or None,
             knowledge_unit_refs=refs,
             rationale=str(blueprint.get("rationale") or "mastery drill question-bank backfill"),
+            custom_runtime=runtime_by_type.get(str(generated["question_type"])),
         )
         if template.id is not None:
             persisted_template_ids.add(int(template.id))
@@ -2871,6 +3281,7 @@ async def _run_initial_exam_from_published_docs_background(
                     difficulty=draft.difficulty,
                     stem=draft.stem,
                     answer=draft.correct_answer,
+                    answer_payload=draft.reference_answer_payload,
                     explanation=draft.explanation,
                     options=list(draft.options or []) or None,
                     knowledge_unit_refs=[],
@@ -2998,6 +3409,7 @@ async def _run_exam_generation_background(
     if isinstance(config_snapshot, dict):
         snapshot_question_count = _positive_int(config_snapshot.get("num_questions"))
     question_count = max(1, snapshot_question_count or int(question_count or 1))
+    configured_question_counts = dict((config_snapshot or {}).get("question_type_counts") or {})
     raw_configured_question_types = (
         config_snapshot.get("question_types") if isinstance(config_snapshot, dict) else None
     )
@@ -3009,6 +3421,7 @@ async def _run_exam_generation_background(
     configured_difficulty = _normalized_exam_difficulty(
         str(config_snapshot.get("difficulty") or "auto") if isinstance(config_snapshot, dict) else "auto"
     )
+    question_type_runtimes: list[ResolvedQuestionTypeRuntime] = []
     resolved_paper_layout_mode = _normalize_paper_layout_mode(
         paper_layout_mode
         or (str((config_snapshot or {}).get("paper_layout_mode") or "") if isinstance(config_snapshot, dict) else None),
@@ -3033,6 +3446,23 @@ async def _run_exam_generation_background(
                 _paper_generation_event_payload(paper, stage="question_build"),
             )
             course_row = _ensure_course(session, course_id, user_id)
+            question_type_runtimes = _resolve_snapshot_question_type_runtimes(
+                session,
+                course_id=course_id,
+                config_snapshot=config_snapshot,
+                mode=exam_mode,
+            )
+            if question_type_runtimes:
+                configured_question_types = [
+                    *configured_question_types,
+                    *[
+                        runtime.type_key
+                        for runtime in question_type_runtimes
+                        if runtime.type_key not in configured_question_types
+                    ],
+                ]
+            if configured_question_counts:
+                configured_question_types = list(configured_question_counts)
             units = list(
                 session.exec(
                     select(KnowledgeUnit).where(
@@ -3196,7 +3626,10 @@ async def _run_exam_generation_background(
                         preview=preview,
                         stage=str(payload.get("stage") or "generate_exam_questions"),
                     )
-                    event_payload["failed_question"] = failed_payload
+                    event_payload["failed_question"] = {
+                        **failed_payload,
+                        "error_message": public_exam_error_message(failed_payload.get("error_message")),
+                    }
                     if "failed_question_count" in payload:
                         event_payload["failed_question_count"] = payload["failed_question_count"]
                 _publish_exam_event(course_id, paper_id, "snapshot", event_payload)
@@ -3304,6 +3737,10 @@ async def _run_exam_generation_background(
             course_context=course_context,
             user_prompt=user_prompt or "",
             configured_question_types=configured_question_types,
+            **({"configured_question_counts": configured_question_counts} if configured_question_counts else {}),
+            question_type_runtimes=[
+                runtime.workflow_payload() for runtime in question_type_runtimes
+            ],
             configured_difficulty=configured_difficulty,
             system_constraints=diversity_prompt,
             progress_callback=handle_question_build_progress,
@@ -3403,6 +3840,10 @@ async def _run_exam_generation_background(
                 ).all()
             )
             unit_by_id = {int(unit.id): unit for unit in units if unit.id is not None}
+            runtime_by_type = {
+                runtime.type_key: runtime.workflow_payload()
+                for runtime in question_type_runtimes
+            }
             items: list[ExamPaperItem] = []
             refs_by_order: dict[int, list[dict[str, object]]] = {}
             for order in sorted(generated_by_order):
@@ -3450,10 +3891,16 @@ async def _run_exam_generation_background(
                     question_type=str(generated["question_type"]),
                     stem=str(generated["stem"]),
                     answer=str(generated["correct_answer"]),
+                    answer_payload=(
+                        dict(generated.get("reference_answer_payload") or {})
+                        if isinstance(generated.get("reference_answer_payload"), dict)
+                        else None
+                    ),
                     explanation=str(generated["explanation"]),
                     options=list(generated.get("options") or []) or None,
                     knowledge_unit_refs=refs,
                     rationale=rationale,
+                    custom_runtime=runtime_by_type.get(str(generated["question_type"])),
                 )
                 items.append(
                     ExamPaperItem(
@@ -3464,6 +3911,14 @@ async def _run_exam_generation_background(
                         options_snapshot_json=template.options_json,
                         answer_snapshot=template.answer,
                         explanation_snapshot=template.explanation,
+                        question_type_registry_id=template.question_type_registry_id,
+                        question_type_version_id=template.question_type_version_id,
+                        public_payload_snapshot_json=template.public_payload_json,
+                        answer_schema_snapshot_json=template.answer_schema_json,
+                        reference_answer_snapshot_json=template.reference_answer_json,
+                        grading_spec_snapshot_json=template.grading_spec_json,
+                        runtime_snapshot_json=template.runtime_snapshot_json,
+                        profile_eligible=template.profile_eligible,
                         selection_context_json=json.dumps(item_selection_context, ensure_ascii=False),
                         difficulty=template.difficulty,
                         question_type=template.question_type,
@@ -3756,6 +4211,7 @@ def _paper_item_response(
     marked_template_ids: set[int],
     reveal_solutions: bool,
 ) -> ExamPaperItemResponse:
+    runtime_snapshot = _json_dict(item.runtime_snapshot_json)
     return ExamPaperItemResponse(
         id=item.id,
         item_order=item.item_order,
@@ -3788,6 +4244,16 @@ def _paper_item_response(
         score_max=item.score_max if item.score_max is not None else item.score,
         error_cause_label=item.error_cause_label,
         is_marked=int(item.question_template_id or 0) in marked_template_ids,
+        question_type_registry_id=item.question_type_registry_id,
+        question_type_version_id=item.question_type_version_id,
+        renderer_key=str(runtime_snapshot.get("renderer_key") or "") or None,
+        public_payload=_json_dict(item.public_payload_snapshot_json),
+        answer_schema=_json_dict(item.answer_schema_snapshot_json),
+        user_answer_payload=_json_string_dict(item.answer_payload_json),
+        grading_detail=_json_dict(item.grading_detail_json),
+        grading_status=str(item.grading_status or "pending"),
+        grading_error_code=str(item.grading_error_code or ""),
+        profile_eligible=bool(item.profile_eligible),
     )
 
 
@@ -3881,6 +4347,7 @@ def _question_template_response(
         except json.JSONDecodeError:
             options_payload = None
 
+    runtime_snapshot = _json_dict(template.runtime_snapshot_json)
     return QuestionTemplateItemResponse(
         id=template.id or 0,
         course_id=template.course_id,
@@ -3896,6 +4363,12 @@ def _question_template_response(
         status=template.status,
         is_marked=template.is_marked,
         has_wrong_attempt=has_wrong_attempt,
+        question_type_registry_id=template.question_type_registry_id,
+        question_type_version_id=template.question_type_version_id,
+        renderer_key=str(runtime_snapshot.get("renderer_key") or "") or None,
+        public_payload=_json_dict(template.public_payload_json),
+        answer_schema=_json_dict(template.answer_schema_json),
+        profile_eligible=bool(template.profile_eligible),
         created_at=template.created_at,
         updated_at=template.updated_at,
     )
@@ -3930,12 +4403,14 @@ def _question_template_items_for_course(
     *,
     course_id: str,
     user_id: str,
+    template_ids: set[int] | None = None,
 ) -> list[QuestionTemplateItemResponse]:
+    statement = select(QuestionTemplate).where(QuestionTemplate.course_id == course_id)
+    if template_ids is not None:
+        statement = statement.where(QuestionTemplate.id.in_(template_ids))
     rows = list(
         session.exec(
-            select(QuestionTemplate)
-            .where(QuestionTemplate.course_id == course_id)
-            .order_by(QuestionTemplate.created_at.desc(), QuestionTemplate.id.desc())
+            statement.order_by(QuestionTemplate.created_at.desc(), QuestionTemplate.id.desc())
         ).all()
     )
     locked_template_ids = _locked_question_template_ids(
@@ -4006,6 +4481,8 @@ def _question_template_answer_history_response(
         score_max=item.score_max,
         error_cause_label=item.error_cause_label,
         feedback_text=item.feedback_text,
+        user_answer_payload=_json_string_dict(item.answer_payload_json),
+        grading_detail=_json_dict(item.grading_detail_json),
         created_at=item.created_at,
     )
 
@@ -4015,27 +4492,76 @@ async def _grade_exam_paper_item_answer(
     course_id: str,
     course_name: str,
     item: ExamPaperItem,
-    answer: str,
+    answer: str | None,
+    answer_payload: dict[str, str] | None = None,
 ) -> QuestionTemplateGradeResponse:
-    question_type = _require_supported_question_type_for_api(item.question_type)
+    if item.question_type_version_id is not None:
+        _require_supported_exam_items([item])
+        question_type = item.question_type
+        try:
+            normalized_answer = normalize_custom_answer(
+                _json_dict(item.answer_schema_snapshot_json),
+                answer=answer,
+                answer_payload=answer_payload,
+            )
+        except AnswerPayloadError as exc:
+            raise AITeachMeError(
+                detail=str(exc),
+                error_code=exc.code,
+                status_code=400,
+            ) from exc
+    else:
+        question_type = _require_supported_question_type_for_api(item.question_type)
+        if answer_payload is not None:
+            raise AITeachMeError(
+                detail="基础题型请使用 answer 字段提交答案。",
+                error_code="QUESTION_ANSWER_PAYLOAD_UNSUPPORTED",
+                status_code=400,
+            )
+        normalized_answer = None
     grading_item = ExamPaperItem(
         exam_paper_id=int(item.exam_paper_id or 0),
         question_template_id=int(item.question_template_id or 0),
+        question_type_registry_id=item.question_type_registry_id,
+        question_type_version_id=item.question_type_version_id,
         item_order=int(item.item_order or 1),
         stem_snapshot=item.stem_snapshot,
         options_snapshot_json=item.options_snapshot_json,
         answer_snapshot=item.answer_snapshot,
         explanation_snapshot=item.explanation_snapshot,
+        public_payload_snapshot_json=item.public_payload_snapshot_json,
+        answer_schema_snapshot_json=item.answer_schema_snapshot_json,
+        reference_answer_snapshot_json=item.reference_answer_snapshot_json,
+        grading_spec_snapshot_json=item.grading_spec_snapshot_json,
+        runtime_snapshot_json=item.runtime_snapshot_json,
+        profile_eligible=item.profile_eligible,
         difficulty=item.difficulty,
         question_type=question_type,
         score=float(item.score or 1.0),
-        answer_content=str(answer or ""),
+        answer_content=(
+            normalized_answer.display_text
+            if normalized_answer is not None
+            else str(answer or "")
+        ),
+        answer_payload_json=json.dumps(
+            normalized_answer.payload if normalized_answer is not None else {},
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ),
     )
-    decisions = await run_exam_grade_workflow(
-        course_id=course_id,
-        course_name=course_name,
-        items=[grading_item],
-    )
+    try:
+        decisions = await run_exam_grade_workflow(
+            course_id=course_id,
+            course_name=course_name,
+            items=[grading_item],
+        )
+    except WorkflowError as exc:
+        raise AITeachMeError(
+            detail="本次评分未完成，请重试。未产生有效成绩。",
+            error_code="QUESTION_TEMPLATE_GRADE_FAILED",
+            status_code=502,
+        ) from exc
     decision = decisions[0] if decisions else None
     if decision is None:
         raise AITeachMeError(
@@ -4053,6 +4579,7 @@ async def _grade_exam_paper_item_answer(
         error_cause_label=decision.error_cause_label,
         grading_mode=decision.grading_mode,
         correct_answer=item.answer_snapshot,
+        grading_detail=decision.grading_detail,
     )
 
 
@@ -4061,27 +4588,35 @@ async def _grade_question_template_answer(
     course_id: str,
     course_name: str,
     template: QuestionTemplate,
-    answer: str,
+    answer: str | None,
+    answer_payload: dict[str, str] | None = None,
 ) -> QuestionTemplateGradeResponse:
-    question_type = _require_supported_question_type_for_api(template.question_type)
     item = ExamPaperItem(
         exam_paper_id=0,
         question_template_id=int(template.id or 0),
+        question_type_registry_id=template.question_type_registry_id,
+        question_type_version_id=template.question_type_version_id,
         item_order=1,
         stem_snapshot=template.stem,
         options_snapshot_json=template.options_json,
         answer_snapshot=template.answer,
         explanation_snapshot=template.explanation,
+        public_payload_snapshot_json=template.public_payload_json,
+        answer_schema_snapshot_json=template.answer_schema_json,
+        reference_answer_snapshot_json=template.reference_answer_json,
+        grading_spec_snapshot_json=template.grading_spec_json,
+        runtime_snapshot_json=template.runtime_snapshot_json,
+        profile_eligible=template.profile_eligible,
         difficulty=template.difficulty,
-        question_type=question_type,
+        question_type=template.question_type,
         score=1.0,
-        answer_content=str(answer or ""),
     )
     return await _grade_exam_paper_item_answer(
         course_id=course_id,
         course_name=course_name,
         item=item,
         answer=answer,
+        answer_payload=answer_payload,
     )
 
 
@@ -4098,12 +4633,14 @@ def _mastery_drill_attempt_response(attempt: MasteryDrillAttempt) -> MasteryDril
         attempt_key=attempt.attempt_key,
         status=status,
         answer=attempt.answer_content,
+        answer_payload=_json_string_dict(attempt.answer_payload_json),
         is_correct=attempt.is_correct,
         score_obtained=attempt.score_obtained,
         score_max=attempt.score_max,
         feedback_text=attempt.feedback_text,
         error_cause_label=attempt.error_cause_label,
         grading_mode=str(attempt.grading_mode or "").strip() or None,
+        grading_detail=_json_dict(attempt.grading_detail_json),
         time_spent_seconds=attempt.time_spent_seconds,
         hint_used=bool(attempt.hint_used),
         confidence_self_report=attempt.confidence_self_report,
@@ -5167,14 +5704,19 @@ async def _grade_exam(
             session,
             paper_id=paper_id,
             claim_token=active_claim_token,
-        claimed_at=claimed_at,
-        lease_expires_at=claimed_at + EXAM_GRADING_LEASE_DURATION,
-        max_attempts=EXAM_GRADING_MAX_ATTEMPTS,
+            claimed_at=claimed_at,
+            lease_expires_at=claimed_at + EXAM_GRADING_LEASE_DURATION,
+            max_attempts=EXAM_GRADING_MAX_ATTEMPTS,
         )
         session.expire_all()
         paper = exams_repo.get_exam_paper_by_id(session, paper_id) or paper
         if not claimed:
             return _exam_grade_response_from_paper(session, paper)
+        _set_exam_item_grading_state(
+            session,
+            paper_id=paper_id,
+            status="grading",
+        )
 
     items = exams_repo.list_items_by_paper(session, paper.id or 0)
     _require_supported_exam_items(items)
@@ -5208,6 +5750,14 @@ async def _grade_exam(
         item.score_obtained = decision.score_obtained
         item.error_cause_label = decision.error_cause_label
         item.feedback_text = decision.feedback_text
+        item.grading_detail_json = json.dumps(
+            decision.grading_detail,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        item.grading_status = "graded"
+        item.grading_error_code = ""
         item.graded_at = now
         item.updated_at = now
         session.add(item)
@@ -5224,6 +5774,22 @@ async def _grade_exam(
     paper = exams_repo.get_exam_paper_by_id(session, paper_id) or paper
     session.refresh(paper)
     return _exam_grade_response_from_paper(session, paper)
+
+
+def _set_exam_item_grading_state(
+    session: Session,
+    *,
+    paper_id: int,
+    status: str,
+    error_code: str = "",
+) -> None:
+    now = utcnow()
+    for item in exams_repo.list_items_by_paper(session, paper_id):
+        item.grading_status = status
+        item.grading_error_code = error_code
+        item.updated_at = now
+        session.add(item)
+    session.commit()
 
 
 async def _renew_exam_grading_lease_loop(*, paper_id: int, claim_token: str) -> None:
@@ -5306,6 +5872,12 @@ async def _run_exam_grading_background(
             claimed_at=claimed_at,
             lease_expires_at=claimed_at + EXAM_GRADING_LEASE_DURATION,
         )
+        if claimed:
+            _set_exam_item_grading_state(
+                session,
+                paper_id=paper_id,
+                status="grading",
+            )
     if not claimed:
         return
 
@@ -5361,7 +5933,7 @@ async def _run_exam_grading_background(
             )
     except asyncio.CancelledError:
         with managed_session() as session:
-            exams_repo.release_exam_grading_claim(
+            released = exams_repo.release_exam_grading_claim(
                 session,
                 paper_id=paper_id,
                 claim_token=claim_token,
@@ -5369,6 +5941,12 @@ async def _run_exam_grading_background(
                 terminal_when_exhausted=False,
                 max_attempts=EXAM_GRADING_MAX_ATTEMPTS,
             )
+            if released:
+                _set_exam_item_grading_state(
+                    session,
+                    paper_id=paper_id,
+                    status="pending",
+                )
         raise
     except Exception as exc:
         logger.exception(
@@ -5391,6 +5969,12 @@ async def _run_exam_grading_background(
                 session.expire_all()
                 failed_paper = exams_repo.get_exam_paper_by_id(session, paper_id)
                 terminal_failure = failed_paper is not None and failed_paper.status == "grading_failed"
+                _set_exam_item_grading_state(
+                    session,
+                    paper_id=paper_id,
+                    status="failed" if terminal_failure else "pending",
+                    error_code="QUESTION_GRADING_FAILED" if terminal_failure else "",
+                )
         if terminal_failure:
             _publish_exam_event(
                 course_id,
@@ -5544,7 +6128,9 @@ async def generate_exam(
     mode = _require_generic_exam_mode(exam_mode_value(body.exam_mode))
     default_question_count = _default_exam_question_count_for_mode(mode)
     question_count = max(1, int(body.num_questions or default_question_count))
-    configured_question_types = _normalized_exam_question_types(body.question_types)
+    configured_question_types, custom_question_type_runtimes, configured_question_counts = _resolve_question_selection_for_api(
+        session, course_id=normalized, mode=mode, question_count=question_count, body=body,
+    )
     configured_difficulty = _normalized_exam_difficulty(body.difficulty)
     paper_layout_mode = _normalize_paper_layout_mode(
         body.paper_layout_mode,
@@ -5581,6 +6167,8 @@ async def generate_exam(
         mastery_fingerprint=_exam_mastery_fingerprint(session, course_id=normalized, user_id=user.user_id),
         paper_layout_mode=paper_layout_mode,
         question_types=configured_question_types,
+        question_type_runtimes=custom_question_type_runtimes,
+        question_type_counts=configured_question_counts,
         difficulty=configured_difficulty,
     )
     config_hash = _exam_config_hash(config_snapshot)
@@ -5599,7 +6187,7 @@ async def generate_exam(
             config_hash=config_hash,
             question_count=question_count,
         )
-    if paper is None:
+    if paper is None and not custom_question_type_runtimes:
         paper = _claim_default_auto_prewarm_candidate(
             session,
             course_id=normalized,
@@ -5877,7 +6465,7 @@ async def exam_prewarm_status(
             expires_at=candidate.expires_at if candidate is not None else None,
             updated_at=candidate.updated_at if candidate is not None else None,
             background_requested=False,
-            error_message=str(_json_dict(candidate.selection_context_json).get("error_message") or "")
+            error_message=public_exam_error_message(_json_dict(candidate.selection_context_json).get("error_message"))
             if candidate is not None and status == "failed"
             else None,
         )
@@ -6022,7 +6610,7 @@ async def question_template_answer_history(
     "/question-templates/{question_template_id}/grade",
     response_model=ApiResponse[QuestionTemplateGradeResponse],
     summary="Grade one answer against a question template",
-    responses=build_error_responses([400, 404, 409, 500]),
+    responses=build_error_responses([400, 404, 409, 500, 502]),
 )
 async def grade_question_template_answer(
     course_id: str = Path(...),
@@ -6046,11 +6634,17 @@ async def grade_question_template_answer(
         user_id=user.user_id,
         template_id=question_template_id,
     )
+    _require_question_template_runtime_active(
+        session,
+        course_id=normalized,
+        template=template,
+    )
     data = await _grade_question_template_answer(
         course_id=normalized,
         course_name=course.name,
         template=template,
         answer=body.answer,
+        answer_payload=body.answer_payload,
     )
     if not body.ephemeral:
         _capture_exam_event(
@@ -6154,8 +6748,11 @@ async def prepare_mastery_drill(
     session: Session = Depends(get_db),
 ) -> ApiResponse[MasteryDrillPrepareResponse]:
     normalized = normalize_course_id(course_id)
+    _ensure_course(session, normalized, user.user_id)
     requested_count = max(1, int(body.num_questions))
-    configured_question_types = _normalized_exam_question_types(body.question_types)
+    configured_question_types, custom_question_type_runtimes, configured_question_counts = _resolve_question_selection_for_api(
+        session, course_id=normalized, mode="mastery_drill", question_count=requested_count, body=body,
+    )
     # Authentication may already have opened a transaction on the request
     # session. Release it before waiting on a dedicated PostgreSQL advisory
     # lock connection; all course/template reads happen after the lock.
@@ -6183,11 +6780,13 @@ async def prepare_mastery_drill(
                     course_id=normalized,
                     user_id=user.user_id,
                     question_types=configured_question_types,
+                    question_type_runtimes=custom_question_type_runtimes,
                 )
                 generation_count, generation_types = _mastery_drill_backfill_plan(
                     templates=usable_templates,
                     requested_count=requested_count,
                     configured_question_types=configured_question_types,
+                    question_type_counts=configured_question_counts,
                 )
                 if generation_count <= 0:
                     break
@@ -6220,6 +6819,8 @@ async def prepare_mastery_drill(
                     user_id=user.user_id,
                     question_count=generation_count,
                     question_types=generation_types,
+                    **({"question_type_counts": _mastery_drill_type_deficits(usable_templates, configured_question_counts)} if configured_question_counts else {}),
+                    question_type_runtimes=custom_question_type_runtimes,
                 )
                 session.expire_all()
 
@@ -6228,11 +6829,13 @@ async def prepare_mastery_drill(
                 course_id=normalized,
                 user_id=user.user_id,
                 question_types=configured_question_types,
+                question_type_runtimes=custom_question_type_runtimes,
             )
             remaining_count, _remaining_types = _mastery_drill_backfill_plan(
                 templates=usable_templates,
                 requested_count=requested_count,
                 configured_question_types=configured_question_types,
+                question_type_counts=configured_question_counts,
             )
             if remaining_count > 0:
                 final_template_ids = {
@@ -6252,6 +6855,7 @@ async def prepare_mastery_drill(
                     generated_count=generated_count,
                     remaining_count=remaining_count,
                     configured_question_types=configured_question_types,
+                    question_type_counts=configured_question_counts,
                 )
                 raise AITeachMeError(
                     detail=(
@@ -6295,12 +6899,14 @@ async def prepare_mastery_drill(
         return ok_response(
             MasteryDrillPrepareResponse(
                 requested_count=requested_count,
+                question_type_counts=configured_question_counts,
                 available_count=len(usable_templates),
                 generated_count=generated_count,
                 templates=_question_template_items_for_course(
                     session,
                     course_id=normalized,
                     user_id=user.user_id,
+                    template_ids={int(template.id or 0) for template in usable_templates},
                 ),
             )
         )
@@ -7315,7 +7921,12 @@ async def submit_exam(
         raise AITeachMeError(detail="Exam generation failed.", error_code="EXAM_GENERATION_FAILED", status_code=409)
     paper_items = exams_repo.list_items_by_paper(session, exam_paper_id)
     _require_supported_exam_items(paper_items)
-    resolved_answers, submission_hash, submission_key = _resolve_exam_submission_answers(paper_items, body)
+    (
+        resolved_answers,
+        resolved_answer_payloads,
+        submission_hash,
+        submission_key,
+    ) = _resolve_exam_submission_values(paper_items, body)
 
     accepted_now = False
     restarted_now = False
@@ -7356,7 +7967,16 @@ async def submit_exam(
         )
         if accepted_now:
             for item in paper_items:
-                item.answer_content = resolved_answers.get(int(item.id or 0), "")
+                item_id = int(item.id or 0)
+                item.answer_content = resolved_answers.get(item_id, "")
+                item.answer_payload_json = json.dumps(
+                    resolved_answer_payloads.get(item_id, {}),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+                item.grading_status = "pending"
+                item.grading_error_code = ""
                 item.answered_at = now
                 item.updated_at = now
                 session.add(item)
@@ -7390,6 +8010,11 @@ async def submit_exam(
             restarted_at=now,
         )
         if restarted_now:
+            _set_exam_item_grading_state(
+                session,
+                paper_id=exam_paper_id,
+                status="pending",
+            )
             session.commit()
         else:
             session.rollback()

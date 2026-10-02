@@ -1,6 +1,6 @@
 # Workflows 说明
 
-最后更新：2026-06-15
+最后更新：2026-09-07
 
 `backend/app/workflows/` 是 AITeachMe 后端当前唯一的业务层。这里承接五大引擎的 workflow 编排，也承接直接面向 API 的业务用例。
 
@@ -38,6 +38,7 @@
   - [auth](support/auth/README.md)
   - [courses](support/courses/README.md)
   - [export_import](support/export_import/README.md)
+  - [question_type_packages](support/question_type_packages/README.md)
   - [system](support/system/README.md)
 
 公共辅助：

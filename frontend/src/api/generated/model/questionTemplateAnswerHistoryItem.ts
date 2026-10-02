@@ -4,6 +4,8 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
+import type { QuestionTemplateAnswerHistoryItemGradingDetail } from './questionTemplateAnswerHistoryItemGradingDetail.ts';
+import type { QuestionTemplateAnswerHistoryItemUserAnswerPayload } from './questionTemplateAnswerHistoryItemUserAnswerPayload.ts';
 
 export interface QuestionTemplateAnswerHistoryItem {
   exam_paper_id: number;
@@ -21,5 +23,7 @@ export interface QuestionTemplateAnswerHistoryItem {
   score_max?: number | null;
   error_cause_label?: string | null;
   feedback_text?: string | null;
+  user_answer_payload?: QuestionTemplateAnswerHistoryItemUserAnswerPayload;
+  grading_detail?: QuestionTemplateAnswerHistoryItemGradingDetail;
   created_at: string;
 }

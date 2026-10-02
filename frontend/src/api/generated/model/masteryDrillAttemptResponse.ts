@@ -4,6 +4,8 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
+import type { MasteryDrillAttemptResponseAnswerPayload } from './masteryDrillAttemptResponseAnswerPayload.ts';
+import type { MasteryDrillAttemptResponseGradingDetail } from './masteryDrillAttemptResponseGradingDetail.ts';
 import type { MasteryDrillAttemptResponseStatus } from './masteryDrillAttemptResponseStatus.ts';
 
 export interface MasteryDrillAttemptResponse {
@@ -15,12 +17,14 @@ export interface MasteryDrillAttemptResponse {
   attempt_key: string;
   status: MasteryDrillAttemptResponseStatus;
   answer: string;
+  answer_payload?: MasteryDrillAttemptResponseAnswerPayload;
   is_correct?: boolean | null;
   score_obtained?: number | null;
   score_max?: number | null;
   feedback_text?: string | null;
   error_cause_label?: string | null;
   grading_mode?: string | null;
+  grading_detail?: MasteryDrillAttemptResponseGradingDetail;
   time_spent_seconds?: number | null;
   hint_used?: boolean;
   confidence_self_report?: number | null;

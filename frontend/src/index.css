@@ -2639,7 +2639,44 @@
   }
 }
 
+.training-mode-list > [data-training-mode] {
+  --training-accent: 96 165 250;
+  position: relative;
+  transition: transform 200ms ease, opacity 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
+}
+
+.training-mode-list > [data-training-mode="paper"] {
+  --training-accent: 167 139 250;
+}
+
+.training-mode-list > [data-training-mode="mastery"] {
+  --training-accent: 52 211 153;
+}
+
+.training-mode-list > [data-training-disabled="false"]:focus-within {
+  z-index: 1;
+  border-color: rgb(var(--training-accent) / 0.55);
+  box-shadow: 0 0 0 1px rgb(var(--training-accent) / 0.1), 0 4px 20px rgb(var(--training-accent) / 0.14);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .training-mode-list > [data-training-disabled="false"]:hover {
+    z-index: 1;
+    transform: scale(1.012);
+    border-color: rgb(var(--training-accent) / 0.55);
+    box-shadow: 0 0 0 1px rgb(var(--training-accent) / 0.1), 0 4px 20px rgb(var(--training-accent) / 0.14);
+  }
+
+  .training-mode-list:has(> [data-training-disabled="false"]:hover) > [data-training-mode]:not(:hover):not(:focus-within) {
+    opacity: 0.55;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .training-mode-list > [data-training-mode] {
+    transform: none !important;
+  }
+
   *,
   *::before,
   *::after {

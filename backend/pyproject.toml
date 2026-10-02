@@ -13,18 +13,21 @@ dependencies = [
     "sqlite-vec>=0.1.1",
     "litellm>=1.84.0",
     "instructor>=1.3.0",
+    "tenacity>=8.2.3",
     "langgraph>=0.1.0",
     "langsmith>=0.8.0",
     "httpx>=0.28.0",
     "aiohttp>=3.14.1",
     "beautifulsoup4>=4.14.0",
     "Jinja2>=3.1.0",
+    "jsonschema>=4.23.0",
     "lxml>=6.1.0",
     "markdown-it-py>=4.0.0",
     "markitdown[pdf,pptx]>=0.1.5",
     "mammoth>=1.11.0",
     "Pillow>=12.0.0",
     "pydantic-settings>=2.2.0",
+    "PyYAML>=6.0.3",
     "python-dotenv>=1.2.2",
     "structlog>=24.1.0",
     "python-multipart>=0.0.31",
@@ -54,6 +57,12 @@ dev = [
 
 [tool.setuptools.packages.find]
 include = ["app*"]
+
+[tool.setuptools.package-data]
+"app.workflows.support.question_type_packages" = [
+  "schemas/*.json",
+  "example_packages/*.atqskill",
+]
 
 [tool.pytest.ini_options]
 addopts = [

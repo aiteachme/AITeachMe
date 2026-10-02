@@ -1,0 +1,190 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aiteachme.local/schemas/atqskill-v1.schema.json",
+  "title": "AITeachMe Question Type Skill V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "package_key",
+    "version",
+    "name",
+    "description",
+    "template_key",
+    "runtime_key",
+    "renderer_key",
+    "grader_key",
+    "capabilities",
+    "files",
+    "answer_schema",
+    "grading"
+  ],
+  "properties": {
+    "schema": {
+      "const": "aiteachme.question-skill/v1"
+    },
+    "package_key": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{2,63}$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 300
+    },
+    "template_key": {
+      "enum": [
+        "feynman_explanation_v1",
+        "oral_defense_v1",
+        "scenario_interview_v1",
+        "argument_debate_v1"
+      ]
+    },
+    "runtime_key": {
+      "const": "structured_subjective_v1"
+    },
+    "renderer_key": {
+      "enum": ["long_text_v1", "structured_text_v1"]
+    },
+    "grader_key": {
+      "const": "rubric_llm_v1"
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["modes", "hints", "immediate_feedback"],
+      "properties": {
+        "modes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "uniqueItems": true,
+          "contains": {"const": "question_bank"},
+          "items": {
+            "enum": ["question_bank", "mastery_drill", "web_practice", "paper_exam", "pdf"]
+          }
+        },
+        "hints": {"type": "boolean"},
+        "immediate_feedback": {"type": "boolean"}
+      }
+    },
+    "files": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["generate_prompt", "grade_prompt", "references"],
+      "properties": {
+        "generate_prompt": {"type": "string", "pattern": "^prompts/[a-z0-9][a-z0-9_-]{0,63}\\.md$"},
+        "grade_prompt": {"type": "string", "pattern": "^prompts/[a-z0-9][a-z0-9_-]{0,63}\\.md$"},
+        "feedback_prompt": {"type": "string", "pattern": "^prompts/[a-z0-9][a-z0-9_-]{0,63}\\.md$"},
+        "references": {"type": "string", "pattern": "^references/[a-z0-9][a-z0-9_-]{0,63}\\.json$"}
+      }
+    },
+    "answer_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fields"],
+      "properties": {
+        "fields": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "items": {"$ref": "#/$defs/answerField"}
+        }
+      }
+    },
+    "grading": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pass_score", "rubric"],
+      "properties": {
+        "pass_score": {"type": "number", "minimum": 0, "maximum": 1},
+        "rubric": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 6,
+          "items": {"$ref": "#/$defs/rubricItem"}
+        }
+      }
+    },
+    "tools": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bindings"],
+      "properties": {
+        "bindings": {"type": "string", "pattern": "^tools/[a-z0-9][a-z0-9_-]{0,63}\\.json$"}
+      }
+    },
+    "assets": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "role"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "pattern": "^assets/(?:[a-z0-9][a-z0-9_-]{0,63}/){0,4}[a-z0-9][a-z0-9_.-]{0,100}\\.(png|jpg|jpeg|webp)$"
+          },
+          "role": {"enum": ["cover", "example", "illustration"]}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "answerField": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "label", "control", "required", "min_length", "max_length"],
+      "properties": {
+        "key": {"type": "string", "pattern": "^[a-z][a-z0-9_]{1,31}$"},
+        "label": {"type": "string", "minLength": 1, "maxLength": 40},
+        "control": {"enum": ["short_text", "long_text"]},
+        "required": {"type": "boolean"},
+        "min_length": {"type": "integer", "minimum": 0, "maximum": 1000},
+        "max_length": {"type": "integer", "minimum": 1, "maximum": 20000},
+        "placeholder": {"type": "string", "maxLength": 120}
+      }
+    },
+    "rubricItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "label", "weight", "description"],
+      "properties": {
+        "key": {"type": "string", "pattern": "^[a-z][a-z0-9_]{1,31}$"},
+        "label": {"type": "string", "minLength": 1, "maxLength": 40},
+        "weight": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+        "description": {"type": "string", "minLength": 1, "maxLength": 300}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": ["template_key"],
+        "properties": {"template_key": {"const": "feynman_explanation_v1"}}
+      },
+      "then": {"properties": {"renderer_key": {"const": "long_text_v1"}}}
+    },
+    {
+      "if": {
+        "required": ["template_key"],
+        "properties": {
+          "template_key": {
+            "enum": ["oral_defense_v1", "scenario_interview_v1", "argument_debate_v1"]
+          }
+        }
+      },
+      "then": {"properties": {"renderer_key": {"const": "structured_text_v1"}}}
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+import { QuestionAnswerFields } from "./QuestionAnswerFields";
 import {
   useCallback,
   useEffect,
@@ -23,8 +24,17 @@ import {
 import type { ExamPaperDetailResponse, ExamPaperItemResponse, PaperPreviewRow } from "../../api/generated/model";
 import { cn } from "../../lib/utils";
 import { ExamMarkdown } from "./ExamMarkdown";
+import { CustomRubricBreakdown } from "./CustomRubricBreakdown";
 import { buildExamQuestionAnchorId } from "../interaction";
-import { isSupportedQuestionType } from "./questionTypes";
+import {
+  getAnswerPayload,
+  getAnswerText,
+  getCustomAnswerField,
+  getCustomAnswerFields,
+  isRenderableQuestionItem,
+  updateAnswerField,
+  type AnswerState,
+} from "./questionTypes";
 import {
   formatAnswerDisplayValue,
   formatTrueFalseOptionLabel,
@@ -83,11 +93,11 @@ type PaperLayout = {
 
 interface PaperExamCanvasSheetProps {
   paper: ExamPaperDetailResponse;
-  answers: Record<number, string>;
+  answers: AnswerState;
   activeStage: 1 | 2 | 3;
   questionEntries: QuestionEntry[];
   highlightedQuestionOrder?: number | null;
-  setAnswers: Dispatch<SetStateAction<Record<number, string>>>;
+  setAnswers: Dispatch<SetStateAction<AnswerState>>;
   selectedItemId?: number | null;
   showInlineReviewDetails?: boolean;
   isReviewAnalysisVisible?: boolean;
@@ -427,6 +437,25 @@ function estimateOptionsHeight(options: unknown[]) {
   return 10 + rowLineCounts.reduce((total, lines) => total + lines * 24, 0);
 }
 
+function estimateRubricBreakdownHeight(detail: unknown) {
+  if (!isRecord(detail) || !Array.isArray(detail.criteria)) return 0;
+  const criteria = detail.criteria.filter(isRecord);
+  if (!criteria.length) return 0;
+
+  return 36 + criteria.reduce((total, criterion, index) => {
+    const evidence = Array.isArray(criterion.evidence)
+      ? criterion.evidence.map((value) => String(value ?? "").trim()).filter(Boolean)
+      : [];
+    const supportingText = evidence.length
+      ? `依据：${evidence.join("；")}`
+      : String(criterion.note ?? "").trim();
+    return total
+      + (index > 0 ? 6 : 0)
+      + 20
+      + estimateWrappedTextHeight(supportingText, 68, 20, 2);
+  }, 0);
+}
+
 function estimateQuestionMainHeight(entry: QuestionEntry | null) {
   if (!entry?.item) return 74;
 
@@ -435,7 +464,12 @@ function estimateQuestionMainHeight(entry: QuestionEntry | null) {
   const stemHeight = estimateWrappedTextHeight(item.stem, 70, 24, 6);
   let height = Math.max(32, stemHeight + 12);
 
-  if (type === "single_choice" || type === "multiple_choice" || type === "multi_choice" || type === "true_false") {
+  const customFieldCount = getCustomAnswerFields(item).length;
+  if (customFieldCount > 1) {
+    height += 92 + customFieldCount * 92;
+  } else if (getCustomAnswerField(item) || item.renderer_key === "long_text_v1") {
+    height += 132;
+  } else if (type === "single_choice" || type === "multiple_choice" || type === "multi_choice" || type === "true_false") {
     const choiceOptions = type === "true_false" && !(item.options?.length) ? ["True", "False"] : item.options ?? [];
     height += estimateOptionsHeight(choiceOptions);
   } else if (type === "fill_blank") {
@@ -459,6 +493,7 @@ function estimateQuestionReviewHeight(entry: QuestionEntry | null) {
   reviewHeight += 16 + estimateWrappedTextHeight(formatAnswerDisplayValue(item.question_type, item.user_answer), 70, 24, 6);
   reviewHeight += 24 + estimateWrappedTextHeight(formatAnswerDisplayValue(item.question_type, item.correct_answer), 70, 24, 6);
   reviewHeight += 24 + estimateWrappedTextHeight(item.explanation || "暂无解析", 70, 24, 6);
+  reviewHeight += estimateRubricBreakdownHeight(item.grading_detail);
   return reviewHeight;
 }
 
@@ -712,7 +747,8 @@ function PaperExamQuestionBlock({
   }
 
   const item = entry.item;
-  const answerValue = answers[item.item_order] ?? "";
+  const answerStateValue = answers[item.item_order] ?? "";
+  const answerValue = getAnswerText(item, answerStateValue);
   const isSingleChoice = item.question_type === "single_choice";
   const isMultipleChoice = item.question_type === "multiple_choice" || item.question_type === "multi_choice";
   const isTrueFalse = item.question_type === "true_false";
@@ -722,7 +758,7 @@ function PaperExamQuestionBlock({
   const correctMultiChoice = splitMultiChoiceAnswer(item.correct_answer);
   const isGraded = paper.status === "graded";
   const isReviewStage = isGraded && activeStage === 2;
-  const isReadonly = isGraded || paper.status === "grading_failed" || printMode === true;
+  const isReadonly = isGraded || ["submitted", "grading", "grading_failed"].includes(paper.status) || printMode === true;
   const isCorrect = item.is_correct === true;
   const isSelectedReviewItem = isReviewStage && selectedItemId === item.id;
   const isQuestionHighlighted = highlightedQuestionOrder === item.item_order;
@@ -732,6 +768,9 @@ function PaperExamQuestionBlock({
   );
   const scoreLabel = formatScore(score ?? item.score_max);
   const optionColumnCount = getOptionColumnCount(choiceOptions);
+  const customAnswerField = getCustomAnswerField(item);
+  const customAnswerFields = getCustomAnswerFields(item);
+  const customAnswerPayload = getAnswerPayload(item, answerStateValue);
 
   return (
     <div
@@ -781,7 +820,7 @@ function PaperExamQuestionBlock({
             ) : null}
           </div>
 
-          {!isSupportedQuestionType(item.question_type) ? (
+          {!isRenderableQuestionItem(item) ? (
             <div className="mt-2 flex items-start gap-1.5 border border-rose-300 bg-rose-50 px-2 py-1.5 text-xs leading-5 text-rose-800 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200" role="alert">
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               <span>不支持题型「{item.question_type || "未指定"}」，无法作答。</span>
@@ -853,7 +892,7 @@ function PaperExamQuestionBlock({
                         if (!isMultipleChoice) {
                           return { ...current, [item.item_order]: isSelected ? "" : optionValue };
                         }
-                        const next = splitMultiChoiceAnswer(current[item.item_order]);
+                        const next = splitMultiChoiceAnswer(getAnswerText(item, current[item.item_order]));
                         if (next.has(optionValue)) {
                           next.delete(optionValue);
                         } else {
@@ -876,11 +915,15 @@ function PaperExamQuestionBlock({
                 );
               })}
             </div>
+          ) : customAnswerFields.length > 0 ? (
+              <QuestionAnswerFields item={item} value={customAnswerPayload} readOnly={isReadonly} print={printMode} compact
+                onChange={(key, value) => setAnswers((current) => ({ ...current, [item.item_order]: updateAnswerField(item, current[item.item_order], key, value) }))} />
           ) : printMode ? (
             <div
               data-paper-print-answer="true"
               className={cn(
-                "mt-2 min-h-12 whitespace-pre-wrap break-words border-b border-slate-300 px-1 py-1 text-[14px] leading-6 text-slate-800",
+                "mt-2 whitespace-pre-wrap break-words border-b border-slate-300 px-1 py-1 text-[14px] leading-6 text-slate-800",
+                customAnswerField ? "min-h-32" : "min-h-12",
                 isReviewStage && (isCorrect ? "border-emerald-400 text-emerald-950" : "border-rose-400 text-rose-950"),
               )}
             >
@@ -895,7 +938,8 @@ function PaperExamQuestionBlock({
           ) : (
             <textarea
               className={cn(
-                "mt-1 min-h-8 w-full resize-none rounded-none border-0 border-b bg-transparent px-1 py-0.5 text-[14px] leading-6 outline-none transition",
+                "mt-1 w-full resize-y rounded-none border-0 border-b bg-transparent px-1 py-0.5 text-[14px] leading-6 outline-none transition",
+                customAnswerField ? "min-h-32" : "min-h-8",
                 isReviewStage
                   ? isCorrect
                     ? "border-emerald-400 text-emerald-950 dark:border-emerald-400 dark:text-emerald-100"
@@ -904,7 +948,9 @@ function PaperExamQuestionBlock({
                     ? "border-slate-300 text-slate-800 dark:border-slate-700 dark:text-slate-300"
                     : "border-slate-400 text-slate-900 focus:border-slate-900 dark:border-slate-700 dark:text-slate-100",
               )}
-              placeholder={item.question_type === "fill_blank" ? "________________" : "在此作答"}
+              placeholder={customAnswerField?.placeholder ?? (item.question_type === "fill_blank" ? "________________" : "在此作答")}
+              aria-label={customAnswerField?.label ?? `第 ${item.item_order} 题作答`}
+              maxLength={customAnswerField?.maxLength}
               value={answerValue}
               onClick={(event) => event.stopPropagation()}
               onChange={(event) => setAnswers((current) => ({ ...current, [item.item_order]: event.target.value }))}
@@ -1014,10 +1060,10 @@ function PaperExamQuestionReviewBlock({
                 [第 {item.item_order} 题解析 · 承前页]
               </div>
             ) : null}
-            <div data-paper-print-review-block={printMode ? "true" : undefined}>
+            {!(printMode && getCustomAnswerFields(item).length) && <div data-paper-print-review-block={printMode ? "true" : undefined}>
               <p data-paper-print-review-label={printMode ? "true" : undefined} className="text-xs font-semibold text-slate-400">你的答案</p>
               <ExamMarkdown content={formatAnswerDisplayValue(item.question_type, item.user_answer)} />
-            </div>
+            </div>}
             <div data-paper-print-review-block={printMode ? "true" : undefined} className="mt-2">
               <p data-paper-print-review-label={printMode ? "true" : undefined} className="text-xs font-semibold text-slate-400">正确答案</p>
               <ExamMarkdown content={formatAnswerDisplayValue(item.question_type, item.correct_answer, "无标准答案")} />
@@ -1026,6 +1072,11 @@ function PaperExamQuestionReviewBlock({
               <p data-paper-print-review-label={printMode ? "true" : undefined} className="text-xs font-semibold text-slate-400">解析</p>
               <ExamMarkdown content={item.explanation || "暂无解析"} />
             </div>
+            <CustomRubricBreakdown
+              detail={item.grading_detail}
+              compact
+              className="mt-2"
+            />
           </div>
         </div>
       </div>
@@ -1471,7 +1522,10 @@ function PaperExamInteractiveCanvasSheet({
                             <div className="font-semibold text-slate-500/90 tracking-[4px]">装订线内不要答题</div>
                           </div>
                         ) : null}
-                        <div className="min-h-0 flex-1 overflow-hidden" style={gaokaoPageContentStyle}>
+                        <div
+                          className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain"
+                          style={gaokaoPageContentStyle}
+                        >
                           {page.page_number === 1 ? <PaperExamCoverIntro paper={paper} layout={layout} /> : null}
 
                           {page.items.length === 0 ? (

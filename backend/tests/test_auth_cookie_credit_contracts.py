@@ -499,6 +499,58 @@ def test_successful_exam_reservation_is_settled_during_recovery(
         assert db.get(CreditAccount, user.id).balance == 295
 
 
+@pytest.mark.parametrize("paper_status,should_settle", [
+    ("ready", True), ("in_progress", True), ("submitted", True), ("grading", True),
+    ("grading_failed", True), ("graded", True), ("archived", True), ("completed", True),
+    ("failed", False), ("draft", False), ("cancelled", False),
+])
+def test_exam_generation_settlement_follows_delivered_paper_after_status_advances(
+    monkeypatch: pytest.MonkeyPatch, paper_status: str, should_settle: bool,
+) -> None:
+    """A different request may submit/grade the paper before settlement reads it."""
+    from app.workflows.examine import credit_lifecycle as exam_credit_lifecycle
+
+    monkeypatch.setattr(credits, "is_local_mode", lambda: False)
+    engine = _engine()
+
+    @contextmanager
+    def credit_session():
+        with Session(engine, expire_on_commit=False) as db:
+            yield db
+
+    monkeypatch.setattr(exam_credit_lifecycle, "managed_session", credit_session)
+    with credit_session() as db:
+        user = _user()
+        db.add(user)
+        db.add(ExamPaper(id=91, course_id="course-1", user_id=user.id,
+                         exam_mode="paper_exam", status="generating"))
+        db.commit()
+        reservation = credits.reserve_credits(
+            db, user=user, feature="exam_generation", reference_id="91",
+            amount=5, idempotency_key="exam:91",
+        )
+        reservation_id = reservation.id
+
+    async def generation_completed_and_paper_advanced():
+        with credit_session() as db:
+            paper = db.get(ExamPaper, 91)
+            paper.status = paper_status
+            db.add(paper)
+            db.commit()
+
+    for _replay in range(2):
+        asyncio.run(exam_credit_lifecycle.run_reserved_exam_generation(
+            generation_completed_and_paper_advanced(), reservation_id=reservation_id, paper_id=91,
+        ))
+
+    with credit_session() as db:
+        account = db.get(CreditAccount, user.id)
+        assert (account.balance, account.reserved_balance) == ((295 if should_settle else 300), 0)
+        assert db.get(CreditReservation, reservation_id).status == ("settled" if should_settle else "released")
+        ledger = db.exec(select(CreditLedger).where(CreditLedger.user_id == user.id)).all()
+        assert len(ledger) == (2 if should_settle else 1), "Replay must not charge a second time"
+
+
 def test_active_exam_reservation_is_deferred_during_recovery(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

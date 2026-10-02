@@ -1,13 +1,16 @@
+import { normalizeCustomTypeSelections, type CustomTypeSelection, type LegacyCustomSelection } from "./questionTypeSelection.ts";
 import type { ConfigStorage } from "./examConfig.ts";
 
 export interface MasteryDrillConfig {
   numQuestions: number;
   questionTypes: string[];
+  customQuestionTypes: CustomTypeSelection[];
 }
 
 export const DEFAULT_MASTERY_DRILL_CONFIG: MasteryDrillConfig = {
   numQuestions: 10,
   questionTypes: [],
+  customQuestionTypes: [],
 };
 
 export const MASTERY_DRILL_QUESTION_COUNT_PRESETS = [
@@ -37,12 +40,13 @@ function getMasteryDrillConfigStorageKey(courseId: string) {
 }
 
 export function normalizeMasteryDrillConfig(
-  value: Partial<MasteryDrillConfig> | null | undefined,
+  value: (Partial<MasteryDrillConfig> & LegacyCustomSelection) | null | undefined,
 ): MasteryDrillConfig {
   const numQuestions = Number(value?.numQuestions);
   const questionTypes = Array.isArray(value?.questionTypes)
     ? normalizeQuestionTypes(value.questionTypes)
     : DEFAULT_MASTERY_DRILL_CONFIG.questionTypes;
+  const customQuestionTypes = normalizeCustomTypeSelections(value ?? {});
 
   return {
     numQuestions: Math.min(
@@ -53,6 +57,7 @@ export function normalizeMasteryDrillConfig(
       ),
     ),
     questionTypes,
+    customQuestionTypes,
   };
 }
 
@@ -105,7 +110,11 @@ export function saveMasteryDrillConfig(
 
 export function getMasteryDrillConfigSelectionKey(config: MasteryDrillConfig) {
   const normalized = normalizeMasteryDrillConfig(config);
-  return `${normalized.numQuestions}:${[...normalized.questionTypes].sort().join(",")}`;
+  return [
+    normalized.numQuestions,
+    [...normalized.questionTypes].sort().join(","),
+    normalized.customQuestionTypes.map((item) => `${item.registryId}/${item.typeKey}`).sort().join(","),
+  ].join(":");
 }
 
 export function formatMasteryDrillDurationRange(numQuestions: number) {

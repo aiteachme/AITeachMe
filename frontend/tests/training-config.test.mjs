@@ -121,6 +121,25 @@ test("normalizes invalid create config values and omits paper layout for practic
   assert.equal(request.paper_layout_mode, undefined);
 });
 
+test("migrates a legacy custom selection into the unified mixed request", () => {
+  const normalized = normalizeCreateExamConfig(
+    {
+      examMode: "web_practice",
+      questionTypes: ["single_choice"],
+      customQuestionTypeRegistryId: 42,
+      customQuestionTypeKey: "CUSTOM_FEYNMAN_EXPLANATION",
+    },
+    "web_practice",
+  );
+  const request = toExamGenerateRequest(normalized);
+
+  assert.deepEqual(normalized.questionTypes, ["single_choice"]);
+  assert.deepEqual(normalized.customQuestionTypes, [{ registryId: 42, typeKey: "custom_feynman_explanation" }]);
+  assert.deepEqual(request.question_types, []);
+  assert.deepEqual(request.question_type_registry_ids, []);
+  assert.deepEqual(request.question_type_selections, [{ question_type: "single_choice" }, { registry_id: 42 }]);
+});
+
 test("reads the latest saved mastery drill selection", () => {
   const storage = new MemoryStorage();
   saveMasteryDrillConfig(
@@ -131,6 +150,7 @@ test("reads the latest saved mastery drill selection", () => {
   assert.deepEqual(loadMasteryDrillConfig("course-3", storage), {
     numQuestions: 16,
     questionTypes: ["true_false", "single_choice"],
+    customQuestionTypes: [],
   });
 
   saveMasteryDrillConfig(
@@ -141,6 +161,27 @@ test("reads the latest saved mastery drill selection", () => {
   assert.deepEqual(loadMasteryDrillConfig("course-3", storage), {
     numQuestions: 8,
     questionTypes: ["multiple_choice"],
+    customQuestionTypes: [],
+  });
+});
+
+test("stores a legacy custom mastery type together with explicit built-in types", () => {
+  const storage = new MemoryStorage();
+  saveMasteryDrillConfig(
+    "course-custom",
+    {
+      numQuestions: 6,
+      questionTypes: ["single_choice"],
+      customQuestionTypeRegistryId: 42,
+      customQuestionTypeKey: "CUSTOM_FEYNMAN_EXPLANATION",
+    },
+    storage,
+  );
+
+  assert.deepEqual(loadMasteryDrillConfig("course-custom", storage), {
+    numQuestions: 6,
+    questionTypes: ["single_choice"],
+    customQuestionTypes: [{ registryId: 42, typeKey: "custom_feynman_explanation" }],
   });
 });
 

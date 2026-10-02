@@ -1,6 +1,6 @@
 # Examine Question Build 链路
 
-最后更新：2026-06-15
+最后更新：2026-09-29
 
 职责：把课程知识点、知识图谱、用户要求和 Profile 掌握度变成结构化题目。
 
@@ -38,6 +38,9 @@ units
 knowledge_graph_edges
 mastery_by_unit_id
 priority_unit_ids
+configured_question_types
+configured_question_counts
+question_type_runtimes
 ```
 
 输出：
@@ -263,6 +266,14 @@ generated_questions
 `question_build` 不直接更新 Profile；它只负责把题目和知识点覆盖关系准备好。
 
 `question_build` 不读取 Planner `diagnose`；它读取的是用户出题提示、知识图谱和 Profile 掌握度。
+
+## 上传题型与混合选择
+
+API 将统一选择解析成内置类型和冻结的上传类型版本，并分配数量。规划器按 `configured_question_counts` 安排逐题类型；闯关补题仅生成各类型的缺口。旧客户端只选内置类型时保留原规划行为。
+
+上传题型按 `answer_fields` 构造模型输出约束，多字段参考答案保存在 `reference_answer_payload`。字段名通过别名映射，合法的包字段不会与 Python 模型属性冲突。生成结果经过字段、知识点和题型约束检查后，由 API 写入题库和试卷快照；生成器不决定所有者、版本身份或满分。
+
+生成事件公开投影会隐藏参考答案、解析和私有评分信息。上游认证、超时和模型故障通过 `examine/errors.py` 转为用户可操作的说明，完整诊断留在内部工作流状态。
 
 ## 模型策略
 

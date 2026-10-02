@@ -1,0 +1,179 @@
+{
+  "schema": "aiteachme.question-skill-cases/v2",
+  "cases": [
+    {
+      "id": "deadlock-diagnosis",
+      "knowledge_unit": {
+        "name": "死锁诊断",
+        "type": "procedure",
+        "summary": "通过等待关系和资源占有情况识别死锁并选择恢复策略。"
+      },
+      "question": {
+        "stem": "线上服务线程互相等待两把锁且长期无进展，你会如何分析并处理？",
+        "reference_answer": {
+          "analysis": "先确认不是慢请求，查看线程栈、锁持有者和等待图是否形成环。",
+          "steps": "采集现场，确认环路，回滚影响最小的工作释放锁，再把代码改成统一锁顺序并增加监控。",
+          "conclusion": "先用证据确认死锁，再恢复服务并消除相反加锁顺序。"
+        },
+        "explanation": "答案应覆盖证据采集、死锁确认、恢复和预防。\n\n参考说明：先采集线程栈和锁等待关系，构造等待图确认环；再选择影响最小的线程回滚或终止以解除死锁，最后统一加锁顺序并缩小临界区防止复发。"
+      },
+      "answers": [
+        {
+          "label": "strong",
+          "content": {
+            "analysis": "先确认不是慢请求，查看线程栈、锁持有者和等待图是否形成环。",
+            "steps": "采集现场，确认环路，回滚影响最小的工作释放锁，再把代码改成统一锁顺序并增加监控。",
+            "conclusion": "先用证据确认死锁，再恢复服务并消除相反加锁顺序。"
+          },
+          "expected_score": {
+            "min": 0.8,
+            "max": 1.0
+          },
+          "expected_pass": true
+        },
+        {
+          "label": "partial",
+          "content": {
+            "analysis": "我认为这些线程可能发生了死锁，但目前还没有检查现场来确认这个判断。",
+            "steps": "我会先重启服务让请求恢复，然后再查看日志，具体检查项目还没有确定。",
+            "conclusion": "我会先把服务重启。"
+          },
+          "expected_score": {
+            "min": 0.3,
+            "max": 0.59
+          },
+          "expected_pass": false
+        },
+        {
+          "label": "wrong",
+          "content": {
+            "analysis": "这一定是 CPU 的数量不够造成的，只要计算能力不足就会出现这种等待。",
+            "steps": "直接增加机器来提高计算能力，不需要检查线程锁，也不需要查看它们的等待关系。",
+            "conclusion": "扩容即可解决。"
+          },
+          "expected_score": {
+            "min": 0.0,
+            "max": 0.2
+          },
+          "expected_pass": false
+        }
+      ]
+    },
+    {
+      "id": "missing-data-analysis",
+      "knowledge_unit": {
+        "name": "缺失值处理",
+        "type": "procedure",
+        "summary": "先分析缺失机制和业务含义，再选择删除、填补或建模策略。"
+      },
+      "question": {
+        "stem": "客户年龄字段缺失 30%，你会怎样决定是否填补？",
+        "reference_answer": {
+          "analysis": "先按渠道、时间和目标变量检查缺失分布，判断是否存在系统性漏采。",
+          "steps": "建立缺失标记，比较删除、分组中位数和模型填补，在验证集评估性能与群体偏差。",
+          "conclusion": "根据缺失机制和验证结果选择方案，不预设均值填补。"
+        },
+        "explanation": "不能看到缺失就直接用均值，需要先诊断机制和验证影响。\n\n参考说明：先统计缺失分布并结合采集流程判断缺失是否随机，评估年龄与目标变量的关系和业务风险；再比较删除、分组填补、模型填补或缺失指示变量，并通过验证集检验偏差。"
+      },
+      "answers": [
+        {
+          "label": "strong",
+          "content": {
+            "analysis": "先按渠道、时间和目标变量检查缺失分布，判断是否存在系统性漏采。",
+            "steps": "建立缺失标记，比较删除、分组中位数和模型填补，在验证集评估性能与群体偏差。",
+            "conclusion": "根据缺失机制和验证结果选择方案，不预设均值填补。"
+          },
+          "expected_score": {
+            "min": 0.8,
+            "max": 1.0
+          },
+          "expected_pass": true
+        },
+        {
+          "label": "partial",
+          "content": {
+            "analysis": "目前看到的缺失比例比较高，我认为应该处理这些缺失值，但还没有分析原因。",
+            "steps": "我会先试试用中位数填补这些缺失值，然后看一下处理后的结果有没有变化。",
+            "conclusion": "效果可以就使用中位数。"
+          },
+          "expected_score": {
+            "min": 0.3,
+            "max": 0.59
+          },
+          "expected_pass": false
+        },
+        {
+          "label": "wrong",
+          "content": {
+            "analysis": "缺失值本身对分析结果完全没有影响，所以不需要了解它们为什么会缺失。",
+            "steps": "直接把所有缺失值全部填成零，不区分字段含义，也不需要检查缺失的原因。",
+            "conclusion": "零最方便。"
+          },
+          "expected_score": {
+            "min": 0.0,
+            "max": 0.2
+          },
+          "expected_pass": false
+        }
+      ]
+    },
+    {
+      "id": "break-even-decision",
+      "knowledge_unit": {
+        "name": "盈亏平衡分析",
+        "type": "formula_model",
+        "summary": "盈亏平衡销量等于固定成本除以单位贡献毛益。"
+      },
+      "question": {
+        "stem": "产品降价后销量可能增长，你会怎样判断降价是否值得？",
+        "reference_answer": {
+          "analysis": "降价会降低单位贡献毛益，必须由足够销量增长补偿，并考虑产能和新增营销费用。",
+          "steps": "计算新贡献毛益与盈亏平衡销量，对销量增长做保守、基准、乐观情景并比较利润。",
+          "conclusion": "只有可实现销量超过新的临界水平且风险可接受时才降价。"
+        },
+        "explanation": "应将降价同时对单件收益、销量和约束条件的影响纳入。\n\n参考说明：先重新计算降价后的单位贡献毛益和盈亏平衡销量，再估计销量增长区间并进行敏感性分析，同时检查产能、渠道费用和需求假设，最后比较不同情景利润。"
+      },
+      "answers": [
+        {
+          "label": "strong",
+          "content": {
+            "analysis": "降价会降低单位贡献毛益，必须由足够销量增长补偿，并考虑产能和新增营销费用。",
+            "steps": "计算新贡献毛益与盈亏平衡销量，对销量增长做保守、基准、乐观情景并比较利润。",
+            "conclusion": "只有可实现销量超过新的临界水平且风险可接受时才降价。"
+          },
+          "expected_score": {
+            "min": 0.8,
+            "max": 1.0
+          },
+          "expected_pass": true
+        },
+        {
+          "label": "partial",
+          "content": {
+            "analysis": "我认为降价以后可能会带来更多销量，但现在还不能说明具体会增加多少。",
+            "steps": "我会先估算可能增加的销量，再计算利润，其他需要检查的条件还没有列出。",
+            "conclusion": "利润增加就降价。"
+          },
+          "expected_score": {
+            "min": 0.3,
+            "max": 0.59
+          },
+          "expected_pass": false
+        },
+        {
+          "label": "wrong",
+          "content": {
+            "analysis": "商品的销量一定会按照降价的比例增加，不论顾客需求或者市场情况怎样。",
+            "steps": "只比较降价以前和降价以后的售价就能作决定，不需要考虑成本或者销量。",
+            "conclusion": "价格越低利润越高。"
+          },
+          "expected_score": {
+            "min": 0.0,
+            "max": 0.2
+          },
+          "expected_pass": false
+        }
+      ]
+    }
+  ]
+}

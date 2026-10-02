@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aiteachme.local/schemas/reference-cases-v1.schema.json",
+  "title": "AITeachMe Question Type Reference Cases V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "cases"],
+  "properties": {
+    "schema": {"const": "aiteachme.question-skill-cases/v1"},
+    "cases": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 12,
+      "items": {"$ref": "#/$defs/case"}
+    }
+  },
+  "$defs": {
+    "answerContent": {
+      "oneOf": [
+        {"type": "string", "minLength": 1, "maxLength": 20000},
+        {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 5,
+          "propertyNames": {"pattern": "^[a-z][a-z0-9_]{1,31}$"},
+          "additionalProperties": {"type": "string", "minLength": 1, "maxLength": 20000}
+        }
+      ]
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "knowledge_unit", "question", "answers"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{2,63}$"},
+        "knowledge_unit": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "type", "summary"],
+          "properties": {
+            "name": {"type": "string", "minLength": 1, "maxLength": 100},
+            "type": {"type": "string", "minLength": 1, "maxLength": 40},
+            "summary": {"type": "string", "minLength": 1, "maxLength": 1000}
+          }
+        },
+        "question": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["stem", "reference_answer", "explanation"],
+          "properties": {
+            "stem": {"type": "string", "minLength": 1, "maxLength": 4000},
+            "reference_answer": {"type": "string", "minLength": 1, "maxLength": 10000},
+            "explanation": {"type": "string", "minLength": 1, "maxLength": 10000}
+          }
+        },
+        "answers": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 6,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["label", "content", "expected_score", "expected_pass"],
+            "properties": {
+              "label": {"enum": ["strong", "partial", "wrong"]},
+              "content": {"$ref": "#/$defs/answerContent"},
+              "expected_score": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["min", "max"],
+                "properties": {
+                  "min": {"type": "number", "minimum": 0, "maximum": 1},
+                  "max": {"type": "number", "minimum": 0, "maximum": 1}
+                }
+              },
+              "expected_pass": {"type": "boolean"}
+            }
+          }
+        }
+      }
+    }
+  }
+}

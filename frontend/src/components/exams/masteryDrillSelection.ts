@@ -1,4 +1,40 @@
 import type { ConfigStorage } from "./examConfig.ts";
+import type { QuestionTypeCatalogItemResponse } from "../../api/generated/model/questionTypeCatalogItemResponse.ts";
+import type { CustomTypeSelection } from "./questionTypeSelection.ts";
+import { isCustomQuestionTypeAvailable } from "./questionTypeAvailability.ts";
+import { isSupportedQuestionType } from "./questionTypes.ts";
+
+type RegisteredTemplate = {
+  question_type: string;
+  question_type_registry_id?: number | null;
+  question_type_version_id?: number | null;
+};
+
+// Match the backend's current-version rule when estimating reusable bank items.
+// A round's prepared list already carries its frozen versions and bypasses this check.
+export function filterMasteryDrillCatalogTemplates<T extends RegisteredTemplate>(
+  templates: readonly T[],
+  catalog: readonly QuestionTypeCatalogItemResponse[],
+): T[] {
+  const available = new Map(catalog
+    .filter((item) => isCustomQuestionTypeAvailable(item) && item.modes?.includes("mastery_drill"))
+    .map((item) => [item.id, item]));
+  return templates.filter((template) => {
+    if (isSupportedQuestionType(template.question_type)) return true;
+    const item = available.get(template.question_type_registry_id ?? 0);
+    return Boolean(item && item.type_key === template.question_type &&
+      item.current_version_id === template.question_type_version_id);
+  });
+}
+
+export function filterMasteryDrillSelectedTemplates<T extends RegisteredTemplate>(
+  templates: readonly T[],
+  customSelections: readonly CustomTypeSelection[],
+): T[] {
+  return templates.filter((template) => isSupportedQuestionType(template.question_type) ||
+    customSelections.some((selection) => selection.registryId === template.question_type_registry_id &&
+      selection.typeKey === template.question_type));
+}
 
 const LAST_MASTERY_DRILL_SELECTION_STORAGE_PREFIX =
   "aiteachme.exam.masteryDrillLastSelection.v1";

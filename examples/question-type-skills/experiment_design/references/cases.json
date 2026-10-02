@@ -1,0 +1,191 @@
+{
+  "schema": "aiteachme.question-skill-cases/v2",
+  "cases": [
+    {
+      "id": "plant-light",
+      "knowledge_unit": {
+        "name": "光合作用",
+        "type": "process",
+        "summary": "光照、二氧化碳和水共同影响植物的有机物合成。"
+      },
+      "question": {
+        "stem": "请设计一个实验，检验不同光照强度对绿叶淀粉形成的影响。",
+        "reference_answer": {
+          "hypothesis": "在其他条件相同的情况下，光照越强，叶片形成的淀粉越多。",
+          "procedure": "选取长势相近的同种植物，遮光预处理后分成三组，分别给予低、中、高光照，保持时间和浇水量一致，处理后用碘液检测叶片淀粉并记录颜色变化。",
+          "controls": "自变量是光照强度，因变量是淀粉检测结果，植物种类、叶片面积、处理时间和水分为控制变量，另设遮光对照组。",
+          "interpretation": "若不同光照组的淀粉结果随光照强度呈稳定差异，则支持假设；若无差异或趋势相反，则不支持。"
+        },
+        "explanation": "高质量方案应包含可检验假设、可执行步骤、变量控制和结果解释。"
+      },
+      "answers": [
+        {
+          "label": "strong",
+          "content": {
+            "hypothesis": "在其他条件相同的情况下，光照越强，叶片形成的淀粉越多。",
+            "procedure": "选取长势相近的同种植物，遮光预处理后分成三组，分别给予低、中、高光照，保持时间和浇水量一致，处理后用碘液检测叶片淀粉并记录颜色变化。",
+            "controls": "自变量是光照强度，因变量是淀粉检测结果，植物种类、叶片面积、处理时间和水分为控制变量，另设遮光对照组。",
+            "interpretation": "若不同光照组的淀粉结果随光照强度呈稳定差异，则支持假设；若无差异或趋势相反，则不支持。"
+          },
+          "expected_score": {
+            "min": 0.8,
+            "max": 1.0
+          },
+          "expected_pass": true
+        },
+        {
+          "label": "partial",
+          "content": {
+            "hypothesis": "光照会影响淀粉。我只依据这次直观观察作出判断，没有进一步控制条件或重复测量。",
+            "procedure": "给植物不同光照后观察叶片。我只依据这次直观观察作出判断，没有进一步控制条件或重复测量。",
+            "controls": "设置几个光照组。我只依据这次直观观察作出判断，没有进一步控制条件或重复测量。",
+            "interpretation": "看哪组叶片颜色更深。"
+          },
+          "expected_score": {
+            "min": 0.3,
+            "max": 0.69
+          },
+          "expected_pass": false
+        },
+        {
+          "label": "wrong",
+          "content": {
+            "hypothesis": "光照和淀粉没有关系。",
+            "procedure": "只观察一盆植物一天。我只依据这次直观观察作出判断，没有进一步控制条件或重复测量。",
+            "controls": "不需要控制其他条件。",
+            "interpretation": "只要叶片是绿色就说明假设正确。"
+          },
+          "expected_score": {
+            "min": 0.0,
+            "max": 0.2
+          },
+          "expected_pass": false
+        }
+      ]
+    },
+    {
+      "id": "friction",
+      "knowledge_unit": {
+        "name": "摩擦力",
+        "type": "principle",
+        "summary": "接触面状况和正压力会影响滑动摩擦。"
+      },
+      "question": {
+        "stem": "请设计一个实验，比较不同表面材料对物体滑动摩擦的影响。",
+        "reference_answer": {
+          "hypothesis": "在物体和压力相同的情况下，表面越粗糙，滑动摩擦力越大。",
+          "procedure": "使用同一木块和弹簧测力计，依次在木板、砂纸和玻璃上水平匀速拉动，记录每种表面的平均拉力并重复三次。",
+          "controls": "自变量是表面材料，因变量是匀速运动时的平均拉力，物体质量、接触面积、拉动速度和测量工具保持不变。",
+          "interpretation": "比较各表面平均拉力，若粗糙表面拉力更大且重复结果一致，则支持假设。"
+        },
+        "explanation": "方案必须隔离表面材料这一自变量，并定义可比较的摩擦测量指标。"
+      },
+      "answers": [
+        {
+          "label": "strong",
+          "content": {
+            "hypothesis": "在物体和压力相同的情况下，表面越粗糙，滑动摩擦力越大。",
+            "procedure": "使用同一木块和弹簧测力计，依次在木板、砂纸和玻璃上水平匀速拉动，记录每种表面的平均拉力并重复三次。",
+            "controls": "自变量是表面材料，因变量是匀速运动时的平均拉力，物体质量、接触面积、拉动速度和测量工具保持不变。",
+            "interpretation": "比较各表面平均拉力，若粗糙表面拉力更大且重复结果一致，则支持假设。"
+          },
+          "expected_score": {
+            "min": 0.8,
+            "max": 1.0
+          },
+          "expected_pass": true
+        },
+        {
+          "label": "partial",
+          "content": {
+            "hypothesis": "不同材料的摩擦力不同。",
+            "procedure": "把物体在不同表面上拖动。我只依据这次直观观察作出判断，没有进一步控制条件或重复测量。",
+            "controls": "尽量用同一个物体。我只依据这次直观观察作出判断，没有进一步控制条件或重复测量。",
+            "interpretation": "拉得越费力说明摩擦越大。"
+          },
+          "expected_score": {
+            "min": 0.3,
+            "max": 0.69
+          },
+          "expected_pass": false
+        },
+        {
+          "label": "wrong",
+          "content": {
+            "hypothesis": "所有表面的摩擦力相同。",
+            "procedure": "只在玻璃上测一次。我只依据这次直观观察作出判断，没有进一步控制条件或重复测量。",
+            "controls": "每次换不同物体和速度。",
+            "interpretation": "任何一次结果都能代表所有材料。"
+          },
+          "expected_score": {
+            "min": 0.0,
+            "max": 0.2
+          },
+          "expected_pass": false
+        }
+      ]
+    },
+    {
+      "id": "database-index",
+      "knowledge_unit": {
+        "name": "数据库索引",
+        "type": "concept",
+        "summary": "索引通过额外的数据结构减少查找记录所需的扫描范围。"
+      },
+      "question": {
+        "stem": "请设计一个实验，比较有索引和无索引时查询大量记录的性能差异。",
+        "reference_answer": {
+          "hypothesis": "在数据量和查询条件相同的情况下，适合查询条件的索引会降低平均查询耗时。",
+          "procedure": "创建相同结构和数据量的两套数据库，一套在过滤字段上建索引，另一套不建索引，执行相同查询并预热后各重复多次，记录平均耗时和执行计划。",
+          "controls": "自变量是是否有索引，因变量是查询耗时和扫描行数，数据量、硬件、查询语句、缓存状态和并发量保持一致。",
+          "interpretation": "若索引组平均耗时和扫描范围更小，则支持假设；若差异不明显，应检查选择性和查询条件是否适合索引。"
+        },
+        "explanation": "实验应把是否建立索引作为唯一主要变量，并重复测量后比较结果。"
+      },
+      "answers": [
+        {
+          "label": "strong",
+          "content": {
+            "hypothesis": "在数据量和查询条件相同的情况下，适合查询条件的索引会降低平均查询耗时。",
+            "procedure": "创建相同结构和数据量的两套数据库，一套在过滤字段上建索引，另一套不建索引，执行相同查询并预热后各重复多次，记录平均耗时和执行计划。",
+            "controls": "自变量是是否有索引，因变量是查询耗时和扫描行数，数据量、硬件、查询语句、缓存状态和并发量保持一致。",
+            "interpretation": "若索引组平均耗时和扫描范围更小，则支持假设；若差异不明显，应检查选择性和查询条件是否适合索引。"
+          },
+          "expected_score": {
+            "min": 0.8,
+            "max": 1.0
+          },
+          "expected_pass": true
+        },
+        {
+          "label": "partial",
+          "content": {
+            "hypothesis": "有索引会更快。我只依据这次直观观察作出判断，没有进一步控制条件或重复测量。",
+            "procedure": "运行两次查询比较。我只依据这次直观观察作出判断，没有进一步控制条件或重复测量。",
+            "controls": "使用同一张表。我只依据这次直观观察作出判断，没有进一步控制条件或重复测量。",
+            "interpretation": "快的就是索引有效。我只依据这次直观观察作出判断，没有进一步控制条件或重复测量。"
+          },
+          "expected_score": {
+            "min": 0.3,
+            "max": 0.69
+          },
+          "expected_pass": false
+        },
+        {
+          "label": "wrong",
+          "content": {
+            "hypothesis": "索引只影响磁盘容量。",
+            "procedure": "只查询有索引的数据库。我只依据这次直观观察作出判断，没有进一步控制条件或重复测量。",
+            "controls": "不需要设置对照。我只依据这次直观观察作出判断，没有进一步控制条件或重复测量。",
+            "interpretation": "一次查询结果可以证明所有场景。"
+          },
+          "expected_score": {
+            "min": 0.0,
+            "max": 0.2
+          },
+          "expected_pass": false
+        }
+      ]
+    }
+  ]
+}

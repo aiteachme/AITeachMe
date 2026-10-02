@@ -79,3 +79,10 @@ __pycache__/
 .pytest_cache/
 
 tmp/
+
+# Local test artifacts and synchronization backups
+/backend/tmp/
+/backend/pytest-tmp-*/
+/.playwright-cli/
+/output/playwright/
+/output/git-sync-*

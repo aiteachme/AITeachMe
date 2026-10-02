@@ -29,6 +29,43 @@ class _FormulaPayload(BaseModel):
     text: str
 
 
+@pytest.mark.anyio
+async def test_real_instructor_accepts_transport_timeout_without_spurious_repair(monkeypatch):
+    """Exercise the installed Instructor adapter, not a fake Instructor client."""
+    import httpx
+    from openai.types.chat import ChatCompletion
+
+    instructor = pytest.importorskip("instructor")
+    calls = []
+
+    class Provider:
+        def get_supported_openai_params(self, *args, **kwargs):
+            return ["response_format"]
+
+        async def acompletion(self, **kwargs):
+            calls.append(kwargs)
+            return ChatCompletion.model_validate({
+                "id": "acceptance-timeout", "object": "chat.completion", "created": 1,
+                "model": "gpt-4o", "choices": [{"index": 0, "finish_reason": "stop",
+                    "message": {"role": "assistant", "content": '{"title":"函数","key_points":["定义"]}'}}],
+                "usage": {"prompt_tokens": 2, "completion_tokens": 3, "total_tokens": 5},
+            })
+
+    monkeypatch.setenv("LLM_API_KEY", "test-key")
+    monkeypatch.setenv("LLM_BASE_URL", "https://gateway.example.com/v1")
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+    monkeypatch.setattr(structured_calls, "load_litellm", lambda: Provider())
+    monkeypatch.setattr(structured_calls, "_load_instructor", lambda: instructor)
+    set_system_settings_override({"models": {"primary": "gpt-4o"}, "llm": {"api_mode": "chat_completions"}})
+    result = await structured_calls.acompletion_structured(
+        _RepairChapter, [{"role": "user", "content": "生成章节"}], model="primary", max_retries=1,
+    )
+    assert result.title == "函数"
+    assert len(calls) == 1
+    assert isinstance(calls[0]["timeout"], httpx.Timeout)
+    assert calls[0]["messages"][-1]["content"] == "生成章节"
+
+
 def test_structured_repair_prompt_carries_validation_context() -> None:
     messages = [{"role": "user", "content": "生成课程大纲"}]
 

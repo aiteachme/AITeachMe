@@ -4,13 +4,16 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
+import type { QuestionTemplateGradeRequestAnswerPayload } from './questionTemplateGradeRequestAnswerPayload.ts';
 
 /**
  * Grade one answer against a question template.
  */
 export interface QuestionTemplateGradeRequest {
-  /** Submitted answer. */
-  answer: string;
+  /** Legacy plain-text answer. */
+  answer?: string | null;
+  /** Structured answer keyed by the frozen answer schema. */
+  answer_payload?: QuestionTemplateGradeRequestAnswerPayload;
   /** Whether this one-time grading result must skip analytics recording. */
   ephemeral?: boolean;
 }

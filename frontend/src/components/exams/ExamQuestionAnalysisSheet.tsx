@@ -5,9 +5,10 @@ import { EXAM_ANSWER_TEXT_CLASS, EXAM_QUESTION_TEXT_CLASS, ExamMarkdown } from "
 import {
   buildKnowledgeLabel,
   formatAnswerDisplayValue,
+  formatExamItemQuestionTypeLabel,
   formatDifficultyLabel,
-  formatQuestionTypeLabel,
 } from "./examDisplay";
+import { CustomRubricBreakdown } from "./CustomRubricBreakdown";
 
 interface ExamQuestionAnalysisSheetProps {
   item?: ExamPaperItemResponse | null;
@@ -57,7 +58,7 @@ export function ExamQuestionAnalysisSheet({ item }: ExamQuestionAnalysisSheetPro
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
           <span className="rounded-full bg-slate-100 px-2.5 py-1 dark:bg-slate-800">{formatDifficultyLabel(item.difficulty)}</span>
-          <span className="rounded-full bg-slate-100 px-2.5 py-1 dark:bg-slate-800">{formatQuestionTypeLabel(item.question_type)}</span>
+          <span className="rounded-full bg-slate-100 px-2.5 py-1 dark:bg-slate-800">{formatExamItemQuestionTypeLabel(item)}</span>
           <span className="max-w-full break-words rounded-md bg-slate-50 px-2.5 py-1 text-slate-500 ring-1 ring-inset ring-slate-200 dark:bg-slate-900 dark:text-slate-400 dark:ring-slate-800">
             {buildKnowledgeLabel(item)}
           </span>
@@ -75,6 +76,7 @@ export function ExamQuestionAnalysisSheet({ item }: ExamQuestionAnalysisSheetPro
         <AnalysisBlock title="你的答案" content={formatAnswerDisplayValue(item.question_type, item.user_answer)} />
         <AnalysisBlock title="正确答案" content={formatAnswerDisplayValue(item.question_type, item.correct_answer, "无标准答案")} />
         <AnalysisBlock title="解析" content={item.explanation || "暂无解析"} />
+        <CustomRubricBreakdown detail={item.grading_detail} />
       </div>
     </aside>
   );

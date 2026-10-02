@@ -4,6 +4,7 @@
  * AITeachMe
  * 本地优先的 AI 助教后端服务。
  */
+import type { ExamSubmitAnswerItemAnswerPayload } from './examSubmitAnswerItemAnswerPayload.ts';
 
 /**
  * One submitted answer item.
@@ -13,6 +14,8 @@ export interface ExamSubmitAnswerItem {
   exam_paper_item_id?: number | null;
   /** Fallback key: item order. */
   item_order?: number | null;
-  /** User answer. */
-  answer: string;
+  /** Legacy plain-text answer. */
+  answer?: string | null;
+  /** Structured answer keyed by the frozen answer schema. */
+  answer_payload?: ExamSubmitAnswerItemAnswerPayload;
 }

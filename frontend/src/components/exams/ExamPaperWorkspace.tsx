@@ -50,7 +50,15 @@ import {
   MASTERY_DRILL_EXAM_MODE,
 } from "./examDisplay";
 import { resolveExamSubmissionTerminalState } from "./examSubmissionFlow";
-import { isSupportedQuestionType } from "./questionTypes";
+import {
+  getAnswerPayload,
+  getAnswerText,
+  getAnswerValidationMessage,
+  hasAnswerValue,
+  isCustomQuestionItem,
+  isRenderableQuestionItem,
+  type AnswerState,
+} from "./questionTypes";
 import { useQuestionTemplateMarkRequestGuard } from "./questionMarking";
 
 type QuestionTemplateMarkResponse = {
@@ -180,7 +188,9 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
     sidebarRequest,
   } = useAiInteraction();
   const { toast } = useToast();
-  const [answers, setAnswers] = useState<Record<number, string>>({});
+  const [answers, setAnswers] = useState<AnswerState>({});
+  const [hydratedAnswerKey, setHydratedAnswerKey] = useState("");
+  const hydratedAnswerKeyRef = useRef("");
   const [pageScale, setPageScale] = useState(1);
   const [activeStage, setActiveStage] = useState<1 | 2 | 3>(1);
   const [isQuestionNavOpen, setIsQuestionNavOpen] = useState(false);
@@ -253,8 +263,8 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
   const unsupportedQuestionTypes = useMemo(
     () => Array.from(new Set(
       (paper?.items ?? [])
-        .map((item: ExamPaperItemResponse) => item.question_type)
-        .filter((questionType: string) => !isSupportedQuestionType(questionType)),
+        .filter((item: ExamPaperItemResponse) => !isRenderableQuestionItem(item))
+        .map((item: ExamPaperItemResponse) => item.question_type),
     )),
     [paper?.items],
   );
@@ -615,14 +625,22 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
   }, [apiAuthGeneration, paper?.status, paperId, queryClient, courseId, toast]);
 
   useEffect(() => {
-    if (!paper?.items) return;
+    if (!paper?.items || paper.id !== paperId) return;
+    const samePaper = hydratedAnswerKeyRef.current === answerStorageKey;
+    hydratedAnswerKeyRef.current = answerStorageKey;
+    setHydratedAnswerKey(answerStorageKey);
     setAnswers((current) => {
-      if (paper.status === "grading_failed") {
+      if (["submitted", "grading", "graded", "grading_failed"].includes(paper.status)) {
         return Object.fromEntries(
-          (paper.items ?? []).map((item: ExamPaperItemResponse) => [item.item_order, item.user_answer ?? ""]),
+          (paper.items ?? []).map((item: ExamPaperItemResponse) => [
+            item.item_order,
+            isCustomQuestionItem(item) && item.user_answer_payload && Object.keys(item.user_answer_payload).length
+              ? item.user_answer_payload
+              : item.user_answer ?? "",
+          ]),
         );
       }
-      let stored: Record<number, string> = {};
+      let stored: AnswerState = {};
       if (!paper.mastery_drill) {
         try {
           const parsed = JSON.parse(window.localStorage.getItem(answerStorageKey) || "{}");
@@ -630,7 +648,14 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
             for (const [key, value] of Object.entries(parsed)) {
               const order = Number(key);
               if (Number.isFinite(order) && order > 0) {
-                stored[order] = typeof value === "string" ? value : String(value ?? "");
+                if (typeof value === "string") {
+                  stored[order] = value;
+                } else if (value && typeof value === "object" && !Array.isArray(value)) {
+                  const payload = Object.fromEntries(
+                    Object.entries(value).map(([fieldKey, fieldValue]) => [fieldKey, String(fieldValue ?? "")]),
+                  );
+                  stored[order] = payload;
+                }
               }
             }
           }
@@ -639,34 +664,41 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
         }
       }
 
-      const next: Record<number, string> = { ...stored };
+      const next: AnswerState = {};
       for (const item of paper.items ?? []) {
-        const serverAnswer = item.user_answer ?? "";
-        if (serverAnswer.trim() && (!paper.mastery_drill || item.is_correct === true)) {
+        if (Object.prototype.hasOwnProperty.call(stored, item.item_order)) next[item.item_order] = stored[item.item_order];
+        const serverAnswer = isCustomQuestionItem(item) && item.user_answer_payload && Object.keys(item.user_answer_payload).length
+          ? item.user_answer_payload
+          : item.user_answer ?? "";
+        if (hasAnswerValue(item, serverAnswer) && (!paper.mastery_drill || item.is_correct === true)) {
           next[item.item_order] = serverAnswer;
         }
       }
-      for (const [rawOrder, value] of Object.entries(current)) {
+      for (const [rawOrder, value] of Object.entries(samePaper ? current : {})) {
         const order = Number(rawOrder);
-        if (Number.isFinite(order) && order > 0 && value.trim()) {
+        const item = paper.items?.find((candidate) => candidate.item_order === order);
+        if (Number.isFinite(order) && order > 0 && item) {
           next[order] = value;
         }
       }
       return next;
     });
-  }, [answerStorageKey, paper?.id, paper?.items, paper?.status]);
+  }, [answerStorageKey, paperId, paper?.id, paper?.items, paper?.status]);
 
   useEffect(() => {
-    if (!paper || paper.status === "graded" || paper.status === "grading_failed") return;
+    if (!paper || paper.id !== paperId || hydratedAnswerKey !== answerStorageKey || !["ready", "in_progress"].includes(paper.status)) return;
     try {
       const nonEmptyAnswers = Object.fromEntries(
-        Object.entries(answers).filter(([, value]) => value.trim().length > 0),
+        Object.entries(answers).filter(([rawOrder, value]) => {
+          const item = paper.items?.find((candidate) => candidate.item_order === Number(rawOrder));
+          return Boolean(item && hasAnswerValue(item, value));
+        }),
       );
       window.localStorage.setItem(answerStorageKey, JSON.stringify(nonEmptyAnswers));
     } catch {
       // Best-effort local draft persistence.
     }
-  }, [answerStorageKey, answers, paper]);
+  }, [answerStorageKey, hydratedAnswerKey, answers, paper, paperId]);
 
   const keepQuestionHighlight = useCallback((questionOrder: number) => {
     setHighlightedQuestionOrder(questionOrder);
@@ -1038,6 +1070,17 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
       });
       return;
     }
+    const invalidCustomAnswer = (paper.items ?? []).find((item) => {
+      return Boolean(getAnswerValidationMessage(item, answers[item.item_order]));
+    });
+    if (invalidCustomAnswer) {
+      toast({
+        title: `第 ${invalidCustomAnswer.item_order} 题作答过短`,
+        description: getAnswerValidationMessage(invalidCustomAnswer, answers[invalidCustomAnswer.item_order]) ?? "请检查各字段长度。",
+        variant: "error",
+      });
+      return;
+    }
     isSubmitOverlayClosedManuallyRef.current = false;
     setIsSubmissionResultPending(true);
     submitExam.mutate({
@@ -1048,9 +1091,17 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
         answers: (paper.items ?? []).map((item: ExamPaperItemResponse) => ({
           exam_paper_item_id: item.id,
           item_order: item.item_order,
-          answer: paper.status === "grading_failed"
-            ? item.user_answer ?? ""
-            : answers[item.item_order] ?? "",
+          ...(isCustomQuestionItem(item)
+            ? {
+                answer_payload: paper.status === "grading_failed"
+                  ? getAnswerPayload(item, item.user_answer_payload && Object.keys(item.user_answer_payload).length ? item.user_answer_payload : item.user_answer ?? "")
+                  : getAnswerPayload(item, answers[item.item_order]),
+              }
+            : {
+                answer: paper.status === "grading_failed"
+                  ? item.user_answer ?? ""
+                  : getAnswerText(item, answers[item.item_order]),
+              }),
         })),
       },
     });

@@ -20,6 +20,11 @@ class QuestionTemplate(SQLModel, table=True):
             "stem_hash",
             name="uq_template_course_stem",
         ),
+        UniqueConstraint(
+            "course_id",
+            "identity_hash",
+            name="uq_template_course_identity",
+        ),
     )
 
     id: int | None = Field(default=None, primary_key=True)
@@ -28,9 +33,26 @@ class QuestionTemplate(SQLModel, table=True):
     difficulty: str
     stem: str = Field(sa_column=sa.Column(sa.Text(), nullable=False))
     stem_hash: str = Field(index=True)
+    identity_hash: str | None = Field(default=None, index=True)
+    question_type_registry_id: int | None = Field(
+        default=None,
+        foreign_key="question_type_registry.id",
+        index=True,
+    )
+    question_type_version_id: int | None = Field(
+        default=None,
+        foreign_key="question_type_package_version.id",
+        index=True,
+    )
     options_json: str | None = Field(default=None, sa_column=sa.Column(sa.Text(), nullable=True))
     answer: str = Field(sa_column=sa.Column(sa.Text(), nullable=False))
     explanation: str = Field(sa_column=sa.Column(sa.Text(), nullable=False))
+    public_payload_json: str = Field(default="{}", sa_column=sa.Column(sa.Text(), nullable=False, default="{}"))
+    answer_schema_json: str = Field(default="{}", sa_column=sa.Column(sa.Text(), nullable=False, default="{}"))
+    reference_answer_json: str = Field(default="{}", sa_column=sa.Column(sa.Text(), nullable=False, default="{}"))
+    grading_spec_json: str = Field(default="{}", sa_column=sa.Column(sa.Text(), nullable=False, default="{}"))
+    runtime_snapshot_json: str = Field(default="{}", sa_column=sa.Column(sa.Text(), nullable=False, default="{}"))
+    profile_eligible: bool = Field(default=True, index=True)
     selection_hints_json: str = Field(default="{}", sa_column=sa.Column(sa.Text(), nullable=False, default="{}"))
     template_version: int = Field(default=1, ge=1)
     status: str = Field(default="active")
@@ -58,6 +80,7 @@ class QuestionTypeRegistry(SQLModel, table=True):
     option_schema_json: str = Field(default="{}", sa_column=sa.Column(sa.Text(), nullable=False, default="{}"))
     rubric_json: str = Field(default="{}", sa_column=sa.Column(sa.Text(), nullable=False, default="{}"))
     source: str = Field(default="system")
+    status: str = Field(default="active", index=True)
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     is_system: bool = Field(default=True, index=True)
     is_active: bool = Field(default=True, index=True)
@@ -192,16 +215,33 @@ class ExamPaperItem(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     exam_paper_id: int = Field(foreign_key="exam_paper.id", index=True)
     question_template_id: int = Field(foreign_key="question_template.id", index=True)
+    question_type_registry_id: int | None = Field(
+        default=None,
+        foreign_key="question_type_registry.id",
+        index=True,
+    )
+    question_type_version_id: int | None = Field(
+        default=None,
+        foreign_key="question_type_package_version.id",
+        index=True,
+    )
     item_order: int = Field(ge=1)
     stem_snapshot: str = Field(sa_column=sa.Column(sa.Text(), nullable=False))
     options_snapshot_json: str | None = Field(default=None, sa_column=sa.Column(sa.Text(), nullable=True))
     answer_snapshot: str = Field(sa_column=sa.Column(sa.Text(), nullable=False))
     explanation_snapshot: str = Field(sa_column=sa.Column(sa.Text(), nullable=False))
+    public_payload_snapshot_json: str = Field(default="{}", sa_column=sa.Column(sa.Text(), nullable=False, default="{}"))
+    answer_schema_snapshot_json: str = Field(default="{}", sa_column=sa.Column(sa.Text(), nullable=False, default="{}"))
+    reference_answer_snapshot_json: str = Field(default="{}", sa_column=sa.Column(sa.Text(), nullable=False, default="{}"))
+    grading_spec_snapshot_json: str = Field(default="{}", sa_column=sa.Column(sa.Text(), nullable=False, default="{}"))
+    runtime_snapshot_json: str = Field(default="{}", sa_column=sa.Column(sa.Text(), nullable=False, default="{}"))
+    profile_eligible: bool = Field(default=True, index=True)
     selection_context_json: str = Field(default="{}", sa_column=sa.Column(sa.Text(), nullable=False, default="{}"))
     difficulty: str
     question_type: str
     score: float = Field(default=1.0, ge=0.0)
     answer_content: str = Field(default="", sa_column=sa.Column(sa.Text(), nullable=False, default=""))
+    answer_payload_json: str = Field(default="{}", sa_column=sa.Column(sa.Text(), nullable=False, default="{}"))
     is_correct: bool | None = Field(default=None)
     score_obtained: float | None = Field(default=None, ge=0.0)
     score_max: float | None = Field(default=None, ge=0.0)
@@ -210,6 +250,9 @@ class ExamPaperItem(SQLModel, table=True):
     confidence_self_report: int | None = Field(default=None, ge=1, le=5)
     error_cause_label: str | None = Field(default=None)
     feedback_text: str | None = Field(default=None, sa_column=sa.Column(sa.Text(), nullable=True))
+    grading_detail_json: str = Field(default="{}", sa_column=sa.Column(sa.Text(), nullable=False, default="{}"))
+    grading_status: str = Field(default="pending", index=True)
+    grading_error_code: str = Field(default="")
     answered_at: datetime | None = Field(default=None)
     graded_at: datetime | None = Field(default=None)
     created_at: datetime = Field(default_factory=utcnow)
@@ -250,10 +293,12 @@ class MasteryDrillAttempt(SQLModel, table=True):
     request_hash: str
     status: str = Field(default="grading", index=True)
     answer_content: str = Field(sa_column=sa.Column(sa.Text(), nullable=False))
+    answer_payload_json: str = Field(default="{}", sa_column=sa.Column(sa.Text(), nullable=False, default="{}"))
     is_correct: bool | None = Field(default=None)
     score_obtained: float | None = Field(default=None, ge=0.0)
     score_max: float | None = Field(default=None, ge=0.0)
     feedback_text: str | None = Field(default=None, sa_column=sa.Column(sa.Text(), nullable=True))
+    grading_detail_json: str = Field(default="{}", sa_column=sa.Column(sa.Text(), nullable=False, default="{}"))
     error_cause_label: str | None = Field(default=None)
     grading_mode: str = Field(default="")
     time_spent_seconds: int | None = Field(default=None, ge=0)

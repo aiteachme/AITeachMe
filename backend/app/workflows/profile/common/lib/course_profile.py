@@ -192,6 +192,7 @@ def _load_recent_exam_items(
             ExamPaper.course_id == course_id,
             ExamPaper.user_id == user_id,
             ExamPaperItem.is_correct.is_not(None),
+            ExamPaperItem.profile_eligible == True,  # noqa: E712
         )
         .order_by(ExamPaperItem.answered_at.desc(), ExamPaperItem.id.desc())
         .limit(_RECENT_EXAM_ITEM_LIMIT)

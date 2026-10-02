@@ -1,0 +1,167 @@
+{
+  "schema": "aiteachme.question-skill-cases/v2",
+  "cases": [
+    {
+      "id": "plant-growth",
+      "knowledge_unit": {
+        "name": "Plant growth",
+        "type": "concept",
+        "summary": "Use evidence and controlled comparisons to assess a claim."
+      },
+      "question": {
+        "stem": "Two classrooms use different lamps and different watering schedules. One group grows faster. Can the lamp explain the difference?",
+        "reference_answer": {
+          "recommendation": "Compare lamps while keeping watering and plant species constant.",
+          "reasoning": "Watering differs as well as light, so the current comparison is confounded. Repeat with matched plants and controlled watering; the result may still depend on species."
+        },
+        "explanation": "A justified recommendation distinguishes observed facts from causal claims and states limitations."
+      },
+      "answers": [
+        {
+          "label": "strong",
+          "content": {
+            "recommendation": "Compare lamps while keeping watering and plant species constant.",
+            "reasoning": "Watering differs as well as light, so the current comparison is confounded. Repeat with matched plants and controlled watering; the result may still depend on species."
+          },
+          "expected_score": {
+            "min": 0.8,
+            "max": 1.0
+          },
+          "expected_pass": true
+        },
+        {
+          "label": "partial",
+          "content": {
+            "recommendation": "Repeat the observation before making a final decision.",
+            "reasoning": "One result may be accidental, but I do not identify the confounding factors or explain what to hold constant."
+          },
+          "expected_score": {
+            "min": 0.3,
+            "max": 0.69
+          },
+          "expected_pass": false
+        },
+        {
+          "label": "wrong",
+          "content": {
+            "recommendation": "Accept the first result and apply it everywhere immediately.",
+            "reasoning": "A single observation proves the claim for all contexts; comparison groups and alternative explanations are unnecessary."
+          },
+          "expected_score": {
+            "min": 0,
+            "max": 0.2
+          },
+          "expected_pass": false
+        }
+      ]
+    },
+    {
+      "id": "query-speed",
+      "knowledge_unit": {
+        "name": "Database indexes",
+        "type": "concept",
+        "summary": "Use evidence and controlled comparisons to assess a claim."
+      },
+      "question": {
+        "stem": "A team adds an index and sees one faster database query after a server restart. Should it claim every query is now faster?",
+        "reference_answer": {
+          "recommendation": "Repeat matched queries and compare execution plans with controlled cache conditions.",
+          "reasoning": "One timing cannot establish a general speedup. Cache state, query selectivity and concurrent work affect time. Compare repeated runs with the same data and include update cost."
+        },
+        "explanation": "A justified recommendation distinguishes observed facts from causal claims and states limitations."
+      },
+      "answers": [
+        {
+          "label": "strong",
+          "content": {
+            "recommendation": "Repeat matched queries and compare execution plans with controlled cache conditions.",
+            "reasoning": "One timing cannot establish a general speedup. Cache state, query selectivity and concurrent work affect time. Compare repeated runs with the same data and include update cost."
+          },
+          "expected_score": {
+            "min": 0.8,
+            "max": 1.0
+          },
+          "expected_pass": true
+        },
+        {
+          "label": "partial",
+          "content": {
+            "recommendation": "Repeat the observation before making a final decision.",
+            "reasoning": "One result may be accidental, but I do not identify the confounding factors or explain what to hold constant."
+          },
+          "expected_score": {
+            "min": 0.3,
+            "max": 0.69
+          },
+          "expected_pass": false
+        },
+        {
+          "label": "wrong",
+          "content": {
+            "recommendation": "Accept the first result and apply it everywhere immediately.",
+            "reasoning": "A single observation proves the claim for all contexts; comparison groups and alternative explanations are unnecessary."
+          },
+          "expected_score": {
+            "min": 0,
+            "max": 0.2
+          },
+          "expected_pass": false
+        }
+      ]
+    },
+    {
+      "id": "learning-method",
+      "knowledge_unit": {
+        "name": "Learning strategies",
+        "type": "concept",
+        "summary": "Use evidence and controlled comparisons to assess a claim."
+      },
+      "question": {
+        "stem": "A class using a new study method scores higher than another class that had lower baseline scores. Should all classes switch immediately?",
+        "reference_answer": {
+          "recommendation": "Compare improvement from baseline using comparable groups before expanding.",
+          "reasoning": "Baseline ability differs, so final scores alone cannot isolate the method effect. Match groups and assess progress under similar teaching conditions; evidence may not transfer to every learner."
+        },
+        "explanation": "A justified recommendation distinguishes observed facts from causal claims and states limitations."
+      },
+      "answers": [
+        {
+          "label": "strong",
+          "content": {
+            "recommendation": "Compare improvement from baseline using comparable groups before expanding.",
+            "reasoning": "Baseline ability differs, so final scores alone cannot isolate the method effect. Match groups and assess progress under similar teaching conditions; evidence may not transfer to every learner."
+          },
+          "expected_score": {
+            "min": 0.8,
+            "max": 1.0
+          },
+          "expected_pass": true
+        },
+        {
+          "label": "partial",
+          "content": {
+            "recommendation": "Repeat the observation before making a final decision.",
+            "reasoning": "One result may be accidental, but I do not identify the confounding factors or explain what to hold constant."
+          },
+          "expected_score": {
+            "min": 0.3,
+            "max": 0.69
+          },
+          "expected_pass": false
+        },
+        {
+          "label": "wrong",
+          "content": {
+            "recommendation": "Accept the first result and apply it everywhere immediately.",
+            "reasoning": "A single observation proves the claim for all contexts; comparison groups and alternative explanations are unnecessary."
+          },
+          "expected_score": {
+            "min": 0,
+            "max": 0.2
+          },
+          "expected_pass": false
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "schema": "aiteachme.question-skill-cases/v1",
+  "cases": [
+    {
+      "id": "limit-existence",
+      "knowledge_unit": {"name": "函数极限存在条件", "type": "principle", "summary": "有限点处双侧极限存在要求左右极限存在且相等。"},
+      "question": {"stem": "请答辩：已知左极限为 3、右极限为 5，能否断言函数在该点的极限存在？", "reference_answer": "不能。双侧极限存在要求左右极限都存在且相等；本题左右极限不同。该判断针对双侧极限，不能据此否认单侧极限。", "explanation": "需要给出结论、左右极限判据以及单侧极限边界。"},
+      "answers": [
+        {"label": "strong", "content": {"claim": "双侧极限不存在。", "evidence": "双侧极限存在的必要且充分条件是左右极限都存在且相等，而 3 不等于 5。", "boundary": "只能说明双侧极限不存在，两个单侧极限本身仍然存在。"}, "expected_score": {"min": 0.8, "max": 1.0}, "expected_pass": true},
+        {"label": "partial", "content": {"claim": "极限不存在。", "evidence": "左右两边不一样。", "boundary": "没有说明。"}, "expected_score": {"min": 0.3, "max": 0.59}, "expected_pass": false},
+        {"label": "wrong", "content": {"claim": "极限等于 4。", "evidence": "把 3 和 5 取平均。", "boundary": "所有左右不同的极限都取平均。"}, "expected_score": {"min": 0.0, "max": 0.2}, "expected_pass": false}
+      ]
+    },
+    {
+      "id": "momentum-conservation",
+      "knowledge_unit": {"name": "动量守恒条件", "type": "principle", "summary": "系统合外力冲量为零或可忽略时总动量守恒。"},
+      "question": {"stem": "请答辩：任意两个物体碰撞时总动量是否一定守恒？", "reference_answer": "不能无条件断言。选定系统在碰撞过程中合外力冲量为零或远小于内力冲量时，系统总动量守恒；若存在显著外力冲量则不一定守恒。", "explanation": "关键是系统边界和外力冲量，而不是碰撞这一现象本身。"},
+      "answers": [
+        {"label": "strong", "content": {"claim": "不一定，需要满足系统外力冲量可忽略。", "evidence": "由系统动量定理，总动量变化等于合外力冲量。", "boundary": "若碰撞期间受到显著外部冲量，所选系统总动量会改变。"}, "expected_score": {"min": 0.8, "max": 1.0}, "expected_pass": true},
+        {"label": "partial", "content": {"claim": "通常守恒。", "evidence": "碰撞内力很大。", "boundary": "有外力时可能不守恒。"}, "expected_score": {"min": 0.3, "max": 0.59}, "expected_pass": false},
+        {"label": "wrong", "content": {"claim": "任何碰撞都绝对守恒。", "evidence": "因为两个物体作用力相等。", "boundary": "没有例外。"}, "expected_score": {"min": 0.0, "max": 0.2}, "expected_pass": false}
+      ]
+    },
+    {
+      "id": "database-normalization",
+      "knowledge_unit": {"name": "第三范式", "type": "principle", "summary": "第三范式要求非主属性不传递依赖于候选键。"},
+      "question": {"stem": "请答辩：满足第三范式是否意味着数据库设计一定最优？", "reference_answer": "不意味着。第三范式减少由传递依赖导致的冗余和更新异常，但实际系统还需权衡查询性能、写入模式、一致性和维护成本，必要时可能有控制的反规范化。", "explanation": "需要区分规范化正确性与系统整体最优。"},
+      "answers": [
+        {"label": "strong", "content": {"claim": "不一定最优。", "evidence": "第三范式主要消除非主属性的传递依赖，降低冗余和更新异常。", "boundary": "读多写少或聚合查询场景可能为性能进行受控反规范化。"}, "expected_score": {"min": 0.8, "max": 1.0}, "expected_pass": true},
+        {"label": "partial", "content": {"claim": "不一定。", "evidence": "规范化能减少重复。", "boundary": "有时性能不好。"}, "expected_score": {"min": 0.3, "max": 0.59}, "expected_pass": false},
+        {"label": "wrong", "content": {"claim": "一定最优。", "evidence": "范式越高速度一定越快。", "boundary": "任何系统都必须完全规范化。"}, "expected_score": {"min": 0.0, "max": 0.2}, "expected_pass": false}
+      ]
+    }
+  ]
+}

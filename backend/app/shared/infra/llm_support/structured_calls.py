@@ -11,6 +11,8 @@ from importlib import import_module
 from typing import Any
 from typing import TypeVar
 
+from tenacity import AsyncRetrying, stop_after_attempt
+
 from app.schemas.llm import ChatMessage
 from app.shared.infra.exceptions import LLMTimeoutError
 from app.shared.infra.observability.trace import langsmith_trace
@@ -597,7 +599,10 @@ async def _acompletion_structured_impl(
                                     result = await asyncio.wait_for(
                                         client.chat.completions.create(
                                             response_model=response_model,
-                                            max_retries=0,
+                                            # Retry policy and wall-clock limits belong to
+                                            # this helper. Instructor's integer retry path
+                                            # tries to cast httpx.Timeout to a float.
+                                            max_retries=AsyncRetrying(stop=stop_after_attempt(1)),
                                             **prepared.call_kwargs,
                                         ),
                                         timeout=context_request_timeout_s(context, prepared.call_kwargs),

@@ -27,6 +27,7 @@ from app.shared.infra.storage import (
     get_content_store,
     run_store_sync,
 )
+from app.shared.kernel.question_identity import custom_question_identity_hash
 from app.models import (
     ChatMessage,
     ChatSession,
@@ -38,6 +39,8 @@ from app.models import (
     KnowledgeGraphSyncRun,
     KnowledgeUnit,
     QuestionKnowledgeUnitLink,
+    QuestionTypePackageAsset,
+    QuestionTypePackageVersion,
     QuestionTypeRegistry,
     QuestionTemplate,
     RawFile,
@@ -102,6 +105,8 @@ class _ManifestStats(BaseModel):
     knowledge_graph_source_ref_count: int = 0
     confirmed_build_plan_count: int = 0
     question_type_registry_count: int = 0
+    question_type_package_version_count: int = 0
+    question_type_package_asset_count: int = 0
     question_template_count: int = 0
     exam_paper_count: int = 0
     chat_session_count: int = 0
@@ -220,11 +225,24 @@ TABLE_REGISTRY: list[_TableSpec] = [
     _TableSpec(
         "question_type_registry",
         QuestionTypeRegistry,
-        optional_group="exam",
+    ),
+    _TableSpec(
+        "question_type_package_version",
+        QuestionTypePackageVersion,
+        fk_remap={"registry_id": "question_type_registry"},
+    ),
+    _TableSpec(
+        "question_type_package_asset",
+        QuestionTypePackageAsset,
+        fk_remap={"package_version_id": "question_type_package_version"},
     ),
     _TableSpec(
         "question_template",
         QuestionTemplate,
+        fk_remap={
+            "question_type_registry_id": "question_type_registry",
+            "question_type_version_id": "question_type_package_version",
+        },
         optional_group="exam",
     ),
     _TableSpec(
@@ -241,6 +259,8 @@ TABLE_REGISTRY: list[_TableSpec] = [
         fk_remap={
             "exam_paper_id": "exam_paper",
             "question_template_id": "question_template",
+            "question_type_registry_id": "question_type_registry",
+            "question_type_version_id": "question_type_package_version",
         },
         optional_group="exam",
     ),
@@ -312,9 +332,17 @@ def preview_export(
         confirmed_build_plan_count=_count_embedded_confirmed_plans(session, course_id)
         if options.include_knowledge_docs
         else 0,
-        question_type_registry_count=_count(session, QuestionTypeRegistry, course_id)
-        if options.include_exam_history
-        else 0,
+        question_type_registry_count=_count(session, QuestionTypeRegistry, course_id),
+        question_type_package_version_count=_count(
+            session,
+            QuestionTypePackageVersion,
+            course_id,
+        ),
+        question_type_package_asset_count=_count(
+            session,
+            QuestionTypePackageAsset,
+            course_id,
+        ),
         question_template_count=_count(session, QuestionTemplate, course_id)
         if options.include_exam_history
         else 0,
@@ -710,6 +738,11 @@ def _import_table(
                 continue
             _remap_fk(record_data, fk_field, ref_table, id_map, spec.name, warnings)
 
+        if spec.name in {"question_template", "exam_paper_item"}:
+            _remap_question_type_runtime_snapshot(record_data, id_map=id_map)
+        elif spec.name == "exam_paper":
+            _remap_exam_question_type_config(record_data, id_map=id_map)
+
         if spec.name == "chat_session":
             _remap_planner_meta(record_data, new_course_id=new_course_id, user_id=user_id, id_map=id_map, warnings=warnings)
         elif spec.name == "chat_message":
@@ -753,6 +786,15 @@ def _import_table(
         # Create and flush the row to obtain its new primary key.
         try:
             instance = spec.model.model_validate(record_data)
+            if isinstance(instance, QuestionTemplate) and instance.question_type_version_id is not None:
+                # Version IDs are local to a database, so their derived identity
+                # must be rebuilt after remapping, before either unique index is checked.
+                identity_hash = custom_question_identity_hash(
+                    stem=instance.stem,
+                    version_id=instance.question_type_version_id,
+                )
+                instance.identity_hash = identity_hash
+                instance.stem_hash = identity_hash
             session.add(instance)
             session.flush()
         except Exception as exc:
@@ -815,6 +857,71 @@ def _lookup_mapped_id(old_id: Any, ref_map: dict[Any, Any]) -> Any | None:
     if new_id is None and isinstance(old_id, int):
         new_id = ref_map.get(str(old_id))
     return new_id
+
+
+def _remap_runtime_identity(
+    payload: dict[str, Any],
+    *,
+    id_map: dict[str, dict[Any, Any]],
+) -> None:
+    mappings = (
+        ("registry_id", "question_type_registry"),
+        ("version_id", "question_type_package_version"),
+    )
+    for field_name, table_name in mappings:
+        old_id = payload.get(field_name)
+        if old_id is None:
+            continue
+        new_id = _lookup_mapped_id(old_id, id_map.get(table_name, {}))
+        if new_id is not None:
+            payload[field_name] = new_id
+
+
+def _remap_question_type_runtime_snapshot(
+    record: dict[str, Any],
+    *,
+    id_map: dict[str, dict[Any, Any]],
+) -> None:
+    raw = record.get("runtime_snapshot_json")
+    try:
+        payload = json.loads(str(raw or "{}"))
+    except json.JSONDecodeError:
+        return
+    if not isinstance(payload, dict) or not payload:
+        return
+    _remap_runtime_identity(payload, id_map=id_map)
+    record["runtime_snapshot_json"] = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def _remap_exam_question_type_config(
+    record: dict[str, Any],
+    *,
+    id_map: dict[str, dict[Any, Any]],
+) -> None:
+    raw = record.get("config_snapshot_json")
+    try:
+        payload = json.loads(str(raw or "{}"))
+    except json.JSONDecodeError:
+        return
+    if not isinstance(payload, dict):
+        return
+    runtimes = payload.get("question_type_runtimes")
+    if not isinstance(runtimes, list):
+        return
+    for runtime in runtimes:
+        if isinstance(runtime, dict):
+            _remap_runtime_identity(runtime, id_map=id_map)
+    record["config_snapshot_json"] = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
 
 
 def _remap_fk(
@@ -1381,6 +1488,12 @@ def _build_manifest(
                 if _has_embedded_confirmed_plan(record)
             ),
             question_type_registry_count=len(exported.get("question_type_registry", [])),
+            question_type_package_version_count=len(
+                exported.get("question_type_package_version", [])
+            ),
+            question_type_package_asset_count=len(
+                exported.get("question_type_package_asset", [])
+            ),
             question_template_count=len(exported.get("question_template", [])),
             exam_paper_count=len(exported.get("exam_paper", [])),
             chat_session_count=len(exported.get("chat_session", [])),
