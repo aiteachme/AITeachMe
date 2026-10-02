@@ -8,6 +8,7 @@ from time import perf_counter
 import structlog
 
 from app.shared.infra.database import managed_session
+from app.shared.infra.workflow.runtime import run_sync_and_drain
 from app.workflows.digest.kg_doc_sync.lib.incremental_sync import (
     build_docgen_kg_draft_final_payload,
     extract_knowledge_graph_items_async,
@@ -112,7 +113,7 @@ async def extract_node(state: DocsSyncState) -> DocsSyncState:
                 error=None,
             )
 
-        course_context, course_context_source = _load_course_context(state)
+        course_context, course_context_source = await run_sync_and_drain(_load_course_context, state)
         payload = await extract_knowledge_graph_items_async(
             markdown=state["markdown"],
             course_context=course_context,

@@ -9,6 +9,7 @@ from time import perf_counter
 import structlog
 
 from app.shared.infra.workflow.live_stream import publish_workflow_stream_event
+from app.shared.infra.workflow.runtime import run_sync_and_drain
 from app.utils.time import utcnow
 from app.workflows.digest.kg_doc_sync.lib.incremental_sync import (
     build_prefetched_knowledge_graph_units_payload,
@@ -102,12 +103,13 @@ async def persist_seed_units_node(state: DocsSyncState) -> DocsSyncState:
                 error=None,
             )
 
-        with managed_build_owner_transaction(state) as session:
-            metrics = persist_knowledge_graph_units_early(
-                session,
-                run_context=run_context,
-                payload=payload,
-            )
+        def persist_units():
+            with managed_build_owner_transaction(state) as session:
+                return persist_knowledge_graph_units_early(
+                    session, run_context=run_context, payload=payload,
+                )
+
+        metrics = await run_sync_and_drain(persist_units)
         publish_workflow_stream_event(
             run_context.course_id,
             "graph_delta",

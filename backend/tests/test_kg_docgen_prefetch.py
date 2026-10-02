@@ -99,6 +99,56 @@ async def test_consume_docgen_kg_prefetch_cancels_unfinished_sidecar() -> None:
 
 
 @pytest.mark.anyio
+async def test_cancelled_prefetch_consumer_drains_sidecar_cleanup() -> None:
+    key = ("course_cancelled_consumer", "build_cancelled_consumer")
+    started = asyncio.Event()
+    cleanup_started = asyncio.Event()
+    release_cleanup = asyncio.Event()
+    cleanup_finished = False
+
+    async def runner():
+        nonlocal cleanup_finished
+        started.set()
+        try:
+            await asyncio.Future()
+        finally:
+            cleanup_started.set()
+            await release_cleanup.wait()
+            cleanup_finished = True
+
+    sidecar = asyncio.create_task(runner())
+    await started.wait()
+    cache = prefetch._PrefetchCache(course_id=key[0], build_session_id=key[1], task=sidecar)
+    with prefetch._LOCK:
+        prefetch._CACHES[key] = cache
+    consumer = asyncio.create_task(prefetch.consume_docgen_kg_prefetch(
+        course_id=key[0], build_session_id=key[1], wait_timeout_s=10,
+    ))
+    try:
+        await asyncio.sleep(0)
+        consumer.cancel()
+        await asyncio.wait_for(cleanup_started.wait(), timeout=1)
+        consumer.cancel()
+        await asyncio.sleep(0)
+        assert not consumer.done()
+        release_cleanup.set()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(consumer, timeout=1)
+        assert sidecar.done()
+        assert cleanup_finished
+        with prefetch._LOCK:
+            assert key not in prefetch._CACHES
+    finally:
+        release_cleanup.set()
+        for task in (consumer, sidecar):
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(consumer, sidecar, return_exceptions=True)
+        with prefetch._LOCK:
+            prefetch._CACHES.pop(key, None)
+
+
+@pytest.mark.anyio
 async def test_await_docgen_kg_prefetch_keeps_completed_cache_for_final_sync() -> None:
     key = ("course_prefetch_ready", "build_prefetch_ready")
     record = SectionExtractionRecord(

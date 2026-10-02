@@ -1,6 +1,6 @@
 # KG Doc Sync 链路
 
-最后更新：2026-08-13
+最后更新：2026-09-27
 
 职责：把已发布知识文档同步成知识图谱。
 
@@ -47,11 +47,15 @@ early_units_callback
 
 输入：DocGen enhanced whole-document markdown, `build_session_id`, `course_id`
 
-动作：全部章节增强完成后，立即用整本增强稿启动一次预抽取，和按章 review、跨章检查及必要修补交织运行。各 section 没有拓扑依赖，通过统一调度器并发，并同时受 `knowledge_graph.prefetch_concurrency` 局部上限与 LLM 全局并发上限约束，为前台 DocGen 复核保留请求槽。最终 Markdown 固化时继续使用现有 sidecar；只有缓存缺失才启动整本文档兜底预抽取。正式同步按 section key 与 content hash 复用结果，标题或正文变化的 section 才补抽，因此 repair 不会让未改章节重复占用模型并发。
+动作：全部章节增强完成后，立即用整本增强稿启动一次预抽取，和按章 review、跨章检查及必要修补交织运行。各 section 没有拓扑依赖，通过统一调度器并发，并同时受 `knowledge_graph.prefetch_concurrency` 局部上限与 LLM 全局并发上限约束；局部上限与全局上限相等时，不额外预留前台请求槽。最终 Markdown 固化时继续使用现有 sidecar；只有缓存缺失才启动整本文档兜底预抽取。正式同步按 section key 与 content hash 复用结果，标题或正文变化的 section 才补抽，因此 repair 不会让未改章节重复占用模型并发。
 
 输出：`prefetched_sections`
 
 边界：不写 `KnowledgeUnit`、`KnowledgeEdge`、`SourceRef`。
+
+正式同步消费预取缓存时，即使消费任务被取消，也会取消并等待剩余抽取任务清理，再释放缓存。同步图谱节点和提前持久化事务在工作线程执行；取消会等待事务结束，图谱写入仍受 build owner 校验保护，回调保留在异步事件循环中。
+
+构建启动时的文档版本读取也纳入失败和取消收尾；读取失败时记录 `failed`，避免任务一直停留在已受理状态。文档输入加载、版本读取和终态写入在工作线程执行，取消会等待进行中的同步操作结束后再记录终态。
 
 ## 0.5 DocGen 发布前草稿
 

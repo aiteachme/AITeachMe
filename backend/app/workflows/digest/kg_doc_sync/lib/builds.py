@@ -32,6 +32,7 @@ from app.shared.infra.llm_support.common import (
     use_llm_runtime_snapshot,
 )
 from app.shared.infra.storage import CourseStorageScope, build_course_storage_scope
+from app.shared.infra.workflow.runtime import run_sync_and_drain
 from app.utils.time import ensure_utc_datetime, utcnow
 from app.workflows.digest.common.build_lifecycle import (
     ACTIVE_KNOWLEDGE_BUILD_STATUSES,
@@ -536,19 +537,22 @@ async def run_graph_docs_sync_after_doc_build(
 
     from app.workflows.digest.kg_doc_sync import run_graph_docs_sync_workflow
 
-    sync_input = build_knowledge_doc_sync_input_from_docgen_state(
+    sync_input = await run_sync_and_drain(
+        build_knowledge_doc_sync_input_from_docgen_state,
         course_id,
         docgen_state,
         course_scope=course_scope,
     )
     if sync_input is None:
-        sync_input = load_knowledge_doc_sync_input(course_id, course_scope=course_scope)
+        sync_input = await run_sync_and_drain(
+            load_knowledge_doc_sync_input, course_id, course_scope=course_scope,
+        )
     knowledge_doc_markdown = sync_input.markdown
     knowledge_doc_source = sync_input.source
     doc_chapter_metadatas = extract_doc_chapter_metadatas(knowledge_doc_markdown)
     doc_version_no = int(
         sync_input.structured_context.get("doc_version_no")
-        or _current_doc_version_no(course_id, course_scope=course_scope)
+        or await run_sync_and_drain(_current_doc_version_no, course_id, course_scope=course_scope)
     )
     base_metrics = _base_doc_sync_metrics(
         knowledge_doc_source=knowledge_doc_source,
@@ -694,7 +698,9 @@ async def run_graph_docs_sync_manual_build(
         if graph_status == "completed":
             _schedule_exam_prewarm_after_completed_graph(
                 course_id=course_id,
-                build_revision_no=_current_doc_version_no(course_id, course_scope=course_scope),
+                build_revision_no=await run_sync_and_drain(
+                    _current_doc_version_no, course_id, course_scope=course_scope,
+                ),
                 llm_snapshot=llm_snapshot,
                 background_task_registry=background_task_registry,
             )
@@ -771,9 +777,12 @@ async def _run_graph_docs_sync_build(
     doc_sync_metrics = _base_doc_sync_metrics(
         knowledge_doc_source="not_synced",
         chapter_count=0,
-        doc_version_no=_current_doc_version_no(course_id, course_scope=course_scope),
+        doc_version_no=0,
     )
     try:
+        doc_sync_metrics["last_synced_doc_version_no"] = await run_sync_and_drain(
+            _current_doc_version_no, course_id, course_scope=course_scope,
+        )
         doc_sync_metrics = await run_graph_docs_sync_after_doc_build(
             course_id=course_id,
             requested_at=requested_at,
@@ -810,7 +819,8 @@ async def _run_graph_docs_sync_build(
                 status=completion_status,
             )
             return "cancelled"
-        _write_graph_status(
+        await run_sync_and_drain(
+            _write_graph_status,
             course_id,
             requested_at=requested_at,
             build_group_id=build_group_id,
@@ -833,7 +843,8 @@ async def _run_graph_docs_sync_build(
                 course_scope=course_scope,
             )
         ):
-            _write_graph_status(
+            await run_sync_and_drain(
+                _write_graph_status,
                 course_id,
                 requested_at=requested_at,
                 build_group_id=build_group_id,
@@ -863,7 +874,8 @@ async def _run_graph_docs_sync_build(
             )
             return "failed"
         graph_error_message = sanitize_knowledge_build_error_message(str(exc), build_kind="graph")
-        _write_graph_status(
+        await run_sync_and_drain(
+            _write_graph_status,
             course_id,
             requested_at=requested_at,
             build_group_id=build_group_id,

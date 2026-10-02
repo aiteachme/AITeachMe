@@ -9,6 +9,7 @@ from time import perf_counter
 import structlog
 
 from app.shared.infra.workflow.live_stream import publish_workflow_stream_event
+from app.shared.infra.workflow.runtime import run_sync_and_drain
 from app.utils.time import utcnow
 from app.workflows.digest.kg_doc_sync.lib.incremental_sync import persist_knowledge_graph_units_early
 from app.workflows.digest.kg_doc_sync.nodes.node_state import (
@@ -33,12 +34,13 @@ async def persist_units_node(state: DocsSyncState) -> DocsSyncState:
         return with_node_error(state, "persist_units", "docs_sync_extraction_payload_missing")
 
     try:
-        with managed_build_owner_transaction(state) as session:
-            metrics = persist_knowledge_graph_units_early(
-                session,
-                run_context=run_context,
-                payload=payload,
-            )
+        def persist_units():
+            with managed_build_owner_transaction(state) as session:
+                return persist_knowledge_graph_units_early(
+                    session, run_context=run_context, payload=payload,
+                )
+
+        metrics = await run_sync_and_drain(persist_units)
         publish_workflow_stream_event(
             run_context.course_id,
             "graph_delta",

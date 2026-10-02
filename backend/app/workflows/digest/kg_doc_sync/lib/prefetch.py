@@ -24,6 +24,7 @@ from app.shared.infra.observability.trace import (
     llm_trace_scope,
 )
 from app.shared.infra.settings import get_settings
+from app.shared.infra.workflow.runtime import await_shielded_and_drain, cancel_tasks_and_drain, run_sync_and_drain
 from app.workflows.digest.kg_doc_sync.lib.incremental_sync import (
     _graph_llm_concurrency_cap,
     extract_knowledge_graph_section_records_async,
@@ -59,6 +60,11 @@ class _PrefetchCache:
 
 _LOCK = RLock()
 _CACHES: dict[tuple[str, str], _PrefetchCache] = {}
+
+
+def _load_prefetch_course_context(course_id: str) -> str:
+    with managed_session() as session:
+        return load_course_llm_context(session, course_id=course_id)
 
 
 def _key(course_id: str, build_session_id: str) -> tuple[str, str]:
@@ -247,26 +253,6 @@ def _record_key(record: SectionExtractionRecord) -> tuple[str, str]:
     return str(record.section_key or ""), str(record.content_hash or "")
 
 
-def _cleanup_consumed_cache_when_done(key: tuple[str, str], cache: _PrefetchCache) -> None:
-    active_tasks = _active_cache_tasks(cache)
-    if not active_tasks:
-        _drop_cache_if_current(key, cache)
-        return
-
-    def _cleanup(_task: asyncio.Task[None]) -> None:
-        try:
-            _task.exception()
-        except asyncio.CancelledError:
-            pass
-        except Exception:
-            pass
-        if not _active_cache_tasks(cache):
-            _drop_cache_if_current(key, cache)
-
-    for task in active_tasks:
-        task.add_done_callback(_cleanup)
-
-
 def _clean_string_list(value: object) -> list[str]:
     items = value if isinstance(value, list) else ([] if value is None else [value])
     cleaned: list[str] = []
@@ -412,8 +398,7 @@ def start_docgen_kg_prefetch(
 
     async def _run() -> None:
         try:
-            with managed_session() as session:
-                course_context = load_course_llm_context(session, course_id=course_id)
+            course_context = await run_sync_and_drain(_load_prefetch_course_context, course_id)
             _records, metrics = await _extract_prefetch_records_with_trace(
                 course_id=course_id,
                 build_session_id=build_session_id,
@@ -572,8 +557,7 @@ def start_docgen_kg_prefetch_incremental(
 
     async def _run() -> None:
         try:
-            with managed_session() as session:
-                course_context = load_course_llm_context(session, course_id=course_id)
+            course_context = await run_sync_and_drain(_load_prefetch_course_context, course_id)
             _records, metrics = await _extract_prefetch_records_with_trace(
                 course_id=course_id,
                 build_session_id=build_session_id,
@@ -679,25 +663,26 @@ async def consume_docgen_kg_prefetch(
         cache = _CACHES.get(key)
     if cache is None:
         return [], {"prefetch_status": "missing"}
-    active_tasks = _active_cache_tasks(cache)
-    if active_tasks and wait_timeout_s > 0:
+    try:
+        active_tasks = _active_cache_tasks(cache)
+        if active_tasks and wait_timeout_s > 0:
+            try:
+                done, _pending = await asyncio.wait(active_tasks, timeout=wait_timeout_s)
+                for task in done:
+                    if not task.cancelled():
+                        task.result()
+            except Exception:
+                pass
+    finally:
+        # Consumption owns the remaining calls even when its caller cancels.
+        # Drain their cleanup before a build releases its runtime resources.
         try:
-            done, _pending = await asyncio.wait(active_tasks, timeout=wait_timeout_s)
-            for task in done:
-                task.result()
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            pass
-    active_tasks = _active_cache_tasks(cache)
-    if active_tasks:
-        cache.status = "consumed_cancelled"
-        for task in active_tasks:
-            task.cancel()
-        await asyncio.gather(*active_tasks, return_exceptions=True)
-        _cleanup_consumed_cache_when_done(key, cache)
-    else:
-        _drop_cache_if_current(key, cache)
+            active_tasks = _active_cache_tasks(cache)
+            if active_tasks:
+                cache.status = "consumed_cancelled"
+                await await_shielded_and_drain(cancel_tasks_and_drain(active_tasks))
+        finally:
+            _drop_cache_if_current(key, cache)
     with _LOCK:
         records = list(cache.records)
         metrics = _prefetch_metrics_snapshot(cache)
