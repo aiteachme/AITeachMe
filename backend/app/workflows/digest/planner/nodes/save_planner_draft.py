@@ -20,6 +20,7 @@ from app.workflows.digest.planner.lib.requested_structure import (
     resolve_planner_revision_feedback,
 )
 from app.workflows.digest.planner.lib.store import save_planner_result
+from app.shared.infra.workflow.runtime import run_sync_and_drain
 from app.workflows.digest.planner.nodes.generate_course_identity import _clean_course_name
 from app.workflows.digest.planner.state import BuildPlannerState
 
@@ -168,7 +169,8 @@ def build_save_planner_draft_node(*, context: WorkflowContext):
                 "digest_mode": str(plan.get("digest_mode") or digest_mode),
                 "generated_course_name": effective_course_name,
             }
-            persist_update = save_planner_result(
+            persist_update = await run_sync_and_drain(
+                save_planner_result,
                 {**state, **result},
                 plan=plan,
                 material_context=material_context,
@@ -232,7 +234,8 @@ def build_save_planner_draft_node(*, context: WorkflowContext):
             "digest_mode": str(plan.get("digest_mode") or draft.digest_mode),
             "generated_course_name": effective_course_name,
         }
-        persist_update = save_planner_result(
+        persist_update = await run_sync_and_drain(
+            save_planner_result,
             {**state, **result},
             plan=plan,
             material_context=material_context,

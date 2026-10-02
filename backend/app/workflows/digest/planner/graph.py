@@ -16,6 +16,7 @@ from langgraph.graph import END, StateGraph
 from sqlmodel import Session
 
 from app.models.course import Course
+from app.shared.infra.exceptions import AITeachMeError
 from app.schemas.knowledge import BuildPlannerCreateRequest, BuildPlannerMessageRequest, BuildPlannerSessionResponse
 from app.shared.infra.llm_support.model_choices import (
     normalize_runtime_model_override,
@@ -24,7 +25,7 @@ from app.shared.infra.llm_support.model_choices import (
 from app.shared.infra.workflow import workflow_tracer
 from app.shared.infra.workflow.context import WorkflowContext, create_langgraph_dev_context
 from app.shared.infra.workflow.result import WorkflowError, WorkflowResult
-from app.shared.infra.workflow.runtime import run_state_graph
+from app.shared.infra.workflow.runtime import run_state_graph, run_sync_and_drain
 from app.workflows.digest.common.node_tracing import named_route, node_metadata, traced_digest_node
 from app.workflows.digest.common.runtime_config import get_teaching_runtime_config
 from app.workflows.digest.planner.lib.store import (
@@ -298,6 +299,7 @@ def create_planner_initial_state(
     digest_mode: str,
     planner_session_id: str,
     message_history: list[str],
+    planner_run_id: str = "",
     model: str | None = None,
     latest_plan: dict | None = None,
     refresh_diagnosis: bool = False,
@@ -319,6 +321,7 @@ def create_planner_initial_state(
         "digest_mode": digest_mode,
         "model_override": model,
         "planner_session_id": planner_session_id,
+        "planner_run_id": planner_run_id,
         "message_history": message_history,
         "latest_plan": latest_plan,
         "refresh_diagnosis": refresh_diagnosis,
@@ -343,6 +346,7 @@ async def run_build_planner_workflow(
     planner_session_id: str,
     digest_mode: str,
     message_history: list[str],
+    planner_run_id: str = "",
     model: str | None = None,
     user_id: str = "",
     planner_operation: str = "generate_only",
@@ -398,6 +402,7 @@ async def run_build_planner_workflow(
         digest_mode=digest_mode,
         planner_session_id=planner_session_id,
         message_history=message_history,
+        planner_run_id=planner_run_id or uuid.uuid4().hex,
         model=model_override,
         latest_plan=latest_plan,
         refresh_diagnosis=refresh_diagnosis,
@@ -413,6 +418,7 @@ async def run_build_planner_workflow(
             graph_builder=lambda: build_planner_graph(context=context),
             initial_state=initial_state,
             context=context,
+            propagate_errors=(AITeachMeError,),
         )
     logger.info(
         "planner_workflow_finished",
@@ -438,8 +444,11 @@ async def create_build_planner_session(
 
     planner_defaults = get_teaching_runtime_config().planner
     requested_session_id = str(payload.planner_session_id or "").strip()
-    reusable_session_id = requested_session_id or get_reusable_planner_session_id(course=course, user_id=user_id)
+    reusable_session_id = requested_session_id or await run_sync_and_drain(
+        get_reusable_planner_session_id, course=course, user_id=user_id,
+    )
     session_id = reusable_session_id or uuid.uuid4().hex
+    run_id = uuid.uuid4().hex
     user_prompt = payload.user_prompt.strip()
     digest_mode = (payload.digest_mode or planner_defaults.default_digest_mode).strip() or planner_defaults.default_digest_mode
     logger.info(
@@ -463,21 +472,23 @@ async def create_build_planner_session(
             file_ids=[],
             user_prompt=user_prompt,
             planner_session_id=session_id,
+            planner_run_id=run_id,
             digest_mode=digest_mode,
             message_history=[user_prompt],
             model=payload.model,
             progress_callback=progress_callback,
             token_callback=token_callback,
         )
-    except asyncio.CancelledError:
-        _mark_planner_session_cancelled(course_id=course.id, user_id=user_id, session_id=session_id)
-        raise
-    if result.failed:
-        _mark_planner_session_failed(course_id=course.id, user_id=user_id, session_id=session_id)
-    try:
         final_state = _require_success_state(result)
+    except asyncio.CancelledError:
+        await run_sync_and_drain(
+            _mark_planner_session_cancelled, course_id=course.id, user_id=user_id, session_id=session_id, run_id=run_id,
+        )
+        raise
     except Exception:
-        _mark_planner_session_failed(course_id=course.id, user_id=user_id, session_id=session_id)
+        await run_sync_and_drain(
+            _mark_planner_session_failed, course_id=course.id, user_id=user_id, session_id=session_id, run_id=run_id,
+        )
         raise
     logger.info(
         "planner_create_session_state_ready",
@@ -502,6 +513,7 @@ async def append_build_planner_message(
 ) -> BuildPlannerSessionResponse:
     """在已有 Planner 会话中追加用户反馈并重新生成方案。"""
 
+    run_id = uuid.uuid4().hex
     logger.info(
         "planner_append_message_starting",
         course_id=course.id,
@@ -518,6 +530,7 @@ async def append_build_planner_message(
             file_ids=[],
             user_prompt="",
             planner_session_id=session_id,
+            planner_run_id=run_id,
             digest_mode="",
             message_history=[],
             model=payload.model,
@@ -531,15 +544,16 @@ async def append_build_planner_message(
             progress_callback=progress_callback,
             token_callback=token_callback,
         )
-    except asyncio.CancelledError:
-        _mark_planner_session_cancelled(course_id=course.id, user_id=user_id, session_id=session_id)
-        raise
-    if result.failed:
-        _mark_planner_session_failed(course_id=course.id, user_id=user_id, session_id=session_id)
-    try:
         final_state = _require_success_state(result)
+    except asyncio.CancelledError:
+        await run_sync_and_drain(
+            _mark_planner_session_cancelled, course_id=course.id, user_id=user_id, session_id=session_id, run_id=run_id,
+        )
+        raise
     except Exception:
-        _mark_planner_session_failed(course_id=course.id, user_id=user_id, session_id=session_id)
+        await run_sync_and_drain(
+            _mark_planner_session_failed, course_id=course.id, user_id=user_id, session_id=session_id, run_id=run_id,
+        )
         raise
     logger.info(
         "planner_append_message_state_ready",
@@ -607,16 +621,16 @@ def _log_planner_runtime(*, course_id: str, session_id: str, final_state: Mappin
     )
 
 
-def _mark_planner_session_failed(*, course_id: str, user_id: str, session_id: str) -> None:
+def _mark_planner_session_failed(*, course_id: str, user_id: str, session_id: str, run_id: str) -> None:
     try:
-        mark_planner_session_failed(course_id=course_id, user_id=user_id, session_id=session_id)
+        mark_planner_session_failed(course_id=course_id, user_id=user_id, session_id=session_id, run_id=run_id)
     except Exception:
         logger.exception("planner_session_failed_status_update_failed", course_id=course_id, session_id=session_id)
 
 
-def _mark_planner_session_cancelled(*, course_id: str, user_id: str, session_id: str) -> None:
+def _mark_planner_session_cancelled(*, course_id: str, user_id: str, session_id: str, run_id: str) -> None:
     try:
-        mark_planner_session_cancelled(course_id=course_id, user_id=user_id, session_id=session_id)
+        mark_planner_session_cancelled(course_id=course_id, user_id=user_id, session_id=session_id, run_id=run_id)
     except Exception:
         logger.exception("planner_session_cancelled_status_update_failed", course_id=course_id, session_id=session_id)
 

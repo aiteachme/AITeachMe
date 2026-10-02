@@ -9,6 +9,8 @@ from threading import Event, get_ident
 import pytest
 import httpx
 from fastapi import FastAPI
+from sqlalchemy.pool import QueuePool
+from sqlmodel import Session, SQLModel, create_engine
 
 from app.api import knowledge_docs as api
 from app.api.deps import CurrentUserContext
@@ -22,6 +24,7 @@ from app.workflows.digest.docgen import (
 from app.schemas.knowledge import (
     BuildPlannerConfirmResponse,
     BuildPlannerCreateRequest,
+    BuildPlannerMessageRequest,
     BuildPlannerPlanResponse,
     BuildPlannerSessionResponse,
     CourseVectorStatusResponse,
@@ -177,6 +180,63 @@ def _confirm_response() -> BuildPlannerConfirmResponse:
         created_at=now,
         updated_at=now,
     )
+
+
+@pytest.mark.parametrize("operation", ["create", "message"])
+def test_planner_api_releases_connection_before_workflow(
+    monkeypatch, tmp_path, operation: str,
+) -> None:
+    engine = create_engine(
+        f"sqlite:///{(tmp_path / 'planner_api.sqlite').as_posix()}",
+        connect_args={"check_same_thread": False},
+        poolclass=QueuePool,
+        pool_size=1,
+        max_overflow=0,
+        pool_timeout=0.1,
+    )
+    SQLModel.metadata.create_all(engine)
+    with Session(engine) as seed:
+        seed.add(_course())
+        seed.commit()
+
+    async def run_planner(**kwargs):
+        course = kwargs["course"]
+        assert course.id == COURSE_ID
+        assert course.name == "API Course"
+
+        def persist_from_worker():
+            with Session(engine) as worker:
+                saved = worker.get(Course, COURSE_ID)
+                assert saved is not None
+                saved.description = "planner completed"
+                worker.add(saved)
+                worker.commit()
+
+        await asyncio.to_thread(persist_from_worker)
+        return _planner_session_response()
+
+    monkeypatch.setattr(api, "create_build_planner_session", run_planner)
+    monkeypatch.setattr(api, "append_build_planner_message", run_planner)
+    monkeypatch.setattr(api, "_capture_course_build_event", lambda *args, **kwargs: None)
+    try:
+        with Session(engine, expire_on_commit=False) as request_session:
+            kwargs = dict(
+                request=_request(), course_id=COURSE_ID, user=_user(), session=request_session,
+            )
+            if operation == "create":
+                response = asyncio.run(api.knowledge_build_plan_create(
+                    **kwargs, body=BuildPlannerCreateRequest(user_prompt="learn"),
+                ))
+            else:
+                response = asyncio.run(api.knowledge_build_plan_message(
+                    **kwargs, session_id="planner-session-12345678",
+                    body=BuildPlannerMessageRequest(message="revise"),
+                ))
+        assert response.data.status == "draft"
+        with Session(engine) as verify:
+            assert verify.get(Course, COURSE_ID).description == "planner completed"
+    finally:
+        engine.dispose()
 
 
 def test_interactive_overlay_helpers_normalize_cached_response() -> None:
@@ -720,7 +780,7 @@ def test_build_planner_create_and_confirm_capture_backend_analytics(monkeypatch)
             course_id=COURSE_ID,
             body=BuildPlannerCreateRequest(file_ids=["file-a"], user_prompt="learn", model="model-a"),
             user=_user(),
-            session=object(),
+            session=Session(),
         )
     )
     confirm_api_response = api.knowledge_build_plan_confirm(
@@ -783,7 +843,7 @@ def test_home_course_build_requested_is_captured_for_home_entry_source(monkeypat
                 entry_source="home_arrow",
             ),
             user=_user(),
-            session=object(),
+            session=Session(),
         )
     )
 
@@ -829,7 +889,7 @@ def test_build_planner_create_failure_does_not_capture_generated(monkeypatch) ->
                 course_id=COURSE_ID,
                 body=BuildPlannerCreateRequest(file_ids=["file-a"], user_prompt="learn"),
                 user=_user(),
-                session=object(),
+                session=Session(),
             )
         )
 

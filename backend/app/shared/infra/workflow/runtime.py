@@ -293,6 +293,7 @@ async def run_state_graph(
     initial_state: Any,
     context: WorkflowContext,
     trace_as_root: bool = True,
+    propagate_errors: tuple[type[Exception], ...] = (),
 ) -> WorkflowResult[Any]:
     """Run one LangGraph workflow and normalize result handling."""
 
@@ -354,6 +355,8 @@ async def run_state_graph(
         workflow_logger.warning("workflow_cancelled", workflow_name=workflow_name, elapsed_ms=elapsed_ms)
         raise
     except Exception as exc:
+        if isinstance(exc, propagate_errors):
+            raise
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         workflow_logger.exception(
             "workflow_failed",

@@ -472,6 +472,8 @@ async def knowledge_build_plan_create(
 ) -> ApiResponse[BuildPlannerSessionResponse]:
     normalized = normalize_course_id(course_id)
     course_record = get_course_record(session, normalized, owner_user_id=user.user_id)
+    # Auth has committed its writes; release the read connection before LLM waits.
+    session.close()
     request_id = _request_id(request)
     _capture_home_course_build_requested(
         course_id=normalized,
@@ -676,6 +678,8 @@ async def knowledge_build_plan_message(
 ) -> ApiResponse[BuildPlannerSessionResponse]:
     normalized = normalize_course_id(course_id)
     course_record = get_course_record(session, normalized, owner_user_id=user.user_id)
+    # Planner persistence uses its own short-lived sessions, as in the SSE route.
+    session.close()
     _capture_course_build_event(
         "course_plan_requested",
         course_id=normalized,

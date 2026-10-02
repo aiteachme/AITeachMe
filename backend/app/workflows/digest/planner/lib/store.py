@@ -11,6 +11,7 @@ from collections.abc import Mapping
 from typing import Any
 
 import structlog
+from sqlalchemy import update
 from sqlmodel import Session, select
 
 from app.models import ChatMessage, ChatSession
@@ -26,7 +27,6 @@ from app.repositories.confirmed_plan_repo import (
 from app.repositories.chats_repo import (
     create_chat_message,
     create_chat_session,
-    get_chat_session,
     touch_chat_session,
 )
 from app.repositories.files_repo import list_all_raw_files_by_course, list_raw_files_by_ids
@@ -362,7 +362,7 @@ def _maybe_update_course_from_planner(
 
     course_row.updated_at = utcnow()
     session.add(course_row)
-    session.commit()
+    session.flush()
     logger.info(
         "planner_course_metadata_updated",
         course_id=course_id,
@@ -398,7 +398,7 @@ def _update_planner_session_meta(
     session_item.updated_at = utcnow()
     session_item.last_message_at = session_item.updated_at
     session.add(session_item)
-    session.commit()
+    session.flush()
     session.refresh(session_item)
     return session_item
 
@@ -410,10 +410,30 @@ def _get_planner_session(
     session_id: str,
     user_id: str,
 ) -> ChatSession | None:
-    item = get_chat_session(session, course_id=course_id, session_id=session_id, user_id=user_id)
+    item = session.exec(
+        select(ChatSession).where(
+            ChatSession.id == session_id,
+            ChatSession.course_id == course_id,
+            ChatSession.user_id == user_id,
+        ).execution_options(populate_existing=True)
+    ).first()
     if item is None or item.source != PLANNER_CHAT_SOURCE:
         return None
     return item
+
+
+def _lock_planner_course(session: Session, *, course_id: str, user_id: str) -> None:
+    """Serialize planner writes, including admission, in SQLite and PostgreSQL.
+
+    SQLite ignores SELECT FOR UPDATE. A no-op update obtains its write lock
+    and PostgreSQL's row lock until the surrounding transaction commits.
+    """
+    session.execute(
+        update(Course)
+        .where(Course.id == course_id, Course.user_id == user_id)
+        .values(updated_at=Course.updated_at)
+        .execution_options(synchronize_session=False)
+    )
 
 
 def _get_latest_planner_session(session: Session, *, course_id: str, user_id: str) -> ChatSession | None:
@@ -620,6 +640,7 @@ def _create_planner_message(
             "plan_json": plan if role == "assistant" else None,
             "plan": str((plan or {}).get("plan") or ""),
         },
+        commit=False,
     )
     touch_chat_session(
         session,
@@ -628,6 +649,7 @@ def _create_planner_message(
         session_id=record.id,
         title=record.title,
         touched_at=message.created_at,
+        commit=False,
     )
     return message
 
@@ -880,6 +902,7 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
         ).strip() or planner_defaults.default_digest_mode
 
         with managed_session() as session:
+            _lock_planner_course(session, course_id=course_id, user_id=user_id)
             course_row = session.exec(
                 select(Course).where(Course.id == course_id, Course.user_id == user_id)
             ).first()
@@ -913,6 +936,7 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
                 selected_file_ids=selected_file_ids,
                 model_override=state.get("model_override"),
             )
+            meta["planner_run_id"] = str(state.get("planner_run_id") or "")
             record = _get_planner_session(
                 session,
                 course_id=course_id,
@@ -929,6 +953,7 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
                     title=session_title,
                     source=PLANNER_CHAT_SOURCE,
                     meta_json=meta,
+                    commit=False,
                 )
             else:
                 record.title = session_title
@@ -938,6 +963,9 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
                         "source": PLANNER_CHAT_SOURCE,
                         "planner_session_id": requested_session_id,
                         "planner_status": "planning",
+                        "planner_run_id": str(state.get("planner_run_id") or ""),
+                        "confirmed_plan_id": None,
+                        "confirmed_plan": None,
                         "user_prompt": user_prompt,
                         "digest_mode": digest_mode,
                         "selected_file_ids": selected_file_ids,
@@ -948,7 +976,7 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
                 record.updated_at = utcnow()
                 record.last_message_at = record.updated_at
                 session.add(record)
-                session.commit()
+                session.flush()
                 session.refresh(record)
             user_turn = _create_planner_message(
                 session,
@@ -986,6 +1014,7 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
         # 修订规划：读取已有 session，追加用户反馈，并补齐 latest_plan/message_history。
         feedback = str(state.get("feedback_message") or "").strip()
         with managed_session() as session:
+            _lock_planner_course(session, course_id=course_id, user_id=user_id)
             record = _get_planner_session(
                 session,
                 course_id=course_id,
@@ -1009,6 +1038,7 @@ def prepare_planner_run(state: Mapping[str, Any]) -> dict[str, Any]:
                 session,
                 record,
                 planner_status="planning",
+                planner_run_id=str(state.get("planner_run_id") or ""),
                 model_override=normalize_runtime_model_override(state.get("model_override")),
                 confirmed_plan_id=None,
                 confirmed_plan=None,
@@ -1075,6 +1105,7 @@ def save_planner_result(
     course_id = str(state["course_id"])
     user_id = str(state.get("user_id") or "local")
     with managed_session() as session:
+        _lock_planner_course(session, course_id=course_id, user_id=user_id)
         record = _get_planner_session(
             session,
             course_id=course_id,
@@ -1084,6 +1115,11 @@ def save_planner_result(
         if record is None:
             raise BuildPlannerSessionNotFoundError(str(state["planner_session_id"]))
         meta = _planner_meta(record)
+
+        run_id = str(state.get("planner_run_id") or "")
+        if run_id or meta.get("planner_run_id"):
+            if _planner_status(record) != "planning" or meta.get("planner_run_id") != run_id:
+                raise BuildPlannerSessionBusyError(record.id)
 
         logger.info(
             "planner_save_started",
@@ -1144,7 +1180,7 @@ def save_planner_result(
             record.title = generated_title
             record.updated_at = utcnow()
             session.add(record)
-            session.commit()
+            session.flush()
             session.refresh(record)
         _create_planner_message(
             session,
@@ -1188,6 +1224,7 @@ def resolve_planner_diagnosis_without_regeneration(
     note = _diagnose_clean_text(diagnose_note)
     user_message = _diagnose_clean_text(message)
     with managed_session() as session:
+        _lock_planner_course(session, course_id=course.id, user_id=user_id)
         record = _get_planner_session(
             session,
             course_id=course.id,
@@ -1196,6 +1233,8 @@ def resolve_planner_diagnosis_without_regeneration(
         )
         if record is None:
             raise BuildPlannerSessionNotFoundError(session_id)
+        if _planner_status(record) == "planning":
+            raise BuildPlannerSessionBusyError(session_id)
         latest_plan = _planner_plan(record)
         if not latest_plan:
             raise BuildPlannerEmptyPlanError(session_id)
@@ -1235,7 +1274,7 @@ def resolve_planner_diagnosis_without_regeneration(
                 "plan": str(resolved_plan.get("plan") or ""),
             }
             session.add(latest_assistant)
-            session.commit()
+            session.flush()
         else:
             _create_planner_message(
                 session,
@@ -1343,28 +1382,39 @@ def _ensure_chapter_count_payload(
     return _reindex_chapter_payload(normalized)
 
 
-def mark_planner_session_failed(*, course_id: str, user_id: str, session_id: str) -> None:
+def _mark_planner_session_status(
+    *, course_id: str, user_id: str, session_id: str, status: str, run_id: str | None = None,
+) -> None:
     with managed_session() as session:
+        _lock_planner_course(session, course_id=course_id, user_id=user_id)
         record = _get_planner_session(session, course_id=course_id, session_id=session_id, user_id=user_id)
         if record is None:
             return
-        _update_planner_session_meta(session, record, planner_status="failed")
-
-
-def mark_planner_session_cancelled(*, course_id: str, user_id: str, session_id: str) -> None:
-    with managed_session() as session:
-        record = _get_planner_session(session, course_id=course_id, session_id=session_id, user_id=user_id)
-        if record is None:
+        if run_id is not None and (
+            _planner_status(record) != "planning" or _planner_meta(record).get("planner_run_id") != run_id
+        ):
             return
-        _update_planner_session_meta(session, record, planner_status="cancelled")
+        _update_planner_session_meta(session, record, planner_status=status)
+
+
+def mark_planner_session_failed(
+    *, course_id: str, user_id: str, session_id: str, run_id: str | None = None,
+) -> None:
+    _mark_planner_session_status(
+        course_id=course_id, user_id=user_id, session_id=session_id, status="failed", run_id=run_id,
+    )
+
+
+def mark_planner_session_cancelled(
+    *, course_id: str, user_id: str, session_id: str, run_id: str | None = None,
+) -> None:
+    _mark_planner_session_status(
+        course_id=course_id, user_id=user_id, session_id=session_id, status="cancelled", run_id=run_id,
+    )
 
 
 def mark_planner_session_draft(*, course_id: str, user_id: str, session_id: str) -> None:
-    with managed_session() as session:
-        record = _get_planner_session(session, course_id=course_id, session_id=session_id, user_id=user_id)
-        if record is None:
-            return
-        _update_planner_session_meta(session, record, planner_status="draft")
+    _mark_planner_session_status(course_id=course_id, user_id=user_id, session_id=session_id, status="draft")
 
 
 def confirm_planner_session(
@@ -1376,9 +1426,12 @@ def confirm_planner_session(
 ) -> BuildPlannerConfirmResponse:
     """确认当前 Planner 草稿，并冻结成 DocGen 可执行的 confirmed plan。"""
 
+    _lock_planner_course(session, course_id=course.id, user_id=user_id)
     record = _get_planner_session(session, course_id=course.id, session_id=session_id, user_id=user_id)
     if record is None:
         raise BuildPlannerSessionNotFoundError(session_id)
+    if _planner_status(record) == "planning":
+        raise BuildPlannerSessionBusyError(session_id)
     meta = _planner_meta(record)
     latest_plan = _planner_plan(record)
     if not latest_plan:
@@ -1428,6 +1481,7 @@ def confirm_planner_session(
                 plan=str(plan_payload.get("plan") or meta.get("latest_summary") or ""),
                 plan_json=plan_payload,
             ),
+            commit=False,
         )
 
     record = _update_planner_session_meta(
@@ -1439,6 +1493,7 @@ def confirm_planner_session(
         model_override=model_override,
         planner_status="confirmed",
     )
+    session.commit()
     return BuildPlannerConfirmResponse(
         planner_session_id=record.id,
         confirmed_plan_id=confirmed.id,
@@ -1556,12 +1611,13 @@ def mark_confirmed_plan_status(
     plan_id: str,
     status: str,
 ) -> None:
+    _lock_planner_course(session, course_id=course_id, user_id=user_id)
     plan = get_confirmed_plan(session, course_id=course_id, plan_id=plan_id, user_id=user_id)
     if plan is None:
         return
     plan.status = status
     plan.updated_at = utcnow()
-    update_confirmed_plan(session, plan)
+    update_confirmed_plan(session, plan, commit=False)
     if plan.planner_session_id:
         planner_session = _get_planner_session(
             session,
@@ -1569,8 +1625,13 @@ def mark_confirmed_plan_status(
             session_id=plan.planner_session_id,
             user_id=user_id,
         )
-        if planner_session is not None and _planner_meta(planner_session).get("confirmed_plan_id") == plan.id:
+        if (
+            planner_session is not None
+            and _planner_status(planner_session) != "planning"
+            and _planner_meta(planner_session).get("confirmed_plan_id") == plan.id
+        ):
             _update_planner_session_meta(session, planner_session, planner_status=status)
+    session.commit()
 
 
 __all__ = [

@@ -27,6 +27,7 @@ class BuildPlannerState(TypedDict, total=False):
     digest_mode: str
     model_override: str | None
     planner_session_id: str
+    planner_run_id: str
     message_history: list[str]
     latest_plan: dict[str, Any] | None
     refresh_diagnosis: bool
@@ -80,6 +81,7 @@ BuildPlannerGraphInput = project_typed_dict_schema(
         "digest_mode",
         "model_override",
         "planner_session_id",
+        "planner_run_id",
         "message_history",
         "latest_plan",
         "refresh_diagnosis",

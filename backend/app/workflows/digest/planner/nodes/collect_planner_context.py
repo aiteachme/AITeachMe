@@ -16,6 +16,7 @@ from app.workflows.digest.common.models import DigestMaterialContext, FastTopicH
 from app.workflows.digest.common.prepare import prepare_material_context as build_digest_material_context
 from app.workflows.digest.planner.lib.planner_events import emit_planner_event
 from app.workflows.digest.planner.lib.store import prepare_planner_run
+from app.shared.infra.workflow.runtime import run_sync_and_drain
 from app.workflows.digest.planner.state import BuildPlannerState
 from app.workflows.support.courses.learning_context import load_course_llm_context
 
@@ -154,7 +155,7 @@ def build_collect_planner_context_node(*, context: WorkflowContext):
             file_id_count=len(state.get("file_ids", []) or []),
             requested_file_id_count=len(state.get("requested_file_ids", []) or []),
         )
-        session_update = prepare_planner_run(state)
+        session_update = await run_sync_and_drain(prepare_planner_run, state)
         working_state = {**state, **session_update}
         logger.info(
             "planner_load_materials_session_prepared",
@@ -199,7 +200,8 @@ def build_collect_planner_context_node(*, context: WorkflowContext):
                     event="planner.material.empty",
                     detail="本轮没有绑定上传资料，将只根据学习目标和通用课程常识规划，不会假装已读取材料。",
                 )
-            material_context = _build_seed_material_context(
+            material_context = await run_sync_and_drain(
+                _build_seed_material_context,
                 course_id=working_state["course_id"],
                 file_ids=selected_ids,
                 user_prompt=working_state.get("user_prompt"),
@@ -241,7 +243,7 @@ def build_collect_planner_context_node(*, context: WorkflowContext):
                 },
             )
 
-        existing_doc_context = _load_existing_doc_context(course_id=working_state["course_id"])
+        existing_doc_context = await run_sync_and_drain(_load_existing_doc_context, course_id=working_state["course_id"])
         has_existing_doc_context = bool(existing_doc_context)
         planner_context_mode = "rebuild_existing_doc" if has_existing_doc_context else "fresh_build"
         if existing_doc_context:

@@ -66,6 +66,7 @@ def create_chat_session(
     session_id: str | None = None,
     meta_json: Any | None = None,
     user_id: str = "local",
+    commit: bool = True,
 ) -> ChatSession:
     """Create one chat session."""
 
@@ -83,7 +84,10 @@ def create_chat_session(
         last_message_at=now,
     )
     session.add(item)
-    session.commit()
+    if commit:
+        session.commit()
+    else:
+        session.flush()
     session.refresh(item)
     return item
 
@@ -103,6 +107,7 @@ def create_chat_message(
     contexts: Any | None = None,
     meta_json: Any | None = None,
     user_id: str = "local",
+    commit: bool = True,
 ) -> ChatMessage:
     """Create one chat message when a workflow writes turns one side at a time."""
 
@@ -121,7 +126,10 @@ def create_chat_message(
         meta_json=meta_json,
     )
     session.add(item)
-    session.commit()
+    if commit:
+        session.commit()
+    else:
+        session.flush()
     session.refresh(item)
     return item
 
@@ -350,6 +358,7 @@ def touch_chat_session(
     user_id: str = "local",
     title: str | None = None,
     touched_at: datetime | None = None,
+    commit: bool = True,
 ) -> ChatSession | None:
     item = get_chat_session(
         session,
@@ -366,7 +375,10 @@ def touch_chat_session(
     if title and title.strip():
         item.title = title.strip()
     session.add(item)
-    session.commit()
+    if commit:
+        session.commit()
+    else:
+        session.flush()
     session.refresh(item)
     return item
 

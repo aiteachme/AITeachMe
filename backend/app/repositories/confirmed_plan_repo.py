@@ -94,6 +94,7 @@ def _store_plan_on_session(
     record: ConfirmedBuildPlan,
     *,
     make_current: bool = True,
+    commit: bool = True,
 ) -> ConfirmedBuildPlan:
     meta = _meta_from_session(session_item)
     history_by_id = {plan.id: _plan_payload(plan) for plan in _plan_history_from_session(session_item)}
@@ -113,12 +114,17 @@ def _store_plan_on_session(
     session_item.updated_at = record.updated_at
     session_item.last_message_at = record.updated_at
     session.add(session_item)
-    session.commit()
+    if commit:
+        session.commit()
+    else:
+        session.flush()
     session.refresh(session_item)
     return record
 
 
-def create_confirmed_plan(session: Session, record: ConfirmedBuildPlan) -> ConfirmedBuildPlan:
+def create_confirmed_plan(
+    session: Session, record: ConfirmedBuildPlan, *, commit: bool = True,
+) -> ConfirmedBuildPlan:
     if not record.planner_session_id:
         raise RuntimeError("Confirmed plan requires planner_session_id.")
     session_item = session.get(ChatSession, record.planner_session_id)
@@ -129,10 +135,12 @@ def create_confirmed_plan(session: Session, record: ConfirmedBuildPlan) -> Confi
         or session_item.source != PLANNER_CHAT_SOURCE
     ):
         raise RuntimeError(f"Planner session `{record.planner_session_id}` was not found.")
-    return _store_plan_on_session(session, session_item, record, make_current=True)
+    return _store_plan_on_session(session, session_item, record, make_current=True, commit=commit)
 
 
-def update_confirmed_plan(session: Session, record: ConfirmedBuildPlan) -> ConfirmedBuildPlan:
+def update_confirmed_plan(
+    session: Session, record: ConfirmedBuildPlan, *, commit: bool = True,
+) -> ConfirmedBuildPlan:
     if record.planner_session_id:
         session_item = session.get(ChatSession, record.planner_session_id)
         if (
@@ -144,7 +152,7 @@ def update_confirmed_plan(session: Session, record: ConfirmedBuildPlan) -> Confi
             meta = _meta_from_session(session_item)
             make_current = meta.get("confirmed_plan_id") == record.id
             if make_current or any(plan.id == record.id for plan in _plan_history_from_session(session_item)):
-                return _store_plan_on_session(session, session_item, record, make_current=make_current)
+                return _store_plan_on_session(session, session_item, record, make_current=make_current, commit=commit)
 
     for session_item in _planner_sessions(session, course_id=record.course_id, user_id=record.user_id):
         meta = _meta_from_session(session_item)
@@ -154,6 +162,7 @@ def update_confirmed_plan(session: Session, record: ConfirmedBuildPlan) -> Confi
                 session_item,
                 record,
                 make_current=meta.get("confirmed_plan_id") == record.id,
+                commit=commit,
             )
     return record
 

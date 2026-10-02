@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime
 from typing import Any
+from threading import Barrier
 
 import pytest
 from sqlalchemy.pool import StaticPool
@@ -12,7 +14,7 @@ from sqlmodel import Session, SQLModel, create_engine, select
 
 import app.models  # noqa: F401 - ensure all SQLModel tables are registered
 from app.models import ChatMessage, ChatSession, Course, CourseFileLink, IngestStatus, RawFile, TaskStatus
-from app.schemas.knowledge import BuildPlannerCreateRequest
+from app.schemas.knowledge import BuildPlannerCreateRequest, BuildPlannerMessageRequest
 from app.shared.infra.exceptions import (
     BuildPlannerEmptyPlanError,
     BuildPlannerSessionBusyError,
@@ -30,6 +32,57 @@ from app.workflows.digest.planner.lib import store as planner_store
 
 COURSE_ID = "course_planner000001"
 USER_ID = "user-planner"
+
+
+@pytest.mark.parametrize("operation", ["create", "append"])
+def test_rejected_planner_request_preserves_active_run(
+    managed_planner_session: Session, operation: str,
+) -> None:
+    _seed_course_and_files(managed_planner_session)
+    planner_store.prepare_planner_run({
+        "planner_operation": "create", "planner_session_id": "busy-planner",
+        "planner_run_id": "active-run", "course_id": COURSE_ID, "user_id": USER_ID,
+        "user_prompt": "学习矩阵", "requested_file_ids": ["file-ready"],
+    })
+    course = managed_planner_session.get(Course, COURSE_ID)
+    before_turns = list(managed_planner_session.exec(select(ChatMessage)).all())
+    if operation == "create":
+        request = planner_graph.create_build_planner_session(
+            course=course, user_id=USER_ID,
+            payload=BuildPlannerCreateRequest(
+                planner_session_id="busy-planner", user_prompt="重复请求",
+            ),
+        )
+    else:
+        request = planner_graph.append_build_planner_message(
+            course=course, user_id=USER_ID, session_id="busy-planner",
+            payload=BuildPlannerMessageRequest(message="重复请求"),
+        )
+    with pytest.raises(Exception) as error:
+        asyncio.run(request)
+    record = managed_planner_session.get(ChatSession, "busy-planner")
+    assert record.meta_json["planner_status"] == "planning"
+    assert list(managed_planner_session.exec(select(ChatMessage)).all()) == before_turns
+    assert isinstance(error.value, BuildPlannerSessionBusyError)
+
+
+def test_confirm_cannot_freeze_previous_plan_during_revision(managed_planner_session: Session) -> None:
+    _seed_course_and_files(managed_planner_session)
+    state = {
+        "planner_operation": "create", "planner_session_id": "revising-planner",
+        "course_id": COURSE_ID, "user_id": USER_ID, "user_prompt": "学习矩阵",
+    }
+    planner_store.prepare_planner_run(state)
+    planner_store.save_planner_result(state, plan=_plan(), material_context=None)
+    planner_store.prepare_planner_run({**state, "planner_operation": "append", "feedback_message": "补充练习"})
+    with pytest.raises(BuildPlannerSessionBusyError):
+        planner_store.confirm_planner_session(
+            managed_planner_session, course=managed_planner_session.get(Course, COURSE_ID),
+            user_id=USER_ID, session_id="revising-planner",
+        )
+    record = managed_planner_session.get(ChatSession, "revising-planner")
+    assert record.meta_json["planner_status"] == "planning"
+    assert not record.meta_json.get("confirmed_plan_id")
 
 
 @pytest.fixture
@@ -52,6 +105,104 @@ def managed_planner_session(monkeypatch: pytest.MonkeyPatch, session: Session) -
 
     monkeypatch.setattr(planner_store, "managed_session", _managed_session)
     return session
+
+
+@pytest.fixture
+def planner_database(monkeypatch: pytest.MonkeyPatch, tmp_path):
+    engine = create_engine(
+        f"sqlite:///{(tmp_path / 'planner.sqlite').as_posix()}",
+        connect_args={"check_same_thread": False, "timeout": 10},
+    )
+    SQLModel.metadata.create_all(engine)
+
+    @contextmanager
+    def transaction():
+        with Session(engine, expire_on_commit=False) as db:
+            try:
+                yield db
+                db.commit()
+            except Exception:
+                db.rollback()
+                raise
+
+    monkeypatch.setattr(planner_store, "managed_session", transaction)
+    with transaction() as db:
+        _seed_course_and_files(db)
+    yield transaction
+    engine.dispose()
+
+
+def test_planner_concurrent_admission_is_atomic(planner_database) -> None:
+    ready = Barrier(2)
+
+    def start(index):
+        ready.wait(timeout=5)
+        try:
+            planner_store.prepare_planner_run({
+                "planner_operation": "create", "planner_session_id": f"parallel-{index}",
+                "planner_run_id": f"run-{index}", "course_id": COURSE_ID, "user_id": USER_ID,
+                "user_prompt": "学习矩阵",
+            })
+            return "admitted"
+        except BuildPlannerSessionBusyError:
+            return "busy"
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        assert sorted(pool.map(start, [1, 2])) == ["admitted", "busy"]
+    with planner_database() as db:
+        assert len(db.exec(select(ChatSession)).all()) == 1
+        assert len(db.exec(select(ChatMessage)).all()) == 1
+
+
+def test_stale_planner_completion_and_cleanup_cannot_overwrite_new_run(planner_database) -> None:
+    state = {
+        "planner_operation": "create", "planner_session_id": "owned-planner",
+        "planner_run_id": "old-run", "course_id": COURSE_ID, "user_id": USER_ID,
+        "user_prompt": "学习矩阵",
+    }
+    planner_store.prepare_planner_run(state)
+    owner = {"course_id": COURSE_ID, "user_id": USER_ID, "session_id": "owned-planner"}
+    planner_store.mark_planner_session_cancelled(**owner, run_id="old-run")
+    new_state = {**state, "planner_operation": "append", "planner_run_id": "new-run", "feedback_message": "继续"}
+    planner_store.prepare_planner_run(new_state)
+    planner_store.mark_planner_session_failed(**owner, run_id="old-run")
+    planner_store.mark_planner_session_cancelled(**owner, run_id="old-run")
+    with pytest.raises(BuildPlannerSessionBusyError):
+        planner_store.save_planner_result(state, plan=_plan(), material_context=None)
+    with planner_database() as db:
+        record = db.get(ChatSession, "owned-planner")
+        assert record.meta_json["planner_status"] == "planning"
+        assert record.meta_json["planner_run_id"] == "new-run"
+        assert not record.meta_json.get("latest_plan")
+        assert len(db.exec(select(ChatMessage)).all()) == 2
+    planner_store.save_planner_result(new_state, plan=_plan(), material_context=None)
+    planner_store.mark_planner_session_cancelled(**owner, run_id="new-run")
+    with planner_database() as db:
+        assert db.get(ChatSession, "owned-planner").meta_json["planner_status"] == "draft"
+
+
+def test_planner_save_rolls_back_plan_and_course_on_message_failure(
+    planner_database, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = {
+        "planner_operation": "create", "planner_session_id": "atomic-planner",
+        "planner_run_id": "run", "course_id": COURSE_ID, "user_id": USER_ID,
+        "user_prompt": "学习矩阵", "generated_course_name": "矩阵课程",
+    }
+    planner_store.prepare_planner_run(state)
+
+    def fail_message(*args, **kwargs):
+        raise RuntimeError("message write failed")
+
+    monkeypatch.setattr(planner_store, "_create_planner_message", fail_message)
+    with pytest.raises(RuntimeError, match="message write failed"):
+        planner_store.save_planner_result(state, plan=_plan(), material_context=None)
+    with planner_database() as db:
+        record = db.get(ChatSession, "atomic-planner")
+        assert record.meta_json["planner_status"] == "planning"
+        assert not record.meta_json.get("latest_plan")
+        assert db.get(Course, COURSE_ID).name == "Untitled Course"
+        assert len(db.exec(select(ChatMessage)).all()) == 1
 
 
 def _seed_course_and_files(session: Session) -> None:
