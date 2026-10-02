@@ -19,12 +19,7 @@ def _capability(*, queryable: bool, writable: bool = True, mode: str = "enabled"
     )
 
 
-def test_vector_finalize_skips_ready_or_disabled_courses(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(sync_knowledge_graph, "_vector_capability", lambda _course_id: _capability(queryable=True))
-    assert asyncio.run(
-        sync_knowledge_graph._ensure_course_vector_index(course_id="course-ready", file_ids=["f1"])
-    ) == ("ready", 0)
-
+def test_vector_finalize_skips_disabled_courses(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         sync_knowledge_graph,
         "_vector_capability",

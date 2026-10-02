@@ -34,6 +34,7 @@ async def materialize_course_inputs_for_retrieval(
     shared_inputs: SharedInputs,
     reason: str = "",
     raise_errors: bool = False,
+    update_source_documents: bool = False,
 ) -> MaterializedSections | None:
     """Persist chunks and embeddings for already prepared course inputs."""
 
@@ -47,6 +48,7 @@ async def materialize_course_inputs_for_retrieval(
             course_id=normalized_course_id,
             shared_inputs=shared_inputs,
             build_session_id=build_session_id,
+            update_source_documents=update_source_documents,
         )
         logger.info(
             "course_retrieval_index_materialized",
@@ -167,6 +169,9 @@ async def index_published_knowledge_docs_for_retrieval(
         shared_inputs=shared_inputs,
         reason=reason,
         raise_errors=raise_errors,
+        # This internal source is authored by DocGen. Uploaded-file snapshots
+        # never receive permission to overwrite a newer parser result.
+        update_source_documents=True,
     )
 
 

@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 import sys
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import llama_index
 import pytest
 from sqlalchemy.engine import make_url
 
 from app.shared.infra.course import settings as course_settings
+from app.shared.infra import database
 from app.shared.infra.search.llamaindex_index import manager
 
 
@@ -113,3 +114,62 @@ def test_upsert_rejects_unverified_vector_write(monkeypatch) -> None:
                 )
             ],
         )
+
+
+def test_course_index_cloud_write_scope_leaves_application_pool_available(monkeypatch, tmp_path) -> None:
+    import sqlalchemy as sa
+
+    engine = sa.create_engine(
+        f"sqlite:///{(tmp_path / 'pool.sqlite').as_posix()}",
+        pool_size=1, max_overflow=0, pool_timeout=0.1,
+    )
+
+    # Exercise real connection checkout while standing in for the PG lock SQL.
+    def install_lock_function(connection, _record):
+        connection.create_function("pg_advisory_xact_lock", 1, lambda _key: 0)
+
+    sa.event.listen(sa.engine.Engine, "connect", install_lock_function)
+    monkeypatch.setattr(manager, "is_cloud_mode", lambda: True)
+    monkeypatch.setattr(database, "get_engine", lambda: engine)
+    try:
+        with manager.course_index_write_scope("course-pool"):
+            with engine.begin() as connection:
+                assert connection.execute(sa.text("SELECT 1")).scalar_one() == 1
+    finally:
+        sa.event.remove(sa.engine.Engine, "connect", install_lock_function)
+        engine.dispose()
+
+
+def test_course_index_cloud_write_scope_is_reentrant_and_releases_on_failure(monkeypatch) -> None:
+    opened = closed = 0
+    lock_keys = []
+
+    def execute(statement, parameters):
+        assert str(statement) == "SELECT pg_advisory_xact_lock(:key)"
+        lock_keys.append(parameters["key"])
+
+    @contextmanager
+    def transaction():
+        nonlocal opened, closed
+        opened += 1
+        try:
+            yield SimpleNamespace(execute=execute)
+        finally:
+            closed += 1
+
+    monkeypatch.setattr(manager, "is_cloud_mode", lambda: True)
+    monkeypatch.setattr(database, "get_engine", lambda: SimpleNamespace(begin=transaction))
+    monkeypatch.setattr(manager, "_cloud_index_lock_engine", lambda engine: engine)
+    with pytest.raises(RuntimeError, match="failed write"):
+        with manager.course_index_write_scope("course-a"):
+            with manager.course_index_write_scope(" course-a "):
+                assert opened == 1 and closed == 0
+                raise RuntimeError("failed write")
+    assert opened == closed == 1
+    with manager.course_index_write_scope("course-a"):
+        assert opened == 2
+    with manager.course_index_write_scope("course-b"):
+        assert opened == 3
+    assert opened == closed == 3
+    assert lock_keys[0] == lock_keys[1] != lock_keys[2]
+    assert all(-(2 ** 63) <= key < 2 ** 63 for key in lock_keys)

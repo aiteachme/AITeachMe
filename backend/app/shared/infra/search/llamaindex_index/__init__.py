@@ -12,6 +12,7 @@ from app.shared.infra.search.llamaindex_index.manager import (
     rebuild_course_index,
     retrieve_course_chunks,
     course_index_exists,
+    course_index_write_scope,
     upsert_chunks,
 )
 from app.shared.infra.search.llamaindex_index.ingestion import (
@@ -38,6 +39,7 @@ __all__ = [
     "rebuild_course_index",
     "retrieve_course_chunks",
     "course_index_exists",
+    "course_index_write_scope",
     "split_text_for_ingestion",
     "upsert_chunks",
 ]

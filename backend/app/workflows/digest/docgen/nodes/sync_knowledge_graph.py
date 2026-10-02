@@ -16,6 +16,7 @@ from app.shared.infra.llm_support.model_choices import build_runtime_model_overr
 from app.shared.infra.settings import get_settings
 from app.shared.infra.storage import build_course_storage_scope
 from app.shared.infra.workflow.context import WorkflowContext
+from app.shared.infra.workflow.runtime import run_sync_and_drain
 from app.workflows.digest.common.indexing import (
     index_course_files_for_retrieval,
     index_published_knowledge_docs_for_retrieval,
@@ -81,13 +82,11 @@ async def ensure_course_vector_index(
     if not normalized_file_ids and not normalized_published_markdown:
         return "skipped_no_sources", 0
 
-    capability = _vector_capability(course_id)
+    capability = await run_sync_and_drain(_vector_capability, course_id)
     if capability is None:
         return "skipped_course_missing", 0
     if capability.binding is not None and capability.binding.mode.value == "disabled":
         return "skipped_disabled", 0
-    if capability.queryable and not normalized_published_markdown:
-        return "ready", 0
     if not capability.writable:
         return "skipped_runtime_unavailable", 0
 
@@ -123,8 +122,9 @@ async def ensure_course_vector_index(
                     continue
                 if parsed_chunk_id > 0:
                     last_chunk_ids.add(parsed_chunk_id)
-        capability = _vector_capability(course_id)
-        indexed_chunk_ids = _indexed_vector_chunk_ids(
+        capability = await run_sync_and_drain(_vector_capability, course_id)
+        indexed_chunk_ids = await run_sync_and_drain(
+            _indexed_vector_chunk_ids,
             course_id=course_id,
             chunk_ids=sorted(last_chunk_ids),
         )
@@ -196,7 +196,9 @@ def build_sync_knowledge_graph_node(*, context: WorkflowContext):
 
         graph_status = graph_result
         vector_index_status, vector_chunk_count = vector_result
-        runtime = read_knowledge_build_runtime(course_id, course_scope=course_scope)
+        runtime = await run_sync_and_drain(
+            read_knowledge_build_runtime, course_id, course_scope=course_scope,
+        )
         graph_metrics: dict[str, object] = {}
         if runtime is not None and runtime.graph_runtime is not None:
             graph_metrics = dict(runtime.graph_runtime.metrics or {})

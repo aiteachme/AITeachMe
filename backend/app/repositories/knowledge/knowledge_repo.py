@@ -21,9 +21,16 @@ from app.utils.time import utcnow
 logger = structlog.get_logger()
 
 
-def bulk_create_documents(session: Session, documents: list[RawFile]) -> list[RawFile]:
+def bulk_create_documents(
+    session: Session, documents: list[RawFile], *, commit: bool = True,
+) -> list[RawFile]:
     """Persist or update raw-file backed document records."""
 
+    document_ids = [document.id for document in documents if document.id is not None]
+    existing_by_id = {
+        document.id: document
+        for document in session.exec(select(RawFile).where(RawFile.id.in_(document_ids))).all()
+    } if document_ids else {}
     persisted: list[RawFile] = []
     for document in documents:
         if document.id is None:
@@ -31,7 +38,7 @@ def bulk_create_documents(session: Session, documents: list[RawFile]) -> list[Ra
             persisted.append(document)
             continue
 
-        existing = session.get(RawFile, document.id)
+        existing = existing_by_id.get(document.id)
         if existing is None:
             session.add(document)
             persisted.append(document)
@@ -48,9 +55,12 @@ def bulk_create_documents(session: Session, documents: list[RawFile]) -> list[Ra
         existing.updated_at = utcnow()
         session.add(existing)
         persisted.append(existing)
-    session.commit()
-    for document in persisted:
-        session.refresh(document)
+    if commit:
+        session.commit()
+        for document in persisted:
+            session.refresh(document)
+    else:
+        session.flush()
     return persisted
 
 
@@ -101,12 +111,17 @@ def update_document_step(
     return document
 
 
-def bulk_create_chunks(session: Session, chunks: list[RetrievalChunk]) -> list[RetrievalChunk]:
+def bulk_create_chunks(
+    session: Session, chunks: list[RetrievalChunk], *, commit: bool = True,
+) -> list[RetrievalChunk]:
     for chunk in chunks:
         session.add(chunk)
-    session.commit()
-    for chunk in chunks:
-        session.refresh(chunk)
+    if commit:
+        session.commit()
+        for chunk in chunks:
+            session.refresh(chunk)
+    else:
+        session.flush()
     return chunks
 
 

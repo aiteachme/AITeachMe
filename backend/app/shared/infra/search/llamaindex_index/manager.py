@@ -8,9 +8,12 @@ local persistence.
 from __future__ import annotations
 
 import asyncio
+from contextlib import contextmanager
 from dataclasses import dataclass
+from functools import lru_cache
+import hashlib
 import re
-from threading import RLock
+from threading import RLock, local
 from typing import Any
 
 import structlog
@@ -40,6 +43,7 @@ logger = structlog.get_logger(__name__)
 
 _COURSE_LOCKS: dict[str, RLock] = {}
 _COURSE_LOCKS_GUARD = RLock()
+_WRITE_SCOPES = local()
 
 
 @dataclass(slots=True)
@@ -73,6 +77,49 @@ def _course_lock(course_id: str) -> RLock:
             lock = RLock()
             _COURSE_LOCKS[normalized] = lock
         return lock
+
+
+@lru_cache(maxsize=1)
+def _cloud_index_lock_engine(application_engine: sa.Engine) -> sa.Engine:
+    # Advisory locks must not consume the pool needed by the protected writes.
+    # NullPool also closes the dedicated connection on every scope exit.
+    return sa.create_engine(application_engine.url, poolclass=sa.pool.NullPool)
+
+
+@contextmanager
+def course_index_write_scope(course_id: str):
+    """Serialize short chunk/index writes, including across cloud workers.
+
+    Keep embedding requests outside this scope. The advisory transaction uses
+    its own connection: a row/write lock on the application session would
+    deadlock the vector store's independent connections. Nested writes in the
+    same synchronous phase reuse the outer scope.
+    """
+
+    normalized = course_id.strip()
+    with _course_lock(normalized):
+        active = getattr(_WRITE_SCOPES, "courses", None)
+        if active is None:
+            active = _WRITE_SCOPES.courses = set()
+        if normalized in active:
+            yield
+            return
+        active.add(normalized)
+        try:
+            if is_cloud_mode():
+                from app.shared.infra.database import get_engine
+
+                lock_id = int.from_bytes(
+                    hashlib.sha256(f"course-vector:{normalized}".encode()).digest()[:8],
+                    "big", signed=True,
+                )
+                with _cloud_index_lock_engine(get_engine()).begin() as connection:
+                    connection.execute(sa.text("SELECT pg_advisory_xact_lock(:key)"), {"key": lock_id})
+                    yield
+            else:
+                yield
+        finally:
+            active.remove(normalized)
 
 
 def _local_index_prefix(course_id: str) -> str:
@@ -317,7 +364,7 @@ def upsert_chunks(course_id: str, chunks: list[IndexedChunk]) -> None:
             )
         nodes.append(_to_text_node(chunk, chunk.embedding))
 
-    with _course_lock(normalized_course_id):
+    with course_index_write_scope(normalized_course_id):
         vector_store = _load_store(
             normalized_course_id,
             embedding_dim=embedding_dim,
@@ -329,17 +376,17 @@ def upsert_chunks(course_id: str, chunks: list[IndexedChunk]) -> None:
         )
         vector_store.add(nodes)
 
-    expected_chunk_ids = {int(chunk.chunk_id) for chunk in chunks}
-    indexed_chunk_ids = list_indexed_chunk_ids(
-        normalized_course_id,
-        sorted(expected_chunk_ids),
-    )
-    if indexed_chunk_ids != expected_chunk_ids:
-        raise RuntimeError(
-            "Vector index write verification failed for course "
-            f"'{normalized_course_id}': expected {len(expected_chunk_ids)} chunks, "
-            f"found {len(indexed_chunk_ids)}."
+        expected_chunk_ids = {int(chunk.chunk_id) for chunk in chunks}
+        indexed_chunk_ids = list_indexed_chunk_ids(
+            normalized_course_id,
+            sorted(expected_chunk_ids),
         )
+        if indexed_chunk_ids != expected_chunk_ids:
+            raise RuntimeError(
+                "Vector index write verification failed for course "
+                f"'{normalized_course_id}': expected {len(expected_chunk_ids)} chunks, "
+                f"found {len(indexed_chunk_ids)}."
+            )
 
     logger.info(
         "llamaindex_chunks_upserted",
@@ -353,8 +400,9 @@ def upsert_chunks(course_id: str, chunks: list[IndexedChunk]) -> None:
 def rebuild_course_index(course_id: str, chunks: list[IndexedChunk]) -> None:
     """Replace one course index with the supplied pre-embedded chunks."""
 
-    clear_course_index(course_id)
-    upsert_chunks(course_id, chunks)
+    with course_index_write_scope(course_id):
+        clear_course_index(course_id)
+        upsert_chunks(course_id, chunks)
 
 
 def delete_chunks(course_id: str, chunk_ids: list[int]) -> None:
@@ -364,10 +412,9 @@ def delete_chunks(course_id: str, chunk_ids: list[int]) -> None:
     normalized_ids = [int(chunk_id) for chunk_id in chunk_ids if chunk_id is not None]
     if not normalized_course_id or not normalized_ids:
         return
-    if not course_index_exists(normalized_course_id):
-        return
-
-    with _course_lock(normalized_course_id):
+    with course_index_write_scope(normalized_course_id):
+        if not course_index_exists(normalized_course_id):
+            return
         vector_store = _load_store(normalized_course_id)
         _delete_node_ids(vector_store, normalized_ids, course_id=normalized_course_id)
 
@@ -384,7 +431,7 @@ def clear_course_index(course_id: str) -> None:
     normalized_course_id = course_id.strip()
     if not normalized_course_id:
         return
-    with _course_lock(normalized_course_id):
+    with course_index_write_scope(normalized_course_id):
         if is_cloud_mode():
             if not course_index_exists(normalized_course_id):
                 return
@@ -616,5 +663,6 @@ __all__ = [
     "rebuild_course_index",
     "retrieve_course_chunks",
     "course_index_exists",
+    "course_index_write_scope",
     "upsert_chunks",
 ]

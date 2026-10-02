@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import hashlib
+from dataclasses import dataclass
 from datetime import datetime
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
 import structlog
+from sqlmodel import select
 
 from app.shared.infra.database import managed_session
-from app.shared.infra.search.llamaindex_index import aembed_texts_for_ingestion
+from app.shared.infra.search.llamaindex_index import aembed_texts_for_ingestion, course_index_write_scope
 from app.shared.infra.storage import resolve_course_storage_scope
 from app.models import DigestStep, RetrievalChunk
 from app.models.raw_file import RawFile
@@ -21,8 +23,9 @@ from app.shared.infra.course import (
     get_runtime_embedding_config,
     get_course_record_by_id,
     get_course_vector_capability,
-    should_generate_course_embeddings,
 )
+from app.shared.infra.course.vectors import RuntimeEmbeddingConfig
+from app.shared.infra.workflow.runtime import run_sync_and_drain
 from app.workflows.digest.common.models import MaterializedSections, SharedInputs
 
 logger = structlog.get_logger()
@@ -93,281 +96,267 @@ def _chunk_requires_embedding(
     return False
 
 
+@dataclass(slots=True)
+class _PreparedMaterialization:
+    result: MaterializedSections
+    runtime: RuntimeEmbeddingConfig
+    chunks: list[ChunkManifestEntry]
+    source_contents: dict[str, str]
+    embedding_chunk_ids: list[int]
+    embedding_texts: list[str]
+
+
+def _update_document_steps(
+    documents: list[RawFile], chunks: list[RetrievalChunk], indexed_ids: set[int],
+) -> None:
+    chunk_ids_by_file: dict[str, set[int]] = {}
+    for chunk in chunks:
+        chunk_ids_by_file.setdefault(chunk.file_id, set()).add(int(chunk.id))
+    for document in documents:
+        ids = chunk_ids_by_file.get(document.id, set())
+        step = (
+            DigestStep.EMBEDDED if ids and ids <= indexed_ids
+            else DigestStep.CHUNKED if ids else DigestStep.STORED
+        )
+        if document.current_step != step.value:
+            document.current_step = step.value
+            document.updated_at = utcnow()
+
+
+def _prepare_materialization(
+    *, course_id: str, shared_inputs: SharedInputs, session_id: str, update_source_documents: bool,
+) -> _PreparedMaterialization:
+    # No SQL write transaction is held while the vector store writes through
+    # its own connection. The course scope serializes these short phases.
+    with course_index_write_scope(course_id):
+        source_file_ids = [packet.file_id for packet in shared_inputs.source_packets]
+        existing_manifest = _load_chunk_manifest(course_id)
+        manifest_entries = {
+            entry.digest_chunk_uid: entry
+            for entry in (existing_manifest.chunks if existing_manifest is not None else [])
+            if entry.source_file_id not in source_file_ids
+        }
+        with managed_session() as session:
+            course = get_course_record_by_id(session, course_id)
+            if course is None:
+                raise RuntimeError(f"Course `{course_id}` not found while materializing retrieval inputs.")
+            if not update_source_documents:
+                from app.workflows.digest.common.prepare import normalize_markdown_content
+
+                current_sources = {
+                    document.id: document
+                    for document in session.exec(select(RawFile).where(RawFile.id.in_(source_file_ids))).all()
+                }
+                for packet in shared_inputs.source_packets:
+                    current = current_sources.get(packet.file_id)
+                    if (
+                        current is not None and current.markdown_content.strip()
+                        and normalize_markdown_content(current.markdown_content) != packet.normalized_content
+                    ):
+                        raise RuntimeError("Retrieval source material was superseded before materialization.")
+            runtime = get_runtime_embedding_config()
+            writable = get_course_vector_capability(session, course).writable
+            expected_table = build_course_index_ref_for_course(course)
+            existing_chunks = knowledge_repo.get_chunks_by_source_file_ids(
+                session, course_id=course_id, source_file_ids=source_file_ids,
+            )
+            existing_by_uid = {chunk.digest_chunk_uid: chunk for chunk in existing_chunks}
+            source_ids = set(source_file_ids)
+            sections = [
+                section for section in shared_inputs.section_packets
+                if section.source_file_id in source_ids
+            ]
+            desired_uids = {section.digest_chunk_uid for section in sections}
+            stale_chunks = [chunk for chunk in existing_chunks if chunk.digest_chunk_uid not in desired_uids]
+            changed_ids = {
+                int(chunk.id)
+                for section in sections
+                if (chunk := existing_by_uid.get(section.digest_chunk_uid)) is not None
+                and (chunk.title != section.title or chunk.content != section.normalized_content)
+            }
+            invalid_ids = changed_ids | {int(chunk.id) for chunk in stale_chunks}
+            reused_ids = [int(chunk.id) for chunk in existing_chunks if int(chunk.id) not in invalid_ids]
+            indexed_ids = (
+                knowledge_repo.list_indexed_embedding_chunk_ids(
+                    session, table_name=expected_table, chunk_ids=reused_ids,
+                ) if writable and reused_ids else set()
+            )
+            ready_ids = {
+                int(chunk.id) for chunk in existing_chunks
+                if int(chunk.id) in indexed_ids and not _chunk_requires_embedding(
+                    chunk, runtime_model=runtime.embedding_model, expected_table=expected_table,
+                )
+            }
+            # Delete vectors before starting SQL mutations: sqlite-vec opens
+            # an independent write connection to the same database.
+            if invalid_ids:
+                knowledge_repo.delete_embeddings_by_chunk_ids(
+                    session, course_id=course_id, chunk_ids=sorted(invalid_ids),
+                )
+            for chunk in stale_chunks:
+                session.delete(chunk)
+            # Remove old unique (file, ordinal) keys before inserting replacements.
+            session.flush()
+            documents = knowledge_repo.bulk_create_documents(
+                session,
+                [RawFile(
+                    id=packet.file_id, user_id=course.user_id, origin_course_id=course_id,
+                    filename=packet.filename, filetype="markdown", file_path="",
+                    markdown_content=packet.normalized_content, current_step=DigestStep.STORED.value,
+                ) for packet in shared_inputs.source_packets],
+                commit=False,
+            )
+            reused_chunks: list[RetrievalChunk] = []
+            new_chunks: list[RetrievalChunk] = []
+            for section in sections:
+                chunk = existing_by_uid.get(section.digest_chunk_uid)
+                if chunk is None:
+                    new_chunks.append(RetrievalChunk(
+                        course_id=course_id, file_id=section.source_file_id, title=section.title,
+                        level=section.level, header_path=section.header_path,
+                        chunk_index=section.chunk_index, digest_chunk_uid=section.digest_chunk_uid,
+                        build_session_id=session_id, content=section.normalized_content,
+                    ))
+                    continue
+                chunk.file_id = section.source_file_id
+                chunk.title = section.title
+                chunk.level = section.level
+                chunk.header_path = section.header_path
+                chunk.chunk_index = section.chunk_index
+                chunk.content = section.normalized_content
+                chunk.build_session_id = session_id
+                chunk.is_active = True
+                chunk.updated_at = utcnow()
+                if int(chunk.id) in changed_ids:
+                    chunk.embedding_model = None
+                    chunk.vector_ref = None
+                session.add(chunk)
+                reused_chunks.append(chunk)
+            knowledge_repo.bulk_create_chunks(session, new_chunks, commit=False)
+            chunks = [*reused_chunks, *new_chunks]
+            _update_document_steps(documents, chunks, ready_ids)
+            entries = [ChunkManifestEntry(
+                digest_chunk_uid=chunk.digest_chunk_uid, source_file_id=chunk.file_id,
+                document_id=chunk.file_id, chunk_id=int(chunk.id),
+                content_hash=_chunk_content_hash(title=chunk.title, content=chunk.content),
+                title=chunk.title, header_path=chunk.header_path, level=chunk.level,
+                chunk_index=chunk.chunk_index, updated_at=chunk.updated_at,
+            ) for chunk in chunks]
+            result = MaterializedSections(
+                build_session_id=session_id, source_file_ids=source_file_ids,
+                document_ids=[document.id for document in documents],
+                chunk_ids=[entry.chunk_id for entry in entries],
+                chunk_uid_to_chunk_id={entry.digest_chunk_uid: entry.chunk_id for entry in entries},
+                chunk_id_to_chunk_uid={entry.chunk_id: entry.digest_chunk_uid for entry in entries},
+            )
+            targets = [chunk for chunk in chunks if writable and int(chunk.id) not in ready_ids]
+            prepared = _PreparedMaterialization(
+                result=result, runtime=runtime, chunks=entries,
+                source_contents={document.id: document.markdown_content for document in documents},
+                embedding_chunk_ids=[int(chunk.id) for chunk in targets],
+                embedding_texts=[f"{chunk.title}\n{chunk.content}".strip() for chunk in targets],
+            )
+        # The manifest describes committed chunks, independently of whether
+        # embedding succeeds. A delayed embedding completion never rewrites it.
+        manifest_entries.update({entry.digest_chunk_uid: entry for entry in entries})
+        manifest = KnowledgeChunkManifest(
+            course_id=course_id, updated_at=utcnow(), build_session_id=session_id,
+            source_file_ids=sorted({
+                *(existing_manifest.source_file_ids if existing_manifest is not None else []),
+                *source_file_ids,
+            }),
+            chunks=sorted(
+                manifest_entries.values(),
+                key=lambda entry: (entry.source_file_id, entry.chunk_index, entry.digest_chunk_uid),
+            ),
+        )
+        _write_chunk_manifest(course_id, manifest)
+    logger.info(
+        "canonical_chunk_materialization_completed", course_id=course_id, build_session_id=session_id,
+        document_count=len(result.document_ids), chunk_count=len(result.chunk_ids),
+        reused_chunk_count=len(reused_chunks), created_chunk_count=len(new_chunks),
+        deleted_chunk_count=len(stale_chunks),
+    )
+    return prepared
+
+
+def _persist_embeddings(
+    *, course_id: str, prepared: _PreparedMaterialization, embeddings: list[list[float]],
+) -> None:
+    with course_index_write_scope(course_id), managed_session() as session:
+        runtime = get_runtime_embedding_config()
+        course = get_course_record_by_id(session, course_id)
+        if (
+            course is None or not runtime.available
+            or runtime.embedding_model != prepared.runtime.embedding_model
+            or runtime.embedding_dim != prepared.runtime.embedding_dim
+            or runtime.dimension_explicit != prepared.runtime.dimension_explicit
+            or not get_course_vector_capability(session, course).writable
+        ):
+            raise RuntimeError("Course embedding configuration changed during materialization; retry required.")
+        chunks = knowledge_repo.get_chunks_by_ids(session, prepared.result.chunk_ids)
+        by_id = {int(chunk.id): chunk for chunk in chunks}
+        for entry in prepared.chunks:
+            chunk = by_id.get(entry.chunk_id)
+            if (
+                chunk is None or chunk.course_id != course_id or not chunk.is_active
+                or chunk.build_session_id != prepared.result.build_session_id
+                or chunk.file_id != entry.source_file_id or chunk.digest_chunk_uid != entry.digest_chunk_uid
+                or _chunk_content_hash(title=chunk.title, content=chunk.content) != entry.content_hash
+            ):
+                raise RuntimeError("Retrieval materialization was superseded while embeddings were running.")
+        documents = list(session.exec(
+            select(RawFile).where(RawFile.id.in_(prepared.result.document_ids))
+        ).all())
+        if {document.id: document.markdown_content for document in documents} != prepared.source_contents:
+            raise RuntimeError("Retrieval source material was superseded while embeddings were running.")
+        if runtime.dimension_explicit and any(len(vector) != runtime.embedding_dim for vector in embeddings):
+            raise RuntimeError("Returned vectors do not match the configured embedding dimension.")
+        # The session is read-only up to here, so independent vector writes
+        # cannot wait on a SQLite write transaction owned by this thread.
+        knowledge_repo.bulk_insert_embeddings(
+            session, course_id=course_id, chunk_ids=prepared.embedding_chunk_ids,
+            embeddings=embeddings, embedding_model=runtime.embedding_model,
+        )
+        expected_table = build_course_index_ref_for_course(course)
+        indexed_ids = knowledge_repo.list_indexed_embedding_chunk_ids(
+            session, table_name=expected_table, chunk_ids=prepared.result.chunk_ids,
+        )
+        ready_ids = {
+            int(chunk.id) for chunk in chunks
+            if int(chunk.id) in indexed_ids and not _chunk_requires_embedding(
+                chunk, runtime_model=runtime.embedding_model, expected_table=expected_table,
+            )
+        }
+        _update_document_steps(documents, chunks, ready_ids)
+
+
 async def materialize_shared_inputs(
     *,
     course_id: str,
     shared_inputs: SharedInputs,
     build_session_id: str | None = None,
+    update_source_documents: bool = False,
 ) -> MaterializedSections:
-    """Persist canonical documents and chunks for one digest build session."""
+    """Materialize chunks, await embeddings without a DB session, then validate and persist."""
 
-    session_id = build_session_id or uuid4().hex
-    source_file_ids = [packet.file_id for packet in shared_inputs.source_packets]
-    existing_manifest = _load_chunk_manifest(course_id)
-    previous_entries = {
-        entry.digest_chunk_uid: entry
-        for entry in (existing_manifest.chunks if existing_manifest is not None else [])
-    }
-
-    with managed_session() as session:
-        course_record = get_course_record_by_id(session, course_id)
-        if course_record is None:
-            raise RuntimeError(f"Course `{course_id}` not found while materializing retrieval inputs.")
-        documents = knowledge_repo.bulk_create_documents(
-            session,
-            [
-                RawFile(
-                    id=packet.file_id,
-                    user_id=course_record.user_id,
-                    origin_course_id=course_id,
-                    filename=packet.filename,
-                    filetype="markdown",
-                    file_path="",
-                    markdown_content=packet.normalized_content,
-                    current_step=DigestStep.STORED.value,
-                )
-                for packet in shared_inputs.source_packets
-            ],
-        )
-        document_id_by_file_id = {
-            packet.file_id: document.id
-            for packet, document in zip(shared_inputs.source_packets, documents, strict=False)
-            if document.id
-        }
-
-        existing_chunks = knowledge_repo.get_chunks_by_source_file_ids(
-            session,
-            course_id=course_id,
-            source_file_ids=source_file_ids,
-        )
-        existing_chunk_by_uid = {
-            chunk.digest_chunk_uid: chunk
-            for chunk in existing_chunks
-            if chunk.digest_chunk_uid
-        }
-        desired_sections = [
-            section
-            for section in shared_inputs.section_packets
-            if section.source_file_id in document_id_by_file_id
-        ]
-        desired_uids = {section.digest_chunk_uid for section in desired_sections}
-
-        stale_chunk_ids = [
-            int(chunk.id)
-            for uid, chunk in existing_chunk_by_uid.items()
-            if uid not in desired_uids and chunk.id is not None
-        ]
-        deleted_chunks = knowledge_repo.delete_chunks_by_ids(
-            session,
-            course_id=course_id,
-            chunk_ids=stale_chunk_ids,
-        )
-
-        reused_chunks: list[RetrievalChunk] = []
-        new_chunk_models: list[RetrievalChunk] = []
-        content_changed_chunk_ids: list[int] = []
-        reused_count = 0
-
-        for section in desired_sections:
-            file_id = document_id_by_file_id[section.source_file_id]
-            existing_chunk = existing_chunk_by_uid.get(section.digest_chunk_uid)
-            if existing_chunk is None:
-                new_chunk_models.append(
-                    RetrievalChunk(
-                        course_id=course_id,
-                        file_id=file_id,
-                        title=section.title,
-                        level=section.level,
-                        header_path=section.header_path,
-                        chunk_index=section.chunk_index,
-                        digest_chunk_uid=section.digest_chunk_uid,
-                        build_session_id=session_id,
-                        content=section.normalized_content,
-                    )
-                )
-                continue
-
-            content_changed = existing_chunk.content != section.normalized_content
-            metadata_changed = any(
-                [
-                    existing_chunk.file_id != file_id,
-                    existing_chunk.title != section.title,
-                    existing_chunk.level != section.level,
-                    existing_chunk.header_path != section.header_path,
-                    existing_chunk.chunk_index != section.chunk_index,
-                    existing_chunk.content != section.normalized_content,
-                    existing_chunk.build_session_id != session_id,
-                    not existing_chunk.is_active,
-                ]
-            )
-            if metadata_changed:
-                existing_chunk.file_id = file_id
-                existing_chunk.title = section.title
-                existing_chunk.level = section.level
-                existing_chunk.header_path = section.header_path
-                existing_chunk.chunk_index = section.chunk_index
-                existing_chunk.content = section.normalized_content
-                existing_chunk.build_session_id = session_id
-                existing_chunk.is_active = True
-                existing_chunk.updated_at = utcnow()
-                session.add(existing_chunk)
-            if content_changed and existing_chunk.id is not None:
-                content_changed_chunk_ids.append(int(existing_chunk.id))
-            reused_chunks.append(existing_chunk)
-            reused_count += 1
-
-        if content_changed_chunk_ids:
-            knowledge_repo.delete_embeddings_by_chunk_ids(
-                session,
-                course_id=course_id,
-                chunk_ids=content_changed_chunk_ids,
-            )
-            for chunk in reused_chunks:
-                if chunk.id is not None and int(chunk.id) in content_changed_chunk_ids:
-                    chunk.embedding_model = None
-                    chunk.vector_ref = None
-                    session.add(chunk)
-
-        if reused_chunks:
-            session.commit()
-            for chunk in reused_chunks:
-                session.refresh(chunk)
-
-        chunk_rows = knowledge_repo.bulk_create_chunks(session, new_chunk_models) if new_chunk_models else []
-        should_embed = should_generate_course_embeddings(session, course_id=course_id)
-        if should_embed and (chunk_rows or reused_chunks):
-            runtime = get_runtime_embedding_config()
-            capability = (
-                get_course_vector_capability(session, course_record)
-            )
-            expected_table = (
-                build_course_index_ref_for_course(course_record)
-                if capability is not None
-                else None
-            )
-            reused_chunk_ids = [int(chunk.id) for chunk in reused_chunks if chunk.id is not None]
-            missing_embedding_chunk_ids: set[int] = set()
-            if expected_table and reused_chunk_ids:
-                indexed_chunk_ids = knowledge_repo.list_indexed_embedding_chunk_ids(
-                    session,
-                    table_name=expected_table,
-                    chunk_ids=reused_chunk_ids,
-                )
-                missing_embedding_chunk_ids = set(reused_chunk_ids) - indexed_chunk_ids
-
-            embedding_targets: list[RetrievalChunk] = list(chunk_rows)
-            for chunk in reused_chunks:
-                if chunk.id is None:
-                    continue
-                chunk_id = int(chunk.id)
-                if chunk_id in missing_embedding_chunk_ids or _chunk_requires_embedding(
-                    chunk,
-                    runtime_model=runtime.embedding_model,
-                    expected_table=expected_table,
-                ):
-                    embedding_targets.append(chunk)
-
-            if embedding_targets:
-                embeddings = await aembed_texts_for_ingestion(
-                    [f"{chunk.title}\n{chunk.content}".strip() for chunk in embedding_targets],
-                    model=runtime.embedding_model,
-                    soft_fail=True,
-                )
-                if embeddings:
-                    knowledge_repo.bulk_insert_embeddings(
-                        session,
-                        course_id=course_id,
-                        chunk_ids=[int(chunk.id) for chunk in embedding_targets if chunk.id is not None],
-                        embeddings=embeddings,
-                        embedding_model=runtime.embedding_model,
-                    )
-                else:
-                    logger.warning(
-                        "canonical_chunk_embedding_soft_skipped",
-                        course_id=course_id,
-                        build_session_id=session_id,
-                        reason="embedding_call_unavailable_or_failed",
-                        chunk_count=len(embedding_targets),
-                    )
-        elif chunk_rows:
-            logger.info(
-                "canonical_chunk_embedding_skipped",
-                course_id=course_id,
-                reason="course_vectors_disabled_or_unavailable",
-                chunk_count=len(chunk_rows),
-            )
-
-        for document in documents:
-            if not document.id:
-                continue
-            knowledge_repo.update_document_step(session, document.id, DigestStep.EMBEDDED.value)
-
-        materialized_chunks = [*reused_chunks, *chunk_rows]
-        chunk_ids = [int(chunk.id) for chunk in materialized_chunks if chunk.id is not None]
-        chunk_uid_to_chunk_id = {
-            chunk.digest_chunk_uid: int(chunk.id)
-            for chunk in materialized_chunks
-            if chunk.id is not None
-        }
-        chunk_id_to_chunk_uid = {
-            int(chunk.id): chunk.digest_chunk_uid
-            for chunk in materialized_chunks
-            if chunk.id is not None
-        }
-
-        manifest_entries: dict[str, ChunkManifestEntry] = {
-            uid: entry
-            for uid, entry in previous_entries.items()
-            if entry.source_file_id not in source_file_ids
-        }
-        for chunk in materialized_chunks:
-            if chunk.id is None:
-                continue
-            manifest_entries[chunk.digest_chunk_uid] = ChunkManifestEntry(
-                digest_chunk_uid=chunk.digest_chunk_uid,
-                source_file_id=chunk.file_id,
-                document_id=chunk.file_id,
-                chunk_id=int(chunk.id),
-                content_hash=_chunk_content_hash(title=chunk.title, content=chunk.content),
-                title=chunk.title,
-                header_path=chunk.header_path,
-                level=chunk.level,
-                chunk_index=chunk.chunk_index,
-                updated_at=chunk.updated_at,
-            )
-
-    materialized = MaterializedSections(
-        build_session_id=session_id,
-        source_file_ids=source_file_ids,
-        document_ids=[document.id for document in documents if document.id],
-        chunk_ids=chunk_ids,
-        chunk_uid_to_chunk_id=chunk_uid_to_chunk_id,
-        chunk_id_to_chunk_uid=chunk_id_to_chunk_uid,
+    prepared = await run_sync_and_drain(
+        _prepare_materialization, course_id=course_id, shared_inputs=shared_inputs,
+        session_id=build_session_id or uuid4().hex,
+        update_source_documents=update_source_documents,
     )
-    manifest = KnowledgeChunkManifest(
-        course_id=course_id,
-        updated_at=utcnow(),
-        build_session_id=session_id,
-        source_file_ids=sorted(
-            {
-                *(existing_manifest.source_file_ids if existing_manifest is not None else []),
-                *source_file_ids,
-            }
-        ),
-        chunks=sorted(
-            manifest_entries.values(),
-            key=lambda entry: (entry.source_file_id, entry.chunk_index, entry.digest_chunk_uid),
-        ),
-    )
-    _write_chunk_manifest(course_id, manifest)
-    logger.info(
-        "canonical_chunk_materialization_completed",
-        course_id=course_id,
-        build_session_id=session_id,
-        document_count=len(materialized.document_ids),
-        chunk_count=len(materialized.chunk_ids),
-        reused_chunk_count=reused_count,
-        created_chunk_count=len(chunk_rows),
-        deleted_chunk_count=deleted_chunks,
-    )
-    return materialized
+    if prepared.embedding_chunk_ids:
+        embeddings = await aembed_texts_for_ingestion(
+            prepared.embedding_texts, model=prepared.runtime.embedding_model, soft_fail=True,
+        )
+        if embeddings:
+            await run_sync_and_drain(
+                _persist_embeddings, course_id=course_id, prepared=prepared, embeddings=embeddings,
+            )
+        else:
+            logger.warning(
+                "canonical_chunk_embedding_soft_skipped", course_id=course_id,
+                build_session_id=prepared.result.build_session_id,
+                reason="embedding_call_unavailable_or_failed", chunk_count=len(prepared.embedding_chunk_ids),
+            )
+    return prepared.result

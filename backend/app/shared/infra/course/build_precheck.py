@@ -188,6 +188,25 @@ def resolve_course_build_vector_status(
 ) -> CourseVectorStatusResponse:
     """Apply one optional resolution and return the resulting vector status."""
 
+    from app.shared.infra.search.llamaindex_index import course_index_write_scope
+
+    with course_index_write_scope(course.id):
+        # The course may have been loaded before waiting for an in-flight
+        # materialization. Preserve the latest binding when disabling it.
+        session.refresh(course, attribute_names=["settings_json"])
+        return _resolve_course_build_vector_status(
+            session, course=course, embedding_resolution=embedding_resolution,
+            prechecked_conflict=prechecked_conflict,
+        )
+
+
+def _resolve_course_build_vector_status(
+    session: Session,
+    *,
+    course: Course,
+    embedding_resolution: str | None,
+    prechecked_conflict: KnowledgeBuildPrecheckConflictData | None | object,
+) -> CourseVectorStatusResponse:
     auto_rebuild_reason: str | None = None
     if prechecked_conflict is _PRECHECK_NOT_PROVIDED:
         conflict = inspect_course_build_precheck(session, course=course)
