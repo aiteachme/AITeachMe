@@ -155,3 +155,56 @@ def test_saved_difficulty_overrides_blueprint_model_output() -> None:
     )
 
     assert blueprints[0].difficulty == "hard"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("frozen_type", ["single_choice", "case_analysis"])
+async def test_blueprints_inherit_frozen_types_without_replanning(monkeypatch, frozen_type) -> None:
+    calls = []
+    plans = [
+        generator.ExamQuestionRequirementPlan(
+            item_order=order, question_type=frozen_type, generation_prompt=f"Requirement {order}",
+        )
+        for order in range(1, 11)
+    ]
+
+    async def allocate(*args, **kwargs):
+        calls.append(kwargs)
+        return generator.ExamQuestionBlueprintBatch.model_validate({
+            "blueprints": [
+                {
+                    "item_order": order, "knowledge_unit_ids": [1],
+                    "question_type": "medium" if order == 8 else frozen_type,
+                    "difficulty": "medium", "generation_prompt": "Ignore the frozen requirement",
+                }
+                for order in range(1, 11)
+            ],
+        })
+
+    monkeypatch.setattr(generator, "acompletion_with_fallback", allocate)
+    blueprints = await generator.allocate_exam_question_knowledge_units(
+        exam_mode="web_practice",
+        units=[KnowledgeUnit(id=1, course_id="course-config", canonical_name="Lists", normalized_name="lists")],
+        question_count=10, question_prompt_plans=plans, configured_difficulty="easy",
+    )
+
+    assert len(calls) == 1
+    assert [item.question_type for item in blueprints] == [frozen_type] * 10
+    assert [item.generation_prompt for item in blueprints] == [item.generation_prompt for item in plans]
+    assert all(item.difficulty == "easy" for item in blueprints)
+    assert all(item.to_generation_spec().question_type == frozen_type for item in blueprints)
+
+
+@pytest.mark.parametrize("unit_ids, question_count", [([999], 1), ([1], 2)])
+def test_frozen_types_do_not_hide_missing_blueprints_or_invalid_knowledge(unit_ids, question_count) -> None:
+    with pytest.raises(ValueError, match="invalid or incomplete"):
+        generator._validate_blueprints(
+            generated=[generator.ExamQuestionBlueprint(
+                item_order=1, knowledge_unit_ids=unit_ids, question_type="medium", difficulty="medium",
+            )],
+            units=[KnowledgeUnit(id=1, course_id="course-config", canonical_name="Lists", normalized_name="lists")],
+            question_count=question_count,
+            question_prompt_plans=[generator.ExamQuestionRequirementPlan(
+                item_order=1, question_type="single_choice", generation_prompt="Test lists",
+            )],
+        )

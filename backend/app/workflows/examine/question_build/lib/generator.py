@@ -1199,8 +1199,6 @@ def _validate_blueprints(
         if item is None:
             continue
         prompt_plan = prompt_plan_by_order.get(order)
-        if prompt_plan is not None and item.question_type != prompt_plan.question_type:
-            continue
         ids = [unit_id for unit_id in item.knowledge_unit_ids if unit_id in unit_ids]
         if not ids:
             continue
@@ -1208,7 +1206,9 @@ def _validate_blueprints(
             ExamQuestionBlueprint(
                 item_order=order,
                 knowledge_unit_ids=ids,
-                question_type=item.question_type,
+                # The requirement plan owns the type; allocation only chooses
+                # knowledge units and difficulty, including for custom types.
+                question_type=prompt_plan.question_type if prompt_plan is not None else item.question_type,
                 difficulty=forced_difficulty or item.difficulty,
                 rationale=item.rationale,
                 generation_prompt=prompt_plan.generation_prompt if prompt_plan is not None else item.generation_prompt,
