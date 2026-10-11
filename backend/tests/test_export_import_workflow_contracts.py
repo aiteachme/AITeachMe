@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+from contextlib import contextmanager
 import hashlib
 import json
 import shutil
@@ -39,6 +40,8 @@ from app.workflows.support import course_shares as course_shares_module
 from app.shared.infra.storage import build_course_storage_scope
 from app.utils.time import utcnow
 from app.workflows.digest.docgen.lib import build_lifecycle as docgen_build_lifecycle
+from app.workflows.digest.common import indexing, materialize
+from app.workflows.digest.common.section_splitter import split_into_sections
 from app.workflows.support.export_import import exports as export_module
 from app.workflows.support.export_import import imports as import_module
 from app.workflows.support.question_type_packages import build_atqskill_archive, validate_atqskill
@@ -847,6 +850,134 @@ def test_import_course_can_defer_commit_and_cleanup_storage(
     finally:
         target_engine.dispose()
         package_path.unlink(missing_ok=True)
+
+
+@pytest.mark.parametrize("include_sources", [True, False])
+def test_export_includes_unlinked_retrieval_sources_only_for_this_course(
+    session: Session, export_import_store: _FakeStore, include_sources: bool,
+) -> None:
+    source_id = "published-knowledge-docs-" + hashlib.sha256(COURSE_ID.encode()).hexdigest()[:24]
+    session.add_all([
+        Course(id=COURSE_ID, user_id="user-1", name="Lists"),
+        Course(id="course-other", user_id="user-2", name="Private"),
+        RawFile(id=source_id, user_id="user-1", origin_course_id=COURSE_ID,
+                filename="课程知识文档.md", filetype="markdown", file_path="", markdown_content="# Lists\n\nList content."),
+        RawFile(id="uploaded", user_id="user-1", filename="notes.md", filetype="markdown", file_path=""),
+        RawFile(id="unrelated", user_id="user-2", origin_course_id="course-other",
+                filename="private.md", filetype="markdown", file_path="", markdown_content="Private content"),
+        CourseFileLink(course_id=COURSE_ID, file_id="uploaded"),
+        RetrievalChunk(course_id=COURSE_ID, file_id=source_id, title="Lists", level=1,
+                       header_path="Lists", chunk_index=0, digest_chunk_uid="list-chunk", content="List content."),
+        RetrievalChunk(course_id="course-other", file_id="unrelated", title="Private", level=1,
+                       header_path="Private", chunk_index=0, digest_chunk_uid="private-chunk", content="Private content"),
+    ])
+    session.commit()
+    options = ExportOptions(include_raw_markdowns=include_sources, include_knowledge_docs=False)
+    preview = export_module.preview_export(session, course_id=COURSE_ID, options=options)
+    package_path = export_module.export_course(session, course_id=COURSE_ID, options=options)
+    try:
+        with zipfile.ZipFile(package_path) as archive:
+            if include_sources:
+                sources = json.loads(archive.read("db/raw_file.json"))["records"]
+                chunks = json.loads(archive.read("db/retrieval_chunk.json"))["records"]
+                links = json.loads(archive.read("db/course_file.json"))["records"]
+                assert {record["id"] for record in sources} == {source_id, "uploaded"}
+                assert {record["file_id"] for record in chunks} == {source_id}
+                assert {record["file_id"] for record in links} == {"uploaded"}
+                assert preview.stats.raw_file_count == 2
+                assert json.loads(archive.read("manifest.json"))["stats"]["raw_file_count"] == 2
+            else:
+                assert "db/raw_file.json" not in archive.namelist()
+                assert "db/retrieval_chunk.json" not in archive.namelist()
+                assert preview.stats.raw_file_count == 0
+    finally:
+        package_path.unlink(missing_ok=True)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("source_metadata", ["present", "empty", "missing"])
+async def test_import_preserves_published_retrieval_sources_and_can_reindex(
+    session: Session, export_import_store: _FakeStore, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, source_metadata: str,
+) -> None:
+    source_id = "published-knowledge-docs-" + hashlib.sha256(COURSE_ID.encode()).hexdigest()[:24]
+    new_source_id = "published-knowledge-docs-" + hashlib.sha256(IMPORTED_COURSE_ID.encode()).hexdigest()[:24]
+    markdown = "# Lists\n\nLists store values.\n\n## Indexing\n\nPositions start at zero."
+    sections = split_into_sections(markdown, file_id=source_id, filename="课程知识文档.md")
+    tables = {
+        "course": [{"id": COURSE_ID, "user_id": "user-1", "name": "Lists"}],
+        "raw_file": [{"id": source_id, "user_id": "user-1", "origin_course_id": COURSE_ID,
+                      "filename": "课程知识文档.md", "filetype": "markdown", "file_path": "",
+                      "markdown_content": markdown}] if source_metadata == "present" else [],
+        "retrieval_chunk": [
+            {"id": 100 + index, "course_id": COURSE_ID, "file_id": source_id,
+             "title": section.title, "level": section.level, "header_path": section.header_path,
+             "chunk_index": section.chunk_index, "digest_chunk_uid": section.digest_chunk_uid,
+             "content": section.normalized_content, "embedding_model": "old-model", "vector_ref": "old-table"}
+            for index, section in enumerate(sections)
+        ],
+        "knowledge_document": [{"id": 10, "course_id": COURSE_ID, "chapter_index": 1,
+                                "title": "Lists", "markdown_content": markdown,
+                                "status": "published", "is_current": True}],
+        "chat_session": [{"id": "chat-old", "course_id": COURSE_ID, "user_id": "user-1", "title": "QA"}],
+        "chat_message": [{"id": 200, "course_id": COURSE_ID, "user_id": "user-1",
+                          "session_id": "chat-old", "turn_id": "turn", "role": "assistant", "content": "Lists store values.",
+                          "source_chunk_id": 100, "contexts_json": [{"chunk_id": 100, "file_id": source_id}]}],
+    }
+    if source_metadata == "missing":
+        tables.pop("raw_file")
+    package_path = tmp_path / "published.atmx"
+    with zipfile.ZipFile(package_path, "w") as archive:
+        archive.writestr("manifest.json", json.dumps({
+            "format_version": "1.0", "course": {"course_id": COURSE_ID, "name": "Lists"},
+        }))
+        for table, records in tables.items():
+            archive.writestr(f"db/{table}.json", json.dumps({"table": table, "records": records}))
+    monkeypatch.setattr(import_module, "_create_unique_course_id", lambda db: IMPORTED_COURSE_ID)
+    result = import_module.import_course(
+        session, file_path=package_path, user_id="user-2", options=ImportOptions(rebuild_embeddings=False),
+    )
+    assert result.imported_counts["retrieval_chunk"] == len(sections)
+    assert result.imported_counts["raw_file"] == 1
+    assert result.warnings == []
+    source = session.get(RawFile, new_source_id)
+    assert source is not None
+    assert source.user_id == "user-2"
+    assert source.origin_course_id == IMPORTED_COURSE_ID
+    assert session.get(RawFile, source_id) is None
+    chunks = session.exec(select(RetrievalChunk).where(RetrievalChunk.course_id == IMPORTED_COURSE_ID)).all()
+    assert {chunk.file_id for chunk in chunks} == {new_source_id}
+    assert all(chunk.embedding_model is None and chunk.vector_ref is None for chunk in chunks)
+    chunk_ids = {int(chunk.id) for chunk in chunks}
+    message = session.exec(select(ChatMessage).where(ChatMessage.course_id == IMPORTED_COURSE_ID)).one()
+    assert message.source_chunk_id in chunk_ids
+    assert message.contexts_json == [{"chunk_id": message.source_chunk_id, "file_id": new_source_id}]
+
+    @contextmanager
+    def transaction():
+        with Session(session.get_bind(), expire_on_commit=False) as db:
+            yield db
+            db.commit()
+
+    monkeypatch.setattr(materialize, "managed_session", transaction)
+    monkeypatch.setattr(materialize, "_load_chunk_manifest", lambda cid: None)
+    monkeypatch.setattr(materialize, "_write_chunk_manifest", lambda *args: "manifest.json")
+    monkeypatch.setattr(materialize, "get_runtime_embedding_config", lambda: SimpleNamespace(embedding_model=None))
+    monkeypatch.setattr(materialize, "get_course_vector_capability", lambda *args: SimpleNamespace(writable=False))
+    await indexing.index_published_knowledge_docs_for_retrieval(
+        course_id=IMPORTED_COURSE_ID, markdown=markdown, raise_errors=True,
+    )
+    session.expire_all()
+    reindexed = session.exec(select(RetrievalChunk).where(RetrievalChunk.course_id == IMPORTED_COURSE_ID)).all()
+    assert {int(chunk.id) for chunk in reindexed} == chunk_ids
+    assert session.get(RawFile, new_source_id).markdown_content == markdown
+    reexport_path = export_module.export_course(session, course_id=IMPORTED_COURSE_ID)
+    try:
+        with zipfile.ZipFile(reexport_path) as archive:
+            assert json.loads(archive.read("db/retrieval_chunk.json"))["count"] == len(sections)
+            assert {record["id"] for record in json.loads(archive.read("db/raw_file.json"))["records"]} == {new_source_id}
+    finally:
+        reexport_path.unlink(missing_ok=True)
 
 
 def test_import_course_remaps_chat_context_citation_ids(

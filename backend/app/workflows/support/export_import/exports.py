@@ -49,7 +49,6 @@ from app.models import (
     Course,
     UserKnowledgeState,
 )
-from app.repositories.files_repo import list_all_raw_files_by_course
 from app.schemas.export_import import (
     ExportOptions,
     ExportPreviewData,
@@ -58,6 +57,10 @@ from app.schemas.export_import import (
 from app.utils.path_helpers import sanitize_doc_title
 from app.utils.course import generate_course_id
 from app.utils.time import utcnow
+from app.workflows.digest.common.retrieval_identity import (
+    build_digest_chunk_uid,
+    published_knowledge_docs_source_id,
+)
 from app.workflows.support.courses.icons import (
     COURSE_ICON_SETTINGS_KEY,
     infer_course_icon_key,
@@ -317,7 +320,7 @@ def preview_export(
 
     options = options or ExportOptions()
     course = _require_course(session, course_id)
-    raw_files = list_all_raw_files_by_course(session, course_id)
+    raw_files = _list_export_raw_files(session, course_id)
 
     stats = ExportPreviewStats(
         raw_file_count=len(raw_files) if _exports_raw_file_metadata(options) else 0,
@@ -401,7 +404,7 @@ def export_course(
                     ),
                 )
 
-            raw_files = list_all_raw_files_by_course(session, course_id)
+            raw_files = _list_export_raw_files(session, course_id)
             _pack_files(
                 zf,
                 course_scope.namespace,
@@ -505,6 +508,19 @@ def _exports_raw_file_metadata(options: ExportOptions) -> bool:
     return options.include_raw_markdowns
 
 
+def _list_export_raw_files(session: Session, course_id: str) -> list[RawFile]:
+    # Authored knowledge docs have a raw-file backed retrieval source without
+    # a CourseFileLink. Include it without exposing unrelated library files.
+    source_ids = select(CourseFileLink.file_id).where(CourseFileLink.course_id == course_id).union(
+        select(RetrievalChunk.file_id).where(RetrievalChunk.course_id == course_id)
+    )
+    owner = select(Course.user_id).where(Course.id == course_id).scalar_subquery()
+    return list(session.exec(
+        select(RawFile).where(RawFile.id.in_(source_ids), RawFile.user_id == owner)
+        .order_by(RawFile.created_at, RawFile.id)
+    ).all())
+
+
 def _query_table(
     session: Session,
     spec: _TableSpec,
@@ -519,7 +535,7 @@ def _query_table(
         return stmt.order_by(order_col)
 
     if spec.name == "raw_file":
-        rows = list_all_raw_files_by_course(session, course_id)
+        rows = _list_export_raw_files(session, course_id)
     elif spec.name == "exam_paper":
         rows = session.exec(
             _ordered(
@@ -673,6 +689,10 @@ def _import_table(
     self_fk_fields = {fk_field for fk_field, ref_table in spec.fk_remap.items() if ref_table == spec.name}
     pending_self_refs: list[tuple[SQLModel, dict[str, Any], Any]] = []
     imported_at = utcnow()
+    published_source_ids = {
+        published_knowledge_docs_source_id(str(course_id))
+        for course_id in id_map.get("course", {})
+    }
 
     for raw_record in records:
         record_data = dict(raw_record)
@@ -698,7 +718,7 @@ def _import_table(
             record_data[spec.course_field] = new_course_id
 
         # 更新 user_id
-        if "user_id" in record_data:
+        if "user_id" in spec.model.model_fields:
             record_data["user_id"] = user_id
 
         if spec.name == "course_file":
@@ -710,7 +730,12 @@ def _import_table(
             if "file_id" not in record_data and legacy_document_id is not None:
                 record_data["file_id"] = legacy_document_id
 
-        if spec.name == "raw_file":
+        is_published_source = (
+            spec.name == "raw_file" and old_id in published_source_ids
+        ) or (
+            spec.name == "retrieval_chunk" and record_data.get("file_id") in published_source_ids
+        )
+        if spec.name == "raw_file" and not is_published_source:
             existing_raw_file = _find_existing_raw_file_for_import(
                 session,
                 record_data,
@@ -769,13 +794,18 @@ def _import_table(
         if spec.name == "raw_file":
             record_data.pop("uid", None)
         if spec.name == "raw_file":
-            record_data["id"] = f"file_{uuid.uuid4().hex}"  # Prevent identity conflicts
+            record_data["id"] = (
+                published_knowledge_docs_source_id(new_course_id)
+                if is_published_source else f"file_{uuid.uuid4().hex}"
+            )
             record_data["origin_course_id"] = new_course_id
             record_data["origin_course_name"] = new_name
             record_data["markdown_path"] = None
             record_data["asset_dir"] = None
             record_data["storage_uri"] = None
             record_data["markdown_uri"] = None
+            if is_published_source:
+                record_data["file_path"] = ""
         elif spec.name == "retrieval_chunk":
             record_data["embedding_model"] = None
             record_data["vector_ref"] = None
@@ -786,6 +816,11 @@ def _import_table(
         # Create and flush the row to obtain its new primary key.
         try:
             instance = spec.model.model_validate(record_data)
+            if isinstance(instance, RetrievalChunk) and is_published_source:
+                instance.digest_chunk_uid = build_digest_chunk_uid(
+                    file_id=instance.file_id, chunk_index=instance.chunk_index,
+                    title=instance.title, content=instance.content,
+                )
             if isinstance(instance, QuestionTemplate) and instance.question_type_version_id is not None:
                 # Version IDs are local to a database, so their derived identity
                 # must be rebuilt after remapping, before either unique index is checked.
@@ -805,7 +840,7 @@ def _import_table(
 
         # Rebuild storage keys under the new course namespace.
         cs = get_content_store()
-        if spec.name == "raw_file" and isinstance(new_id, str):
+        if spec.name == "raw_file" and isinstance(new_id, str) and not is_published_source:
             file_scope = cs.user_file_scope(user_id=user_id)
             ext = instance.filetype if instance.filetype.startswith(".") else f".{instance.filetype}"
             instance.file_path = file_scope.raw_file_key(

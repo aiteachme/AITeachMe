@@ -9,7 +9,6 @@ unavailable.
 
 from __future__ import annotations
 
-import hashlib
 from uuid import uuid4
 
 import structlog
@@ -24,6 +23,7 @@ from app.workflows.digest.common.prepare import (
     prepare_shared_inputs,
 )
 from app.workflows.digest.common.section_splitter import split_into_sections
+from app.workflows.digest.common.retrieval_identity import published_knowledge_docs_source_id
 
 logger = structlog.get_logger(__name__)
 
@@ -137,10 +137,7 @@ async def index_published_knowledge_docs_for_retrieval(
     if not normalized_course_id or not normalized_markdown:
         return None
 
-    source_file_id = (
-        "published-knowledge-docs-"
-        + hashlib.sha256(normalized_course_id.encode("utf-8")).hexdigest()[:24]
-    )
+    source_file_id = published_knowledge_docs_source_id(normalized_course_id)
     filename = "课程知识文档.md"
     image_refs = extract_image_refs(normalized_markdown)
     source_packet = SourcePacket(

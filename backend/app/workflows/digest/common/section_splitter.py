@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import hashlib
 import re
 from pathlib import Path
 
 from app.shared.infra.search.llamaindex_index import split_text_for_ingestion
 from app.workflows.digest.common.models import SectionPacket
+from app.workflows.digest.common.retrieval_identity import build_digest_chunk_uid
 
 HEADING_PATTERN = re.compile(r"^(#{1,6})\s+(.+)$", re.MULTILINE)
 INLINE_FORMULA_PATTERN = re.compile(r"\$([^$\n]{1,160})\$")
@@ -121,10 +121,9 @@ def _build_section_packet(
     header_path: str,
 ) -> SectionPacket:
     normalized_content = content.strip()
-    uid_hash = hashlib.md5(
-        f"{file_id}:{chunk_index}:{title}:{normalized_content}".encode("utf-8")
-    ).hexdigest()[:10]
-    digest_chunk_uid = f"rf_{file_id}_sec_{chunk_index:03d}_{uid_hash}"
+    digest_chunk_uid = build_digest_chunk_uid(
+        file_id=file_id, chunk_index=chunk_index, title=title, content=normalized_content,
+    )
     preview = normalized_content.replace("\n", " ").strip()[:200]
     if len(normalized_content) > 200:
         preview = preview.rstrip() + "..."

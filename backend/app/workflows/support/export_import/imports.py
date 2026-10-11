@@ -77,6 +77,7 @@ from app.workflows.support.question_type_packages.validator import (
     validate_compiled_question_type_definition,
 )
 from app.workflows.digest.docgen.lib.published_manifest import ensure_published_knowledge_manifest
+from app.workflows.digest.common.retrieval_identity import published_knowledge_docs_source_id
 from app.shared.infra.llm_support.common import build_completion_contexts
 from app.workflows.support.export_import.exports import (
     TABLE_REGISTRY,
@@ -500,6 +501,27 @@ def _import_embedding_rebuild_route_unavailable_reason() -> str | None:
     return None
 
 
+def _restore_missing_published_source(
+    records: list[dict], *, extract_dir: Path, course_id: str,
+) -> None:
+    """Backfill source metadata omitted by older packages, preserving their chunks."""
+    source_id = published_knowledge_docs_source_id(course_id)
+    if any(record.get("id") == source_id for record in records):
+        return
+    chunk_file = extract_dir / "db" / "retrieval_chunk.json"
+    if not chunk_file.exists():
+        return
+    chunks = _read_table_records(chunk_file, "retrieval_chunk")
+    if not any(record.get("file_id", record.get("document_id")) == source_id for record in chunks):
+        return
+    # The missing source body cannot be recovered exactly from chunks. Keep
+    # the existing chunks and published docs; republishing updates this source.
+    records.append({
+        "id": source_id, "origin_course_id": course_id,
+        "filename": "课程知识文档.md", "filetype": "markdown", "file_path": "",
+    })
+
+
 def import_course(
     session: Session,
     *,
@@ -543,9 +565,11 @@ def import_course(
         try:
             for spec in TABLE_REGISTRY:
                 db_file = tmpdir / "db" / f"{spec.name}.json"
-                if not db_file.exists():
-                    continue
-                records = _read_table_records(db_file, spec.name)
+                records = _read_table_records(db_file, spec.name) if db_file.exists() else []
+                if spec.name == "raw_file":
+                    _restore_missing_published_source(
+                        records, extract_dir=tmpdir, course_id=manifest.course.course_id,
+                    )
                 if spec.name == "exam_paper":
                     records = [
                         record
