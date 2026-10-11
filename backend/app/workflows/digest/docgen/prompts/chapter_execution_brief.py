@@ -21,6 +21,7 @@ def build_chapter_execution_brief_messages(
     confusion_targets: Sequence[str],
     source_slices: Sequence[Mapping[str, Any]] = (),
     evidence_items: Sequence[Mapping[str, Any]] = (),
+    user_prompt: str = "",
     plan: str = "",
     docgen_history_brief: str = "",
     learner_profile_text: str = "",
@@ -70,11 +71,13 @@ def build_chapter_execution_brief_messages(
 - chapter_index: {chapter.get("chapter_index")}
 - objective: {chapter.get("objective") or chapter.get("chapter_goal")}
 - required_elements: {", ".join(str(item) for item in chapter.get("required_elements", []))}
+- writing_instructions: {chapter.get("writing_instructions") or chapter.get("style_rules") or "none"}
 
 文档级写作意图：
 {dict(intent_core or {})}
 
 Planner handoff:
+- user_prompt: {user_prompt or "not provided"}
 - plan: {plan or "not provided"}
 - docgen_history_brief: {docgen_history_brief or "none"}
 - learner_profile: {learner_profile_text or "none"}
@@ -103,6 +106,15 @@ Planner handoff:
 {{
   "chapter_index": 1,
   "teaching_outline": ["..."],
+  "writing_instructions": ["..."],
+  "quantity_constraints": {{
+    "body_section_count": null,
+    "worked_example_count": null,
+    "inline_practice_count": null,
+    "chapter_end_question_count": null,
+    "min_word_count": null,
+    "max_word_count": null
+  }},
   "content_role_targets": {{
     "topic": ["..."],
     "concept": ["..."],
@@ -134,16 +146,18 @@ Planner handoff:
 3. `content_role_targets` 是主合同，要按学习图谱 8 类节点列出本章最应该覆盖的目标；每类最多 2 条，空类可省略。
 4. `content_role_targets`、`concept_targets`、`example_targets`、`pitfall_targets` 中的每一项都必须是具体课程对象、方法名、题型名或错因名；不要输出“图示”“方法步骤”“单元测试”“重点检查概念理解”“讲后纠错与回顾”“为后续章节打底”“整理”“判定题”“图表分析”等教学脚手架或短泛词。若上游 required_elements 有这类表达，必须改写成真实对象，例如“函数图像读图”“函数值求解例题”“自变量与因变量混淆”“函数综合练习题型”“统计数据整理方法”“几何判定条件识别”“图表分析结论表达”；找不到具体对象就不要列入这些字段。
 5. `example_coverage_plan` 列出本章正文中需要用例题、案例、操作示例、变式训练或自测覆盖的重点；target 也必须是具体知识对象或题型，不能写“例题”“案例一”“单元测试”。
-6. `chapter_end_practice_plan` 是最终 `## 单元测试` 模块的测试计划：每章默认 {chapter_end_min}-{chapter_end_max} 个小题/案例检查/操作任务/边界辨析/迁移任务；传统题不适合的学科也要转成可判断的任务，并规划答案、判定依据或解析要点。
+6. `chapter_end_practice_plan` 是最终 `## 单元测试` 模块的测试计划：未明确指定题数时每章默认 {chapter_end_min}-{chapter_end_max} 个小题/案例检查/操作任务/边界辨析/迁移任务；用户明确数量优先于默认值，计划不得额外增加题目；传统题不适合的学科也要转成可判断的任务，并规划答案、判定依据或解析要点。
 7. 紧凑节奏先判断本章角色：概念章安排短例子、反例和条件辨析；方法章安排步骤、检查点和例题；训练章围绕真实题型或任务差异安排标准例题、变式检查和错误诊断。
 8. 每个 `example_coverage_plan` 和 `chapter_end_practice_plan` 项的 `purpose` 写清这道例题/案例帮助学生学会什么；自测、辨析或思考题同步规划参考答案、判定依据或解题要点。
 9. 如果 learner_profile 含“前置诊断信号”或“文档落点”，把相关选择落到 `teaching_outline`、`example_coverage_plan`、`chapter_end_practice_plan`、文档内练习解析、错因提醒或章末小测答案依据中，不要只复述诊断答案；不要把解析类诊断写成真实考试后的反馈流程。
 10. 旧字段 `concept_targets`、`definition_targets`、`formula_targets`、`example_targets`、`pitfall_targets` 只做兼容输出，各最多 2 条。
-11. `retrieval_queries` 最多 {max_retrieval_queries_per_chapter} 条。
+11. `retrieval_queries` 最多 {max_retrieval_queries_per_chapter} 条；无需补充检索时可以是空列表，这仍是完整有效的执行简报。
 12. 不允许顺带修改标题。
 13. 不要输出媒体请求，这些后续由规则节点派生。
 14. 只输出简短、可执行的字段，不要输出长段解释。
 15. 只负责当前 chapter_index；不要输出其它章节的 brief，也不要复述整本共享骨架。
+16. `quantity_constraints` 只提取用户或确认方案明确规定的当前章数量，未指定的字段必须为 null，不能把模式默认值写进去。`body_section_count` 是正文二级小节数，不含单元测试；`worked_example_count` 是正文例题/代码示例的确切数量；`inline_practice_count` 是正文练习数；`chapter_end_question_count` 是章末题数（1-12）。用户只规定全章练习总数、未另分正文练习时，全部安排在章末，inline_practice_count 填 0，正文不再另加练习；分别指定正文与章末数量时必须分别保留。例题和练习覆盖计划必须与明确数量一致。超过支持范围的要求保留在 writing_instructions 并记录 plan_mismatch_warnings，不能悄悄替换为默认题数。
+17. `min_word_count`、`max_word_count` 是明确的当前章正文字数范围，不含章末测试；不要把全课程数量重复分配给每章。`writing_instructions` 必须保留用户的篇幅、数量、资料和主题边界要求，优先于模式参考。
 """.strip()
     messages = [
         {"role": "system", "content": system_prompt},

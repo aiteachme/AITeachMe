@@ -341,10 +341,23 @@ def _execution_contract_for_writer(
         ),
     )
     self_check_target = max(1 if practice_ratio >= 0.25 else 0, practice_task_target // 2, chapter_end_min_tasks)
+    quantities = task.quantity_constraints
+    if quantities.worked_example_count is not None:
+        worked_example_target = quantities.worked_example_count
+    if quantities.chapter_end_question_count is not None:
+        chapter_end_min_tasks = chapter_end_max_tasks = quantities.chapter_end_question_count
+    if quantities.inline_practice_count is not None:
+        practice_task_target = quantities.inline_practice_count
+        self_check_target = 0
+    if any(value is not None for value in (
+        quantities.worked_example_count, quantities.chapter_end_question_count, quantities.inline_practice_count,
+    )):
+        learning_activity_target = worked_example_target + practice_task_target
     return {
         "target_word_count": task.target_word_count,
         "min_word_count": task.min_word_count,
         "max_word_count": task.max_word_count,
+        "quantity_constraints": quantities.model_dump(mode="json", exclude_none=True),
         "coverage_requirements": required_elements,
         "min_coverage_score": task.coverage_threshold,
         "min_evidence_support": task.evidence_support_threshold,
@@ -982,6 +995,7 @@ def build_generate_chapters_node(*, context: WorkflowContext):
             fallback_used = fallback_used or bool(writer_result.metadata.get("fallback_used", False))
             writer_markdown = ensure_chapter_heading(title, writer_result.content)
             writer_attempt_count += int(bool(writer_result.metadata.get("writer_no_content_reason")))
+            writer_attempt_count += int(bool(writer_result.metadata.get("writer_contract_repair_attempted")))
 
             execution_contract = dict(chapter_plan.get("execution_contract") or {})
             practice_quota = dict(execution_contract.get("practice_quota") or {})

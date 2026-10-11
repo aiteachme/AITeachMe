@@ -556,7 +556,7 @@ def _callout_visible_lines(lines: list[str], *, marker_rest: str) -> tuple[list[
     return visible, has_floating_line
 
 
-def unit_test_structure_issues(markdown: str) -> list[str]:
+def unit_test_structure_issues(markdown: str, *, expected_question_count: int | None = None) -> list[str]:
     """Validate the deterministic QUESTION/ANSWER publication contract.
 
     This parser only checks the Markdown protocol.  It does not infer teaching
@@ -590,6 +590,10 @@ def unit_test_structure_issues(markdown: str) -> list[str]:
 
     if not blocks:
         return ["单元测试没有使用 QUESTION/ANSWER 题答块。"]
+    if expected_question_count is not None:
+        question_count = sum(block[0] == "QUESTION" for block in blocks)
+        if question_count != expected_question_count:
+            issues.append(f"章末测试必须恰好有 {expected_question_count} 道题，当前为 {question_count} 道。")
     if len(blocks) % 2 or any(
         block[0] != ("QUESTION" if index % 2 == 0 else "ANSWER")
         for index, block in enumerate(blocks)

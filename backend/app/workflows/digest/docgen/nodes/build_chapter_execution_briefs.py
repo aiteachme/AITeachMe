@@ -124,6 +124,7 @@ def build_chapter_execution_briefs_node(*, context: WorkflowContext):
                     evidence_units,
                     chapter_index=task_seed.chapter_index,
                 ),
+                user_prompt=docgen_context.user_prompt,
                 plan=docgen_context.plan,
                 docgen_history_brief=docgen_context.docgen_history_brief,
                 learner_profile_text=str(state.get("learner_profile_text") or docgen_context.learner_profile_text),

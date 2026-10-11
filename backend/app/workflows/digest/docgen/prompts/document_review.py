@@ -123,6 +123,7 @@ def build_document_review_messages(
     guideline: dict[str, Any] | None = None,
     dispatch_table: dict[str, Any] | None = None,
     learner_profile_text: str = "",
+    chapter_tasks: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, str]]:
     """Build messages for a single whole-document structured review."""
 
@@ -132,6 +133,14 @@ def build_document_review_messages(
     compact_dispatch = _compact_dispatch(dict(dispatch_table or {}))
     compact_rule_report = _compact_rule_report(dict(rule_report or {}))
     learner_context = str(learner_profile_text or "").strip()
+    quantity_contracts = [
+        {
+            "chapter_index": task.get("chapter_index"),
+            "quantity_constraints": task.get("quantity_constraints") or {},
+            "writing_rules": _string_list(task.get("writing_rules")),
+        }
+        for task in list(chapter_tasks or [])
+    ]
     system_prompt = """
 你是 AITeachMe 的整本文档复核器，只做跨章一致性判断。
 你不能改写正文，不能润色措辞，不能要求推翻用户已确认的大纲；只输出确有风险的问题和可执行回流动作。
@@ -155,6 +164,9 @@ def build_document_review_messages(
 学习者画像补充：
 {learner_context!r}
 
+用户确认的章节数量与边界合同：
+{quantity_contracts}
+
 章节快照：
 {compact_chapters}
 
@@ -169,6 +181,7 @@ def build_document_review_messages(
 8. 纯记录或后续观察用 `record_only`；资料分配明显错用 `re_dispatch`；全局术语/符号骨架明显冲突才用 `rebuild_backbone`。
 9. 不要在 instruction 里直接写可复制的新标题或完整正文；只描述需要修复的学习问题、约束和预期效果。
 10. 如果没有影响正确性或学习闭环的问题，返回 passed=true、issues=[]、actions=[]。
+11. 检查明确的正文小节、例题/代码示例和练习数量，用户合同优先于模式默认密度；不要因为少于默认值而补题。小节数不含单元测试，篇幅按正文叙述判断，不把 Markdown 标记和代码字符当成额外讲解。与明确数量不符时输出 severity=error 的局部 `section_patch`，约束必须保留用户规定的数量和边界。
 """.strip()
     messages = [
         {"role": "system", "content": system_prompt},

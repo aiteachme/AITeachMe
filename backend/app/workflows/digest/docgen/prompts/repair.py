@@ -13,6 +13,7 @@ def build_chapter_patch_messages(
     full_markdown_chars: int,
     repair_round: int = 1,
     max_patch_chars: int = 2200,
+    quantity_contract: dict | None = None,
 ) -> list[dict[str, str]]:
     system_prompt = """
 你是 AITeachMe 的章节修补器。
@@ -34,6 +35,9 @@ def build_chapter_patch_messages(
 复核动作列表：
 {actions}
 
+用户确认的当前章数量与写作边界（优先于模式默认）：
+{quantity_contract or {}}
+
 当前修补轮次：第 {repair_round} 轮
 
 当前章节相关上下文：
@@ -52,6 +56,7 @@ def build_chapter_patch_messages(
 8. 完整例题、案例和章末练习不要放进大块 callout；提示块只用于短提示、短警告或短重点。
 9. 在结构化字段 covered_action_ids 中列出这段 patch 实际覆盖的 repair_action_key；无法安全处理的放入 unresolved_action_ids。
 10. 修补公式、定理或应用方法时必须保留适用条件和边界：定义域、区间、端点、分母、符号、旋转轴与半径距离不得省略；不要重复已有题干或练习。
+11. 保留用户明确规定的小节、示例和练习数量，以及正文篇幅和主题边界；不要为了补充内容额外增加同类示例或题目。正文小节数量不含固定的章末单元测试；需要补充说明时融入已有小节。
 """.strip()
     messages = [
         {"role": "system", "content": system_prompt},

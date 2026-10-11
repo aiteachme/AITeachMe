@@ -122,8 +122,6 @@ class DocGenChapterContextRuntime(BaseTracedExecution):
         if query_cap is not None:
             resolved_query_cap = max(1, int(query_cap))
         base_queries = dedupe_queries(queries, limit=resolved_query_cap)
-        if not base_queries and str(chapter_title).strip():
-            base_queries = [str(chapter_title).strip()]
         if not base_queries:
             return TracedExecutionResult(metadata={"local_hits": 0, "web_hits": 0, "query_count": 0})
 

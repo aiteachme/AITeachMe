@@ -5,6 +5,7 @@ from __future__ import annotations
 from app.workflows.digest.common.prompt_tracing import trace_prompt_build
 from app.workflows.digest.docgen.lib.presentation_policy import build_presentation_contract_prompt
 from app.workflows.digest.docgen.lib.mode_profiles import get_docgen_mode_profile
+from app.workflows.digest.docgen.lib.models import ChapterQuantityConstraints
 
 
 def _bullet_lines(items: tuple[str, ...]) -> str:
@@ -103,6 +104,7 @@ def build_docgen_writer_messages(
         else "1. 核心概念、推理过程、典型例子"
     )
     execution_contract = dict(execution_contract or {})
+    quantities = ChapterQuantityConstraints.model_validate(execution_contract.get("quantity_constraints") or {})
     practice_quota = dict(execution_contract.get("practice_quota") or {})
     content_role_targets = dict(execution_contract.get("content_role_targets") or {})
     example_coverage_plan = list(execution_contract.get("example_coverage_plan") or [])
@@ -144,24 +146,60 @@ def build_docgen_writer_messages(
     )
     training_min_examples = _positive_int(profile_density.get("training_chapter_min_examples"), default=6)
     concept_min_examples = _positive_int(profile_density.get("concept_chapter_min_examples"), default=2)
+    explicit_density = any(value is not None for value in (
+        quantities.worked_example_count, quantities.chapter_end_question_count, quantities.inline_practice_count,
+    ))
+    if quantities.worked_example_count is not None:
+        min_worked_examples = quantities.worked_example_count
+    if quantities.inline_practice_count is not None:
+        short_practice_quota = quantities.inline_practice_count
+    if explicit_density:
+        activity_quota = min_worked_examples + short_practice_quota
+    activity_instruction = (
+        f"- 学习活动目标：训练型约 {training_min_examples} 个，普通方法章至少 {min_worked_examples} 个，概念章至少 {concept_min_examples} 个；完整活动含题目/任务、解析、答案/结论、易错点。"
+        if not explicit_density else
+        f"- 正文例题/案例 {min_worked_examples} 个，正文短练习 {short_practice_quota} 个；按用户数量组织，不追加模式默认活动。"
+    )
+    quantity_lines: list[str] = []
+    if quantities.body_section_count is not None:
+        quantity_lines.append(
+            f"- 正文恰好 {quantities.body_section_count} 个二级小节，不含后续单元测试；总结、边界提醒和例题并入这些小节，不另增二级标题。"
+        )
+    if quantities.worked_example_count is not None:
+        quantity_lines.append(f"- 正文恰好 {quantities.worked_example_count} 个例题/代码示例，不增加额外同类示例。")
+    if quantities.chapter_end_question_count is not None:
+        quantity_lines.append(
+            f"- 章末测试恰好 {quantities.chapter_end_question_count} 道题，由后续测试节点生成，正文不要代写章末测试。"
+        )
+    if quantities.inline_practice_count is not None:
+        quantity_lines.append(
+            f"- 正文练习、自测或变式题合计恰好 {short_practice_quota} 道，不额外增加题目。"
+        )
+    quantity_summary = "\n".join(quantity_lines)
+    word_budget_note = (
+        "- 明确篇幅按中文讲解正文计算（含表格中的讲解），代码块、代码输出、Markdown 标记和后续章末测试不计入篇幅；不要用代码长度凑最低字数。\n"
+        if quantities.min_word_count is not None or quantities.max_word_count is not None else ""
+    )
     sprint_problem_contract = ""
     if mode_profile.is_sprint:
         sprint_problem_contract = f"""
 练习组织原则：
 - 按章节角色选择组织方式：概念章用短例子和反例，方法章用步骤和检查点，训练章按真实题型或任务差异分组。
-- 学习活动目标：训练型约 {training_min_examples} 个，普通方法章至少 {min_worked_examples} 个，概念章至少 {concept_min_examples} 个；完整活动含题目/任务、解析、答案/结论、易错点。
+{activity_instruction}
 - 正文知识点内安排必要例题、短检查和变式；章末测试由下一步读取完整正文后结构化生成，本调用不要提前代写。
 """.strip()
     contract_summary = (
         f"- 目标字数：{execution_contract.get('target_word_count') or '未指定'}\n"
         f"- 最低字数：{execution_contract.get('min_word_count') or '未指定'}\n"
         f"- 正文字数上限：{execution_contract.get('max_word_count') or '未指定'}（不含后续生成的章末测试）\n"
+        f"{word_budget_note}"
+        f"{quantity_summary}\n"
         f"- 最低覆盖分：{execution_contract.get('min_coverage_score') or '未指定'}\n"
         f"- 最低证据支撑：{execution_contract.get('min_evidence_support') or '未指定'}\n"
         f"- 解释深度：{execution_contract.get('explanation_depth') or '未指定'}\n"
         f"- Mermaid 写作：只有当关系、流程、结构或空间位置靠文字不直观时才请求 Mermaid；能用一句话讲清的内容不要配图\n"
         f"- 练习目标：学习活动约 {activity_quota} 个；完整例题/案例 {min_worked_examples} 个；短练习/自测/变式约 {short_practice_quota} 个\n"
-        f"- 例题密度：{example_density_policy.get('policy_text') or '例题、案例和任务服务当前知识点。'}\n"
+        f"- 例题密度：{('遵守上述明确数量，不追加模式默认活动。' if explicit_density else example_density_policy.get('policy_text')) or '例题、案例和任务服务当前知识点。'}\n"
         f"- 内容角色目标：{content_role_targets}\n"
         f"- 例题覆盖计划：{example_coverage_plan}\n"
         f"- 章末单元测试计划：{chapter_end_practice_plan}（只用于协调正文覆盖；本调用不要生成测试模块）\n"

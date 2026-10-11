@@ -480,10 +480,29 @@ class LockedChapterTitle(DocGenBaseModel):
         return clean_string_list(value)
 
 
+class ChapterQuantityConstraints(DocGenBaseModel):
+    """Explicit user quantities interpreted by the LLM, never mode defaults."""
+
+    body_section_count: int | None = Field(default=None, ge=1)
+    worked_example_count: int | None = Field(default=None, ge=0)
+    inline_practice_count: int | None = Field(default=None, ge=0)
+    chapter_end_question_count: int | None = Field(default=None, ge=1, le=12)
+    min_word_count: int | None = Field(default=None, ge=1)
+    max_word_count: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def _word_range(self) -> "ChapterQuantityConstraints":
+        if self.min_word_count is not None and self.max_word_count is not None:
+            if self.min_word_count > self.max_word_count:
+                raise ValueError("minimum word count must not exceed maximum word count")
+        return self
+
+
 class ChapterExecutionBrief(DocGenBaseModel):
     chapter_index: int = 1
     teaching_outline: list[str] = Field(default_factory=list)
     writing_instructions: list[str] = Field(default_factory=list)
+    quantity_constraints: ChapterQuantityConstraints = Field(default_factory=ChapterQuantityConstraints)
     content_role_targets: dict[str, list[str]] = Field(default_factory=dict)
     example_coverage_plan: list[dict[str, Any]] = Field(default_factory=list)
     chapter_end_practice_plan: list[dict[str, Any]] = Field(default_factory=list)
@@ -645,6 +664,7 @@ class ChapterGenerationTask(DocGenBaseModel):
     enhanced_title: str = ""
     objective: str = ""
     teaching_outline: list[str] = Field(default_factory=list)
+    quantity_constraints: ChapterQuantityConstraints = Field(default_factory=ChapterQuantityConstraints)
     content_role_targets: dict[str, list[str]] = Field(default_factory=dict)
     example_coverage_plan: list[dict[str, Any]] = Field(default_factory=list)
     chapter_end_practice_plan: list[dict[str, Any]] = Field(default_factory=list)
@@ -759,7 +779,7 @@ class ChapterGenerationTask(DocGenBaseModel):
             self.enhanced_title = resolved_title
         if not is_usable_resolved_chapter_title(self.confirmed_title):
             self.confirmed_title = self.enhanced_title
-        if not self.retrieval_queries:
+        if not self.retrieval_queries and "retrieval_queries" not in self.model_fields_set:
             self.retrieval_queries = clean_string_list([self.enhanced_title, *self.content_points])
         if not self.required_elements:
             self.required_elements = clean_string_list(
@@ -1301,6 +1321,7 @@ __all__ = [
     "ChapterReviewActionSuggestion",
     "ChapterReviewReport",
     "ChapterResearchTrace",
+    "ChapterQuantityConstraints",
     "ChapterSourceSlice",
     "ClaimEvidenceBinding",
     "ClaimEvidenceMap",

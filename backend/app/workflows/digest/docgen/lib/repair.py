@@ -647,6 +647,7 @@ async def _apply_llm_patch_actions(
     chapter: ReviewedChapterDraft,
     indexed_actions: list[tuple[int, ReviewAction]],
     repair_round: int,
+    quantity_contract: dict | None = None,
 ) -> tuple[ReviewedChapterDraft, list[tuple[int, ReviewAction, RepairTraceItem, str | None]], list[tuple[int, ReviewAction]]]:
     """Ask the model for one local patch that can cover multiple actions."""
 
@@ -670,6 +671,7 @@ async def _apply_llm_patch_actions(
                 markdown_context=_patch_context_for_actions(chapter, [action for _, action in indexed_actions]),
                 full_markdown_chars=len(chapter.markdown),
                 repair_round=repair_round,
+                quantity_contract=quantity_contract,
                 max_patch_chars=_local_patch_char_limit(
                     chapter.markdown,
                     unit_test_patch=any(_is_unit_test_action(action) for _, action in indexed_actions),
@@ -907,6 +909,7 @@ async def repair_or_route_review_actions(
     reviewed_chapters: list[ReviewedChapterDraft],
     review_actions: list[ReviewAction],
     allow_llm_patches: bool = True,
+    chapter_tasks: list[dict] | None = None,
 ) -> tuple[list[ReviewedChapterDraft], list[ReviewAction], list[str], list[RepairTraceItem]]:
     """Apply safe local patches and route heavier actions for later repair loops."""
 
@@ -915,6 +918,7 @@ async def repair_or_route_review_actions(
     unresolved_by_index: dict[int, str] = {}
     repair_trace_by_index: dict[int, RepairTraceItem] = {}
     patch_actions_by_chapter: dict[int, list[tuple[int, ReviewAction]]] = {}
+    tasks_by_index = {int(item.get("chapter_index", 0) or 0): item for item in chapter_tasks or []}
 
     async def _process_patch_actions_for_chapter(
         chapter: ReviewedChapterDraft,
@@ -981,6 +985,10 @@ async def repair_or_route_review_actions(
                     chapter=current_chapter,
                     indexed_actions=current_batch,
                     repair_round=repair_round,
+                    quantity_contract={
+                        key: tasks_by_index.get(chapter.chapter_index, {}).get(key)
+                        for key in ("quantity_constraints", "writing_rules", "min_word_count", "max_word_count")
+                    },
                 )
                 repair_round += 1
                 results.extend(round_results)

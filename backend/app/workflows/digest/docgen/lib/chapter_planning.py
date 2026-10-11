@@ -289,6 +289,55 @@ def compose_seed_plan_and_backbone_agenda(
     return plan_seed, task_seeds, agenda
 
 
+class ChapterWordBudgetError(ValueError):
+    """Explicit chapter minimums cannot fit the confirmed document budget."""
+
+
+def _explicit_chapter_word_caps(
+    *,
+    total_words: object,
+    chapters: Sequence[Mapping[str, Any]],
+    briefs_by_index: Mapping[int, ChapterExecutionBrief],
+) -> dict[int, int]:
+    try:
+        total = int(total_words or 0)
+    except (TypeError, ValueError):
+        return {}
+    if total <= 0 or not chapters or not any(
+        brief.quantity_constraints.min_word_count is not None or brief.quantity_constraints.max_word_count is not None
+        for brief in briefs_by_index.values()
+    ):
+        return {}
+    bounds: dict[int, tuple[int, int]] = {}
+    for index, chapter in enumerate(chapters, start=1):
+        chapter_index = int(chapter.get("chapter_index", index) or index)
+        brief = briefs_by_index.get(chapter_index)
+        quantities = brief.quantity_constraints if brief else None
+        lower = (quantities.min_word_count or 1) if quantities else 1
+        upper = min(total, quantities.max_word_count or total) if quantities else total
+        bounds[chapter_index] = (lower, upper)
+    minimum_total = sum(lower for lower, _ in bounds.values())
+    if minimum_total > total:
+        raise ChapterWordBudgetError(f"各章最低篇幅合计至少 {minimum_total} 字，超出整本 {total} 字预算。请调整确认方案中的篇幅要求。")
+    goal = min(total, sum(upper for _, upper in bounds.values()))
+    equal_share = max(1, round(total / len(bounds)))
+    caps = {index: min(upper, max(lower, equal_share)) for index, (lower, upper) in bounds.items()}
+    remaining = goal - sum(caps.values())
+    while remaining:
+        increasing = remaining > 0
+        eligible = [
+            index for index, (lower, upper) in bounds.items()
+            if (caps[index] < upper if increasing else caps[index] > lower)
+        ]
+        share = (abs(remaining) + len(eligible) - 1) // len(eligible)
+        for index in eligible:
+            lower, upper = bounds[index]
+            change = min(share, abs(remaining), upper - caps[index] if increasing else caps[index] - lower)
+            caps[index] += change if increasing else -change
+            remaining += -change if increasing else change
+    return caps
+
+
 def assemble_chapter_generation_plan(
     *,
     docgen_context: DocGenContext,
@@ -307,6 +356,11 @@ def assemble_chapter_generation_plan(
     mode_profile = get_docgen_mode_profile(docgen_context.digest_mode)
     chapter_format = list(mode_profile.chapter_format)
     global_rules = mode_profile.writing_rules
+    explicit_word_caps = _explicit_chapter_word_caps(
+        total_words=(docgen_context.build_constraints or {}).get("target_total_words"),
+        chapters=confirmed_chapters,
+        briefs_by_index=briefs_by_index,
+    )
 
     seed_by_index = {int(seed.chapter_index): seed for seed in task_seeds}
     tasks: list[ChapterGenerationTask] = []
@@ -335,6 +389,8 @@ def assemble_chapter_generation_plan(
             chapter_min_words=build_constraints.get("chapter_min_words"),
             chapter_target_words=build_constraints.get("chapter_target_words"),
         )
+        if chapter_index in explicit_word_caps:
+            min_words = target_words = explicit_word_caps[chapter_index]
         required_element_count = min(8, len(clean_string_list(seed.required_elements)))
         extra_coverage_units = max(0, required_element_count - 4)
         try:
@@ -352,6 +408,27 @@ def assemble_chapter_generation_plan(
             else max(target_words, configured_cap) if configured_cap > 0
             else None
         )
+        quantity_constraints = brief.quantity_constraints
+        if quantity_constraints.max_word_count is not None:
+            max_words = (
+                min(max_words, quantity_constraints.max_word_count)
+                if explicit_total_words and max_words is not None
+                else quantity_constraints.max_word_count
+            )
+        if quantity_constraints.min_word_count is not None:
+            min_words = quantity_constraints.min_word_count
+            if max_words is not None and not explicit_total_words:
+                # Mode/Planner defaults must not lower an explicit minimum.
+                max_words = max(max_words, min_words)
+        elif quantity_constraints.max_word_count is not None:
+            # A user cap does not imply a minimum equal to that cap.
+            min_words = min(min_words, max(1, max_words * 3 // 4))
+        if max_words is not None:
+            min_words = min(min_words, max_words)
+            target_words = min(target_words, max_words)
+        if quantity_constraints.max_word_count is not None:
+            target_words = (min_words + max_words) // 2
+        target_words = max(min_words, target_words)
         affinity = _affinity_for_chapter(
             chapter_index=chapter_index,
             source_affinity_by_chapter=source_affinity_by_chapter,
@@ -402,11 +479,14 @@ def assemble_chapter_generation_plan(
             mode_profile=mode_profile,
         )
         density_policy = dict(mode_profile.example_density_policy)
+        if quantity_constraints.chapter_end_question_count is not None:
+            density_policy["chapter_end_practice_min_tasks"] = quantity_constraints.chapter_end_question_count
+            density_policy["chapter_end_practice_max_tasks"] = quantity_constraints.chapter_end_question_count
         try:
             chapter_end_plan_limit = int(density_policy.get("chapter_end_practice_max_tasks", 4) or 4)
         except (TypeError, ValueError):
             chapter_end_plan_limit = 4
-        chapter_end_plan_limit = max(3, min(12, chapter_end_plan_limit))
+        chapter_end_plan_limit = max(1, min(12, chapter_end_plan_limit))
         chapter_end_practice_plan = clean_example_coverage_plan(
             getattr(brief, "chapter_end_practice_plan", []),
             limit=chapter_end_plan_limit,
@@ -417,6 +497,7 @@ def assemble_chapter_generation_plan(
             enhanced_title=locked.enhanced_title or confirmed_title,
             objective=seed.chapter_goal or str(chapter.get("objective") or ""),
             teaching_outline=clean_string_list(brief.teaching_outline, limit=3),
+            quantity_constraints=quantity_constraints,
             content_role_targets=content_role_targets,
             example_coverage_plan=example_coverage_plan,
             chapter_end_practice_plan=chapter_end_practice_plan,
@@ -455,7 +536,7 @@ def assemble_chapter_generation_plan(
             priority_section_refs=priority_section_refs or seed.priority_section_refs,
             source_slices=source_slices,
             retrieval_queries=_filter_scope_items(
-                list(brief.retrieval_queries or seed.retrieval_queries),
+                list(brief.retrieval_queries),
                 local_scope=local_scope,
                 forbidden_scope=forbidden_scope,
                 limit=2,
@@ -483,7 +564,7 @@ def assemble_chapter_generation_plan(
                 "practice_ratio": intent_profile.practice_ratio,
                 "policy": intent_profile.example_practice_policy,
                 "content_mix_policy": dict(mode_profile.content_mix_policy),
-                "example_density_policy": dict(mode_profile.example_density_policy),
+                "example_density_policy": density_policy,
                 "coverage_policy": list(mode_profile.coverage_policy),
                 "example_coverage_plan": example_coverage_plan,
                 "chapter_end_practice_plan": chapter_end_practice_plan,
@@ -529,6 +610,7 @@ def estimate_quality_from_markdown(markdown: str, *, required_points: Sequence[s
 
 
 __all__ = [
+    "ChapterWordBudgetError",
     "assemble_chapter_generation_plan",
     "compose_seed_plan_and_backbone_agenda",
     "estimate_quality_from_markdown",

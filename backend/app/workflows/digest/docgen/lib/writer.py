@@ -25,6 +25,8 @@ from app.workflows.digest.docgen.lib.asset_requests import (
     strip_asset_requests,
 )
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
+from app.workflows.digest.docgen.lib.models import ChapterQuantityConstraints
+from app.workflows.digest.docgen.lib.quantity_contracts import explicit_chapter_structure_issues
 from app.workflows.digest.docgen.lib.presentation_policy import (
     find_docgen_presentation_issues,
     normalize_docgen_presentation,
@@ -91,6 +93,13 @@ def _writer_stream_char_limit(execution_contract: Mapping[str, Any], *, digest_m
     if str(digest_mode or "").strip().lower() == "sprint":
         return max(3600, min(7200, int(target_words * 3.2)))
     return max(5000, min(14000, int(target_words * 4.5)))
+
+
+def _explicit_writer_contract_issues(markdown: str, execution_contract: Mapping[str, Any]) -> list[str]:
+    """Validate explicit Markdown structure, without guessing teaching intent."""
+
+    quantities = ChapterQuantityConstraints.model_validate(execution_contract.get("quantity_constraints") or {})
+    return explicit_chapter_structure_issues(markdown, quantities)
 
 
 class DocGenWriterNoContentError(RuntimeError):
@@ -344,6 +353,45 @@ class DocGenWriterRuntime(BaseTracedExecution):
             digest_mode=digest_mode,
             focus_items=required_elements,
         )
+        contract_issues = _explicit_writer_contract_issues(markdown, execution_contract)
+        contract_repair_attempted = bool(contract_issues)
+        if contract_issues:
+            repair_messages = [
+                *messages,
+                {"role": "assistant", "content": markdown},
+                {"role": "user", "content": (
+                    "正文尚未满足明确的小节数量合同：\n" + "\n".join(contract_issues)
+                    + "\n请保留正确知识、例题与章节边界，合并多余小节或重复说明，严格满足执行合同后重新输出完整正文。不要生成章末单元测试。"
+                )},
+            ]
+            repair_kwargs = dict(writer_model_kwargs)
+            repair_kwargs["extra_metadata"] = {
+                **dict(repair_kwargs.get("extra_metadata") or {}),
+                "docgen_stage": "writer_contract_repair",
+            }
+            try:
+                repaired_markdown = await asyncio.wait_for(
+                    llm(repair_messages, **repair_kwargs), timeout=WRITER_TASK_TIMEOUT_S,
+                )
+            except Exception as exc:
+                raise DocGenWriterNoContentError("LLM failed to satisfy explicit chapter quantities.") from exc
+            if not str(repaired_markdown or "").strip():
+                raise DocGenWriterNoContentError("LLM returned empty chapter contract repair.")
+            markdown = self._sanitize_student_facing_markdown(
+                strip_asset_requests(str(repaired_markdown)),
+                title=title, digest_mode=digest_mode, focus_items=required_elements,
+            )
+            markdown = self._ensure_media_placeholders(
+                markdown, media_hints=media_hints, execution_contract=execution_contract,
+            )
+            markdown, quality_summary = self._repair_markdown(
+                markdown, title=title, objective=objective, required_elements=required_elements,
+                digest_mode=digest_mode, dense_context=dense_context, execution_contract=execution_contract,
+            )
+            contract_issues = _explicit_writer_contract_issues(markdown, execution_contract)
+            if contract_issues:
+                raise DocGenWriterNoContentError("Chapter still violates explicit contract: " + "；".join(contract_issues))
+            heading_quality = analyze_chapter_heading_quality(markdown, digest_mode=digest_mode)
         source_urls = list(
             dict.fromkeys(
                 str(item.get("url") or "").strip()
@@ -362,6 +410,7 @@ class DocGenWriterRuntime(BaseTracedExecution):
                 "repair_actions": list(quality_summary.get("repair_actions", []) or []),
                 "quality_summary": quality_summary,
                 "writer_no_content_reason": writer_no_content_reason,
+                "writer_contract_repair_attempted": contract_repair_attempted,
                 "writer_stream_failure_reason": stream_failure_reason,
                 "writer_fallback_model_slot": writer_fallback_model_slot,
                 "fallback_used": writer_fallback_used,
@@ -487,15 +536,11 @@ class DocGenWriterRuntime(BaseTracedExecution):
             "结构补全",
         )
         lines: list[str] = []
-        previous = ""
         for raw_line in cleaned.split("\n"):
             line = raw_line.rstrip()
             if any(fragment in line for fragment in forbidden_line_fragments):
                 continue
-            if line.strip() == previous.strip() and line.strip():
-                continue
             lines.append(line)
-            previous = line
 
         cleaned = "\n".join(lines)
         cleaned = normalize_docgen_presentation(

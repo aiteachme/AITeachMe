@@ -7,7 +7,7 @@ from time import perf_counter
 from app.shared.infra.workflow.context import WorkflowContext
 from app.shared.infra.knowledge.build_store import append_knowledge_build_recent_event, update_knowledge_build_status
 from app.utils.time import utcnow
-from app.workflows.digest.docgen.lib.chapter_planning import assemble_chapter_generation_plan
+from app.workflows.digest.docgen.lib.chapter_planning import ChapterWordBudgetError, assemble_chapter_generation_plan
 from app.workflows.digest.docgen.lib.document_backbone import apply_backbone_to_chapter_plan
 from app.workflows.digest.docgen.lib.models import (
     ChapterExecutionBrief,
@@ -76,17 +76,20 @@ def build_assemble_chapter_tasks_node(*, context: WorkflowContext):
         if not chapters:
             return {"error": "没有可装配的章节任务。"}
 
-        generation_plan = assemble_chapter_generation_plan(
-            docgen_context=docgen_context,
-            confirmed_chapters=chapters,
-            locked_titles=locked_titles,
-            intent_profile=intent_profile,
-            file_summaries=file_summaries,
-            source_affinity_by_chapter=source_affinity,
-            task_seeds=task_seeds,
-            chapter_execution_briefs=chapter_briefs,
-            plan_mismatch_warnings=list(state.get("plan_mismatch_warnings") or []),
-        )
+        try:
+            generation_plan = assemble_chapter_generation_plan(
+                docgen_context=docgen_context,
+                confirmed_chapters=chapters,
+                locked_titles=locked_titles,
+                intent_profile=intent_profile,
+                file_summaries=file_summaries,
+                source_affinity_by_chapter=source_affinity,
+                task_seeds=task_seeds,
+                chapter_execution_briefs=chapter_briefs,
+                plan_mismatch_warnings=list(state.get("plan_mismatch_warnings") or []),
+            )
+        except ChapterWordBudgetError as exc:
+            return {"error": str(exc)}
         generation_plan = apply_backbone_to_chapter_plan(
             plan=generation_plan,
             backbone=document_backbone,

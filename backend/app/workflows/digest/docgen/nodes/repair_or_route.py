@@ -61,6 +61,7 @@ def build_repair_or_route_node(*, context: WorkflowContext):
             reviewed_chapters=reviewed,
             review_actions=actions,
             allow_llm_patches=allow_llm_patches,
+            chapter_tasks=list(state.get("chapter_tasks") or []),
         )
         changed_count = sum(1 for item in repair_trace if item.changed)
         changed_chapters = {
@@ -75,7 +76,9 @@ def build_repair_or_route_node(*, context: WorkflowContext):
         }
         llm_attempt_count = len(llm_call_groups)
         next_review_decision = str(state.get("review_decision") or "")
-        if unresolved:
+        if any(action.severity == "error" and action.status != "applied" for action in updated_actions):
+            next_review_decision = "fail"
+        elif unresolved:
             next_review_decision = "publish_with_warnings"
         elif changed_count:
             next_review_decision = "repaired"

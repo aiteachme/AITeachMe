@@ -14,7 +14,8 @@ from app.shared.infra.knowledge.build_store import (
 )
 from app.utils.time import utcnow
 from app.shared.infra.workflow.context import WorkflowContext
-from app.workflows.digest.docgen.lib.models import EnhancedChapterDraft
+from app.workflows.digest.docgen.lib.models import ChapterGenerationTask, EnhancedChapterDraft, MergeReviewIssue, ReviewAction
+from app.workflows.digest.docgen.lib.quantity_contracts import ChapterQuantityContractError
 from app.workflows.digest.docgen.lib.publish import build_merged_markdown
 from app.workflows.digest.docgen.lib.quality import build_merge_review_report
 from app.workflows.digest.docgen.nodes.common import publish_docgen_progress
@@ -64,6 +65,7 @@ def _chapter_metadata(
     claim_evidence_map: dict | None = None,
     conflict_report: dict | None = None,
     chapter_review_report: dict | None = None,
+    task: ChapterGenerationTask | None = None,
 ) -> dict:
     # 这里是发布 manifest 的结构化收口，不改写正文；内容修复必须发生在更早的 review/repair 阶段。
     source_scope = dict(chapter.source_scope or {})
@@ -78,6 +80,7 @@ def _chapter_metadata(
         "summary": chapter.summary,
         "tags": [],
         "digest_mode": digest_mode,
+        "quantity_constraints": task.quantity_constraints.model_dump(mode="json", exclude_none=True) if task else {},
         "source_file_ids": source_file_ids,
         "sources": list(chapter.sources),
         "source_details": list(chapter.source_details),
@@ -130,7 +133,16 @@ def build_merge_review_node(*, context: WorkflowContext):
             enhanced_chapters=enhanced,
             expected_chapter_count=expected_chapter_count,
             plan=str((state.get("docgen_context") or {}).get("plan") or ""),
+            chapter_tasks=list(state.get("chapter_tasks") or []),
+            review_actions=[ReviewAction.model_validate(item) for item in state.get("review_actions") or []],
         )
+        if not review.passed:
+            errors = [issue.detail for issue in review.issues if issue.severity == "error"]
+            return {
+                "error": "发布前检查未通过：" + "；".join(errors),
+                "merge_review_report": review.model_dump(mode="json"),
+                "merge_review_ms": int((perf_counter() - started_at) * 1000),
+            }
         claim_ledgers_by_chapter = {
             int(item.get("chapter_index", 0) or 0): item
             for item in list(state.get("claim_ledgers") or [])
@@ -147,6 +159,10 @@ def build_merge_review_node(*, context: WorkflowContext):
             int(item.get("chapter_index", 0) or 0): item
             for item in list(state.get("chapter_review_reports") or [])
         }
+        tasks_by_chapter = {
+            task.chapter_index: task
+            for task in (ChapterGenerationTask.model_validate(item) for item in state.get("chapter_tasks") or [])
+        }
         chapter_metadatas = []
         for chapter in enhanced:
             chapter_metadatas.append(
@@ -157,15 +173,29 @@ def build_merge_review_node(*, context: WorkflowContext):
                     claim_evidence_map=claim_maps_by_chapter.get(chapter.chapter_index),
                     conflict_report=conflict_reports_by_chapter.get(chapter.chapter_index),
                     chapter_review_report=review_reports_by_chapter.get(chapter.chapter_index),
+                    task=tasks_by_chapter.get(chapter.chapter_index),
                 )
             )
         cover_artifact = dict(state.get("cover_artifact") or {})
         cover_markdown = str(state.get("cover_markdown") or "").strip()
-        merged_markdown = build_merged_markdown(
-            chapter_metadatas,
-            document_context=dict(state.get("document_context") or {}),
-            cover_markdown=cover_markdown,
-        )
+        try:
+            merged_markdown = build_merged_markdown(
+                chapter_metadatas,
+                document_context=dict(state.get("document_context") or {}),
+                cover_markdown=cover_markdown,
+            )
+        except ChapterQuantityContractError as exc:
+            review.passed = False
+            review.decision = "fail"
+            review.issues.append(MergeReviewIssue(
+                severity="error", issue_type="explicit_quantity", detail=str(exc),
+                suggestion="最终 Markdown 格式化改变了数量合同，请修复对应章节后再发布。",
+            ))
+            return {
+                "error": "发布前检查未通过：" + str(exc),
+                "merge_review_report": review.model_dump(mode="json"),
+                "merge_review_ms": int((perf_counter() - started_at) * 1000),
+            }
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         update_knowledge_build_status(
             state["course_id"],

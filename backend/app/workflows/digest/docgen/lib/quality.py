@@ -32,6 +32,7 @@ from app.workflows.digest.docgen.lib.models import (
     clean_unit_float,
 )
 from app.workflows.digest.docgen.prompts.document_review import build_document_review_messages
+from app.workflows.digest.docgen.lib.quantity_contracts import explicit_chapter_structure_issues
 
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[。！？!?；;])\s+|\n+")
 
@@ -263,13 +264,37 @@ def resolve_conflicts_for_chapter(
     )
 
 
+def _chapter_quantity_issues(
+    chapters: Sequence[EnhancedChapterDraft],
+    chapter_tasks: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    tasks = {
+        task.chapter_index: task
+        for task in (ChapterGenerationTask.model_validate(item) for item in chapter_tasks or [])
+    }
+    issues: list[dict[str, Any]] = []
+    for chapter in chapters:
+        task = tasks.get(chapter.chapter_index)
+        if task is None:
+            continue
+        for detail in explicit_chapter_structure_issues(
+            chapter.markdown, task.quantity_constraints, include_unit_test=True,
+        ):
+            issues.append({
+                "severity": "error", "chapter_index": chapter.chapter_index,
+                "issue_type": "explicit_quantity", "detail": detail,
+            })
+    return issues
+
+
 def review_document_consistency(
     *,
     reviewed_chapters: list[ReviewedChapterDraft],
     document_backbone: DocumentBackbone,
     expected_chapter_count: int,
+    chapter_tasks: list[dict[str, Any]] | None = None,
 ) -> DocumentConsistencyReport:
-    issues: list[dict[str, object]] = []
+    issues: list[dict[str, object]] = list(_chapter_quantity_issues(reviewed_chapters, chapter_tasks))
     if expected_chapter_count and len(reviewed_chapters) != expected_chapter_count:
         issues.append(
             {
@@ -365,6 +390,7 @@ async def review_document_consistency_with_llm(
     guideline: dict[str, Any] | None = None,
     dispatch_table: dict[str, Any] | None = None,
     learner_profile_text: str = "",
+    chapter_tasks: list[dict[str, Any]] | None = None,
 ) -> tuple[DocumentConsistencyReport, list[ReviewAction], int]:
     """Run deterministic whole-document review, then one bounded LLM review."""
 
@@ -372,6 +398,7 @@ async def review_document_consistency_with_llm(
         reviewed_chapters=reviewed_chapters,
         document_backbone=document_backbone,
         expected_chapter_count=expected_chapter_count,
+        chapter_tasks=chapter_tasks,
     )
     async def _run_document_review() -> LLMDocumentConsistencyReviewResult:
         result = await acompletion_with_fallback(
@@ -382,6 +409,7 @@ async def review_document_consistency_with_llm(
                 guideline=guideline or {},
                 dispatch_table=dispatch_table or {},
                 learner_profile_text=learner_profile_text,
+                chapter_tasks=chapter_tasks,
             ),
             **docgen_completion_kwargs_with_metadata(
                 DocGenModelStep.DOCUMENT_REVIEW,
@@ -397,9 +425,26 @@ async def review_document_consistency_with_llm(
     try:
         llm_result = await _run_document_review()
     except Exception as exc:
+        semantic_quantity_tasks = [
+            task for task in (ChapterGenerationTask.model_validate(item) for item in chapter_tasks or [])
+            if any(value is not None for value in (
+                task.quantity_constraints.worked_example_count, task.quantity_constraints.inline_practice_count,
+                task.quantity_constraints.min_word_count, task.quantity_constraints.max_word_count,
+            ))
+        ]
+        review_errors = [
+            {
+                "severity": "error", "chapter_index": task.chapter_index,
+                "issue_type": "quantity_review_unavailable",
+                "detail": "明确的例题、正文练习或篇幅合同尚未完成语义审核。",
+            }
+            for task in semantic_quantity_tasks
+        ]
         fallback_report = rule_report.model_copy(
             update={
                 "fallback_used": True,
+                "passed": rule_report.passed and not review_errors,
+                "issues": [*rule_report.issues, *review_errors],
                 "source_summary": {
                     **dict(rule_report.source_summary or {}),
                     "document_review_mode": "rule_fallback_after_llm_error",
@@ -408,7 +453,13 @@ async def review_document_consistency_with_llm(
                 },
             }
         )
-        return fallback_report, [], 1
+        actions = [ReviewAction(
+            action_id=f"document_quantity_review_unavailable_ch{task.chapter_index:02d}",
+            action_type="record_only", chapter_index=task.chapter_index, severity="error",
+            reason="数量合同的语义审核失败，不能仅凭 Markdown 结构检查发布。",
+            instruction="恢复审核模型服务后重新构建并完成语义审核。",
+        ) for task in semantic_quantity_tasks]
+        return fallback_report, actions, 1
     return _merge_document_review_report(rule_report=rule_report, llm_result=llm_result), _document_review_actions(llm_result), 1
 
 
@@ -417,11 +468,23 @@ def build_merge_review_report(
     enhanced_chapters: list[EnhancedChapterDraft],
     expected_chapter_count: int,
     plan: str,
+    chapter_tasks: list[dict[str, Any]] | None = None,
+    review_actions: list[ReviewAction] | None = None,
 ) -> MergeReviewReport:
     """生成发布前的整本合并检查报告。"""
 
     del plan
-    issues: list[MergeReviewIssue] = []
+    issues = [
+        MergeReviewIssue(**item, suggestion="保留用户的明确数量合同，修复对应章节后再发布。")
+        for item in _chapter_quantity_issues(enhanced_chapters, chapter_tasks)
+    ]
+    for action in review_actions or []:
+        if action.severity == "error" and action.status != "applied":
+            issues.append(MergeReviewIssue(
+                severity="error", chapter_index=action.chapter_index,
+                issue_type="unresolved_review_error", detail=action.reason or action.instruction,
+                suggestion="修复尚未解决的审核错误后再发布。",
+            ))
     if len(enhanced_chapters) != expected_chapter_count:
         issues.append(
             MergeReviewIssue(
@@ -469,9 +532,10 @@ def build_merge_review_report(
             )
         )
     total_words = sum(count_words(chapter.markdown) for chapter in enhanced_chapters)
-    decision = "publish" if not issues else "publish_with_warnings"
+    has_error = any(issue.severity == "error" for issue in issues)
+    decision = "fail" if has_error else "publish_with_warnings" if issues else "publish"
     return MergeReviewReport(
-        passed=not any(issue.severity == "error" for issue in issues),
+        passed=not has_error,
         decision=decision,
         issues=issues,
         coverage_summary={

@@ -42,6 +42,7 @@ async def build_chapter_execution_brief(
     confusion_targets: Sequence[str],
     source_slices: Sequence[Mapping[str, object]] = (),
     evidence_items: Sequence[Mapping[str, object]] = (),
+    user_prompt: str = "",
     plan: str = "",
     docgen_history_brief: str = "",
     learner_profile_text: str = "",
@@ -71,6 +72,7 @@ async def build_chapter_execution_brief(
                 confusion_targets=confusion_targets,
                 source_slices=source_slices,
                 evidence_items=evidence_items,
+                user_prompt=user_prompt,
                 plan=plan,
                 docgen_history_brief=docgen_history_brief,
                 learner_profile_text=learner_profile_text,
@@ -100,9 +102,11 @@ async def build_chapter_execution_brief(
         brief.retrieval_queries,
         limit=retrieval_query_limit,
     )
-    if not brief.teaching_outline or not brief.retrieval_queries:
+    if not brief.teaching_outline:
         raise ChapterExecutionBriefError(f"LLM returned an incomplete chapter brief for chapter {chapter_index}.")
-    if not brief.content_role_targets or not brief.example_coverage_plan:
+    if not brief.content_role_targets or (
+        not brief.example_coverage_plan and brief.quantity_constraints.worked_example_count != 0
+    ):
         raise ChapterExecutionBriefError(f"LLM returned a chapter brief without role targets or examples for chapter {chapter_index}.")
     brief.fallback_used = False
     return brief
