@@ -50,15 +50,7 @@ import {
   MASTERY_DRILL_EXAM_MODE,
 } from "./examDisplay";
 import { resolveExamSubmissionTerminalState } from "./examSubmissionFlow";
-import {
-  getAnswerPayload,
-  getAnswerText,
-  getAnswerValidationMessage,
-  hasAnswerValue,
-  isCustomQuestionItem,
-  isRenderableQuestionItem,
-  type AnswerState,
-} from "./questionTypes";
+import { isSupportedQuestionType } from "./questionTypes";
 import { useQuestionTemplateMarkRequestGuard } from "./questionMarking";
 
 type QuestionTemplateMarkResponse = {
@@ -188,7 +180,7 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
     sidebarRequest,
   } = useAiInteraction();
   const { toast } = useToast();
-  const [answers, setAnswers] = useState<AnswerState>({});
+  const [answers, setAnswers] = useState<Record<number, string>>({});
   const [hydratedAnswerKey, setHydratedAnswerKey] = useState("");
   const hydratedAnswerKeyRef = useRef("");
   const [pageScale, setPageScale] = useState(1);
@@ -251,9 +243,9 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
     || profileSyncStatus === "retry_wait";
 
   useEffect(() => {
-    const isGradingPaper = isSubmissionResultPending
+    const isGradingPaper = (isSubmissionResultPending
       || paper?.status === "submitted"
-      || paper?.status === "grading";
+      || paper?.status === "grading");
     if (!isGradingPaper && !shouldPollProfileSync) return;
     const timer = window.setInterval(() => {
       void examDetailQuery.refetch();
@@ -263,7 +255,7 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
   const unsupportedQuestionTypes = useMemo(
     () => Array.from(new Set(
       (paper?.items ?? [])
-        .filter((item: ExamPaperItemResponse) => !isRenderableQuestionItem(item))
+        .filter((item: ExamPaperItemResponse) => !isSupportedQuestionType(item.question_type))
         .map((item: ExamPaperItemResponse) => item.question_type),
     )),
     [paper?.items],
@@ -634,13 +626,11 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
         return Object.fromEntries(
           (paper.items ?? []).map((item: ExamPaperItemResponse) => [
             item.item_order,
-            isCustomQuestionItem(item) && item.user_answer_payload && Object.keys(item.user_answer_payload).length
-              ? item.user_answer_payload
-              : item.user_answer ?? "",
+            item.user_answer ?? "",
           ]),
         );
       }
-      let stored: AnswerState = {};
+      let stored: Record<number, string> = {};
       if (!paper.mastery_drill) {
         try {
           const parsed = JSON.parse(window.localStorage.getItem(answerStorageKey) || "{}");
@@ -650,11 +640,6 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
               if (Number.isFinite(order) && order > 0) {
                 if (typeof value === "string") {
                   stored[order] = value;
-                } else if (value && typeof value === "object" && !Array.isArray(value)) {
-                  const payload = Object.fromEntries(
-                    Object.entries(value).map(([fieldKey, fieldValue]) => [fieldKey, String(fieldValue ?? "")]),
-                  );
-                  stored[order] = payload;
                 }
               }
             }
@@ -664,13 +649,11 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
         }
       }
 
-      const next: AnswerState = {};
+      const next: Record<number, string> = {};
       for (const item of paper.items ?? []) {
         if (Object.prototype.hasOwnProperty.call(stored, item.item_order)) next[item.item_order] = stored[item.item_order];
-        const serverAnswer = isCustomQuestionItem(item) && item.user_answer_payload && Object.keys(item.user_answer_payload).length
-          ? item.user_answer_payload
-          : item.user_answer ?? "";
-        if (hasAnswerValue(item, serverAnswer) && (!paper.mastery_drill || item.is_correct === true)) {
+        const serverAnswer = item.user_answer ?? "";
+        if (serverAnswer.trim() && (!paper.mastery_drill || item.is_correct === true)) {
           next[item.item_order] = serverAnswer;
         }
       }
@@ -691,7 +674,7 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
       const nonEmptyAnswers = Object.fromEntries(
         Object.entries(answers).filter(([rawOrder, value]) => {
           const item = paper.items?.find((candidate) => candidate.item_order === Number(rawOrder));
-          return Boolean(item && hasAnswerValue(item, value));
+          return Boolean(item && value.trim());
         }),
       );
       window.localStorage.setItem(answerStorageKey, JSON.stringify(nonEmptyAnswers));
@@ -1070,17 +1053,6 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
       });
       return;
     }
-    const invalidCustomAnswer = (paper.items ?? []).find((item) => {
-      return Boolean(getAnswerValidationMessage(item, answers[item.item_order]));
-    });
-    if (invalidCustomAnswer) {
-      toast({
-        title: `第 ${invalidCustomAnswer.item_order} 题作答过短`,
-        description: getAnswerValidationMessage(invalidCustomAnswer, answers[invalidCustomAnswer.item_order]) ?? "请检查各字段长度。",
-        variant: "error",
-      });
-      return;
-    }
     isSubmitOverlayClosedManuallyRef.current = false;
     setIsSubmissionResultPending(true);
     submitExam.mutate({
@@ -1091,17 +1063,9 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
         answers: (paper.items ?? []).map((item: ExamPaperItemResponse) => ({
           exam_paper_item_id: item.id,
           item_order: item.item_order,
-          ...(isCustomQuestionItem(item)
-            ? {
-                answer_payload: paper.status === "grading_failed"
-                  ? getAnswerPayload(item, item.user_answer_payload && Object.keys(item.user_answer_payload).length ? item.user_answer_payload : item.user_answer ?? "")
-                  : getAnswerPayload(item, answers[item.item_order]),
-              }
-            : {
-                answer: paper.status === "grading_failed"
-                  ? item.user_answer ?? ""
-                  : getAnswerText(item, answers[item.item_order]),
-              }),
+          answer: paper.status === "grading_failed"
+            ? item.user_answer ?? ""
+            : answers[item.item_order] ?? "",
         })),
       },
     });
@@ -1262,6 +1226,7 @@ export function ExamPaperWorkspace({ courseId, paperId, backHref }: ExamPaperWor
                   </div>
                 </div>
               )}
+
 
               {paper.status === "generating" && (
                 <div

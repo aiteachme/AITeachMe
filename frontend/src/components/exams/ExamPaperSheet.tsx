@@ -1,4 +1,3 @@
-import { QuestionAnswerFields } from "./QuestionAnswerFields";
 import type { Dispatch, ReactNode, SetStateAction } from "react";
 import { AlertTriangle, Bookmark, Lightbulb, MessageSquareText } from "lucide-react";
 
@@ -13,20 +12,10 @@ import {
   ExamMarkdown,
 } from "./ExamMarkdown";
 import { PaperExamCanvasSheet } from "./PaperExamCanvasSheet";
-import { CustomRubricBreakdown } from "./CustomRubricBreakdown";
-import {
-  getAnswerPayload,
-  getAnswerText,
-  getCustomAnswerField,
-  getCustomAnswerFields,
-  isRenderableQuestionItem,
-  updateAnswerField,
-  type AnswerState,
-} from "./questionTypes";
+import { isSupportedQuestionType } from "./questionTypes";
 import { buildExamQuestionAnchorId } from "../interaction";
 import {
   formatAnswerDisplayValue,
-  formatExamItemQuestionTypeLabel,
   formatQuestionTypeLabel,
   formatTrueFalseOptionLabel,
   getAnsweredCount,
@@ -41,11 +30,11 @@ import {
 
 interface ExamPaperSheetProps {
   paper: ExamPaperDetailResponse;
-  answers: AnswerState;
+  answers: Record<number, string>;
   activeStage: 1 | 2 | 3;
   pageScale: number;
   highlightedQuestionOrder?: number | null;
-  setAnswers: Dispatch<SetStateAction<AnswerState>>;
+  setAnswers: Dispatch<SetStateAction<Record<number, string>>>;
   selectedItemId?: number | null;
   showInlineReviewDetails?: boolean;
   isReviewAnalysisVisible?: boolean;
@@ -425,8 +414,7 @@ export function ExamPaperSheet({
                       return entry.row ? <GeneratingQuestionPlaceholder key={entry.row.order} row={entry.row} /> : null;
                     }
                     const item = entry.item;
-                    const answerStateValue = answers[item.item_order] ?? "";
-                    const answerValue = getAnswerText(item, answerStateValue);
+                    const answerValue = answers[item.item_order] ?? "";
                     const isSingleChoice = item.question_type === "single_choice";
                     const isMultipleChoice = item.question_type === "multiple_choice" || item.question_type === "multi_choice";
                     const isTrueFalse = item.question_type === "true_false";
@@ -446,9 +434,6 @@ export function ExamPaperSheet({
                     const isMarking = Boolean(
                       item.question_template_id && markingQuestionTemplateIds?.has(item.question_template_id),
                     );
-                    const customAnswerField = getCustomAnswerField(item);
-                    const customAnswerFields = getCustomAnswerFields(item);
-                    const customAnswerPayload = getAnswerPayload(item, answerStateValue);
                     const writtenAnswerTone = isReviewStage
                       ? isCorrect
                         ? "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-100"
@@ -497,7 +482,7 @@ export function ExamPaperSheet({
                                           ? "bg-teal-500"
                                           : "bg-slate-500"
                                   )} />
-                                  {formatExamItemQuestionTypeLabel(item)}
+                                  {formatQuestionTypeLabel(item.question_type)}
                                 </span>
                                 {!isPrintView ? <span className="select-none text-slate-200 dark:text-slate-800">|</span> : null}
 
@@ -576,7 +561,7 @@ export function ExamPaperSheet({
                               <ExamMarkdown content={item.stem} />
                             </div>
                             </div>
-                          {!isRenderableQuestionItem(item) ? (
+                          {!isSupportedQuestionType(item.question_type) ? (
                             <div className="mt-6 flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200" role="alert">
                               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                               <span>当前版本不支持题型「{item.question_type || "未指定"}」，请重新生成试卷。</span>
@@ -625,7 +610,7 @@ export function ExamPaperSheet({
                                             [item.item_order]: isSelected ? "" : optionValue,
                                           };
                                         }
-                                        const next = splitMultiChoiceAnswer(getAnswerText(item, current[item.item_order]));
+                                        const next = splitMultiChoiceAnswer(current[item.item_order]);
                                         if (next.has(optionValue)) {
                                           next.delete(optionValue);
                                         } else {
@@ -700,12 +685,9 @@ export function ExamPaperSheet({
                             </div>
                           ) : (
                             <div data-exam-question-answer="true" className="mt-6 min-w-0">
-                              {customAnswerFields.length > 0 ? (
-              <QuestionAnswerFields item={item} value={customAnswerPayload} readOnly={isReadonly || isPrintView} print={isPrintView} className={writtenAnswerTone}
-                onChange={(key, value) => setAnswers((current) => ({ ...current, [item.item_order]: updateAnswerField(item, current[item.item_order], key, value) }))} />
-          ) : isPrintView ? (
+                              {isPrintView ? (
                                 <div
-                                  className={`${customAnswerField ? "min-h-48" : "min-h-32"} w-full max-w-full whitespace-pre-wrap break-words rounded-lg border px-4 py-3 ${EXAM_TEXTAREA_TEXT_CLASS} ${writtenAnswerTone}`}
+                                  className={`min-h-32 w-full max-w-full whitespace-pre-wrap break-words rounded-lg border px-4 py-3 ${EXAM_TEXTAREA_TEXT_CLASS} ${writtenAnswerTone}`}
                                 >
                                   {answerValue ? (
                                     <ExamMarkdown content={answerValue} />
@@ -715,10 +697,8 @@ export function ExamPaperSheet({
                                 </div>
                               ) : (
                               <textarea
-                                className={`${customAnswerField ? "min-h-48" : "min-h-32"} w-full max-w-full rounded-lg border px-4 py-3 outline-none transition ${EXAM_TEXTAREA_TEXT_CLASS} ${writtenAnswerTone}`}
-                                placeholder={customAnswerField?.placeholder ?? (item.question_type === "fill_blank" ? "填写答案" : "输入你的作答")}
-                                aria-label={customAnswerField?.label ?? `第 ${item.item_order} 题作答`}
-                                maxLength={customAnswerField?.maxLength}
+                                className={`min-h-32 w-full max-w-full rounded-lg border px-4 py-3 outline-none transition ${EXAM_TEXTAREA_TEXT_CLASS} ${writtenAnswerTone}`}
+                                placeholder={item.question_type === "fill_blank" ? "填写答案" : "输入你的作答"}
                                 value={answerValue}
                                 onChange={(event) =>
                                   setAnswers((current) => ({ ...current, [item.item_order]: event.target.value }))
@@ -726,7 +706,6 @@ export function ExamPaperSheet({
                                 disabled={isReadonly || isPrintView}
                               />
                               )}
-
                             </div>
                           )}
                         </div>
@@ -745,11 +724,6 @@ export function ExamPaperSheet({
                                 <ExamMarkdown content={formatAnswerDisplayValue(item.question_type, item.correct_answer, "无标准答案")} />
                               </div>
                             </div>
-                            <CustomRubricBreakdown
-                              detail={item.grading_detail}
-                              compact
-                              className="mt-3"
-                            />
                             <div data-exam-review-block="true" className="mt-3">
                               <p className="mb-2 font-sans text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">解析</p>
                               <div className={EXAM_ANSWER_TEXT_CLASS}>

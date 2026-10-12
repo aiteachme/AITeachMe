@@ -16,7 +16,6 @@ import {
 import { getExamPaperDisplayTitle } from "../components/exams/examDisplay";
 import { buildCoursePath } from "../lib/courseNavigation";
 import { unwrapOrvalResponse } from "../lib/unwrapOrvalResponse";
-import { getAnswerPayload, isCustomQuestionItem, type AnswerState } from "../components/exams/questionTypes";
 
 const PRINT_PAGE_STYLES = `
   @page {
@@ -236,8 +235,7 @@ const PRINT_PAGE_STYLES = `
     }
 
     .exam-export-paper [data-paper-print-section-title="true"],
-    .exam-export-paper [data-paper-print-review-label="true"],
-    [data-answer-field] > label {
+    .exam-export-paper [data-paper-print-review-label="true"] {
       break-after: avoid-page;
     }
 
@@ -254,19 +252,6 @@ const PRINT_PAGE_STYLES = `
       white-space: pre-wrap !important;
     }
 
-    [data-answer-fields="true"] {
-      display: block !important;
-    }
-
-    [data-answer-field] {
-      break-inside: avoid-page;
-      page-break-inside: avoid;
-    }
-
-    [data-answer-field] + [data-answer-field] {
-      margin-top: 12px;
-    }
-
     .exam-export-paper [data-paper-print-question-prompt="true"] {
       break-after: avoid-page;
     }
@@ -279,14 +264,9 @@ const PRINT_PAGE_STYLES = `
   }
 `;
 
-function buildAnswerMap(paper: ExamPaperDetailResponse, includeAnswers: boolean): AnswerState {
+function buildAnswerMap(paper: ExamPaperDetailResponse, includeAnswers: boolean): Record<number, string> {
   if (!includeAnswers) return {};
-  return Object.fromEntries((paper.items ?? []).map((item) => [
-    item.item_order,
-    isCustomQuestionItem(item) && item.user_answer_payload && Object.keys(item.user_answer_payload).length
-      ? item.user_answer_payload
-      : item.user_answer ?? (isCustomQuestionItem(item) ? getAnswerPayload(item, "") : ""),
-  ]));
+  return Object.fromEntries((paper.items ?? []).map((item) => [item.item_order, item.user_answer ?? ""]));
 }
 
 export function ExamPaperPrintPage() {
@@ -318,7 +298,7 @@ export function ExamPaperPrintPage() {
     () => exportPaper ? buildAnswerMap(exportPaper, exportAvailability.kind === "graded") : {},
     [exportAvailability.kind, exportPaper],
   );
-  const ignoreAnswerChanges = useCallback<Dispatch<SetStateAction<AnswerState>>>(() => undefined, []);
+  const ignoreAnswerChanges = useCallback<Dispatch<SetStateAction<Record<number, string>>>>(() => undefined, []);
   const filename = useMemo(
     () => exportPaper && exportAvailability.kind
       ? buildExamExportFilename(

@@ -111,7 +111,8 @@ def test_unresolved_local_schema_drift_never_rebuilds_database(
     monkeypatch.setattr(db_core, "_create_sqlite_missing_schema_tables", lambda _engine: set())
     monkeypatch.setattr(db_core, "_apply_sqlite_additive_schema_updates", lambda _engine: None)
     monkeypatch.setattr(db_core, "_backfill_sqlite_raw_file_parse_signatures", lambda _engine: None)
-    monkeypatch.setattr(db_core, "_backfill_sqlite_question_identity_hashes", lambda _engine: None)
+    from app.shared.infra.database import question_type_cleanup
+    monkeypatch.setattr(question_type_cleanup, "migrate_sqlite_question_types", lambda _engine: None)
     monkeypatch.setattr(db_core, "_backfill_sqlite_library_chat_sessions", lambda _engine: None)
     monkeypatch.setattr(db_core, "_deduplicate_sqlite_active_course_shares", lambda _engine: None)
     monkeypatch.setattr(db_core, "_apply_sqlite_additive_index_updates", lambda _engine: None)

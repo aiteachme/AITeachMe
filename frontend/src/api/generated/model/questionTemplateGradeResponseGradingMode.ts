@@ -12,5 +12,4 @@ export const QuestionTemplateGradeResponseGradingMode = {
   objective_rule: 'objective_rule',
   subjective_llm: 'subjective_llm',
   subjective_fallback: 'subjective_fallback',
-  custom_rubric_llm: 'custom_rubric_llm',
 } as const;

@@ -78,24 +78,10 @@ NODE_TRACE_DETAILS: dict[str, dict[str, object]] = {
             "把全局 exam_mode、题量和用户提示拆成每一道题的题型、难度和生成约束，"
             "为后续知识点分配提供稳定的题目蓝图前置条件。"
         ),
-        "reads": [
-            "exam_mode",
-            "question_count",
-            "user_prompt",
-            "configured_question_types",
-            "configured_question_counts",
-            "question_type_runtimes",
-        ],
+        "reads": ["exam_mode", "question_count", "user_prompt", "configured_question_types"],
         "writes": ["question_requirement_plans", "question_requirement_rationale"],
         "emits": ["progress:plan_question_requirements"],
-        "input_keys": [
-            "exam_mode",
-            "question_count",
-            "user_prompt",
-            "configured_question_types",
-            "configured_question_counts",
-            "question_type_runtimes",
-        ],
+        "input_keys": ["exam_mode", "question_count", "user_prompt", "configured_question_types"],
         "output_keys": [
             "question_requirement_plans",
             "question_requirement_rationale",
@@ -138,13 +124,7 @@ NODE_TRACE_DETAILS: dict[str, dict[str, object]] = {
             "按已冻结的 ExamQuestionBlueprint 并发生成结构化题目。每题失败会被记录到 failed_questions；"
             "当允许部分成功时，节点保留已生成题目并把失败详情交给调用方展示。"
         ),
-        "reads": [
-            "question_blueprints",
-            "units(filtered)",
-            "course profile",
-            "system_constraints",
-            "question_type_runtimes",
-        ],
+        "reads": ["question_blueprints", "units(filtered)", "course profile", "system_constraints"],
         "writes": ["generated_questions", "failed_questions", "failed_question_count"],
         "emits": ["progress:generate_exam_questions", "progress:generate_question"],
         "input_keys": [
@@ -154,7 +134,6 @@ NODE_TRACE_DETAILS: dict[str, dict[str, object]] = {
             "course_description",
             "course_user_intent",
             "system_constraints",
-            "question_type_runtimes",
         ],
         "output_keys": [
             "generated_questions",
@@ -267,8 +246,6 @@ def create_question_build_initial_state(
     course_context: str = "",
     user_prompt: str = "",
     configured_question_types: list[str] | None = None,
-    configured_question_counts: dict[str, int] | None = None,
-    question_type_runtimes: list[dict[str, object]] | None = None,
     configured_difficulty: str = "auto",
     system_constraints: str = "",
     units: list | None = None,
@@ -287,8 +264,6 @@ def create_question_build_initial_state(
         "course_context": course_context,
         "user_prompt": user_prompt,
         "configured_question_types": list(configured_question_types or []),
-        "configured_question_counts": dict(configured_question_counts or {}),
-        "question_type_runtimes": list(question_type_runtimes or []),
         "configured_difficulty": configured_difficulty,
         "system_constraints": system_constraints,
         "units": list(units or []),
@@ -320,8 +295,6 @@ async def run_question_build_workflow(
     course_context: str = "",
     user_prompt: str = "",
     configured_question_types: list[str] | None = None,
-    configured_question_counts: dict[str, int] | None = None,
-    question_type_runtimes: list[dict[str, object]] | None = None,
     configured_difficulty: str = "auto",
     system_constraints: str = "",
     units: list | None = None,
@@ -357,8 +330,6 @@ async def run_question_build_workflow(
             course_context=course_context,
             user_prompt=user_prompt,
             configured_question_types=configured_question_types,
-            configured_question_counts=configured_question_counts,
-            question_type_runtimes=question_type_runtimes,
             configured_difficulty=configured_difficulty,
             system_constraints=system_constraints,
             units=list(units or []),
