@@ -392,7 +392,7 @@ async def review_document_consistency_with_llm(
     learner_profile_text: str = "",
     chapter_tasks: list[dict[str, Any]] | None = None,
 ) -> tuple[DocumentConsistencyReport, list[ReviewAction], int]:
-    """Run deterministic whole-document review, then one bounded LLM review."""
+    """Run rule guardrails and bounded semantic review with one model retry."""
 
     rule_report = review_document_consistency(
         reviewed_chapters=reviewed_chapters,
@@ -400,22 +400,28 @@ async def review_document_consistency_with_llm(
         expected_chapter_count=expected_chapter_count,
         chapter_tasks=chapter_tasks,
     )
-    async def _run_document_review() -> LLMDocumentConsistencyReviewResult:
+    messages = build_document_review_messages(
+        digest_mode=digest_mode,
+        reviewed_chapters=[chapter.model_dump(mode="json") for chapter in reviewed_chapters],
+        rule_report=rule_report.model_dump(mode="json"),
+        guideline=guideline or {},
+        dispatch_table=dispatch_table or {},
+        learner_profile_text=learner_profile_text,
+        chapter_tasks=chapter_tasks,
+    )
+    llm_calls = 0
+
+    async def _run_document_review(step: DocGenModelStep) -> LLMDocumentConsistencyReviewResult:
+        nonlocal llm_calls
+        llm_calls += 1
         result = await acompletion_with_fallback(
-            build_document_review_messages(
-                digest_mode=digest_mode,
-                reviewed_chapters=[chapter.model_dump(mode="json") for chapter in reviewed_chapters],
-                rule_report=rule_report.model_dump(mode="json"),
-                guideline=guideline or {},
-                dispatch_table=dispatch_table or {},
-                learner_profile_text=learner_profile_text,
-                chapter_tasks=chapter_tasks,
-            ),
+            messages,
             **docgen_completion_kwargs_with_metadata(
-                DocGenModelStep.DOCUMENT_REVIEW,
+                step,
                 digest_mode=digest_mode,
                 chapter_count=len(reviewed_chapters),
                 rule_issue_count=len(rule_report.issues),
+                docgen_stage="document_review",
             ),
             response_model=LLMDocumentConsistencyReviewResult,
         )
@@ -423,7 +429,10 @@ async def review_document_consistency_with_llm(
         return result
 
     try:
-        llm_result = await _run_document_review()
+        try:
+            llm_result = await _run_document_review(DocGenModelStep.DOCUMENT_REVIEW)
+        except Exception:
+            llm_result = await _run_document_review(DocGenModelStep.DOCUMENT_REVIEW_RETRY)
     except Exception as exc:
         semantic_quantity_tasks = [
             task for task in (ChapterGenerationTask.model_validate(item) for item in chapter_tasks or [])
@@ -459,8 +468,8 @@ async def review_document_consistency_with_llm(
             reason="数量合同的语义审核失败，不能仅凭 Markdown 结构检查发布。",
             instruction="恢复审核模型服务后重新构建并完成语义审核。",
         ) for task in semantic_quantity_tasks]
-        return fallback_report, actions, 1
-    return _merge_document_review_report(rule_report=rule_report, llm_result=llm_result), _document_review_actions(llm_result), 1
+        return fallback_report, actions, llm_calls
+    return _merge_document_review_report(rule_report=rule_report, llm_result=llm_result), _document_review_actions(llm_result), llm_calls
 
 
 def build_merge_review_report(

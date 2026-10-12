@@ -32,6 +32,7 @@ class DocGenModelStep(str, Enum):
     INTERACTIVE_HTML = "enhance_chapters.interactive_html_sidecar"
     CHAPTER_REVIEW = "review_content.review_chapter"
     DOCUMENT_REVIEW = "review_content.document_consistency_review"
+    DOCUMENT_REVIEW_RETRY = "review_content.document_consistency_review_retry"
     REPAIR_PATCH = "repair_or_route.surface_section_patch"
     COVER_IMAGE = "cover_sidecar"
 
@@ -228,9 +229,22 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         call_type="structured",
         model="reason",
         max_tokens=4200,
-        timeout_s=120,
+        timeout_s=90,
+        overall_timeout_s=90,
+        max_retries=1,
         temperature=0.1,
-        note="整本文档一次性跨章一致性复核，只输出问题和可执行回流动作。",
+        note="整本文档跨章一致性复核，保留独立预算供主文本模型重试。",
+    ),
+    DocGenModelStep.DOCUMENT_REVIEW_RETRY: DocGenModelPolicy(
+        step=DocGenModelStep.DOCUMENT_REVIEW_RETRY,
+        call_type="structured",
+        model="primary",
+        max_tokens=4200,
+        timeout_s=90,
+        overall_timeout_s=90,
+        max_retries=1,
+        temperature=0.1,
+        note="审核调用失败后使用主文本模型重试同一完整语义审核，不绕过发布合同。",
     ),
     DocGenModelStep.REPAIR_PATCH: DocGenModelPolicy(
         step=DocGenModelStep.REPAIR_PATCH,

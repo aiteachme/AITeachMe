@@ -173,14 +173,16 @@ class DocGenWriterRuntime(BaseTracedExecution):
             streamed_chars = 0
             stream_soft_limit_logged = False
 
-            async def _run_writer_stream() -> str:
+            async def _run_writer_stream(model_kwargs: Mapping[str, Any]) -> str:
                 nonlocal streamed_chars, stream_soft_limit_logged
+                streamed_chars = 0
+                stream_soft_limit_logged = False
                 chunks: list[str] = []
                 stream_callback_last_at = perf_counter()
                 stream_callback_last_len = 0
                 async for chunk in acompletion_stream(
                     messages,
-                    **writer_model_kwargs,
+                    **model_kwargs,
                 ):
                     chunk_text = str(chunk)
                     if not chunk_text:
@@ -210,7 +212,7 @@ class DocGenWriterRuntime(BaseTracedExecution):
 
             try:
                 markdown = await asyncio.wait_for(
-                    _run_writer_stream(),
+                    _run_writer_stream(writer_model_kwargs),
                     timeout=WRITER_TASK_TIMEOUT_S,
                 )
             except asyncio.TimeoutError as exc:
@@ -245,15 +247,16 @@ class DocGenWriterRuntime(BaseTracedExecution):
                 completion_metadata = dict(raw_metadata) if isinstance(raw_metadata, Mapping) else {}
                 completion_metadata.update(
                     {
-                        "docgen_writer_fallback": "completion_after_stream_failure",
+                        "docgen_writer_fallback": "stream_after_timeout" if stream_timed_out else "completion_after_stream_failure",
                         "docgen_writer_stream_timed_out": stream_timed_out,
                         "docgen_writer_stream_failure_reason": stream_failure_reason,
                         "docgen_writer_fallback_model_slot": writer_fallback_model_slot,
+                        "docgen_model_slot": writer_fallback_model_slot,
                     }
                 )
                 completion_model_kwargs["extra_metadata"] = completion_metadata
                 self.logger.info(
-                    "docgen_writer_retry_completion",
+                    "docgen_writer_retry_stream" if stream_timed_out else "docgen_writer_retry_completion",
                     chapter_index=chapter_index,
                     stream_timed_out=stream_timed_out,
                     stream_failure_reason=stream_failure_reason,
@@ -261,8 +264,13 @@ class DocGenWriterRuntime(BaseTracedExecution):
                 )
 
             try:
+                retry_call = (
+                    _run_writer_stream(completion_model_kwargs)
+                    if stream_timed_out
+                    else llm(messages, **completion_model_kwargs)
+                )
                 markdown = await asyncio.wait_for(
-                    llm(messages, **completion_model_kwargs),
+                    retry_call,
                     timeout=WRITER_TASK_TIMEOUT_S,
                 )
                 markdown = str(markdown or "")

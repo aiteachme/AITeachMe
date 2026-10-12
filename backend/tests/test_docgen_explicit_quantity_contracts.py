@@ -396,7 +396,7 @@ async def test_quantity_rule_errors_survive_semantic_reviewer_success_or_failure
         document_backbone=DocumentBackbone(), expected_chapter_count=1,
         chapter_tasks=[task.model_dump(mode="json")],
     )
-    assert calls == 1
+    assert calls == (2 if llm_fails else 1)
     assert report.passed is False
     assert any(item["severity"] == "error" and "当前为 4 道" in item["detail"] for item in report.issues)
 
@@ -426,6 +426,32 @@ async def test_semantic_quantity_contract_requires_successful_semantic_review(mo
         assert merged.decision == "fail"
     else:
         assert actions == []
+
+
+@pytest.mark.anyio
+async def test_quantity_review_recovers_with_primary_after_reason_timeout(monkeypatch) -> None:
+    calls = []
+
+    async def review(messages, **kwargs):
+        calls.append((messages, kwargs))
+        if len(calls) == 1:
+            raise TimeoutError("reason model timed out")
+        return LLMDocumentConsistencyReviewResult(passed=True, issues=[], actions=[])
+
+    monkeypatch.setattr(quality, "acompletion_with_fallback", review)
+    task = _compile_brief(ChapterExecutionBrief(quantity_constraints={"worked_example_count": 2}))
+    report, actions, count = await quality.review_document_consistency_with_llm(
+        reviewed_chapters=[_published_chapter()], document_backbone=DocumentBackbone(), expected_chapter_count=1,
+        chapter_tasks=[task.model_dump(mode="json")],
+    )
+
+    assert report.passed is True
+    assert report.fallback_used is False
+    assert actions == []
+    assert count == 2
+    assert [kwargs["model"] for _, kwargs in calls] == ["reason", "primary"]
+    assert calls[0][0] == calls[1][0]
+    assert sum(float(kwargs["overall_timeout_s"]) for _, kwargs in calls) <= 180
 
 
 @pytest.mark.parametrize("status", ["recorded", "skipped", "downgraded", "applied"])

@@ -14,6 +14,8 @@ def build_chapter_patch_messages(
     repair_round: int = 1,
     max_patch_chars: int = 2200,
     quantity_contract: dict | None = None,
+    related_markdown_context: str = "",
+    previous_rejection: str = "",
 ) -> list[dict[str, str]]:
     system_prompt = """
 你是 AITeachMe 的章节修补器。
@@ -43,6 +45,12 @@ def build_chapter_patch_messages(
 当前章节相关上下文：
 {markdown_context}
 
+同章其它内容（只读，供核对前置方法及正文与测试的一致性，不能在本补丁中修改）：
+{related_markdown_context}
+
+上一轮补丁被拒绝的具体原因（本轮必须修正，不要原样重复被拒绝的补丁）：
+{previous_rejection or '无'}
+
 原章节总长度：{full_markdown_chars} 字符
 
 输出要求：
@@ -54,9 +62,10 @@ def build_chapter_patch_messages(
 6. 除固定章末 `## 单元测试` 外，新增标题必须具体说明本章知识对象、方法、题型或操作任务；不要使用固定表头、泛标题或序号占位题型名。
 7. 普通新增片段尽量控制在 1200 字符；本次完整替换块最多 {max_patch_chars} 字符，必须保留目标模块中的题干、答案和解析。append 不要复制已有小节；replace_section 只返回目标小节，不能跨越其边界。不要一次输出多个已有二级标题。
 8. 完整例题、案例和章末练习不要放进大块 callout；提示块只用于短提示、短警告或短重点。
-9. 在结构化字段 covered_action_ids 中列出这段 patch 实际覆盖的 repair_action_key；无法安全处理的放入 unresolved_action_ids。
+9. 在结构化字段 covered_action_ids 中列出这段 patch 完整解决的 repair_action_key；无法安全处理或只解决了一部分的放入 unresolved_action_ids。两份列表不能包含同一个 key。
 10. 修补公式、定理或应用方法时必须保留适用条件和边界：定义域、区间、端点、分母、符号、旋转轴与半径距离不得省略；不要重复已有题干或练习。
 11. 保留用户明确规定的小节、示例和练习数量，以及正文篇幅和主题边界；不要为了补充内容额外增加同类示例或题目。正文小节数量不含固定的章末单元测试；需要补充说明时融入已有小节。
+12. 较长证明和推导拆成短段或清晰步骤，避免多个长段连续堆叠。
 """.strip()
     messages = [
         {"role": "system", "content": system_prompt},

@@ -305,16 +305,19 @@ async def test_docgen_writer_raises_when_completion_times_out(monkeypatch) -> No
         )
 
 @pytest.mark.anyio
-async def test_docgen_writer_stream_timeout_retries_with_primary_completion(monkeypatch) -> None:
-    completion_calls: list[dict[str, object]] = []
+async def test_docgen_writer_stream_timeout_retries_with_primary_stream(monkeypatch) -> None:
+    stream_calls: list[dict[str, object]] = []
+    cancelled = False
 
     async def slow_stream(*args, **kwargs):
-        await asyncio.sleep(0.05)
-        yield "# Incomplete stream"
-
-    async def fallback_llm(*args, **kwargs):
-        completion_calls.append(dict(kwargs))
-        return (
+        nonlocal cancelled
+        stream_calls.append(dict(kwargs))
+        if len(stream_calls) == 1:
+            try:
+                await asyncio.sleep(0.05)
+            finally:
+                cancelled = True
+        yield (
             "# Function Graphs\n\n"
             "## Function Graph Definition\n\n"
             "A function graph shows the relation between input and output.\n\n"
@@ -329,7 +332,6 @@ async def test_docgen_writer_stream_timeout_retries_with_primary_completion(monk
 
     monkeypatch.setattr(writer, "WRITER_TASK_TIMEOUT_S", 0.01)
     monkeypatch.setattr(writer, "acompletion_stream", slow_stream)
-    monkeypatch.setattr(TracedExecutionContext, "resolve_llm_caller", lambda self: fallback_llm)
 
     runtime = DocGenWriterRuntime(
         TracedExecutionContext(
@@ -356,10 +358,44 @@ async def test_docgen_writer_stream_timeout_retries_with_primary_completion(monk
     assert result.metadata["fallback_used"] is True
     assert "TimeoutError" in str(result.metadata["writer_stream_failure_reason"])
     assert result.metadata["writer_fallback_model_slot"] == "primary"
-    assert completion_calls[0]["model"] == "primary"
-    fallback_metadata = completion_calls[0]["extra_metadata"]
+    assert cancelled is True
+    assert [call["model"] for call in stream_calls] == ["reason", "primary"]
+    fallback_metadata = stream_calls[1]["extra_metadata"]
     assert isinstance(fallback_metadata, dict)
     assert fallback_metadata["docgen_writer_stream_timed_out"] is True
+    assert fallback_metadata["docgen_writer_fallback"] == "stream_after_timeout"
+
+
+@pytest.mark.anyio
+async def test_docgen_writer_timeout_retries_primary_stream_without_buffering(monkeypatch) -> None:
+    stream_calls = []
+
+    async def stream(messages, **kwargs):
+        stream_calls.append(kwargs)
+        if len(stream_calls) == 1:
+            raise TimeoutError("initial stream timed out")
+        yield "# 函数图像\n\n## 定义\n\n函数图像表示输入和输出之间的关系。"
+
+    async def buffered_completion(*args, **kwargs):
+        pytest.fail("stream timeout must not retry a buffered Responses request")
+
+    async def preview(_: str) -> None:
+        pass
+
+    monkeypatch.setattr(writer, "acompletion_stream", stream)
+    monkeypatch.setattr(TracedExecutionContext, "resolve_llm_caller", lambda self: buffered_completion)
+    runtime = DocGenWriterRuntime(TracedExecutionContext(
+        course_id="course_docgen0000", build_session_id="build-1", digest_mode="systematic",
+    ))
+    result = await runtime.execute(
+        chapter_plan={"chapter_index": 1, "title": "函数图像", "objective": "理解函数图像",
+                      "required_elements": ["函数图像"], "execution_contract": {"min_word_count": 1}},
+        dense_context="函数图像连接输入和输出。", digest_mode="systematic", on_stream_update=preview,
+    )
+
+    assert [call["model"] for call in stream_calls] == ["reason", "primary"]
+    assert result.metadata["fallback_used"] is True
+    assert "函数图像表示输入" in result.content
 
 
 @pytest.mark.anyio

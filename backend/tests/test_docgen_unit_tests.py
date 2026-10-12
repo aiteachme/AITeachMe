@@ -258,6 +258,37 @@ def test_unit_test_contract_accepts_canonical_non_choice_pair() -> None:
     assert unit_test_structure_issues(markdown) == []
 
 
+@pytest.mark.parametrize("stem", [
+    "列方程并求水流速度，检验答案是否符合实际范围。",
+    "答案是否满足原方程的限制？请说明理由。",
+    "比较两种方法，说明答案为什么一致。",
+    "根据题中给定的参考答案定位错误并修正。",
+])
+def test_question_instructions_can_mention_answers_without_leaking_them(stem) -> None:
+    markdown = render_unit_test_markdown(
+        ChapterUnitTestSet(chapter_index=1, items=[ChapterUnitTestItem(
+            type="短答题", difficulty="基础", target="解的检验",
+            stem=stem, answer="满足实际范围。", basis="代入原式并核对取值限制。",
+        )]),
+        title="解的检验", min_items=1, max_items=1, fallback_targets=[],
+    )
+
+    assert unit_test_structure_issues(markdown) == []
+
+
+@pytest.mark.parametrize("field", ["答案：6", "正确答案: 6", "**答案**", "**参考答案**：6", "参考答案"])
+def test_question_blocks_still_reject_answer_fields(field) -> None:
+    markdown = render_unit_test_markdown(
+        ChapterUnitTestSet(chapter_index=1, items=[ChapterUnitTestItem(
+            type="短答题", difficulty="基础", target="解的检验",
+            stem=f"求水流速度。\n{field}", answer="6。", basis="列方程并求解。",
+        )]),
+        title="解的检验", min_items=1, max_items=1, fallback_targets=[],
+    )
+
+    assert any("把答案写进了 QUESTION" in issue for issue in unit_test_structure_issues(markdown))
+
+
 def test_unit_test_renderer_normalizes_model_format_artifacts() -> None:
     markdown = render_unit_test_markdown(
         ChapterUnitTestSet(

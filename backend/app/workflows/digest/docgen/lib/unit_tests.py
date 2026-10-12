@@ -131,6 +131,10 @@ _UNIT_TEST_OPTION_LINE_RE = re.compile(
 _UNIT_TEST_FIELD_ONLY_RE = re.compile(
     r"^\s*(?:\*\*)?(?:题目|题干|选项|答案|解析|解析步骤|判定依据)(?:\*\*)?\s*(?:[:：])?\s*$"
 )
+_UNIT_TEST_ANSWER_FIELD_RE = re.compile(
+    r"(?:^|(?<=[。！？；]))\s*(?:(?:正确答案|参考答案|答案)\s*(?:[:：]|$)"
+    r"|\*\*(?:正确答案|参考答案|答案)\*\*(?=\s|[:：]|$))"
+)
 
 
 class ChapterUnitTestGenerationError(RuntimeError):
@@ -139,6 +143,23 @@ class ChapterUnitTestGenerationError(RuntimeError):
 
 def _compact_label(value: str) -> str:
     return re.sub(r"[\s_\-：:，,。；;、/]+", "", str(value or "").strip()).lower()
+
+
+def _content_identity(value: str) -> str:
+    # Math content must retain signs, division, subscripts and letter case.
+    return re.sub(r"\s+", "", str(value or ""))
+
+
+def _canonical_choice_answer(answer: str, options: dict[str, str]) -> str:
+    label = re.fullmatch(r"(?:选项\s*)?([A-Da-d])(?:[.)、:：]\s*(.*))?", answer.strip())
+    if label is not None:
+        option = options.get(label.group(1).upper())
+        suffix = str(label.group(2) or "").strip()
+        if option is not None and (
+            not suffix or _content_identity(suffix) == _content_identity(option)
+        ):
+            return option
+    return answer
 
 
 def _normalize_question_type(value: str) -> str:
@@ -177,7 +198,7 @@ def _normalize_choice_options(value: Any) -> list[str]:
             text = match.group("text").strip()
         if not text:
             continue
-        key = _compact_label(text)
+        key = _content_identity(text)
         if not key or key in seen:
             continue
         seen.add(key)
@@ -240,17 +261,9 @@ class ChapterUnitTestItem(DocGenBaseModel):
         self.type = _normalize_question_type(self.type)
         self.difficulty = _normalize_difficulty(self.difficulty)
         self.options = _normalize_choice_options(self.options)
-        answer_label = re.fullmatch(
-            r"(?:选项\s*)?([A-Da-d])(?:[.、:：]\s*(.*))?",
-            self.answer.strip(),
+        self.answer = _canonical_choice_answer(
+            self.answer, {chr(ord("A") + index): option for index, option in enumerate(self.options)}
         )
-        if answer_label is not None:
-            answer_index = ord(answer_label.group(1).upper()) - ord("A")
-            answer_suffix = clean_text(answer_label.group(2) or "")
-            if 0 <= answer_index < len(self.options):
-                option = self.options[answer_index]
-                if not answer_suffix or _compact_label(answer_suffix) == _compact_label(option):
-                    self.answer = option
         if not _is_choice_unit_test_type(self.type):
             self.options = []
         return self
@@ -556,6 +569,59 @@ def _callout_visible_lines(lines: list[str], *, marker_rest: str) -> tuple[list[
     return visible, has_floating_line
 
 
+def normalize_unit_test_choice_answers(markdown: str) -> str:
+    """Expand an explicit A-D answer label to its exact option, without guessing."""
+
+    text, fenced_blocks = _protect_fenced_code_blocks(str(markdown or ""))
+    section_lines, issues = _unit_test_section(text)
+    if issues:
+        return markdown
+    lines = text.splitlines(keepends=True)
+    section_start = len(lines) - len(section_lines)
+    kind = ""
+    choice = False
+    options: dict[str, str] = {}
+    answer_start: int | None = None
+
+    def normalize_answer(end: int) -> None:
+        if not choice or answer_start is None or list(options) != ["A", "B", "C", "D"]:
+            return
+        values = [index for index in range(answer_start, end) if re.sub(r"^\s*>\s?", "", lines[index]).strip()]
+        if len(values) != 1:
+            return
+        index = values[0]
+        match = re.match(r"^(\s*>\s?)(.*?)(\r?\n)?$", lines[index])
+        if match is not None:
+            original = match.group(2).strip()
+            answer = _canonical_choice_answer(original, options)
+            if answer != original:
+                lines[index] = match.group(1) + answer + (match.group(3) or "")
+
+    for index in range(section_start, len(lines)):
+        line = lines[index]
+        marker = _UNIT_TEST_CALLOUT_START_RE.match(line)
+        if marker is not None:
+            normalize_answer(index)
+            answer_start = None
+            kind = marker.group("kind").upper()
+            if kind == "QUESTION":
+                choice = False
+                options = {}
+        visible = re.sub(r"^\s*>\s?", "", line).strip()
+        if kind == "QUESTION":
+            header = _UNIT_TEST_QUESTION_HEADER_RE.search(visible)
+            if header is not None:
+                choice = _normalize_question_type(header.group("type")) == "选择题"
+            option = _UNIT_TEST_OPTION_LINE_RE.match(visible)
+            if option is not None:
+                options[option.group("label").upper()] = option.group("value").strip()
+        elif kind == "ANSWER" and _UNIT_TEST_FIELD_ONLY_RE.match(visible):
+            normalize_answer(index)
+            answer_start = index + 1 if visible == "**答案**" else None
+    normalize_answer(len(lines))
+    return _restore_fenced_code_blocks("".join(lines), fenced_blocks)
+
+
 def unit_test_structure_issues(markdown: str, *, expected_question_count: int | None = None) -> list[str]:
     """Validate the deterministic QUESTION/ANSWER publication contract.
 
@@ -639,7 +705,7 @@ def unit_test_structure_issues(markdown: str, *, expected_question_count: int | 
                 issues.append(f"题号 Q{number} 重复。")
             question_numbers.add(number)
 
-        if any(re.search(r"(?:\*\*)?(?:答案|正确答案|参考答案)(?:\*\*)?\s*[:：]?", line) for line in question_lines):
+        if any(_UNIT_TEST_ANSWER_FIELD_RE.search(line) for line in question_lines):
             issues.append(f"第 {question_ordinal} 题把答案写进了 QUESTION 块。")
 
         option_labels = [
@@ -707,9 +773,9 @@ def unit_test_structure_issues(markdown: str, *, expected_question_count: int | 
                     explanation_value_lines.append(line)
         if not explanation_value_lines:
             issues.append(f"第 {question_ordinal} 题解析步骤为空。")
-        normalized_answer = _compact_label("".join(answer_value_lines))
+        normalized_answer = _content_identity("".join(answer_value_lines))
         if question_type == "选择题" and normalized_answer:
-            normalized_options = {_compact_label(value) for value in option_values}
+            normalized_options = {_content_identity(value) for value in option_values}
             if normalized_answer not in normalized_options:
                 issues.append(f"第 {question_ordinal} 道选择题的答案必须与 A-D 中某个完整选项一致。")
         if normalized_answer:
@@ -725,8 +791,8 @@ def _is_usable_unit_test_item(item: ChapterUnitTestItem) -> bool:
         return False
     if _is_choice_unit_test_type(item.type):
         options = _normalize_choice_options(item.options)
-        return len(options) == 4 and _compact_label(item.answer) in {
-            _compact_label(option) for option in options
+        return len(options) == 4 and _content_identity(item.answer) in {
+            _content_identity(option) for option in options
         }
     return True
 
@@ -735,7 +801,7 @@ def _dedupe_unit_test_items(items: list[ChapterUnitTestItem]) -> list[ChapterUni
     deduped: list[ChapterUnitTestItem] = []
     seen: set[str] = set()
     for item in items:
-        key = _compact_label(f"{item.type}|{item.target}|{item.stem}")
+        key = _content_identity(f"{item.type}|{item.target}|{item.stem}")
         if key in seen:
             continue
         seen.add(key)
@@ -963,6 +1029,7 @@ __all__ = [
     "append_unit_test_markdown",
     "has_unit_test_heading",
     "normalize_published_unit_test_sections",
+    "normalize_unit_test_choice_answers",
     "render_unit_test_markdown",
     "split_final_unit_test_section",
     "strip_existing_unit_test_sections",

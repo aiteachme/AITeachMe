@@ -3472,7 +3472,7 @@ async def test_repair_can_continue_when_model_leaves_actions_for_next_round(monk
             covered_action_ids=covered,
         )
 
-    monkeypatch.setattr(repair, "_MAX_LLM_PATCH_ROUNDS_PER_CHAPTER", 2)
+    monkeypatch.setattr(repair, "_MAX_LLM_PATCH_ATTEMPTS_PER_TARGET", 2)
     monkeypatch.setattr(repair, "acompletion_with_fallback", fake_completion)
     chapter = ReviewedChapterDraft(
         chapter_index=1,
@@ -3516,13 +3516,15 @@ async def test_repair_can_continue_when_model_leaves_actions_for_next_round(monk
 @pytest.mark.anyio
 async def test_repair_uses_covered_action_anchor_when_patch_target_missing(monkeypatch) -> None:
     async def fake_completion(*args, **kwargs):
+        if "'action_id': 'a1'" in args[0][1]["content"]:
+            return repair._LocalMarkdownPatch(status="no_change", unresolved_action_ids=["a1"])
         return repair._LocalMarkdownPatch(
             status="patch",
             patch_markdown="## 应用补充\n\n- 先识别题目给出的边长，再选择面积公式。",
             covered_action_ids=["a2"],
         )
 
-    monkeypatch.setattr(repair, "_MAX_LLM_PATCH_ROUNDS_PER_CHAPTER", 1)
+    monkeypatch.setattr(repair, "_MAX_LLM_PATCH_ATTEMPTS_PER_TARGET", 1)
     monkeypatch.setattr(repair, "acompletion_with_fallback", fake_completion)
     chapter = ReviewedChapterDraft(
         chapter_index=1,
@@ -3581,7 +3583,7 @@ async def test_deterministic_rendering_patch_does_not_consume_llm_patch_limit(mo
             patch_markdown="## 易错补充\n\n- 先看单位，再代入公式。",
         )
 
-    monkeypatch.setattr(repair, "_MAX_LLM_PATCH_ROUNDS_PER_CHAPTER", 1)
+    monkeypatch.setattr(repair, "_MAX_LLM_PATCH_ATTEMPTS_PER_TARGET", 1)
     monkeypatch.setattr(repair, "acompletion_with_fallback", fake_completion)
     monkeypatch.setattr(
         repair,
