@@ -175,6 +175,11 @@ def build_docgen_writer_messages(
         quantity_lines.append(
             f"- 正文练习、自测或变式题合计恰好 {short_practice_quota} 道，不额外增加题目。"
         )
+        if quantities.inline_practice_count == 0:
+            quantity_lines.append(
+                "- 正文只保留上述教学例题及其讲解，不生成 QUESTION/ANSWER 题答块；"
+                "额外写作要求里的章末题型、题量及题答布局全部留给后续测试节点。"
+            )
     quantity_summary = "\n".join(quantity_lines)
     word_budget_note = (
         "- 明确篇幅按中文讲解正文计算（含表格中的讲解），代码块、代码输出、Markdown 标记和后续章末测试不计入篇幅；不要用代码长度凑最低字数。\n"

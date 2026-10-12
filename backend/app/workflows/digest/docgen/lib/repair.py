@@ -21,6 +21,7 @@ from app.workflows.digest.docgen.lib.unit_tests import (
     _protect_fenced_code_blocks,
     _restore_fenced_code_blocks,
     normalize_unit_test_choice_answers,
+    split_final_unit_test_section,
     unit_test_structure_issues,
 )
 from app.workflows.digest.docgen.prompts.repair import build_chapter_patch_messages, build_patch_verification_messages
@@ -439,6 +440,24 @@ def _exercise_patch_contract_reason(
     return None
 
 
+def _removes_forbidden_body_questions(
+    original_markdown: str,
+    patched_markdown: str,
+    quantity_contract: dict | None,
+) -> bool:
+    """Allow a verified body patch to restore an explicit zero-practice contract."""
+    quantities = (quantity_contract or {}).get("quantity_constraints") or {}
+    if quantities.get("inline_practice_count") != 0:
+        return False
+    original_body, original_test = split_final_unit_test_section(original_markdown)
+    patched_body, patched_test = split_final_unit_test_section(patched_markdown)
+    return bool(
+        _question_callout_records(original_body)
+        and not _question_callout_records(patched_body)
+        and original_test == patched_test
+    )
+
+
 def _local_patch_risk_reason(
     *,
     original_markdown: str,
@@ -730,7 +749,7 @@ async def _apply_llm_patch_actions(
                 ),
             ),
             **docgen_completion_kwargs_with_metadata(
-                DocGenModelStep.REPAIR_PATCH,
+                DocGenModelStep.REPAIR_PATCH_RETRY if previous_rejection else DocGenModelStep.REPAIR_PATCH,
                 chapter_index=chapter.chapter_index,
                 repair_round=repair_round,
                 repair_action_count=len(indexed_actions),
@@ -833,7 +852,12 @@ async def _apply_llm_patch_actions(
         )
     )
     if patched and patched != chapter.markdown:
-        if replace_section and len(_question_callout_records(chapter.markdown)) != len(_question_callout_records(patched)):
+        contract_question_removal = (
+            replace_section
+            and any(action.severity == "error" for key, (_, action) in action_keys.items() if key in covered_keys)
+            and _removes_forbidden_body_questions(chapter.markdown, patched, quantity_contract)
+        )
+        if replace_section and not contract_question_removal and len(_question_callout_records(chapter.markdown)) != len(_question_callout_records(patched)):
             return chapter, _rejected_llm_patch_results(
                 indexed_actions=indexed_actions, repair_round=repair_round,
                 llm_call_group=llm_call_group, reason="替换小节不得改变现有 QUESTION 题目数量。",
@@ -1079,6 +1103,7 @@ async def repair_or_route_review_actions(
         for action_batch in action_batches:
             current_batch = action_batch
             previous_rejection = ""
+            rejection_history: list[str] = []
             for _attempt in range(_MAX_LLM_PATCH_ATTEMPTS_PER_TARGET):
                 if not current_batch:
                     break
@@ -1094,7 +1119,8 @@ async def repair_or_route_review_actions(
                 )
                 repair_round += 1
                 results.extend(round_results)
-                previous_rejection = "；".join(dict.fromkeys(trace.detail for _, _, trace, _ in round_results if not trace.changed))
+                rejection_history.extend(trace.detail for _, _, trace, _ in round_results if not trace.changed)
+                previous_rejection = "；".join(dict.fromkeys(rejection_history))
             remaining_llm_actions.extend(current_batch)
 
         for action_index, action in remaining_llm_actions:

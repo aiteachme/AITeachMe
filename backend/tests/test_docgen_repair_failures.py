@@ -9,6 +9,7 @@ from app.workflows.digest.docgen.lib import repair, unit_tests
 from app.workflows.digest.docgen.lib.models import EnhancedChapterDraft, ReviewAction, ReviewedChapterDraft
 from app.workflows.digest.docgen.lib.quality import build_merge_review_report
 from app.workflows.digest.docgen.lib.presentation_policy import normalize_docgen_presentation
+from app.workflows.digest.docgen.prompts.repair import build_patch_verification_messages
 
 
 @pytest.fixture
@@ -32,6 +33,18 @@ def test_raw_choice_answer_normalization_uses_explicit_option_label(answer):
     normalized = unit_tests.normalize_unit_test_choice_answers(markdown)
     assert normalized == _choice_test()
     assert unit_tests.unit_test_structure_issues(normalized) == []
+
+
+def test_patch_review_contract_accepts_option_content_without_display_label():
+    candidate = unit_tests.normalize_unit_test_choice_answers(_choice_test("A. $2$"))
+    messages = build_patch_verification_messages(
+        chapter_title="算术", actions=[], patch_markdown=candidate,
+        related_markdown_context="", quantity_contract={},
+    )
+    assert "不含 A-D 选项编号" in messages[0]["content"]
+    assert "缺少编号不构成答案错误" in messages[0]["content"]
+    assert "> **答案**\n>\n> $2$" in messages[1]["content"]
+    assert unit_tests.unit_test_structure_issues(candidate) == []
 
 
 @pytest.mark.parametrize("answer", ["A. $-2$", "E", "$5$", "A\n> B", "A或B"])
@@ -210,6 +223,7 @@ def _ambiguous_choice_test() -> str:
 @pytest.mark.anyio
 async def test_independent_review_rejects_ambiguous_patch_and_guides_next_attempt(monkeypatch):
     calls = []
+    patch_models = []
 
     async def completion(messages, **kwargs):
         if kwargs["response_model"] is repair._LocalPatchVerification:
@@ -223,6 +237,7 @@ async def test_independent_review_rejects_ambiguous_patch_and_guides_next_attemp
                 passed=True, verified_action_ids=["a1"], verification_notes=["1+1=2，其余三个选项均不等于2。"],
             )
         calls.append("patch")
+        patch_models.append(kwargs["model"])
         if calls.count("patch") == 1:
             markdown = _ambiguous_choice_test()
         else:
@@ -238,10 +253,122 @@ async def test_independent_review_rejects_ambiguous_patch_and_guides_next_attemp
     action = ReviewAction(action_id="a1", action_type="section_patch", chapter_index=1, severity="error", target_anchor="## 单元测试")
     chapters, updated, unresolved, _ = await repair.repair_or_route_review_actions(reviewed_chapters=[chapter], review_actions=[action])
     assert calls == ["patch", "verify", "patch", "verify"]
+    assert patch_models == ["primary", "reason"]
     assert updated[0].status == "applied"
     assert not unresolved
     assert "$-2 < 0$" not in chapters[0].markdown
     assert unit_tests.unit_test_structure_issues(chapters[0].markdown) == []
+
+
+@pytest.mark.anyio
+async def test_retry_retains_semantic_feedback_after_structural_rejection(monkeypatch):
+    patch_models = []
+    verifications = 0
+    patch_feedback = []
+
+    async def completion(messages, **kwargs):
+        nonlocal verifications
+        if kwargs["response_model"] is repair._LocalPatchVerification:
+            verifications += 1
+            if verifications == 1:
+                return repair._LocalPatchVerification(
+                    passed=False, verified_action_ids=[], issues=["Q01 的 A、C 都正确，不满足单选。"],
+                    verification_notes=["必须排除两个正确选项。"],
+                )
+            return repair._LocalPatchVerification(
+                passed=True, verified_action_ids=["a1"],
+                verification_notes=["1+1=2，四个选项只有一个正确答案。"],
+            )
+        patch_models.append(kwargs["model"])
+        patch_feedback.append(messages[1]["content"])
+        if len(patch_models) == 1:
+            markdown = _ambiguous_choice_test()
+        elif len(patch_models) == 2:
+            markdown = _choice_test("A。实际结果为 $2$")
+        else:
+            markdown = _choice_test()
+        return repair._LocalMarkdownPatch(
+            operation="replace_section", target_anchor="## 单元测试",
+            patch_markdown=markdown, covered_action_ids=["a1"],
+        )
+
+    monkeypatch.setattr(repair, "acompletion_with_fallback", completion)
+    chapter = ReviewedChapterDraft(
+        chapter_index=1, title="算术", markdown="# 算术\n\n## 加法\n\n正文保持。\n\n" + _choice_test("$3$"),
+    )
+    action = ReviewAction(
+        action_id="a1", action_type="section_patch", chapter_index=1,
+        severity="error", target_anchor="## 单元测试",
+    )
+    chapters, updated, unresolved, traces = await repair.repair_or_route_review_actions(
+        reviewed_chapters=[chapter], review_actions=[action],
+    )
+    assert patch_models == ["primary", "reason", "reason"]
+    assert "Q01 的 A、C 都正确" in patch_feedback[-1], patch_feedback[-1]
+    assert "题答合同" in patch_feedback[-1], patch_feedback[-1]
+    assert verifications == 2, [trace.detail for trace in traces]
+    assert updated[0].status == "applied"
+    assert not unresolved
+    assert "正文保持。" in chapters[0].markdown
+    assert unit_tests.unit_test_structure_issues(chapters[0].markdown) == []
+
+
+@pytest.mark.anyio
+async def test_retry_can_fix_verified_error_elsewhere_in_the_same_test_block(monkeypatch):
+    second = (
+        _choice_test("$4$").replace("## 单元测试\n\n", "").replace("Q01", "Q02")
+        .replace("计算 $1+1$。", "计算 $2+2$。")
+        .replace("> - A. $2$", "> - A. $4$").replace("> - B. $-2$", "> - B. $-4$")
+        .replace("> - C. $3$", "> - C. $5$").replace("> - D. $4$", "> - D. $6$")
+        .replace("相加得到 $2$。", "相加得到 $4$。")
+    )
+    incorrect = _choice_test() + "\n" + second.replace("相加得到 $4$。", "相加得到 $5$。")
+    corrected = _choice_test() + "\n" + second
+    patch_calls = []
+
+    async def completion(messages, **kwargs):
+        if kwargs["response_model"] is repair._LocalPatchVerification:
+            candidate = messages[1]["content"].split("候选补丁（必须完整核验）：\n", 1)[1].split("\n\n同章其它正文", 1)[0]
+            if "相加得到 $5$。" in candidate:
+                return repair._LocalPatchVerification(
+                    passed=False, verified_action_ids=["a1"],
+                    issues=["Q02解析错误：2+2等于4，不是5；这处错误也在当前完整替换块内。"],
+                    verification_notes=["Q01已正确，Q02的答案为4但解析仍写5。"],
+                )
+            return repair._LocalPatchVerification(
+                passed=True, verified_action_ids=["a1"],
+                verification_notes=["两题均有四个不同选项，1+1=2、2+2=4，唯一答案与各步解析一致。"],
+            )
+        patch_calls.append(kwargs["model"])
+        if len(patch_calls) > 1:
+            assert "Q02解析错误" in messages[1]["content"]
+            assert "同一完整替换块" in messages[0]["content"]
+            assert "不得修改同章只读参考小节" in messages[0]["content"]
+        return repair._LocalMarkdownPatch(
+            operation="replace_section", target_anchor="## 单元测试",
+            patch_markdown=incorrect if len(patch_calls) == 1 else corrected,
+            covered_action_ids=["a1"],
+        )
+
+    monkeypatch.setattr(repair, "acompletion_with_fallback", completion)
+    chapter = ReviewedChapterDraft(
+        chapter_index=1, title="算术", markdown="# 算术\n\n## 加法\n\n正文保持。\n\n" + incorrect,
+    )
+    action = ReviewAction(
+        action_id="a1", chapter_index=1, action_type="section_patch", severity="error",
+        target_anchor="## 单元测试", instruction="仅修改Q01的解析。",
+    )
+    # Make the first candidate differ from the existing block so it reaches verification.
+    chapter = chapter.model_copy(update={"markdown": chapter.markdown.replace("相加得到 $2$。", "相加得到 $4$。", 1)})
+    chapters, updated, unresolved, _ = await repair.repair_or_route_review_actions(
+        reviewed_chapters=[chapter], review_actions=[action],
+    )
+    assert patch_calls == ["primary", "reason"]
+    assert updated[0].status == "applied"
+    assert not unresolved
+    assert "正文保持。" in chapters[0].markdown
+    assert "相加得到 $5$。" not in chapters[0].markdown
+    assert unit_tests.unit_test_structure_issues(chapters[0].markdown, expected_question_count=2) == []
 
 
 @pytest.mark.anyio
@@ -298,3 +425,59 @@ async def test_warning_patch_does_not_require_extra_error_verification(monkeypat
     _, updated, unresolved, _ = await repair.repair_or_route_review_actions(reviewed_chapters=[chapter], review_actions=[action])
     assert calls == [repair._LocalMarkdownPatch]
     assert updated[0].status == "applied" and not unresolved
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("inline_count,severity,review_passed,applied", [
+    (0, "error", True, True),
+    (0, "error", False, False),
+    (None, "error", True, False),
+    (1, "error", True, False),
+    (0, "warning", True, False),
+])
+async def test_remove_extra_body_question_only_with_zero_contract_and_independent_review(
+    monkeypatch, inline_count, severity, review_passed, applied,
+):
+    monkeypatch.setattr(repair, "_MAX_LLM_PATCH_ATTEMPTS_PER_TARGET", 1)
+    body = "## 加法\n\n例题：$1+1=2$，逐项相加即可。"
+    extra = "\n\n> [!QUESTION]\n> 计算 $2+2$。\n\n> [!ANSWER]\n> 答案：$4$。"
+    chapter = ReviewedChapterDraft(
+        chapter_index=1, title="算术", markdown="# 算术\n\n" + body + extra + "\n\n" + _choice_test(),
+    )
+    action = ReviewAction(
+        action_id="a1", action_type="section_patch", chapter_index=1, severity=severity,
+        target_anchor="## 加法", instruction="删除正文额外题答块，保留例题和正式单元测试。",
+    )
+    reviews = []
+
+    async def completion(messages, **kwargs):
+        if kwargs["response_model"] is repair._LocalPatchVerification:
+            reviews.append(messages)
+            assert "例题：$1+1=2$" in messages[1]["content"]
+            assert "Q01" in messages[1]["content"]
+            return repair._LocalPatchVerification(
+                passed=review_passed, verified_action_ids=["a1"] if review_passed else [],
+                issues=[] if review_passed else ["补丁丢失了要求的例题讲解。"],
+                verification_notes=["正文保留例题并删除额外题答块，正式单元测试保持一题。"],
+            )
+        assert "零正文练习合同优先" in messages[1]["content"]
+        return repair._LocalMarkdownPatch(
+            operation="replace_section", target_anchor="## 加法", patch_markdown=body,
+            covered_action_ids=["a1"],
+        )
+
+    monkeypatch.setattr(repair, "acompletion_with_fallback", completion)
+    chapters, updated, unresolved, _ = await repair.repair_or_route_review_actions(
+        reviewed_chapters=[chapter], review_actions=[action],
+        chapter_tasks=[{"chapter_index": 1, "quantity_constraints": {"inline_practice_count": inline_count}}],
+    )
+    assert bool(reviews) == (inline_count == 0 and severity == "error")
+    assert (updated[0].status == "applied") == applied
+    assert bool(unresolved) != applied
+    if applied:
+        final_body, final_test = unit_tests.split_final_unit_test_section(chapters[0].markdown)
+        assert "例题：$1+1=2$" in final_body
+        assert "[!QUESTION]" not in final_body
+        assert final_test == _choice_test().strip()
+    else:
+        assert chapters[0].markdown == chapter.markdown
