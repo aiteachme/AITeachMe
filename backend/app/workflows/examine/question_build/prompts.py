@@ -12,10 +12,10 @@ _TEXT_EXAM_SOURCE_MAX_CHARS = 80000
 
 _LATEX_FORMAT_RULES = (
     "\n数学公式格式规则：\n"
-    "- 如果 stem、correct_answer 或 explanation 包含数学公式，只使用合法 LaTeX。\n"
+    "- 如果 stem、options、correct_answer 或 explanation 在代码标记之外包含数学公式，只使用合法 LaTeX。\n"
     "- 行内公式必须使用 `$...$`；独立公式必须使用 `$$...$$`。\n"
     "- 不要输出缺少 `$` 分隔符的裸 TeX 命令。\n"
-    "- 不要使用 `\\(...\\)` 或 `\\[...\\]`。\n"
+    "- 数学公式不要使用 `\\(...\\)` 或 `\\[...\\]`；代码和程序输出中的同名字面字符必须原样保留在代码标记内。\n"
     "- 永远不要把 `{{blank}}` 放进 `$...$` 或 `$$...$$` 数学环境里。\n"
     "- 不要生成 `\\text{___}` 这类 LaTeX 空格；应把 `{{blank}}` 放在公式外的正文中。\n"
 )
@@ -23,7 +23,10 @@ _LATEX_FORMAT_RULES = (
 _QUESTION_TYPE_FORMAT_RULES = (
     "\n题型格式规则：\n"
     "- stem 只能包含题干本身；不要在 stem 中重复或嵌入选项。\n"
-    "- 如果 stem、options、correct_answer 或 explanation 包含代码，必须使用 Markdown fenced code block；Python 代码必须保留可运行缩进，不要把函数体、循环体、条件分支或 return 顶格。\n"
+    "- stem、options、correct_answer 和 explanation 中的完整程序或多行代码必须使用 Markdown fenced code block；Python 代码必须保留可运行缩进，不要把函数体、循环体、条件分支或 return 顶格。\n"
+    "- 单行代码片段、字面字符串、正则表达式、文件路径和单行程序输出必须使用 Markdown 行内代码；多行输出必须使用 text 围栏代码块。\n"
+    "- 代码和输出中的反斜杠、美元符号、下划线等字符必须原样保留，不得将它们改写成数学公式或删除；JSON 转义解码后必须与实际代码和输出一致。\n"
+    "- 例如程序 `print(r'\\(x\\)')` 的输出选项应写成 输出：`\\(x\\)`；解析引用该输出时也要使用行内代码，不能裸写 \\(x\\)。\n"
     "- 选择题只能使用一种标准格式：options 必须是字符串 JSON 数组，不能是对象或映射。\n"
     "- 选择题选项必须恰好是 4 个按顺序排列的纯选项文本；不要在选项前加 A/B/C/D 标签。\n"
     "- 选择题每个选项都必须是完整、可独立阅读的答案表达；不要输出只包含局部片段的选项。\n"
