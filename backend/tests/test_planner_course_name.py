@@ -22,6 +22,57 @@ def test_planner_policy_uses_light_tier_with_bounded_timeouts() -> None:
         assert "task_type" not in kwargs
 
 
+def test_planner_diagnosis_recovers_stalled_first_primary_stream(monkeypatch) -> None:
+    from app.shared.infra.llm_support import stream as stream_module
+
+    calls: list[dict] = []
+    scale = 1000
+    original_request_timeout = stream_module.context_request_timeout_s
+    original_overall_timeout = stream_module.pop_overall_timeout_s
+
+    class FakeLiteLLM:
+        async def aresponses(self, **kwargs):
+            calls.append(kwargs)
+            first_attempt = len(calls) == 1
+
+            async def events():
+                yield {"type": "response.created"}
+                if first_attempt:
+                    await asyncio.sleep(1)
+                yield {"type": "response.output_text.delta", "delta": "diagnosis recovered"}
+                yield {"type": "response.completed", "response": {"usage": {"input_tokens": 2, "output_tokens": 3, "total_tokens": 5}}}
+
+            return events()
+
+    async def no_sleep(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setenv("LLM_API_KEY", "primary-test-key")
+    monkeypatch.setenv("LLM_BASE_URL", "https://primary.example.com/v1")
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+    monkeypatch.setattr(stream_module, "load_litellm", lambda: FakeLiteLLM())
+    monkeypatch.setattr(stream_module, "sleep_before_retry", no_sleep)
+    monkeypatch.setattr(stream_module, "context_request_timeout_s", lambda *args: original_request_timeout(*args) / scale)
+    monkeypatch.setattr(stream_module, "pop_overall_timeout_s", lambda kwargs: original_overall_timeout(kwargs) / scale)
+    try:
+        set_system_settings_override({
+            "models": {"light": "gpt-6-luna"},
+            "llm": {"api_mode": "responses", "text_endpoint_fallback_enabled": False},
+        })
+
+        async def run():
+            return "".join([part async for part in stream_module.acompletion_stream(
+                [{"role": "user", "content": "Generate the diagnosis."}],
+                **planner_completion_kwargs(PlannerModelStep.DIAGNOSE_QUESTIONS),
+            )])
+
+        assert asyncio.run(run()) == "diagnosis recovered"
+        assert len(calls) == 2
+        assert all(call["api_key"] == "primary-test-key" for call in calls)
+    finally:
+        set_system_settings_override({})
+
+
 def test_planner_stream_policy_keeps_gpt55_auto_on_responses_without_native_tools(monkeypatch) -> None:
     monkeypatch.setenv("LLM_BASE_URL", "https://gateway.example.com")
     monkeypatch.setenv("LLM_API_KEY", "test-key")

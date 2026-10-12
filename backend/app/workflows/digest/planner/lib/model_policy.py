@@ -14,6 +14,7 @@ from app.workflows.common.model_policy import ProviderNativeToolPolicy, compact_
 PlannerModelSlot = Literal["light", "primary", "reason"]
 PlannerAPIMode = Literal["auto", "chat_completions", "responses"]
 _PLANNER_FAST_TIMEOUT_S = 60
+_PLANNER_DIAGNOSIS_OVERALL_TIMEOUT_S = 150
 _PLANNER_DRAFT_TIMEOUT_S = 120
 _PLANNER_DRAFT_OVERALL_TIMEOUT_S = 180
 
@@ -102,7 +103,9 @@ _POLICIES: dict[PlannerModelStep, PlannerModelPolicy] = {
         model="light",
         max_tokens=1600,
         timeout_s=_PLANNER_FAST_TIMEOUT_S,
-        overall_timeout_s=_PLANNER_FAST_TIMEOUT_S,
+        # Leave room for a second attempt, including the request-timeout grace.
+        overall_timeout_s=_PLANNER_DIAGNOSIS_OVERALL_TIMEOUT_S,
+        max_retries=2,
         temperature=0.3,
         note="生成前置诊断选择题；失败时终止本轮 Planner 构建。",
     ),
