@@ -1,3 +1,4 @@
+import json
 import re
 
 import pytest
@@ -31,6 +32,30 @@ def test_unit_test_contract_requires_non_empty_explanation_steps() -> None:
 
     assert any("解析步骤" in issue for issue in issues)
     assert any("解析步骤为空" in issue for issue in empty_issues)
+
+
+def test_unit_test_contract_accepts_distinct_questions_with_the_same_answer() -> None:
+    result = ChapterUnitTestSet(items=[
+        ChapterUnitTestItem(
+            type="填空题", target=f"相反数求和{value}", stem=f"计算 ${value}+(-{value})$。",
+            answer="$0$", basis="互为相反数的两个数相加为零。",
+        ) for value in (1, 2)
+    ])
+    markdown = render_unit_test_markdown(result, title="相反数", min_items=2, fallback_targets=[])
+
+    assert unit_test_structure_issues(markdown, expected_question_count=2) == []
+
+
+def test_unit_test_contract_rejects_identical_question_answer_pairs() -> None:
+    result = ChapterUnitTestSet(items=[ChapterUnitTestItem(
+        type="填空题", target="相反数求和", stem="计算 $1+(-1)$。",
+        answer="$0$", basis="互为相反数的两个数相加为零。",
+    )])
+    markdown = render_unit_test_markdown(result, title="相反数", min_items=1, fallback_targets=[])
+    pair = markdown[markdown.index("> [!QUESTION]"):]
+    duplicated = markdown + "\n" + pair.replace("Q01", "Q02")
+
+    assert any("完全重复的题目" in issue for issue in unit_test_structure_issues(duplicated))
 
 
 def test_explanation_lines_remove_repeated_full_width_step_numbers() -> None:
@@ -103,6 +128,40 @@ async def test_structured_unit_test_generation_uses_full_body_and_publishes_cano
     assert "- A. 函数名" in markdown
     assert unit_test_structure_issues(markdown) == []
     assert call_models == ["light", "primary"]
+
+
+@pytest.mark.anyio
+async def test_fixed_question_type_contract_reaches_generation_and_independent_review() -> None:
+    contract = {
+        "user_prompt": "每章严格6道单项选择题，每题4个选项且只有1个正确答案。",
+        "writing_instructions": "全部采用单选，不出填空或短答；不增加新的知识主题。",
+        "quantity_constraints": {"chapter_end_question_count": 6},
+        "forbidden_scope": ["乘法"],
+    }
+    stages = []
+
+    async def fake_llm(messages, **kwargs):
+        prompt = messages[-1]["content"]
+        contract_text = prompt.split("用户确认的需求与章节写作合同（固定题型、数量和主题边界优先）：\n", 1)[1].splitlines()[0]
+        assert json.loads(contract_text) == contract
+        stages.append(kwargs["extra_metadata"]["docgen_stage"])
+        return ChapterUnitTestSet(chapter_index=1, items=[
+            ChapterUnitTestItem(
+                type="选择题", difficulty="基础", target=f"整数加法{index}", stem=f"计算 ${index}+1$。",
+                options=[str(index + 1), str(index + 2), str(index + 3), str(index + 4)],
+                answer=str(index + 1), basis=f"把{index}加1得到{index + 1}，其它结果均不相等。",
+            ) for index in range(1, 7)
+        ])
+
+    markdown = await generate_chapter_unit_test_markdown(
+        chapter_index=1, chapter_title="整数加法", digest_mode="sprint",
+        required_elements=["整数加法"], chapter_end_practice_plan=[],
+        body_markdown="# 整数加法\n\n## 加一\n\n在原数上增加1。",
+        min_items=6, max_items=6, writing_contract=contract, llm_caller=fake_llm,
+    )
+    assert stages == ["generate_chapter_unit_test", "review_chapter_unit_test"]
+    assert markdown.count("｜选择题｜") == 6
+    assert unit_test_structure_issues(markdown, expected_question_count=6) == []
 
 
 @pytest.mark.anyio

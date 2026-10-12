@@ -6,6 +6,7 @@ import json
 
 from app.workflows.digest.common.prompt_tracing import trace_prompt_build
 from app.workflows.digest.docgen.lib.mode_profiles import get_docgen_mode_profile
+from app.workflows.digest.docgen.prompts.unit_test_contract import UNIT_TEST_PRESENTATION_CONTRACT
 
 
 def build_chapter_unit_test_messages(
@@ -17,6 +18,7 @@ def build_chapter_unit_test_messages(
     markdown: str,
     min_items: int,
     max_items: int,
+    writing_contract: dict[str, object] | None = None,
 ) -> list[dict[str, str]]:
     """Build a compact prompt for structured chapter-end unit tests."""
 
@@ -29,7 +31,8 @@ def build_chapter_unit_test_messages(
 每题都有答案、判定依据或解析要点，并覆盖不同认知动作。
 解析要写成可分行展示的短步骤，不要把完整解题过程挤成一长句。
 输出前必须逐题独立作答并复算，不能先假定自己拟定的答案正确。
-""".strip()
+用户确认的题型和作答形式优先于默认题型多样性规则，不得为了多样性改成其它题型。
+""".strip() + "\n" + UNIT_TEST_PRESENTATION_CONTRACT
     user_prompt = f"""
 请为这一章生成结构化章末单元测试。
 
@@ -38,12 +41,14 @@ def build_chapter_unit_test_messages(
 题量范围：{min_items}-{max_items}
 必须覆盖：{required_text}
 章末测试计划：{chapter_end_practice_plan}
+用户确认的需求与章节写作合同（固定题型、数量和主题边界优先）：
+{json.dumps(writing_contract or {}, ensure_ascii=False)}
 
 输出 JSON 字段：
 - chapter_index: 整数，无法判断时填 1
 - items: 数组，每项包含 type、difficulty、target、stem、options、answer、basis
 
-type 表示这道题考查的能力类型，只能从以下类型中选择，尽量不要重复：
+type 表示这道题的展示和作答类型，只能从以下类型中选择；用户指定固定题型时允许重复：
 - 概念判断：判断概念、条件、边界是否成立
 - 选择题：直接选择最合适的一项
 - 填空题：补全公式、关键步骤、结论或条件
@@ -58,7 +63,7 @@ difficulty 只能填：基础、进阶、挑战。
 
 题目要求：
 1. 题量必须落在“题量范围”内；紧凑模式优先少而准，正文或用户需求较密时才接近题量上限。
-2. 题量为 4-5 题至少覆盖 4 类题型；6-8 题至少覆盖 5 类题型；9 题以上至少覆盖 6 类题型，且同一 target 不要连续重复。
+2. 仅在用户和章节合同未指定固定题型时，题量为 4-5 题至少覆盖 4 类题型；6-8 题至少覆盖 5 类题型；9 题以上至少覆盖 6 类题型。指定全部单选时，每题 type 都必须为“选择题”，通过不同 target 和认知动作体现多样性，不得改成判断、填空或短答题。
 3. 每题围绕一个具体知识点、方法步骤、易错边界、图表读取、案例判断或迁移任务，不要泛泛问“谈谈理解”。
 4. target 写成具体考点名，用于展示“考点覆盖”；不要写“任务 1”“本章要点”这类空标签。
 5. stem、answer、basis 都要短，公式使用 Markdown/LaTeX，例如 `$f(x)$` 或 `$$...$$`；不要输出裸 `\\sqrt`、`\\frac`，也不要输出 HTML。
@@ -102,6 +107,7 @@ def build_chapter_unit_test_review_messages(
     generation_issue: str,
     min_items: int,
     max_items: int,
+    writing_contract: dict[str, object] | None = None,
 ) -> list[dict[str, str]]:
     """Build the independent answer/solution review prompt for one chapter test."""
 
@@ -112,7 +118,7 @@ def build_chapter_unit_test_review_messages(
 你是 AITeachMe 的章末测验复核老师。你必须独立解答每道题，不能默认候选答案和解析正确。
 请根据本章正文逐题复算条件、结论、选项和解析；发现错误、歧义、缺项或结构问题时直接修正。
 最终返回一份完整可发布的题组，而不是评语、差异或局部补丁。
-""".strip()
+""".strip() + "\n" + UNIT_TEST_PRESENTATION_CONTRACT
     user_prompt = f"""
 请复核并重写下面的章末单元测试，返回完整 JSON 对象。
 
@@ -121,6 +127,8 @@ def build_chapter_unit_test_review_messages(
 题量范围：{min_items}-{max_items}
 必须覆盖：{required_text}
 章末测试计划：{chapter_end_practice_plan}
+用户确认的需求与章节写作合同（固定题型、数量和主题边界优先）：
+{json.dumps(writing_contract or {}, ensure_ascii=False)}
 初稿生成或结构问题：{generation_issue or "无"}
 
 输出 JSON 字段：
@@ -129,13 +137,14 @@ def build_chapter_unit_test_review_messages(
 
 复核要求：
 1. 题量必须在范围内；初稿缺失或不可用时，依据正文重新生成完整题组。
-2. 每题题干条件必须充分，答案必须唯一或明确列出全部正确结论。
+2. 每题题干条件必须充分。选择题必须恰好一个正确选项，逐个判断所有选项，不能用解析承认另一个选项也正确；非选择题的答案必须唯一或明确列出全部正确结论。
 3. 选择题必须正好有 4 个互不重复的选项，answer 写正确选项全文；其余题型 options 必须为 `[]`。
 4. 必须独立复算数学运算、公式、定义域、正负号、单位、边界条件以及充分必要条件。
 5. basis 写 2-4 个成立的短步骤，最终结论必须与 answer 一致，不能沿用初稿中的错误推理。
 6. 题目只使用正文能够支持的知识，不编造正文之外的定理、数据或条件。
 7. type 只能从概念判断、选择题、填空题、步骤排序、错因辨析、短答题、应用迁移、图表读取、推导证明中选择；difficulty 只能填基础、进阶、挑战。
 8. 公式使用 Markdown/LaTeX；只输出 JSON，不输出复核说明或 Markdown 代码块。
+9. 逐题核对用户和章节合同的题型与作答形式，违约时重写该题。固定题型优先于默认多样性；要求全部单选时，每题 type 必须为“选择题”，均有四个选项及唯一正确答案。
 
 候选题组：
 {candidate_text}

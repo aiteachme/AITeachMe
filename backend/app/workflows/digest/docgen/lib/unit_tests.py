@@ -667,7 +667,7 @@ def unit_test_structure_issues(markdown: str, *, expected_question_count: int | 
         issues.append("单元测试存在未配对的 QUESTION 或 ANSWER 块。")
 
     question_numbers: set[str] = set()
-    normalized_answers: set[str] = set()
+    normalized_items: set[tuple[str, ...]] = set()
     question_ordinal = 0
     for block_index, question in enumerate(blocks):
         if question[0] != "QUESTION":
@@ -778,10 +778,14 @@ def unit_test_structure_issues(markdown: str, *, expected_question_count: int | 
             normalized_options = {_content_identity(value) for value in option_values}
             if normalized_answer not in normalized_options:
                 issues.append(f"第 {question_ordinal} 道选择题的答案必须与 A-D 中某个完整选项一致。")
-        if normalized_answer:
-            if normalized_answer in normalized_answers:
-                issues.append(f"第 {question_ordinal} 题与前题出现完全重复的答案与解析。")
-            normalized_answers.add(normalized_answer)
+        if normalized_answer and stem_lines:
+            item_identity = tuple(_content_identity(value) for value in (
+                "\n".join(stem_lines), "\n".join(option_values),
+                "\n".join(answer_value_lines), "\n".join(explanation_value_lines),
+            ))
+            if item_identity in normalized_items:
+                issues.append(f"第 {question_ordinal} 题与前题出现完全重复的题目、答案与解析。")
+            normalized_items.add(item_identity)
 
     return clean_string_list(issues, limit=24)
 

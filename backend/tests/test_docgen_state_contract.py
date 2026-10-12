@@ -3208,6 +3208,11 @@ def test_unit_test_replacement_budget_depends_on_target_module(
 @pytest.mark.anyio
 async def test_sprint_repair_replaces_incorrect_section_without_retaining_old_claim(monkeypatch) -> None:
     async def fake_completion(*args, **kwargs):
+        if kwargs["response_model"] is repair._LocalPatchVerification:
+            return repair._LocalPatchVerification(
+                passed=True, verified_action_ids=["boundary-error"],
+                verification_notes=["单元素小于目标移动左边界，大于目标移动右边界，两个分支均正确。"],
+            )
         return repair._LocalMarkdownPatch(
             operation="replace_section", target_anchor="## 边界条件",
             patch_markdown="## 边界条件\n\n单元素小于目标时移动左边界，大于目标时移动右边界。",

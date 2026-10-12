@@ -7,6 +7,7 @@ from typing import Any
 
 from app.workflows.digest.common.prompt_tracing import trace_prompt_build
 from app.workflows.digest.docgen.lib.mode_profiles import get_docgen_mode_profile
+from app.workflows.digest.docgen.prompts.unit_test_contract import UNIT_TEST_PRESENTATION_CONTRACT
 
 
 def build_chapter_execution_brief_messages(
@@ -59,7 +60,7 @@ def build_chapter_execution_brief_messages(
 你是 AITeachMe 的知识文档章节执行简报设计器。
 你只输出合法 JSON，不输出 Markdown、解释、注释或额外文本。
 你的任务是生成“最小可执行脚手架”，不是写完整教学大纲。
-""".strip()
+""".strip() + "\n" + UNIT_TEST_PRESENTATION_CONTRACT
     prompt = f"""
 请为下面这一章生成简短执行简报。
 

@@ -1030,6 +1030,12 @@ def build_generate_chapters_node(*, context: WorkflowContext):
                 body_markdown=writer_markdown,
                 min_items=chapter_end_min_items,
                 max_items=chapter_end_max_items,
+                writing_contract={
+                    "user_prompt": state.get("user_prompt") or "",
+                    "writing_instructions": chapter_plan.get("writing_instructions") or "",
+                    "quantity_constraints": execution_contract.get("quantity_constraints") or {},
+                    "forbidden_scope": execution_contract.get("forbidden_scope") or [],
+                },
                 llm_caller=traced_context.resolve_llm_caller(),
                 extra_metadata=traced_context.trace_metadata(
                     teaching_action="chapter_unit_test",

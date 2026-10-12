@@ -313,6 +313,8 @@ def build_document_consistency_review_node(*, context: WorkflowContext):
             dispatch_table=dict(state.get("dispatch_table") or {}),
             learner_profile_text=learner_profile_text,
             chapter_tasks=list(state.get("chapter_tasks") or []),
+            user_prompt=str(state.get("user_prompt") or ""),
+            plan=str(state.get("plan") or ""),
         )
         actions = [*actions, *document_actions]
         review_decision = _review_decision(

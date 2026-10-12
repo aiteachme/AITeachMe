@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.workflows.digest.common.prompt_tracing import trace_prompt_build
+from app.workflows.digest.docgen.prompts.unit_test_contract import UNIT_TEST_PRESENTATION_CONTRACT
 from app.workflows.digest.docgen.lib.mode_profiles import get_docgen_mode_profile
 
 _MAX_LIST_ITEMS = 12
@@ -124,6 +125,8 @@ def build_document_review_messages(
     dispatch_table: dict[str, Any] | None = None,
     learner_profile_text: str = "",
     chapter_tasks: list[dict[str, Any]] | None = None,
+    user_prompt: str = "",
+    plan: str = "",
 ) -> list[dict[str, str]]:
     """Build messages for a single whole-document structured review."""
 
@@ -146,11 +149,15 @@ def build_document_review_messages(
 你不能改写正文，不能润色措辞，不能要求推翻用户已确认的大纲；只输出确有风险的问题和可执行回流动作。
 问题必须影响学习正确性、跨章一致性、证据边界、后续考试/画像可用性或发布结构，普通风格偏好不要输出。
 章末题目、正文例题及其答案和题解的正确性是最高优先级；必须独立解题校验，不能只检查格式，也不能默认文档给出的答案正确。
-""".strip()
+""".strip() + "\n" + UNIT_TEST_PRESENTATION_CONTRACT
     user_prompt = f"""
 请对整本课程文档做最后一次结构化复核。
 
 文档模式：{mode_profile.prompt_label}
+
+原始用户需求与确认方案（自动简报不得额外发明用户硬约束）：
+{user_prompt}
+{plan}
 
 规则复核基线：
 {compact_rule_report}

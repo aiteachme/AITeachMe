@@ -34,6 +34,7 @@ class DocGenModelStep(str, Enum):
     DOCUMENT_REVIEW = "review_content.document_consistency_review"
     DOCUMENT_REVIEW_RETRY = "review_content.document_consistency_review_retry"
     REPAIR_PATCH = "repair_or_route.surface_section_patch"
+    REPAIR_PATCH_REVIEW = "repair_or_route.verify_section_patch"
     COVER_IMAGE = "cover_sidecar"
 
 
@@ -254,6 +255,17 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         timeout_s=120,
         temperature=0.5,
         note="只生成局部补丁片段，代码负责插入原章节。",
+    ),
+    DocGenModelStep.REPAIR_PATCH_REVIEW: DocGenModelPolicy(
+        step=DocGenModelStep.REPAIR_PATCH_REVIEW,
+        call_type="structured",
+        model="reason",
+        max_tokens=3000,
+        timeout_s=90,
+        overall_timeout_s=195,
+        max_retries=2,
+        temperature=0.1,
+        note="错误级补丁应用前独立复核正确性，不信任补丁器自报的动作覆盖。",
     ),
     DocGenModelStep.COVER_IMAGE: DocGenModelPolicy(
         step=DocGenModelStep.COVER_IMAGE,

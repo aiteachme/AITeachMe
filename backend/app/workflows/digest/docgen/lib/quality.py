@@ -391,6 +391,8 @@ async def review_document_consistency_with_llm(
     dispatch_table: dict[str, Any] | None = None,
     learner_profile_text: str = "",
     chapter_tasks: list[dict[str, Any]] | None = None,
+    user_prompt: str = "",
+    plan: str = "",
 ) -> tuple[DocumentConsistencyReport, list[ReviewAction], int]:
     """Run rule guardrails and bounded semantic review with one model retry."""
 
@@ -408,6 +410,8 @@ async def review_document_consistency_with_llm(
         dispatch_table=dispatch_table or {},
         learner_profile_text=learner_profile_text,
         chapter_tasks=chapter_tasks,
+        user_prompt=user_prompt,
+        plan=plan,
     )
     llm_calls = 0
 

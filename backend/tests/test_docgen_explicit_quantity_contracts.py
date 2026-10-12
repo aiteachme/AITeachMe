@@ -443,6 +443,8 @@ async def test_quantity_review_recovers_with_primary_after_reason_timeout(monkey
     report, actions, count = await quality.review_document_consistency_with_llm(
         reviewed_chapters=[_published_chapter()], document_backbone=DocumentBackbone(), expected_chapter_count=1,
         chapter_tasks=[task.model_dump(mode="json")],
+        user_prompt="逐题答案折叠，不要新增集中答案的约束。",
+        plan="两小节、两例题，保留题答配对。",
     )
 
     assert report.passed is True
@@ -451,6 +453,8 @@ async def test_quantity_review_recovers_with_primary_after_reason_timeout(monkey
     assert count == 2
     assert [kwargs["model"] for _, kwargs in calls] == ["reason", "primary"]
     assert calls[0][0] == calls[1][0]
+    assert "逐题答案折叠，不要新增集中答案的约束。" in calls[0][0][-1]["content"]
+    assert "两小节、两例题，保留题答配对。" in calls[0][0][-1]["content"]
     assert sum(float(kwargs["overall_timeout_s"]) for _, kwargs in calls) <= 180
 
 
@@ -482,8 +486,15 @@ def test_final_structure_count_ignores_literal_markers_and_nested_headings() -> 
 @pytest.mark.anyio
 async def test_semantic_repair_receives_user_quantity_and_writing_boundaries(monkeypatch) -> None:
     prompts = []
+    verification_prompts = []
 
     async def fake_patch(messages, **kwargs):
+        if kwargs["response_model"] is repair._LocalPatchVerification:
+            verification_prompts.append(messages[-1]["content"])
+            return repair._LocalPatchVerification(
+                passed=True, verified_action_ids=["repair_action_001"],
+                verification_notes=["负索引从末尾定位，未增加例题或扩大主题。"],
+            )
         prompts.append(messages[-1]["content"])
         return kwargs["response_model"](
             status="patch", operation="replace_section", target_anchor="## 索引",
@@ -505,6 +516,9 @@ async def test_semantic_repair_receives_user_quantity_and_writing_boundaries(mon
     assert len(prompts) == 1
     assert "'worked_example_count': 2" in prompts[0]
     assert "不要扩展到列表排序" in prompts[0]
+    assert len(verification_prompts) == 1
+    assert "'worked_example_count': 2" in verification_prompts[0]
+    assert "不要扩展到列表排序" in verification_prompts[0]
     assert actions[0].status == "applied"
     assert unresolved == []
     assert "负索引从列表末尾向前定位" in repaired[0].markdown

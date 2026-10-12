@@ -6,6 +6,7 @@ from typing import Any
 
 from app.models.knowledge_taxonomy import KNOWLEDGE_RELATION_TYPE_LABELS, KNOWLEDGE_UNIT_TYPE_LABELS
 from app.workflows.digest.common.prompt_tracing import trace_prompt_build
+from app.workflows.digest.docgen.prompts.unit_test_contract import UNIT_TEST_PRESENTATION_CONTRACT
 from app.workflows.digest.docgen.lib.mode_profiles import get_docgen_mode_profile
 
 _MAX_REVIEW_MARKDOWN_CHARS = 12000
@@ -274,7 +275,7 @@ def build_chapter_review_messages(
 你不能新增事实，不能替正文打补丁，不能要求推翻已确认计划。
 如果问题可以局部修，输出 action_type 为 `section_patch` 或 `evidence_patch`；只有整章严重不可用时才输出 `regenerate_chapter`。
 证据不足时优先输出 action_type 为 `evidence_patch`，不要轻易要求整章重写。
-""".strip()
+""".strip() + "\n" + UNIT_TEST_PRESENTATION_CONTRACT
     user_prompt = f"""
 请复核下面这一章，并输出结构化结果。
 

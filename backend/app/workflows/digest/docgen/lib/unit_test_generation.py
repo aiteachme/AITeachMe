@@ -38,6 +38,7 @@ async def generate_chapter_unit_test_markdown(
     body_markdown: str,
     min_items: int,
     max_items: int,
+    writing_contract: Mapping[str, object] | None = None,
     llm_caller: Callable[..., Awaitable[Any]] | None = None,
     extra_metadata: Mapping[str, object] | None = None,
 ) -> str:
@@ -61,6 +62,7 @@ async def generate_chapter_unit_test_markdown(
         markdown=body_markdown,
         min_items=safe_min,
         max_items=safe_max,
+        writing_contract=dict(writing_contract or {}),
     )
     kwargs = docgen_completion_kwargs_with_metadata(
         DocGenModelStep.CHAPTER_UNIT_TEST,
@@ -110,6 +112,7 @@ async def generate_chapter_unit_test_markdown(
             generation_issue=review_issue,
             min_items=safe_min,
             max_items=safe_max,
+            writing_contract=dict(writing_contract or {}),
         )
         review_kwargs = docgen_completion_kwargs_with_metadata(
             DocGenModelStep.CHAPTER_UNIT_TEST_REVIEW,

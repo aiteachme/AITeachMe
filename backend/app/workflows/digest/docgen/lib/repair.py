@@ -18,7 +18,7 @@ from app.workflows.digest.docgen.lib.presentation_policy import (
     normalize_docgen_presentation,
 )
 from app.workflows.digest.docgen.lib.unit_tests import normalize_unit_test_choice_answers, unit_test_structure_issues
-from app.workflows.digest.docgen.prompts.repair import build_chapter_patch_messages
+from app.workflows.digest.docgen.prompts.repair import build_chapter_patch_messages, build_patch_verification_messages
 
 
 _ACTION_REQUIRES_FUTURE_REPAIR = {
@@ -64,6 +64,13 @@ class _LocalMarkdownPatch(DocGenBaseModel):
     covered_action_ids: list[str] = Field(default_factory=list)
     unresolved_action_ids: list[str] = Field(default_factory=list)
     note: str = ""
+
+
+class _LocalPatchVerification(DocGenBaseModel):
+    passed: bool
+    verified_action_ids: list[str]
+    issues: list[str] = Field(default_factory=list)
+    verification_notes: list[str] = Field(default_factory=list)
 
 
 def _unresolved_message(action: ReviewAction, *, status: str) -> str:
@@ -889,6 +896,39 @@ async def _apply_llm_patch_actions(
                 )
             )
         return chapter, results, []
+    covered_actions = [payload for payload in action_payloads if payload["repair_action_key"] in covered_keys]
+    if any(payload["severity"] == "error" for payload in covered_actions):
+        try:
+            review_result = await acompletion_with_fallback(
+                build_patch_verification_messages(
+                    chapter_title=chapter.title,
+                    actions=covered_actions,
+                    patch_markdown=patch_markdown,
+                    related_markdown_context=_related_patch_context(chapter, [action_keys[key][1] for key in covered_keys]),
+                    quantity_contract=quantity_contract,
+                ),
+                **docgen_completion_kwargs_with_metadata(
+                    DocGenModelStep.REPAIR_PATCH_REVIEW,
+                    chapter_index=chapter.chapter_index,
+                    repair_round=repair_round,
+                    repair_action_count=len(covered_actions),
+                ),
+                response_model=_LocalPatchVerification,
+            )
+            review = _LocalPatchVerification.model_validate(review_result)
+            if review.passed and not review.issues and set(review.verified_action_ids) == covered_keys and review.verification_notes:
+                rejection = ""
+            else:
+                rejection = "补丁独立复核未通过：" + "；".join(review.issues or ["未完整验证当前动作及修补正确性。"])
+        except Exception as exc:
+            rejection = f"补丁独立复核失败，不能确认错误已修复：{str(exc)[:180]}"
+        if rejection:
+            return chapter, _rejected_llm_patch_results(
+                indexed_actions=indexed_actions,
+                repair_round=repair_round,
+                llm_call_group=llm_call_group,
+                reason=rejection,
+            ), indexed_actions
     updated = chapter.model_copy(
         update={
             "markdown": patched,
