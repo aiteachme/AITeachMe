@@ -1061,6 +1061,19 @@ jobs:
           echo "Backend in-cluster health/upload check did not pass." >&2
           exit 1
 
+      - name: Inspect deployed runtime policy
+        if: steps.optin.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          pod="$(
+            kubectl -n "${SEALOS_NAMESPACE}" get pods --no-headers \
+              | awk -v prefix="${SEALOS_BACKEND_DEPLOYMENT}-" '$1 ~ "^" prefix && $3 == "Running" && found != 1 { print $1; found = 1 }'
+          )"
+          test -n "${pod}"
+          kubectl -n "${SEALOS_NAMESPACE}" exec "${pod}" -- \
+            python scripts/inspect_runtime_policy.py --github-actions
+
       - name: Show Sealos backend logs after failed smoke
         if: always() && steps.optin.outputs.enabled == 'true' && steps.smoke_backend.outcome == 'failure'
         shell: bash
