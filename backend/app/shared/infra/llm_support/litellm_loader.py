@@ -27,6 +27,9 @@ def load_litellm():
 
     os.environ.setdefault("PYTHON_DOTENV_DISABLED", "1")
     os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
+    # Use native HTTPX: LiteLLM's aiohttp wrapper suppresses truncated bodies
+    # and production retries have failed immediately on timed-out sockets.
+    os.environ["DISABLE_AIOHTTP_TRANSPORT"] = "True"
     import litellm
 
     return litellm

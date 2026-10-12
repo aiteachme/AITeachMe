@@ -12,12 +12,14 @@ def test_load_litellm_forces_local_cost_map_before_import(monkeypatch) -> None:
         if name == "litellm":
             assert litellm_loader.os.environ["PYTHON_DOTENV_DISABLED"] == "1"
             assert litellm_loader.os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] == "True"
+            assert litellm_loader.os.environ["DISABLE_AIOHTTP_TRANSPORT"] == "True"
             return sentinel
         return real_import(name, globals, locals, fromlist, level)
 
     litellm_loader.load_litellm.cache_clear()
     monkeypatch.delenv("PYTHON_DOTENV_DISABLED", raising=False)
     monkeypatch.delenv("LITELLM_LOCAL_MODEL_COST_MAP", raising=False)
+    monkeypatch.setenv("DISABLE_AIOHTTP_TRANSPORT", "False")
     monkeypatch.setattr(builtins, "__import__", fake_import)
 
     assert litellm_loader.load_litellm() is sentinel
