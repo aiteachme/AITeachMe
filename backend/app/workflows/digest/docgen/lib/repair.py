@@ -1114,7 +1114,7 @@ async def repair_or_route_review_actions(
                     previous_rejection=previous_rejection,
                     quantity_contract={
                         key: tasks_by_index.get(chapter.chapter_index, {}).get(key)
-                        for key in ("quantity_constraints", "writing_rules", "min_word_count", "max_word_count")
+                        for key in ("quantity_constraints", "writing_rules")
                     },
                 )
                 repair_round += 1

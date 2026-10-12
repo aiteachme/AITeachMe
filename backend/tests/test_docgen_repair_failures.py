@@ -47,6 +47,49 @@ def test_patch_review_contract_accepts_option_content_without_display_label():
     assert unit_tests.unit_test_structure_issues(candidate) == []
 
 
+@pytest.mark.anyio
+@pytest.mark.parametrize("explicit_length", [{}, {"min_word_count": 1200, "max_word_count": 1600}])
+async def test_patch_review_receives_explicit_length_without_mode_budget(monkeypatch, explicit_length):
+    monkeypatch.setattr(repair, "_MAX_LLM_PATCH_ATTEMPTS_PER_TARGET", 1)
+    quantities = {"body_section_count": 1, "min_word_count": None, "max_word_count": None, **explicit_length}
+    reviews = []
+
+    async def completion(messages, **kwargs):
+        if kwargs["response_model"] is repair._LocalPatchVerification:
+            contract_text = messages[1]["content"].split("用户确认的数量与写作边界：\n", 1)[1].split("\n\n候选补丁", 1)[0]
+            contract = ast.literal_eval(contract_text)
+            assert "min_word_count" not in contract and "max_word_count" not in contract
+            assert contract["quantity_constraints"] == quantities
+            reviews.append(contract)
+            return repair._LocalPatchVerification(
+                passed=True, verified_action_ids=["a1"],
+                verification_notes=["例题结果正确，数量及显式篇幅按整章正文核验；模式参考篇幅不阻断局部修补。"],
+            )
+        return repair._LocalMarkdownPatch(
+            operation="replace_section", target_anchor="## 加法", patch_markdown="## 加法\n\n例题：$1+1=2$，两个1相加得到2。",
+            covered_action_ids=["a1"],
+        )
+
+    monkeypatch.setattr(repair, "acompletion_with_fallback", completion)
+    chapter = ReviewedChapterDraft(
+        chapter_index=1, title="算术", markdown="# 算术\n\n## 加法\n\n例题：$1+1=3$。\n\n" + _choice_test(),
+    )
+    action = ReviewAction(
+        action_id="a1", action_type="section_patch", chapter_index=1, severity="error", target_anchor="## 加法",
+        instruction="纠正例题的计算结果。",
+    )
+    chapters, updated, unresolved, _ = await repair.repair_or_route_review_actions(
+        reviewed_chapters=[chapter], review_actions=[action], chapter_tasks=[{
+            "chapter_index": 1, "quantity_constraints": quantities, "writing_rules": ["仅一个教学小节。"],
+            "min_word_count": explicit_length.get("min_word_count", 2500),
+            "max_word_count": explicit_length.get("max_word_count", 3600),
+        }],
+    )
+    assert updated[0].status == "applied" and not unresolved
+    assert len(reviews) == 1
+    assert "$1+1=3$" not in chapters[0].markdown
+
+
 @pytest.mark.parametrize("answer", ["A. $-2$", "E", "$5$", "A\n> B", "A或B"])
 def test_raw_choice_answer_normalization_preserves_invalid_or_ambiguous_answer(answer):
     markdown = _choice_test(answer)
