@@ -167,6 +167,12 @@ def to_chat_kwargs(
     effort = _resolve_reasoning_effort(context, chat_kwargs)
     if effort and _supports_chat_reasoning_effort(context, chat_kwargs):
         chat_kwargs["reasoning_effort"] = effort
+        if not _is_official_openai_call(context, chat_kwargs):
+            # Gateway aliases can be newer than LiteLLM's model catalog.
+            allowed_params = list(chat_kwargs.get("allowed_openai_params") or [])
+            if "reasoning_effort" not in allowed_params:
+                allowed_params.append("reasoning_effort")
+            chat_kwargs["allowed_openai_params"] = allowed_params
     if "max_tokens" not in chat_kwargs and "max_output_tokens" in chat_kwargs:
         chat_kwargs["max_tokens"] = chat_kwargs.pop("max_output_tokens")
     else:
