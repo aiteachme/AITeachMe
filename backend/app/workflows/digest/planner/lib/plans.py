@@ -539,8 +539,13 @@ def normalize_planner_draft(
         or extract_explicit_learning_topic(resolved_user_prompt)
         or _resolve_course_name(course_id, shared_inputs=shared, user_prompt=resolved_user_prompt)
     )
-    # Revision structure comes directly from the LLM output; do not reinterpret feedback with regexes.
-    is_revision = bool(_text(revision_feedback))
+    # Completing the initial diagnosis is not a revision of a formal plan.
+    # Once a formal plan exists, its revised structure comes from the LLM.
+    is_revision = bool(
+        _text(revision_feedback)
+        and _student_facing_text(previous.get("plan"))
+        and _chapter_items(previous.get("chapters"))
+    )
     requested_chapter_count: int | None = None
     requested_chapter_count_range: tuple[int, int] | None = None
     if not is_revision:

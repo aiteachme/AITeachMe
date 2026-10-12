@@ -631,6 +631,63 @@ def test_normalize_planner_draft_prefers_current_request_over_stale_count_constr
     assert draft.build_constraints["requested_chapter_count"] == 2
 
 
+@pytest.mark.parametrize(
+    "latest_plan", [None, {"planner_stage": "diagnosis", "plan": "", "chapters": []}]
+)
+def test_initial_plan_feedback_does_not_disable_requested_chapter_count(latest_plan: dict | None) -> None:
+    with pytest.raises(ValueError, match="does not match requested 1"):
+        normalize_planner_draft(
+            _planner_payload(chapter_count=2),
+            course_id="course_initial_plan",
+            user_prompt="严格只有1章、2个教学小节：创建和访问列表、用for循环遍历列表。",
+            requested_digest_mode="sprint",
+            latest_plan=latest_plan,
+            revision_feedback="跳过诊断，按照原始需求生成方案。",
+        )
+
+
+def test_initial_plan_repairs_wrong_chapter_count_after_skipping_diagnosis(monkeypatch: pytest.MonkeyPatch) -> None:
+    def response(chapter_count: int) -> str:
+        chapters = _planner_payload(chapter_count=chapter_count)["chapters"]
+        return (
+            f"{COURSE_NAME_START}Python列表与循环{COURSE_NAME_END}"
+            f"{PLAN_START}一章包含列表创建和循环遍历两个教学小节。{PLAN_END}"
+            f"{SUGGESTION_START}可调整讲解深度。{SUGGESTION_END}"
+            f"{CHAPTERS_START}{json.dumps(chapters, ensure_ascii=False)}{CHAPTERS_END}"
+        )
+
+    async def stream(state, *, messages):
+        return response(2)
+
+    repairs = []
+
+    async def repair(state, *, original_messages, invalid_output, error):
+        repairs.append(str(error))
+        assert invalid_output == response(2)
+        return response(1)
+
+    monkeypatch.setattr(plan_draft_node, "_stream_planner_response", stream)
+    monkeypatch.setattr(plan_draft_node, "_repair_planner_response", repair)
+    node = plan_draft_node.build_compose_planner_draft_node(context=None)
+    result = asyncio.run(
+        node({
+            "course_id": "course_initial_plan",
+            "material_context": _material_context(),
+            "digest_mode": "sprint",
+            "planner_operation": "append",
+            "user_prompt": "严格只有1章、2个教学小节：创建和访问列表、用for循环遍历列表。",
+            "feedback_message": "跳过诊断，按照原始需求生成方案。",
+            "diagnose_status": "skipped",
+            "latest_plan": {"planner_stage": "diagnosis", "plan": "", "chapters": []},
+        })
+    )
+
+    assert len(repairs) == 1
+    assert "does not match requested 1" in repairs[0]
+    assert len(result["build_plan_draft"]["chapters"]) == 1
+    assert result["build_plan_draft"]["build_constraints"]["requested_chapter_count"] == 1
+
+
 def test_normalize_planner_draft_trusts_ai_count_for_numeric_revision() -> None:
     payload = _planner_payload(chapter_count=4)
     revision_feedback = "请严格调整为 6 章。"
@@ -644,6 +701,7 @@ def test_normalize_planner_draft_trusts_ai_count_for_numeric_revision() -> None:
         course_id="course_linear_algebra",
         user_prompt=request_text,
         requested_digest_mode="sprint",
+        latest_plan=_planner_payload(chapter_count=3),
         revision_feedback=revision_feedback,
     )
 
@@ -666,6 +724,7 @@ def test_normalize_planner_draft_trusts_ai_count_for_title_list_revision() -> No
         course_id="course_linear_algebra",
         user_prompt=request_text,
         requested_digest_mode="sprint",
+        latest_plan=_planner_payload(chapter_count=6),
         revision_feedback=revision_feedback,
     )
 
@@ -1403,7 +1462,11 @@ def test_planner_node_accepts_ai_revision_without_count_rule_repair(
                 "feedback_message": "严格只生成 2 章。",
                 "digest_mode": "sprint",
                 "message_history": [],
-                "latest_plan": {"course_name": "初中函数", "course_icon": "function"},
+                "latest_plan": {
+                    **_planner_payload(chapter_count=2),
+                    "course_name": "初中函数",
+                    "course_icon": "function",
+                },
             }
         )
     )
