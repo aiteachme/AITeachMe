@@ -58,6 +58,38 @@ for (const marker of ["```", "````", "~~~"]) {
   });
 }
 
+for (const ticks of ["`", "``"]) {
+  test(`the actual display pipeline preserves inline code spans (${ticks})`, () => {
+    const literal = "print(r'\\(x\\)') # $literal$ **答案：保留** {#ku_inline}"
+      + (ticks.length === 2 ? " # `quoted` end" : "");
+    const span = `${ticks}${literal}${ticks}`;
+    const markdown = `# 第一章\n\n正文 ${span}。公式 \\(y^2\\)。\n\n## 单元测试\n\n`
+      + `> [!QUESTION] **Q01｜选择题｜基础｜考点：输出**\n>\n> 执行 ${span}。\n>\n`
+      + "> - A. `\\(x\\)`\n> - B. `(x)`\n> - C. `x`\n> - D. `r`\n\n"
+      + "> [!ANSWER]\n>\n> **答案**\n>\n> `\\(x\\)`\n";
+    const processed = preprocessMarkdownForRender(cleanKnowledgeMarkdownForDisplay(markdown));
+    assert.ok(processed.includes(span), processed);
+    assert.match(processed, /公式 \$y\^2\$/u);
+    const inlineCode = [];
+    function walk(node) {
+      if (node.type === "inlineCode") inlineCode.push(node.value);
+      for (const child of node.children ?? []) walk(child);
+    }
+    walk(unified().use(remarkParse).parse(processed));
+    assert.equal(inlineCode.filter((value) => value === literal).length, 2);
+    assert.equal(inlineCode.filter((value) => value === "\\(x\\)").length, 2);
+  });
+}
+
+test("escaped or unmatched inline ticks do not hide formulas in following paragraphs", () => {
+  const markdown = "未闭合的 ` 标记。\n\n公式 \\(x^2\\)，行内代码 `print(r'\\(x\\)')`。\n\n"
+    + "转义的 \\` 标记与公式 \\(y^2\\)。";
+  const processed = preprocessMarkdownForRender(cleanKnowledgeMarkdownForDisplay(markdown));
+  assert.match(processed, /公式 \$x\^2\$/u);
+  assert.match(processed, /公式 \$y\^2\$/u);
+  assert.ok(processed.includes("`print(r'\\(x\\)')`"), processed);
+});
+
 test("code examples containing nested fences survive while actual Mermaid is repaired", () => {
   const example = "````markdown\n```mermaid\nflowchart TD\n A --> B\n```\n````";
   const markdown = `${example}\n\n\`\`\`maymaid\nflowchart TD\n A --> B\n\`\`\`\n`;

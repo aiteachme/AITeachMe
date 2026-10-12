@@ -358,7 +358,39 @@ export function preserveMarkdownCodeBlocks(markdown: string, transform: (visible
     visible.push(`${quotePrefix}${token}${newline}`);
   }
 
-  let result = transform(visible.join(""));
+  const visibleSource = visible.join("");
+  const tickRuns: Array<{ text: string; index: number }> = [];
+  let fenceState: MarkdownFenceState | null = null;
+  let lineOffset = 0;
+  for (const line of visibleSource.match(/[^\n]*(?:\n|$)/g)?.filter(Boolean) ?? []) {
+    const fence = advanceMarkdownFence(line, fenceState);
+    if (!fenceState && !fence.state && !fence.isBoundary) {
+      for (const match of line.matchAll(/`+/gu)) tickRuns.push({ text: match[0], index: lineOffset + match.index });
+    }
+    fenceState = fence.state;
+    lineOffset += line.length;
+  }
+  const inlineVisible: string[] = [];
+  let cursor = 0;
+  for (let index = 0; index < tickRuns.length; index += 1) {
+    const opening = tickRuns[index];
+    let slashCount = 0;
+    for (let offset = opening.index - 1; offset >= 0 && visibleSource[offset] === "\\"; offset -= 1) slashCount += 1;
+    if (slashCount % 2 !== 0) continue;
+    let closingIndex = index + 1;
+    while (closingIndex < tickRuns.length && tickRuns[closingIndex].text.length !== opening.text.length) closingIndex += 1;
+    if (closingIndex === tickRuns.length) continue;
+    const closing = tickRuns[closingIndex];
+    if (/\n[ \t>]*\n/u.test(visibleSource.slice(opening.index, closing.index))) continue;
+    const end = closing.index + closing.text.length;
+    const token = `${opening.text}${tokenPrefix}INLINE_${blocks.size}${opening.text}`;
+    blocks.set(token, visibleSource.slice(opening.index, end));
+    inlineVisible.push(visibleSource.slice(cursor, opening.index), token);
+    cursor = end;
+    index = closingIndex;
+  }
+  inlineVisible.push(visibleSource.slice(cursor));
+  let result = transform(inlineVisible.join(""));
   for (const [token, block] of blocks) result = result.split(token).join(block);
   return result;
 }
