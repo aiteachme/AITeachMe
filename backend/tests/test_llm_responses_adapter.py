@@ -235,7 +235,7 @@ def test_compatible_chat_preserves_configured_effort_for_unknown_model(monkeypat
     set_system_settings_override({
         "models": {"primary": model},
         "llm": {
-            "api_mode": "auto",
+            "api_mode": "chat_completions",
             "reasoning_efforts": {"primary": "high"},
         },
     })
