@@ -10,6 +10,7 @@ import type {
   CommentThreadLayoutResult,
   DocGenBuildStatus,
 } from "./types";
+import { preserveMarkdownCodeBlocks } from "./libraryMarkdown";
 
 /* ---- Constants ---- */
 
@@ -132,10 +133,10 @@ export function normalizeDomainLabel(input: string): string {
 }
 
 export function cleanKnowledgeMarkdownForDisplay(markdown: string): string {
-  return repairMalformedMermaidFencesForRender(String(markdown ?? ""))
+  return preserveMarkdownCodeBlocks(markdown, (visible) => repairMalformedMermaidFencesForRender(visible)
     .replace(/\s*\{#ku_[A-Za-z0-9_-]+\}/g, "")
     .replace(/\s*<!--\s*ATM_KU:\s*ku_[A-Za-z0-9_-]+\s*-->/g, "")
-    .replace(/[ \t]+\n/g, "\n");
+    .replace(/[ \t]+\n/g, "\n"));
 }
 
 function isMarkdownBoundary(line: string): boolean {

@@ -37,6 +37,7 @@ import {
 import { parseInteractivePreviewHref, patchHtmlForIframe, type InteractiveHtmlPreview } from "../../lib/interactiveHtml";
 import { rehypeMarkdownSanitize } from "../../lib/markdownSanitize";
 import { cn } from "../../lib/utils";
+import { preserveMarkdownCodeBlocks } from "../knowledge-docs/libraryMarkdown";
 import { MermaidBlock } from "./MermaidBlock";
 
 type MarkdownViewerVariant = "default" | "document" | "planner";
@@ -1904,6 +1905,10 @@ function normalizeLegacyUnitTestAnswersForRender(markdown: string): string {
 }
 
 export function preprocessMarkdownForRender(content: string): string {
+  return preserveMarkdownCodeBlocks(content, preprocessVisibleMarkdownForRender);
+}
+
+function preprocessVisibleMarkdownForRender(content: string): string {
   return repairMalformedMermaidFencesForRender(
     normalizeListEmbeddedHeadingsForRender(
       protectTableInlineMathPipesForRender(

@@ -289,6 +289,34 @@ async def test_unit_test_review_retries_once_after_invalid_review_contract() -> 
     assert unit_test_structure_issues(markdown) == []
 
 
+@pytest.mark.anyio
+async def test_unit_test_review_repairs_nested_presentation_markers_in_json_fields() -> None:
+    calls = 0
+
+    async def fake_llm(messages, **_kwargs):
+        nonlocal calls
+        calls += 1
+        assert "展示布局全部由程序渲染器负责" in messages[0]["content"]
+        if calls == 3:
+            assert "stem 混入了 QUESTION/ANSWER 展示标记" in messages[-1]["content"]
+        return ChapterUnitTestSet(items=[ChapterUnitTestItem(
+            type="选择题", target="列表访问",
+            stem=("[!QUESTION]\n" if calls == 2 else "") + '运行代码后输出什么？\n\n```python\nvalues = [1, 2]\nprint(values[1])\n```',
+            options=["1", "2", "3", "4"], answer="2",
+            basis=("[!ANSWER]\n" if calls == 2 else "") + "索引从0开始，索引1读取2。",
+        )])
+
+    markdown = await generate_chapter_unit_test_markdown(
+        chapter_index=1, chapter_title="列表", digest_mode="sprint", required_elements=["列表访问"],
+        chapter_end_practice_plan=[], body_markdown="# 列表\n\n## 访问\n\n索引从0开始。",
+        min_items=1, max_items=1, writing_contract={"user_prompt": "答案放在可折叠ANSWER块。"}, llm_caller=fake_llm,
+    )
+    assert calls == 3
+    assert markdown.count("> [!QUESTION]") == 1
+    assert markdown.count("> [!ANSWER]") == 1
+    assert unit_test_structure_issues(markdown) == []
+
+
 def test_unit_test_contract_rejects_reversed_empty_and_floating_answers() -> None:
     malformed = (
         "# 函数\n\n## 单元测试\n\n"
@@ -408,6 +436,17 @@ def test_unit_test_renderer_preserves_newline_escapes_in_python_strings() -> Non
 
 
 def test_fenced_code_in_unit_test_survives_full_document_merge() -> None:
+    code = (
+        "raw_values = ['72', 'abc', '58']\n"
+        "valid_values = []\n"
+        "for raw in raw_values:\n"
+        "    if raw.isdigit():\n"
+        "        valid_values.append(int(raw))\n"
+        "\n"
+        "valid_count = len(valid_values)\n"
+        "reject_count = len(raw_values) - valid_count\n"
+        "print(valid_count, reject_count)"
+    )
     code_unit_test = render_unit_test_markdown(
         ChapterUnitTestSet(
             chapter_index=1,
@@ -419,10 +458,7 @@ def test_fenced_code_in_unit_test_survives_full_document_merge() -> None:
                     stem=(
                         "阅读代码后判断 valid_count 与 reject_count：\n\n"
                         "```python\n"
-                        "raw_values = ['72', 'abc', '58']\n"
-                        "valid_values = [int(raw) for raw in raw_values if raw.isdigit()]\n"
-                        "valid_count = len(valid_values)\n"
-                        "reject_count = len(raw_values) - valid_count\n"
+                        f"{code}\n"
                         "```"
                     ),
                     options=["2 和 1", "1 和 2", "3 和 0", "抛出异常"],
@@ -467,9 +503,100 @@ def test_fenced_code_in_unit_test_survives_full_document_merge() -> None:
     published_chapters = merged.split("\n\n---\n\n")
 
     assert len(published_chapters) == 2
-    assert "```" not in code_unit_test
-    assert "`raw_values = ['72', 'abc', '58']" in code_unit_test
+    expected_block = "\n".join(f"> {line}" for line in f"```python\n{code}\n```".splitlines())
+    assert expected_block in code_unit_test
+    assert expected_block in published_chapters[0]
     assert all(unit_test_structure_issues(chapter) == [] for chapter in published_chapters)
+
+
+@pytest.mark.parametrize("field", ["stem", "answer", "basis"])
+def test_unit_test_code_keeps_executable_indentation_and_string_escapes(field, capsys) -> None:
+    code = 'values = ["a", "b"]\nfor value in values:\n    print(value + "\\n", end="")'
+    item = ChapterUnitTestItem(
+        type="短答题", target="循环输出", stem="如何逐行输出列表元素？",
+        answer="遍历列表并打印。", basis="循环依次取得两个元素。",
+    )
+    setattr(item, field, f"执行以下代码：\n\n```python\n{code}\n```\n\n观察输出。")
+    markdown = render_unit_test_markdown(
+        ChapterUnitTestSet(items=[item]), title="循环", min_items=1, fallback_targets=[],
+    )
+    published = build_merged_markdown([
+        {"chapter_index": 1, "title": "循环", "markdown": "# 循环\n\n" + markdown},
+    ])
+    visible = re.sub(r"(?m)^> ?", "", published)
+    rendered_code = re.search(r"```python\n(.*?)\n```", visible, re.DOTALL).group(1)
+    assert rendered_code == code
+    exec(compile(rendered_code, "<self-authored-question>", "exec"), {})
+    assert capsys.readouterr().out == "a\nb\n"
+    assert unit_test_structure_issues(published, expected_question_count=1) == []
+
+
+def test_multiline_code_options_and_answer_keep_the_complete_choice_contract() -> None:
+    options = [f"```python\nfor index in [{index}]:\n    print(index)\n```" for index in (0, 1, -1, -2)]
+    markdown = render_unit_test_markdown(
+        ChapterUnitTestSet(items=[ChapterUnitTestItem(
+            type="选择题", target="循环输出", stem="哪段代码输出 1？",
+            options=options, answer="B", basis="遍历只包含 1 的列表会输出 1。",
+        )]), title="列表", min_items=1, fallback_targets=[],
+    )
+    assert markdown.count("```python") == 5
+    assert unit_test_structure_issues(markdown, expected_question_count=1) == []
+    label_answer = re.sub(
+        r"(?s)(> \*\*答案\*\*\n>\n).*?(\n>\n> \*\*解析步骤\*\*)",
+        r"\1> B\2", markdown,
+    )
+    normalized = unit_tests.normalize_unit_test_choice_answers(label_answer)
+    assert normalized.count("```python") == 5
+    answer_block = normalized.split("> **答案**\n>\n", 1)[1].split("> **解析步骤**", 1)[0]
+    assert "\n".join(f"> {line}" for line in options[1].splitlines()) in answer_block
+    assert unit_test_structure_issues(normalized, expected_question_count=1) == []
+
+
+def test_explanation_steps_do_not_split_punctuation_inside_code() -> None:
+    code = 'message = "1. first; 2. second"\nprint(message)'
+    markdown = render_unit_test_markdown(
+        ChapterUnitTestSet(items=[ChapterUnitTestItem(
+            type="短答题", target="字符串", stem="这段程序输出什么？",
+            answer="1. first; 2. second",
+            basis=f"1. 执行程序：\n\n```python\n{code}\n```\n\n2. 核对字符串中的标点。",
+        )]), title="字符串", min_items=1, fallback_targets=[],
+    )
+    published = build_merged_markdown([
+        {"chapter_index": 1, "title": "字符串", "markdown": "# 字符串\n\n" + markdown},
+    ])
+    assert ">    ```python\n>    message = \"1. first; 2. second\"\n>    print(message)\n>    ```" in published
+    assert unit_test_structure_issues(published) == []
+
+
+def test_unit_test_choices_and_answer_keep_multiline_program_output() -> None:
+    markdown = render_unit_test_markdown(
+        ChapterUnitTestSet(items=[ChapterUnitTestItem(
+            type="选择题", target="逐行输出", stem="运行循环后输出什么？",
+            options=["cat\ndog\nfox", "fox\ndog\ncat", "cat", "0\n1\n2"],
+            answer="cat\ndog\nfox", basis="每轮输出一个元素，print默认换行。",
+        )]), title="循环", min_items=1, fallback_targets=[],
+    )
+    published = build_merged_markdown([
+        {"chapter_index": 1, "title": "循环", "markdown": "# 循环\n\n" + markdown},
+    ])
+    assert "> - A. cat\n>   dog\n>   fox" in published
+    assert "> **答案**\n>\n> cat\n> dog\n> fox" in published
+    assert unit_test_structure_issues(published) == []
+
+
+@pytest.mark.parametrize("marker", ["```", "~~~~"])
+def test_quoted_code_examples_do_not_create_unit_test_protocol_fields(marker) -> None:
+    example = f"{marker}markdown\n## 单元测试\n> [!ANSWER]\n**答案**\n- A. 示例\n{marker}"
+    markdown = render_unit_test_markdown(
+        ChapterUnitTestSet(items=[ChapterUnitTestItem(
+            type="短答题", target="Markdown", stem="解释代码示例：\n\n" + example,
+            answer="这些是示例文本。", basis="代码围栏中的文本不创建真实题答块。",
+        )]), title="Markdown", min_items=1, fallback_targets=[],
+    )
+    body, final_test = unit_tests.split_final_unit_test_section("# Markdown\n\n正文。\n\n" + markdown)
+    assert body == "# Markdown\n\n正文。"
+    assert final_test.startswith("## 单元测试\n")
+    assert unit_test_structure_issues(markdown, expected_question_count=1) == []
 
 
 def test_unit_test_renderer_keeps_long_choice_answer_equal_to_full_option() -> None:

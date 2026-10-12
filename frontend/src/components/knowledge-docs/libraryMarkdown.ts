@@ -287,13 +287,16 @@ function isMarkdownBlockquote(line: string): boolean {
 type MarkdownFenceState = {
   marker: "`" | "~";
   length: number;
+  quoteDepth: number;
 };
 
 function advanceMarkdownFence(
   line: string,
   activeFence: MarkdownFenceState | null,
 ): { state: MarkdownFenceState | null; isBoundary: boolean } {
-  const match = line.match(/^ {0,3}(`{3,}|~{3,})([^\r\n]*)/u);
+  const quotePrefix = line.match(/^(?: {0,3}>[ \t]?)*/u)?.[0] ?? "";
+  const quoteDepth = (quotePrefix.match(/>/gu) ?? []).length;
+  const match = line.slice(quotePrefix.length).match(/^ {0,3}(`{3,}|~{3,})([^\r\n]*)/u);
   if (!match) return { state: activeFence, isBoundary: false };
 
   const sequence = match[1];
@@ -302,6 +305,7 @@ function advanceMarkdownFence(
   if (activeFence) {
     const closesFence = (
       marker === activeFence.marker
+      && quoteDepth === activeFence.quoteDepth
       && sequence.length >= activeFence.length
       && /^[ \t\r]*$/u.test(suffix)
     );
@@ -315,9 +319,48 @@ function advanceMarkdownFence(
     return { state: null, isBoundary: false };
   }
   return {
-    state: { marker, length: sequence.length },
+    state: { marker, length: sequence.length, quoteDepth },
     isBoundary: true,
   };
+}
+
+/** Keep code literals intact while repairing surrounding Markdown and math. */
+export function preserveMarkdownCodeBlocks(markdown: string, transform: (visible: string) => string): string {
+  const source = String(markdown ?? "").replace(/\r\n?/g, "\n");
+  const lines = source.match(/[^\n]*(?:\n|$)/g)?.filter(Boolean) ?? [];
+  const visible: string[] = [];
+  const blocks = new Map<string, string>();
+  let tokenPrefix = "ATM_RENDER_CODE_";
+  while (source.includes(tokenPrefix)) tokenPrefix = `_${tokenPrefix}`;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    let activeFence = advanceMarkdownFence(lines[index], null).state;
+    if (!activeFence) {
+      visible.push(lines[index]);
+      continue;
+    }
+    const start = index;
+    const quotePrefix = lines[index].match(/^(?: {0,3}>[ \t]?)*/u)?.[0] ?? "";
+    const language = lines[index].slice(quotePrefix.length).match(/^ {0,3}(?:`{3,}|~{3,})[ \t]*(\S*)/u)?.[1] ?? "";
+    while (index + 1 < lines.length && activeFence) {
+      index += 1;
+      activeFence = advanceMarkdownFence(lines[index], activeFence).state;
+    }
+    const block = lines.slice(start, index + 1).join("");
+    // Mermaid is intentionally repaired by the existing render guard.
+    if (/^(?:mermaid|maymaid|mermaind|mermaide|mindmap|graph|flowchart|sequenceDiagram|classDiagram|stateDiagram(?:-v2)?|erDiagram|gantt|pie|journey|timeline|gitGraph)$/iu.test(language)) {
+      visible.push(block);
+      continue;
+    }
+    const token = `<!--${tokenPrefix}${blocks.size}-->`;
+    const newline = block.endsWith("\n") ? "\n" : "";
+    blocks.set(token, block.slice(quotePrefix.length, newline ? -1 : undefined));
+    visible.push(`${quotePrefix}${token}${newline}`);
+  }
+
+  let result = transform(visible.join(""));
+  for (const [token, block] of blocks) result = result.split(token).join(block);
+  return result;
 }
 
 const MARKDOWN_BLOCK_HTML_CONTAINERS = new Set([

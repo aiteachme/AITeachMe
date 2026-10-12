@@ -6,7 +6,7 @@ import json
 
 from app.workflows.digest.common.prompt_tracing import trace_prompt_build
 from app.workflows.digest.docgen.lib.mode_profiles import get_docgen_mode_profile
-from app.workflows.digest.docgen.prompts.unit_test_contract import UNIT_TEST_PRESENTATION_CONTRACT
+from app.workflows.digest.docgen.prompts.unit_test_contract import UNIT_TEST_STRUCTURED_CONTENT_CONTRACT
 
 
 def build_chapter_unit_test_messages(
@@ -32,7 +32,7 @@ def build_chapter_unit_test_messages(
 解析要写成可分行展示的短步骤，不要把完整解题过程挤成一长句。
 输出前必须逐题独立作答并复算，不能先假定自己拟定的答案正确。
 用户确认的题型和作答形式优先于默认题型多样性规则，不得为了多样性改成其它题型。
-""".strip() + "\n" + UNIT_TEST_PRESENTATION_CONTRACT
+""".strip() + "\n" + UNIT_TEST_STRUCTURED_CONTENT_CONTRACT
     user_prompt = f"""
 请为这一章生成结构化章末单元测试。
 
@@ -118,7 +118,7 @@ def build_chapter_unit_test_review_messages(
 你是 AITeachMe 的章末测验复核老师。你必须独立解答每道题，不能默认候选答案和解析正确。
 请根据本章正文逐题复算条件、结论、选项和解析；发现错误、歧义、缺项或结构问题时直接修正。
 最终返回一份完整可发布的题组，而不是评语、差异或局部补丁。
-""".strip() + "\n" + UNIT_TEST_PRESENTATION_CONTRACT
+""".strip() + "\n" + UNIT_TEST_STRUCTURED_CONTENT_CONTRACT
     user_prompt = f"""
 请复核并重写下面的章末单元测试，返回完整 JSON 对象。
 
@@ -143,7 +143,7 @@ def build_chapter_unit_test_review_messages(
 5. basis 写 2-4 个成立的短步骤，最终结论必须与 answer 一致，不能沿用初稿中的错误推理。
 6. 题目只使用正文能够支持的知识，不编造正文之外的定理、数据或条件。
 7. type 只能从概念判断、选择题、填空题、步骤排序、错因辨析、短答题、应用迁移、图表读取、推导证明中选择；difficulty 只能填基础、进阶、挑战。
-8. 公式使用 Markdown/LaTeX；只输出 JSON，不输出复核说明或 Markdown 代码块。
+8. 公式使用 Markdown/LaTeX；只输出 JSON，不输出复核说明，不在 JSON 对象外套代码围栏。题干或解析内的代码示例保留语言围栏、换行和缩进。
 9. 逐题核对用户和章节合同的题型与作答形式，违约时重写该题。固定题型优先于默认多样性；要求全部单选时，每题 type 必须为“选择题”，均有四个选项及唯一正确答案。
 
 候选题组：

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from textwrap import dedent
 from typing import Any
 
 from pydantic import Field, field_validator, model_validator
@@ -23,7 +24,7 @@ _UNIT_TEST_HTML_BLOCK_RE = re.compile(r'(?ms)<div\s+class="atm-unit-tests"[^>]*>
 _STANDARD_UNIT_TEST_HEADING_RE = re.compile(r"(?m)^##\s+单元测试\s*$")
 _ANY_UNIT_TEST_HEADING_RE = re.compile(r"(?m)^##\s+[^\n]*单元测试[^\n]*$")
 _H3_BODY_TEST_OR_RECAP_HEADING_RE = re.compile(r"(?ms)^###\s+(?P<title>[^\n]+?)\s*\n.*?(?=^#{2,3}\s+|\Z)")
-_FENCE_OPEN_RE = re.compile(r"^[ \t]{0,3}(?P<marker>`{3,}|~{3,})")
+_FENCE_OPEN_RE = re.compile(r"^(?P<quote>(?:[ \t]{0,3}>[ \t]?)*?)[ \t]{0,3}(?P<marker>`{3,}|~{3,})")
 
 _QUESTION_TYPE_ALIASES: dict[str, str] = {
     "判断": "概念判断",
@@ -126,7 +127,7 @@ _UNIT_TEST_QUESTION_HEADER_RE = re.compile(
     re.IGNORECASE,
 )
 _UNIT_TEST_OPTION_LINE_RE = re.compile(
-    r"^\s*(?:[-*+]\s*)?(?:\*\*)?(?P<label>[A-Da-d])(?:\*\*)?[.)、:：]\s*(?P<value>\S.*)$"
+    r"^\s*(?:[-*+]\s*)?(?:\*\*)?(?P<label>[A-Da-d])(?:\*\*)?[.)、:：]\s*(?P<value>.*)$"
 )
 _UNIT_TEST_FIELD_ONLY_RE = re.compile(
     r"^\s*(?:\*\*)?(?:题目|题干|选项|答案|解析|解析步骤|判定依据)(?:\*\*)?\s*(?:[:：])?\s*$"
@@ -151,7 +152,7 @@ def _content_identity(value: str) -> str:
 
 
 def _canonical_choice_answer(answer: str, options: dict[str, str]) -> str:
-    label = re.fullmatch(r"(?:选项\s*)?([A-Da-d])(?:[.)、:：]\s*(.*))?", answer.strip())
+    label = re.fullmatch(r"(?:选项\s*)?([A-Da-d])(?:[.)、:：]\s*(.*))?", answer.strip(), re.DOTALL)
     if label is not None:
         option = options.get(label.group(1).upper())
         suffix = str(label.group(2) or "").strip()
@@ -241,10 +242,10 @@ class ChapterUnitTestItem(DocGenBaseModel):
     type: str = "短答题"
     difficulty: str = "基础"
     target: str = ""
-    stem: str = ""
+    stem: str = Field(default="", description="仅题干，可含完整代码围栏；不得包含 QUESTION/ANSWER 标记、题号或选项列表。")
     options: list[str] = Field(default_factory=list)
-    answer: str = ""
-    basis: str = ""
+    answer: str = Field(default="", description="仅最终答案，不添加 ANSWER 标记或答案字段标题。")
+    basis: str = Field(default="", description="仅解析步骤，可含完整代码围栏；不添加 ANSWER 标记或答案/解析字段标题。")
 
     @field_validator("type", "difficulty", "target", "stem", "answer", "basis", mode="before")
     @classmethod
@@ -281,7 +282,14 @@ class ChapterUnitTestSet(DocGenBaseModel):
         return value if isinstance(value, list) else []
 
 
-def _protect_fenced_code_blocks(markdown: str) -> tuple[str, dict[str, str]]:
+def _fence_closing_re(marker: str, quote: str) -> re.Pattern[str]:
+    return re.compile(
+        rf"^(?:[ \t]{{0,3}}>[ \t]?){{{quote.count('>')}}}[ \t]{{0,3}}"
+        rf"{re.escape(marker[0])}{{{len(marker)},}}[ \t]*(?:\n)?$"
+    )
+
+
+def _protect_fenced_code_blocks(markdown: str, *, quoted_only: bool = False) -> tuple[str, dict[str, str]]:
     lines = str(markdown or "").splitlines(keepends=True)
     protected: list[str] = []
     blocks: dict[str, str] = {}
@@ -294,9 +302,8 @@ def _protect_fenced_code_blocks(markdown: str) -> tuple[str, dict[str, str]]:
             continue
 
         marker = opening.group("marker")
-        closing = re.compile(
-            rf"^[ \t]{{0,3}}{re.escape(marker[0])}{{{len(marker)},}}[ \t]*(?:\n)?$"
-        )
+        quote = opening.group("quote")
+        closing = _fence_closing_re(marker, quote)
         block_start = index
         index += 1
         while index < len(lines):
@@ -305,12 +312,15 @@ def _protect_fenced_code_blocks(markdown: str) -> tuple[str, dict[str, str]]:
                 break
             index += 1
         block = "".join(lines[block_start:index])
+        if quoted_only and not quote:
+            protected.append(block)
+            continue
         trailing_newline = "\n" if block.endswith("\n") else ""
         if trailing_newline:
             block = block[:-1]
         token = f"<!--ATM_FENCED_CODE_BLOCK_{len(blocks)}-->"
-        blocks[token] = block
-        protected.append(token + trailing_newline)
+        blocks[token] = block[len(quote):]
+        protected.append(quote + token + trailing_newline)
     return "".join(protected), blocks
 
 
@@ -343,41 +353,16 @@ def strip_existing_unit_test_sections(markdown: str) -> str:
     return _restore_fenced_code_blocks(cleaned, fenced_code_blocks)
 
 
-def _inline_fenced_code_block(block: str) -> str:
-    lines = str(block or "").splitlines()
-    if not lines:
-        return ""
-    opening = _FENCE_OPEN_RE.match(lines[0])
-    if opening is None:
-        return " ".join(str(block or "").split())
-
-    marker = opening.group("marker")
-    body_lines = lines[1:]
-    closing = re.compile(
-        rf"^[ \t]{{0,3}}{re.escape(marker[0])}{{{len(marker)},}}[ \t]*$"
-    )
-    if body_lines and closing.match(body_lines[-1]):
-        body_lines.pop()
-    code = " ".join("\n".join(body_lines).strip().split())
-    if not code:
-        return ""
-    if "``" in code:
-        return code.replace("`", r"\`")
-    delimiter = "``" if "`" in code else "`"
-    padding = " " if code.startswith("`") or code.endswith("`") else ""
-    return f"{delimiter}{padding}{code}{padding}{delimiter}"
-
-
 def _markdown_text(value: str, *, limit: int | None = None) -> str:
     text, fenced_code_blocks = _protect_fenced_code_blocks(_sanitize_unit_test_math_text(value))
     text = _inline_unit_test_display_math(text)
-    text = " ".join(text.strip().split())
+    text = "\n".join(" ".join(line.split()) for line in text.strip().splitlines())
     text = _wrap_raw_latex_fragments(text)
     for token, block in fenced_code_blocks.items():
-        text = text.replace(token, _inline_fenced_code_block(block))
+        text = text.replace(token, "\n\n" + _close_unterminated_fenced_code_block(block) + "\n\n")
     if limit is not None and len(text) > limit and not fenced_code_blocks and not _MATH_HINT_RE.search(text):
         text = text[: max(1, limit - 1)].rstrip(" ，,。；;、") + "…"
-    return text
+    return text.strip()
 
 
 def _close_unterminated_fenced_code_block(markdown: str) -> str:
@@ -385,58 +370,46 @@ def _close_unterminated_fenced_code_block(markdown: str) -> str:
 
     text = str(markdown or "").replace("\r\n", "\n").replace("\r", "\n")
     active_marker = ""
+    active_quote = ""
     for line in text.splitlines():
         if active_marker:
-            closing = re.compile(
-                rf"^[ \t]{{0,3}}{re.escape(active_marker[0])}{{{len(active_marker)},}}[ \t]*$"
-            )
+            closing = _fence_closing_re(active_marker, active_quote)
             if closing.match(line):
                 active_marker = ""
             continue
         opening = _FENCE_OPEN_RE.match(line)
         if opening is not None:
             active_marker = opening.group("marker")
+            active_quote = opening.group("quote")
     if not active_marker:
         return text
-    return text.rstrip() + f"\n{active_marker}\n"
+    return text.rstrip() + f"\n{active_quote}{active_marker}\n"
 
 
 def split_final_unit_test_section(markdown: str) -> tuple[str, str]:
     """Split out the visible canonical final unit-test section, if present."""
 
     text = str(markdown or "").replace("\r\n", "\n").replace("\r", "\n")
-    active_marker = ""
-    offset = 0
-    unit_start: int | None = None
-    for line in text.splitlines(keepends=True):
-        line_without_newline = line.rstrip("\r\n")
-        if active_marker:
-            closing = re.compile(
-                rf"^[ \t]{{0,3}}{re.escape(active_marker[0])}{{{len(active_marker)},}}[ \t]*$"
-            )
-            if closing.match(line_without_newline):
-                active_marker = ""
-        else:
-            opening = _FENCE_OPEN_RE.match(line_without_newline)
-            if opening is not None:
-                active_marker = opening.group("marker")
-            elif re.fullmatch(r"##\s+单元测试\s*", line_without_newline.strip()):
-                unit_start = offset
-        offset += len(line)
-    if unit_start is None:
+    visible, fenced_blocks = _protect_fenced_code_blocks(text)
+    headings = list(_STANDARD_UNIT_TEST_HEADING_RE.finditer(visible))
+    if not headings:
         return text, ""
-    return text[:unit_start].rstrip(), text[unit_start:].strip()
+    unit_start = headings[-1].start()
+    return (
+        _restore_fenced_code_blocks(visible[:unit_start], fenced_blocks).rstrip(),
+        _restore_fenced_code_blocks(visible[unit_start:], fenced_blocks).strip(),
+    )
 
 
 def _markdown_explanation_lines(value: str, *, limit: int = 520) -> list[str]:
-    text = _markdown_text(value, limit=limit)
+    text, fenced_blocks = _protect_fenced_code_blocks(_markdown_text(value, limit=limit))
     if not text:
         return []
     text = _normalize_duplicate_step_numbers(text)
     numbered_parts = _EMBEDDED_STEP_BOUNDARY_RE.split(text)
     if len([part for part in numbered_parts if part.strip()]) > 1:
         return [
-            _LEADING_STEP_NUMBER_RE.sub("", part).strip().rstrip("；; ")
+            _restore_fenced_code_blocks(_LEADING_STEP_NUMBER_RE.sub("", part).strip().rstrip("；; "), fenced_blocks)
             for part in numbered_parts
             if part.strip()
         ]
@@ -446,9 +419,9 @@ def _markdown_explanation_lines(value: str, *, limit: int = 520) -> list[str]:
         if part.strip()
     ]
     if len(parts) > 1:
-        return parts
+        return [_restore_fenced_code_blocks(part, fenced_blocks) for part in parts]
     without_leading_number = _LEADING_STEP_NUMBER_RE.sub("", text).strip()
-    return [without_leading_number or text]
+    return [_restore_fenced_code_blocks(without_leading_number or text, fenced_blocks)]
 
 
 def _normalize_duplicate_step_numbers(value: str) -> str:
@@ -491,9 +464,10 @@ def _sanitize_unit_test_math_text(value: Any) -> str:
     if not text:
         return ""
     text = _normalize_literal_line_breaks(text)
+    text, fenced_blocks = _protect_fenced_code_blocks(text)
     text = _ESCAPED_MATH_DOLLAR_RE.sub(r"\1", text)
     text = _LEADING_TABLE_PIPE_BEFORE_MATH_RE.sub(r"\1", text)
-    return text.strip()
+    return _restore_fenced_code_blocks(text.strip(), fenced_blocks)
 
 
 def _normalize_literal_line_breaks(value: str) -> str:
@@ -569,6 +543,31 @@ def _callout_visible_lines(lines: list[str], *, marker_rest: str) -> tuple[list[
     return visible, has_floating_line
 
 
+def _unit_test_choice_options(lines: list[str]) -> list[tuple[str, str]]:
+    options: list[tuple[str, str]] = []
+    in_option = False
+    for line in lines:
+        match = _UNIT_TEST_OPTION_LINE_RE.match(line)
+        if match is not None:
+            options.append((match.group("label").upper(), match.group("value").strip()))
+            in_option = True
+        elif _UNIT_TEST_FIELD_ONLY_RE.match(line):
+            in_option = False
+        elif in_option and line:
+            label, value = options[-1]
+            options[-1] = (label, (value + "\n" + line).strip())
+    return options
+
+
+def _quoted_markdown_lines(value: str, *, prefix: str = "", continuation: str = "") -> list[str]:
+    lines = value.splitlines()
+    if not lines:
+        return []
+    if prefix and _FENCE_OPEN_RE.match(lines[0]):
+        return [f"> {prefix.rstrip()}", ">", *[f"> {continuation}{line}" for line in lines]]
+    return [f"> {prefix}{lines[0]}", *[f"> {continuation}{line}" for line in lines[1:]]]
+
+
 def normalize_unit_test_choice_answers(markdown: str) -> str:
     """Expand an explicit A-D answer label to its exact option, without guessing."""
 
@@ -580,22 +579,28 @@ def normalize_unit_test_choice_answers(markdown: str) -> str:
     section_start = len(lines) - len(section_lines)
     kind = ""
     choice = False
-    options: dict[str, str] = {}
+    question_lines: list[str] = []
     answer_start: int | None = None
 
     def normalize_answer(end: int) -> None:
+        options = {
+            label: dedent(re.sub(r"(?m)^[ \t]*>[ \t]?", "", _restore_fenced_code_blocks(value, fenced_blocks)))
+            for label, value in _unit_test_choice_options(question_lines)
+        }
         if not choice or answer_start is None or list(options) != ["A", "B", "C", "D"]:
             return
-        values = [index for index in range(answer_start, end) if re.sub(r"^\s*>\s?", "", lines[index]).strip()]
-        if len(values) != 1:
-            return
-        index = values[0]
-        match = re.match(r"^(\s*>\s?)(.*?)(\r?\n)?$", lines[index])
-        if match is not None:
-            original = match.group(2).strip()
-            answer = _canonical_choice_answer(original, options)
-            if answer != original:
-                lines[index] = match.group(1) + answer + (match.group(3) or "")
+        original = dedent(re.sub(
+            r"(?m)^[ \t]*>[ \t]?", "",
+            _restore_fenced_code_blocks("".join(lines[answer_start:end]), fenced_blocks),
+        )).strip()
+        answer = _canonical_choice_answer(original, options)
+        if answer != original:
+            values = [index for index in range(answer_start, end) if re.sub(r"^[ \t]*>[ \t]?", "", lines[index]).strip()]
+            if not values:
+                return
+            lines[values[0]] = "\n".join(_quoted_markdown_lines(_markdown_text(answer))) + "\n"
+            for index in range(values[0] + 1, values[-1] + 1):
+                lines[index] = ""
 
     for index in range(section_start, len(lines)):
         line = lines[index]
@@ -606,15 +611,13 @@ def normalize_unit_test_choice_answers(markdown: str) -> str:
             kind = marker.group("kind").upper()
             if kind == "QUESTION":
                 choice = False
-                options = {}
+                question_lines = []
         visible = re.sub(r"^\s*>\s?", "", line).strip()
         if kind == "QUESTION":
+            question_lines.append(visible)
             header = _UNIT_TEST_QUESTION_HEADER_RE.search(visible)
             if header is not None:
                 choice = _normalize_question_type(header.group("type")) == "选择题"
-            option = _UNIT_TEST_OPTION_LINE_RE.match(visible)
-            if option is not None:
-                options[option.group("label").upper()] = option.group("value").strip()
         elif kind == "ANSWER" and _UNIT_TEST_FIELD_ONLY_RE.match(visible):
             normalize_answer(index)
             answer_start = index + 1 if visible == "**答案**" else None
@@ -629,7 +632,7 @@ def unit_test_structure_issues(markdown: str, *, expected_question_count: int | 
     semantics or attempt to reconstruct malformed questions locally.
     """
 
-    visible_markdown, _ = _protect_fenced_code_blocks(
+    visible_markdown, fenced_blocks = _protect_fenced_code_blocks(
         str(markdown or "").replace("\r\n", "\n").replace("\r", "\n")
     )
     section_lines, issues = _unit_test_section(visible_markdown)
@@ -708,16 +711,9 @@ def unit_test_structure_issues(markdown: str, *, expected_question_count: int | 
         if any(_UNIT_TEST_ANSWER_FIELD_RE.search(line) for line in question_lines):
             issues.append(f"第 {question_ordinal} 题把答案写进了 QUESTION 块。")
 
-        option_labels = [
-            match.group("label").upper()
-            for line in question_lines
-            if (match := _UNIT_TEST_OPTION_LINE_RE.match(line)) is not None
-        ]
-        option_values = [
-            match.group("value").strip()
-            for line in question_lines
-            if (match := _UNIT_TEST_OPTION_LINE_RE.match(line)) is not None
-        ]
+        choice_options = _unit_test_choice_options(question_lines)
+        option_labels = [label for label, _ in choice_options]
+        option_values = [value for _, value in choice_options]
         stem_lines = [
             line
             for line in question_lines
@@ -731,6 +727,8 @@ def unit_test_structure_issues(markdown: str, *, expected_question_count: int | 
         if question_type == "选择题":
             if option_labels != ["A", "B", "C", "D"]:
                 issues.append(f"第 {question_ordinal} 道选择题必须且只能包含 A-D 四个选项。")
+            if any(not value for value in option_values):
+                issues.append(f"第 {question_ordinal} 道选择题存在空选项。")
         elif option_labels:
             issues.append(f"第 {question_ordinal} 道非选择题不应显示 A-D 选项。")
 
@@ -773,13 +771,13 @@ def unit_test_structure_issues(markdown: str, *, expected_question_count: int | 
                     explanation_value_lines.append(line)
         if not explanation_value_lines:
             issues.append(f"第 {question_ordinal} 题解析步骤为空。")
-        normalized_answer = _content_identity("".join(answer_value_lines))
+        normalized_answer = _content_identity(_restore_fenced_code_blocks("\n".join(answer_value_lines), fenced_blocks))
         if question_type == "选择题" and normalized_answer:
-            normalized_options = {_content_identity(value) for value in option_values}
+            normalized_options = {_content_identity(_restore_fenced_code_blocks(value, fenced_blocks)) for value in option_values}
             if normalized_answer not in normalized_options:
                 issues.append(f"第 {question_ordinal} 道选择题的答案必须与 A-D 中某个完整选项一致。")
         if normalized_answer and stem_lines:
-            item_identity = tuple(_content_identity(value) for value in (
+            item_identity = tuple(_content_identity(_restore_fenced_code_blocks(value, fenced_blocks)) for value in (
                 "\n".join(stem_lines), "\n".join(option_values),
                 "\n".join(answer_value_lines), "\n".join(explanation_value_lines),
             ))
@@ -847,6 +845,13 @@ def _render_unit_test_overview_markdown(items: list[ChapterUnitTestItem]) -> str
 
 
 def _render_unit_test_item_markdown(item: ChapterUnitTestItem, *, index: int) -> str:
+    for field in ("stem", "answer", "basis"):
+        visible, _ = _protect_fenced_code_blocks(_sanitize_unit_test_math_text(getattr(item, field)))
+        if re.search(r"(?mi)^[ \t]*(?:>[ \t]*)?\[!(?:QUESTION|ANSWER)\]", visible):
+            raise ChapterUnitTestGenerationError(
+                f"第 {index} 题的 {field} 混入了 QUESTION/ANSWER 展示标记；"
+                "请仅返回该字段的题干、最终答案或解析内容，题答布局由渲染器生成。"
+            )
     question_type = _normalize_question_type(item.type)
     difficulty = _normalize_difficulty(item.difficulty)
     lines = [
@@ -854,21 +859,23 @@ def _render_unit_test_item_markdown(item: ChapterUnitTestItem, *, index: int) ->
         ">",
         "> **题目**",
         ">",
-        f"> {_markdown_text(item.stem, limit=720)}",
+        *_quoted_markdown_lines(_markdown_text(item.stem, limit=720)),
     ]
     if _is_choice_unit_test_type(question_type) and item.options:
         lines.extend([">", "> **选项**", ">"])
-        lines.extend([f"> - {label}. {_markdown_text(option)}" for label, option in zip("ABCD", item.options)])
+        for label, option in zip("ABCD", item.options):
+            lines.extend(_quoted_markdown_lines(_markdown_text(option), prefix=f"- {label}. ", continuation="  "))
     explanation_lines = _markdown_explanation_lines(item.basis, limit=720)
     lines.extend(["", "> [!ANSWER]", ">", "> **答案**", ">"])
     answer_text = _markdown_text(item.answer) or "见解析。"
-    lines.append(f"> {answer_text}")
+    lines.extend(_quoted_markdown_lines(answer_text))
     if explanation_lines:
         lines.extend([">", "> **解析步骤**", ">"])
         if len(explanation_lines) == 1:
-            lines.append(f"> {explanation_lines[0]}")
+            lines.extend(_quoted_markdown_lines(explanation_lines[0]))
         else:
-            lines.extend(f"> {step}. {line}" for step, line in enumerate(explanation_lines[:5], start=1))
+            for step, line in enumerate(explanation_lines[:5], start=1):
+                lines.extend(_quoted_markdown_lines(line, prefix=f"{step}. ", continuation="   "))
     return "\n".join(lines).strip()
 
 
@@ -960,6 +967,11 @@ def _normalize_published_explanation_steps(markdown: str) -> str:
         if not explanation_parts:
             normalized.append(line)
             index += 1
+            continue
+
+        if any("<!--ATM_FENCED_CODE_BLOCK_" in part for part in explanation_parts):
+            normalized.extend(lines[index:cursor])
+            index = cursor
             continue
 
         steps = _markdown_explanation_lines(" ".join(explanation_parts), limit=2400)

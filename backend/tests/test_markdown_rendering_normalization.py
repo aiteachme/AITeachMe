@@ -1,6 +1,7 @@
 import asyncio
 
 import pytest
+from markdown_it import MarkdownIt
 
 from app.shared.infra.tools.builtin.latex_processing import normalize_math_delimiters, validate_latex
 from app.shared.infra.tools.builtin.markdown_processing import (
@@ -22,6 +23,22 @@ from app.workflows.digest.docgen.lib.textbook_style import (
     normalize_educational_callouts,
     normalize_textbook_headings,
 )
+
+
+@pytest.mark.parametrize("quote", ["> ", "> > "])
+@pytest.mark.parametrize("fence", ["```", "~~~~"])
+def test_rendering_checker_accepts_standard_code_fences_inside_blockquotes(quote, fence):
+    code = 'values = [1, 2]\nfor value in values:\n    print(value)\n'
+    raw = "\n".join(quote + line for line in (fence + "python\n" + code + fence).splitlines())
+    blocks = [token for token in MarkdownIt("commonmark").parse(raw) if token.type == "fence"]
+    assert len(blocks) == 1
+    assert blocks[0].content == code
+    assert "代码块起始符被放在引用行内。" not in find_markdown_rendering_issues(raw)
+
+
+def test_rendering_checker_still_reports_fences_stuck_to_quoted_prose():
+    raw = '> 运行下面的代码：```python\n> print(1)\n> ```'
+    assert "代码块起始符被放在引用行内。" in find_markdown_rendering_issues(raw)
 
 
 def test_normalize_repairs_reversed_code_fence_language_markers() -> None:

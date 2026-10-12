@@ -82,6 +82,7 @@ from app.workflows.digest.common.build_lifecycle import maintain_knowledge_build
 from app.workflows.digest.common.contracts import normalize_digest_confirmed_plan_payload
 from app.workflows.digest.common.file_status import is_markdown_ready_for_digest
 from app.workflows.digest.common.metrics import build_token_summary
+from app.workflows.digest.docgen.lib.asset_requests import strip_asset_requests
 from app.workflows.digest.docgen.lib.interactive_overlays import (
     apply_interactive_overlays_to_markdown,
     load_current_interactive_overlays,
@@ -91,6 +92,7 @@ from app.workflows.digest.docgen.lib.published_manifest import (
     select_published_knowledge_manifest,
 )
 from app.workflows.digest.docgen.lib.public_markdown import sanitize_public_markdown
+from app.workflows.digest.docgen.lib.unit_tests import _protect_fenced_code_blocks, _restore_fenced_code_blocks
 from app.workflows.digest.planner import (
     get_confirmed_build_plan,
     mark_confirmed_build_plan_status,
@@ -330,12 +332,15 @@ def _normalize_public_result_markdown(
     *,
     allowed_h1_titles: list[str] | None = None,
 ) -> str:
+    # Hide internal asset directives before preserving already-published code.
+    visible, fenced_blocks = _protect_fenced_code_blocks(strip_asset_requests(str(markdown or "").strip()))
     text = sanitize_public_markdown(
         normalize_mermaid_blocks(
-            normalize_markdown_rendering(str(markdown or "").strip())
+            normalize_markdown_rendering(visible)
         )
     ).strip()
-    return _demote_unexpected_public_h1(text, allowed_titles=allowed_h1_titles or []).strip()
+    text = _demote_unexpected_public_h1(text, allowed_titles=allowed_h1_titles or []).strip()
+    return _restore_fenced_code_blocks(text, fenced_blocks)
 
 
 def _demote_unexpected_public_h1(markdown: str, *, allowed_titles: list[str]) -> str:

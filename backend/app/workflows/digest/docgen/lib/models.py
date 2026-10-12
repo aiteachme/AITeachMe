@@ -1193,8 +1193,8 @@ class ChapterReviewActionSuggestion(DocGenBaseModel):
     ] = "record_only"
     severity: Literal["info", "warning", "error"] = "warning"
     reason: str = ""
-    target_anchor: str = ""
-    instruction: str = ""
+    target_anchor: str = Field(default="", description="局部修补只定位一个现有小节标题；跨小节问题应拆成独立动作。")
+    instruction: str = Field(default="", description="仅要求在 target_anchor 小节内完成的修复，不能要求同时修改其它小节。")
     constraints: list[str] = Field(default_factory=list)
     expected_effect: str = ""
 
@@ -1256,8 +1256,8 @@ class ReviewAction(DocGenBaseModel):
     chapter_index: int | None = None
     severity: Literal["info", "warning", "error"] = "warning"
     reason: str = ""
-    target_anchor: str = ""
-    instruction: str = ""
+    target_anchor: str = Field(default="", description="局部修补只定位一个现有小节标题；跨小节问题应拆成独立动作。")
+    instruction: str = Field(default="", description="仅要求在 target_anchor 小节内完成的修复，不能要求同时修改其它小节。")
     constraints: list[str] = Field(default_factory=list)
     expected_effect: str = ""
     status: Literal["recorded", "applied", "skipped", "downgraded"] = "recorded"

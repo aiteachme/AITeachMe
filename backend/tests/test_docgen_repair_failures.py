@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import ast
+import re
 
 import pytest
 
 from app.workflows.digest.docgen.lib import repair, unit_tests
 from app.workflows.digest.docgen.lib.models import EnhancedChapterDraft, ReviewAction, ReviewedChapterDraft
 from app.workflows.digest.docgen.lib.quality import build_merge_review_report
+from app.workflows.digest.docgen.lib.presentation_policy import normalize_docgen_presentation
 
 
 @pytest.fixture
@@ -43,6 +45,36 @@ def test_choice_normalization_preserves_fenced_examples_and_non_choice_answers()
     non_choice = _choice_test("A").replace("选择题", "短答题")
     markdown = fenced + non_choice
     assert unit_tests.normalize_unit_test_choice_answers(markdown) == markdown
+
+
+def test_patch_cleaning_preserves_python_blocks_and_keeps_intro_outside_code():
+    code = 'values = ["猫", "狗"]\nfor value in values:\n    print(value)'
+    raw = f'## 循环\n\n下面的程序使用四个空格缩进，让 `print(value)` 成为循环体：\n```python\n{code}\n```\n'
+    cleaned = repair._clean_patch_snippet(raw, chapter_title="列表")
+    published = normalize_docgen_presentation("# 列表\n\n" + cleaned, title="列表")
+    blocks = re.findall(r"```python\n(.*?)\n```", published, re.DOTALL)
+    assert blocks == [code]
+    compile(blocks[0], "<self-authored-example>", "exec")
+    assert "下面的程序" in published.split("```python", 1)[0]
+
+
+def test_patch_cleaning_preserves_question_code_and_multiline_labeled_answer():
+    options = [f"```text\n{first}\n{second}\n```" for first, second in ((1, 2), (2, 1), (-1, 2), (1, -2))]
+    quiz = unit_tests.render_unit_test_markdown(
+        unit_tests.ChapterUnitTestSet(items=[unit_tests.ChapterUnitTestItem(
+            type="选择题", target="逐行输出", stem='输出是什么？\n\n```python\nprint(2)\nprint(1)\n```',
+            options=options, answer="B", basis="两次print分别输出2和1。",
+        )]), title="输出", min_items=1, fallback_targets=[],
+    )
+    original_answer = "\n".join(f"> {line}" for line in options[1].splitlines())
+    labeled = quiz.replace("> **答案**\n>\n" + original_answer, "> **答案**\n>\n> B.\n>\n" + original_answer)
+    cleaned = repair._clean_patch_snippet(labeled, chapter_title="输出")
+    normalized = unit_tests.normalize_unit_test_choice_answers(cleaned)
+    assert normalized.count("```text") == 5
+    assert "> **答案**\n>\n" + original_answer in normalized
+    assert unit_tests.unit_test_structure_issues(normalized, expected_question_count=1) == []
+    quoted_python = "> ```python\n> print(2)\n> print(1)\n> ```"
+    assert quoted_python in normalized
 
 
 def test_structured_choice_answer_does_not_hide_sign_mismatch():

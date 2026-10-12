@@ -17,7 +17,12 @@ from app.workflows.digest.docgen.lib.presentation_policy import (
     find_docgen_presentation_issues,
     normalize_docgen_presentation,
 )
-from app.workflows.digest.docgen.lib.unit_tests import normalize_unit_test_choice_answers, unit_test_structure_issues
+from app.workflows.digest.docgen.lib.unit_tests import (
+    _protect_fenced_code_blocks,
+    _restore_fenced_code_blocks,
+    normalize_unit_test_choice_answers,
+    unit_test_structure_issues,
+)
 from app.workflows.digest.docgen.prompts.repair import build_chapter_patch_messages, build_patch_verification_messages
 
 
@@ -250,7 +255,8 @@ def _local_patch_char_limit(markdown: str, *, unit_test_patch: bool) -> int:
 
 
 def _clean_patch_snippet(markdown: str, *, chapter_title: str) -> str:
-    cleaned = normalize_markdown_rendering(_strip_markdown_fence(markdown)).strip()
+    visible, fenced_blocks = _protect_fenced_code_blocks(_strip_markdown_fence(markdown))
+    cleaned = normalize_markdown_rendering(visible).strip()
     lines = []
     chapter_title_norm = _normalize_anchor(chapter_title)
     for line in cleaned.splitlines():
@@ -261,7 +267,7 @@ def _clean_patch_snippet(markdown: str, *, chapter_title: str) -> str:
             lines.append(f"## {match.group(1).strip()}")
             continue
         lines.append(line)
-    return "\n".join(lines).strip()
+    return _restore_fenced_code_blocks("\n".join(lines).strip(), fenced_blocks)
 
 
 def _normalized_visible_heading(value: str) -> str:

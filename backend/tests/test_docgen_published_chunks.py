@@ -15,6 +15,43 @@ from app.workflows.digest.docgen.lib import published_chunks
 COURSE_ID = "course_chunktest001"
 
 
+@pytest.mark.parametrize("marker", ["```", "````", "~~~"])
+def test_public_result_read_preserves_code_output_and_quoted_question_fences(marker: str) -> None:
+    body_code = f'{marker}python\nfruits = ["苹果", "梨", "桃"]\nfor fruit in fruits:\n    print(fruit)\n{marker}'
+    output_code = f"{marker}text\n苹果\n梨\n桃\n{marker}"
+    question_code = f'> {marker}python\n> for fruit in fruits:\n>     print(fruit)\n> {marker}'
+    markdown = (
+        "# 第一章\n\n## 循环输出\n\n"
+        f"{body_code}\n\n输出如下：\n{output_code}\n\n"
+        "输出结束后继续讲解。\n\n## 单元测试\n\n"
+        "> [!QUESTION] **Q01｜选择题｜基础｜考点：循环输出**\n>\n"
+        f"> 判断程序输出。\n>\n{question_code}\n>\n"
+        "> - A. 苹果、梨、桃，各占一行\n> - B. 只输出苹果\n\n"
+        "> [!ANSWER]\n>\n> 苹果、梨、桃，各占一行\n"
+    )
+
+    normalized = build_lifecycle._normalize_public_result_markdown(
+        markdown, allowed_h1_titles=["第一章"],
+    )
+    for block in (body_code, output_code, question_code):
+        assert block in normalized
+    assert normalized.count("> [!QUESTION]") == 1
+    assert normalized.count("> [!ANSWER]") == 1
+    assert "输出结束后继续讲解。" in normalized
+    assert build_lifecycle._normalize_public_result_markdown(
+        normalized, allowed_h1_titles=["第一章"],
+    ) == normalized
+
+    chunks = published_chunks._split_published_markdown(
+        normalized,
+        chapters=(published_chunks._PublishedChapter(chapter_index=1, title="第一章"),),
+    )
+    assert "".join(chunk.markdown for chunk in chunks) == normalized
+    assert [heading.text for chunk in chunks for heading in chunk.headings] == [
+        "第一章", "循环输出", "单元测试",
+    ]
+
+
 def _snapshot(publication_id: str, *, version_no: int = 4):
     return published_chunks._PublicationSnapshot(
         publication_id=publication_id,

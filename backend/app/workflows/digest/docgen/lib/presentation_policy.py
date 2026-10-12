@@ -16,7 +16,11 @@ from app.workflows.digest.docgen.lib.textbook_style import (
     normalize_textbook_headings,
 )
 from app.workflows.digest.docgen.lib.mode_profiles import get_docgen_mode_profile
-from app.workflows.digest.docgen.lib.unit_tests import split_final_unit_test_section
+from app.workflows.digest.docgen.lib.unit_tests import (
+    _protect_fenced_code_blocks,
+    _restore_fenced_code_blocks,
+    split_final_unit_test_section,
+)
 
 LEARNING_ROLE_LABELS = {
     "topic": "主题模块",
@@ -415,6 +419,9 @@ def normalize_docgen_presentation(
     """Run the deterministic presentation normalizers used at DocGen boundaries."""
 
     body_markdown, unit_test_markdown = split_final_unit_test_section(markdown)
+    body_markdown = normalize_educational_callouts(body_markdown)
+    body_markdown = normalize_mermaid_blocks(body_markdown)
+    body_markdown, fenced_code_blocks = _protect_fenced_code_blocks(body_markdown)
     cleaned = _protect_docgen_table_inline_code(body_markdown)
     cleaned = normalize_mermaid_blocks(normalize_markdown_rendering(cleaned))
     cleaned = normalize_textbook_headings(
@@ -423,11 +430,11 @@ def normalize_docgen_presentation(
         fallback_title=title,
         focus_items=focus_items or [],
     )
-    cleaned = normalize_educational_callouts(cleaned)
     cleaned = _normalize_heading_math_artifacts(cleaned)
     cleaned = _normalize_inline_math_connectors(cleaned)
     cleaned = _dedupe_exact_question_callouts(cleaned)
     cleaned = normalize_markdown_rendering(cleaned)
+    cleaned = _restore_fenced_code_blocks(cleaned, fenced_code_blocks)
     if unit_test_markdown:
         return cleaned.rstrip() + "\n\n" + unit_test_markdown + "\n"
     return cleaned

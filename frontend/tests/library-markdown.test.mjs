@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { before } from "node:test";
+import { fileURLToPath } from "node:url";
+import { createServer } from "vite";
+import remarkParse from "remark-parse";
+import { unified } from "unified";
 
 import {
   createFormulaSearchKeys,
@@ -8,6 +12,60 @@ import {
   resolveLibraryAssetSrc,
   splitLibraryMarkdownForRender,
 } from "../src/components/knowledge-docs/libraryMarkdown.ts";
+
+let preprocessMarkdownForRender;
+let cleanKnowledgeMarkdownForDisplay;
+before(async () => {
+  const server = await createServer({
+    root: fileURLToPath(new URL("..", import.meta.url)),
+    configFile: false,
+    logLevel: "silent",
+    optimizeDeps: { noDiscovery: true, include: [] },
+    server: { middlewareMode: true, hmr: false },
+  });
+  try {
+    ({ preprocessMarkdownForRender } = await server.ssrLoadModule("/src/components/ui/MarkdownViewer.tsx"));
+    ({ cleanKnowledgeMarkdownForDisplay } = await server.ssrLoadModule("/src/components/knowledge-docs/utils.ts"));
+  } finally {
+    await server.close();
+  }
+});
+
+for (const marker of ["```", "````", "~~~"]) {
+  test(`the actual display pipeline preserves code literals and question boundaries (${marker})`, () => {
+    const literal = 'print("\\(x\\) $a < b$ **答案：一** **解析：二** {#ku_literal}")';
+    const questionCode = `> ${marker}python\n> for item in items:\n>     ${literal}\n> ${marker}`;
+    const outputCode = `${marker}text\n苹果\n梨\n桃\n${marker}`;
+    const markdown = `# 第一章\n\n${outputCode}\n\n## 单元测试\n\n`
+      + `> [!QUESTION] **Q01｜选择题｜基础｜考点：输出**\n>\n${questionCode}\n>\n> - A. 正确\n\n`
+      + "> [!ANSWER]\n>\n> 答案在此。\n\n公式 \\(x^2\\)。\n";
+    const processed = preprocessMarkdownForRender(cleanKnowledgeMarkdownForDisplay(markdown));
+    assert.ok(processed.includes(questionCode), processed);
+    assert.ok(processed.includes(outputCode), processed);
+    assert.equal((processed.match(/^> \[!QUESTION\]/gm) ?? []).length, 1);
+    assert.equal((processed.match(/^> \[!ANSWER\]/gm) ?? []).length, 1);
+    assert.match(processed, /公式 \$x\^2\$/u);
+    const codeBlocks = [];
+    const headings = [];
+    function walk(node) {
+      if (node.type === "code") codeBlocks.push(node.value);
+      if (node.type === "heading") headings.push(node);
+      for (const child of node.children ?? []) walk(child);
+    }
+    walk(unified().use(remarkParse).parse(processed));
+    assert.deepEqual(codeBlocks, ["苹果\n梨\n桃", `for item in items:\n    ${literal}`]);
+    assert.equal(headings.length, 2);
+  });
+}
+
+test("code examples containing nested fences survive while actual Mermaid is repaired", () => {
+  const example = "````markdown\n```mermaid\nflowchart TD\n A --> B\n```\n````";
+  const markdown = `${example}\n\n\`\`\`maymaid\nflowchart TD\n A --> B\n\`\`\`\n`;
+  const processed = preprocessMarkdownForRender(cleanKnowledgeMarkdownForDisplay(markdown));
+  assert.ok(processed.includes(example));
+  assert.match(processed, /\n```mermaid\nflowchart TD/u);
+  assert.doesNotMatch(processed, /```maymaid/u);
+});
 
 test("normalizes HTML-sensitive comparison symbols only inside math", () => {
   const markdown = [
@@ -46,6 +104,23 @@ test("maps MinerU and PaddleOCR relative image paths to the file asset directory
   assert.equal(resolveLibraryAssetSrc("../private.png", base), "/api/v1/files/file-1/assets/private.png");
   assert.equal(resolveLibraryAssetSrc("https://cdn.example.com/a.png", base), "https://cdn.example.com/a.png");
   assert.equal(resolveLibraryAssetSrc("data:image/png;base64,abc", base), "data:image/png;base64,abc");
+});
+
+test("preserves code in question callouts during math escaping and render splitting", () => {
+  const code = [
+    "> ````python\n",
+    `${"> print('$a < b$')\n".repeat(180)}`,
+    "> ```\n",
+    "> if True:\n>     print('indentation')\n",
+    "> ````\n",
+  ].join("");
+  const markdown = `${"前置正文。".repeat(450)}\n\n> [!QUESTION]\n>\n${code}\n正文 $x < y$。\n`;
+  const normalized = escapeMathHtmlCharactersForRender(markdown);
+  assert.ok(normalized.includes(code));
+  assert.match(normalized, /正文 \$x \\lt  y\$/u);
+  const chunks = splitLibraryMarkdownForRender(normalized, 2_000);
+  assert.equal(chunks.join(""), normalized);
+  assert.ok(chunks.some((chunk) => chunk.includes(code)));
 });
 
 test("creates equivalent search keys for TeX and rendered formula text", () => {

@@ -1778,7 +1778,15 @@ def find_markdown_rendering_issues(markdown: str) -> list[str]:
 
     text = str(markdown or "").replace("\r\n", "\n").replace("\r", "\n")
     issues: list[str] = []
-    if re.search(r"(?m)^>\s*.*```\s*[A-Za-z0-9_-]*\s*$", text):
+    quoted_lines = [
+        re.sub(r"^(?:[ \t]{0,3}>[ \t]?)+", "", line)
+        for line in text.splitlines() if BLOCKQUOTE_PREFIX_PATTERN.match(line)
+    ]
+    if any(
+        not re.match(r"^[ \t]{0,3}(?:`{3,}|~{3,})", line)
+        and INLINE_FENCE_PATTERN.match(line)
+        for line in quoted_lines
+    ):
         issues.append("代码块起始符被放在引用行内。")
     if _display_math_has_mixed_blockquote_prefix(text):
         issues.append("display math 内混入 blockquote 前缀。")
