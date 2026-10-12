@@ -52,7 +52,6 @@ T = TypeVar("T")
 _BLANK_TOKEN = "{{blank}}"
 _TEXT_UNDERSCORE_PLACEHOLDER_RE = re.compile(r"\\text\{(_+)\}")
 _CHOICE_LABEL_RE = re.compile(r"^\s*([A-Da-d])(?:[\.\)\]:：、\s]+)(.+)$")
-_INLINE_WHITESPACE_RE = re.compile(r"[ \t\f\v]+")
 _DUPLICATE_ORDERED_LIST_MARKER_RE = re.compile(
     r"^(\s{0,3}(?:>\s*)*)\d+[\.)\u3001\uff09]\s+(?=\d+[\.)\u3001\uff09]\s+)"
 )
@@ -118,9 +117,12 @@ def _clean_multiline_text(value: object) -> str:
             line = stripped_line
             in_code_fence = not in_code_fence
         elif in_code_fence:
-            line = raw_line.rstrip()
+            cleaned_lines.append(raw_line)
+            previous_blank = False
+            continue
         else:
-            line = _INLINE_WHITESPACE_RE.sub(" ", raw_line).strip()
+            # Inline code and literal outputs may differ only by whitespace.
+            line = raw_line.strip()
         if not line:
             if cleaned_lines and not previous_blank:
                 cleaned_lines.append("")
@@ -414,7 +416,7 @@ class ExamQuestionRequirementPlan(BaseModel):
     @field_validator("generation_prompt")
     @classmethod
     def _clean_generation_prompt(cls, value: str) -> str:
-        return " ".join(str(value or "").split()).strip()
+        return str(value or "").strip()
 
 
 class ExamQuestionRequirementBatch(BaseModel):
@@ -476,7 +478,7 @@ def _build_mastery_drill_requirement_plans(
         "multiple_choice",
         "short_answer",
     ]
-    cleaned_prompt = " ".join(str(user_prompt or "").split()).strip()
+    cleaned_prompt = str(user_prompt or "").strip()
     prompt_suffix = f"用户补充要求：{cleaned_prompt}" if cleaned_prompt else "无"
     plans = [
         ExamQuestionRequirementPlan(

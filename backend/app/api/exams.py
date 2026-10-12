@@ -140,7 +140,7 @@ _WHITESPACE_RE = re.compile(r"\s+")
 PAPER_PREVIEW_ROW_LIMIT = 7
 RECENT_EXAM_STEM_AVOID_LIMIT = 18
 _SYNC_EDGE_MARKER_PREFIX = "markdown_anchor_sync:"
-EXAM_PREWARM_CONFIG_VERSION = 2
+EXAM_PREWARM_CONFIG_VERSION = 3
 EXAM_PREWARM_TTL_DAYS = 2
 _SOLUTION_REVEAL_EXAM_STATUSES = frozenset({"graded", "archived"})
 _SOLUTION_UNLOCKED_EXAM_STATUSES = ("graded", "archived", "failed")
@@ -717,7 +717,7 @@ def _normalized_sample_file_ids(values: list[str] | None) -> list[str]:
 
 
 def _normalize_exam_user_prompt(value: str | None) -> str:
-    return _WHITESPACE_RE.sub(" ", str(value or "")).strip()
+    return str(value or "").strip()
 
 
 def _normalized_exam_question_types(values: list[str] | None) -> list[str]:

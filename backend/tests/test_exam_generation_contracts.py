@@ -220,7 +220,7 @@ def test_text_exam_prompt_marks_only_extreme_source_compression() -> None:
     assert "学习资料过长，已保留开头和结尾" in payload_text
 
 
-def test_exam_config_snapshot_normalizes_hash_inputs(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_exam_config_snapshot_normalizes_ids_and_preserves_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
     snapshot = exams_api._build_exam_config_snapshot(
         course_id="course_math00000000",
         user_id="user-1",
@@ -234,13 +234,52 @@ def test_exam_config_snapshot_normalizes_hash_inputs(monkeypatch: pytest.MonkeyP
         difficulty="hard",
     )
 
-    assert snapshot["user_prompt"] == "focus on weak units"
+    assert snapshot["user_prompt"] == "focus   on weak   units"
     assert snapshot["sample_file_ids"] == ["a", "b"]
     assert snapshot["knowledge_unit_ids"] == [1, 2]
     assert snapshot["question_types"] == ["true_false", "single_choice"]
     assert snapshot["difficulty"] == "hard"
     assert snapshot["paper_layout_mode"] == "practice_scroll"
     assert exams_api._exam_config_hash(snapshot) == exams_api._exam_config_hash(dict(reversed(snapshot.items())))
+
+
+def test_exam_config_hash_distinguishes_literal_spacing() -> None:
+    def snapshot(prompt: str) -> dict[str, object]:
+        return exams_api._build_exam_config_snapshot(
+            course_id=COURSE_ID,
+            user_id=USER_ID,
+            exam_mode="web_practice",
+            question_count=1,
+            user_prompt=prompt,
+            sample_file_ids=[],
+            knowledge_unit_ids=[1],
+            mastery_fingerprint="unchanged",
+        )
+
+    single_space = snapshot("预测 `print('a b')` 的输出。")
+    two_spaces = snapshot("预测 `print('a  b')` 的输出。")
+
+    assert exams_api._exam_config_hash(single_space) != exams_api._exam_config_hash(two_spaces)
+    assert two_spaces["user_prompt"] == "预测 `print('a  b')` 的输出。"
+
+
+@pytest.mark.parametrize("mode", ["web_practice", "mastery_drill"])
+def test_exam_requirement_plan_preserves_literal_spacing_and_code_indentation(mode: str) -> None:
+    prompt = "预测以下代码的输出：\n```python\nfor item in ['a  b']:\n    print(item)\n```"
+    if mode == "mastery_drill":
+        plans, _ = generator._build_mastery_drill_requirement_plans(
+            question_count=1,
+            user_prompt=prompt,
+        )
+    else:
+        plans, _ = generator._build_configured_question_requirement_plans(
+            exam_mode=mode,
+            question_count=1,
+            question_types=["single_choice"],
+            user_prompt=prompt,
+        )
+
+    assert prompt in plans[0].generation_prompt
 
 
 def test_upsert_generated_template_reuses_duplicate_stem_across_units(session: Session) -> None:
@@ -2679,6 +2718,45 @@ def test_exam_question_draft_normalizes_choice_and_unit_refs() -> None:
     assert draft.correct_indices == [0]
     assert draft.option_judgements == [True, False, False, False]
     assert [ref.knowledge_unit_id for ref in draft.knowledge_unit_refs] == [1, 2]
+
+
+def test_exam_question_draft_keeps_distinct_output_spacing() -> None:
+    options = ["`a b`", "`a  b`", "`ab`", "`a   b`"]
+    draft = generator.ExamQuestionDraft.model_validate(
+        {
+            "item_order": 1,
+            "question_type": "single_choice",
+            "difficulty": "easy",
+            "stem": "运行 `print('a  b')`，输出内容是哪一项？",
+            "options": options,
+            "correct_indices": [1],
+            "option_judgements": [False, True, False, False],
+            "explanation": "程序原样输出 `a  b`，两个字母之间有两个空格。",
+        }
+    )
+
+    assert draft.options == options
+    assert "`print('a  b')`" in draft.stem
+    assert "`a  b`" in draft.explanation
+    assert draft.correct_answer == "B"
+
+
+@pytest.mark.parametrize("field", ["stem", "correct_answer", "explanation"])
+def test_exam_question_draft_preserves_output_blank_lines_and_spaces(field: str) -> None:
+    output = "```text\nleft  \n\n\nright\t \n```"
+    payload = {
+        "item_order": 1,
+        "question_type": "short_answer",
+        "difficulty": "easy",
+        "stem": "请写出字符串程序的完整输出。",
+        "correct_answer": "程序原样打印字符串内容。",
+        "explanation": "字符串中的连续空行和行尾空格都是输出内容的一部分。",
+    }
+    payload[field] = output
+
+    draft = generator.ExamQuestionDraft.model_validate(payload)
+
+    assert getattr(draft, field) == output
 
 
 def test_exam_question_draft_preserves_fenced_code_indentation() -> None:
