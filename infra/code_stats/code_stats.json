@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-10-05T03:51:25.523645",
-  "total_commits_analyzed": 2153,
+  "generated_at": "2026-10-12T04:07:54.326082",
+  "total_commits_analyzed": 2164,
   "stats": [
     {
       "date": "2026-03-11",
@@ -17225,6 +17225,94 @@
       "code_lines": 288240,
       "other_lines": 51613,
       "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-09-30",
+      "commit": "c357fe6",
+      "total_lines": 355665,
+      "code_lines": 301583,
+      "other_lines": 54082,
+      "message": "feat: 实现训练中心的自定义题型包注册与全流程接入"
+    },
+    {
+      "date": "2026-10-02",
+      "commit": "ca73c73",
+      "total_lines": 339853,
+      "code_lines": 288240,
+      "other_lines": 51613,
+      "message": "chore: 忽略本地临时验证产物"
+    },
+    {
+      "date": "2026-10-02",
+      "commit": "8689be5",
+      "total_lines": 340243,
+      "code_lines": 288548,
+      "other_lines": 51695,
+      "message": "perf: 减少构建流程同步阻塞与重复存储读取"
+    },
+    {
+      "date": "2026-10-02",
+      "commit": "ff762fa",
+      "total_lines": 340568,
+      "code_lines": 288834,
+      "other_lines": 51734,
+      "message": "fix: 保护方案生成的并发状态与事务一致性"
+    },
+    {
+      "date": "2026-10-02",
+      "commit": "cef54af",
+      "total_lines": 341092,
+      "code_lines": 289255,
+      "other_lines": 51837,
+      "message": "fix: 保证分块与向量索引的一致性"
+    },
+    {
+      "date": "2026-10-02",
+      "commit": "467f7f8",
+      "total_lines": 341219,
+      "code_lines": 289360,
+      "other_lines": 51859,
+      "message": "fix: 完善图谱构建取消清理与失败状态"
+    },
+    {
+      "date": "2026-10-02",
+      "commit": "7ed64fc",
+      "total_lines": 341427,
+      "code_lines": 289546,
+      "other_lines": 51881,
+      "message": "fix: 贯通正文篇幅约束并加强局部纠错"
+    },
+    {
+      "date": "2026-10-02",
+      "commit": "ba7385a",
+      "total_lines": 357239,
+      "code_lines": 302889,
+      "other_lines": 54350,
+      "message": "chore: 合并 dev_mzp 自定义题型包功能"
+    },
+    {
+      "date": "2026-10-05",
+      "commit": "d1f76d7",
+      "total_lines": 339853,
+      "code_lines": 288240,
+      "other_lines": 51613,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-10-11",
+      "commit": "8c349dd",
+      "total_lines": 358125,
+      "code_lines": 303677,
+      "other_lines": 54448,
+      "message": "fix: 修复课程数量约束传递与发布校验"
+    },
+    {
+      "date": "2026-10-11",
+      "commit": "afa6996",
+      "total_lines": 358125,
+      "code_lines": 303677,
+      "other_lines": 54448,
+      "message": "chore: 合并远程代码统计更新"
     }
   ]
 }
