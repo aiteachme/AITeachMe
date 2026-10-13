@@ -69,7 +69,7 @@ export function PlannerPlanSummary({
                 <PlannerPreviewMarkdown markdown={introText} />
               </div>
             ) : (
-              <p className="text-[16px] font-medium leading-7 text-zinc-950 dark:text-slate-100">
+              <p className="whitespace-pre-wrap break-words text-[16px] font-medium leading-7 text-zinc-950 dark:text-slate-100">
                 {introText}
               </p>
             )
@@ -85,7 +85,7 @@ export function PlannerPlanSummary({
                 可以继续这样改
               </div>
               {adjustmentQuestions.map((item, index) => (
-                <p key={`${index}-${item}`}>{item}</p>
+                <p key={`${index}-${item}`} className="whitespace-pre-wrap break-words">{item}</p>
               ))}
             </div>
           ) : null}
@@ -99,7 +99,7 @@ export function PlannerPlanSummary({
               <div className="min-w-0">
                 <div className="text-[15px] font-semibold leading-6 text-zinc-900 dark:text-slate-100">{item.title}</div>
                 {item.description ? (
-                  <div title={item.tooltip || item.description} className="mt-1 line-clamp-2 text-sm leading-6 text-zinc-600 dark:text-slate-400">
+                  <div title={item.tooltip || item.description} className="mt-1 line-clamp-2 whitespace-pre-wrap break-words text-sm leading-6 text-zinc-600 dark:text-slate-400">
                     {item.description}
                   </div>
                 ) : null}

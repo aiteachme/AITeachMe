@@ -47,6 +47,12 @@ import { useDocBuildProgress } from "../components/knowledge-docs/hooks/useDocBu
 import { KnowledgeBuildResolutionModal } from "../components/build-plan/KnowledgeBuildResolutionModal";
 import { PlannerPreviewMarkdown } from "../components/build-plan/PlannerPreviewMarkdown";
 import {
+  formatPlannerDiagnosticAnswer,
+  normalizePlannerDiagnosticAnswer,
+  normalizePlannerDiagnosticAnswers,
+  type PlannerDiagnosticAnswerState,
+} from "../components/build-plan/plannerDiagnosis";
+import {
   PLANNER_CARD_CLASSNAME,
   PlannerPlanCardShell,
   PlannerPlanSummary,
@@ -163,11 +169,6 @@ interface PlannerDiagnosticQuestion {
   purpose?: string;
   options?: string[];
   answer?: string;
-}
-
-interface PlannerDiagnosticAnswerState {
-  choice?: string;
-  note?: string;
 }
 
 interface PlannerDiagnosisGate {
@@ -339,67 +340,6 @@ function plannerDiagnosticPurpose(value: string | null | undefined): string {
 
 function plannerDiagnoseStatus(plan: BuildPlannerPlanResponse | null | undefined): string {
   return String(plannerView(plan)?.diagnose_status ?? "").trim();
-}
-
-function parsePlannerDiagnosticAnswerText(value: string): PlannerDiagnosticAnswerState {
-  const normalized = String(value ?? "").replace(/\s+/g, " ").trim();
-  if (!normalized) {
-    return {};
-  }
-  const choiceMatch = normalized.match(/(?:^|[；;]\s*)选择[:：]\s*([^；;]+)/u);
-  const noteMatch = normalized.match(/(?:^|[；;]\s*)补充[:：]\s*(.+)$/u);
-  const choice = String(choiceMatch?.[1] ?? "").trim();
-  const note = String(noteMatch?.[1] ?? "").trim();
-  if (choice || note) {
-    return { choice, note };
-  }
-  return { choice: normalized };
-}
-
-function normalizePlannerDiagnosticAnswer(value: unknown): PlannerDiagnosticAnswerState {
-  if (!value) {
-    return {};
-  }
-  if (typeof value === "string") {
-    return parsePlannerDiagnosticAnswerText(value);
-  }
-  if (typeof value === "object") {
-    const raw = value as { choice?: unknown; note?: unknown; answer?: unknown };
-    const choice = String(raw.choice ?? raw.answer ?? "").replace(/\s+/g, " ").trim();
-    const note = String(raw.note ?? "").replace(/\s+/g, " ").trim();
-    return { choice, note };
-  }
-  return {};
-}
-
-function normalizePlannerDiagnosticAnswers(value: unknown): Record<string, PlannerDiagnosticAnswerState> {
-  if (!value || typeof value !== "object") {
-    return {};
-  }
-  const answers: Record<string, PlannerDiagnosticAnswerState> = {};
-  for (const [question, raw] of Object.entries(value as Record<string, unknown>)) {
-    const normalizedQuestion = String(question ?? "").trim();
-    if (!normalizedQuestion) {
-      continue;
-    }
-    const answer = normalizePlannerDiagnosticAnswer(raw);
-    if (answer.choice || answer.note) {
-      answers[normalizedQuestion] = answer;
-    }
-  }
-  return answers;
-}
-
-function formatPlannerDiagnosticAnswer(value: unknown): string {
-  const answer = normalizePlannerDiagnosticAnswer(value);
-  const parts: string[] = [];
-  if (answer.choice) {
-    parts.push(`选择：${answer.choice}`);
-  }
-  if (answer.note) {
-    parts.push(`补充：${answer.note}`);
-  }
-  return parts.join("；").trim();
 }
 
 function hasPlannerDiagnosis(plan: BuildPlannerPlanResponse | null | undefined): boolean {
@@ -1316,7 +1256,7 @@ function PlannerOutlineCard({
               const options = plannerDiagnosticOptions(item);
               const answerState = answerStateForDiagnosis(item);
               const selectedAnswer = String(answerState.choice ?? "").trim();
-              const manualNote = String(answerState.note ?? "").trim();
+              const manualNote = String(answerState.note ?? "");
               const canEditDiagnosis = diagnosisPending && !isDisabled;
               return (
                 <div
@@ -1328,9 +1268,9 @@ function PlannerOutlineCard({
                       {index + 1}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold leading-6 text-zinc-900 dark:text-slate-100">{question}</p>
+                      <p className="whitespace-pre-wrap break-words text-sm font-semibold leading-6 text-zinc-900 dark:text-slate-100">{question}</p>
                       {purpose ? (
-                        <p className="mt-1 text-xs leading-5 text-zinc-500 dark:text-slate-400">
+                        <p className="mt-1 whitespace-pre-wrap break-words text-xs leading-5 text-zinc-500 dark:text-slate-400">
                           你的选择会调整：{purpose}
                         </p>
                       ) : null}
@@ -1366,9 +1306,9 @@ function PlannerOutlineCard({
                               <span className="flex items-start gap-2">
                                 <Check className={"mt-0.5 h-3.5 w-3.5 shrink-0 " + (selectedAnswer === answer ? "opacity-100" : "opacity-0")} />
                                 <span className="min-w-0">
-                                  <span className="block text-sm font-semibold leading-5">{option.label}</span>
+                                  <span className="block whitespace-pre-wrap break-words text-sm font-semibold leading-5">{option.label}</span>
                                   {option.impact ? (
-                                    <span className={"mt-0.5 block text-xs font-normal leading-5 " + (selectedAnswer === answer ? "text-blue-600/80 dark:text-blue-300/80" : "text-zinc-500 dark:text-slate-400")}>
+                                    <span className={"mt-0.5 block whitespace-pre-wrap break-words text-xs font-normal leading-5 " + (selectedAnswer === answer ? "text-blue-600/80 dark:text-blue-300/80" : "text-zinc-500 dark:text-slate-400")}>
                                       {option.impact}
                                     </span>
                                   ) : null}
