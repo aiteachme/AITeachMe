@@ -55,12 +55,13 @@ SAFE_REASONS = {
     "ProgressDeadlineExceeded", "MinimumReplicasUnavailable", "NewReplicaSetAvailable",
 }
 VERSION_PROBE = r'''
-import contextlib, io, json, re, subprocess
+import contextlib, io, json, os, re, subprocess
 out = {}
 def classify(exc):
     message = str(exc).lower()
     categories = {
         "too many clients": "connection_limit", "remaining connection slots": "connection_limit",
+        "too many connections": "connection_limit",
         "connection refused": "connection_refused", "connection timed out": "connection_timeout",
         "timeout expired": "connection_timeout", "could not translate host name": "dns",
         "name or service not known": "dns", "password authentication failed": "authentication",
@@ -68,6 +69,11 @@ def classify(exc):
         "ssl error": "tls", "database system is starting up": "database_starting",
         "database system is in recovery": "database_recovery", "permission denied": "permission",
         "does not exist": "missing_database_or_role", "no such file": "missing_file",
+        "version mismatch": "client_version", "cannot be converted": "backup_settings",
+        "server closed the connection": "connection_closed", "could not connect": "connection_failed",
+        "unrecognized configuration parameter": "unsupported_parameter",
+        "no password supplied": "missing_password", "timed out": "command_timeout",
+        "lock timeout": "lock_timeout",
     }
     original = getattr(exc, "orig", exc)
     code = getattr(original, "sqlstate", None) or getattr(original, "pgcode", None)
@@ -88,6 +94,9 @@ with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.St
         from sqlalchemy.pool import NullPool
         from app.shared.infra.env_support import get_env
         url = make_url(get_env("DATABASE_URL") or "")
+        out["backup_auth_sources"] = {"url_password_present":bool(url.password),
+                                      "inherited_pgpassword_present":bool(os.environ.get("PGPASSWORD")),
+                                      "inherited_pgpassfile_present":bool(os.environ.get("PGPASSFILE"))}
         if url.get_backend_name() != "postgresql":
             raise ValueError()
         for label,kw in (("regular_connection",{}),("bootstrap_connection",{"isolation_level":"AUTOCOMMIT"})):
@@ -115,6 +124,16 @@ with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.St
                 engine.dispose()
     except Exception as exc:
         out["database_probe"] = classify(exc)
+    try:
+        from scripts.backup_cloud_database import _postgres_env
+        pg_env = _postgres_env()
+        pg_env["PGOPTIONS"] = (pg_env.get("PGOPTIONS", "") + " -c default_transaction_read_only=on").strip()
+        dumped = subprocess.run(["pg_dump","--format=custom","--schema-only","--no-password","--lock-wait-timeout=5000"],
+                                env=pg_env,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,timeout=20)
+        out["pg_dump_schema_probe"] = {"success":True} if dumped.returncode==0 else {
+            "exit_code":dumped.returncode,**classify(RuntimeError(dumped.stderr.decode("utf-8","replace")))}
+    except Exception as exc:
+        out["pg_dump_schema_probe"] = classify(exc)
 print(json.dumps(out))
 '''
 
@@ -191,22 +210,30 @@ def probe(namespace, name, container):
     server = data.get("server_version_num", "unavailable")
     output["server_version_num"] = server if isinstance(server, str) and re.fullmatch(r"[0-9]{5,7}", server) else "unavailable"
     output["revision"] = data.get("revision") if data.get("revision") in known else "unavailable"
-    for key in ("regular_connection", "bootstrap_connection", "database_probe"):
+    auth_sources = data.get("backup_auth_sources")
+    if isinstance(auth_sources, dict):
+        output["backup_auth_sources"] = {key:auth_sources.get(key) is True for key in (
+            "url_password_present", "inherited_pgpassword_present", "inherited_pgpassfile_present")}
+    for key in ("regular_connection", "bootstrap_connection", "database_probe", "pg_dump_schema_probe"):
         result = data.get(key)
         if not isinstance(result, dict):
             continue
-        output[key] = {"connected": True, "success": True} if result.get("success") is True else {
+        output[key] = {"success": True} if result.get("success") is True else {
             "connected": result.get("connected") is True,
             "stage": result.get("stage") if result.get("stage") in {"connect", "session_limits", "server_version", "revision"} else "unknown",
             "category": result.get("category") if result.get("category") in {
                 "connection_limit", "connection_refused", "connection_timeout", "dns", "authentication",
                 "pg_hba", "tls_certificate", "tls", "database_starting", "database_recovery",
                 "permission", "missing_database_or_role", "missing_file", "unclassified"
+                , "client_version", "backup_settings", "connection_closed", "connection_failed", "unsupported_parameter",
+                "missing_password", "command_timeout", "lock_timeout"
             } else "unknown",
             "exception_type": result.get("exception_type") if result.get("exception_type") in SAFE_EXCEPTION_TYPES else "unknown",
             "driver_exception_type": result.get("driver_exception_type") if result.get("driver_exception_type") in SAFE_EXCEPTION_TYPES else "unknown",
             "sqlstate": result.get("sqlstate") if isinstance(result.get("sqlstate"), str) and re.fullmatch(r"[0-9A-Z]{5}", result["sqlstate"]) else "unavailable",
         }
+        if isinstance(result.get("exit_code"), int):
+            output[key]["exit_code"] = result["exit_code"]
     return output
 
 def diagnose(namespace, deployment_name, container, expected_image):
