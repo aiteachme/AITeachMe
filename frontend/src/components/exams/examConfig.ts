@@ -1,4 +1,3 @@
-import { buildQuestionTypeSelections, normalizeCustomTypeSelections, type CustomTypeSelection, type LegacyCustomSelection } from "./questionTypeSelection.ts";
 export type CreateExamMode = "web_practice" | "paper_exam";
 
 export type PaperLayoutMode =
@@ -20,7 +19,6 @@ export interface CreateExamConfig {
   examMode: CreateExamMode;
   numQuestions: number;
   questionTypes: CreateExamQuestionType[];
-  customQuestionTypes: CustomTypeSelection[];
   difficulty: ExamDifficultyPreference;
   userPrompt: string;
   paperLayoutMode: PaperLayoutMode;
@@ -57,7 +55,6 @@ const DEFAULT_CONFIG_BY_MODE: Record<CreateExamMode, CreateExamConfig> = {
     examMode: "web_practice",
     numQuestions: 10,
     questionTypes: [],
-    customQuestionTypes: [],
     difficulty: "auto",
     userPrompt: "",
     paperLayoutMode: "auto",
@@ -66,7 +63,6 @@ const DEFAULT_CONFIG_BY_MODE: Record<CreateExamMode, CreateExamConfig> = {
     examMode: "paper_exam",
     numQuestions: 24,
     questionTypes: [],
-    customQuestionTypes: [],
     difficulty: "auto",
     userPrompt: "",
     paperLayoutMode: "auto",
@@ -111,7 +107,7 @@ function normalizeExamMode(value: unknown, fallback: CreateExamMode): CreateExam
 }
 
 export function normalizeCreateExamConfig(
-  value: (Partial<CreateExamConfig> & LegacyCustomSelection & { focusPrompt?: string }) | null | undefined,
+  value: (Partial<CreateExamConfig> & { focusPrompt?: string }) | null | undefined,
   requestedMode?: CreateExamMode,
 ): CreateExamConfig {
   const examMode = normalizeExamMode(requestedMode ?? value?.examMode, "paper_exam");
@@ -127,7 +123,6 @@ export function normalizeCreateExamConfig(
   );
   const rawDifficulty = String(value?.difficulty ?? "") as ExamDifficultyPreference;
   const rawLayoutMode = String(value?.paperLayoutMode ?? "") as PaperLayoutMode;
-  const customQuestionTypes = normalizeCustomTypeSelections(value ?? {});
 
   return {
     examMode,
@@ -136,7 +131,6 @@ export function normalizeCreateExamConfig(
       Math.max(1, Number.isFinite(numQuestions) ? Math.round(numQuestions) : defaults.numQuestions),
     ),
     questionTypes,
-    customQuestionTypes,
     difficulty: DIFFICULTIES.has(rawDifficulty) ? rawDifficulty : defaults.difficulty,
     userPrompt:
       typeof value?.userPrompt === "string"
@@ -223,7 +217,7 @@ function getDifficultyRequirement(value: ExamDifficultyPreference): string {
 export function buildExamConfigUserPrompt(config: CreateExamConfig): string {
   const normalized = normalizeCreateExamConfig(config, config.examMode);
   const requirements = [
-    normalized.questionTypes.length && !normalized.customQuestionTypes.length
+    normalized.questionTypes.length
       ? `题型仅限：${normalized.questionTypes.map(getQuestionTypeLabel).join("、")}。请在整套题目中合理分配。`
       : "",
     getDifficultyRequirement(normalized.difficulty),
@@ -240,11 +234,7 @@ export function toExamGenerateRequest(config: CreateExamConfig) {
     exam_mode: normalized.examMode,
     user_prompt: userPrompt || undefined,
     num_questions: normalized.numQuestions,
-    question_types: normalized.customQuestionTypes.length ? [] : normalized.questionTypes,
-    question_type_registry_ids: [] as number[],
-    question_type_selections: normalized.customQuestionTypes.length
-      ? buildQuestionTypeSelections(normalized.questionTypes, normalized.customQuestionTypes)
-      : [],
+    question_types: normalized.questionTypes,
     difficulty: normalized.difficulty,
     paper_layout_mode: normalized.examMode === "paper_exam" ? normalized.paperLayoutMode : undefined,
   };
@@ -252,8 +242,9 @@ export function toExamGenerateRequest(config: CreateExamConfig) {
 
 export function formatCreateExamQuestionTypeSummary(config: CreateExamConfig): string {
   const normalized = normalizeCreateExamConfig(config, config.examMode);
-  const count = normalized.questionTypes.length + normalized.customQuestionTypes.length;
-  return count ? `${count} 种题型` : "智能题型";
+  return normalized.questionTypes.length
+    ? `${normalized.questionTypes.length} 种题型`
+    : "智能题型";
 }
 
 export function formatCreateExamDifficultySummary(config: CreateExamConfig): string {

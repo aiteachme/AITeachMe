@@ -1,4 +1,3 @@
-import { filterAvailableCustomTypeSelections, toggleCustomTypeSelection } from "./questionTypeSelection";
 import { useEffect, useMemo, useState } from "react";
 
 import { Modal } from "../ui/Modal";
@@ -41,12 +40,6 @@ interface CreateExamModalProps {
   open: boolean;
   courseId: string;
   initialExamMode?: CreateExamConfig["examMode"] | null;
-  customQuestionTypes?: Array<{
-    registryId: number;
-    typeKey: string;
-    label: string;
-    modes: string[];
-  }>;
   onClose: () => void;
   onSaved?: (config: CreateExamConfig) => void;
 }
@@ -55,7 +48,6 @@ export function CreateExamModal({
   open,
   courseId,
   initialExamMode,
-  customQuestionTypes = [],
   onClose,
   onSaved,
 }: CreateExamModalProps) {
@@ -69,33 +61,9 @@ export function CreateExamModal({
     ),
   );
   const [questionTypeMode, setQuestionTypeMode] = useState<OptionSelectionMode>(() =>
-    loadCreateExamConfig(courseId, requestedMode).questionTypes.length ||
-      loadCreateExamConfig(courseId, requestedMode).customQuestionTypes.length
-      ? "custom"
-      : "primary",
+    loadCreateExamConfig(courseId, requestedMode).questionTypes.length ? "custom" : "primary",
   );
-  const availableCustomQuestionTypes = useMemo(
-    () => customQuestionTypes.filter((item) => item.modes.includes(config.examMode)),
-    [config.examMode, customQuestionTypes],
-  );
-  const questionTypeOptions = useMemo(() => [
-    ...CREATE_EXAM_QUESTION_TYPE_OPTIONS,
-    ...availableCustomQuestionTypes.map((item) => ({
-      value: `registry:${item.registryId}`,
-      label: item.label,
-      meta: "自定义",
-    })),
-  ], [availableCustomQuestionTypes]);
-  const selectedQuestionTypeSet = useMemo(() => new Set([
-    ...config.questionTypes,
-    ...config.customQuestionTypes.map((item) => `registry:${item.registryId}`),
-  ]), [config.customQuestionTypes, config.questionTypes]);
-  const isSelectedCustomQuestionTypeAvailable = config.customQuestionTypes.every((selected) =>
-    availableCustomQuestionTypes.some((item) => item.registryId === selected.registryId));
-  const selectedTypeCount = config.questionTypes.length + config.customQuestionTypes.length;
-  const isTypeSelectionValid = questionTypeMode === "primary" || (
-    selectedTypeCount > 0 && isSelectedCustomQuestionTypeAvailable
-  );
+  const selectedQuestionTypeSet = useMemo(() => new Set(config.questionTypes), [config.questionTypes]);
   const activeExamMode = PAPER_EXAM_MODES.find((item) => item.value === config.examMode);
   const activeDifficulty = CREATE_EXAM_DIFFICULTY_OPTIONS.find((item) => item.value === config.difficulty);
 
@@ -104,24 +72,10 @@ export function CreateExamModal({
     const stored = loadCreateExamConfig(courseId, requestedMode);
     setConfig(stored);
     setQuestionCountMode(getQuestionCountMode(stored.numQuestions, CREATE_EXAM_QUESTION_COUNT_PRESETS));
-    setQuestionTypeMode(
-      stored.questionTypes.length || stored.customQuestionTypes.length ? "custom" : "primary",
-    );
+    setQuestionTypeMode(stored.questionTypes.length ? "custom" : "primary");
   }, [courseId, open, requestedMode]);
 
   const toggleQuestionType = (questionType: string) => {
-    if (questionType.startsWith("registry:")) {
-      const registryId = Number(questionType.slice("registry:".length));
-      const selected = availableCustomQuestionTypes.find((item) => item.registryId === registryId);
-      if (!selected) return;
-      setConfig((current) => ({
-        ...current,
-        customQuestionTypes: toggleCustomTypeSelection(current.customQuestionTypes, {
-          registryId, typeKey: selected.typeKey ?? "",
-        }),
-      }));
-      return;
-    }
     const normalizedQuestionType = questionType as CreateExamConfig["questionTypes"][number];
     setConfig((current) => ({
       ...current,
@@ -144,28 +98,16 @@ export function CreateExamModal({
   };
 
   const handleSave = () => {
-    if (questionTypeMode !== "primary" && selectedTypeCount > config.numQuestions) {
-      toast({ title: "题量不足", description: "题目数量不能少于所选题型数量。", variant: "error" });
-      return;
-    }
-    if (!isTypeSelectionValid) {
+    if (questionTypeMode === "custom" && config.questionTypes.length === 0) {
       toast({
-        title: isSelectedCustomQuestionTypeAvailable ? "请选择题型" : "题型当前不可用",
-        description: isSelectedCustomQuestionTypeAvailable
-          ? "指定题型模式至少选择一种题型。"
-          : "该自定义题型已停用、归档或不支持当前训练模式，请重新选择。",
+        title: "请选择题型",
+        description: "指定题型模式至少选择一种题型。",
         variant: "error",
       });
       return;
     }
     const normalizedConfig = normalizeCreateExamConfig(
-      questionTypeMode === "primary"
-        ? {
-            ...config,
-            questionTypes: [],
-            customQuestionTypes: [],
-          }
-        : config,
+      questionTypeMode === "primary" ? { ...config, questionTypes: [] } : config,
       config.examMode,
     );
     saveCreateExamConfig(courseId, normalizedConfig);
@@ -209,32 +151,14 @@ export function CreateExamModal({
               primaryLabel="智能搭配"
               secondaryLabel="指定题型"
               mode={questionTypeMode}
-              options={questionTypeOptions}
+              options={CREATE_EXAM_QUESTION_TYPE_OPTIONS}
               selectedValues={selectedQuestionTypeSet}
-              errorMessage={questionTypeMode === "custom" &&
-                !isTypeSelectionValid
-                ? (isSelectedCustomQuestionTypeAvailable
-                    ? "至少选择一种题型。"
-                    : "所选自定义题型当前不可用，请重新选择。")
+              errorMessage={questionTypeMode === "custom" && config.questionTypes.length === 0
+                ? "至少选择一种题型。"
                 : null}
               onModeChange={setQuestionTypeMode}
               onToggle={toggleQuestionType}
             />
-            {questionTypeMode === "custom" && !isSelectedCustomQuestionTypeAvailable ? (
-              <button
-                type="button"
-                className="mt-2 text-sm font-semibold text-indigo-600 underline underline-offset-4 dark:text-indigo-300"
-                onClick={() => setConfig((current) => ({
-                  ...current,
-                  customQuestionTypes: filterAvailableCustomTypeSelections(
-                    current.customQuestionTypes,
-                    availableCustomQuestionTypes.map((item) => item.registryId),
-                  ),
-                }))}
-              >
-                移除不可用题型
-              </button>
-            ) : null}
           </TrainingConfigField>
 
           <TrainingConfigField label="整体难度" description={activeDifficulty?.description} align="center">
@@ -296,7 +220,7 @@ export function CreateExamModal({
           onReset={handleReset}
           onCancel={onClose}
           onSave={handleSave}
-          saveDisabled={!isTypeSelectionValid}
+          saveDisabled={questionTypeMode === "custom" && config.questionTypes.length === 0}
         />
       </div>
     </Modal>

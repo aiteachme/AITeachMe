@@ -58,11 +58,6 @@ from app.models.exam import (
     QuestionTemplate,
     QuestionTypeRegistry,
 )
-from app.models.question_type_package import (
-    QuestionTypePackageAsset,
-    QuestionTypePackageImport,
-    QuestionTypePackageVersion,
-)
 from app.models.knowledge import RetrievalChunk
 from app.models.knowledge_doc import KnowledgeDocument
 from app.models.knowledge_graph_sync import KnowledgeGraphSourceRef, KnowledgeGraphSyncRun
@@ -104,9 +99,6 @@ _SCHEMA_MODELS = (
     KnowledgeGraphSyncRun,
     KnowledgeGraphSourceRef,
     QuestionTypeRegistry,
-    QuestionTypePackageVersion,
-    QuestionTypePackageAsset,
-    QuestionTypePackageImport,
     QuestionTemplate,
     ExamPaper,
     CourseInitialExamJob,
@@ -188,24 +180,6 @@ _SQLITE_ADDITIVE_COLUMNS = {
     ),
     "question_template": (
         ("is_marked", "BOOLEAN NOT NULL DEFAULT 0"),
-        ("identity_hash", "TEXT NULL"),
-        (
-            "question_type_registry_id",
-            "INTEGER NULL REFERENCES question_type_registry(id)",
-        ),
-        (
-            "question_type_version_id",
-            "INTEGER NULL REFERENCES question_type_package_version(id)",
-        ),
-        ("public_payload_json", "TEXT NOT NULL DEFAULT '{}'"),
-        ("answer_schema_json", "TEXT NOT NULL DEFAULT '{}'"),
-        ("reference_answer_json", "TEXT NOT NULL DEFAULT '{}'"),
-        ("grading_spec_json", "TEXT NOT NULL DEFAULT '{}'"),
-        ("runtime_snapshot_json", "TEXT NOT NULL DEFAULT '{}'"),
-        ("profile_eligible", "BOOLEAN NOT NULL DEFAULT 1"),
-    ),
-    "question_type_registry": (
-        ("status", "TEXT NOT NULL DEFAULT 'active'"),
     ),
     "exam_paper": (
         ("visibility", "TEXT NOT NULL DEFAULT 'visible'"),
@@ -221,30 +195,6 @@ _SQLITE_ADDITIVE_COLUMNS = {
         ("grading_lease_expires_at", "DATETIME NULL"),
         ("grading_attempts", "INTEGER NOT NULL DEFAULT 0"),
         ("grading_last_error", "TEXT NOT NULL DEFAULT ''"),
-    ),
-    "exam_paper_item": (
-        (
-            "question_type_registry_id",
-            "INTEGER NULL REFERENCES question_type_registry(id)",
-        ),
-        (
-            "question_type_version_id",
-            "INTEGER NULL REFERENCES question_type_package_version(id)",
-        ),
-        ("public_payload_snapshot_json", "TEXT NOT NULL DEFAULT '{}'"),
-        ("answer_schema_snapshot_json", "TEXT NOT NULL DEFAULT '{}'"),
-        ("reference_answer_snapshot_json", "TEXT NOT NULL DEFAULT '{}'"),
-        ("grading_spec_snapshot_json", "TEXT NOT NULL DEFAULT '{}'"),
-        ("runtime_snapshot_json", "TEXT NOT NULL DEFAULT '{}'"),
-        ("profile_eligible", "BOOLEAN NOT NULL DEFAULT 1"),
-        ("answer_payload_json", "TEXT NOT NULL DEFAULT '{}'"),
-        ("grading_detail_json", "TEXT NOT NULL DEFAULT '{}'"),
-        ("grading_status", "TEXT NOT NULL DEFAULT 'pending'"),
-        ("grading_error_code", "TEXT NOT NULL DEFAULT ''"),
-    ),
-    "mastery_drill_attempt": (
-        ("answer_payload_json", "TEXT NOT NULL DEFAULT '{}'"),
-        ("grading_detail_json", "TEXT NOT NULL DEFAULT '{}'"),
     ),
     "course_initial_exam_job": (
         ("model_override", "TEXT NOT NULL DEFAULT ''"),
@@ -276,36 +226,6 @@ _SQLITE_ADDITIVE_INDEXES = {
             "status = 'active'",
         ),
     ),
-    "question_type_registry": (
-        ("ix_question_type_registry_status", ("status",), False, ""),
-    ),
-    "question_template": (
-        ("ix_question_template_identity_hash", ("identity_hash",), False, ""),
-        (
-            "ix_question_template_question_type_registry_id",
-            ("question_type_registry_id",),
-            False,
-            "",
-        ),
-        (
-            "ix_question_template_question_type_version_id",
-            ("question_type_version_id",),
-            False,
-            "",
-        ),
-        (
-            "ix_question_template_profile_eligible",
-            ("profile_eligible",),
-            False,
-            "",
-        ),
-        (
-            "uq_template_course_identity",
-            ("course_id", "identity_hash"),
-            True,
-            "identity_hash IS NOT NULL",
-        ),
-    ),
     "exam_paper": (
         (
             "ix_exam_paper_grading_lease_expires_at",
@@ -319,22 +239,6 @@ _SQLITE_ADDITIVE_INDEXES = {
             False,
             "",
         ),
-    ),
-    "exam_paper_item": (
-        (
-            "ix_exam_paper_item_question_type_registry_id",
-            ("question_type_registry_id",),
-            False,
-            "",
-        ),
-        (
-            "ix_exam_paper_item_question_type_version_id",
-            ("question_type_version_id",),
-            False,
-            "",
-        ),
-        ("ix_exam_paper_item_profile_eligible", ("profile_eligible",), False, ""),
-        ("ix_exam_paper_item_grading_status", ("grading_status",), False, ""),
     ),
     "raw_file": (
         (
@@ -1175,25 +1079,6 @@ def _backfill_sqlite_raw_file_parse_signatures(engine: sa.Engine) -> None:
             )
 
 
-def _backfill_sqlite_question_identity_hashes(engine: sa.Engine) -> None:
-    inspector = sa.inspect(engine)
-    if "question_template" not in set(inspector.get_table_names()):
-        return
-    existing_columns = {
-        column["name"]
-        for column in inspector.get_columns("question_template")
-    }
-    if not {"identity_hash", "stem_hash"} <= existing_columns:
-        return
-    with engine.begin() as connection:
-        connection.execute(
-            sa.text(
-                "UPDATE question_template SET identity_hash = stem_hash "
-                "WHERE identity_hash IS NULL OR identity_hash = ''"
-            )
-        )
-
-
 def _backfill_sqlite_library_chat_sessions(engine: sa.Engine) -> None:
     inspector = sa.inspect(engine)
     existing_tables = set(inspector.get_table_names())
@@ -1360,10 +1245,14 @@ def _ensure_local_sqlite_schema(engine: sa.Engine) -> sa.Engine:
     _drop_sqlite_removed_schema(engine)
     created_tables = _create_sqlite_missing_schema_tables(engine)
     _apply_sqlite_additive_schema_updates(engine)
+    from app.shared.infra.database.question_type_cleanup import migrate_sqlite_question_types
+
+    cleanup_backup = migrate_sqlite_question_types(engine)
+    if cleanup_backup is not None:
+        logger.info("retired_question_types_removed", backup_path=str(cleanup_backup))
     if "course_initial_exam_job" in created_tables:
         _backfill_new_sqlite_course_initial_exam_table(engine)
     _backfill_sqlite_raw_file_parse_signatures(engine)
-    _backfill_sqlite_question_identity_hashes(engine)
     _backfill_sqlite_library_chat_sessions(engine)
     _deduplicate_sqlite_active_course_shares(engine)
     _apply_sqlite_additive_index_updates(engine)

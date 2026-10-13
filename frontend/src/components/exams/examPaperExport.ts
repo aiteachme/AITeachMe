@@ -139,8 +139,6 @@ export function buildExamPaperExportDetail(
     items: (paper.items ?? []).map((item) => ({
       ...item,
       user_answer: null,
-      user_answer_payload: {},
-      grading_detail: {},
       correct_answer: null,
       explanation: "",
       is_correct: null,

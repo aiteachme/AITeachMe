@@ -1,6 +1,7 @@
 import pytest
 
 from app.models.knowledge_unit import KnowledgeUnit
+from app.shared.kernel.question_types import CANONICAL_QUESTION_TYPE_KEYS, UnsupportedQuestionTypeError
 from app.workflows.examine.question_build.lib import generator
 from app.workflows.examine.question_build.prompts import (
     build_exam_question_blueprint_messages,
@@ -158,7 +159,7 @@ def test_saved_difficulty_overrides_blueprint_model_output() -> None:
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("frozen_type", ["single_choice", "case_analysis"])
+@pytest.mark.parametrize("frozen_type", CANONICAL_QUESTION_TYPE_KEYS)
 async def test_blueprints_inherit_frozen_types_without_replanning(monkeypatch, frozen_type) -> None:
     calls = []
     plans = [
@@ -207,4 +208,18 @@ def test_frozen_types_do_not_hide_missing_blueprints_or_invalid_knowledge(unit_i
             question_prompt_plans=[generator.ExamQuestionRequirementPlan(
                 item_order=1, question_type="single_choice", generation_prompt="Test lists",
             )],
+        )
+
+
+@pytest.mark.parametrize("question_type", ["medium", "case_analysis"])
+def test_blueprints_without_frozen_types_reject_unsupported_types(question_type) -> None:
+    generated = generator.ExamQuestionBlueprint(
+        item_order=1, knowledge_unit_ids=[1], question_type=question_type, difficulty="medium",
+    )
+
+    with pytest.raises(UnsupportedQuestionTypeError):
+        generator._validate_blueprints(
+            generated=[generated],
+            units=[KnowledgeUnit(id=1, course_id="course-config", canonical_name="Lists", normalized_name="lists")],
+            question_count=1,
         )
