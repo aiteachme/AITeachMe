@@ -6,6 +6,7 @@ on:
     paths:
       - .github/workflows/backend-diagnostics.yml
       - .github/scripts/safe-startup-diagnostics.py
+      - .github/scripts/safe-database-pod-diagnostics.py
   workflow_dispatch:
     inputs:
       image_revision:

@@ -106,12 +106,17 @@ def diagnose_database_pods(kubectl, namespace=NAMESPACE, service=SERVICE):
         _uid(meta.get("uid"))
         return data
 
+    stage = "service"
+    controller_kind = "unknown"
     try:
         svc = get("service", service)
+        stage = "service_selector"
         selectors = svc.get("spec", {}).get("selector", {})
         if not isinstance(selectors, dict) or not selectors:
             raise ValueError("Service must select database pods")
+        stage = "endpoints"
         endpoints = get("endpoints", service)
+        stage = "endpoint_targets"
         targets = {}
         for subset in endpoints.get("subsets", []):
             for address in subset.get("addresses", []) + subset.get("notReadyAddresses", []):
@@ -127,18 +132,30 @@ def diagnose_database_pods(kubectl, namespace=NAMESPACE, service=SERVICE):
 
         records, controllers = [], {}
         for name, endpoint_uid in sorted(targets.items()):
+            stage = "pod"
             pod = get("pod", name)
+            stage = "pod_identity"
             meta = pod["metadata"]
             if meta["uid"] != endpoint_uid:
                 raise ValueError("Endpoint target Pod UID changed")
             if any(meta.get("labels", {}).get(key) != value for key, value in selectors.items()):
                 raise ValueError("Endpoint Pod does not match the service selector")
+            stage = "controller_kind"
             owners = [owner for owner in meta.get("ownerReferences", []) if owner.get("controller") is True]
-            if len(owners) != 1 or owners[0].get("kind") != "StatefulSet":
-                raise ValueError("Database Pod needs one StatefulSet controller")
+            if len(owners) == 1 and owners[0].get("kind") in {"StatefulSet", "InstanceSet", "ReplicaSet"}:
+                controller_kind = owners[0]["kind"]
+            resources = {("StatefulSet", "apps/v1"): "statefulset",
+                         ("InstanceSet", "workloads.kubeblocks.io/v1alpha1"): "instanceset.workloads.kubeblocks.io",
+                         ("InstanceSet", "workloads.kubeblocks.io/v1"): "instanceset.workloads.kubeblocks.io",
+                         ("InstanceSet", "apps.kubeblocks.io/v1alpha1"): "instanceset.apps.kubeblocks.io"}
+            identity = (owners[0].get("kind"), owners[0].get("apiVersion", "apps/v1")) if len(owners) == 1 else None
+            controller_resource = resources.get(identity)
+            if not controller_resource:
+                raise ValueError("Database Pod needs one recognized controller")
             owner_name, owner_uid = _name(owners[0].get("name")), _uid(owners[0].get("uid"))
+            stage = "controller_identity"
             if owner_name not in controllers:
-                controllers[owner_name] = get("statefulset", owner_name)
+                controllers[owner_name] = get(controller_resource, owner_name)
             if controllers[owner_name]["metadata"]["uid"] != owner_uid:
                 raise ValueError("StatefulSet controller UID changed")
 
@@ -162,4 +179,4 @@ def diagnose_database_pods(kubectl, namespace=NAMESPACE, service=SERVICE):
         return {"database_pod_diagnostics": "verified", "pod_count": len(records), "pods": records}
     except Exception:
         # No exception strings, resource JSON, selectors, IPs or environment data.
-        return {"database_pod_diagnostics": "unavailable"}
+        return {"database_pod_diagnostics": "unavailable", "stage":stage, "controller_kind":controller_kind}
