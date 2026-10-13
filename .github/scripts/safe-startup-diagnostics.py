@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 import re
 import sys
+import time
 
 ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location("rollout", ROOT / ".github/scripts/backend-rollout-strategy.py")
@@ -56,6 +57,23 @@ SAFE_REASONS = {
 VERSION_PROBE = r'''
 import contextlib, io, json, re, subprocess
 out = {}
+def classify(exc):
+    message = str(exc).lower()
+    categories = {
+        "too many clients": "connection_limit", "remaining connection slots": "connection_limit",
+        "connection refused": "connection_refused", "connection timed out": "connection_timeout",
+        "timeout expired": "connection_timeout", "could not translate host name": "dns",
+        "name or service not known": "dns", "password authentication failed": "authentication",
+        "no pg_hba.conf entry": "pg_hba", "certificate verify failed": "tls_certificate",
+        "ssl error": "tls", "database system is starting up": "database_starting",
+        "database system is in recovery": "database_recovery", "permission denied": "permission",
+        "does not exist": "missing_database_or_role", "no such file": "missing_file",
+    }
+    original = getattr(exc, "orig", exc)
+    code = getattr(original, "sqlstate", None) or getattr(original, "pgcode", None)
+    return {"category": next((v for k,v in categories.items() if k in message), "unclassified"),
+            "exception_type": type(exc).__name__, "driver_exception_type": type(original).__name__,
+            "sqlstate": code if isinstance(code,str) and re.fullmatch(r"[0-9A-Z]{5}",code) else "unavailable"}
 with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
     for binary in ("pg_dump", "pg_restore"):
         try:
@@ -72,17 +90,31 @@ with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.St
         url = make_url(get_env("DATABASE_URL") or "")
         if url.get_backend_name() != "postgresql":
             raise ValueError()
-        engine = create_engine(url, poolclass=NullPool, connect_args={"connect_timeout": 10})
-        with engine.connect() as conn:
-            conn.execute(text("SET TRANSACTION READ ONLY"))
-            conn.execute(text("SET LOCAL statement_timeout = '10000'"))
-            server = str(conn.execute(text("SHOW server_version_num")).scalar())
-            revs = list(conn.execute(text("SELECT version_num FROM alembic_version")).scalars())
-        engine.dispose()
-        out["server_version_num"] = server if re.fullmatch(r"[0-9]{5,7}", server) else "unavailable"
-        out["revision"] = revs[0] if len(revs) == 1 and re.fullmatch(r"[a-zA-Z0-9_]{1,64}", revs[0]) else "unavailable"
-    except Exception:
-        out["database_probe"] = "unavailable"
+        for label,kw in (("regular_connection",{}),("bootstrap_connection",{"isolation_level":"AUTOCOMMIT"})):
+            engine = create_engine(url,poolclass=NullPool,connect_args={"connect_timeout":6},**kw)
+            stage, connected = "connect", False
+            try:
+                with engine.connect() as conn:
+                    connected, stage = True, "session_limits"
+                    if not kw:
+                        conn.execute(text("SET TRANSACTION READ ONLY"))
+                        conn.execute(text("SET LOCAL statement_timeout = '6000'"))
+                    else:
+                        conn.execute(text("SET default_transaction_read_only = on"))
+                        conn.execute(text("SET statement_timeout = '6000'"))
+                    stage = "server_version"
+                    server = str(conn.execute(text("SHOW server_version_num")).scalar())
+                    stage = "revision"
+                    revs = list(conn.execute(text("SELECT version_num FROM alembic_version")).scalars())
+                out[label] = {"connected":True,"success":True}
+                out["server_version_num"] = server if re.fullmatch(r"[0-9]{5,7}",server) else "unavailable"
+                out["revision"] = revs[0] if len(revs)==1 and isinstance(revs[0],str) and re.fullmatch(r"[a-zA-Z0-9_]{1,64}",revs[0]) else "unavailable"
+            except Exception as exc:
+                out[label] = {"connected":connected,"stage":stage,**classify(exc)}
+            finally:
+                engine.dispose()
+    except Exception as exc:
+        out["database_probe"] = classify(exc)
 print(json.dumps(out))
 '''
 
@@ -159,6 +191,22 @@ def probe(namespace, name, container):
     server = data.get("server_version_num", "unavailable")
     output["server_version_num"] = server if isinstance(server, str) and re.fullmatch(r"[0-9]{5,7}", server) else "unavailable"
     output["revision"] = data.get("revision") if data.get("revision") in known else "unavailable"
+    for key in ("regular_connection", "bootstrap_connection", "database_probe"):
+        result = data.get(key)
+        if not isinstance(result, dict):
+            continue
+        output[key] = {"connected": True, "success": True} if result.get("success") is True else {
+            "connected": result.get("connected") is True,
+            "stage": result.get("stage") if result.get("stage") in {"connect", "session_limits", "server_version", "revision"} else "unknown",
+            "category": result.get("category") if result.get("category") in {
+                "connection_limit", "connection_refused", "connection_timeout", "dns", "authentication",
+                "pg_hba", "tls_certificate", "tls", "database_starting", "database_recovery",
+                "permission", "missing_database_or_role", "missing_file", "unclassified"
+            } else "unknown",
+            "exception_type": result.get("exception_type") if result.get("exception_type") in SAFE_EXCEPTION_TYPES else "unknown",
+            "driver_exception_type": result.get("driver_exception_type") if result.get("driver_exception_type") in SAFE_EXCEPTION_TYPES else "unknown",
+            "sqlstate": result.get("sqlstate") if isinstance(result.get("sqlstate"), str) and re.fullmatch(r"[0-9A-Z]{5}", result["sqlstate"]) else "unavailable",
+        }
     return output
 
 def diagnose(namespace, deployment_name, container, expected_image):
@@ -199,8 +247,21 @@ def diagnose(namespace, deployment_name, container, expected_image):
                 record[label] = parse_logs(rollout.kubectl(namespace, *args))
             except Exception:
                 record[label] = {"unavailable": True}
-        if "running" in cs.get("state", {}):
-            record["versions"] = probe(namespace, name, container)
+        deadline = time.monotonic() + 330
+        while time.monotonic() < deadline:
+            refreshed = json.loads(rollout.kubectl(namespace, "get", "pod", name, "-o", "json"))
+            if (refreshed["metadata"]["uid"] != pod["metadata"]["uid"]
+                or refreshed["metadata"].get("deletionTimestamp")
+                or not rollout.controlled_by(refreshed, "ReplicaSet", owned_sets)
+                or not any(c.get("name") == container and c.get("image") == expected_image for c in refreshed["spec"]["containers"])):
+                break
+            fresh_status = next((x for x in refreshed.get("status", {}).get("containerStatuses", []) if x.get("name") == container), {})
+            if "running" in fresh_status.get("state", {}):
+                result = probe(namespace, name, container)
+                if result.get("probe") != "unavailable":
+                    record["versions"] = result
+                    break
+            time.sleep(2)
         report["pods"].append(record)
     return report
 
