@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from pathlib import Path
+import subprocess
 import threading
 from types import SimpleNamespace
 
@@ -132,6 +133,64 @@ def test_backup_failures_stop_without_leaking_sensitive_errors(backup_runtime, f
     assert "secret-pg" not in str(exc.value) and "secret-s3" not in str(exc.value)
     if failure in {"pg_dump", "pg_restore"}:
         assert runtime.store.uploads == {}
+
+
+@pytest.mark.parametrize("tool", ["pg_dump", "pg_restore"])
+@pytest.mark.parametrize(("message", "reason"), [
+    ("FATAL: remaining connection slots are reserved", "connection_limit"),
+    ("fe_sendauth: no password supplied", "missing_password"),
+    ("FATAL: password authentication failed", "authentication"),
+    ("SSL error: certificate verify failed", "tls"),
+    ("could not translate host name", "dns"),
+    ("connection timed out", "connection_timeout"),
+    ("connection refused", "connection_unavailable"),
+    ("SSL SYSCALL error: EOF detected", "connection_unavailable"),
+    ("aborting because of server version mismatch", "client_version"),
+    ("canceling statement due to lock timeout", "lock_timeout"),
+    ("could not write to output file: No space left on device", "storage_full"),
+    ("could not allocate memory: out of memory", "memory_exhausted"),
+    ("permission denied for table", "permission"),
+    ("unrecognized configuration parameter", "unsupported_parameter"),
+    ("Dumping the contents of table failed: PQgetCopyData() failed", "copy_read_failed"),
+    ("unrecognized failure with invalid UTF-8 \ufffd", "unknown"),
+])
+def test_pg_failure_reports_only_fixed_reason_and_exit(monkeypatch, capsys, tool, message, reason):
+    sensitive = "postgresql://private-user:private-password@private-host/private-db private-course-content"
+    stderr = f"{tool}: error: {message}\n{sensitive}".encode("utf-8") + b"\xff"
+    monkeypatch.setattr(backup.subprocess, "run", lambda *_args, **_kwargs: SimpleNamespace(returncode=1, stderr=stderr))
+    with pytest.raises(backup.BackupError) as exc:
+        backup._run_pg([tool, "--file", "/private-output-path"])
+    assert str(exc.value) == (f"{tool} failed (exit=1, reason={reason}); "
+                              "database migration has not started.")
+    assert exc.value.__suppress_context__
+    output = capsys.readouterr()
+    assert output.out == output.err == ""
+
+
+def test_pg_failure_preserves_negative_exit_without_guessing_cause(monkeypatch):
+    monkeypatch.setattr(backup.subprocess, "run", lambda *_args, **_kwargs: SimpleNamespace(returncode=-9, stderr=b""))
+    with pytest.raises(backup.BackupError, match=r"exit=-9, reason=unknown"):
+        backup._run_pg(["pg_dump"])
+
+
+@pytest.mark.parametrize(("failure", "reason"), [
+    (subprocess.TimeoutExpired(["pg_dump", "private-command-argument"], 3600,
+                              output=b"private-output", stderr=b"private-password"), "command_timeout"),
+    (FileNotFoundError("private-tool-path"), "tool_missing"),
+    (PermissionError("private-permission-path"), "tool_permission"),
+    (RuntimeError("private-execution-details"), "execution_failed"),
+])
+def test_pg_execution_errors_hide_original_exception_and_command(monkeypatch, failure, reason):
+    def fail(*_args, **_kwargs):
+        raise failure
+
+    monkeypatch.setattr(backup.subprocess, "run", fail)
+    with pytest.raises(backup.BackupError) as exc:
+        backup._run_pg(["/private-tool-path", "private-argument"], env={"PGPASSWORD": "private-password"})
+    assert str(exc.value) == (f"postgres_tool could not complete (reason={reason}); "
+                              "database migration has not started.")
+    assert exc.value.__suppress_context__
+    assert exc.value.__cause__ is None
 
 
 @pytest.mark.parametrize("failure", ["short_secret", "non_s3", "unknown_pg_query", "missing_pg_host"])

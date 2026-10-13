@@ -94,16 +94,55 @@ def _postgres_env() -> dict[str, str]:
         raise BackupError("DATABASE_URL cannot be converted to explicit PostgreSQL backup settings.") from None
 
 
+def _pg_failure_reason(stderr: bytes | str | None) -> str:
+    """Classify captured tool errors without returning any part of their text."""
+
+    message = stderr.decode("utf-8", errors="replace") if isinstance(stderr, bytes) else stderr
+    if not isinstance(message, str):
+        return "unknown"
+    message = message.lower()
+    reasons = (
+        ("connection_limit", ("too many clients", "too many connections", "remaining connection slots")),
+        ("missing_password", ("no password supplied",)),
+        ("authentication", ("password authentication failed", "no pg_hba.conf entry")),
+        ("tls", ("certificate verify failed", "ssl error")),
+        ("dns", ("could not translate host name", "name or service not known")),
+        ("connection_timeout", ("connection timed out", "timeout expired")),
+        ("connection_unavailable", ("connection refused", "server closed the connection", "could not connect", "no route to host", "eof detected", "connection reset by peer")),
+        ("client_version", ("server version mismatch",)),
+        ("lock_timeout", ("lock timeout", "lock wait timeout")),
+        ("storage_full", ("no space left on device", "disk quota exceeded")),
+        ("memory_exhausted", ("out of memory", "cannot allocate memory")),
+        ("permission", ("permission denied", "must be owner", "must be superuser", "row-level security policy")),
+        ("unsupported_parameter", ("unrecognized configuration parameter",)),
+        ("copy_read_failed", ("pqgetcopydata",)),
+    )
+    return next((reason for reason, markers in reasons if any(marker in message for marker in markers)), "unknown")
+
+
 def _run_pg(args: list[str], *, env: dict[str, str] | None = None) -> None:
+    tool = args[0] if args and args[0] in {"pg_dump", "pg_restore"} else "postgres_tool"
     try:
         result = subprocess.run(
             args, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE, check=False, timeout=3600,
         )
+    except subprocess.TimeoutExpired:
+        reason = "command_timeout"
+    except FileNotFoundError:
+        reason = "tool_missing"
+    except PermissionError:
+        reason = "tool_permission"
     except Exception:
-        raise BackupError(f"{args[0]} could not complete; database migration has not started.") from None
-    if result.returncode:
-        raise BackupError(f"{args[0]} failed (exit={result.returncode}); database migration has not started.")
+        reason = "execution_failed"
+    else:
+        if not result.returncode:
+            return
+        reason = _pg_failure_reason(result.stderr)
+        raise BackupError(f"{tool} failed (exit={result.returncode}, reason={reason}); "
+                          "database migration has not started.") from None
+    raise BackupError(f"{tool} could not complete (reason={reason}); "
+                      "database migration has not started.") from None
 
 
 def _encrypt_dump(dump_path: Path, encrypted_path: Path, secret: bytes, source_revision: str) -> dict:
