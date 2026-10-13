@@ -13,6 +13,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# Destructive PostgreSQL upgrades require a full, verified pg_dump backup.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-client \
+    && rm -rf /var/lib/apt/lists/* \
+    && pg_dump --version \
+    && pg_restore --version
+
 # 先只复制依赖清单，最大化 Docker layer cache；源码变化时不用重复解析锁文件。
 COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --locked --no-cache --extra cloud --no-install-project

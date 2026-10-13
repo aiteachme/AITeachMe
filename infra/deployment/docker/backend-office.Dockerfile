@@ -23,8 +23,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-noto-color-emoji \
     fonts-liberation \
     fontconfig \
+    postgresql-client \
     && fc-cache -f \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && pg_dump --version \
+    && pg_restore --version
 
 # 先只复制依赖清单，最大化 Docker layer cache；源码变化时不用重复解析锁文件。
 COPY backend/pyproject.toml backend/uv.lock ./

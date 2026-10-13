@@ -20,14 +20,18 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Callable
+from contextlib import contextmanager
 import os
 import sys
 from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
+from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.pool import NullPool
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
@@ -47,6 +51,7 @@ from app.shared.infra.runtime import (  # noqa: E402
 )
 
 ALLOW_RESET_ENV = "ALLOW_CLOUD_DB_RESET"
+BOOTSTRAP_LOCK_KEY = 0x41544D434C4F5544
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
@@ -85,6 +90,40 @@ def _run_post_migration_steps() -> None:
 def _run_alembic_upgrade_head() -> None:
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
     command.upgrade(config, "head")
+
+
+@contextmanager
+def _bootstrap_lock():
+    # Use a dedicated connection so even a one-connection application pool can
+    # inspect/prepare the database while this session-level lock is held.
+    engine = create_engine(get_engine().url, poolclass=NullPool, isolation_level="AUTOCOMMIT")
+    try:
+        with engine.connect() as connection:
+            print("Waiting for the PostgreSQL cloud bootstrap lock")
+            connection.execute(text("SELECT pg_advisory_lock(:key)"), {"key": BOOTSTRAP_LOCK_KEY})
+            try:
+                yield
+            finally:
+                connection.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": BOOTSTRAP_LOCK_KEY})
+    finally:
+        # Closing a NullPool connection also releases the lock if explicit
+        # unlock fails; a locked session is never returned to the app pool.
+        engine.dispose()
+
+
+def _backup_before_destructive_upgrade(current_revision: str | None, expected_revision: str) -> None:
+    if current_revision is None or current_revision == expected_revision:
+        return
+    from scripts.backup_cloud_database import (
+        DESTRUCTIVE_REVISION,
+        backup_before_custom_type_removal,
+    )
+
+    config = Config(str(BACKEND_ROOT / "alembic.ini"))
+    revisions = ScriptDirectory.from_config(config).iterate_revisions(expected_revision, current_revision)
+    if any(revision.revision == DESTRUCTIVE_REVISION for revision in revisions):
+        storage_key = backup_before_custom_type_removal(current_revision)
+        print(f"Verified encrypted cloud database backup: {storage_key}")
 
 
 def _format_revision(value: str | None) -> str:
@@ -161,7 +200,6 @@ def _format_database_connectivity_error(exc: Exception) -> str:
             "Reason: PostgreSQL is unreachable or rejected the connection. "
             "Check network, port, firewall, and DATABASE_URL."
         )
-    lines.append(f"Original error: {exc}")
     return "\n".join(lines)
 
 
@@ -183,6 +221,20 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     allow_reset = bool(args.reset_db) or get_env_bool(ALLOW_RESET_ENV, False)
+    try:
+        with _bootstrap_lock():
+            return _bootstrap_locked(allow_reset=allow_reset, reset_requested=bool(args.reset_db))
+    except Exception as exc:  # noqa: BLE001
+        if _looks_like_database_connectivity_error(exc):
+            print(_format_database_connectivity_error(exc), file=sys.stderr)
+        else:
+            print("cloud database bootstrap lock failed; verify database connectivity and permissions.", file=sys.stderr)
+        return 1
+
+
+def _bootstrap_locked(*, allow_reset: bool, reset_requested: bool) -> int:
+    # Read only after acquiring the lock: another replica may have completed
+    # both the destructive migration and its backup while this pod waited.
     try:
         current_revision, existing_tables = _inspect_database_state()
     except Exception as exc:  # noqa: BLE001
@@ -216,6 +268,7 @@ def main(argv: list[str] | None = None) -> int:
         reset_postgres_public_schema()
 
     try:
+        _backup_before_destructive_upgrade(current_revision, expected_revision)
         _run_alembic_upgrade_head()
         upgraded_revision, _ = _inspect_database_state()
         print(
@@ -235,7 +288,7 @@ def main(argv: list[str] | None = None) -> int:
 
     print(
         "cloud database bootstrap completed "
-        f"(reset_db={str(bool(args.reset_db)).lower()}, "
+        f"(reset_db={str(reset_requested).lower()}, "
         f"{ALLOW_RESET_ENV}={str(get_env_bool(ALLOW_RESET_ENV, False)).lower()})"
     )
     return 0

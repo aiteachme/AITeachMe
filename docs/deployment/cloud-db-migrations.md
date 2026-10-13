@@ -391,7 +391,53 @@ pytest
 
 ## 11. 备份与回滚
 
-当前首版按空库初始化设计。未来一旦有真实数据：
+### 11.1 删除自定义题型前的强制备份
+
+`bootstrap_cloud_db.py` 检查已有 Alembic revision 到目标 head 的升级路径。已有版本库需要经过
+`20261012_0033`（删除自定义题型及其历史数据）时，必须先完成以下步骤：
+
+1. `pg_dump --format=custom` 导出整个当前数据库，并以 `pg_restore --list` 检查归档目录。
+2. 使用随机 salt、nonce 和专用 HKDF context，从现有 `AUTH_TOKEN_SECRET` 派生 AES-256-GCM 密钥，流式加密备份。
+3. 仅将加密文件上传至已有 S3 artifact storage 的
+   `backups/postgres/20261012_0033/<UTC时间>-<随机ID>.atmbak`。
+4. 从 S3 完整下载，核对密文 SHA-256，验证 GCM 认证、明文 SHA-256 和大小，并再次执行 `pg_restore --list`。
+
+所有检查成功后才执行迁移；任一步失败都会阻止迁移和新实例启动。成功日志记录备份对象 key，
+不记录密钥、数据库密码或明文内容。空库初始化、已处于目标 head、以及不经过该 revision 的升级不触发此备份。
+这项校验确认归档上传完整、可解密且目录可读取，**不等同于完成整库恢复演练**。
+
+多个实例同时启动时，使用独立 PostgreSQL 连接上的 session advisory lock 串行执行
+“重新检查 revision → 备份 → migration → prepare → check”。等待实例获得锁后重新检查版本，
+已经升级的库不会重复执行该备份。该连接独立于应用连接池，不占用小连接池的唯一连接。
+迁移连接应直连 PostgreSQL，或使用 session pooling；不要通过 transaction pooling 承载 session advisory lock。
+
+默认 slim 与 office Docker 镜像均安装 PostgreSQL 客户端，并在构建期验证 `pg_dump` 和 `pg_restore`。
+原生部署也需要安装客户端。`pg_dump` 主版本不得低于数据库服务端主版本；不兼容或缺失时迁移会停止。
+备份连接从 `DATABASE_URL` 读取显式 host/database/user，SSL 参数（例如 `sslmode`、`sslrootcert`、`sslcert`、`sslkey`）
+传入 libpq 环境变量；不能可靠映射的查询参数直接报错，不静默改变连接目标。密码不进入命令行。
+
+### 11.2 下载、解密与恢复准备
+
+**必须在密钥管理系统中保留备份生成时的 `AUTH_TOKEN_SECRET` 版本。** 后续轮换登录密钥不会重新加密旧备份，
+旧备份仍需原始密钥解密。密钥至少 32 字符；不要把原值写进命令、日志或代码库。
+
+在具备相同 S3 配置和 PostgreSQL 客户端的可信环境中，将原始密钥注入 `BACKUP_ORIGINAL_AUTH_SECRET`
+环境变量，然后执行（输出路径必须不存在）：
+
+```bash
+cd backend
+python scripts/backup_cloud_database.py decrypt \
+  backups/postgres/20261012_0033/<UTC时间>-<随机ID>.atmbak \
+  --output /secure/recovery.dump \
+  --secret-env BACKUP_ORIGINAL_AUTH_SECRET
+pg_restore --list /secure/recovery.dump
+```
+
+该命令只在认证、哈希及归档检查通过后生成本地明文文件，**不会连接或恢复数据库**。
+使用结束后应清理明文恢复文件。需要回滚时，另行审查恢复步骤，在隔离的新 PostgreSQL 实例中恢复，
+搭配与备份 schema 兼容的旧代码验证，确认业务数据和功能后再切换服务；不要直接覆盖正在服务的数据库。
+
+其他生产迁移仍应：
 
 - 每次生产迁移前确认 Render PITR/逻辑备份可用，或手动执行 `pg_dump`
 - 不要把“删库重来”当回滚策略
@@ -400,4 +446,6 @@ pytest
   - 或恢复到新 PostgreSQL 实例
   - 或从 PITR 恢复
 
-应用启动只做校验，所以如果 schema 没迁好，Render 会让新部署失败，旧版本继续服务。这也是当前方案最重要的保护点之一。
+独立 Web 进程只做校验；`start_cloud_app.py` 则会先调用 bootstrap。
+涉及删除旧字段/表的版本不能依赖旧实例继续运行作为回滚手段，应先停用与新 schema 不兼容的旧实例，
+并确保上述备份可用，再执行升级。

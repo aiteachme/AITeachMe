@@ -330,8 +330,10 @@ def test_sealos_backend_rollout_waits_for_fastapi_readiness() -> None:
         Path(__file__).resolve().parents[2] / ".github" / "workflows" / "deploy.yml"
     ).read_text(encoding="utf-8")
 
-    assert '"maxUnavailable": 0' in workflow
-    assert '"maxSurge": 1' in workflow
+    # Database compatibility now selects Recreate or zero-unavailable rolling
+    # updates; test_backend_rollout_strategy covers both policy branches.
+    assert "backend-rollout-strategy.py" in workflow
+    assert '"strategy": ${backend_rollout_strategy}' in workflow
     assert '"startupProbe"' in workflow
     assert '"readinessProbe"' in workflow
     assert '"path": "/api/health"' in workflow

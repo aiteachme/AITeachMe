@@ -909,18 +909,30 @@ jobs:
             exit 1
           fi
 
+          # Crossing 0033 removes columns still used by the old backend. Recreate
+          # waits for every old ReplicaSet pod to stop before startup migration.
+          # A failed revision inspection aborts before any deployment mutation.
+          backend_rollout_strategy="$(
+            python .github/scripts/backend-rollout-strategy.py \
+              --namespace "${SEALOS_NAMESPACE}" \
+              --deployment "${SEALOS_BACKEND_DEPLOYMENT}" \
+              --container "${backend_container_name}" \
+              --revision-output "${RUNNER_TEMP}/backend-source-revision"
+          )"
+          backend_require_backup=false
+          if [ "$(jq -r '.type' <<< "${backend_rollout_strategy}")" = "Recreate" ]; then
+            backend_require_backup=true
+            echo "Backend maintenance window: old pods stop before backup and schema migration; service resumes after startup probes pass." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "BACKEND_REQUIRE_BACKUP=${backend_require_backup}" >> "$GITHUB_ENV"
+          echo "BACKEND_CONTAINER_NAME=${backend_container_name}" >> "$GITHUB_ENV"
+
           deployment_patch="$(
             cat <<JSON
           {
             "spec": {
               "progressDeadlineSeconds": ${BACKEND_ROLLOUT_TIMEOUT_SECONDS},
-              "strategy": {
-                "type": "RollingUpdate",
-                "rollingUpdate": {
-                  "maxUnavailable": 0,
-                  "maxSurge": 1
-                }
-              },
+              "strategy": ${backend_rollout_strategy},
               "template": {
                 "spec": {
                   "imagePullSecrets": [
@@ -991,6 +1003,25 @@ jobs:
             "deployment/${SEALOS_BACKEND_DEPLOYMENT}" \
             --timeout="${BACKEND_ROLLOUT_TIMEOUT_SECONDS}s"
 
+      - name: Verify backend bootstrap evidence
+        if: steps.optin.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          backup_args=()
+          if [ "${BACKEND_REQUIRE_BACKUP}" = "true" ]; then
+            backup_args+=(--require-backup)
+          fi
+          python .github/scripts/backend-rollout-strategy.py \
+            --namespace "${SEALOS_NAMESPACE}" \
+            --deployment "${SEALOS_BACKEND_DEPLOYMENT}" \
+            --container "${BACKEND_CONTAINER_NAME}" \
+            --verify-startup \
+            --expected-image "${{ steps.image.outputs.image }}" \
+            --source-revision "$(cat "${RUNNER_TEMP}/backend-source-revision")" \
+            "${backup_args[@]}" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Show Sealos rollout diagnostics
         if: always() && steps.optin.outputs.enabled == 'true'
         shell: bash
@@ -1011,18 +1042,6 @@ jobs:
           echo "## Pods"
           kubectl -n "${SEALOS_NAMESPACE}" get pods -o wide \
             | grep -E "^${SEALOS_BACKEND_DEPLOYMENT}-|^NAME" || true
-
-          echo
-          echo "## Pod logs"
-          for pod in $(kubectl -n "${SEALOS_NAMESPACE}" get pods --no-headers 2>/dev/null \
-            | awk -v prefix="${SEALOS_BACKEND_DEPLOYMENT}-" '$1 ~ "^" prefix { print $1 }'); do
-            echo
-            echo "### ${pod}"
-            kubectl -n "${SEALOS_NAMESPACE}" logs "${pod}" --all-containers --tail=200 || true
-            echo
-            echo "### ${pod} previous"
-            kubectl -n "${SEALOS_NAMESPACE}" logs "${pod}" --all-containers --previous --tail=200 || true
-          done
 
           echo
           echo "## Recent events"
@@ -1074,20 +1093,11 @@ jobs:
           kubectl -n "${SEALOS_NAMESPACE}" exec "${pod}" -- \
             python scripts/inspect_runtime_policy.py --github-actions
 
-      - name: Show Sealos backend logs after failed smoke
+      - name: Record failed backend smoke
         if: always() && steps.optin.outputs.enabled == 'true' && steps.smoke_backend.outcome == 'failure'
         shell: bash
         run: |
-          set +e
-
-          for pod in $(kubectl -n "${SEALOS_NAMESPACE}" get pods --no-headers 2>/dev/null \
-            | awk -v prefix="${SEALOS_BACKEND_DEPLOYMENT}-" '$1 ~ "^" prefix { print $1 }'); do
-            echo "### ${pod} logs after failed smoke"
-            kubectl -n "${SEALOS_NAMESPACE}" logs "${pod}" --all-containers --tail=240 || true
-            echo
-            echo "### ${pod} previous logs"
-            kubectl -n "${SEALOS_NAMESPACE}" logs "${pod}" --all-containers --previous --tail=240 || true
-          done
+          echo "Backend smoke failed. Bootstrap evidence is recorded above; raw application logs are not published." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Backend summary
         id: result
