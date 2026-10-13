@@ -4812,7 +4812,7 @@ def _paper_detail(session: Session, paper: ExamPaper) -> ExamPaperDetailResponse
 
 
 def _study_guide_public_text(value: object) -> str:
-    text = " ".join(str(value or "").split()).strip()
+    text = str(value or "").strip()
     for internal_label, public_label in _STUDY_GUIDE_REVIEW_REASON_LABELS.items():
         text = text.replace(internal_label, public_label)
     return text

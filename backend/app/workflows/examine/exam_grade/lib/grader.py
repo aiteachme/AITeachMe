@@ -43,7 +43,7 @@ class SubjectiveGradePayload(BaseModel):
     @field_validator("feedback_text")
     @classmethod
     def _strip_feedback_text(cls, value: str) -> str:
-        return " ".join(str(value or "").split()).strip()
+        return str(value or "").strip()
 
 
 class CustomEvidencePayload(BaseModel):
@@ -74,7 +74,7 @@ class CustomRubricGradePayload(BaseModel):
     @field_validator("feedback_text")
     @classmethod
     def _strip_feedback_text(cls, value: str) -> str:
-        return " ".join(str(value or "").split()).strip()
+        return str(value or "").strip()
 
 
 @dataclass(frozen=True)

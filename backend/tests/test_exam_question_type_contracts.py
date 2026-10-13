@@ -48,6 +48,33 @@ def _paper_item(question_type: str) -> ExamPaperItem:
     )
 
 
+@pytest.mark.parametrize("custom_rubric", [False, True])
+def test_grade_feedback_preserves_literal_spacing(custom_rubric: bool) -> None:
+    feedback = (
+        "正确输出是 `x  `，字母后有两个空格；`a  b` 的长度是 4。\n\n"
+        "你写的 `x ` 少了一个空格，请逐字符比较后再作答。"
+    )
+    if custom_rubric:
+        result = grader.CustomRubricGradePayload.model_validate(
+            {
+                "criteria": [{"key": "accuracy", "score_ratio": 0.0}],
+                "feedback_text": feedback,
+                "error_cause_label": "knowledge_gap",
+            }
+        )
+    else:
+        result = grader.SubjectiveGradePayload.model_validate(
+            {
+                "is_correct": False,
+                "score_obtained": 0.0,
+                "feedback_text": feedback,
+                "error_cause_label": "knowledge_gap",
+            }
+        )
+
+    assert result.feedback_text == feedback
+
+
 def _custom_paper_item(*, answer: str = "极限描述趋近关系，并不等于函数在该点的取值。") -> ExamPaperItem:
     return ExamPaperItem(
         exam_paper_id=1,

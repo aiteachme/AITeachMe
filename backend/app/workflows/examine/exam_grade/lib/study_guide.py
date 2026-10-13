@@ -52,7 +52,7 @@ _INTERNAL_LABEL_REPLACEMENTS = {
 
 
 def _public_study_guide_text(value: object) -> str:
-    text = " ".join(str(value or "").split()).strip()
+    text = str(value or "").strip()
     for internal_label, public_label in _INTERNAL_LABEL_REPLACEMENTS.items():
         text = text.replace(internal_label, public_label)
     return text

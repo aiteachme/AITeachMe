@@ -34,6 +34,45 @@ def _payload() -> dict[str, object]:
 
 
 @pytest.mark.anyio
+async def test_study_guide_stream_preserves_literal_spacing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = _payload()
+    payload["overall_summary"] = "本次错题遗漏了输出中的空格，应区分 `x ` 与 `x  `，并逐字符核对字符串。"
+    payload["priority_gaps"] = ["不要把 `a  b` 写成 `a b`；两者长度不同。"]
+    payload["action_steps"] = ["运行 `print('x  ')`，确认字母后的两个空格。\n\n再用 `len('x  ')` 验证长度为 3。"]
+    raw = json.dumps(payload, ensure_ascii=False)
+
+    async def fake_stream(*_args, **_kwargs):
+        for start in range(0, len(raw), 32):
+            yield raw[start : start + 32]
+
+    async def unexpected_structured_call(*_args, **_kwargs):
+        raise AssertionError("valid streamed JSON must not invoke structured fallback")
+
+    monkeypatch.setattr(study_guide_module, "acompletion_stream", fake_stream)
+    monkeypatch.setattr(study_guide_module, "acompletion_with_fallback", unexpected_structured_call)
+    drafts = []
+    result = await study_guide_module.generate_exam_study_guide(
+        exam_paper_id=42,
+        course_name="Python 字符串",
+        exam_title="输出字符测验",
+        score_summary="得分 0/1",
+        wrong_question_summaries=[],
+        knowledge_unit_performance=[],
+        pending_reviews=[],
+        generated_at=utcnow(),
+        content_callback=drafts.append,
+    )
+
+    assert result.overall_summary == payload["overall_summary"]
+    assert result.priority_gaps == payload["priority_gaps"]
+    assert result.action_steps == payload["action_steps"]
+    assert drafts[-1] == result
+    assert any(draft.priority_gaps == payload["priority_gaps"] for draft in drafts)
+
+
+@pytest.mark.anyio
 async def test_study_guide_stream_emits_partial_content_before_final_result(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

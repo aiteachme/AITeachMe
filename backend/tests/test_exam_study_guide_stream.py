@@ -95,6 +95,24 @@ def build_guide(paper_id: int) -> ExamStudyGuideResponse:
     )
 
 
+def test_study_guide_api_preserves_literal_spacing() -> None:
+    guide = build_guide(42).model_copy(
+        update={
+            "overall_summary": "本次应重点区分输出 `x ` 与 `x  `，核对空格个数后再判断长度。",
+            "strengths": ["能正确计算 `len('a  b')`。"],
+            "priority_gaps": ["把 `x  ` 写成 `x ` 会遗漏一个字符。"],
+            "action_steps": ["比较 `len('x ')` 和 `len('x  ')`。\n\n然后重新完成输出题。"],
+        }
+    )
+
+    normalized = exams_api._normalize_study_guide_response(guide, unit_performance=[])
+
+    assert normalized.overall_summary == guide.overall_summary
+    assert normalized.strengths == guide.strengths
+    assert normalized.priority_gaps == guide.priority_gaps
+    assert normalized.action_steps == guide.action_steps
+
+
 def test_active_study_guide_generation_expires_after_stale_window() -> None:
     now = utcnow()
     active = ExamStudyGuideCache(
