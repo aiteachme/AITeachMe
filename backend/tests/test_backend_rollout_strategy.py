@@ -411,12 +411,21 @@ def test_recovery_cli_still_requires_recreate_for_pre_removal_database(monkeypat
 
 
 def test_recovery_uses_final_safe_marker_from_terminal_old_pods(monkeypatch):
-    candidate = pod("failed", ready=False, phase="Failed")
+    candidate = pod("failed", ready=False, phase="Failed", running=False)
     logs = {"failed": bootstrap_logs(backup=False, complete=False)}
     calls = fake_kubectl(monkeypatch, [candidate], logs=logs)
     assert rollout.inspect_revision("test-namespace", "backend", "backend", allow_starting_pod=True) == "20260912_0032"
     assert any(args[3] == "logs" for args, _kwargs in calls)
     assert not any(args[3] == "exec" for args, _kwargs in calls)
+
+
+def test_recovery_reads_safe_markers_when_failed_and_unknown_pods_are_mixed(monkeypatch):
+    failed = pod("failed", ready=False, phase="Failed", running=False)
+    unknown = pod("unknown", ready=False, phase="Unknown", running=False)
+    logs = {"failed": bootstrap_logs(backup=False, complete=False), "unknown": bootstrap_logs(backup=False, complete=False)}
+    calls = fake_kubectl(monkeypatch, [failed, unknown], logs=logs)
+    assert rollout.inspect_revision("test-namespace", "backend", "backend", allow_starting_pod=True) == "20260912_0032"
+    assert len([args for args, _kwargs in calls if args[3] == "logs"]) == 2
 
 
 def inherited_record():

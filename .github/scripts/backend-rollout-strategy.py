@@ -229,13 +229,18 @@ def _terminal_log_revision(namespace: str, pods: list[dict], container_name: str
                            expected_image: str, expected_revision: str, *, deadline: float) -> str | None:
     """Use whitelisted markers when every owned pod has already terminated."""
     if not pods or any(pod.get("metadata", {}).get("deletionTimestamp")
-                       or pod.get("status", {}).get("phase") != "Failed" for pod in pods):
+                       or pod.get("status", {}).get("phase") not in {"Failed", "Unknown", "Running"}
+                       for pod in pods):
         return None
     candidates = set()
+    observed_pods = 0
     for pod in pods:
         images = [c.get("image") for c in pod.get("spec", {}).get("containers", []) if c.get("name") == container_name]
         if images != [expected_image]:
             raise ValueError("Terminal backend pod image differs from the Deployment")
+        if any(c.get("name") == container_name and "running" in c.get("state", {})
+               for c in pod.get("status", {}).get("containerStatuses", [])):
+            return None
         logs = []
         for previous in (False, True):
             if previous and not any(c.get("name") == container_name and c.get("restartCount", 0) > 0
@@ -250,10 +255,14 @@ def _terminal_log_revision(namespace: str, pods: list[dict], container_name: str
                 continue
         pod_candidates = {_log_revision(text, expected_revision) for text in logs}
         pod_candidates.discard(None)
-        if len(pod_candidates) != 1:
+        if len(pod_candidates) > 1:
             return None
-        candidates.update(pod_candidates)
-    return candidates.pop() if len(candidates) == 1 else None
+        if pod_candidates:
+            observed_pods += 1
+            candidates.update(pod_candidates)
+        elif any(logs):
+            return None
+    return candidates.pop() if len(candidates) == 1 and observed_pods else None
 
 
 def inspect_revision(namespace: str, deployment_name: str, container_name: str,
