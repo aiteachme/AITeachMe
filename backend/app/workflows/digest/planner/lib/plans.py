@@ -58,6 +58,12 @@ def _text(value: Any) -> str:
     return " ".join(str(value).strip().split())
 
 
+def _content_text(value: Any) -> str:
+    """Keep code whitespace in user requests and model-authored content."""
+
+    return "" if value is None else str(value).strip()
+
+
 _DIAGNOSIS_FEEDBACK_PREFIXES = (
     "前置诊断选择：",
     "前置诊断选择:",
@@ -93,7 +99,7 @@ def _remove_planner_self_intro(text: str) -> str:
 
 def _student_facing_text(value: Any) -> str:
     text = (
-        _remove_planner_self_intro(_text(value))
+        _remove_planner_self_intro(_content_text(value))
         .replace("速成课模式", "紧凑节奏")
         .replace("速成课", "紧凑节奏")
         .replace("系统课", "系统节奏")
@@ -105,8 +111,8 @@ def _student_facing_text(value: Any) -> str:
 def compose_effective_planner_request_text(user_prompt: Any, feedback_message: Any = "") -> str:
     """Combine the original goal and latest revision for structural parsing."""
 
-    prompt = _text(user_prompt)
-    feedback = _text(feedback_message)
+    prompt = _content_text(user_prompt)
+    feedback = _content_text(feedback_message)
     if _is_diagnosis_feedback(feedback):
         return prompt
     if not feedback:
@@ -337,7 +343,7 @@ def _normalize_diagnose(
         item = _merge_diagnostic(raw)
         if item is None:
             continue
-        key = _text(item.question).casefold()
+        key = item.question.casefold()
         if key in seen:
             continue
         seen.add(key)
@@ -361,7 +367,7 @@ def normalize_planner_diagnosis_draft(
     """Normalize the first-stage planner diagnosis payload without requiring chapters."""
 
     shared = shared_inputs or _minimal_shared_inputs(course_id)
-    resolved_user_prompt = _text(_strip_diagnosis_metadata(user_prompt))
+    resolved_user_prompt = _strip_diagnosis_metadata(user_prompt)
     current = _mapping(draft)
     previous = _mapping(latest_plan)
     mode = _normalize_digest_mode(requested_digest_mode or current.get("digest_mode") or previous.get("digest_mode"))
@@ -526,7 +532,7 @@ def normalize_planner_draft(
     """
 
     shared = shared_inputs or _minimal_shared_inputs(course_id)
-    resolved_user_prompt = _text(_strip_diagnosis_metadata(user_prompt))
+    resolved_user_prompt = _strip_diagnosis_metadata(user_prompt)
     current = _mapping(draft)
     previous = _mapping(latest_plan)
     current_constraints = {

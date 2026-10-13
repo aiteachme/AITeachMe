@@ -28,7 +28,8 @@ logger = structlog.get_logger(__name__)
 
 
 def _clean_text(value: Any) -> str:
-    return " ".join(str(value or "").split()).strip()
+    # Diagnosis questions and answers may quote code; keep their internal whitespace.
+    return str(value or "").strip()
 
 
 def _diagnose_answer_map(raw_answers: Any) -> dict[str, str]:

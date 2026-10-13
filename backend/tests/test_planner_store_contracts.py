@@ -599,6 +599,58 @@ def test_prepare_save_confirm_and_status_round_trip(managed_planner_session: Ses
     assert managed_planner_session.get(ChatSession, "planner-round-trip").meta_json["planner_status"] == "draft"
 
 
+def test_code_whitespace_survives_diagnosis_revision_and_confirmation(
+    managed_planner_session: Session,
+) -> None:
+    _seed_course_and_files(managed_planner_session)
+    code = "```python\ns = 'a  b'\nif s:\n    print(len(s))\n```"
+    prompt = f"学习 Python 字符串和缩进。\n{code}"
+    feedback = "补充 `s = 'a b'` 与 `s = 'a  b'` 的对比。\n保留代码缩进。"
+    state = {
+        "planner_operation": "create", "planner_session_id": "planner-code-whitespace",
+        "course_id": COURSE_ID, "user_id": USER_ID, "user_prompt": prompt,
+        "requested_file_ids": ["file-ready"], "digest_mode": "sprint",
+    }
+    planner_store.prepare_planner_run(state)
+    draft = _plan()
+    diagnosis = {**draft, "planner_stage": "diagnosis", "plan": "", "chapters": []}
+    saved_diagnosis = planner_store.save_planner_result(
+        state, plan=diagnosis, material_context=_material_context(),
+    )
+    assert saved_diagnosis["plan"]["user_prompt"] == prompt
+
+    revision_state = {**state, "planner_operation": "append", "feedback_message": feedback}
+    prepared = planner_store.prepare_planner_run(revision_state)
+    assert prepared["user_prompt"] == prompt
+    draft["plan"] = f"逐步讲解如下程序：\n{code}"
+    draft["planning_note"] = f"学习目标：\n{code}"
+    draft["chapters"][0].update({
+        "objective": "区分 `'a b'` 与 `'a  b'` 的长度",
+        "required_elements": ["`'a b'` 的长度", "`'a  b'` 的长度"],
+        "writing_instructions": code,
+    })
+    planner_store.save_planner_result(
+        {**revision_state, **prepared}, plan=draft, material_context=_material_context(),
+    )
+    course = managed_planner_session.get(Course, COURSE_ID)
+    confirmed = planner_store.confirm_planner_session(
+        managed_planner_session, course=course, user_id=USER_ID,
+        session_id=state["planner_session_id"],
+    )
+    persisted = planner_store.get_confirmed_plan_or_raise(
+        managed_planner_session, course_id=COURSE_ID, user_id=USER_ID,
+        plan_id=confirmed.confirmed_plan_id,
+    ).plan_json
+    assert persisted["user_prompt"] == f"{prompt}\n用户最新调整：{feedback}"
+    assert persisted["plan"] == draft["plan"]
+    assert persisted["planning_note"] == draft["planning_note"]
+    assert persisted["chapters"][0] == draft["chapters"][0]
+    user_turns = managed_planner_session.exec(
+        select(ChatMessage).where(ChatMessage.role == "user").order_by(ChatMessage.id)
+    ).all()
+    assert [turn.content for turn in user_turns] == [prompt, feedback]
+
+
 def test_save_planner_result_persists_diagnosis_draft_before_plan(managed_planner_session: Session) -> None:
     _seed_course_and_files(managed_planner_session)
     planner_store.prepare_planner_run(

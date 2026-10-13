@@ -178,7 +178,7 @@ def _planner_selected_file_ids(session_item: ChatSession) -> list[str]:
 
 
 def _diagnose_clean_text(value: Any) -> str:
-    return " ".join(str(value or "").split()).strip()
+    return str(value or "").strip()
 
 
 def _diagnose_answer_map(raw_answers: list[Mapping[str, Any]] | None) -> dict[str, str]:

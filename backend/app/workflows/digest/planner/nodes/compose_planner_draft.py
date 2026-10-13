@@ -87,6 +87,12 @@ def _clean_text(value: Any) -> str:
     return " ".join(str(value or "").strip().split())
 
 
+def _content_text(value: Any) -> str:
+    """Trim field boundaries without changing code literals or indentation."""
+
+    return "" if value is None else str(value).strip()
+
+
 def _extract_between(text: str, start: str, end: str) -> str:
     start_index = text.find(start)
     if start_index < 0:
@@ -152,7 +158,7 @@ def _decode_json_string_fragment(value: str) -> str:
         decoded = json.loads(f'"{value}"')
     except json.JSONDecodeError:
         decoded = value
-    return _clean_text(decoded)
+    return _content_text(decoded)
 
 
 def _partial_chapters(text: str) -> list[dict[str, Any]]:
@@ -215,7 +221,7 @@ def _string_list(value: Any) -> list[str]:
     result: list[str] = []
     seen: set[str] = set()
     for item in items:
-        text = _clean_text(item)
+        text = _content_text(item)
         key = text.casefold()
         if text and key not in seen:
             seen.add(key)
@@ -230,8 +236,8 @@ def _diagnose_answer_map(raw_answers: Any) -> dict[str, str]:
     for raw in raw_answers:
         if not isinstance(raw, dict):
             continue
-        question = _clean_text(raw.get("question"))
-        answer = _clean_text(raw.get("answer"))
+        question = _content_text(raw.get("question"))
+        answer = _content_text(raw.get("answer"))
         if question and answer:
             answers[question.casefold()] = answer
     return answers
@@ -240,7 +246,7 @@ def _diagnose_answer_map(raw_answers: Any) -> dict[str, str]:
 def _latest_plan_with_current_diagnosis(state: BuildPlannerState, latest_plan: dict[str, Any]) -> dict[str, Any]:
     answers = _diagnose_answer_map(state.get("diagnose_answers"))
     status = _clean_text(state.get("diagnose_status"))
-    note = _clean_text(state.get("diagnose_note"))
+    note = _content_text(state.get("diagnose_note"))
     if not answers and not status and not note:
         return latest_plan
     next_plan = dict(latest_plan)
@@ -249,7 +255,7 @@ def _latest_plan_with_current_diagnosis(state: BuildPlannerState, latest_plan: d
         if not isinstance(raw, dict):
             continue
         item = dict(raw)
-        question = _clean_text(item.get("question"))
+        question = _content_text(item.get("question"))
         answer = answers.get(question.casefold()) if question else ""
         if answer:
             item["answer"] = answer
@@ -277,7 +283,7 @@ def _parse_chapters(value: str) -> list[dict[str, Any]]:
         if not isinstance(raw, dict):
             raise ValueError(f"chapter #{index} must be an object")
         title = clean_generated_chapter_title(_clean_text(raw.get("title")))
-        objective = _clean_text(raw.get("objective"))
+        objective = _content_text(raw.get("objective"))
         required_elements = _string_list(raw.get("required_elements"))
         if not title:
             raise ValueError(f"chapter #{index} is missing title")
@@ -309,8 +315,8 @@ def _parse_diagnose(value: str) -> list[dict[str, Any]]:
     for index, raw in enumerate(decoded, start=1):
         if not isinstance(raw, dict):
             raise ValueError(f"diagnose question #{index} must be an object")
-        question = _clean_text(raw.get("question") or raw.get("title") or raw.get("prompt"))
-        purpose = _clean_text(raw.get("purpose") or raw.get("diagnosis_target") or raw.get("target"))
+        question = _content_text(raw.get("question") or raw.get("title") or raw.get("prompt"))
+        purpose = _content_text(raw.get("purpose") or raw.get("diagnosis_target") or raw.get("target"))
         options = _string_list(raw.get("options") or raw.get("choices"))
         if not question:
             raise ValueError(f"diagnose question #{index} is missing question")
@@ -370,8 +376,8 @@ def _parse_build_constraints(value: str) -> dict[str, Any]:
 
 def _parse_planner_response(text: str) -> dict[str, Any]:
     course_name = _parse_generated_course_name(text)
-    plan = _clean_text(_extract_between(text, PLAN_START, PLAN_END))
-    suggestion = _clean_text(_extract_between(text, SUGGESTION_START, SUGGESTION_END))
+    plan = _extract_between(text, PLAN_START, PLAN_END)
+    suggestion = _extract_between(text, SUGGESTION_START, SUGGESTION_END)
     if BUILD_CONSTRAINTS_START in text and BUILD_CONSTRAINTS_END in text:
         build_constraints = _parse_build_constraints(
             _extract_between(text, BUILD_CONSTRAINTS_START, BUILD_CONSTRAINTS_END)

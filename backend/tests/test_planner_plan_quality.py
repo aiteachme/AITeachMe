@@ -5,6 +5,7 @@ from collections.abc import Iterator
 import pytest
 
 from app.workflows.digest.common.models import DigestMaterialContext, DigestMode, DigestModeDecision
+from app.workflows.digest.common.diagnose_policy import render_diagnose_action_policy
 from app.workflows.digest.planner.lib.constants import get_planner_mode_contract
 from app.workflows.digest.planner.lib.model_policy import PlannerModelStep, planner_completion_kwargs
 from app.workflows.digest.planner.lib.plans import (
@@ -12,7 +13,7 @@ from app.workflows.digest.planner.lib.plans import (
     normalize_planner_diagnosis_draft,
     normalize_planner_draft,
 )
-from app.workflows.digest.planner.lib.store import _ensure_chapter_count_payload
+from app.workflows.digest.planner.lib.store import _apply_diagnose_resolution, _ensure_chapter_count_payload
 from app.workflows.digest.docgen.nodes.load_context import _render_diagnose_brief
 from app.workflows.digest.planner.nodes import compose_planner_draft as plan_draft_node
 from app.workflows.digest.planner.nodes import understand_goal_and_materials as understand_node
@@ -71,6 +72,128 @@ def _planner_payload(*, chapter_count: int = 3) -> dict[str, object]:
             for index in range(1, chapter_count + 1)
         ],
     }
+
+
+def test_planner_keeps_code_whitespace_in_goal_and_model_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    code = "```python\ns = 'a  b'\nif s:\n    print(len(s))\n```"
+    user_prompt = f"只生成1章，讲解这段代码：\n{code}"
+    feedback = "再比较 `s = 'a b'` 与 `s = 'a  b'`。\n保留原示例。"
+    content = f"对照字符串空格和程序输出。\n{code}"
+    elements = ["`'a b'` 的长度", "`'a  b'` 的长度"]
+    chapters = [{"title": "字符串与缩进", "objective": content, "required_elements": elements}]
+    questions = [
+        {
+            "question": f"诊断取舍{index}？",
+            "purpose": "文档落点：调整讲解层次。",
+            "options": ["简明｜保留核心讲解", "标准｜展开常见例题", "详细｜补充完整步骤", "基础｜增加入门解释"],
+        }
+        for index in range(4)
+    ]
+    outputs = iter([
+        f"{COURSE_NAME_START}Python字符串{COURSE_NAME_END}"
+        f"{DIAGNOSE_START}{json.dumps(questions, ensure_ascii=False)}{DIAGNOSE_END}",
+        f"{COURSE_NAME_START}Python字符串{COURSE_NAME_END}"
+        f"{PLAN_START}{content}{PLAN_END}"
+        f"{SUGGESTION_START}{content}{SUGGESTION_END}"
+        f"{CHAPTERS_START}{json.dumps(chapters, ensure_ascii=False)}{CHAPTERS_END}",
+    ])
+    captured_messages: list[list[dict[str, str]]] = []
+
+    def fake_stream(*args, **kwargs):
+        captured_messages.append(kwargs.get("messages") or args[0])
+
+        async def generate():
+            yield next(outputs)
+
+        return generate()
+
+    monkeypatch.setattr(plan_draft_node, "acompletion_stream", fake_stream)
+    state = {
+        "course_id": "course_test", "planner_session_id": "planner_test",
+        "planner_operation": "create", "user_prompt": user_prompt,
+        "digest_mode": "sprint", "material_context": _material_context(),
+        "message_history": [f"用户：{user_prompt}"],
+    }
+    understand = understand_node.build_understand_goal_and_materials_node(context=None)
+    state.update(asyncio.run(understand(state)))
+    compose = plan_draft_node.build_compose_planner_draft_node(context=None)
+    diagnosis = asyncio.run(compose(state))["build_plan_draft"]
+    assert diagnosis["user_prompt"] == user_prompt
+    assert code in diagnosis["planning_note"]
+    assert len(diagnosis["diagnose"]) == 4
+    assert all(len(item["options"]) == 4 for item in diagnosis["diagnose"])
+    first_prompt = "\n".join(message["content"] for message in captured_messages[0])
+    assert f"用户完整建课目标（课程命名与诊断范围的唯一优先依据）：\n{user_prompt}" in first_prompt
+    assert f"学习目标：{user_prompt}" in first_prompt
+
+    state.update({
+        "planner_operation": "append", "user_prompt": diagnosis["user_prompt"],
+        "latest_plan": diagnosis, "feedback_message": feedback,
+        "diagnose_status": "skipped", "planning_note": diagnosis["planning_note"],
+    })
+    formal = asyncio.run(compose(state))["build_plan_draft"]
+    assert formal["user_prompt"] == f"{user_prompt}\n用户最新调整：{feedback}"
+    assert formal["plan"] == content
+    assert formal["suggestion"] == content
+    assert formal["chapters"][0]["objective"] == content
+    assert formal["chapters"][0]["required_elements"] == elements
+    assert code in formal["planning_note"]
+    partial = plan_draft_node._partial_chapters(
+        f"{CHAPTERS_START}{json.dumps(chapters, ensure_ascii=False)}{CHAPTERS_END}"
+    )
+    assert partial[0]["objective"] == content
+    assert partial[0]["required_elements"] == elements
+
+
+@pytest.mark.parametrize("blank", [None, "", " \n\t "])
+def test_effective_planner_request_still_ignores_blank_input(blank) -> None:
+    assert compose_effective_planner_request_text(blank, " `a  b` ") == "`a  b`"
+    assert compose_effective_planner_request_text(" `a  b` ", blank) == "`a  b`"
+    assert compose_effective_planner_request_text(blank, blank) == ""
+
+
+def test_diagnosis_code_whitespace_survives_answer_resolution() -> None:
+    questions = [
+        {
+            "question": f"如何讲解 `{literal}`？",
+            "purpose": f"文档落点：保留 `{literal}` 的例子。",
+            "options": [
+                "基础｜比较 `'a b'` 与 `'a  b'`",
+                "标准｜解释 `'a b'` 的长度",
+                "详细｜解释 `'a  b'` 的长度",
+                "应用｜演示字符串索引",
+            ],
+        }
+        for literal in ("'a b'", "'a  b'", "'a   b'", "'a    b'")
+    ]
+    parsed = plan_draft_node._parse_diagnose(json.dumps(questions, ensure_ascii=False))
+    plan = normalize_planner_diagnosis_draft(
+        {"diagnose": parsed}, course_id="course_test", user_prompt="学习字符串",
+        requested_digest_mode="sprint",
+    )
+    assert len(plan["diagnose"]) == 4
+    answers = [
+        {"question": item["question"], "answer": item["options"][index]}
+        for index, item in enumerate(questions)
+    ]
+    note = "保留代码 `s = 'a  b'`。\n每个例子单独讲解。"
+    state = {"diagnose_answers": answers, "diagnose_note": note, "latest_plan": plan}
+    resolved_plans = [
+        plan_draft_node._latest_plan_with_current_diagnosis(state, plan),
+        _merge_diagnose_resolution(plan, state),
+        _apply_diagnose_resolution(plan, diagnose_answers=answers, diagnose_note=note),
+    ]
+    for resolved in resolved_plans:
+        assert resolved["diagnose_note"] == note
+        assert resolved["diagnose_status"] == "answered"
+        assert [item["answer"] for item in resolved["diagnose"]] == [item["answer"] for item in answers]
+        policy = render_diagnose_action_policy(resolved["diagnose"], status="answered")
+        for item in resolved["diagnose"]:
+            assert item["question"] in policy
+            assert item["answer"] in policy
+            assert item["purpose"].removeprefix("文档落点：") in policy
 
 
 @pytest.mark.parametrize(
@@ -141,7 +264,7 @@ def test_refreshed_diagnosis_uses_current_revision_request(monkeypatch: pytest.M
     effective_request = "请生成四章高数课程。\n用户最新调整：改为严格六章，并刷新前置诊断。"
     assert captured["user_prompt"] == effective_request
     assert captured["messages"] == [{"role": "user", "content": "diagnosis"}]
-    assert result["build_plan_draft"]["user_prompt"] == effective_request.replace("\n", " ")
+    assert result["build_plan_draft"]["user_prompt"] == effective_request
 
 
 def test_planner_plan_contract_is_lightweight_and_leaves_execution_strategy_to_docgen() -> None:

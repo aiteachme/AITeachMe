@@ -39,7 +39,7 @@ def _clean_items(values: object, *, limit: int = 6) -> list[str]:
 
 def _build_planning_note(state: BuildPlannerState) -> str:
     material_context = state["material_context"]
-    user_prompt = " ".join(str(state.get("user_prompt") or "").split()).strip()
+    user_prompt = str(state.get("user_prompt") or "").strip()
     mode = state.get("digest_mode") or material_context.course_mode_decision.mode.value
     goal = user_prompt or f"围绕{_course_for_prompt(state)}建立可执行学习路径"
     pace = "紧凑冲刺" if str(mode) == "sprint" else "系统学习"

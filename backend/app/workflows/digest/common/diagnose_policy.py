@@ -7,7 +7,7 @@ from typing import Any
 
 
 def _clean_text(value: Any) -> str:
-    return " ".join(str(value or "").split()).strip()
+    return str(value or "").strip()
 
 
 def render_diagnose_action_policy(
