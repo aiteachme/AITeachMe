@@ -97,6 +97,7 @@ _LEADING_TABLE_PIPE_BEFORE_MATH_RE = re.compile(
 )
 _ESCAPED_MATH_DOLLAR_RE = re.compile(r"\\(\${1,2})")
 _LITERAL_LINE_BREAK_RE = re.compile(r"(?:\\r\\n|\\n)(?![A-Za-z])")
+_INLINE_CODE_SPAN_RE = re.compile(r"(?P<ticks>`+)(?!`)[^\n]*?(?<!`)(?P=ticks)(?!`)")
 _LITERAL_LINE_BREAK_PROTECTED_RE = re.compile(
     r"(?P<ticks>`+)[^`\n]*?(?P=ticks)"
     r'|"(?:\\.|[^"\\\n])*"'
@@ -147,8 +148,18 @@ def _compact_label(value: str) -> str:
 
 
 def _content_identity(value: str) -> str:
-    # Math content must retain signs, division, subscripts and letter case.
-    return re.sub(r"\s+", "", str(value or ""))
+    # Preserve explicit code literally; ordinary Markdown still folds whitespace.
+    text, code_blocks = _protect_fenced_code_blocks(
+        str(value or "").replace("\r\n", "\n").replace("\r", "\n")
+    )
+
+    def protect_inline(match: re.Match[str]) -> str:
+        token = f"<!--ATM_INLINE_CODE_SPAN_{len(code_blocks)}-->"
+        code_blocks[token] = match.group(0)
+        return token
+
+    text = _INLINE_CODE_SPAN_RE.sub(protect_inline, text)
+    return _restore_fenced_code_blocks(re.sub(r"\s+", "", text), code_blocks)
 
 
 def _canonical_choice_answer(answer: str, options: dict[str, str]) -> str:
@@ -356,7 +367,7 @@ def strip_existing_unit_test_sections(markdown: str) -> str:
 def _markdown_text(value: str, *, limit: int | None = None) -> str:
     text, fenced_code_blocks = _protect_fenced_code_blocks(_sanitize_unit_test_math_text(value))
     text = _inline_unit_test_display_math(text)
-    text = "\n".join(" ".join(line.split()) for line in text.strip().splitlines())
+    text = text.strip()
     text = _wrap_raw_latex_fragments(text)
     for token, block in fenced_code_blocks.items():
         text = text.replace(token, "\n\n" + _close_unterminated_fenced_code_block(block) + "\n\n")
@@ -635,6 +646,18 @@ def unit_test_structure_issues(markdown: str, *, expected_question_count: int | 
     visible_markdown, fenced_blocks = _protect_fenced_code_blocks(
         str(markdown or "").replace("\r\n", "\n").replace("\r", "\n")
     )
+    # Option code is indented inside a list; answer code is not. Remove only
+    # that Markdown container before comparing their whitespace-sensitive text.
+    content_fenced_blocks: dict[str, str] = {}
+    for token, block in fenced_blocks.items():
+        lines = block.splitlines(keepends=True)
+        indentation = re.match(r"^[ \t]*", lines[0]).group(0)
+        content_lines = []
+        for index, line in enumerate(lines):
+            if index:
+                line = re.sub(r"^[ \t]*>[ \t]?", "", line, count=1)
+            content_lines.append(line[len(indentation):] if line.startswith(indentation) else line)
+        content_fenced_blocks[token] = "".join(content_lines)
     section_lines, issues = _unit_test_section(visible_markdown)
     if issues:
         return issues
@@ -771,9 +794,9 @@ def unit_test_structure_issues(markdown: str, *, expected_question_count: int | 
                     explanation_value_lines.append(line)
         if not explanation_value_lines:
             issues.append(f"第 {question_ordinal} 题解析步骤为空。")
-        normalized_answer = _content_identity(_restore_fenced_code_blocks("\n".join(answer_value_lines), fenced_blocks))
+        normalized_answer = _content_identity(_restore_fenced_code_blocks("\n".join(answer_value_lines), content_fenced_blocks))
         if question_type == "选择题" and normalized_answer:
-            normalized_options = {_content_identity(_restore_fenced_code_blocks(value, fenced_blocks)) for value in option_values}
+            normalized_options = {_content_identity(_restore_fenced_code_blocks(value, content_fenced_blocks)) for value in option_values}
             if normalized_answer not in normalized_options:
                 issues.append(f"第 {question_ordinal} 道选择题的答案必须与 A-D 中某个完整选项一致。")
         if normalized_answer and stem_lines:
