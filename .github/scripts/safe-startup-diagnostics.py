@@ -343,7 +343,7 @@ def probe(namespace, name, container):
             output[key]["known_table"] = result["known_table"]
     return output
 
-def diagnose(namespace, deployment_name, container, expected_image):
+def diagnose(namespace, deployment_name, container, expected_image, *, skip_dump_probe=False):
     dep = json.loads(rollout.kubectl(namespace, "get", f"deployment/{deployment_name}", "-o", "json"))
     uid = dep["metadata"]["uid"]
     selector = rollout.label_selector(dep["spec"]["selector"])
@@ -353,6 +353,11 @@ def diagnose(namespace, deployment_name, container, expected_image):
     pods = [p for p in all_pods if rollout.controlled_by(p, "ReplicaSet", owned_sets)
             and any(c.get("name") == container and c.get("image") == expected_image for c in p["spec"]["containers"])]
     report = {"owned_target_pods": len(pods), "pods": []}
+    if skip_dump_probe and pods:
+        database_spec = importlib.util.spec_from_file_location("database_diagnostics", ROOT / ".github/scripts/safe-database-pod-diagnostics.py")
+        database = importlib.util.module_from_spec(database_spec)
+        database_spec.loader.exec_module(database)
+        report["database"] = database.diagnose_database_pods(rollout.kubectl, namespace=namespace)
     for pod in pods:
         name = pod["metadata"]["name"]
         status = pod.get("status", {})
@@ -381,6 +386,9 @@ def diagnose(namespace, deployment_name, container, expected_image):
                 record[label] = parse_logs(rollout.kubectl(namespace, *args))
             except Exception:
                 record[label] = {"unavailable": True}
+        if skip_dump_probe:
+            report["pods"].append(record)
+            continue
         deadline = time.monotonic() + 330
         while time.monotonic() < deadline:
             refreshed = json.loads(rollout.kubectl(namespace, "get", "pod", name, "-o", "json"))
@@ -406,9 +414,11 @@ def main():
     parser.add_argument("--deployment", required=True)
     parser.add_argument("--container", required=True)
     parser.add_argument("--expected-image", required=True)
+    parser.add_argument("--skip-dump-probe", action="store_true")
     args = parser.parse_args()
     try:
-        report = diagnose(args.namespace, args.deployment, args.container, args.expected_image)
+        report = diagnose(args.namespace, args.deployment, args.container, args.expected_image,
+                          skip_dump_probe=args.skip_dump_probe)
     except Exception:
         print(json.dumps({"diagnostics": "unavailable"}))
         return 1

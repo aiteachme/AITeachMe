@@ -50,7 +50,7 @@ jobs:
           image="crpi-eit0zz7ic5vs22ow.cn-beijing.personal.cr.aliyuncs.com/aiteachme/aiteachme-backend:slim-${IMAGE_REVISION::7}"
           python .github/scripts/safe-startup-diagnostics.py \
             --namespace ns-icbq3ltw --deployment atm-d --container atm-d \
-            --expected-image "${image}" | tee -a "$GITHUB_STEP_SUMMARY"
+            --expected-image "${image}" --skip-dump-probe | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Remove temporary cluster access
         if: always()
         shell: bash
