@@ -1,6 +1,7 @@
 """Read-only, scoped release diagnostics. Never prints raw pod data or logs."""
 from __future__ import annotations
 import argparse
+import ast
 import contextlib
 import importlib.util
 import io
@@ -15,6 +16,22 @@ ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location("rollout", ROOT / ".github/scripts/backend-rollout-strategy.py")
 rollout = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(rollout)
+
+def model_table_names():
+    names = set()
+    for path in (ROOT / "backend/app/models").glob("*.py"):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8-sig"))):
+            if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == "__tablename__" for target in node.targets):
+                value = node.value
+            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.target.id == "__tablename__":
+                value = node.value
+            else:
+                continue
+            if isinstance(value, ast.Constant) and isinstance(value.value, str) and re.fullmatch(r"[a-zA-Z_][a-zA-Z0-9_]*", value.value):
+                names.add(value.value)
+    return names
+
+KNOWN_TABLES = model_table_names()
 
 SAFE_ERRORS = {
     "Backup encryption requires an auth secret of at least 32 characters.",
@@ -78,12 +95,41 @@ def classify(exc):
         "unrecognized configuration parameter": "unsupported_parameter",
         "no password supplied": "missing_password", "timed out": "command_timeout",
         "lock timeout": "lock_timeout",
+        "row-level security policy": "row_security",
+        "statement timeout": "statement_timeout", "idle-session timeout": "session_timeout",
+        "idle-in-transaction timeout": "session_timeout", "administrator command": "server_termination",
+        "database system is shutting down": "server_termination", "crash of another server process": "server_crash",
+        "connection reset by peer": "connection_closed", "unexpected eof": "connection_closed",
+        "could not receive data from server": "connection_closed", "pqgetcopydata": "copy_read_failed",
+        "invalid page": "data_corruption", "missing chunk": "data_corruption",
+        "could not write": "output_write_failed", "no space left": "storage_full",
+        "out of memory": "memory_exhausted", "must be loaded via shared_preload_libraries": "extension_not_loaded",
+        "syntax error": "sql_syntax", "server sent data": "protocol_error",
     }
     original = getattr(exc, "orig", exc)
     code = getattr(original, "sqlstate", None) or getattr(original, "pgcode", None)
     return {"category": next((v for k,v in categories.items() if k in message), "unclassified"),
             "exception_type": type(exc).__name__, "driver_exception_type": type(original).__name__,
             "sqlstate": code if isinstance(code,str) and re.fullmatch(r"[0-9A-Z]{5}",code) else "unavailable"}
+def dump_failure(stderr, exit_code):
+    message = stderr.decode("utf-8", "replace")
+    flags = {key: marker in message.lower() for key, marker in {
+        "server_query_failed": "query failed", "copy_read_failed": "pqgetcopydata",
+        "server_termination": "terminating connection", "server_closed": "server closed",
+        "data_read_failed": "dumping the contents of table", "output_write_failed": "could not write",
+        "row_security": "row-level security", "fatal_reported": "fatal:",
+    }.items()}
+    known_table = "unknown"
+    try:
+        known = __KNOWN_TABLE_NAMES__
+        for match in re.finditer(r'(?:table |COPY (?:public\.)?)(?:"([^"\r\n]+)"|([a-zA-Z_][a-zA-Z0-9_]*))', message):
+            candidate = match[1] or match[2]
+            if candidate in known:
+                known_table = candidate
+                break
+    except Exception:
+        pass
+    return {"exit_code":exit_code, **classify(RuntimeError(message)), "flags":flags, "known_table":known_table}
 with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
     for binary in ("pg_dump", "pg_restore"):
         try:
@@ -120,6 +166,14 @@ with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.St
                     server = str(conn.execute(text("SHOW server_version_num")).scalar())
                     limit = conn.execute(text("SELECT rolconnlimit FROM pg_roles WHERE rolname = current_user")).scalar()
                     out["role_connection_limit"] = limit if isinstance(limit,int) else None
+                    limits = {}
+                    for setting in ("max_connections", "idle_session_timeout", "idle_in_transaction_session_timeout"):
+                        value = str(conn.execute(text("SHOW " + setting)).scalar())
+                        if re.fullmatch(r"[0-9]+(?:ms|s|min|h|d)?", value):
+                            limits[setting] = value
+                    out["server_limits"] = limits
+                    started = conn.execute(text("SELECT pg_postmaster_start_time()")).scalar()
+                    out["server_started_at"] = started.isoformat()
                     stage = "revision"
                     revs = list(conn.execute(text("SELECT version_num FROM alembic_version")).scalars())
                 out[label] = {"connected":True,"success":True}
@@ -139,8 +193,7 @@ with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.St
         pg_env["PGOPTIONS"] = (pg_env.get("PGOPTIONS", "") + " -c default_transaction_read_only=on").strip()
         dumped = subprocess.run(["pg_dump","--format=custom","--schema-only","--no-password","--lock-wait-timeout=5000"],
                                 env=pg_env,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,timeout=20)
-        out["pg_dump_schema_probe"] = {"success":True} if dumped.returncode==0 else {
-            "exit_code":dumped.returncode,**classify(RuntimeError(dumped.stderr.decode("utf-8","replace")))}
+        out["pg_dump_schema_probe"] = {"success":True} if dumped.returncode==0 else dump_failure(dumped.stderr, dumped.returncode)
     except Exception as exc:
         out["pg_dump_schema_probe"] = classify(exc)
     emit_progress()
@@ -148,12 +201,11 @@ with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.St
         try:
             full = subprocess.run(["pg_dump","--format=custom","--no-password","--lock-wait-timeout=5000"],
                                   env=pg_env,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,timeout=50)
-            out["pg_dump_full_probe"] = {"success":True} if full.returncode==0 else {
-                "exit_code":full.returncode,**classify(RuntimeError(full.stderr.decode("utf-8","replace")))}
+            out["pg_dump_full_probe"] = {"success":True} if full.returncode==0 else dump_failure(full.stderr, full.returncode)
         except Exception as exc:
             out["pg_dump_full_probe"] = classify(exc)
 print(json.dumps(out))
-'''
+'''.replace("__KNOWN_TABLE_NAMES__", repr(KNOWN_TABLES))
 
 def safe_reason(value):
     return value if value in SAFE_REASONS else "unknown"
@@ -248,6 +300,14 @@ def probe(namespace, name, container):
     output["revision"] = data.get("revision") if data.get("revision") in known else "unavailable"
     if isinstance(data.get("role_connection_limit"),int):
         output["role_connection_limit"] = data["role_connection_limit"]
+    limits = data.get("server_limits")
+    if isinstance(limits, dict):
+        output["server_limits"] = {key:limits[key] for key in (
+            "max_connections", "idle_session_timeout", "idle_in_transaction_session_timeout")
+            if isinstance(limits.get(key), str) and re.fullmatch(r"[0-9]+(?:ms|s|min|h|d)?", limits[key])}
+    started = data.get("server_started_at")
+    if isinstance(started, str) and re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+[+-][0-9]{2}:[0-9]{2}", started):
+        output["server_started_at"] = started
     auth_sources = data.get("backup_auth_sources")
     if isinstance(auth_sources, dict):
         output["backup_auth_sources"] = {key:auth_sources.get(key) is True for key in (
@@ -265,6 +325,9 @@ def probe(namespace, name, container):
                 "permission", "missing_database_or_role", "missing_file", "unclassified"
                 , "client_version", "backup_settings", "connection_closed", "connection_failed", "unsupported_parameter",
                 "missing_password", "command_timeout", "lock_timeout"
+                , "row_security", "statement_timeout", "session_timeout", "server_termination", "server_crash",
+                "copy_read_failed", "data_corruption", "output_write_failed", "storage_full", "memory_exhausted",
+                "extension_not_loaded", "sql_syntax", "protocol_error"
             } else "unknown",
             "exception_type": result.get("exception_type") if result.get("exception_type") in SAFE_EXCEPTION_TYPES else "unknown",
             "driver_exception_type": result.get("driver_exception_type") if result.get("driver_exception_type") in SAFE_EXCEPTION_TYPES else "unknown",
@@ -272,6 +335,12 @@ def probe(namespace, name, container):
         }
         if isinstance(result.get("exit_code"), int):
             output[key]["exit_code"] = result["exit_code"]
+        if isinstance(result.get("flags"), dict):
+            output[key]["flags"] = {flag:result["flags"].get(flag) is True for flag in (
+                "server_query_failed", "copy_read_failed", "server_termination", "server_closed",
+                "data_read_failed", "output_write_failed", "row_security", "fatal_reported")}
+        if result.get("known_table") in KNOWN_TABLES:
+            output[key]["known_table"] = result["known_table"]
     return output
 
 def diagnose(namespace, deployment_name, container, expected_image):
