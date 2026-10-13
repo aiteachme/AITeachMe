@@ -2197,7 +2197,7 @@ function QuestionKnowledgeWeightExplanation() {
   return (
     <span
       ref={wrapperRef}
-      className="relative inline-flex"
+      className="relative inline-flex w-full lg:w-auto"
       onMouseEnter={() => setIsOpen(true)}
       onMouseLeave={() => setIsOpen(false)}
       onBlur={(event) => {
@@ -2222,10 +2222,10 @@ function QuestionKnowledgeWeightExplanation() {
         <span
           id={tooltipId}
           role="tooltip"
-          className="absolute bottom-0 left-full z-30 ml-2 w-96 max-w-[calc(100vw-2rem)] rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-left text-xs font-normal leading-5 text-slate-600 shadow-lg dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+          className="absolute left-0 top-full z-30 mt-2 w-full max-w-[calc(100vw-4rem)] rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-left text-xs font-normal leading-5 text-slate-600 shadow-lg lg:bottom-0 lg:left-full lg:top-auto lg:ml-2 lg:mt-0 lg:w-96 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
         >
-          <span className="block sm:whitespace-nowrap">覆盖权重用于将本题得分和作答结果按比例计入对应知识单元，</span>
-          <span className="block sm:whitespace-nowrap">用于掌握度与复习指南计算，不代表题目分值占比。</span>
+          <span className="block">覆盖权重用于将本题得分和作答结果按比例计入对应知识单元，</span>
+          <span className="block">用于掌握度与复习指南计算，不代表题目分值占比。</span>
         </span>
       ) : null}
     </span>

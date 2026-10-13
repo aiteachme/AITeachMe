@@ -458,7 +458,8 @@
 
 .atm-unit-test-card__prompt :where(:not(pre) > code),
 .atm-unit-test-answer__body :where(:not(pre) > code) {
-  white-space: normal;
+  /* Preserve significant spaces in inline code while allowing wrapping. */
+  white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: break-word;
 }
