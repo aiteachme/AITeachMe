@@ -7,6 +7,7 @@ import io
 import json
 from pathlib import Path
 import re
+import subprocess
 import sys
 import time
 
@@ -45,7 +46,7 @@ SAFE_EXCEPTION_TYPES = {
     "ValidationError", "BackupError", "TypeError", "ValueError", "RuntimeError", "AttributeError",
     "NameError", "KeyError", "IndexError", "AssertionError", "SyntaxError", "IndentationError",
     "ClientError", "EndpointConnectionError", "NoCredentialsError", "PartialCredentialsError",
-    "ConnectTimeoutError", "ReadTimeoutError", "SSLError", "InvalidToken", "InvalidTag",
+    "ConnectTimeoutError", "ReadTimeoutError", "SSLError", "InvalidToken", "InvalidTag", "TimeoutExpired",
 }
 SAFE_REASONS = {
     "CrashLoopBackOff", "ImagePullBackOff", "ErrImagePull", "ContainerCreating", "PodInitializing",
@@ -113,6 +114,8 @@ with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.St
                         conn.execute(text("SET statement_timeout = '6000'"))
                     stage = "server_version"
                     server = str(conn.execute(text("SHOW server_version_num")).scalar())
+                    limit = conn.execute(text("SELECT rolconnlimit FROM pg_roles WHERE rolname = current_user")).scalar()
+                    out["role_connection_limit"] = limit if isinstance(limit,int) else None
                     stage = "revision"
                     revs = list(conn.execute(text("SELECT version_num FROM alembic_version")).scalars())
                 out[label] = {"connected":True,"success":True}
@@ -134,6 +137,14 @@ with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.St
             "exit_code":dumped.returncode,**classify(RuntimeError(dumped.stderr.decode("utf-8","replace")))}
     except Exception as exc:
         out["pg_dump_schema_probe"] = classify(exc)
+    if out.get("pg_dump_schema_probe", {}).get("success") is True:
+        try:
+            full = subprocess.run(["pg_dump","--format=custom","--no-password","--lock-wait-timeout=5000"],
+                                  env=pg_env,stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,timeout=50)
+            out["pg_dump_full_probe"] = {"success":True} if full.returncode==0 else {
+                "exit_code":full.returncode,**classify(RuntimeError(full.stderr.decode("utf-8","replace")))}
+        except Exception as exc:
+            out["pg_dump_full_probe"] = classify(exc)
 print(json.dumps(out))
 '''
 
@@ -199,7 +210,13 @@ def parse_logs(logs):
 
 def probe(namespace, name, container):
     try:
-        data = json.loads(rollout.kubectl(namespace, "exec", "-i", name, "-c", container, "--", "python", "-", script=VERSION_PROBE))
+        result = subprocess.run(
+            ["kubectl", "-n", namespace, "exec", "-i", name, "-c", container, "--", "python", "-"],
+            input=VERSION_PROBE, capture_output=True, text=True, timeout=150,
+        )
+        if result.returncode:
+            return {"probe": "unavailable"}
+        data = json.loads(result.stdout)
     except Exception:
         return {"probe": "unavailable"}
     output = {}
@@ -210,11 +227,13 @@ def probe(namespace, name, container):
     server = data.get("server_version_num", "unavailable")
     output["server_version_num"] = server if isinstance(server, str) and re.fullmatch(r"[0-9]{5,7}", server) else "unavailable"
     output["revision"] = data.get("revision") if data.get("revision") in known else "unavailable"
+    if isinstance(data.get("role_connection_limit"),int):
+        output["role_connection_limit"] = data["role_connection_limit"]
     auth_sources = data.get("backup_auth_sources")
     if isinstance(auth_sources, dict):
         output["backup_auth_sources"] = {key:auth_sources.get(key) is True for key in (
             "url_password_present", "inherited_pgpassword_present", "inherited_pgpassfile_present")}
-    for key in ("regular_connection", "bootstrap_connection", "database_probe", "pg_dump_schema_probe"):
+    for key in ("regular_connection", "bootstrap_connection", "database_probe", "pg_dump_schema_probe", "pg_dump_full_probe"):
         result = data.get(key)
         if not isinstance(result, dict):
             continue

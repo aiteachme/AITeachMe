@@ -23,7 +23,7 @@ jobs:
       github.event.head_commit.message == 'chore: 自动运行本次临时只读部署诊断'
     name: Read scoped backend startup evidence
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-kubectl@v4
