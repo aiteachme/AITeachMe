@@ -56,8 +56,11 @@ SAFE_REASONS = {
     "ProgressDeadlineExceeded", "MinimumReplicasUnavailable", "NewReplicaSetAvailable",
 }
 VERSION_PROBE = r'''
-import contextlib, io, json, os, re, subprocess
+import contextlib, io, json, os, re, subprocess, sys
 out = {}
+safe_output = sys.stdout
+def emit_progress():
+    print(json.dumps(out), file=safe_output, flush=True)
 def classify(exc):
     message = str(exc).lower()
     categories = {
@@ -89,6 +92,7 @@ with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.St
             out[binary] = match[1] if result.returncode == 0 and match else "unavailable"
         except Exception:
             out[binary] = "unavailable"
+    emit_progress()
     try:
         from sqlalchemy import create_engine, text
         from sqlalchemy.engine import make_url
@@ -125,8 +129,10 @@ with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.St
                 out[label] = {"connected":connected,"stage":stage,**classify(exc)}
             finally:
                 engine.dispose()
+            emit_progress()
     except Exception as exc:
         out["database_probe"] = classify(exc)
+    emit_progress()
     try:
         from scripts.backup_cloud_database import _postgres_env
         pg_env = _postgres_env()
@@ -137,6 +143,7 @@ with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.St
             "exit_code":dumped.returncode,**classify(RuntimeError(dumped.stderr.decode("utf-8","replace")))}
     except Exception as exc:
         out["pg_dump_schema_probe"] = classify(exc)
+    emit_progress()
     if out.get("pg_dump_schema_probe", {}).get("success") is True:
         try:
             full = subprocess.run(["pg_dump","--format=custom","--no-password","--lock-wait-timeout=5000"],
@@ -214,12 +221,24 @@ def probe(namespace, name, container):
             ["kubectl", "-n", namespace, "exec", "-i", name, "-c", container, "--", "python", "-"],
             input=VERSION_PROBE, capture_output=True, text=True, timeout=150,
         )
-        if result.returncode:
-            return {"probe": "unavailable"}
-        data = json.loads(result.stdout)
+        raw_output, completed = result.stdout, result.returncode == 0
+    except subprocess.TimeoutExpired as exc:
+        raw_output, completed = exc.stdout or "", False
     except Exception:
         return {"probe": "unavailable"}
-    output = {}
+    if isinstance(raw_output, bytes):
+        raw_output = raw_output.decode("utf-8", "replace")
+    data = {}
+    for line in raw_output.splitlines():
+        try:
+            part = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(part, dict):
+            data.update(part)
+    if not data:
+        return {"probe": "unavailable"}
+    output = {"probe_completed": completed}
     known = rollout.migration_parents(rollout.MIGRATIONS)
     for key in ("pg_dump", "pg_restore"):
         if isinstance(data.get(key), str) and re.fullmatch(r"[0-9]+(?:\.[0-9]+)*|unavailable", data[key]):
@@ -306,7 +325,8 @@ def diagnose(namespace, deployment_name, container, expected_image):
                 result = probe(namespace, name, container)
                 if result.get("probe") != "unavailable":
                     record["versions"] = result
-                    break
+                    if "regular_connection" in result or "database_probe" in result:
+                        break
             time.sleep(2)
         report["pods"].append(record)
     return report
