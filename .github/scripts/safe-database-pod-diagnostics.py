@@ -77,6 +77,10 @@ def _state(value):
             state["exit_code"] = item["exitCode"]
         if _number(item.get("signal"), 64) is not None:
             state["signal"] = item["signal"]
+        for key in ("startedAt", "finishedAt"):
+            timestamp = item.get(key)
+            if isinstance(timestamp, str) and re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?Z", timestamp):
+                state[key] = timestamp
         result[kind] = state
     return result
 
@@ -148,7 +152,7 @@ def diagnose_database_pods(kubectl, namespace=NAMESPACE, service=SERVICE):
                          ("InstanceSet", "workloads.kubeblocks.io/v1alpha1"): "instanceset.workloads.kubeblocks.io",
                          ("InstanceSet", "workloads.kubeblocks.io/v1"): "instanceset.workloads.kubeblocks.io",
                          ("InstanceSet", "apps.kubeblocks.io/v1alpha1"): "instanceset.apps.kubeblocks.io"}
-            identity = (owners[0].get("kind"), owners[0].get("apiVersion", "apps/v1")) if len(owners) == 1 else None
+            identity = (owners[0].get("kind"), owners[0].get("apiVersion")) if len(owners) == 1 else None
             controller_resource = resources.get(identity)
             if not controller_resource:
                 raise ValueError("Database Pod needs one recognized controller")

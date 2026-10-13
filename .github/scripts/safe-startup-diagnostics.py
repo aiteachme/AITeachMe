@@ -43,6 +43,12 @@ SAFE_ERRORS = {
     "Uploaded backup plaintext checksum mismatch; migration has not started.",
     "Cloud database backup storage or verification failed; migration has not started.",
 }
+SAFE_PG_FAILURE_REASONS = {
+    "connection_limit", "missing_password", "authentication", "tls", "dns", "connection_timeout",
+    "connection_unavailable", "client_version", "lock_timeout", "storage_full", "memory_exhausted",
+    "permission", "unsupported_parameter", "copy_read_failed", "unknown", "command_timeout",
+    "tool_missing", "tool_permission", "execution_failed",
+}
 SAFE_BOOTSTRAP_MESSAGES = {
     "Waiting for the PostgreSQL cloud bootstrap lock",
     "cloud database bootstrap lock failed; verify database connectivity and permissions.",
@@ -245,7 +251,8 @@ def parse_logs(logs):
                 break
         if candidate in SAFE_ERRORS:
             found.add(candidate)
-        pg = re.fullmatch(r"((?:pg_dump|pg_restore) (?:failed \(exit=[0-9]+\)|could not complete); database migration has not started\.)", candidate)
+        reasons = "|".join(sorted(SAFE_PG_FAILURE_REASONS))
+        pg = re.fullmatch(rf"((?:pg_dump|pg_restore) (?:failed \(exit=-?[0-9]+(?:, reason=(?:{reasons}))?\)|could not complete(?: \(reason=(?:{reasons})\))?); database migration has not started\.)", candidate)
         if pg:
             found.add(pg[1])
         step = re.fullmatch(r"((?:prepare_cloud_db|check_cloud_db)\.py failed \(exit=[0-9]+\))", candidate)
