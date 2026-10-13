@@ -95,6 +95,7 @@ def build_patch_verification_messages(
     patch_markdown: str,
     related_markdown_context: str,
     quantity_contract: dict | None,
+    pending_actions: list[dict] | None = None,
 ) -> list[dict[str, str]]:
     messages = [
         {
@@ -111,6 +112,11 @@ def build_patch_verification_messages(
                 "用户未明确规定字数时，不得因低于模式默认或参考篇幅而拒绝正确的局部补丁。"
                 "明确字数范围按整章讲解正文计算，不含代码、代码输出、Markdown 标记和章末测试。"
                 "这是局部替换片段，整章小节和例题数量应结合其它正文核对，不能要求补丁重复整章内容。"
+                "同章其它替换块的待修动作会在后续单独处理；若只读参考块已有错误明确属于这些动作，"
+                "且与当前候选的正确性独立，不得用它否决当前补丁或要求当前补丁越界修复，"
+                "只在 verification_notes 中注明对应待修动作。"
+                "这不豁免当前完整替换块中的任何错误，也不豁免候选新引入的跨块矛盾；"
+                "未列入待修动作的问题不得假定后续会修复。"
                 "只有全部复核动作确实解决且未引入新错误时 passed=true，"
                 "verified_action_ids 必须列出全部已验证的 repair_action_key，issues 为空。"
                 "否则 passed=false，issues 具体指出题号、错误计算或未满足的约束，供下一轮修正。"
@@ -124,7 +130,8 @@ def build_patch_verification_messages(
                 f"章节：{chapter_title}\n\n待复核动作：\n{actions}\n\n"
                 f"用户确认的数量与写作边界：\n{quantity_contract or {}}\n\n"
                 f"候选补丁（必须完整核验）：\n{patch_markdown}\n\n"
-                f"同章其它正文（只读参考）：\n{related_markdown_context}"
+                f"同章其它正文（只读参考）：\n{related_markdown_context}\n\n"
+                f"同章其它替换块的待修动作（单独处理）：\n{pending_actions or []}"
             ),
         },
     ]

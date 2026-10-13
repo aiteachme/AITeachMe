@@ -717,6 +717,7 @@ async def _apply_llm_patch_actions(
     repair_round: int,
     quantity_contract: dict | None = None,
     previous_rejection: str = "",
+    pending_indexed_actions: list[tuple[int, ReviewAction]] | None = None,
 ) -> tuple[ReviewedChapterDraft, list[tuple[int, ReviewAction, RepairTraceItem, str | None]], list[tuple[int, ReviewAction]]]:
     """Ask the model for one local patch that can cover multiple actions."""
 
@@ -928,6 +929,22 @@ async def _apply_llm_patch_actions(
         return chapter, results, []
     covered_actions = [payload for payload in action_payloads if payload["repair_action_key"] in covered_keys]
     if any(payload["severity"] == "error" for payload in covered_actions):
+        pending_actions = []
+        replaced_section = _find_heading_section(
+            chapter.markdown, anchor=target_anchor, chapter_title=chapter.title,
+        ) if patch.operation == "replace_section" else None
+        if replaced_section is not None:
+            for action_index, action in pending_indexed_actions or []:
+                section = _find_heading_section(
+                    chapter.markdown, anchor=action.target_anchor, chapter_title=chapter.title,
+                )
+                if action.severity == "error" and section is not None and (
+                    section[1] <= replaced_section[0] or section[0] >= replaced_section[1]
+                ):
+                    pending_actions.append({
+                        **action.model_dump(mode="json"),
+                        "repair_action_key": _repair_action_key(action_index, action),
+                    })
         try:
             review_result = await acompletion_with_fallback(
                 build_patch_verification_messages(
@@ -936,6 +953,7 @@ async def _apply_llm_patch_actions(
                     patch_markdown=patch_markdown,
                     related_markdown_context=_related_patch_context(chapter, [action_keys[key][1] for key in covered_keys]),
                     quantity_contract=quantity_contract,
+                    pending_actions=pending_actions,
                 ),
                 **docgen_completion_kwargs_with_metadata(
                     DocGenModelStep.REPAIR_PATCH_REVIEW,
@@ -1100,7 +1118,7 @@ async def repair_or_route_review_actions(
             *_patch_action_batches(current_chapter, regular_llm_actions),
             *_patch_action_batches(current_chapter, unit_test_llm_actions),
         ]
-        for action_batch in action_batches:
+        for batch_index, action_batch in enumerate(action_batches):
             current_batch = action_batch
             previous_rejection = ""
             rejection_history: list[str] = []
@@ -1112,6 +1130,9 @@ async def repair_or_route_review_actions(
                     indexed_actions=current_batch,
                     repair_round=repair_round,
                     previous_rejection=previous_rejection,
+                    pending_indexed_actions=[
+                        item for later_batch in action_batches[batch_index + 1:] for item in later_batch
+                    ],
                     quantity_contract={
                         key: tasks_by_index.get(chapter.chapter_index, {}).get(key)
                         for key in ("quantity_constraints", "writing_rules")

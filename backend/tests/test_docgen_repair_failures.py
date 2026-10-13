@@ -415,6 +415,113 @@ async def test_retry_can_fix_verified_error_elsewhere_in_the_same_test_block(mon
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("test_repair_passes", [True, False])
+async def test_body_patch_does_not_retry_known_pending_test_error(monkeypatch, test_repair_passes):
+    monkeypatch.setattr(repair, "_MAX_LLM_PATCH_ATTEMPTS_PER_TARGET", 1)
+    incorrect_test = _choice_test().replace("相加得到 $2$。", "相加得到 $3$。")
+    chapter = ReviewedChapterDraft(
+        chapter_index=1, title="算术",
+        markdown="# 算术\n\n## 加法\n\n例题：$1+1=3$。\n\n" + incorrect_test,
+    )
+    actions = [
+        ReviewAction(
+            action_id="body", action_type="section_patch", chapter_index=1, severity="error",
+            target_anchor="## 加法", instruction="纠正正文例题，不能修改只读的章末题。",
+        ),
+        ReviewAction(
+            action_id="test", action_type="section_patch", chapter_index=1, severity="error",
+            target_anchor="## 单元测试", instruction="纠正章末题的错误解析。",
+        ),
+    ]
+    patch_targets = []
+    pending_scopes = []
+
+    async def completion(messages, **kwargs):
+        content = messages[1]["content"]
+        if kwargs["response_model"] is repair._LocalPatchVerification:
+            marker = "同章其它替换块的待修动作（单独处理）：\n"
+            pending = ast.literal_eval(content.split(marker, 1)[1].split("\n\n", 1)[0]) if marker in content else []
+            pending_scopes.append(pending)
+            candidate = content.split("候选补丁（必须完整核验）：\n", 1)[1].split("\n\n同章其它正文", 1)[0]
+            is_body = candidate.startswith("## 加法")
+            if is_body:
+                assert "相加得到 $3$。" in content, "待修题目应继续作为只读上下文提供。"
+                scope_is_known = [item["repair_action_key"] for item in pending] == ["test"]
+                return repair._LocalPatchVerification(
+                    passed=scope_is_known, verified_action_ids=["body"],
+                    issues=[] if scope_is_known else ["只读章末题仍将1+1解释为3。"],
+                    verification_notes=["正文例题正确；章末题的已知错误由独立待修动作处理。"],
+                )
+            assert not pending, "已完成的正文修补不能继续标记为待修。"
+            return repair._LocalPatchVerification(
+                passed=test_repair_passes, verified_action_ids=["test"] if test_repair_passes else [],
+                issues=[] if test_repair_passes else ["章末题解析仍错误。"],
+                verification_notes=["逐项核验当前完整题块。"],
+            )
+        target = "## 加法" if not patch_targets else "## 单元测试"
+        patch_targets.append(target)
+        return repair._LocalMarkdownPatch(
+            operation="replace_section", target_anchor=target,
+            patch_markdown="## 加法\n\n例题：$1+1=2$，两个1相加得到2。" if target == "## 加法" else _choice_test(),
+            covered_action_ids=["body" if target == "## 加法" else "test"],
+        )
+
+    monkeypatch.setattr(repair, "acompletion_with_fallback", completion)
+    chapters, updated, unresolved, _ = await repair.repair_or_route_review_actions(
+        reviewed_chapters=[chapter], review_actions=actions,
+    )
+    assert updated[0].status == "applied", "已修好的正文不应因另一待修块的旧错误被丢弃。"
+    assert patch_targets == ["## 加法", "## 单元测试"]
+    assert [item["repair_action_key"] for item in pending_scopes[0]] == ["test"]
+    assert (updated[1].status == "applied") == test_repair_passes
+    assert bool(unresolved) != test_repair_passes
+    report = build_merge_review_report(
+        enhanced_chapters=[EnhancedChapterDraft.model_validate(chapters[0].model_dump())],
+        expected_chapter_count=1, plan="", review_actions=updated,
+    )
+    assert any(issue.issue_type == "unresolved_review_error" for issue in report.issues) != test_repair_passes
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("pending_anchor,severity", [
+    ("## 加法", "error"), ("### 定义", "error"), ("## 不存在", "error"), ("## 单元测试", "warning"),
+])
+async def test_patch_review_cannot_defer_overlapping_missing_or_optional_actions(monkeypatch, pending_anchor, severity):
+    chapter = ReviewedChapterDraft(
+        chapter_index=1, title="算术",
+        markdown="# 算术\n\n## 加法\n\n### 定义\n\n例题：$1+1=3$。\n\n" + _choice_test(),
+    )
+    action = ReviewAction(
+        action_id="body", action_type="section_patch", chapter_index=1, severity="error", target_anchor="## 加法",
+    )
+    pending = ReviewAction(
+        action_id="other", action_type="section_patch", chapter_index=1, severity=severity, target_anchor=pending_anchor,
+    )
+    reviews = []
+
+    async def completion(messages, **kwargs):
+        if kwargs["response_model"] is repair._LocalPatchVerification:
+            marker = "同章其它替换块的待修动作（单独处理）：\n"
+            payload = ast.literal_eval(messages[1]["content"].split(marker, 1)[1].split("\n\n", 1)[0])
+            reviews.append(payload)
+            return repair._LocalPatchVerification(
+                passed=True, verified_action_ids=["body"], verification_notes=["独立验证整个替换范围。"],
+            )
+        return repair._LocalMarkdownPatch(
+            operation="replace_section", target_anchor="## 加法",
+            patch_markdown="## 加法\n\n### 定义\n\n例题：$1+1=2$。", covered_action_ids=["body"],
+        )
+
+    monkeypatch.setattr(repair, "acompletion_with_fallback", completion)
+    _, results, remaining = await repair._apply_llm_patch_actions(
+        chapter=chapter, indexed_actions=[(1, action)], repair_round=1, pending_indexed_actions=[(2, pending)],
+    )
+    assert reviews == [[]]
+    assert results[0][1].status == "applied"
+    assert not remaining
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize("review_result", [
     TimeoutError("独立审核超时"),
     {"passed": False, "verified_action_ids": [], "issues": ["A 和 C 都正确，单选不成立。"]},
