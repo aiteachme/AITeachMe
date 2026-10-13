@@ -18,7 +18,9 @@ permissions:
 
 jobs:
   diagnose:
-    if: github.event_name == 'workflow_dispatch' || github.event.head_commit.message == 'chore: 自动运行本次临时只读部署诊断'
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.head_commit.message == 'chore: 自动运行本次临时只读部署诊断'
     name: Read scoped backend startup evidence
     runs-on: ubuntu-latest
     timeout-minutes: 8
