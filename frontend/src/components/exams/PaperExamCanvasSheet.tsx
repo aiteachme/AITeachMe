@@ -803,7 +803,11 @@ function PaperExamQuestionBlock({
                 const optionLabel = isTrueFalse ? option : getOptionLabel(optionIndex);
                 const optionValue = isTrueFalse ? option : optionLabel;
                 const optionDisplay = isTrueFalse ? formatTrueFalseOptionLabel(option) : option;
-                const isSelected = isMultipleChoice ? selectedMultiChoice.has(optionValue) : answerValue === optionValue;
+                const isSelected = isMultipleChoice
+                  ? selectedMultiChoice.has(optionValue)
+                  : isTrueFalse
+                    ? isTrueFalseAnswerMatch(answerValue, optionValue)
+                    : answerValue === optionValue;
                 const isCorrectOption = isMultipleChoice
                   ? correctMultiChoice.has(optionValue)
                   : isTrueFalse

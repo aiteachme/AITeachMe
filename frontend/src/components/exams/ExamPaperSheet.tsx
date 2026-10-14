@@ -584,7 +584,9 @@ export function ExamPaperSheet({
                                 const optionDisplay = isTrueFalse ? formatTrueFalseOptionLabel(option) : option;
                                 const isSelected = isMultipleChoice
                                   ? selectedMultiChoice.has(optionValue)
-                                  : answerValue === optionValue;
+                                  : isTrueFalse
+                                    ? isTrueFalseAnswerMatch(answerValue, optionValue)
+                                    : answerValue === optionValue;
                                 const isCorrectOption = isMultipleChoice
                                   ? correctMultiChoice.has(optionValue)
                                   : isTrueFalse
