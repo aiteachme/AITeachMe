@@ -6,6 +6,7 @@ import "highlight.js/styles/github-dark.css";
 import "./index.css";
 import { AnalyticsProvider } from "./components/providers/AnalyticsProvider";
 import { THEME_STORAGE_KEY, type Theme } from "./components/providers/ThemeProvider";
+import { AppErrorBoundary } from "./components/layout/AppErrorBoundary";
 
 const BACKEND_READY_TIMEOUT_MS = 6000;
 const LOCAL_DESKTOP_BACKEND_READY_TIMEOUT_MS = 60000;
@@ -183,9 +184,11 @@ prepare()
     setStartupStatus(STARTUP_MESSAGES.openingInterface);
     ReactDOM.createRoot(document.getElementById("app")!).render(
       <React.StrictMode>
-        <AnalyticsProvider>
-          <App />
-        </AnalyticsProvider>
+        <AppErrorBoundary>
+          <AnalyticsProvider>
+            <App />
+          </AnalyticsProvider>
+        </AppErrorBoundary>
       </React.StrictMode>,
     );
     if (shouldProbeBackend) {
