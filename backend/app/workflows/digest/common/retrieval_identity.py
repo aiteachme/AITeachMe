@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import hashlib
 
+from app.models.raw_file import PUBLISHED_KNOWLEDGE_DOCS_SOURCE_PREFIX
+
 
 def published_knowledge_docs_source_id(course_id: str) -> str:
     normalized = str(course_id or "").strip()
-    return "published-knowledge-docs-" + hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:24]
+    return PUBLISHED_KNOWLEDGE_DOCS_SOURCE_PREFIX + hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:24]
 
 
 def build_digest_chunk_uid(*, file_id: str, chunk_index: int, title: str, content: str) -> str:

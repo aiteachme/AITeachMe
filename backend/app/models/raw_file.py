@@ -12,6 +12,9 @@ from app.models.enums import IngestStatus, TaskStatus
 from app.utils.time import utcnow
 
 
+PUBLISHED_KNOWLEDGE_DOCS_SOURCE_PREFIX = "published-knowledge-docs-"
+
+
 class RawFile(SQLModel, table=True):
     """User-uploaded source material."""
 

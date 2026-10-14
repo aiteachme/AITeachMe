@@ -20,6 +20,7 @@ from app.shared.infra.settings import DEFAULT_INGEST_MAX_UPLOAD_SIZE_MB
 from app.shared.infra.storage.course_scope import build_user_file_storage_scope
 from app.workflows.ingest.intake import catalog, uploads
 from app.workflows.ingest.intake.parse_dispatch import ready_file_ids_for_course_indexing
+from app.workflows.digest.common.retrieval_identity import published_knowledge_docs_source_id
 
 
 class _FakeContentStore:
@@ -125,6 +126,35 @@ def test_metadata_record_does_not_lazy_load_deferred_markdown() -> None:
     record = catalog.build_file_record(raw_file, include_content=False)
     assert record.markdown_ready is True
     assert record.markdown_content == ""
+
+
+def test_user_library_excludes_internal_published_sources_before_counting_and_paging() -> None:
+    source_id = published_knowledge_docs_source_id("course_library_test")
+    with _session() as session:
+        session.add_all([User(id="user_a", username="user_a"), User(id="user_b", username="user_b")])
+        session.add_all([
+            RawFile(
+                id=source_id, user_id="user_a", filename="课程知识文档.md",
+                filetype="markdown", file_path="", markdown_content="# Published course content",
+            ),
+            RawFile(
+                id="file_uploaded_notes", user_id="user_a", filename="课程知识文档.md",
+                filetype="md", file_path="raw/notes.md", markdown_path="parsed/notes.md",
+                status=TaskStatus.COMPLETED.value, ingest_status=IngestStatus.READY_FOR_DIGEST.value,
+            ),
+            RawFile(id="file_other_owner", user_id="user_b", filename="notes.pdf", filetype="pdf", file_path="raw/other.pdf"),
+        ])
+        session.commit()
+        files, total = list_raw_files_by_user(session, user_id="user_a", limit=1, offset=0)
+        assert total == 1 and [item.id for item in files] == ["file_uploaded_notes"]
+        page, total = list_raw_files_by_user(session, user_id="user_a", limit=1, offset=1)
+        assert total == 1 and page == []
+        data = catalog.list_user_files(session, owner_user_id="user_a", file_ids=[source_id, "file_uploaded_notes"])
+        assert data.total == data.ready_count == 1
+        assert data.processing_count == data.failed_count == 0
+        assert [item.id for item in data.items] == ["file_uploaded_notes"]
+        # The document and its contents remain available to course retrieval.
+        assert session.get(RawFile, source_id).markdown_content == "# Published course content"
 
 
 def test_duplicate_user_upload_reuses_existing_file(monkeypatch) -> None:

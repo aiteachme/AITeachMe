@@ -11,6 +11,7 @@ from sqlalchemy.orm import defer
 from sqlmodel import Session, func, select
 
 from app.models import RawFile, RawFileAsset, Course, CourseFileLink, TaskStatus
+from app.models.raw_file import PUBLISHED_KNOWLEDGE_DOCS_SOURCE_PREFIX
 from app.shared.infra.storage import get_content_store, run_store_sync
 from app.utils.time import utcnow
 
@@ -218,7 +219,12 @@ def list_raw_files_by_user(
     offset: int,
     status: str | None = None,
 ) -> tuple[list[RawFile], int]:
-    filters = [RawFile.user_id == user_id]
+    # DocGen's stable RAG sources are internal documents, not uploads awaiting
+    # parsing. Filter before counting/paging so they do not fill the library.
+    filters = [
+        RawFile.user_id == user_id,
+        ~RawFile.id.startswith(PUBLISHED_KNOWLEDGE_DOCS_SOURCE_PREFIX),
+    ]
     if file_ids:
         filters.append(RawFile.id.in_(file_ids))  # type: ignore[union-attr]
     if status:
