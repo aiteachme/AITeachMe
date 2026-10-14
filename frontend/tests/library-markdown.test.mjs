@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 import remarkParse from "remark-parse";
 import { unified } from "unified";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 
 import {
   createFormulaSearchKeys,
@@ -15,6 +17,7 @@ import {
 
 let preprocessMarkdownForRender;
 let cleanKnowledgeMarkdownForDisplay;
+let MarkdownViewer;
 before(async () => {
   const server = await createServer({
     root: fileURLToPath(new URL("..", import.meta.url)),
@@ -24,11 +27,23 @@ before(async () => {
     server: { middlewareMode: true, hmr: false },
   });
   try {
-    ({ preprocessMarkdownForRender } = await server.ssrLoadModule("/src/components/ui/MarkdownViewer.tsx"));
+    ({ preprocessMarkdownForRender, MarkdownViewer } = await server.ssrLoadModule("/src/components/ui/MarkdownViewer.tsx"));
     ({ cleanKnowledgeMarkdownForDisplay } = await server.ssrLoadModule("/src/components/knowledge-docs/utils.ts"));
   } finally {
     await server.close();
   }
+});
+
+test("renders single-digit math while preserving currency and code literals", () => {
+  const formula = renderToStaticMarkup(createElement(MarkdownViewer, { content: "分子和分母都除以 $2$，大小不变。" }));
+  assert.match(formula, /class="katex"/);
+  assert.doesNotMatch(formula, /\$2\$/);
+  const currency = renderToStaticMarkup(createElement(MarkdownViewer, { content: "预算 $5 和 $10。" }));
+  assert.doesNotMatch(currency, /class="katex"/);
+  assert.match(currency, /\$5\s*和\s*\$10/);
+  const code = renderToStaticMarkup(createElement(MarkdownViewer, { content: "代码字面量 `$2$` 保持原样。" }));
+  assert.doesNotMatch(code, /class="katex"/);
+  assert.match(code, /\$2\$/);
 });
 
 for (const marker of ["```", "````", "~~~"]) {

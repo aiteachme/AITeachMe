@@ -1992,7 +1992,7 @@ function isLikelyInlineMathBody(body: string): boolean {
     return false;
   }
   if (body.length === 1) {
-    return /[A-Za-z\u0370-\u03ff]/.test(body);
+    return /[A-Za-z0-9\u0370-\u03ff]/.test(body);
   }
   return true;
 }
