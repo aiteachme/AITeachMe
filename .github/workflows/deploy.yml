@@ -474,33 +474,61 @@ jobs:
           echo "Import body limit: ${AITEACHME_NGINX_IMPORT_CLIENT_MAX_BODY_SIZE}"
           echo "Rollout timeout: ${FRONTEND_ROLLOUT_TIMEOUT_SECONDS}s"
 
-          kubectl -n "${SEALOS_NAMESPACE}" patch \
-            "deployment/${SEALOS_FRONTEND_DEPLOYMENT}" \
-            --type=merge \
-            -p "{\"spec\":{\"progressDeadlineSeconds\":${FRONTEND_ROLLOUT_TIMEOUT_SECONDS}}}"
-
           kubectl -n "${SEALOS_NAMESPACE}" get \
             "secret/${SEALOS_IMAGE_PULL_SECRET}" \
             >/dev/null
 
+          frontend_container_name="$(
+            kubectl -n "${SEALOS_NAMESPACE}" get \
+              "deployment/${SEALOS_FRONTEND_DEPLOYMENT}" -o json \
+              | jq -er '.spec.template.spec.containers | map(select(.name != "istio-proxy")) | if length == 1 then .[0].name else error("Expected exactly one frontend application container") end'
+          )"
+
+          # Apply image, environment, and readiness together so intermediate
+          # template changes do not start separate, unguarded rollouts.
+          deployment_patch="$(jq -n \
+            --arg container_name "${frontend_container_name}" \
+            --arg image "${{ steps.image.outputs.image }}" \
+            --arg pull_secret "${SEALOS_IMAGE_PULL_SECRET}" \
+            --arg api_upstream "${AITEACHME_API_UPSTREAM}" \
+            --arg public_url "${FRONTEND_PUBLIC_URL}" \
+            --arg body_limit "${AITEACHME_NGINX_IMPORT_CLIENT_MAX_BODY_SIZE}" \
+            --argjson rollout_timeout "${FRONTEND_ROLLOUT_TIMEOUT_SECONDS}" \
+            '{spec: {
+              progressDeadlineSeconds: $rollout_timeout,
+              minReadySeconds: 5,
+              strategy: {type: "RollingUpdate", rollingUpdate: {maxUnavailable: 0, maxSurge: 1}},
+              template: {spec: {
+                terminationGracePeriodSeconds: 30,
+                imagePullSecrets: [{name: $pull_secret}],
+                containers: [{
+                  name: $container_name,
+                  image: $image,
+                  env: [
+                    {name: "AITEACHME_API_UPSTREAM", value: $api_upstream, valueFrom: null},
+                    {name: "FRONTEND_PUBLIC_URL", value: $public_url, valueFrom: null},
+                    {name: "AITEACHME_NGINX_UPLOAD_CLIENT_MAX_BODY_SIZE", value: $body_limit, valueFrom: null},
+                    {name: "AITEACHME_NGINX_IMPORT_CLIENT_MAX_BODY_SIZE", value: $body_limit, valueFrom: null}
+                  ],
+                  readinessProbe: {"$patch": "replace", httpGet: {path: "/", port: 80, scheme: "HTTP"}, periodSeconds: 2, timeoutSeconds: 2, failureThreshold: 3},
+                  lifecycle: {preStop: {"$patch": "replace", exec: {command: ["/bin/sh", "-c", "sleep 8"]}}}
+                }]
+              }}
+            }}')"
+
           kubectl -n "${SEALOS_NAMESPACE}" patch \
             "deployment/${SEALOS_FRONTEND_DEPLOYMENT}" \
-            -p "{\"spec\":{\"template\":{\"spec\":{\"imagePullSecrets\":[{\"name\":\"${SEALOS_IMAGE_PULL_SECRET}\"}]}}}}"
-
-          kubectl -n "${SEALOS_NAMESPACE}" set env \
-            "deployment/${SEALOS_FRONTEND_DEPLOYMENT}" \
-            "AITEACHME_API_UPSTREAM=${AITEACHME_API_UPSTREAM}" \
-            "FRONTEND_PUBLIC_URL=${FRONTEND_PUBLIC_URL}" \
-            "AITEACHME_NGINX_UPLOAD_CLIENT_MAX_BODY_SIZE=${AITEACHME_NGINX_IMPORT_CLIENT_MAX_BODY_SIZE}" \
-            "AITEACHME_NGINX_IMPORT_CLIENT_MAX_BODY_SIZE=${AITEACHME_NGINX_IMPORT_CLIENT_MAX_BODY_SIZE}"
-
-          kubectl -n "${SEALOS_NAMESPACE}" set image \
-            "deployment/${SEALOS_FRONTEND_DEPLOYMENT}" \
-            "*=${{ steps.image.outputs.image }}"
+            --type=strategic \
+            -p "${deployment_patch}"
 
           kubectl -n "${SEALOS_NAMESPACE}" rollout status \
             "deployment/${SEALOS_FRONTEND_DEPLOYMENT}" \
             --timeout="${FRONTEND_ROLLOUT_TIMEOUT_SECONDS}s"
+
+          frontend_rollout_policy="$(kubectl -n "${SEALOS_NAMESPACE}" get \
+            "deployment/${SEALOS_FRONTEND_DEPLOYMENT}" -o json \
+            | jq -c --arg name "${frontend_container_name}" '{strategy: .spec.strategy, min_ready_seconds: .spec.minReadySeconds, container: (.spec.template.spec.containers[] | select(.name == $name) | {name, image, readiness_probe: .readinessProbe, lifecycle})}')"
+          echo "::notice title=Frontend rollout policy::${frontend_rollout_policy}"
 
       - name: Show Sealos frontend rollout diagnostics
         if: always() && steps.optin.outputs.enabled == 'true'
