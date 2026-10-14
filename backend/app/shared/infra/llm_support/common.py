@@ -1393,10 +1393,18 @@ async def sleep_before_retry(
     error: Exception | None = None,
     lease: LLMConcurrencyLease | None = None,
 ) -> None:
-    """Apply the current linear retry backoff."""
+    """Back off before retrying, releasing any held concurrency slot."""
 
     if is_concurrency_rate_limit_error(error):
         delay_s = min(30, attempt * 8)
+    elif error is not None and (
+        getattr(error, "status_code", None) == 503
+        or error.__class__.__name__ == "ServiceUnavailableError"
+        or "overloaded" in str(error).lower()
+    ):
+        # Endpoint failover happens before this helper. A same-endpoint retry
+        # should give an overloaded upstream time to recover and avoid a burst.
+        delay_s = min(12, 2 ** min(max(attempt, 1), 4)) + secrets.randbelow(1001) / 1000
     elif should_try_endpoint_fallback(error):
         delay_s = min(0.5, attempt * 0.25)
     else:

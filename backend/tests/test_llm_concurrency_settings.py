@@ -671,6 +671,57 @@ async def test_endpoint_retry_uses_short_backoff_without_changing_rate_limit_del
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("error_kind", ["status_503", "service_unavailable", "overloaded"])
+async def test_overloaded_upstream_retry_waits_and_caps_backoff(monkeypatch, error_kind) -> None:
+    if error_kind == "status_503":
+        error = RuntimeError("Temporary upstream failure")
+        error.status_code = 503
+    elif error_kind == "service_unavailable":
+        error = type("ServiceUnavailableError", (Exception,), {})("Temporarily unavailable")
+    else:
+        error = RuntimeError("Upstream is overloaded; recovery budget exhausted")
+    delays: list[float] = []
+
+    async def fake_sleep(delay: float) -> None:
+        delays.append(delay)
+
+    monkeypatch.setattr(llm_common.asyncio, "sleep", fake_sleep)
+    for attempt in (1, 2, 3, 10):
+        await llm_common.sleep_before_retry(attempt, error=error)
+
+    assert 2 <= delays[0] <= 3
+    assert delays[0] < delays[1] < delays[2]
+    assert all(2 <= delay <= 13 for delay in delays)
+
+
+@pytest.mark.anyio
+async def test_overloaded_retry_releases_the_concurrency_slot(monkeypatch) -> None:
+    set_system_settings_override({"llm": {"concurrency_limit": 1}})
+    limiter = get_llm_concurrency_limiter()
+    sleeping = asyncio.Event()
+    resume = asyncio.Event()
+
+    async def fake_sleep(_delay: float) -> None:
+        sleeping.set()
+        await resume.wait()
+
+    monkeypatch.setattr(llm_common.asyncio, "sleep", fake_sleep)
+
+    async def retrying_call() -> None:
+        async with limiter.slot() as lease:
+            await llm_common.sleep_before_retry(1, error=RuntimeError("Upstream is overloaded"), lease=lease)
+
+    async def independent_call() -> None:
+        async with limiter.slot():
+            resume.set()
+
+    retry = asyncio.create_task(retrying_call())
+    await asyncio.wait_for(sleeping.wait(), timeout=1)
+    await asyncio.wait_for(independent_call(), timeout=1)
+    await asyncio.wait_for(retry, timeout=1)
+
+
+@pytest.mark.anyio
 async def test_retry_backoff_reacquires_slot_before_returning(monkeypatch) -> None:
     set_system_settings_override({"llm": {"concurrency_limit": 1}})
     limiter = get_llm_concurrency_limiter()
