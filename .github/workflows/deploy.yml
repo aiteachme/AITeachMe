@@ -510,8 +510,8 @@ jobs:
                     {name: "AITEACHME_NGINX_UPLOAD_CLIENT_MAX_BODY_SIZE", value: $body_limit, valueFrom: null},
                     {name: "AITEACHME_NGINX_IMPORT_CLIENT_MAX_BODY_SIZE", value: $body_limit, valueFrom: null}
                   ],
-                  readinessProbe: {"$patch": "replace", httpGet: {path: "/", port: 80, scheme: "HTTP"}, periodSeconds: 2, timeoutSeconds: 2, failureThreshold: 3},
-                  lifecycle: {preStop: {"$patch": "replace", exec: {command: ["/bin/sh", "-c", "sleep 8"]}}}
+                  readinessProbe: {httpGet: {path: "/", port: 80, scheme: "HTTP", host: null, httpHeaders: null}, exec: null, tcpSocket: null, grpc: null, initialDelaySeconds: 0, periodSeconds: 2, timeoutSeconds: 2, failureThreshold: 3, successThreshold: 1},
+                  lifecycle: {preStop: {exec: {command: ["/bin/sh", "-c", "sleep 8"]}, httpGet: null, tcpSocket: null, sleep: null}}
                 }]
               }}
             }}')"
@@ -529,6 +529,8 @@ jobs:
             "deployment/${SEALOS_FRONTEND_DEPLOYMENT}" -o json \
             | jq -c --arg name "${frontend_container_name}" '{strategy: .spec.strategy, min_ready_seconds: .spec.minReadySeconds, container: (.spec.template.spec.containers[] | select(.name == $name) | {name, image, readiness_probe: .readinessProbe, lifecycle})}')"
           echo "::notice title=Frontend rollout policy::${frontend_rollout_policy}"
+          jq -e '.strategy.type == "RollingUpdate" and .strategy.rollingUpdate.maxUnavailable == 0 and .min_ready_seconds >= 5 and .container.readiness_probe.httpGet.path == "/" and .container.readiness_probe.httpGet.port == 80 and .container.lifecycle.preStop.exec.command == ["/bin/sh", "-c", "sleep 8"]' \
+            <<< "${frontend_rollout_policy}" >/dev/null
 
       - name: Show Sealos frontend rollout diagnostics
         if: always() && steps.optin.outputs.enabled == 'true'
