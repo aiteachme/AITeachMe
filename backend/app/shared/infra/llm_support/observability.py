@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
+from datetime import datetime, timezone
 from typing import Any
 
 from pydantic import BaseModel
@@ -272,7 +273,7 @@ def _record_new_token_event(trace_run: Any | None) -> None:
     add_event = getattr(trace_run, "add_event", None)
     if callable(add_event):
         try:
-            add_event({"name": "new_token"})
+            add_event({"name": "new_token", "time": datetime.now(timezone.utc).isoformat()})
         except Exception:
             return
 

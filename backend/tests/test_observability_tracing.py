@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import contextmanager
+from datetime import datetime, timezone
 import json
 from types import SimpleNamespace
 from typing import Any
@@ -17,6 +18,21 @@ from app.shared.infra.workflow import authoring as workflow_authoring
 from app.shared.infra.workflow import runtime as workflow_runtime
 from app.workflows.common import prompt_tracing
 from app.workflows.digest.kg_doc_sync.lib import prefetch as kg_prefetch
+
+
+def test_first_token_event_has_timestamp_with_current_langsmith_sdk() -> None:
+    from langsmith.run_trees import RunTree
+
+    run = RunTree(name="first-token-contract", run_type="llm")
+    before = datetime.now(timezone.utc)
+    llm_observability._record_new_token_event(run)
+    after = datetime.now(timezone.utc)
+
+    event = run.events[0]
+    assert event["name"] == "new_token"
+    token_time = datetime.fromisoformat(event["time"])
+    assert token_time.tzinfo is not None
+    assert before <= token_time <= after
 
 
 def test_graph_tracing_context_respects_runtime_disabled(monkeypatch) -> None:
