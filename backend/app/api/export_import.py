@@ -186,7 +186,7 @@ async def import_demo_course_api(
 ) -> ApiResponse[ImportResultData]:
     """从线上演示课程目录下载 `.atmx` 后导入。"""
 
-    tmp_path, _download_name = download_course_package(identifier)
+    tmp_path, _download_name = await run_in_threadpool(download_course_package, identifier)
     try:
         result = import_course(
             session,

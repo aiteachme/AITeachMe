@@ -726,8 +726,10 @@ async def generate_interactive(
     if raw_file is None:
         return Response(status_code=404, content=b"Not found")
 
-    markdown_content = raw_file.markdown_content or ""
-    if not markdown_content:
+    markdown_content = await resolve_file_markdown_content(raw_file)
+    if not markdown_content.strip():
+        if raw_file.status == TaskStatus.COMPLETED.value and raw_file.markdown_path:
+            raise HTTPException(status_code=503, detail="资料正文暂时无法读取，请稍后重试。")
         return Response(status_code=400, content=b"No markdown content available")
 
     # 找到选中文本在 markdown 中的上下文
