@@ -13,6 +13,7 @@ import asyncio
 import json
 import shutil
 import time
+import traceback
 from pathlib import Path
 
 from app.shared.infra.workflow.context import WorkflowContext
@@ -63,6 +64,18 @@ def _classification_for_quality_score(state: IngestParseState) -> dict[str, obje
     if classification is not None:
         return classification.to_dict()
     return {}
+
+
+def _redact_provider_tokens(reason: str, state: IngestParseState) -> str:
+    for token_key in ("mineru_token", "paddle_ocr_token"):
+        token = state.get(token_key)
+        if token:
+            reason = reason.replace(token, "[redacted]")
+    return reason
+
+
+def _provider_failure_reason(exc: Exception, state: IngestParseState) -> str:
+    return _redact_provider_tokens(str(exc), state)[:600]
 
 
 def _build_parse_metadata(
@@ -381,6 +394,10 @@ def build_parse_file_node(*, context: WorkflowContext):
         parse_plan = state.get("parse_plan")
         parse_decision = state.get("parse_decision")
         effective_parse_plan = parse_plan
+        provider_failures: dict[str, str] = {}
+        attempted_parsers: list[str] = []
+        attempted_parser_elapsed_s: dict[str, float] = {}
+        parse_result = None
         progress_tracker = ParseProgressTracker(
             user_id=state["user_id"],
             file_id=state["file_id"],
@@ -453,9 +470,37 @@ def build_parse_file_node(*, context: WorkflowContext):
 
             if parse_decision and (parse_decision.uses_mineru or parse_decision.uses_paddle_ocr):
                 is_external_only_image = is_image_extension(state["filetype"])
-                provider_failures: dict[str, str] = {}
-                attempted_external_parsers: list[str] = []
-                external_elapsed_s: dict[str, float] = {}
+                local_parse_result = None
+                local_parse_failure: Exception | None = None
+                local_parse_attempted = False
+
+                async def run_local_fallback():
+                    nonlocal effective_parse_plan, local_parse_attempted
+                    local_parse_attempted = True
+                    local_started_at = time.monotonic()
+                    local_plan = None
+                    try:
+                        local_plan = build_parse_plan(
+                            file_path=state["file_path"],
+                            filetype=state["filetype"],
+                            file_size_bytes=state.get("file_size_bytes"),
+                            classification=state.get("classification"),
+                        )
+                        effective_parse_plan = local_plan
+                        return await fast_parse_file(
+                            file_path=state["file_path"],
+                            asset_dir=local_asset_dir,
+                            classification=state.get("classification"),
+                            parse_plan=local_plan,
+                            asset_link_prefix=state["asset_link_prefix"],
+                        )
+                    except Exception as exc:
+                        provider_failures["local"] = _provider_failure_reason(exc, state)
+                        if local_plan is not None:
+                            attempted_parsers.extend(local_plan.parser_chain)
+                        attempted_parser_elapsed_s["local"] = round(time.monotonic() - local_started_at, 2)
+                        raise
+
                 provider_order: list[str] = []
                 for provider_name in [parse_decision.primary_provider, *parse_decision.fallback_chain]:
                     if provider_name in {"mineru", "paddle_ocr"} and provider_name not in provider_order:
@@ -498,8 +543,8 @@ def build_parse_file_node(*, context: WorkflowContext):
                         parse_result = _ExternalFastParseResult(
                             markdown=external_result.markdown,
                             parser_used=external_result.parser_used,
-                            attempted_parsers=[*attempted_external_parsers, *external_result.attempted_parsers],
-                            parser_elapsed_s={**external_elapsed_s, **external_result.parser_elapsed_s},
+                            attempted_parsers=[*attempted_parsers, *external_result.attempted_parsers],
+                            parser_elapsed_s={**attempted_parser_elapsed_s, **external_result.parser_elapsed_s},
                             rewritten_image_refs=external_result.rewritten_image_refs,
                             extracted_data_images=external_result.extracted_data_images,
                             appended_asset_images=external_result.appended_asset_images,
@@ -521,30 +566,40 @@ def build_parse_file_node(*, context: WorkflowContext):
                             }
                         break
                     except ExternalProviderTimeoutError as exc:
-                        attempted_external_parsers.append(provider_name)
-                        provider_failures[provider_name] = str(exc)
+                        attempted_parsers.append(provider_name)
+                        provider_failures[provider_name] = _provider_failure_reason(exc, state)
                         timeout_triggered_provider = provider_name
-                        external_elapsed_s[provider_name] = round(time.monotonic() - provider_started_at, 2)
+                        attempted_parser_elapsed_s[provider_name] = round(time.monotonic() - provider_started_at, 2)
                         logger.warning(
                             "ingest_external_provider_attempt_timed_out",
                             provider=provider_name,
                             timeout_budget_s=timeout_budget_s,
-                            error=str(exc),
+                            error=provider_failures[provider_name],
                         )
-                        if not is_external_only_image:
-                            break
+                        if not is_external_only_image and not local_parse_attempted:
+                            # Text PDFs can finish immediately via the local
+                            # parser. Scanned PDFs may have no text layer; if
+                            # local parsing fails, retain the remaining OCR
+                            # providers instead of ending the configured chain.
+                            try:
+                                local_parse_result = await run_local_fallback()
+                            except Exception as local_exc:
+                                local_parse_failure = local_exc
+                                logger.warning(
+                                    "ingest_local_fallback_failed_continuing_external",
+                                    error=provider_failures["local"],
+                                )
+                            else:
+                                break
                     except Exception as exc:
-                        attempted_external_parsers.append(provider_name)
-                        provider_failures[provider_name] = str(exc)
+                        attempted_parsers.append(provider_name)
+                        provider_failures[provider_name] = _provider_failure_reason(exc, state)
                         logger.warning(
                             "ingest_external_provider_attempt_failed",
                             provider=provider_name,
-                            error=str(exc),
+                            error=provider_failures[provider_name],
                         )
-                        if provider_name == "mineru":
-                            external_elapsed_s["mineru"] = round(time.monotonic() - provider_started_at, 2)
-                        else:
-                            external_elapsed_s["paddle_ocr"] = round(time.monotonic() - provider_started_at, 2)
+                        attempted_parser_elapsed_s[provider_name] = round(time.monotonic() - provider_started_at, 2)
 
                 if parse_result is None:
                     if is_external_only_image:
@@ -555,24 +610,15 @@ def build_parse_file_node(*, context: WorkflowContext):
                                 "请配置 PaddleOCR 或 MinerU 后重试。"
                             ),
                         }
-                    effective_parse_plan = build_parse_plan(
-                        file_path=state["file_path"],
-                        filetype=state["filetype"],
-                        file_size_bytes=state.get("file_size_bytes"),
-                        classification=state.get("classification"),
-                    )
-                    local_parse_result = await fast_parse_file(
-                        file_path=state["file_path"],
-                        asset_dir=local_asset_dir,
-                        classification=state.get("classification"),
-                        parse_plan=effective_parse_plan,
-                        asset_link_prefix=state["asset_link_prefix"],
-                    )
+                    if local_parse_failure is not None:
+                        raise local_parse_failure
+                    if local_parse_result is None:
+                        local_parse_result = await run_local_fallback()
                     parse_result = _ExternalFastParseResult(
                         markdown=local_parse_result.markdown,
                         parser_used=local_parse_result.parser_used,
-                        attempted_parsers=[*attempted_external_parsers, *local_parse_result.attempted_parsers],
-                        parser_elapsed_s={**external_elapsed_s, **local_parse_result.parser_elapsed_s},
+                        attempted_parsers=[*attempted_parsers, *local_parse_result.attempted_parsers],
+                        parser_elapsed_s={**attempted_parser_elapsed_s, **local_parse_result.parser_elapsed_s},
                         rewritten_image_refs=local_parse_result.rewritten_image_refs,
                         extracted_data_images=local_parse_result.extracted_data_images,
                         appended_asset_images=local_parse_result.appended_asset_images,
@@ -592,7 +638,7 @@ def build_parse_file_node(*, context: WorkflowContext):
                     }
                     logger.info(
                         "ingest_external_provider_fell_back_to_local",
-                        attempted_providers=attempted_external_parsers,
+                        attempted_parsers=attempted_parsers,
                         local_parser=local_parse_result.parser_used,
                         timeout_provider=timeout_triggered_provider,
                     )
@@ -663,15 +709,45 @@ def build_parse_file_node(*, context: WorkflowContext):
             }
         except Exception as exc:
             progress_tracker.flush()
+            error_detail = _provider_failure_reason(exc, state)
+            failure_state = {}
+            if provider_failures:
+                if error_detail not in provider_failures.values():
+                    provider_failures["result"] = error_detail
+                if parse_result is not None:
+                    attempted_parsers = parse_result.attempted_parsers
+                    attempted_parser_elapsed_s = parse_result.parser_elapsed_s
+                error_detail = "; ".join(f"{provider}: {reason}" for provider, reason in provider_failures.items())
+                failure_metadata = json.loads(_build_parse_metadata(
+                    state=state,
+                    parser_used="",
+                    attempted_parsers=attempted_parsers,
+                    parser_elapsed_s=attempted_parser_elapsed_s,
+                    rewritten_image_refs=0,
+                    extracted_data_images=0,
+                    appended_asset_images=0,
+                    needs_enhance=False,
+                    needs_quality_reparse=False,
+                    needs_asset_ocr=False,
+                    effective_parse_plan=effective_parse_plan,
+                    provider_metadata={"provider_failures": provider_failures},
+                ))
+                failure_metadata.update(provider_status="failed", provider_failure_reason=error_detail)
+                failure_state = {
+                    "parse_metadata": json.dumps(failure_metadata, ensure_ascii=False),
+                    "attempted_parsers": attempted_parsers,
+                    "parser_elapsed_s": attempted_parser_elapsed_s,
+                }
             logger.error(
                 "ingest_fast_parse_failed",
-                error=str(exc),
+                error=error_detail,
                 elapsed_s=round(time.monotonic() - started_at, 2),
-                exc_info=True,
+                traceback=_redact_provider_tokens("".join(traceback.format_exception(exc)), state),
             )
             return {
                 **state,
-                "error": f"fast_parse_file_failed: {exc}",
+                **failure_state,
+                "error": f"fast_parse_file_failed: {error_detail}",
             }
 
     return parse_file_node

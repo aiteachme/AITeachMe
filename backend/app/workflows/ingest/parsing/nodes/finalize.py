@@ -143,6 +143,7 @@ def build_finalize_failure_node(*, context: WorkflowContext):
                         session,
                         raw_file,
                         parse_error_message=error_message,
+                        parse_metadata_json=state.get("parse_metadata") or raw_file.parse_metadata_json,
                         status=TaskStatus.FAILED.value,
                         ingest_status=IngestStatus.FAILED.value,
                         digest_current_step="ingest.parse.failed",

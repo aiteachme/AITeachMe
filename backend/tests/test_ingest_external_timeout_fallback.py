@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
 from types import SimpleNamespace
 
 import pytest
 
 from app.shared.infra.workflow.context import WorkflowContext
+from app.shared.infra.exceptions import FileParseError
 from app.workflows.ingest.parsing.decision import build_parse_decision
 from app.workflows.ingest.parsing.lib.defaults import (
     DEFAULT_EXTERNAL_PARSE_TIMEOUT_S,
@@ -13,10 +15,97 @@ from app.workflows.ingest.parsing.lib.defaults import (
 )
 from app.workflows.ingest.parsing import paddle_ocr_cloud, paddle_ocr_parallel
 from app.workflows.ingest.parsing.nodes import parse_file as parse_lib
+from app.workflows.ingest.parsing.nodes import finalize as finalize_lib
 from app.workflows.ingest.parsing.orchestrator import FastParseResult
 from app.workflows.ingest.parsing.lib.provider_contracts import ExternalProviderTimeoutError, ParseDecision
 from app.workflows.ingest.parsing.strategy import ParsePlan
 from app.workflows.ingest.parsing.lib.types import ParserRunOptions
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("paddle_outcome", ["success", "failed", "unconfigured"])
+async def test_pdf_timeout_resumes_remaining_provider_when_local_parse_is_empty(
+    monkeypatch, tmp_path, paddle_outcome,
+) -> None:
+    calls: list[str] = []
+
+    async def mineru_parse(**kwargs):
+        calls.append("mineru")
+        raise ExternalProviderTimeoutError("MinerU", 90)
+
+    async def local_parse(**kwargs):
+        calls.append("markitdown")
+        raise FileParseError("scan.pdf", reason="MarkItDown returned empty markdown.")
+
+    async def paddle_parse(**kwargs):
+        calls.append("paddle_ocr")
+        if paddle_outcome == "failed":
+            raise RuntimeError("PaddleOCR HTTP 401 api_token=test-secret")
+        return (
+            parse_lib._ExternalFastParseResult(
+                markdown="# 扫描页识别成功", parser_used="paddle_ocr", attempted_parsers=["paddle_ocr"],
+                parser_elapsed_s={"paddle_ocr": 0.1}, rewritten_image_refs=0,
+                extracted_data_images=0, appended_asset_images=0, needs_enhance=False,
+            ),
+            {"job_id": "test-job"},
+        )
+
+    monkeypatch.setattr(parse_lib, "_run_mineru_external_parse", mineru_parse)
+    monkeypatch.setattr(parse_lib, "_run_paddle_ocr_external_parse", paddle_parse)
+    monkeypatch.setattr(parse_lib, "fast_parse_file", local_parse)
+    monkeypatch.setattr(parse_lib, "ParseProgressTracker", lambda **kwargs: SimpleNamespace(
+        stage=lambda *_args, **_kwargs: None,
+        report=lambda *_args, **_kwargs: None,
+        flush=lambda: None,
+    ))
+    monkeypatch.setattr(parse_lib, "build_parse_plan", lambda **kwargs: ParsePlan(
+        mode="local_markitdown", parser_chain=["markitdown"], decision_reason="test local PDF",
+    ))
+    state = {
+        "user_id": "test-user", "course_id": "test-course", "file_id": "test-file",
+        "filename": "scan.pdf", "filetype": ".pdf", "file_path": str(tmp_path / "scan.pdf"),
+        "local_markdown_path": str(tmp_path / "out" / "markdown.md"),
+        "local_asset_dir": str(tmp_path / "out" / "assets"),
+        "asset_link_prefix": "assets/test-file", "asset_name_prefix": "test-file_",
+        "paddle_ocr_token": "test-secret",
+        "parse_plan": ParsePlan(mode="external_mineru", parser_chain=["mineru"], decision_reason="test"),
+        "parse_decision": build_parse_decision(
+            extension=".pdf", requested_provider=None, mineru_available=True,
+            paddle_ocr_available=paddle_outcome != "unconfigured",
+        ),
+    }
+    node = parse_lib.build_parse_file_node(context=WorkflowContext(workflow_name="test.parse", course_id="test-course"))
+    result = await node(state)
+
+    assert calls == ["mineru", "markitdown", *(["paddle_ocr"] if paddle_outcome != "unconfigured" else [])]
+    metadata = json.loads(result["parse_metadata"])
+    failures = metadata["provider_metadata"]["provider_failures"]
+    assert "MinerU 解析超时" in failures["mineru"]
+    assert "empty markdown" in failures["local"]
+    assert metadata["attempted_parsers"] == calls
+    if paddle_outcome == "success":
+        assert result["error"] is None
+        assert result["parser_used"] == "paddle_ocr"
+        assert result["parsed_markdown"] == "# 扫描页识别成功"
+    else:
+        assert "MinerU 解析超时" in result["error"]
+        assert "empty markdown" in result["error"]
+        assert metadata["provider_status"] == "failed"
+        assert "test-secret" not in result["parse_metadata"]
+        assert "test-secret" not in result["error"]
+
+        @contextmanager
+        def db_session():
+            yield object()
+
+        updates: dict = {}
+        monkeypatch.setattr(finalize_lib, "managed_session", db_session)
+        monkeypatch.setattr(finalize_lib, "get_raw_file_by_id", lambda *_args: SimpleNamespace(user_id="test-user"))
+        monkeypatch.setattr(finalize_lib, "update_raw_file", lambda *_args, **kwargs: updates.update(kwargs))
+        finalize = finalize_lib.build_finalize_failure_node(context=WorkflowContext(workflow_name="test.parse", course_id="test-course"))
+        await finalize(result)
+        assert updates["parse_error_message"] == result["error"]
+        assert json.loads(updates["parse_metadata_json"]) == metadata
 
 
 def test_external_parse_timeout_defaults_are_90_seconds() -> None:
