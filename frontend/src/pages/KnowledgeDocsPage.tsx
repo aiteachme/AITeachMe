@@ -7406,9 +7406,9 @@ export function KnowledgeDocsPage() {
         className="z-40 shrink-0 bg-white/92 backdrop-blur-md dark:bg-slate-900/92 transition-all duration-300 ease-in-out"
         href={courseId ? buildCoursePath(courseId, "nav") : undefined}
       />
-      <div className="relative z-10 flex min-h-0 flex-1 w-full bg-white dark:bg-slate-900">
-      {hasCompactTocControl && (
-          <div className="fixed left-[4.75rem] top-[calc(4.75rem+env(safe-area-inset-top))] z-[79] flex items-center gap-2">
+      {(hasCompactTocControl || hasCompactCommentControl) && (
+        <div className="relative z-20 flex shrink-0 items-center justify-between gap-2 border-b border-slate-200/80 bg-white px-4 py-2 dark:border-slate-800 dark:bg-slate-900">
+          {hasCompactTocControl && (
             <button
               onClick={openTocDrawer}
               className={cn(
@@ -7420,15 +7420,13 @@ export function KnowledgeDocsPage() {
             >
               <FileText className="w-4 h-4" />
             </button>
-          </div>
-      )}
+          )}
 
-      {hasCompactCommentControl && (
-          <div className="fixed right-6 top-[calc(4.75rem+env(safe-area-inset-top))] z-[79] flex items-center gap-2">
+          {hasCompactCommentControl && (
             <button
               onClick={openCommentDrawer}
               className={cn(
-                "relative flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white/95 shadow-sm backdrop-blur-sm transition-colors dark:border-slate-800 dark:bg-slate-950/92",
+                "relative ml-auto flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white/95 shadow-sm backdrop-blur-sm transition-colors dark:border-slate-800 dark:bg-slate-950/92",
                 isCommentVisible ? "bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300" : "text-slate-600 hover:bg-white hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-100"
               )}
               aria-label="切换选区问答"
@@ -7441,9 +7439,11 @@ export function KnowledgeDocsPage() {
                 </span>
               )}
             </button>
-          </div>
+          )}
+        </div>
       )}
 
+      <div className="relative z-10 flex min-h-0 flex-1 w-full bg-white dark:bg-slate-900">
       {activeDrawer && isCompactPanels && (
         <button
           onClick={closeDrawer}
