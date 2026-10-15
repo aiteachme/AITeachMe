@@ -2,9 +2,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link2, Loader2, LogOut, ShieldCheck, Unlink } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
-import { apiClient, getApiErrorMessage, notifyApiAuthChanged, setApiCsrfToken } from "../api/client";
+import { apiClient, getApiErrorMessage } from "../api/client";
 import { useAuthSession } from "../hooks/useAuthSession";
-import { AUTH_SESSION_QUERY_KEY } from "../lib/authSession";
+import { applyAuthSessionChange, AUTH_SESSION_QUERY_KEY } from "../lib/authSession";
 
 type ProviderName = "google" | "qq" | "wechat";
 type ApiResponse<T> = { data: T };
@@ -66,10 +66,8 @@ export function AccountPage() {
   const logoutAll = useMutation({
     mutationFn: async () => apiClient({ url: "/api/v1/auth/logout-all", method: "POST", data: {} }),
     onSuccess: async () => {
-      notifyApiAuthChanged();
-      setApiCsrfToken(null);
-      queryClient.setQueryData(AUTH_SESSION_QUERY_KEY, null);
-      await queryClient.invalidateQueries();
+      applyAuthSessionChange(queryClient, null);
+      await queryClient.invalidateQueries({ queryKey: AUTH_SESSION_QUERY_KEY, exact: true });
       navigate("/?auth=login", { replace: true });
     },
   });

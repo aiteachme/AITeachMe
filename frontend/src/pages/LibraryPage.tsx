@@ -1038,6 +1038,21 @@ export function LibraryPage() {
         </div>
       ) : null}
 
+      {filesQuery.isError ? (
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
+          <span>{getApiErrorMessage(filesQuery.error, "资料库加载失败，请重试")}</span>
+          <button
+            type="button"
+            onClick={() => void filesQuery.refetch()}
+            disabled={filesQuery.isFetching}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-red-200 bg-white/80 px-3 text-xs font-medium transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-900 dark:bg-red-950/40 dark:hover:bg-red-950/70"
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5", filesQuery.isFetching && "animate-spin")} />
+            重新加载
+          </button>
+        </div>
+      ) : null}
+
       {uploadingNames.length > 0 ? (
         <div className="mt-5 rounded-lg border border-indigo-100 bg-indigo-50 px-4 py-3 dark:border-indigo-900/60 dark:bg-indigo-950/30">
           <div className="flex items-center gap-2 text-sm font-medium text-indigo-700 dark:text-indigo-300">
@@ -1063,7 +1078,7 @@ export function LibraryPage() {
         </div>
       ) : null}
 
-      {!filesQuery.isLoading && !hasFiles ? (
+      {!filesQuery.isLoading && !filesQuery.isError && !hasFiles ? (
         <div className="mt-10 flex min-h-[180px] flex-col items-center justify-center px-6 pb-12 text-center sm:mt-14 sm:pb-0">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100/80 text-slate-500 dark:bg-slate-800/80 dark:text-slate-400">
             <FolderOpen className="h-5 w-5" />
@@ -1252,7 +1267,12 @@ export function LibraryPage() {
               onClick={() => {
                 const file = visibleFiles.find((f) => f.id === openMenuId);
                 setOpenMenuId(null);
-                if (file) void downloadLibraryFile(file.id, file.filename);
+                if (file) {
+                  setError(null);
+                  void downloadLibraryFile(file.id, file.filename).catch((err: unknown) => {
+                    setError(getApiErrorMessage(err, "下载资料失败，请重试"));
+                  });
+                }
               }}
               className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-slate-700 transition hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
             >

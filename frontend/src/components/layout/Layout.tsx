@@ -20,6 +20,7 @@ import {
 } from "../../lib/knowledgeBuildRuntime";
 import { cn } from "../../lib/utils";
 import { isElectronRuntime } from "../../lib/electronRuntime";
+import { useApiAuthGeneration } from "../../hooks/useApiAuthGeneration";
 import { ACTIVE_DOC_BUILD_STATUSES } from "../knowledge-docs/utils";
 import { CoursePagePillTitle, ENABLE_PERSISTENT_COURSE_NAV } from "../course/CoursePagePillTitle";
 import {
@@ -42,6 +43,7 @@ const COURSE_TOP_NAV_META: Record<string, { icon: LucideIcon; label: string }> =
 };
 
 export function Layout() {
+  const apiAuthGeneration = useApiAuthGeneration();
   const location = useLocation();
   const { pathname } = location;
   const isElectron = isElectronRuntime();
@@ -145,7 +147,7 @@ export function Layout() {
 
   return (
     <>
-      <AiInteractionProvider activeScope={activeInteractionScope}>
+      <AiInteractionProvider key={apiAuthGeneration} activeScope={activeInteractionScope}>
         <div
           className={cn(
             "app-shell relative flex min-h-0 overflow-hidden bg-[#fafafa] selection:bg-zinc-200 dark:bg-[#0b0f19] dark:selection:bg-slate-700",

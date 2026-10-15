@@ -3,18 +3,15 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { BarChart3, Coins, Github, Link2, Loader2, LogIn, LogOut, MessageSquareText, Shield, User } from "lucide-react";
 import {
-  abortActiveApiRequests,
   apiClient,
   getApiErrorMessage,
-  notifyApiAuthChanged,
-  setApiCsrfToken,
 } from "../../api/client";
 import { listCoursesApiApiV1CoursesListPost } from "../../api/generated/courses";
 import { examHistoryApiV1CoursesCourseIdExamsHistoryGet } from "../../api/generated/exams";
 import { listChatApiApiV1CoursesCourseIdChatsListPost } from "../../api/generated/chats";
 import type { AuthSessionData, ChatMessageItem, CourseItem, ExamHistoryItem, RuntimeUser } from "../../api/generated/model";
 import { resetAnalyticsIdentity, syncAnalyticsUserIdentity, trackAnalyticsEvent } from "../../lib/analytics";
-import { AUTH_SESSION_QUERY_KEY } from "../../lib/authSession";
+import { applyAuthSessionChange } from "../../lib/authSession";
 import { useAuthSession } from "../../hooks/useAuthSession";
 import {
   buildLearningActivityEvents,
@@ -542,10 +539,8 @@ export function TopBar({ className }: TopBarProps) {
         method: "POST",
         data: {},
       });
-      abortActiveApiRequests();
       const currentUser = response.data.current_user ?? null;
-      setApiCsrfToken(response.data.csrf_token);
-      queryClient.setQueryData(AUTH_SESSION_QUERY_KEY, response.data);
+      applyAuthSessionChange(queryClient, response.data);
       trackAnalyticsEvent("auth_logout_succeeded", {
         was_authenticated: Boolean(authUser?.is_authenticated),
       });
@@ -640,10 +635,8 @@ export function TopBar({ className }: TopBarProps) {
         method: "POST",
         data: requestData,
       });
-      notifyApiAuthChanged();
       const currentUser = response.data.current_user ?? null;
-      setApiCsrfToken(response.data.csrf_token);
-      queryClient.setQueryData(AUTH_SESSION_QUERY_KEY, response.data);
+      applyAuthSessionChange(queryClient, response.data);
       const mergeOffer = response.data.merge_offer as
         | { job_id?: string; counts?: { courses?: number; files?: number; chats?: number; exams?: number } }
         | null
@@ -653,8 +646,12 @@ export function TopBar({ className }: TopBarProps) {
         if (window.confirm(
           `检测到当前游客身份中有 ${counts.courses ?? 0} 门课程、${counts.files ?? 0} 个文件、${counts.chats ?? 0} 个对话和 ${counts.exams ?? 0} 份试卷。是否迁移到刚登录的账号？`,
         )) {
-          await apiClient({ url: `/api/v1/auth/merge/${mergeOffer.job_id}/confirm`, method: "POST", data: {} });
-          await queryClient.invalidateQueries();
+          try {
+            await apiClient({ url: `/api/v1/auth/merge/${mergeOffer.job_id}/confirm`, method: "POST", data: {} });
+            await queryClient.invalidateQueries();
+          } catch (error) {
+            window.alert(`登录成功，但游客学习数据迁移未完成：${getApiErrorMessage(error, "可重新登录后再试。")}`);
+          }
         }
       }
       syncAnalyticsUserIdentity({

@@ -961,8 +961,8 @@ export function HomePage() {
       navigate(buildCoursePath(courseId, "build"), {
         state: { initialPrompt: userGoal, autoStart: true, entrySource: "home_arrow", model: selectedModel },
       });
-    } catch {
-      // ensureDraftCourseId already writes user-facing error.
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, "开始课程规划失败，请重试"));
     } finally {
       setIsStartingBuild(false);
     }

@@ -79,6 +79,9 @@ jobs:
       - name: Run SSE parser tests
         run: npm run test:sse
 
+      - name: Run authentication session change tests
+        run: npm run test:auth-session-change
+
       - name: Run question marking tests
         run: npm run test:question-marking
 
