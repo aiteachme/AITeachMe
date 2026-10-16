@@ -937,8 +937,8 @@ def trigger_docgen_build(
         user_id=user_id,
         plan_id=confirmed_plan_id,
     )
-    if plan.status == "building":
-        raise CourseBuildLockConflictError(course.id)
+    # A stopped worker can leave the plan marked building. The atomic lease
+    # acquisition below is the authority for rejecting an active build.
     planner_session_id = plan.planner_session_id
     digest_mode = plan.digest_mode
     planner_plan = str((plan.plan_json or {}).get("plan") or plan.plan or "")

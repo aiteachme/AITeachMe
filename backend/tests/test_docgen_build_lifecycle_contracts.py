@@ -4,7 +4,7 @@ import asyncio
 import json
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from threading import Event, get_ident
 from types import SimpleNamespace
 
@@ -222,7 +222,7 @@ def test_file_selection_and_trigger_docgen_build_write_runtime_contracts(
     assert len(statuses[0]["chapter_progress"]) == 2
 
 
-def test_trigger_docgen_build_rejects_missing_or_busy_confirmed_plan(
+def test_trigger_docgen_build_rejects_missing_confirmed_plan(
     session: Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -245,9 +245,72 @@ def test_trigger_docgen_build_rejects_missing_or_busy_confirmed_plan(
             confirmed_plan_id=None,
         )
 
+
+@pytest.mark.parametrize("cloud_mode", [False, True], ids=["local", "cloud"])
+@pytest.mark.parametrize("lease_state", ["absent", "expired", "active", "published", "renewed"])
+def test_trigger_docgen_build_retries_building_plan_only_without_a_live_lease(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+    cloud_mode: bool,
+    lease_state: str,
+) -> None:
+    import app.shared.infra.database as database
+
+    course = _seed_course_and_files(session)
+    scope = build_course_storage_scope(user_id=USER_ID, course_id=COURSE_ID)
+    now = datetime.now(timezone.utc)
+    statuses: list[dict[str, object]] = []
+    prepared: list[str] = []
+
+    @contextmanager
+    def isolated_managed_session():
+        with Session(session.get_bind(), expire_on_commit=False) as db:
+            try:
+                yield db
+                db.commit()
+            except Exception:
+                db.rollback()
+                raise
+
+    monkeypatch.setattr(database, "managed_session", isolated_managed_session)
+    monkeypatch.setattr(build_store, "is_cloud_mode", lambda: cloud_mode)
+    monkeypatch.setattr(build_store, "get_runtime_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(build_lifecycle, "utcnow", lambda: now)
     monkeypatch.setattr(build_lifecycle, "get_confirmed_build_plan", lambda *args, **kwargs: _confirmed_plan(status="building"))
-    with pytest.raises(CourseBuildLockConflictError):
-        build_lifecycle.trigger_docgen_build(
+    monkeypatch.setattr(build_lifecycle, "_new_build_session_id", lambda: "retry-group")
+    monkeypatch.setattr(build_lifecycle, "inspect_course_build_precheck", lambda *args, **kwargs: prepared.append("precheck") or None)
+    monkeypatch.setattr(
+        build_lifecycle,
+        "resolve_course_build_vector_status",
+        lambda *args, **kwargs: CourseVectorStatusResponse(mode="disabled"),
+    )
+    monkeypatch.setattr(build_lifecycle, "_clear_docgen_staging_safely", lambda *args, **kwargs: prepared.append("staging"))
+    monkeypatch.setattr(
+        build_lifecycle,
+        "update_knowledge_build_lane_status",
+        lambda *args, **kwargs: statuses.append(kwargs),
+    )
+
+    if lease_state != "absent":
+        old_requested_at = (
+            now - build_store.STALE_BUILD_LOCK_TTL - timedelta(seconds=1)
+            if lease_state in {"expired", "renewed"}
+            else now
+        )
+        previous = build_store.KnowledgeBuildLock(
+            requested_at=old_requested_at,
+            heartbeat_at=now if lease_state == "renewed" else None,
+            build_group_id="previous-group",
+            phase="published" if lease_state == "published" else "active",
+            publish_completed_at=now if lease_state == "published" else None,
+        )
+        monkeypatch.setattr(build_store, "utcnow", lambda: previous.heartbeat_at or previous.requested_at)
+        assert build_store.acquire_knowledge_build_lock(COURSE_ID, previous, course_scope=scope)
+    monkeypatch.setattr(build_store, "utcnow", lambda: now)
+
+    def retry():
+        return build_lifecycle.trigger_docgen_build(
             session,
             course=course,
             user_id=USER_ID,
@@ -256,6 +319,115 @@ def test_trigger_docgen_build_rejects_missing_or_busy_confirmed_plan(
             embedding_resolution=None,
             confirmed_plan_id="plan-1",
         )
+
+    if lease_state in {"active", "published", "renewed"}:
+        with pytest.raises(CourseBuildLockConflictError):
+            retry()
+        assert prepared == []
+        assert statuses == []
+        assert build_store.read_knowledge_build_lock(COURSE_ID, course_scope=scope).build_group_id == "previous-group"
+        return
+
+    build_data, file_ids, group_id = retry()
+
+    assert build_data.confirmed_plan_id == "plan-1"
+    assert file_ids == ["file-ready"]
+    assert group_id == "retry-group"
+    assert prepared == ["precheck", "staging"]
+    assert statuses[0]["status"] == "accepted"
+    assert statuses[0]["build_group_id"] == "retry-group"
+    assert build_store.read_knowledge_build_lock(COURSE_ID, course_scope=scope).build_group_id == "retry-group"
+    assert not build_store.release_knowledge_build_lock(COURSE_ID, build_group_id="previous-group", course_scope=scope)
+    assert not build_store.renew_knowledge_build_lock(COURSE_ID, build_group_id="previous-group", course_scope=scope)
+    assert build_store.claim_knowledge_build_publish(COURSE_ID, build_group_id="previous-group", course_scope=scope) is None
+
+    # A concurrent retry must respect the replacement owner, even while the
+    # confirmed plan still carries the previous worker's building snapshot.
+    monkeypatch.setattr(build_lifecycle, "_new_build_session_id", lambda: "another-retry-group")
+    with pytest.raises(CourseBuildLockConflictError):
+        retry()
+    assert len(statuses) == 1
+    assert build_store.read_knowledge_build_lock(COURSE_ID, course_scope=scope).build_group_id == "retry-group"
+
+
+@pytest.mark.parametrize("outcome", ["success", "failure", "exception", "cancelled"])
+def test_docgen_background_does_not_finalize_same_plan_after_lease_takeover(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+    outcome: str,
+) -> None:
+    import app.workflows.digest as digest_workflows
+    from app.shared.infra.workflow import err_result, ok_result
+    from app.workflows.digest.kg_doc_sync.lib import prefetch as prefetch_module
+
+    now = datetime.now(timezone.utc)
+    scope = build_course_storage_scope(user_id=USER_ID, course_id=COURSE_ID)
+    previous = build_store.KnowledgeBuildLock(requested_at=now, build_group_id="previous-group")
+    replacement = build_store.KnowledgeBuildLock(requested_at=now, build_group_id="retry-group")
+    plan_statuses: list[str] = []
+    docgen_writes: list[str] = []
+    graph_writes: list[str] = []
+    staging_clears: list[str] = []
+
+    async def fake_heartbeat(**_kwargs) -> None:
+        await asyncio.Future()
+
+    async def finish_old_workflow(**_kwargs):
+        expired = previous.model_copy(
+            update={"requested_at": now - build_store.STALE_BUILD_LOCK_TTL - timedelta(seconds=1)},
+        )
+        build_store._local_build_lock_path(scope).write_text(expired.model_dump_json(), encoding="utf-8")
+        assert build_store.acquire_knowledge_build_lock(COURSE_ID, replacement, course_scope=scope)
+        if outcome == "exception":
+            raise RuntimeError("old worker resumed after lease expiry")
+        if outcome == "cancelled":
+            raise asyncio.CancelledError()
+        return err_result("old_failure", "old worker failed") if outcome == "failure" else ok_result({})
+
+    monkeypatch.setattr(build_store, "is_cloud_mode", lambda: False)
+    monkeypatch.setattr(build_store, "get_runtime_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(
+        build_lifecycle,
+        "get_settings",
+        lambda: SimpleNamespace(knowledge_graph=SimpleNamespace(sync_after_docgen=True)),
+    )
+    monkeypatch.setattr(build_lifecycle, "maintain_knowledge_build_lock_lease", fake_heartbeat)
+    monkeypatch.setattr(
+        build_lifecycle,
+        "_load_confirmed_plan_payload",
+        lambda **_kwargs: (_confirmed_plan(status="building"), {"plan": "confirmed"}),
+    )
+    monkeypatch.setattr(build_lifecycle, "_mark_confirmed_plan_status", lambda **kwargs: plan_statuses.append(kwargs["status"]))
+    monkeypatch.setattr(build_lifecycle, "_write_docgen_status", lambda *args, **kwargs: docgen_writes.append(kwargs["status"]))
+    monkeypatch.setattr(build_lifecycle, "_write_graph_status", lambda *args, **kwargs: graph_writes.append(kwargs["status"]))
+    monkeypatch.setattr(build_lifecycle, "_clear_docgen_staging_safely", lambda *args, **kwargs: staging_clears.append("clear"))
+    monkeypatch.setattr(build_lifecycle, "_docgen_publish_completed_for_owner", lambda **_kwargs: False)
+    monkeypatch.setattr(digest_workflows, "run_docgen_workflow", finish_old_workflow)
+    monkeypatch.setattr(prefetch_module, "cancel_docgen_kg_prefetch", lambda **_kwargs: None)
+    assert build_store.acquire_knowledge_build_lock(COURSE_ID, previous, course_scope=scope)
+
+    async def run_old_worker():
+        await build_lifecycle.run_docgen_background(
+            course_id=COURSE_ID,
+            file_ids=["file-ready"],
+            prompt="build",
+            requested_at=now,
+            build_group_id="previous-group",
+            confirmed_plan_id="plan-1",
+            user_id=USER_ID,
+        )
+
+    if outcome == "cancelled":
+        with pytest.raises(asyncio.CancelledError):
+            asyncio.run(run_old_worker())
+    else:
+        asyncio.run(run_old_worker())
+
+    assert plan_statuses == ["building"]
+    assert docgen_writes == ["running"]
+    assert graph_writes == ["accepted"]
+    assert staging_clears == ["clear"]
+    assert build_store.read_knowledge_build_lock(COURSE_ID, course_scope=scope).build_group_id == "retry-group"
 
 
 def test_trigger_docgen_build_does_not_mutate_vectors_before_lock(
