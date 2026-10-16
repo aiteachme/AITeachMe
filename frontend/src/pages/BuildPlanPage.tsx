@@ -66,6 +66,7 @@ import {
   useGlobalChatModelChoice,
 } from "../components/chat/ChatModelSelect";
 import { useKnowledgeBuildFlow } from "../hooks/useKnowledgeBuildFlow";
+import { useAuthSession } from "../hooks/useAuthSession";
 import {
   buildKnowledgeBuildRuntimeQueryKey,
   fetchKnowledgeBuildRuntime,
@@ -140,7 +141,8 @@ interface SubmitPlannerPromptOptions {
 let messageCounter = 0;
 
 const nextMessageId = () => `msg_${Date.now()}_${++messageCounter}`;
-const storageKey = (courseId: string) => `${STORAGE_PREFIX}:${courseId}`;
+const storageKey = (userId: string, courseId: string) =>
+  `${STORAGE_PREFIX}:${encodeURIComponent(userId)}:${encodeURIComponent(courseId)}`;
 
 function logPlannerDebug(event: string, payload: Record<string, unknown> = {}) {
   if (!import.meta.env.DEV) {
@@ -562,13 +564,13 @@ async function copyTextToClipboard(text: string): Promise<void> {
   document.body.removeChild(textarea);
 }
 
-function readPersistedPlannerState(courseId: string): PersistedPlannerState | null {
-  if (!courseId || typeof window === "undefined") {
+function readPersistedPlannerState(userId: string | null, courseId: string): PersistedPlannerState | null {
+  if (!userId || !courseId || typeof window === "undefined") {
     return null;
   }
 
   try {
-    const key = storageKey(courseId);
+    const key = storageKey(userId, courseId);
     const raw =
       window.localStorage.getItem(key) ??
       window.sessionStorage.getItem(key);
@@ -601,11 +603,11 @@ function readPersistedPlannerState(courseId: string): PersistedPlannerState | nu
   }
 }
 
-function persistPlannerState(courseId: string, value: PersistedPlannerState) {
-  if (!courseId || typeof window === "undefined") {
+function persistPlannerState(userId: string | null, courseId: string, value: PersistedPlannerState) {
+  if (!userId || !courseId || typeof window === "undefined") {
     return;
   }
-  const key = storageKey(courseId);
+  const key = storageKey(userId, courseId);
   const serialized = JSON.stringify({
     ...value,
     version: PLANNER_STATE_VERSION,
@@ -1958,10 +1960,30 @@ function pickAssistantReply(response: BuildPlannerSessionResponse, fallbackConte
 
 export function BuildPlanPage() {
   const { courseId = "" } = useParams();
+  const authSession = useAuthSession();
+  const plannerUserId = authSession.data?.current_user?.user_id?.trim() || null;
+  return (
+    <BuildPlanPageContent
+      key={plannerUserId ? storageKey(plannerUserId, courseId) : "pending-identity"}
+      plannerUserId={plannerUserId}
+      plannerAuthError={authSession.isError}
+    />
+  );
+}
+
+function BuildPlanPageContent({
+  plannerUserId,
+  plannerAuthError,
+}: {
+  plannerUserId: string | null;
+  plannerAuthError: boolean;
+}) {
+  const { courseId = "" } = useParams();
   const { toast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
+  const plannerScope = plannerUserId && courseId ? storageKey(plannerUserId, courseId) : null;
 
   const navState = location.state as BuildPlanLocationState | null;
   const requestedAt = useMemo(
@@ -1973,18 +1995,33 @@ export function BuildPlanPage() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const plannerSessionIdRef = useRef<string | null>(null);
   const currentPlanRef = useRef<BuildPlannerPlanResponse | null>(null);
-  const hydratedCourseRef = useRef<string | null>(null);
-  const localInteractionCourseRef = useRef<string | null>(null);
+  const [hydratedPlannerScope, setHydratedPlannerScope] = useState<string | null>(null);
+  const localInteractionPlannerScopeRef = useRef<string | null>(null);
   const plannerStreamingRawRef = useRef("");
   const plannerAbortControllerRef = useRef<AbortController | null>(null);
   const plannerPendingMessageIdRef = useRef<string | null>(null);
   const plannerStreamInFlightRef = useRef(false);
   const autoStartFiredRef = useRef(false);
+  const plannerPageMountedRef = useRef(false);
+
+  useEffect(() => {
+    plannerPageMountedRef.current = true;
+    return () => {
+      plannerPageMountedRef.current = false;
+      const controller = plannerAbortControllerRef.current;
+      // StrictMode immediately sets the effect up again; only abort a real unmount.
+      queueMicrotask(() => {
+        if (!plannerPageMountedRef.current) {
+          controller?.abort();
+        }
+      });
+    };
+  }, []);
 
   const markPlannerLocalInteraction = useCallback(() => {
-    localInteractionCourseRef.current = courseId;
-    hydratedCourseRef.current = courseId;
-  }, [courseId]);
+    localInteractionPlannerScopeRef.current = plannerScope;
+    setHydratedPlannerScope(plannerScope);
+  }, [plannerScope]);
 
   const [messages, setMessages] = useState<ChatMessage[]>(() => createInitialMessages());
   const [plannerSessionId, setPlannerSessionId] = useState<string | null>(null);
@@ -2157,7 +2194,7 @@ export function BuildPlanPage() {
   });
 
   useEffect(() => {
-    if (!courseId) {
+    if (!plannerScope) {
       return;
     }
     let cancelled = false;
@@ -2174,15 +2211,15 @@ export function BuildPlanPage() {
     // 如果用户在页面初次挂载后的极短时间内已经开始本地交互
     // （例如很快发送了一条 planner 消息），不要再执行后续恢复逻辑，
     // 否则异步恢复结果会把本地插入的 assistant 占位消息覆盖掉。
-    if (localInteractionCourseRef.current === courseId) {
+    if (localInteractionPlannerScopeRef.current === plannerScope) {
       logPlannerDebug("skip_restore_after_local_interaction", { courseId });
       return;
     }
 
-    hydratedCourseRef.current = null;
+    setHydratedPlannerScope(null);
 
-    // 先尝试恢复本地缓存，但只有存在真实 planner session 时才信任。
-    const persisted = readPersistedPlannerState(courseId);
+    // 仅恢复当前身份和课程的缓存；旧的无归属缓存不自动迁移。
+    const persisted = readPersistedPlannerState(plannerUserId, courseId);
     if (persisted?.plannerSessionId && persisted.messages?.length) {
       const persistedPlan = usablePlannerPlan(persisted.currentPlan);
       const hasPersistedStreamingMessage = persisted.messages.some((message) => message.streaming);
@@ -2218,20 +2255,22 @@ export function BuildPlanPage() {
             : null,
         );
         setHasAutoUploaded(false);
-        hydratedCourseRef.current = courseId;
+        setHydratedPlannerScope(plannerScope);
         return;
       }
     }
 
     // 本地没有可用缓存时，从后端恢复最近一次 planner 会话。
+    const controller = new AbortController();
     async function restoreFromServer() {
       try {
         logPlannerDebug("restore_latest_request", { courseId });
         const response = await apiClient<ApiResponse<BuildPlannerSessionResponse | null>>({
           method: "POST",
           url: `/api/v1/courses/${courseId}/knowledge/build/plans/latest`,
+          signal: controller.signal,
         });
-        if (cancelled || localInteractionCourseRef.current === courseId) return;
+        if (cancelled || localInteractionPlannerScopeRef.current === plannerScope) return;
         const session = response.data;
         const latestPlan = usablePlannerPlan(session?.latest_plan);
         const status = plannerSessionStatus(session);
@@ -2255,7 +2294,7 @@ export function BuildPlanPage() {
           setPlannerNeedsRefresh(false);
           setDiagnosisGate(null);
           setHasAutoUploaded(false);
-          hydratedCourseRef.current = courseId;
+          setHydratedPlannerScope(plannerScope);
           return;
         }
 
@@ -2280,10 +2319,10 @@ export function BuildPlanPage() {
         setPlannerNeedsRefresh(false);
         setDiagnosisGate(createPlannerDiagnosisGate(session.session_id, latestPlan));
         setHasAutoUploaded(false);
-        hydratedCourseRef.current = courseId;
+        setHydratedPlannerScope(plannerScope);
       } catch {
         // 后端恢复失败时，回到一个干净的新会话。
-        if (cancelled || localInteractionCourseRef.current === courseId) return;
+        if (cancelled || localInteractionPlannerScopeRef.current === plannerScope) return;
         logPlannerDebug("restore_latest_failed", { courseId });
         setMessages(createInitialMessages());
         setPlannerSessionId(null);
@@ -2293,14 +2332,17 @@ export function BuildPlanPage() {
         setPlannerNeedsRefresh(false);
         setDiagnosisGate(null);
         setHasAutoUploaded(false);
-        hydratedCourseRef.current = courseId;
+        setHydratedPlannerScope(plannerScope);
       }
     }
 
     void restoreFromServer();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [courseId]);
+  }, [courseId, plannerScope]);
 
   useEffect(() => {
     plannerSessionIdRef.current = plannerSessionId;
@@ -2313,12 +2355,15 @@ export function BuildPlanPage() {
     }
 
     let cancelled = false;
+    const controller = new AbortController();
+    let timeoutId: number | undefined;
 
     async function refreshLatestPlannerSession() {
       try {
         const response = await apiClient<ApiResponse<BuildPlannerSessionResponse | null>>({
           method: "POST",
           url: `/api/v1/courses/${courseId}/knowledge/build/plans/latest`,
+          signal: controller.signal,
         });
         if (cancelled) {
           return;
@@ -2329,6 +2374,9 @@ export function BuildPlanPage() {
         }
 
         const status = plannerSessionStatus(session);
+        if (!isPlannerServerStatusPending(status)) {
+          cancelled = true;
+        }
         const latestPlan = usablePlannerPlan(session.latest_plan);
         setPlannerServerStatus(status);
         setCurrentPlan(latestPlan);
@@ -2346,29 +2394,34 @@ export function BuildPlanPage() {
           void queryClient.invalidateQueries({ queryKey: ["courses"] });
         }
       } catch (error) {
+        if (cancelled) {
+          return;
+        }
         logPlannerDebug("poll_latest_planner_failed", {
           courseId,
           plannerSessionId,
           error: getApiErrorMessage(error, "unknown"),
         });
+      } finally {
+        if (!cancelled) {
+          timeoutId = window.setTimeout(() => { void refreshLatestPlannerSession(); }, 2500);
+        }
       }
     }
 
     void refreshLatestPlannerSession();
-    const intervalId = window.setInterval(() => {
-      void refreshLatestPlannerSession();
-    }, 2500);
     return () => {
       cancelled = true;
-      window.clearInterval(intervalId);
+      window.clearTimeout(timeoutId);
+      controller.abort();
     };
   }, [courseId, plannerServerStatus, plannerSessionId, plannerStreaming, queryClient]);
 
   useEffect(() => {
-    if (!courseId || hydratedCourseRef.current !== courseId) {
+    if (!plannerScope || hydratedPlannerScope !== plannerScope) {
       return;
     }
-    persistPlannerState(courseId, {
+    persistPlannerState(plannerUserId, courseId, {
       messages,
       plannerSessionId,
       currentPlan,
@@ -2376,7 +2429,7 @@ export function BuildPlanPage() {
       plannerNeedsRefresh,
       diagnosisGate,
     });
-  }, [currentPlan, diagnosisGate, inputValue, messages, plannerNeedsRefresh, plannerSessionId, courseId]);
+  }, [currentPlan, diagnosisGate, inputValue, messages, plannerNeedsRefresh, plannerSessionId, courseId, plannerScope, hydratedPlannerScope]);
 
   useEffect(() => {
     if (!editingMessageId) {
@@ -2390,12 +2443,12 @@ export function BuildPlanPage() {
   }, [editingMessageId, messages]);
 
   useEffect(() => {
-    if (hydratedCourseRef.current !== courseId || !currentPlan) {
+    if (!plannerScope || hydratedPlannerScope !== plannerScope || !currentPlan) {
       return;
     }
     const selected = currentPlan.selected_file_ids ?? [];
     setPlannerNeedsRefresh(selected.length > 0 && !sameStringSet(selected, plannerFileIds));
-  }, [currentPlan, plannerFileIds, courseId]);
+  }, [currentPlan, plannerFileIds, courseId, plannerScope, hydratedPlannerScope]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -2407,6 +2460,7 @@ export function BuildPlanPage() {
       !navState?.autoStart ||
       autoStartFiredRef.current ||
       plannerStreamInFlightRef.current ||
+      !plannerScope ||
       !courseId ||
       plannerSessionId ||
       plannerStreaming
@@ -2534,6 +2588,7 @@ export function BuildPlanPage() {
     handlePlannerStatusPayload,
     markPlannerLocalInteraction,
     courseId,
+    plannerScope,
     navState?.autoStart,
     navState?.entrySource,
     plannerSessionId,
@@ -2710,7 +2765,7 @@ export function BuildPlanPage() {
   });
 
   const isRestoredPlannerPending = isPlannerServerStatusPending(plannerServerStatus) && !plannerStreaming;
-  const isPlannerPending = plannerStreaming || isRestoredPlannerPending || confirmPlannerMutation.isPending;
+  const isPlannerPending = !plannerScope || plannerStreaming || isRestoredPlannerPending || confirmPlannerMutation.isPending;
   const isDiagnosisPending = isPlannerDiagnosisPending(diagnosisGate, currentPlan, plannerSessionId);
   const isBuilding = knowledgeBuild.isPending || isBuildActive;
   const canRefreshDiagnosisOnRevision = Boolean(
@@ -3599,7 +3654,9 @@ export function BuildPlanPage() {
     queueUploadFiles,
   ]);
 
-  const inputPlaceholder = isDiagnosisPending
+  const inputPlaceholder = !plannerScope
+    ? plannerAuthError ? "账户加载失败，请刷新页面重试" : "正在加载账户，请稍候..."
+    : isDiagnosisPending
     ? "先完成上方建课第一步诊断，或直接跳过"
     : hasUsablePlannerPlan(currentPlan)
       ? "直接说想怎么改当前方案，例如：把函数思想拆成两章"
@@ -3670,10 +3727,12 @@ export function BuildPlanPage() {
                     <img src={LOGO_SRC} alt="AI" className="h-full w-full object-contain" />
                   </div>
                   <h1 className="mt-5 text-xl font-semibold tracking-normal text-zinc-950 dark:text-slate-100">
-                    准备规划一门课程
+                    {plannerScope ? "准备规划一门课程" : plannerAuthError ? "账户加载失败" : "正在加载账户"}
                   </h1>
                   <p className="mt-2 text-sm leading-6 text-zinc-500 dark:text-slate-400">
-                    说出目标或加入资料后，我会整理一版可以确认和调整的构建方案。
+                    {plannerScope
+                      ? "说出目标或加入资料后，我会整理一版可以确认和调整的构建方案。"
+                      : plannerAuthError ? "请刷新页面后重试。" : "加载完成后即可继续规划课程。"}
                   </p>
                 </div>
               </div>

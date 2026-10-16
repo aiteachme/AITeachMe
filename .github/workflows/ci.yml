@@ -82,6 +82,9 @@ jobs:
       - name: Run authentication session change tests
         run: npm run test:auth-session-change
 
+      - name: Run planner recovery tests
+        run: npm run test:planner-recovery
+
       - name: Run question marking tests
         run: npm run test:question-marking
 
