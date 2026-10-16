@@ -19,8 +19,10 @@ from urllib.parse import parse_qs, unquote, urlsplit
 
 import structlog
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlmodel import Session, SQLModel, func, select
 
+from app.shared.infra.exceptions import InvalidImportPackageError
 from app.shared.infra.runtime import get_app_version, is_cloud_mode
 from app.shared.infra.storage import (
     build_course_storage_scope,
@@ -660,6 +662,7 @@ def _import_table(
     id_map[spec.name] = table_id_map  # Register early to support self-referencing foreign keys
     self_fk_fields = {fk_field for fk_field, ref_table in spec.fk_remap.items() if ref_table == spec.name}
     pending_self_refs: list[tuple[SQLModel, dict[str, Any], Any]] = []
+    merged_record_ids: dict[tuple[Any, ...], Any] = {}
     imported_at = utcnow()
     published_source_ids = {
         published_knowledge_docs_source_id(str(course_id))
@@ -788,8 +791,33 @@ def _import_table(
                     file_id=instance.file_id, chunk_index=instance.chunk_index,
                     title=instance.title, content=instance.content,
                 )
+            # Older packages can contain distinct source IDs that import as
+            # one library file. Merge their links and identical chunks too,
+            # preserving every old ID for subsequent citation remapping.
+            merge_key = None
+            if isinstance(instance, CourseFileLink):
+                merge_key = (instance.file_id,)
+            elif isinstance(instance, RetrievalChunk):
+                merge_key = (
+                    instance.file_id, instance.chunk_index, instance.title,
+                    instance.level, instance.header_path, instance.content, instance.is_active,
+                )
+            if merge_key is not None and merge_key in merged_record_ids:
+                if old_id is not None:
+                    table_id_map[old_id] = merged_record_ids[merge_key]
+                continue
             session.add(instance)
             session.flush()
+            if merge_key is not None:
+                merged_record_ids[merge_key] = getattr(instance, spec.id_field)
+        except IntegrityError as exc:
+            raise InvalidImportPackageError(
+                f"数据表 `{spec.name}` 存在冲突或无效关联，请检查课程包是否有重复记录或缺失关联。"
+            ) from exc
+        except SQLAlchemyError:
+            # A failed flush invalidates the transaction; import_course must
+            # roll it back instead of continuing with a poisoned session.
+            raise
         except Exception as exc:
             warnings.append(f"{spec.name}: skipped record (old_id={old_id}): {exc}")
             continue

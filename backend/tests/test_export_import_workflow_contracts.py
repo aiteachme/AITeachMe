@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from datetime import datetime
 import hashlib
 import json
 import zipfile
@@ -214,6 +215,191 @@ def _seed_course_graph(session: Session) -> None:
         )
     )
     session.commit()
+
+
+def _write_import_fixture(tmp_path: Path, tables: dict[str, list[dict]]) -> Path:
+    package_path = tmp_path / "synthetic-import.atmx"
+    manifest = export_module._ExportManifest(
+        course=export_module._ManifestCourse(course_id=COURSE_ID, name="Import regression"),
+    )
+    with zipfile.ZipFile(package_path, "w") as archive:
+        archive.writestr("manifest.json", manifest.model_dump_json())
+        for table_name, records in tables.items():
+            archive.writestr(f"db/{table_name}.json", json.dumps({"records": records}))
+    return package_path
+
+
+@pytest.mark.parametrize("timestamp", [
+    "2026-10-16T08:00:00",
+    "2026-10-16T08:00:00Z",
+    "2026-10-16T16:00:00+08:00",
+])
+def test_import_course_accepts_naive_and_aware_package_dates(
+    session: Session, export_import_store: _FakeStore, tmp_path: Path, timestamp: str,
+) -> None:
+    package_path = _write_import_fixture(tmp_path, {
+        "course": [{"id": COURSE_ID, "name": "Dates", "created_at": timestamp}],
+        "chat_session": [{
+            "id": "old-chat", "course_id": COURSE_ID, "title": "Dates",
+            "created_at": timestamp, "updated_at": timestamp, "last_message_at": timestamp,
+        }],
+        "knowledge_document": [{
+            "id": 1, "course_id": COURSE_ID, "title": "Dates", "chapter_index": 1,
+            "created_at": timestamp, "updated_at": timestamp, "published_at": None,
+        }],
+    })
+
+    result = import_module.import_course(
+        session, file_path=package_path,
+        options=ImportOptions(rebuild_embeddings=False), user_id="import-test",
+    )
+
+    assert result.imported_counts == {"course": 1, "knowledge_document": 1, "chat_session": 1}
+    assert result.warnings == []
+    session.expire_all()
+    chat = session.exec(select(ChatSession).where(ChatSession.course_id == result.course_id)).one()
+    document = session.exec(select(KnowledgeDocument).where(KnowledgeDocument.course_id == result.course_id)).one()
+    assert isinstance(chat.created_at, datetime)
+    assert isinstance(document.created_at, datetime)
+    assert document.published_at is None
+
+
+@pytest.mark.parametrize("preload_existing_file", [False, True])
+@pytest.mark.parametrize("commit", [False, True])
+def test_import_course_reports_constraint_conflict_and_rolls_back(
+    session: Session, export_import_store: _FakeStore, tmp_path: Path,
+    preload_existing_file: bool, commit: bool,
+) -> None:
+    existing_file = None
+    if preload_existing_file:
+        existing_file = RawFile(
+            id="existing-file", user_id="import-test",
+            filename="existing.md", filetype="md", file_path="existing.md",
+        )
+        session.add(existing_file)
+        session.commit()
+        session.expire_all()
+        assert session.get(RawFile, "existing-file") is existing_file
+
+    package_path = _write_import_fixture(tmp_path, {
+        "course": [{"id": COURSE_ID, "name": "Conflicting links"}],
+        "raw_file": [{"id": "old-file", "filename": "source.md", "filetype": "md", "file_path": ""}],
+        "knowledge_unit": [
+            {"id": index, "course_id": COURSE_ID, "knowledge_unit_type": "concept",
+             "canonical_name": "Lists", "normalized_name": "lists"}
+            for index in (1, 2)
+        ],
+    })
+
+    with pytest.raises(InvalidImportPackageError, match="knowledge_unit"):
+        import_module.import_course(
+            session, file_path=package_path,
+            options=ImportOptions(rebuild_embeddings=False), user_id="import-test", commit=commit,
+        )
+
+    assert session.is_active
+    assert session.exec(select(Course)).all() == []
+    assert session.exec(select(RawFile)).all() == ([] if existing_file is None else [existing_file])
+    assert session.exec(select(CourseFileLink)).all() == []
+    assert export_import_store.writes == {}
+
+
+@pytest.mark.parametrize("existing_owner", [None, "import-test", "another-user"])
+@pytest.mark.parametrize("different_parse_signature", [False, True])
+def test_import_legacy_duplicate_sources_preserves_links_and_citations(
+    session: Session, export_import_store: _FakeStore, tmp_path: Path,
+    existing_owner: str | None, different_parse_signature: bool,
+) -> None:
+    existing_file = None
+    file_data = {
+        "filename": "lists.md", "filetype": "md", "file_path": "",
+        "content_hash": "a" * 64, "file_size_bytes": 20,
+        "parse_request_signature": "default", "status": "completed",
+        "markdown_content": "# Lists\nA list contains ordered elements.",
+    }
+    if existing_owner:
+        existing_file = RawFile(id="existing-source", user_id=existing_owner, **file_data)
+        session.add(existing_file)
+        session.commit()
+
+    package_path = _write_import_fixture(tmp_path, {
+        "course": [{"id": COURSE_ID, "name": "Legacy source reuse"}],
+        "raw_file": [
+            {**file_data, "id": "old-a", "user_id": "export-author"},
+            {**file_data, "id": "old-b", "user_id": "export-author",
+             "parse_request_signature": "alternate" if different_parse_signature else "default"},
+        ],
+        "course_file": [
+            {"id": index, "file_id": old_id, "course_id": COURSE_ID}
+            for index, old_id in enumerate(("old-a", "old-b"), 1)
+        ],
+        "retrieval_chunk": [
+            {"id": index, "file_id": old_id, "course_id": COURSE_ID,
+             "title": "Lists", "level": 1, "header_path": "Lists", "chunk_index": 1,
+             "digest_chunk_uid": f"legacy-{old_id}", "content": file_data["markdown_content"]}
+            for index, old_id in enumerate(("old-a", "old-b"), 10)
+        ],
+        "chat_session": [{"id": "old-chat", "course_id": COURSE_ID, "title": "Lists"}],
+        "chat_message": [{
+            "id": 99, "session_id": "old-chat", "course_id": COURSE_ID,
+            "turn_id": "legacy-turn", "role": "assistant", "content": "See the source.", "source_chunk_id": 11,
+            "contexts_json": [{"chunk_id": 11, "file_id": "old-b"}],
+        }],
+    })
+
+    result = import_module.import_course(
+        session, file_path=package_path,
+        options=ImportOptions(rebuild_embeddings=False), user_id="import-test",
+    )
+
+    expected_count = 2 if different_parse_signature else 1
+    links = session.exec(select(CourseFileLink).where(CourseFileLink.course_id == result.course_id)).all()
+    chunks = session.exec(select(RetrievalChunk).where(RetrievalChunk.course_id == result.course_id)).all()
+    message = session.exec(select(ChatMessage).where(ChatMessage.course_id == result.course_id)).one()
+    assert len(links) == len(chunks) == expected_count
+    assert {chunk.file_id for chunk in chunks} == {link.file_id for link in links}
+    assert all(session.get(RawFile, link.file_id).user_id == "import-test" for link in links)
+    if existing_owner == "import-test":
+        assert "existing-source" in {link.file_id for link in links}
+    elif existing_owner:
+        assert "existing-source" not in {link.file_id for link in links}
+        assert existing_file.user_id == existing_owner
+    cited = session.get(RetrievalChunk, message.source_chunk_id)
+    assert cited is not None
+    assert message.contexts_json == [{"chunk_id": cited.id, "file_id": cited.file_id}]
+    assert cited.content == file_data["markdown_content"]
+
+
+@pytest.mark.parametrize("conflict", [
+    {"content": "Different content"}, {"title": "Different title"},
+    {"level": 2}, {"header_path": "Different section"}, {"is_active": False},
+])
+def test_import_does_not_merge_conflicting_retrieval_chunks(
+    session: Session, export_import_store: _FakeStore, tmp_path: Path, conflict: dict,
+) -> None:
+    chunk = {
+        "course_id": COURSE_ID, "file_id": "old-file", "chunk_index": 1,
+        "title": "Lists", "level": 1, "header_path": "Lists", "content": "Lists are ordered.",
+    }
+    package_path = _write_import_fixture(tmp_path, {
+        "course": [{"id": COURSE_ID, "name": "Conflicting chunks"}],
+        "raw_file": [{"id": "old-file", "filename": "lists.md", "filetype": "md", "file_path": ""}],
+        "retrieval_chunk": [
+            {**chunk, "id": 1, "digest_chunk_uid": "old-a"},
+            {**chunk, **conflict, "id": 2, "digest_chunk_uid": "old-b"},
+        ],
+    })
+
+    with pytest.raises(InvalidImportPackageError, match="retrieval_chunk"):
+        import_module.import_course(
+            session, file_path=package_path,
+            options=ImportOptions(rebuild_embeddings=False), user_id="import-test",
+        )
+
+    assert session.is_active
+    assert session.exec(select(Course)).all() == []
+    assert session.exec(select(RawFile)).all() == []
+    assert session.exec(select(RetrievalChunk)).all() == []
 
 
 def test_export_preview_and_archive_include_selected_course_graph(

@@ -15,6 +15,7 @@ from typing import Any
 import structlog
 from langsmith import tracing_context
 from pydantic import ValidationError
+from sqlalchemy import inspect
 from sqlmodel import Session, select
 
 from app.models import ChatSession, Course, KnowledgeDocument, RawFile, RetrievalChunk
@@ -296,14 +297,21 @@ def import_course(
                 session.flush()
         except Exception:
             file_scope = get_content_store().user_file_scope(user_id=user_id)
-            imported_file_prefixes = {
-                file_scope.file_prefix(file_id=item.id, filename=item.filename)
-                for item in [*session.identity_map.values(), *session.new]
-                if isinstance(item, RawFile)
-                and item.user_id == user_id
-                and item.origin_course_id == new_course_id
-                and item.id
-            }
+            imported_file_prefixes = set()
+            for item in [*session.identity_map.values(), *session.new]:
+                if not isinstance(item, RawFile):
+                    continue
+                # Failed flushes expire ORM attributes. Read only loaded state
+                # so cleanup cannot query the failed transaction before rollback.
+                data = inspect(item).dict
+                if (
+                    data.get("user_id") == user_id
+                    and data.get("origin_course_id") == new_course_id
+                    and data.get("id")
+                ):
+                    imported_file_prefixes.add(
+                        file_scope.file_prefix(file_id=data["id"], filename=data.get("filename"))
+                    )
             session.rollback()
             cleanup_imported_course_artifacts(
                 new_course_id,
@@ -615,8 +623,17 @@ def _unpack_files(
     cs = get_content_store()
 
     def _raw_file_for_old_id(old_id: Any) -> RawFile | None:
-        new_id = _lookup_imported_id(old_id, file_id_map) or old_id
-        return session.get(RawFile, str(new_id)) if new_id is not None else None
+        new_id = _lookup_imported_id(old_id, file_id_map)
+        if new_id is None:
+            return None
+        raw_file = session.get(RawFile, str(new_id))
+        if (
+            raw_file is None
+            or raw_file.user_id != user_id
+            or raw_file.origin_course_id != new_course_id
+        ):
+            return None
+        return raw_file
 
     file_segments = _exported_raw_file_segments(extract_dir)
     for old_id, file_segment in file_segments.items():
