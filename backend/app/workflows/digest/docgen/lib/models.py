@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
+from typing_extensions import TypedDict
 
 from app.workflows.digest.common.pedagogy import (
     is_usable_resolved_chapter_title,
@@ -44,6 +45,21 @@ LEARNING_CONTENT_ROLE_TYPES: tuple[str, ...] = (
     "misconception",
     "application_case",
 )
+
+ChapterUnitTestQuestionType = Literal[
+    "概念判断", "选择题", "填空题", "步骤排序", "错因辨析", "短答题", "应用迁移", "图表读取", "推导证明",
+]
+
+
+class ChapterEndPracticeGroup(TypedDict, total=False):
+    """Expose optional exact type quotas to new brief generation without changing dict consumers."""
+
+    target: str
+    example_type: str
+    purpose: str
+    min_examples: int
+    question_count: int
+    question_type: ChapterUnitTestQuestionType | None
 
 
 def clean_content_role_targets(value: Any, *, item_limit: int = 8) -> dict[str, list[str]]:
@@ -93,13 +109,14 @@ def clean_chapter_end_practice_plan(value: Any, *, limit: int = 12) -> list[dict
     """Preserve exact chapter-end group counts without changing example coverage."""
     items = value if isinstance(value, list) else ([] if value is None else [value])
     counted = any(isinstance(item, dict) and "question_count" in item for item in items)
-    if counted and len(items) > limit:
+    typed = any(isinstance(item, dict) and item.get("question_type") is not None for item in items)
+    if (counted or typed) and len(items) > limit:
         raise ValueError("chapter-end question groups exceed the supported plan size")
     cleaned: list[dict[str, Any]] = []
     for item in items:
         entry = clean_example_coverage_plan([item], limit=1)
         if not entry:
-            if counted:
+            if counted or typed:
                 raise ValueError("every counted chapter-end question group must have a target")
             continue
         if isinstance(item, dict) and "question_count" in item:
@@ -107,6 +124,15 @@ def clean_chapter_end_practice_plan(value: Any, *, limit: int = 12) -> list[dict
             if type(count) is not int or not 1 <= count <= 12:
                 raise ValueError("chapter-end question_count must be an integer from 1 to 12")
             entry[0]["question_count"] = count
+        if isinstance(item, dict) and "question_type" in item:
+            question_type = item["question_type"]
+            if question_type is not None:
+                question_type = clean_text(question_type)
+                if question_type not in get_args(ChapterUnitTestQuestionType):
+                    raise ValueError(f"unsupported chapter-end question_type: {question_type!r}")
+                if "question_count" not in entry[0]:
+                    raise ValueError("an explicit chapter-end question_type requires question_count")
+            entry[0]["question_type"] = question_type
         cleaned.extend(entry)
         if len(cleaned) >= limit:
             break
@@ -605,6 +631,8 @@ class ChapterExecutionBrief(DocGenBaseModel):
 
 class ChapterExecutionBriefForGeneration(ChapterExecutionBrief):
     """New LLM briefs must make every explicit chapter-end allocation verifiable."""
+
+    chapter_end_practice_plan: list[ChapterEndPracticeGroup] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _complete_question_groups(self) -> "ChapterExecutionBriefForGeneration":
