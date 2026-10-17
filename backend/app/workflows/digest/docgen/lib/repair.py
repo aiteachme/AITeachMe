@@ -64,8 +64,9 @@ _PATCH_PRESENTATION_REGRESSION_MARKERS = (
 
 class _LocalMarkdownPatch(DocGenBaseModel):
     status: Literal["patch", "no_change"] = "patch"
-    operation: Literal["append", "replace_section"] = "append"
+    operation: Literal["append", "replace_section", "replace_text"] = "append"
     target_anchor: str = ""
+    original_text: str = ""
     patch_markdown: str = ""
     covered_action_ids: list[str] = Field(default_factory=list)
     unresolved_action_ids: list[str] = Field(default_factory=list)
@@ -122,9 +123,10 @@ def _heading_match(line: str):
 
 
 def _find_heading_section(markdown: str, *, anchor: str, chapter_title: str) -> tuple[int, int] | None:
-    normalized_anchor = _normalize_anchor(anchor)
+    anchor_heading = _heading_match(anchor)
+    normalized_anchor = _normalize_anchor(anchor_heading.group("title") if anchor_heading else anchor)
     normalized_title = _normalize_anchor(chapter_title)
-    if not normalized_anchor or normalized_anchor == normalized_title:
+    if not normalized_anchor or (anchor_heading is None and normalized_anchor == normalized_title):
         return None
     lines = str(markdown or "").splitlines(keepends=True)
     offsets: list[int] = []
@@ -137,9 +139,12 @@ def _find_heading_section(markdown: str, *, anchor: str, chapter_title: str) -> 
         if match is None:
             continue
         heading_title = _normalize_anchor(match.group("title"))
-        if normalized_anchor not in heading_title and heading_title not in normalized_anchor:
-            continue
         level = len(match.group("marks"))
+        if anchor_heading is not None:
+            if level != len(anchor_heading.group("marks")) or heading_title != normalized_anchor:
+                continue
+        elif normalized_anchor not in heading_title and heading_title not in normalized_anchor:
+            continue
         end_index = len(lines)
         for next_index in range(index + 1, len(lines)):
             next_match = _heading_match(lines[next_index])
@@ -290,6 +295,71 @@ def _heading_titles(markdown: str, *, levels: set[int]) -> list[str]:
         if len(match.group("marks")) in levels:
             titles.append(match.group("title").strip())
     return titles
+
+
+def _chapter_boundary_headings(markdown: str) -> list[tuple[int, int, str]]:
+    headings: list[tuple[int, int, str]] = []
+    offset = 0
+    fence_state: tuple[str, int] | None = None
+    for line in markdown.splitlines(keepends=True):
+        fence_state, is_fence_boundary = _advance_fence_state(line, fence_state)
+        if not is_fence_boundary and fence_state is None:
+            heading = _heading_match(line)
+            if heading is not None and len(heading.group("marks")) <= 2:
+                headings.append((offset, offset + len(line), line.rstrip("\r\n")))
+        offset += len(line)
+    return headings
+
+
+def _exact_text_patch_span(
+    markdown: str,
+    *,
+    original_text: str,
+    replacement: str,
+) -> tuple[tuple[int, int] | None, str]:
+    # Match the supplied source verbatim: normalizing it can target a different occurrence.
+    if not original_text.strip() or len(original_text) > _MAX_LOCAL_PATCH_CHARS:
+        return None, "精确替换原文必须非空且不超过局部补丁长度上限。"
+    if len(replacement) > _MAX_LOCAL_PATCH_CHARS:
+        return None, "精确替换内容超过局部补丁长度上限。"
+    start = markdown.find(original_text)
+    if start < 0 or markdown.find(original_text, start + 1) >= 0:
+        return None, "精确替换原文必须在当前章中逐字唯一匹配，不能省略或改写原文空白。"
+    end = start + len(original_text)
+    headings = _chapter_boundary_headings(markdown)
+    for heading_start, heading_end, _ in headings:
+        if start < heading_end and end > heading_start:
+            return None, "精确替换不能修改或跨越一级、二级标题边界。"
+    unit_test_starts = [
+        heading_start for heading_start, _, line in headings
+        if re.fullmatch(r"##\s+单元测试\s*", line.strip())
+    ]
+    if unit_test_starts and end > unit_test_starts[-1]:
+        return None, "正文精确替换不能触及章末单元测试，测试修补须返回完整测试模块。"
+    patched = markdown[:start] + replacement + markdown[end:]
+    if [line for _, _, line in headings] != [line for _, _, line in _chapter_boundary_headings(patched)]:
+        return None, "精确替换必须保持原有一级、二级标题序列。"
+    return (start, end), ""
+
+
+def _changed_markdown_contexts(original: str, patched: str) -> tuple[str, str]:
+    start = 0
+    while start < min(len(original), len(patched)) and original[start] == patched[start]:
+        start += 1
+    tail = 0
+    while (
+        tail < min(len(original), len(patched)) - start
+        and original[-tail - 1] == patched[-tail - 1]
+    ):
+        tail += 1
+
+    def _context(markdown: str) -> str:
+        end = len(markdown) - tail
+        left = markdown.rfind("\n", 0, max(0, start - 1500)) + 1
+        right = markdown.find("\n", min(len(markdown), end + 1500))
+        return _trim_patch_context(markdown[left:right if right >= 0 else len(markdown)])
+
+    return _context(original), _context(patched)
 
 
 def _duplicate_h2_titles(markdown: str) -> list[str]:
@@ -804,12 +874,40 @@ async def _apply_llm_patch_actions(
         for action_index, action in indexed_actions
     )
     append_to_end = unit_test_patch
-    patch_markdown = _clean_patch_snippet(patch.patch_markdown, chapter_title=chapter.title)
+    replace_text = patch.operation == "replace_text" and not unit_test_patch
+    patch_markdown = (
+        patch.patch_markdown if replace_text
+        else _clean_patch_snippet(patch.patch_markdown, chapter_title=chapter.title)
+    )
     if unit_test_patch:
         patch_markdown = normalize_unit_test_choice_answers(patch_markdown)
     target_anchor = patch.target_anchor or _fallback_patch_target_anchor(indexed_actions, covered_keys=covered_keys)
     replace_section = patch.operation == "replace_section" and not unit_test_patch
+    replaced_span = None
     if patch.status != "no_change":
+        if patch.operation == "replace_text" and unit_test_patch:
+            return chapter, _rejected_llm_patch_results(
+                indexed_actions=indexed_actions, repair_round=repair_round,
+                llm_call_group=llm_call_group,
+                reason="单元测试修补必须返回完整测试模块，不能使用正文精确替换。",
+            ), indexed_actions
+        if patch.operation == "append" and not unit_test_patch and any(
+            action.severity == "error" for key, (_, action) in action_keys.items() if key in covered_keys
+        ):
+            return chapter, _rejected_llm_patch_results(
+                indexed_actions=indexed_actions, repair_round=repair_round,
+                llm_call_group=llm_call_group,
+                reason="错误级正文动作不能使用 append，必须用 replace_text 原位替换错误原文，或 replace_section 替换完整小节；不能保留旧错后追加相反结论。",
+            ), indexed_actions
+        if replace_text:
+            replaced_span, risk_reason = _exact_text_patch_span(
+                chapter.markdown, original_text=patch.original_text, replacement=patch_markdown,
+            )
+            if risk_reason:
+                return chapter, _rejected_llm_patch_results(
+                    indexed_actions=indexed_actions, repair_round=repair_round,
+                    llm_call_group=llm_call_group, reason=risk_reason,
+                ), indexed_actions
         if replace_section:
             section = _find_heading_section(chapter.markdown, anchor=target_anchor, chapter_title=chapter.title)
             allowed_sections = [
@@ -825,12 +923,13 @@ async def _apply_llm_patch_actions(
                     llm_call_group=llm_call_group,
                     reason="替换补丁必须定位现有小节并保留其完整标题。",
                 ), indexed_actions
+            replaced_span = section
         risk_reason = _local_patch_risk_reason(
             original_markdown=chapter.markdown,
             patch_markdown=patch_markdown,
             append_to_end=append_to_end,
             unit_test_patch=unit_test_patch,
-            replace_section=replace_section,
+            replace_section=replace_section or replace_text,
         )
         if risk_reason:
             return chapter, _rejected_llm_patch_results(
@@ -842,6 +941,8 @@ async def _apply_llm_patch_actions(
     patched = (
         chapter.markdown
         if patch.status == "no_change"
+        else chapter.markdown[:replaced_span[0]] + patch_markdown + chapter.markdown[replaced_span[1]:]
+        if replace_text and replaced_span is not None
         else _insert_local_patch(
             chapter.markdown,
             patch_markdown,
@@ -853,17 +954,18 @@ async def _apply_llm_patch_actions(
         )
     )
     if patched and patched != chapter.markdown:
+        replaces_body = replace_section or replace_text
         contract_question_removal = (
-            replace_section
+            replaces_body
             and any(action.severity == "error" for key, (_, action) in action_keys.items() if key in covered_keys)
             and _removes_forbidden_body_questions(chapter.markdown, patched, quantity_contract)
         )
-        if replace_section and not contract_question_removal and len(_question_callout_records(chapter.markdown)) != len(_question_callout_records(patched)):
+        if replaces_body and not contract_question_removal and len(_question_callout_records(chapter.markdown)) != len(_question_callout_records(patched)):
             return chapter, _rejected_llm_patch_results(
                 indexed_actions=indexed_actions, repair_round=repair_round,
                 llm_call_group=llm_call_group, reason="替换小节不得改变现有 QUESTION 题目数量。",
             ), indexed_actions
-        preserve_exercise_identity = not replace_section and _should_preserve_exercise_identity(
+        preserve_exercise_identity = not replaces_body and _should_preserve_exercise_identity(
             [action for _, action in indexed_actions],
             unit_test_patch=unit_test_patch,
         )
@@ -882,7 +984,17 @@ async def _apply_llm_patch_actions(
         normalized_patched = normalize_docgen_presentation(patched, title=chapter.title)
         preserve_unit_test_contract = unit_test_patch or not unit_test_structure_issues(chapter.markdown)
         if preserve_unit_test_contract:
-            structure_issues = unit_test_structure_issues(normalized_patched)
+            expected_question_count = (
+                ((quantity_contract or {}).get("quantity_constraints") or {}).get("chapter_end_question_count")
+            )
+            if not unit_test_patch and unit_test_structure_issues(
+                chapter.markdown, expected_question_count=expected_question_count,
+            ):
+                # Body fixes may precede a separate repair of an already wrong test count.
+                expected_question_count = None
+            structure_issues = unit_test_structure_issues(
+                normalized_patched, expected_question_count=expected_question_count,
+            )
             if structure_issues:
                 return chapter, _rejected_llm_patch_results(
                     indexed_actions=indexed_actions,
@@ -930,28 +1042,30 @@ async def _apply_llm_patch_actions(
     covered_actions = [payload for payload in action_payloads if payload["repair_action_key"] in covered_keys]
     if any(payload["severity"] == "error" for payload in covered_actions):
         pending_actions = []
-        replaced_section = _find_heading_section(
-            chapter.markdown, anchor=target_anchor, chapter_title=chapter.title,
-        ) if patch.operation == "replace_section" else None
-        if replaced_section is not None:
+        if replaced_span is not None:
             for action_index, action in pending_indexed_actions or []:
                 section = _find_heading_section(
                     chapter.markdown, anchor=action.target_anchor, chapter_title=chapter.title,
                 )
                 if action.severity == "error" and section is not None and (
-                    section[1] <= replaced_section[0] or section[0] >= replaced_section[1]
+                    section[1] <= replaced_span[0] or section[0] >= replaced_span[1]
                 ):
                     pending_actions.append({
                         **action.model_dump(mode="json"),
                         "repair_action_key": _repair_action_key(action_index, action),
                     })
+        original_context, patched_context = _changed_markdown_contexts(chapter.markdown, patched)
+        patched_chapter = chapter.model_copy(update={"markdown": patched})
         try:
             review_result = await acompletion_with_fallback(
                 build_patch_verification_messages(
                     chapter_title=chapter.title,
                     actions=covered_actions,
                     patch_markdown=patch_markdown,
-                    related_markdown_context=_related_patch_context(chapter, [action_keys[key][1] for key in covered_keys]),
+                    operation=patch.operation,
+                    original_markdown=original_context,
+                    patched_markdown_context=patched_context,
+                    related_markdown_context=_related_patch_context(patched_chapter, [action_keys[key][1] for key in covered_keys]),
                     quantity_contract=quantity_contract,
                     pending_actions=pending_actions,
                 ),
@@ -1135,7 +1249,7 @@ async def repair_or_route_review_actions(
                     ],
                     quantity_contract={
                         key: tasks_by_index.get(chapter.chapter_index, {}).get(key)
-                        for key in ("quantity_constraints", "writing_rules")
+                        for key in ("quantity_constraints", "writing_rules", "chapter_end_practice_plan")
                     },
                 )
                 repair_round += 1

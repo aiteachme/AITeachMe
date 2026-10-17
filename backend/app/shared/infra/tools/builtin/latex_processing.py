@@ -6,8 +6,9 @@ import re
 
 _BLOCK_PATTERN = re.compile(r"\\\[([\s\S]*?)\\\]")
 _INLINE_PATTERN = re.compile(r"\\\(([\s\S]*?)\\\)")
-_FENCE_PATTERN = re.compile(r"(```[\s\S]*?```)")
-_SINGLE_LINE_BLOCK_RE = re.compile(r"\$\$\s*([^\n$][\s\S]*?[^\n$])\s*\$\$")
+_QUOTE_PREFIX_RE = re.compile(r"^(?:[ \t]{0,3}>[ \t]?)+")
+_FENCE_LINE_RE = re.compile(r"^[ \t]*(?P<marker>`{3,}|~{3,})(?P<info>[^\r\n]*)$")
+_SINGLE_LINE_BLOCK_RE = re.compile(r"\$\$[ \t]*([^\n$]+?)[ \t]*\$\$")
 _EMPTY_INLINE_RE = re.compile(r"(?<!\$)\$\s+\$(?!\$)")
 _EMPTY_BLOCK_RE = re.compile(r"\$\$\s*\$\$")
 
@@ -30,8 +31,61 @@ def validate_latex(markdown: str) -> str:
 
 
 def _process_non_fenced(markdown: str, processor) -> str:
-    parts = _FENCE_PATTERN.split(str(markdown or ""))
-    return "".join(part if part.startswith("```") else _process_non_inline_code(part, processor) for part in parts)
+    """Process prose inside its quote container, keeping fenced code verbatim."""
+    parts: list[str] = []
+    prose: list[tuple[str, str]] = []
+    quote_prefix = ""
+    quote_depth = 0
+    active_fence = ""
+    active_math_closer = ""
+
+    def flush_prose() -> None:
+        text = "".join(body for _, body in prose)
+        processed = _process_non_inline_code(text, processor)
+        if processed == text:
+            parts.append("".join(raw for raw, _ in prose))
+        elif quote_prefix:
+            parts.append("".join(quote_prefix + line for line in processed.splitlines(keepends=True)))
+        else:
+            parts.append(processed)
+        prose.clear()
+
+    for raw_line in str(markdown or "").splitlines(keepends=True):
+        if active_math_closer:
+            # A leading > inside display math can be a relation, not a new quote.
+            container = re.match(rf"^(?:[ \t]{{0,3}}>[ \t]?){{{quote_depth}}}", raw_line)
+            body = raw_line[container.end():] if container else raw_line
+            prose.append((raw_line, body))
+            if active_math_closer in body:
+                active_math_closer = ""
+            continue
+        quoted = _QUOTE_PREFIX_RE.match(raw_line)
+        prefix = quoted.group(0) if quoted else ""
+        body = raw_line[len(prefix):]
+        fence = _FENCE_LINE_RE.match(body.rstrip("\r\n"))
+        if active_fence:
+            parts.append(raw_line)
+            if fence and not fence.group("info").strip() and (
+                fence.group("marker")[0] == active_fence[0]
+                and len(fence.group("marker")) >= len(active_fence)
+            ):
+                active_fence = ""
+            continue
+        if fence and (fence.group("marker")[0] != "`" or "`" not in fence.group("info")):
+            flush_prose()
+            parts.append(raw_line)
+            active_fence = fence.group("marker")
+            continue
+        depth = prefix.count(">")
+        if prose and depth != quote_depth:
+            flush_prose()
+        if not prose:
+            quote_prefix, quote_depth = prefix, depth
+        prose.append((raw_line, body))
+        if body.strip() in ("$$", r"\["):
+            active_math_closer = "$$" if body.strip() == "$$" else r"\]"
+    flush_prose()
+    return "".join(parts)
 
 
 def _process_non_inline_code(segment: str, processor) -> str:
@@ -88,8 +142,8 @@ def _validate_math_segment(segment: str) -> str:
 
 
 def _separate_block_math(segment: str) -> str:
-    separated = re.sub(r"(?<!\n)\$\$", "\n$$", segment)
-    separated = re.sub(r"\$\$(?!\n)", "$$\n", separated)
+    separated = re.sub(r"(?<=[^\n])\$\$", "\n$$", segment)
+    separated = re.sub(r"\$\$(?=[^\n])", "$$\n", separated)
     return separated
 
 

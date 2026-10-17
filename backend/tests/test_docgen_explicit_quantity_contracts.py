@@ -34,6 +34,7 @@ from app.workflows.digest.docgen.lib.writer import (
 )
 from app.workflows.digest.docgen.nodes.generate_chapters import _chapter_plan_for_writer
 from app.workflows.digest.docgen.nodes import assemble_chapter_tasks, merge_review
+from app.workflows.digest.docgen.prompts.chapter_review import build_chapter_review_messages
 from app.workflows.digest.docgen.prompts.document_review import build_document_review_messages
 from app.workflows.digest.docgen.prompts.generation import build_docgen_writer_messages
 
@@ -71,7 +72,7 @@ async def test_no_retrieval_brief_preserves_user_contract_through_writer_and_qui
             },
             content_role_targets={"concept": ["列表索引", "列表切片"]},
             example_coverage_plan=[{"target": "索引取值"}, {"target": "切片边界"}],
-            chapter_end_practice_plan=[{"target": "负索引"}, {"target": "切片终点"}],
+            chapter_end_practice_plan=[{"target": "负索引", "question_count": 1}, {"target": "切片终点", "question_count": 1}],
             retrieval_queries=[],
         )
 
@@ -131,6 +132,13 @@ async def test_no_retrieval_brief_preserves_user_contract_through_writer_and_qui
     )[-1]["content"]
     assert "'worked_example_count': 2" in review_prompt
     assert "'chapter_end_question_count': 2" in review_prompt
+    chapter_review_prompt = build_chapter_review_messages(
+        chapter_title=TITLE, digest_mode="sprint", chapter_task=task.model_dump(mode="json"),
+        markdown=markdown, claim_ledger={}, claim_evidence_map={}, conflict_report={}, rule_review={},
+    )[-1]["content"]
+    assert "'inline_practice_count': 0" in chapter_review_prompt
+    assert "'chapter_end_question_count': 2" in chapter_review_prompt
+    assert "仅2小节、2示例、2练习，1200–1600字，不联网。" in chapter_review_prompt
 
 
 def test_unspecified_quantities_keep_mode_defaults() -> None:

@@ -89,6 +89,50 @@ def clean_example_coverage_plan(value: Any, *, limit: int = 16) -> list[dict[str
     return cleaned
 
 
+def clean_chapter_end_practice_plan(value: Any, *, limit: int = 12) -> list[dict[str, Any]]:
+    """Preserve exact chapter-end group counts without changing example coverage."""
+    items = value if isinstance(value, list) else ([] if value is None else [value])
+    counted = any(isinstance(item, dict) and "question_count" in item for item in items)
+    if counted and len(items) > limit:
+        raise ValueError("chapter-end question groups exceed the supported plan size")
+    cleaned: list[dict[str, Any]] = []
+    for item in items:
+        entry = clean_example_coverage_plan([item], limit=1)
+        if not entry:
+            if counted:
+                raise ValueError("every counted chapter-end question group must have a target")
+            continue
+        if isinstance(item, dict) and "question_count" in item:
+            count = item["question_count"]
+            if type(count) is not int or not 1 <= count <= 12:
+                raise ValueError("chapter-end question_count must be an integer from 1 to 12")
+            entry[0]["question_count"] = count
+        cleaned.extend(entry)
+        if len(cleaned) >= limit:
+            break
+    return cleaned
+
+
+def validate_chapter_end_question_plan(
+    plan: list[dict[str, Any]], *, expected_question_count: int | None, require_counts: bool = False,
+) -> None:
+    """Count disjoint question groups; legacy coverage plans remain readable."""
+    has_counts = any("question_count" in item for item in plan)
+    if not has_counts and not (require_counts and expected_question_count is not None):
+        return
+    if expected_question_count is None:
+        raise ValueError("counted chapter-end question groups require an explicit chapter_end_question_count")
+    if not plan or any("question_count" not in item for item in plan):
+        raise ValueError("every chapter-end question group must declare its exact question_count")
+    total = sum(item["question_count"] for item in plan)
+    if total != expected_question_count:
+        raise ValueError(
+            f"chapter-end question group total {total} must equal chapter_end_question_count {expected_question_count}; "
+            "recheck the original user request and confirmed plan, preserve every explicitly requested group, "
+            "and correct either the derived total or the disjoint allocation; do not treat this generated total as user-confirmed"
+        )
+
+
 def clean_int_list(value: Any, *, limit: int | None = None) -> list[int]:
     items = value if isinstance(value, list) else ([] if value is None else [value])
     cleaned: list[int] = []
@@ -485,8 +529,11 @@ class ChapterQuantityConstraints(DocGenBaseModel):
 
     body_section_count: int | None = Field(default=None, ge=1)
     worked_example_count: int | None = Field(default=None, ge=0)
-    inline_practice_count: int | None = Field(default=None, ge=0)
-    chapter_end_question_count: int | None = Field(default=None, ge=1, le=12)
+    inline_practice_count: int | None = Field(default=None, ge=0, description="正文中的练习总数，不含最终单元测试模块里的章末题组。")
+    chapter_end_question_count: int | None = Field(
+        default=None, ge=1, le=12,
+        description="最终单元测试模块内全部章末题目的总数；独立的章末练习与短测题组相加，包含关系不重复计数，正文练习另计。",
+    )
     min_word_count: int | None = Field(default=None, ge=1)
     max_word_count: int | None = Field(default=None, ge=1)
 
@@ -536,10 +583,37 @@ class ChapterExecutionBrief(DocGenBaseModel):
     def _content_role_targets(cls, value: Any) -> dict[str, list[str]]:
         return clean_content_role_targets(value, item_limit=6)
 
-    @field_validator("example_coverage_plan", "chapter_end_practice_plan", mode="before")
+    @field_validator("example_coverage_plan", mode="before")
     @classmethod
     def _example_coverage_plan(cls, value: Any) -> list[dict[str, Any]]:
         return clean_example_coverage_plan(value, limit=12)
+
+
+    @field_validator("chapter_end_practice_plan", mode="before")
+    @classmethod
+    def _chapter_end_practice_plan(cls, value: Any) -> list[dict[str, Any]]:
+        return clean_chapter_end_practice_plan(value, limit=12)
+
+    @model_validator(mode="after")
+    def _chapter_end_question_groups(self) -> "ChapterExecutionBrief":
+        validate_chapter_end_question_plan(
+            self.chapter_end_practice_plan,
+            expected_question_count=self.quantity_constraints.chapter_end_question_count,
+        )
+        return self
+
+
+class ChapterExecutionBriefForGeneration(ChapterExecutionBrief):
+    """New LLM briefs must make every explicit chapter-end allocation verifiable."""
+
+    @model_validator(mode="after")
+    def _complete_question_groups(self) -> "ChapterExecutionBriefForGeneration":
+        validate_chapter_end_question_plan(
+            self.chapter_end_practice_plan,
+            expected_question_count=self.quantity_constraints.chapter_end_question_count,
+            require_counts=True,
+        )
+        return self
 
 
 class ChapterBudgetPolicy(DocGenBaseModel):
@@ -738,10 +812,15 @@ class ChapterGenerationTask(DocGenBaseModel):
     def _task_content_role_targets(cls, value: Any) -> dict[str, list[str]]:
         return clean_content_role_targets(value, item_limit=10)
 
-    @field_validator("example_coverage_plan", "chapter_end_practice_plan", mode="before")
+    @field_validator("example_coverage_plan", mode="before")
     @classmethod
     def _task_example_coverage_plan(cls, value: Any) -> list[dict[str, Any]]:
         return clean_example_coverage_plan(value, limit=24)
+
+    @field_validator("chapter_end_practice_plan", mode="before")
+    @classmethod
+    def _task_chapter_end_practice_plan(cls, value: Any) -> list[dict[str, Any]]:
+        return clean_chapter_end_practice_plan(value, limit=24)
 
     @field_validator("fallback_policy", "citation_policy", "uncertainty_policy", mode="before")
     @classmethod
@@ -760,6 +839,10 @@ class ChapterGenerationTask(DocGenBaseModel):
 
     @model_validator(mode="after")
     def _finish(self) -> "ChapterGenerationTask":
+        validate_chapter_end_question_plan(
+            self.chapter_end_practice_plan,
+            expected_question_count=self.quantity_constraints.chapter_end_question_count,
+        )
         resolved_title = _resolve_task_title(
             chapter_index=self.chapter_index,
             confirmed_title=self.confirmed_title,
@@ -1313,6 +1396,7 @@ __all__ = [
     "CanonicalGlossaryItem",
     "ChapterBudgetPolicy",
     "ChapterDraft",
+    "ChapterExecutionBriefForGeneration",
     "ChapterGenerationPlanSeed",
     "ChapterGenerationPlan",
     "ChapterGenerationTaskSeed",
@@ -1356,6 +1440,8 @@ __all__ = [
     "clean_int_list",
     "clean_content_role_targets",
     "clean_example_coverage_plan",
+    "clean_chapter_end_practice_plan",
+    "validate_chapter_end_question_plan",
     "clean_string_list",
     "clean_text",
     "clean_unit_float",

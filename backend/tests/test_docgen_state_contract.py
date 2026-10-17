@@ -1488,7 +1488,11 @@ async def test_chapter_brief_node_rejects_missing_chapter_seeds() -> None:
     )
     result = await node({})
 
-    assert result == {"error": "缺少当前章节的执行 brief seed。"}
+    assert result == {
+        "chapter_execution_brief_errors": [
+            {"chapter_index": 0, "reason": "缺少当前章节的执行 brief seed。"},
+        ],
+    }
 
 
 def test_writer_context_consumes_dispatch_guideline_and_evidence() -> None:

@@ -49,6 +49,8 @@ def _compact_task(task: dict[str, Any]) -> dict[str, Any]:
         "enhanced_title": task.get("enhanced_title"),
         "objective": task.get("objective"),
         "required_elements": _string_list(task.get("required_elements")),
+        "quantity_constraints": dict(task.get("quantity_constraints") or {}),
+        "writing_rules": _string_list(task.get("writing_rules")),
         "content_points": _string_list(task.get("content_points")),
         "concept_targets": _string_list(task.get("concept_targets")),
         "definition_targets": _string_list(task.get("definition_targets")),
@@ -62,7 +64,7 @@ def _compact_task(task: dict[str, Any]) -> dict[str, Any]:
         "coverage_threshold": task.get("coverage_threshold"),
         "evidence_support_threshold": task.get("evidence_support_threshold"),
         "example_coverage_plan": list(task.get("example_coverage_plan") or [])[:_MAX_REVIEW_LIST_ITEMS],
-        "chapter_end_practice_plan": list(task.get("chapter_end_practice_plan") or [])[:8],
+        "chapter_end_practice_plan": list(task.get("chapter_end_practice_plan") or [])[:_MAX_REVIEW_LIST_ITEMS],
         "practice_seed_policy": {
             "digest_mode": practice_seed_policy.get("digest_mode"),
             "example_density_policy": practice_seed_policy.get("example_density_policy"),
@@ -314,7 +316,7 @@ DocGen 全局一致性上下文：
 2. `forbidden_scope` 是其它章节的主题边界。除非正文只用一句话做前后联系，否则不得要求把 forbidden_scope 中的主题补成独立小节、例题、练习或标题。
 3. 紧凑节奏要看章节角色：训练取向章节应有紧凑题型/任务导航、方法对照、完整例题、变式或自测；概念型章节应有短例子、反例、条件辨析或小任务。缺失时输出 `section_patch`。
 4. 每个主要 `##` 必须像完整学习单元：讲清本小节对象、关键条件或边界、解释依据或处理路径，并至少有例子、任务、反例、操作检查或诊断标准之一；如果只是提纲式短句、名词堆叠或结论堆叠，输出 `section_patch`。
-5. 每章最后一个二级标题必须固定为 `## 单元测试`，这是唯一固定标题；其它二级标题必须按本章内容自然命名。`## 单元测试` 中紧凑节奏通常 {chapter_end_min_tasks}-{chapter_end_max_tasks} 个短题/任务，系统节奏通常 2-4 个更深的案例检查、操作任务、边界辨析或迁移任务。每题必须使用独立的 `> [!QUESTION]` 题干块，并紧跟独立的 `> [!ANSWER]` 答案块，把答案、判定依据和解析放入 ANSWER 块；缺失、位置不是最后、无答案、答案未折叠或与本章不贴合时输出 `section_patch`。
+5. 每章最后一个二级标题必须固定为 `## 单元测试`，这是唯一固定标题；其它二级标题必须按本章内容自然命名。用户指定数量时严格按 quantity_constraints 核对，不能因模式默认密度要求加题或减题；未指定时紧凑节奏通常 {chapter_end_min_tasks}-{chapter_end_max_tasks} 个短题/任务，系统节奏通常 2-4 个更深的案例检查、操作任务、边界辨析或迁移任务。每题必须使用独立的 `> [!QUESTION]` 题干块，并紧跟独立的 `> [!ANSWER]` 答案块，把答案、判定依据和解析放入 ANSWER 块；缺失、位置不是最后、无答案、答案未折叠或与本章不贴合时输出 `section_patch`。
 6. 自测、辨析或思考题必须有参考答案、判定依据、解析步骤或结论；系统课核心知识点也要有例题、案例、操作示例或练习任务支撑。
 7. 检查展示质量：标题层级、加粗/高亮闭合、callout、表格、公式、代码块、Mermaid 是否可渲染；标题中的变量和公式必须使用正确数学定界符，同一题干或练习不得重复出现。例题/练习 callout 中的“题目/任务、解析/判定依据、答案/结论、易错点”必须分段或列表展示，不能挤在同一段。孤立三级标题属于层级过度切分，应要求合并成更具体的 `##` 或改成正文加粗小节。
 8. 检查知识图谱相关内容是否只使用系统标准学习节点与关系类型，中文类型如下：{taxonomy_text}；关系方向明显错误时输出 `section_patch`。

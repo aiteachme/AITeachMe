@@ -150,6 +150,7 @@ def build_document_review_messages(
             "chapter_index": task.get("chapter_index"),
             "quantity_constraints": task.get("quantity_constraints") or {},
             "writing_rules": _string_list(task.get("writing_rules")),
+            "chapter_end_practice_plan": list(task.get("chapter_end_practice_plan") or [])[:_MAX_LIST_ITEMS],
         }
         for task in list(chapter_tasks or [])
     ]

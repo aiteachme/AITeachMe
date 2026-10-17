@@ -40,8 +40,8 @@ async def test_core_docgen_single_llm_calls_call_provider_directly(monkeypatch) 
             return DocGenIntentProfile(learning_goal_text="掌握函数图像")
         if response_model is LockedChapterTitle:
             return LockedChapterTitle(chapter_index=1, enhanced_title="函数变化与图像")
-        if response_model is ChapterExecutionBrief:
-            return ChapterExecutionBrief(
+        if isinstance(response_model, type) and issubclass(response_model, ChapterExecutionBrief):
+            return response_model(
                 chapter_index=1,
                 teaching_outline=["先讲变量关系，再讲图像变化"],
                 content_role_targets={"concept": ["函数图像"]},

@@ -157,8 +157,9 @@ Planner handoff:
 13. 不要输出媒体请求，这些后续由规则节点派生。
 14. 只输出简短、可执行的字段，不要输出长段解释。
 15. 只负责当前 chapter_index；不要输出其它章节的 brief，也不要复述整本共享骨架。
-16. `quantity_constraints` 只提取用户或确认方案明确规定的当前章数量，未指定的字段必须为 null，不能把模式默认值写进去。`body_section_count` 是正文二级小节数，不含单元测试；`worked_example_count` 是正文例题/代码示例的确切数量；`inline_practice_count` 是正文练习数；`chapter_end_question_count` 是章末题数（1-12）。用户只规定全章练习总数、未另分正文练习时，全部安排在章末，inline_practice_count 填 0，正文不再另加练习；分别指定正文与章末数量时必须分别保留。例题和练习覆盖计划必须与明确数量一致。超过支持范围的要求保留在 writing_instructions 并记录 plan_mismatch_warnings，不能悄悄替换为默认题数。
+16. `quantity_constraints` 只提取用户或确认方案明确规定的当前章数量，未指定的字段必须为 null，不能把模式默认值写进去。`body_section_count` 是正文二级小节数，不含单元测试；`worked_example_count` 是正文例题/代码示例的确切数量；`inline_practice_count` 是正文练习数；`chapter_end_question_count` 是最终 `## 单元测试` 模块内全部章末题目的总数（1-12），包括用户分别安排的章末练习、短测等题组。独立题组要合计，例如“章末4道练习和5道短测”应为 inline_practice_count=0、chapter_end_question_count=9；“章末共5题，其中2道练习”总数仍为5，不能重复相加；“正文4道练习、章末5道短测”则为 inline_practice_count=4、chapter_end_question_count=5。writing_instructions 和 chapter_end_practice_plan 必须同时保留各题组的数量、题型与用途，不能只留下合计数而丢掉用户的题组要求。用户只规定全章练习总数、未另分正文练习时，全部安排在章末，inline_practice_count 填 0，正文不再另加练习；分别指定正文与章末数量时必须分别保留。例题和练习覆盖计划必须与明确数量一致。超过支持范围的要求保留在 writing_instructions 并记录 plan_mismatch_warnings，不能悄悄替换为默认题数。
 17. `min_word_count`、`max_word_count` 是明确的当前章正文字数范围，不含章末测试；不要把全课程数量重复分配给每章。`writing_instructions` 必须保留用户的篇幅、数量、资料和主题边界要求，优先于模式参考。
+18. 有明确 `chapter_end_question_count` 时，`chapter_end_practice_plan` 必须列出互不重叠的完整题组，每组额外输出整数 `question_count`（1-12），所有组的 `question_count` 之和必须等于该总数。`min_examples` 只是旧覆盖下限，不能代替精确题数。例如独立4道练习和5道短测应输出两个题组，`question_count` 分别为4和5、总数为9；共5题其中2道练习则输出2道练习和3道其它题，不能把“共5题”再作为一个重复题组。保持用户明确总数并纠正题组分配，不能为凑合计而改掉用户明确总数。未指定章末题数时 `chapter_end_question_count` 保持 null，各计划项省略 `question_count`，继续采用模式默认值，不能从默认题组推造用户硬约束。
 """.strip()
     messages = [
         {"role": "system", "content": system_prompt},

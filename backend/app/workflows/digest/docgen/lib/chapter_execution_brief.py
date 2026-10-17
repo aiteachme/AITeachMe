@@ -11,7 +11,11 @@ from app.shared.infra.exceptions import LLMTimeoutError
 from app.shared.infra.llm_support import acompletion_with_fallback
 from app.shared.infra.settings import get_settings
 from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
-from app.workflows.digest.docgen.lib.models import ChapterExecutionBrief, clean_string_list
+from app.workflows.digest.docgen.lib.models import (
+    ChapterExecutionBrief,
+    ChapterExecutionBriefForGeneration,
+    clean_string_list,
+)
 from app.workflows.digest.docgen.prompts.chapter_execution_brief import build_chapter_execution_brief_messages
 
 logger = structlog.get_logger(__name__)
@@ -79,7 +83,7 @@ async def build_chapter_execution_brief(
                 max_retrieval_queries_per_chapter=retrieval_query_limit,
             ),
             **completion_kwargs,
-            response_model=ChapterExecutionBrief,
+            response_model=ChapterExecutionBriefForGeneration,
         )
     except LLMTimeoutError as exc:
         logger.warning("docgen_chapter_brief_timeout", chapter_index=chapter_index, timeout_s=timeout_s)
@@ -88,7 +92,9 @@ async def build_chapter_execution_brief(
         logger.warning("docgen_chapter_brief_failed", chapter_index=chapter_index, error=str(exc))
         raise ChapterExecutionBriefError(f"LLM failed to build chapter brief for chapter {chapter_index}.") from exc
     try:
-        brief = response if isinstance(response, ChapterExecutionBrief) else ChapterExecutionBrief.model_validate(response)
+        brief = ChapterExecutionBriefForGeneration.model_validate(
+            response.model_dump(mode="json") if isinstance(response, ChapterExecutionBrief) else response,
+        )
     except Exception as exc:
         raise ChapterExecutionBriefError(f"LLM returned invalid chapter brief schema for chapter {chapter_index}.") from exc
     brief.chapter_index = chapter_index

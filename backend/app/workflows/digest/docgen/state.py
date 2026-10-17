@@ -66,6 +66,7 @@ class DocGenState(TypedDict, total=False):
     guideline: dict[str, Any]
     backbone_conflict_warnings: list[dict[str, Any]]
     chapter_execution_brief_items: Annotated[list[dict[str, Any]], operator.add]
+    chapter_execution_brief_errors: Annotated[list[dict[str, Any]], operator.add]
     chapter_execution_briefs: list[dict[str, Any]]
     chapter_generation_plan: dict[str, Any]
     dispatch_table: dict[str, Any]

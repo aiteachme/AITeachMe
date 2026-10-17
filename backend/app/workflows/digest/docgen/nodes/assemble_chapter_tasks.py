@@ -32,6 +32,14 @@ def build_assemble_chapter_tasks_node(*, context: WorkflowContext):
     """构建最终章节任务装配节点。"""
 
     async def assemble_chapter_tasks_node(state: DocGenState) -> dict:
+        if state.get("error"):
+            return {}
+        brief_errors = state.get("chapter_execution_brief_errors") or []
+        if brief_errors:
+            return {"error": "；".join(
+                f"第 {item['chapter_index']} 章：{item['reason']}" if item.get("chapter_index") else str(item["reason"])
+                for item in sorted(brief_errors, key=lambda item: item.get("chapter_index", 0))
+            )}
         started_at = perf_counter()
         docgen_context = DocGenContext.model_validate(state.get("docgen_context") or {})
         intent_profile = DocGenIntentProfile.model_validate(state.get("intent_profile") or {})

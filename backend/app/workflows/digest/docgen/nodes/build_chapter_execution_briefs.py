@@ -12,7 +12,6 @@ from app.workflows.digest.docgen.lib.chapter_execution_brief import (
     build_chapter_execution_brief,
 )
 from app.workflows.digest.docgen.lib.models import (
-    ChapterExecutionBrief,
     ChapterGenerationTaskSeed,
     DocGenContext,
     DocumentBackbone,
@@ -70,15 +69,6 @@ def _evidence_for_chapter(
     return [item.model_dump(mode="json") for item in selected[:8]]
 
 
-def _fallback_brief(task_seed: ChapterGenerationTaskSeed) -> ChapterExecutionBrief:
-    return ChapterExecutionBrief(
-        chapter_index=task_seed.chapter_index,
-        writing_instructions=list(task_seed.style_rules),
-        retrieval_queries=list(task_seed.retrieval_queries),
-        fallback_used=True,
-    )
-
-
 def build_chapter_execution_briefs_node(*, context: WorkflowContext):
     """Generate the single brief carried by the current fan-out branch."""
 
@@ -86,7 +76,7 @@ def build_chapter_execution_briefs_node(*, context: WorkflowContext):
         started_at = perf_counter()
         raw_seed = state.get("chapter_task_seed")
         if not isinstance(raw_seed, dict):
-            return {"error": "缺少当前章节的执行 brief seed。"}
+            return {"chapter_execution_brief_errors": [{"chapter_index": 0, "reason": "缺少当前章节的执行 brief seed。"}]}
 
         task_seed = ChapterGenerationTaskSeed.model_validate(raw_seed)
         backbone = DocumentBackbone.model_validate(state.get("document_backbone") or {})
@@ -135,7 +125,14 @@ def build_chapter_execution_briefs_node(*, context: WorkflowContext):
                 },
             )
         except ChapterExecutionBriefError:
-            brief = _fallback_brief(task_seed)
+            return {
+                "chapter_execution_brief_errors": [{
+                    "chapter_index": task_seed.chapter_index,
+                    "reason": "执行计划生成失败，已停止构建以避免遗漏已确认的题量等要求。请重试构建。",
+                }],
+                "chapter_prepare_ms": int((perf_counter() - started_at) * 1000),
+                "llm_calls_total": 1,
+            }
 
         elapsed_ms = int((perf_counter() - started_at) * 1000)
         title = task_seed.enhanced_title or task_seed.confirmed_title

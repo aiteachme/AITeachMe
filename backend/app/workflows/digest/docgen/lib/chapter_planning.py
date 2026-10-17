@@ -24,6 +24,7 @@ from app.workflows.digest.docgen.lib.models import (
     SourceAffinityByChapter,
     clean_string_list,
     clean_content_role_targets,
+    clean_chapter_end_practice_plan,
     clean_example_coverage_plan,
 )
 from app.workflows.digest.docgen.lib.mode_profiles import get_docgen_mode_profile
@@ -487,7 +488,7 @@ def assemble_chapter_generation_plan(
         except (TypeError, ValueError):
             chapter_end_plan_limit = 4
         chapter_end_plan_limit = max(1, min(12, chapter_end_plan_limit))
-        chapter_end_practice_plan = clean_example_coverage_plan(
+        chapter_end_practice_plan = clean_chapter_end_practice_plan(
             getattr(brief, "chapter_end_practice_plan", []),
             limit=chapter_end_plan_limit,
         ) or clean_example_coverage_plan(example_coverage_plan[:chapter_end_plan_limit], limit=chapter_end_plan_limit)
