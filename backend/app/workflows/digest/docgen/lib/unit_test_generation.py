@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from collections import Counter
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import Any
 
@@ -23,6 +22,7 @@ from app.workflows.digest.docgen.lib.unit_tests import (
     append_unit_test_markdown,
     render_unit_test_markdown,
     unit_test_structure_issues,
+    unit_test_type_quota_issues,
 )
 from app.workflows.digest.docgen.prompts.chapter_unit_tests import (
     build_chapter_unit_test_messages,
@@ -35,21 +35,7 @@ logger = structlog.get_logger(__name__)
 def _unit_test_type_quota_issues(
     items: Sequence[ChapterUnitTestItem], practice_plan: Sequence[Mapping[str, object]],
 ) -> list[str]:
-    expected: Counter[str] = Counter()
-    for group in practice_plan:
-        if group.get("question_type") is not None:
-            expected[str(group["question_type"])] += int(group["question_count"])
-    if not expected:
-        return []
-    actual = Counter(item.type for item in items)
-    complete = all(group.get("question_type") is not None for group in practice_plan)
-    issues = []
-    for question_type in sorted(set(expected) | (set(actual) if complete else set())):
-        count, observed = expected[question_type], actual[question_type]
-        if (complete and observed != count) or (not complete and observed < count):
-            bound = "恰好" if complete else "至少"
-            issues.append(f"章末题型配额不符：{question_type}必须{bound}{count}题，当前{observed}题。")
-    return issues
+    return unit_test_type_quota_issues((item.type for item in items), practice_plan)
 
 
 async def generate_chapter_unit_test_markdown(

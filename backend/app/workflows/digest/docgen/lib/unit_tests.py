@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import re
+from collections import Counter
+from collections.abc import Iterable, Mapping, Sequence
 from textwrap import dedent
 from typing import Any
 
@@ -536,6 +538,53 @@ def _unit_test_section(markdown: str) -> tuple[list[str], list[str]]:
     if next_h2 < len(lines):
         return lines[start + 1 : next_h2], ["`## 单元测试` 必须是本章最后一个二级标题。"]
     return lines[start + 1 :], []
+
+
+def unit_test_type_quota_issues(
+    question_types: Iterable[str], practice_plan: Sequence[Mapping[str, object]],
+) -> list[str]:
+    """Check only explicitly specified type quotas, using the rendered type labels."""
+
+    expected: Counter[str] = Counter()
+    for group in practice_plan:
+        if group.get("question_type") is not None:
+            expected[str(group["question_type"])] += int(group["question_count"])
+    if not expected:
+        return []
+    actual = Counter(question_types)
+    complete = all(group.get("question_type") is not None for group in practice_plan)
+    issues = []
+    for question_type in sorted(set(expected) | (set(actual) if complete else set())):
+        count, observed = expected[question_type], actual[question_type]
+        if (complete and observed != count) or (not complete and observed < count):
+            bound = "恰好" if complete else "至少"
+            issues.append(f"章末题型配额不符：{question_type}必须{bound}{count}题，当前{observed}题。")
+    return issues
+
+
+def markdown_unit_test_type_quota_issues(
+    markdown: str, practice_plan: Sequence[Mapping[str, object]],
+) -> list[str]:
+    """Read one canonical type header per final QUESTION block, excluding code."""
+
+    if not any(group.get("question_type") is not None for group in practice_plan):
+        return []
+    visible_markdown, _ = _protect_fenced_code_blocks(str(markdown or ""))
+    section_lines, issues = _unit_test_section(visible_markdown)
+    if issues:
+        return issues
+    question_types = []
+    needs_header = False
+    for line in section_lines:
+        marker = _UNIT_TEST_CALLOUT_START_RE.match(line)
+        if marker is not None:
+            needs_header = marker.group("kind").upper() == "QUESTION"
+        if needs_header:
+            header = _UNIT_TEST_QUESTION_HEADER_RE.search(line)
+            if header is not None:
+                question_types.append(_normalize_question_type(header.group("type")))
+                needs_header = False
+    return unit_test_type_quota_issues(question_types, practice_plan)
 
 
 def _callout_visible_lines(lines: list[str], *, marker_rest: str) -> tuple[list[str], bool]:

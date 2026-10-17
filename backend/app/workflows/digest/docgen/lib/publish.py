@@ -46,6 +46,7 @@ from app.workflows.digest.docgen.lib.quantity_contracts import (
 )
 from app.workflows.digest.docgen.lib.unit_tests import (
     has_unit_test_heading,
+    markdown_unit_test_type_quota_issues,
     normalize_published_unit_test_sections,
     unit_test_structure_issues,
 )
@@ -91,6 +92,7 @@ def _prepare_chapter_markdown(
     digest_mode: str = "",
     focus_items: list[str] | None = None,
     quantity_constraints: dict | None = None,
+    chapter_end_practice_plan: list[dict] | None = None,
 ) -> str:
     had_unit_test_section = has_unit_test_heading(markdown)
     markdown = strip_asset_requests(markdown)
@@ -114,6 +116,7 @@ def _prepare_chapter_markdown(
     quantity_issues = explicit_chapter_structure_issues(
         finalized, ChapterQuantityConstraints.model_validate(quantity_constraints or {}), include_unit_test=True,
     )
+    quantity_issues.extend(markdown_unit_test_type_quota_issues(finalized, chapter_end_practice_plan or []))
     if quantity_issues:
         raise ChapterQuantityContractError(f"{title or '未命名章节'}：" + "；".join(quantity_issues))
     if had_unit_test_section or has_unit_test_heading(finalized):
@@ -218,6 +221,7 @@ def build_merged_markdown(
             digest_mode=chapter_digest_mode,
             focus_items=focus_items,
             quantity_constraints=chapter.get("quantity_constraints"),
+            chapter_end_practice_plan=chapter.get("chapter_end_practice_plan"),
         )
         all_source_details.extend(list(chapter.get("source_details") or []))
         if markdown:
@@ -424,6 +428,7 @@ async def stage_knowledge_docs(
             str(chapter.get("markdown") or ""),
             title=chapter_title,
             quantity_constraints=chapter.get("quantity_constraints"),
+            chapter_end_practice_plan=chapter.get("chapter_end_practice_plan"),
             digest_mode=str(chapter.get("digest_mode") or (document_context or {}).get("digest_mode") or ""),
             focus_items=[str(item) for item in chapter.get("required_elements", []) if str(item).strip()],
         )
@@ -533,6 +538,7 @@ def publish_staged_knowledge_docs(
             str(chapter.get("markdown") or ""),
             title=chapter_title,
             quantity_constraints=chapter.get("quantity_constraints"),
+            chapter_end_practice_plan=chapter.get("chapter_end_practice_plan"),
             digest_mode=str(chapter.get("digest_mode") or (document_context or {}).get("digest_mode") or ""),
             focus_items=[str(item) for item in chapter.get("required_elements", []) if str(item).strip()],
         )

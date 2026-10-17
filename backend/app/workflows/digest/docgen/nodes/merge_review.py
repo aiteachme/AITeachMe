@@ -81,6 +81,7 @@ def _chapter_metadata(
         "tags": [],
         "digest_mode": digest_mode,
         "quantity_constraints": task.quantity_constraints.model_dump(mode="json", exclude_none=True) if task else {},
+        "chapter_end_practice_plan": list(task.chapter_end_practice_plan or []) if task else [],
         "source_file_ids": source_file_ids,
         "sources": list(chapter.sources),
         "source_details": list(chapter.source_details),

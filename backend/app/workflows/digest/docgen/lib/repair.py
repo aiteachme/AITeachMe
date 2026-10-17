@@ -20,6 +20,7 @@ from app.workflows.digest.docgen.lib.presentation_policy import (
 from app.workflows.digest.docgen.lib.unit_tests import (
     _protect_fenced_code_blocks,
     _restore_fenced_code_blocks,
+    markdown_unit_test_type_quota_issues,
     normalize_unit_test_choice_answers,
     split_final_unit_test_section,
     unit_test_structure_issues,
@@ -995,6 +996,10 @@ async def _apply_llm_patch_actions(
             structure_issues = unit_test_structure_issues(
                 normalized_patched, expected_question_count=expected_question_count,
             )
+            practice_plan = (quantity_contract or {}).get("chapter_end_practice_plan") or []
+            if unit_test_patch or not markdown_unit_test_type_quota_issues(chapter.markdown, practice_plan):
+                # As with counts, allow body repairs before a separate fix of existing wrong types.
+                structure_issues.extend(markdown_unit_test_type_quota_issues(normalized_patched, practice_plan))
             if structure_issues:
                 return chapter, _rejected_llm_patch_results(
                     indexed_actions=indexed_actions,
