@@ -534,9 +534,15 @@ jobs:
 
       - name: Show Sealos frontend rollout diagnostics
         if: always() && steps.optin.outputs.enabled == 'true'
+        timeout-minutes: 3
         shell: bash
         run: |
           set +e
+
+          if ! kubectl --request-timeout=15s get --raw=/version >/dev/null; then
+            echo "::warning::Sealos API is unavailable; skipping further frontend rollout diagnostics."
+            exit 0
+          fi
 
           echo "## Deployment"
           kubectl -n "${SEALOS_NAMESPACE}" get \
