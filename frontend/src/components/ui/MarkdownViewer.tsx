@@ -1370,6 +1370,91 @@ function makeInlineMathReadableForRender(body: string): string {
   return `\\displaystyle ${trimmed}`;
 }
 
+function normalizeMathFillInBlanksForRender(body: string): string {
+  return body.replace(/_{2,}/g, (match, offset: number) => (
+    isEscapedAt(body, offset) ? match : "\\underline{\\qquad}"
+  ));
+}
+
+function isIndependentMathLineForRender(line: string): boolean {
+  if (/^[=+\-*/&]|[=+\-*/^_,&]$/.test(line)) return false;
+  if (/^\\(?:cdot|times|div|pm|mp|to|rightarrow|longrightarrow|mapsto|implies)\b/.test(line)) return false;
+  if (/\\(?:cdot|times|div|pm|mp|to|rightarrow|longrightarrow|mapsto|implies)\s*$/.test(line)) return false;
+  // A following line may supply a fraction's denominator, even when braces balance per line.
+  for (const fraction of line.matchAll(/\\(?:frac|dfrac|tfrac)\b/g)) {
+    let cursor = fraction.index + fraction[0].length;
+    for (let argument = 0; argument < 2; argument += 1) {
+      while (/\s/.test(line[cursor] ?? "") && cursor < line.length) cursor += 1;
+      if (line[cursor] !== "{") return false;
+      let depth = 1;
+      cursor += 1;
+      while (cursor < line.length && depth > 0) {
+        if (!isEscapedAt(line, cursor)) {
+          if (line[cursor] === "{") depth += 1;
+          if (line[cursor] === "}") depth -= 1;
+        }
+        cursor += 1;
+      }
+      if (depth > 0) return false;
+    }
+  }
+  const groups: string[] = [];
+  const closingGroups: Record<string, string> = { ")": "(", "]": "[", "}": "{" };
+  let hasRelation = false;
+  for (let index = 0; index < line.length; index += 1) {
+    if (isEscapedAt(line, index)) continue;
+    const char = line[index];
+    if ("([{".includes(char)) {
+      groups.push(char);
+    } else if (char in closingGroups) {
+      if (groups.pop() !== closingGroups[char]) return false;
+    } else if (groups.length === 0) {
+      const relation = line.slice(index).match(/^(?:=|\\(?:to|rightarrow|longrightarrow|mapsto|implies|Rightarrow|Longrightarrow|Leftrightarrow)\b|[→⇒↦])/);
+      if (relation && line.slice(0, index).trim() && line.slice(index + relation[0].length).trim()) {
+        hasRelation = true;
+      }
+    }
+  }
+  return groups.length === 0 && hasRelation;
+}
+
+function normalizeDisplayMathLinesForRender(lines: string[], prefix: string): string[] {
+  const normalized = lines.map(normalizeMathFillInBlanksForRender);
+  const rows = normalized.map((line) => stripQuotePrefix(line).trim()).filter(Boolean);
+  // Newlines are ordinary TeX spaces unless the source clearly contains separate equations.
+  if (
+    rows.length < 2
+    || /\\(?:begin|end|left|right)\b|\\\\|[&%]/.test(rows.join("\n"))
+    || !rows.every(isIndependentMathLineForRender)
+  ) {
+    return normalized;
+  }
+  return [
+    `${prefix}\\begin{gathered}`,
+    ...rows.map((row, index) => `${prefix}${row}${index + 1 < rows.length ? " \\\\" : ""}`),
+    `${prefix}\\end{gathered}`,
+  ];
+}
+
+function normalizeSameLineMathBlanksForRender(line: string): string {
+  const output: string[] = [];
+  let cursor = 0;
+  while (cursor < line.length) {
+    const opening = findNextUnescaped(line, "$", cursor);
+    if (opening < 0) break;
+    const delimiter = line.startsWith("$$", opening) ? "$$" : "$";
+    const closing = findNextUnescaped(line, delimiter, opening + delimiter.length);
+    if (closing < 0) break;
+    output.push(
+      line.slice(cursor, opening), delimiter,
+      normalizeMathFillInBlanksForRender(line.slice(opening + delimiter.length, closing)), delimiter,
+    );
+    cursor = closing + delimiter.length;
+  }
+  output.push(line.slice(cursor));
+  return output.join("");
+}
+
 function inlineMathBodyLooksUnsafe(body: string): boolean {
   const trimmed = body.trim();
   if (!trimmed) return true;
@@ -1435,6 +1520,8 @@ function repairInlineMathForRender(markdown: string): string {
   const output: string[] = [];
   let activeFence: string | null = null;
   let inDisplayMath = false;
+  let displayMathStart = 0;
+  let displayMathPrefix = "";
 
   for (const rawLine of lines) {
     const line = rawLine.trimEnd();
@@ -1455,12 +1542,19 @@ function repairInlineMathForRender(markdown: string): string {
     }
 
     if (isDisplayMathDelimiterLine(line)) {
+      if (inDisplayMath) {
+        output.splice(displayMathStart, output.length - displayMathStart,
+          ...normalizeDisplayMathLinesForRender(output.slice(displayMathStart), displayMathPrefix));
+      } else {
+        displayMathStart = output.length + 1;
+        displayMathPrefix = displayMathPrefixForRender(line);
+      }
       inDisplayMath = !inDisplayMath;
       output.push(displayMathDelimiterForRender(line));
       continue;
     }
 
-    output.push(inDisplayMath ? line : repairInlineMathLineForRender(line));
+    output.push(inDisplayMath ? line : repairInlineMathLineForRender(normalizeSameLineMathBlanksForRender(line)));
   }
 
   return output.join("\n");

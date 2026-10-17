@@ -46,6 +46,82 @@ test("renders single-digit math while preserving currency and code literals", ()
   assert.match(code, /\$2\$/);
 });
 
+for (const content of [
+  "$6-(-4)=____$",
+  "$(-8)+8=__$",
+  "$$\na-b=____\n$$",
+  "> [!QUESTION]\n>\n> 填空：$9-(+5)=____$。",
+]) {
+  test(`renders repeated-underscore math answer blanks without a KaTeX error (${JSON.stringify(content)})`, () => {
+    const html = renderToStaticMarkup(createElement(MarkdownViewer, {
+      content: cleanKnowledgeMarkdownForDisplay(content), variant: "document",
+    }));
+    assert.match(html, /class="katex"/);
+    assert.doesNotMatch(html, /katex-error/);
+    assert.match(html, /class="[^"]*\bunderline\b/);
+  });
+}
+
+test("math blank repairs preserve valid subscripts, escaped underscores, prose, and code", () => {
+  const inlineCode = "`$code____=literal$`";
+  const fencedCode = "```text\n$$\na=____\nb=____\n$$\n```";
+  const quotedCode = "> ```text\n> $quoted____=literal$\n> ```";
+  const content = "$a_1$、$a\\_\\_b$、$\\text{a b}$。\n\n"
+    + `正文 file__name 保持原样。\n\n${inlineCode}\n\n${fencedCode}\n\n${quotedCode}`;
+  const processed = preprocessMarkdownForRender(cleanKnowledgeMarkdownForDisplay(content));
+  for (const unchanged of ["$a_1$", "$a\\_\\_b$", "$\\text{a b}$", "file__name", inlineCode, fencedCode, quotedCode]) {
+    assert.ok(processed.includes(unchanged), `${unchanged}\n${processed}`);
+  }
+  assert.doesNotMatch(processed, /\\underline/);
+  const html = renderToStaticMarkup(createElement(MarkdownViewer, { content, variant: "document" }));
+  assert.doesNotMatch(html, /katex-error/);
+  assert.match(html, /code____=literal/);
+  assert.match(html, /quoted____=literal/);
+});
+
+for (const [label, rows] of [
+  ["independent equations", ["(+4)+(+7)=+(4+7)=+11", "(-4)+(-7)=-(4+7)=-11"]],
+  ["independent rewrite arrows", ["9-(-4)\\longrightarrow 9+(+4)", "9-(+4)\\longrightarrow 9+(-4)"]],
+]) {
+  for (const prefix of ["", "> "]) {
+    test(`renders ${label} on separate math rows (${prefix ? "blockquote" : "ordinary"})`, () => {
+      const content = ["$$", ...rows, "$$"].map((line) => prefix + line).join("\n");
+      const processed = preprocessMarkdownForRender(cleanKnowledgeMarkdownForDisplay(content));
+      const mathLines = processed.split("\n").map((line) => line.replace(/^(?:>\s?)+/, "").trim());
+      const firstRow = mathLines.findIndex((line) => line.startsWith(rows[0]));
+      assert.ok(firstRow >= 0, processed);
+      assert.equal(mathLines[firstRow].slice(rows[0].length).trim(), "\\\\", processed);
+      assert.equal(mathLines[firstRow + 1], rows[1], processed);
+      const html = renderToStaticMarkup(createElement(MarkdownViewer, { content, variant: "document" }));
+      assert.doesNotMatch(html, /katex-error/);
+      assert.equal((html.match(/class="katex-display"/g) ?? []).length, 1, html);
+      assert.match(html, /class="[^"]*\bmtable\b/);
+      if (prefix) assert.match(html, /<blockquote/);
+    });
+  }
+}
+
+for (const body of [
+  "\\begin{aligned}\na&=b\\\\\nc&=d\n\\end{aligned}",
+  "f(x)=\\begin{cases}\nx,&x\\ge0\\\\\n-x,&x\\le0\n\\end{cases}",
+  "a=b\\\\\nc=d",
+  "a+b+c+\nd+e=f",
+  "f(x)=\n\\frac{x^2+1}{x+1}",
+  "f(x)=\\frac{a+b}{\nc+d}",
+  "f(x)=\\left(\na+b\\right)",
+  "a=b\\cdot\nc=d",
+  "x=\\frac{a}\n{b}=y",
+]) {
+  test(`leaves explicit math layouts and continued formulas unchanged (${JSON.stringify(body)})`, () => {
+    const content = `$$\n${body}\n$$`;
+    const processed = preprocessMarkdownForRender(cleanKnowledgeMarkdownForDisplay(content));
+    assert.ok(processed.includes(body), processed);
+    assert.doesNotMatch(processed, /\\begin\{gathered\}/);
+    const html = renderToStaticMarkup(createElement(MarkdownViewer, { content, variant: "document" }));
+    assert.doesNotMatch(html, /katex-error/);
+  });
+}
+
 for (const marker of ["```", "````", "~~~"]) {
   test(`the actual display pipeline preserves code literals and question boundaries (${marker})`, () => {
     const literal = 'print("\\(x\\) $a < b$ **答案：一** **解析：二** {#ku_literal}")';
