@@ -14,6 +14,7 @@ from app.workflows.digest.docgen.lib.models import (
     ChapterExecutionBrief,
     ChapterGenerationTask,
     ChapterGenerationTaskSeed,
+    ChapterQuantityConstraints,
     DocGenContext,
     DocGenIntentProfile,
     DocumentBackbone,
@@ -22,7 +23,11 @@ from app.workflows.digest.docgen.lib.models import (
     ReviewAction,
     ReviewedChapterDraft,
 )
-from app.workflows.digest.docgen.lib.quantity_contracts import explicit_chapter_structure_issues
+from app.workflows.digest.docgen.lib.quantity_contracts import (
+    chapter_end_question_contract_issues,
+    explicit_chapter_structure_issues,
+    infer_explicit_chapter_end_question_contracts,
+)
 from app.workflows.digest.docgen.lib.unit_test_generation import generate_chapter_unit_test_markdown
 from app.workflows.digest.docgen.lib.unit_tests import (
     ChapterUnitTestItem, ChapterUnitTestSet, append_unit_test_markdown, render_unit_test_markdown,
@@ -40,6 +45,139 @@ from app.workflows.digest.docgen.prompts.generation import build_docgen_writer_m
 
 
 TITLE = "Python列表索引与切片"
+
+
+@pytest.mark.anyio
+async def test_brief_rejects_self_consistent_total_when_confirmed_groups_sum_differ(monkeypatch) -> None:
+    async def fake_brief(_messages, **kwargs):
+        return kwargs["response_model"](
+            teaching_outline=["讲清核心对象"],
+            writing_instructions=["章末4道应用练习和5道填空短测"],
+            quantity_constraints={"chapter_end_question_count": 5},
+            content_role_targets={"concept": ["核心对象"]},
+            chapter_end_practice_plan=[{"target": "综合检查", "question_count": 5}],
+        )
+
+    monkeypatch.setattr(chapter_execution_brief, "acompletion_with_fallback", fake_brief)
+    with pytest.raises(chapter_execution_brief.ChapterExecutionBriefError, match="明确要求章末共 9 题"):
+        await chapter_execution_brief.build_chapter_execution_brief(
+            course_name=TITLE, digest_mode="sprint", chapter={"chapter_index": 1},
+            locked_title=TITLE, intent_core={}, glossary_terms=[], claim_targets=[],
+            confusion_targets=[], user_prompt="章末4道应用练习和5道填空短测",
+        )
+
+
+@pytest.mark.anyio
+async def test_brief_accepts_confirmed_additive_group_total(monkeypatch) -> None:
+    async def fake_brief(_messages, **kwargs):
+        return kwargs["response_model"](
+            teaching_outline=["讲清核心对象"],
+            writing_instructions=["章末4道应用练习和5道填空短测"],
+            quantity_constraints={"chapter_end_question_count": 9},
+            content_role_targets={"concept": ["核心对象"]},
+            example_coverage_plan=[{"target": "核心对象"}],
+            chapter_end_practice_plan=[
+                {"target": "应用迁移", "question_count": 4},
+                {"target": "填空检查", "question_count": 5},
+            ],
+        )
+
+    monkeypatch.setattr(chapter_execution_brief, "acompletion_with_fallback", fake_brief)
+    brief = await chapter_execution_brief.build_chapter_execution_brief(
+        course_name=TITLE, digest_mode="sprint", chapter={"chapter_index": 1},
+        locked_title=TITLE, intent_core={}, glossary_terms=[], claim_targets=[],
+        confusion_targets=[], user_prompt="章末4道应用练习和5道填空短测",
+    )
+    assert brief.quantity_constraints.chapter_end_question_count == 9
+    assert [item["question_count"] for item in brief.chapter_end_practice_plan] == [4, 5]
+
+
+@pytest.mark.anyio
+async def test_brief_uses_current_chapter_style_rules_before_course_plan(monkeypatch) -> None:
+    async def fake_brief(_messages, **kwargs):
+        return kwargs["response_model"](
+            teaching_outline=["讲清核心对象"],
+            writing_instructions=["章末4道应用练习和5道填空短测"],
+            quantity_constraints={"chapter_end_question_count": 5},
+            content_role_targets={"concept": ["核心对象"]},
+            chapter_end_practice_plan=[{"target": "综合检查", "question_count": 5}],
+        )
+
+    monkeypatch.setattr(chapter_execution_brief, "acompletion_with_fallback", fake_brief)
+    with pytest.raises(chapter_execution_brief.ChapterExecutionBriefError, match="明确要求章末共 9 题"):
+        await chapter_execution_brief.build_chapter_execution_brief(
+            course_name=TITLE, digest_mode="sprint",
+            chapter={"chapter_index": 2, "style_rules": ["章末4道应用练习和5道填空短测"]},
+            locked_title=TITLE, intent_core={}, glossary_terms=[], claim_targets=[],
+            confusion_targets=[], user_prompt="第1章章末2道练习；第2章按计划安排。",
+            plan="第1章章末2道练习；第2章按计划安排。",
+        )
+
+
+@pytest.mark.anyio
+async def test_brief_falls_back_to_confirmed_plan_when_user_prompt_has_no_quantity(monkeypatch) -> None:
+    async def fake_brief(_messages, **kwargs):
+        return kwargs["response_model"](
+            teaching_outline=["讲清核心对象"],
+            writing_instructions=["按确认方案生成章末题目"],
+            quantity_constraints={"chapter_end_question_count": 5},
+            content_role_targets={"concept": ["核心对象"]},
+            chapter_end_practice_plan=[{"target": "综合检查", "question_count": 5}],
+        )
+
+    monkeypatch.setattr(chapter_execution_brief, "acompletion_with_fallback", fake_brief)
+    with pytest.raises(chapter_execution_brief.ChapterExecutionBriefError, match="明确要求章末共 9 题"):
+        await chapter_execution_brief.build_chapter_execution_brief(
+            course_name=TITLE, digest_mode="sprint", chapter={"chapter_index": 1},
+            locked_title=TITLE, intent_core={}, glossary_terms=[], claim_targets=[],
+            confusion_targets=[], user_prompt="请按确认后的章节方案构建课程。",
+            plan="章末4道应用练习和5道填空短测",
+        )
+
+
+def test_quantity_parser_does_not_add_subset_to_explicit_total() -> None:
+    contracts = infer_explicit_chapter_end_question_contracts(["章末共5题，其中2道练习"])
+    assert [(item.total, item.group_counts) for item in contracts] == [(5, ())]
+
+
+def test_quantity_parser_preserves_additive_groups_when_total_is_also_stated() -> None:
+    contracts = infer_explicit_chapter_end_question_contracts(
+        ["章末共9题，4道应用练习和5道填空短测"]
+    )
+    assert [(item.total, item.group_counts, item.minimum_groups) for item in contracts] == [
+        (9, (4, 5), 2)
+    ]
+
+
+@pytest.mark.parametrize("source", ["章末5道练习", "正文4道练习、章末5道短测", "章末4道课后练习和5道短测"])
+def test_quantity_parser_keeps_single_explicit_chapter_end_group(source: str) -> None:
+    contracts = infer_explicit_chapter_end_question_contracts([source])
+    expected = [(9, 2)] if "4道课后练习" in source else [(5, 1)]
+    assert [(item.total, item.minimum_groups) for item in contracts] == expected
+
+
+def test_quantity_checker_rejects_wrong_single_chapter_end_total() -> None:
+    issues = chapter_end_question_contract_issues(
+        quantity_constraints=ChapterQuantityConstraints(chapter_end_question_count=4),
+        chapter_end_practice_plan=[{"target": "章末题目", "question_count": 4}],
+        sources=["章末5道练习"],
+    )
+    assert any("明确要求章末共 5 题" in issue for issue in issues)
+
+
+def test_quantity_parser_does_not_merge_comma_separated_chapters() -> None:
+    contracts = infer_explicit_chapter_end_question_contracts(
+        ["第1章章末4道练习，第2章章末5道练习"]
+    )
+    assert [item.total for item in contracts] == [4, 5]
+
+
+def test_quantity_checker_accepts_total_plan_when_subset_is_not_a_separate_group() -> None:
+    assert chapter_end_question_contract_issues(
+        quantity_constraints=ChapterQuantityConstraints(chapter_end_question_count=5),
+        chapter_end_practice_plan=[{"target": "章末题目", "question_count": 5}],
+        sources=["章末共5题，其中2道练习"],
+    ) == []
 
 
 def _compile_brief(brief: ChapterExecutionBrief, *, build_constraints: dict | None = None) -> ChapterGenerationTask:

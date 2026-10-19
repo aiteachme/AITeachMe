@@ -16,6 +16,10 @@ from app.workflows.digest.docgen.lib.models import (
     ChapterExecutionBriefForGeneration,
     clean_string_list,
 )
+from app.workflows.digest.docgen.lib.quantity_contracts import (
+    chapter_end_question_contract_issues,
+    infer_explicit_chapter_end_question_contracts,
+)
 from app.workflows.digest.docgen.prompts.chapter_execution_brief import build_chapter_execution_brief_messages
 
 logger = structlog.get_logger(__name__)
@@ -97,6 +101,40 @@ async def build_chapter_execution_brief(
         )
     except Exception as exc:
         raise ChapterExecutionBriefError(f"LLM returned invalid chapter brief schema for chapter {chapter_index}.") from exc
+    chapter_scoped_sources = tuple(clean_string_list([
+        *clean_string_list(chapter.get("style_rules")),
+        *clean_string_list(chapter.get("writing_instructions")),
+    ]))
+    # ``ChapterGenerationTaskSeed`` carries the planner handoff as
+    # ``style_rules``.  Use it when it contains an explicit quantity contract;
+    # otherwise fall back to the original request, without scanning the full
+    # course plan where another chapter may have a different allocation.
+    if infer_explicit_chapter_end_question_contracts(chapter_scoped_sources):
+        quantity_sources = chapter_scoped_sources
+    else:
+        user_source = str(user_prompt or "").strip()
+        plan_source = str(plan or "").strip()
+        plan_contracts = infer_explicit_chapter_end_question_contracts((plan_source,))
+        user_contracts = infer_explicit_chapter_end_question_contracts((user_source,))
+        # A single confirmed-plan contract is the strongest source.  If the
+        # plan contains several chapter allocations and no scoped handoff was
+        # available, do not apply an unscoped contract to every chapter.
+        if len(plan_contracts) == 1:
+            quantity_sources = (plan_source,)
+        elif len(user_contracts) == 1:
+            quantity_sources = (user_source,)
+        else:
+            quantity_sources = ()
+    quantity_issues = chapter_end_question_contract_issues(
+        quantity_constraints=brief.quantity_constraints,
+        chapter_end_practice_plan=brief.chapter_end_practice_plan,
+        sources=quantity_sources,
+    )
+    if quantity_issues:
+        raise ChapterExecutionBriefError(
+            f"LLM chapter brief conflicts with the confirmed chapter-end quantity contract for chapter "
+            f"{chapter_index}: {'; '.join(quantity_issues)}"
+        )
     brief.chapter_index = chapter_index
     brief.teaching_outline = clean_string_list(brief.teaching_outline, limit=3)
     brief.concept_targets = clean_string_list(brief.concept_targets, limit=2)
