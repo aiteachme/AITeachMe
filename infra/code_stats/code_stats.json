@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-10-12T04:07:54.326082",
-  "total_commits_analyzed": 2164,
+  "generated_at": "2026-10-19T03:08:47.212249",
+  "total_commits_analyzed": 2227,
   "stats": [
     {
       "date": "2026-03-11",
@@ -17313,6 +17313,510 @@
       "code_lines": 303677,
       "other_lines": 54448,
       "message": "chore: 合并远程代码统计更新"
+    },
+    {
+      "date": "2026-10-11",
+      "commit": "5c74dca",
+      "total_lines": 358328,
+      "code_lines": 303860,
+      "other_lines": 54468,
+      "message": "fix: 修复课程迁移丢失知识文档检索切片"
+    },
+    {
+      "date": "2026-10-11",
+      "commit": "fd873c6",
+      "total_lines": 358381,
+      "code_lines": 303906,
+      "other_lines": 54475,
+      "message": "fix: 修复出题蓝图未继承已确定题型"
+    },
+    {
+      "date": "2026-10-12",
+      "commit": "52163ac",
+      "total_lines": 358125,
+      "code_lines": 303677,
+      "other_lines": 54448,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-10-12",
+      "commit": "3b482e0",
+      "total_lines": 343397,
+      "code_lines": 291177,
+      "other_lines": 52220,
+      "message": "refactor: 移除自定义题型功能"
+    },
+    {
+      "date": "2026-10-12",
+      "commit": "e54af9d",
+      "total_lines": 358797,
+      "code_lines": 304252,
+      "other_lines": 54545,
+      "message": "fix: 修复课程构建误判与自动修补失败"
+    },
+    {
+      "date": "2026-10-12",
+      "commit": "2730e50",
+      "total_lines": 358817,
+      "code_lines": 304270,
+      "other_lines": 54547,
+      "message": "fix: 兼容主网关新模型的推理参数"
+    },
+    {
+      "date": "2026-10-12",
+      "commit": "7d5969f",
+      "total_lines": 358871,
+      "code_lines": 304312,
+      "other_lines": 54559,
+      "message": "fix: 修复规划诊断超时后无法重试的问题"
+    },
+    {
+      "date": "2026-10-12",
+      "commit": "bc255e8",
+      "total_lines": 359204,
+      "code_lines": 304613,
+      "other_lines": 54591,
+      "message": "fix: 修复课程题型合同和审核修补误判"
+    },
+    {
+      "date": "2026-10-12",
+      "commit": "c796da3",
+      "total_lines": 359204,
+      "code_lines": 304613,
+      "other_lines": 54591,
+      "message": "test: 明确推理参数测试的聊天接口模式"
+    },
+    {
+      "date": "2026-10-12",
+      "commit": "915126c",
+      "total_lines": 359299,
+      "code_lines": 304689,
+      "other_lines": 54610,
+      "message": "chore: 增加部署后的配置指纹核验"
+    },
+    {
+      "date": "2026-10-12",
+      "commit": "04c5ee0",
+      "total_lines": 359299,
+      "code_lines": 304689,
+      "other_lines": 54610,
+      "message": "chore: 合并远程代码统计更新"
+    },
+    {
+      "date": "2026-10-12",
+      "commit": "c3dd730",
+      "total_lines": 359614,
+      "code_lines": 304965,
+      "other_lines": 54649,
+      "message": "fix: 保留课程代码格式并修正构建复核误判"
+    },
+    {
+      "date": "2026-10-12",
+      "commit": "a7482b6",
+      "total_lines": 359740,
+      "code_lines": 305070,
+      "other_lines": 54670,
+      "message": "fix: 修复模型请求断流及超时后的连接复用"
+    },
+    {
+      "date": "2026-10-13",
+      "commit": "9fa77b0",
+      "total_lines": 359809,
+      "code_lines": 305128,
+      "other_lines": 54681,
+      "message": "fix: 修复首次建课的章节层级约束"
+    },
+    {
+      "date": "2026-10-13",
+      "commit": "f459b63",
+      "total_lines": 360040,
+      "code_lines": 305342,
+      "other_lines": 54698,
+      "message": "fix: 修复课程补丁重试与题答合同冲突"
+    },
+    {
+      "date": "2026-10-13",
+      "commit": "d98e122",
+      "total_lines": 360072,
+      "code_lines": 305374,
+      "other_lines": 54698,
+      "message": "fix: 保留知识文档行内代码的原始内容"
+    },
+    {
+      "date": "2026-10-13",
+      "commit": "9d723aa",
+      "total_lines": 360118,
+      "code_lines": 305416,
+      "other_lines": 54702,
+      "message": "fix: 避免默认篇幅阻断课程局部修补"
+    },
+    {
+      "date": "2026-10-13",
+      "commit": "b935752",
+      "total_lines": 360118,
+      "code_lines": 305416,
+      "other_lines": 54702,
+      "message": "fix: 保留测验代码与输出中的字面字符"
+    },
+    {
+      "date": "2026-10-13",
+      "commit": "70f27be",
+      "total_lines": 360196,
+      "code_lines": 305480,
+      "other_lines": 54716,
+      "message": "fix: 保留测验指令与程序输出中的空白字符"
+    },
+    {
+      "date": "2026-10-13",
+      "commit": "43dc4fc",
+      "total_lines": 360343,
+      "code_lines": 305605,
+      "other_lines": 54738,
+      "message": "fix: 保留章末测验代码选项的有效空白"
+    },
+    {
+      "date": "2026-10-13",
+      "commit": "ce4323d",
+      "total_lines": 360520,
+      "code_lines": 305769,
+      "other_lines": 54751,
+      "message": "fix: 保留审核正文原文并限定局部补丁复核范围"
+    },
+    {
+      "date": "2026-10-13",
+      "commit": "a60f380",
+      "total_lines": 360604,
+      "code_lines": 305840,
+      "other_lines": 54764,
+      "message": "fix: 保留判卷点评与复习指南的代码空白"
+    },
+    {
+      "date": "2026-10-13",
+      "commit": "e43d6bd",
+      "total_lines": 360616,
+      "code_lines": 305852,
+      "other_lines": 54764,
+      "message": "fix: 校准课程审核并避免误改正确题目"
+    },
+    {
+      "date": "2026-10-13",
+      "commit": "3f8b794",
+      "total_lines": 360616,
+      "code_lines": 305852,
+      "other_lines": 54764,
+      "message": "fix: 修复测验代码空格与移动端权重说明显示"
+    },
+    {
+      "date": "2026-10-13",
+      "commit": "272c719",
+      "total_lines": 360804,
+      "code_lines": 306019,
+      "other_lines": 54785,
+      "message": "fix: 保留课程规划输入与方案内容的有效空白"
+    },
+    {
+      "date": "2026-10-13",
+      "commit": "bedcff1",
+      "total_lines": 360812,
+      "code_lines": 306026,
+      "other_lines": 54786,
+      "message": "fix: 保留规划诊断编辑与展示中的有效空白"
+    },
+    {
+      "date": "2026-10-13",
+      "commit": "9ff3b7a",
+      "total_lines": 346090,
+      "code_lines": 293529,
+      "other_lines": 52561,
+      "message": "chore: 合并 dev_mzp 最新提交"
+    },
+    {
+      "date": "2026-10-13",
+      "commit": "88f8f13",
+      "total_lines": 347385,
+      "code_lines": 294602,
+      "other_lines": 52783,
+      "message": "fix: 为题型清理迁移增加备份与发布保护"
+    },
+    {
+      "date": "2026-10-13",
+      "commit": "fe3151d",
+      "total_lines": 347608,
+      "code_lines": 294816,
+      "other_lines": 52792,
+      "message": "chore: 临时启用受限的后端启动诊断 [skip ci]"
+    },
+    {
+      "date": "2026-10-13",
+      "commit": "c47dd49",
+      "total_lines": 347608,
+      "code_lines": 294816,
+      "other_lines": 52792,
+      "message": "chore: 自动运行本次临时只读部署诊断"
+    },
+    {
+      "date": "2026-10-13",
+      "commit": "a7e831b",
+      "total_lines": 347608,
+      "code_lines": 294816,
+      "other_lines": 52792,
+      "message": "chore: 自动运行本次临时只读部署诊断"
+    },
+    {
+      "date": "2026-10-13",
+      "commit": "cc730f6",
+      "total_lines": 347669,
+      "code_lines": 294877,
+      "other_lines": 52792,
+      "message": "chore: 自动运行本次临时只读部署诊断"
+    },
+    {
+      "date": "2026-10-14",
+      "commit": "c81abf0",
+      "total_lines": 347696,
+      "code_lines": 294904,
+      "other_lines": 52792,
+      "message": "chore: 自动运行本次临时只读部署诊断"
+    },
+    {
+      "date": "2026-10-14",
+      "commit": "58fafbd",
+      "total_lines": 347715,
+      "code_lines": 294923,
+      "other_lines": 52792,
+      "message": "chore: 自动运行本次临时只读部署诊断"
+    },
+    {
+      "date": "2026-10-14",
+      "commit": "932670a",
+      "total_lines": 347735,
+      "code_lines": 294943,
+      "other_lines": 52792,
+      "message": "chore: 自动运行本次临时只读部署诊断"
+    },
+    {
+      "date": "2026-10-14",
+      "commit": "154eb4b",
+      "total_lines": 347804,
+      "code_lines": 295010,
+      "other_lines": 52794,
+      "message": "chore: 自动运行本次临时只读部署诊断"
+    },
+    {
+      "date": "2026-10-14",
+      "commit": "74f2dc1",
+      "total_lines": 347979,
+      "code_lines": 295163,
+      "other_lines": 52816,
+      "message": "chore: 自动运行本次临时只读部署诊断"
+    },
+    {
+      "date": "2026-10-14",
+      "commit": "44edc70",
+      "total_lines": 347996,
+      "code_lines": 295180,
+      "other_lines": 52816,
+      "message": "chore: 自动运行本次临时只读部署诊断"
+    },
+    {
+      "date": "2026-10-14",
+      "commit": "4c6933a",
+      "total_lines": 348007,
+      "code_lines": 295191,
+      "other_lines": 52816,
+      "message": "chore: 自动运行本次临时只读部署诊断"
+    },
+    {
+      "date": "2026-10-14",
+      "commit": "8edcfa8",
+      "total_lines": 348572,
+      "code_lines": 295683,
+      "other_lines": 52889,
+      "message": "fix: 修复数据库迁移失败后的发布恢复"
+    },
+    {
+      "date": "2026-10-14",
+      "commit": "f15a9c8",
+      "total_lines": 348590,
+      "code_lines": 295699,
+      "other_lines": 52891,
+      "message": "fix: 兼容终止态后端版本预检"
+    },
+    {
+      "date": "2026-10-14",
+      "commit": "3d1fa70",
+      "total_lines": 347968,
+      "code_lines": 295110,
+      "other_lines": 52858,
+      "message": "chore: 清理临时只读诊断工作流"
+    },
+    {
+      "date": "2026-10-14",
+      "commit": "ffac929",
+      "total_lines": 348010,
+      "code_lines": 295146,
+      "other_lines": 52864,
+      "message": "fix: 为页面加载失败提供刷新恢复入口"
+    },
+    {
+      "date": "2026-10-14",
+      "commit": "f2ec04b",
+      "total_lines": 348051,
+      "code_lines": 295179,
+      "other_lines": 52872,
+      "message": "fix: 避免资料库显示内部检索副本"
+    },
+    {
+      "date": "2026-10-14",
+      "commit": "d8d34a8",
+      "total_lines": 348051,
+      "code_lines": 295179,
+      "other_lines": 52872,
+      "message": "fix: 正确渲染单字符数字公式"
+    },
+    {
+      "date": "2026-10-14",
+      "commit": "e6ddf10",
+      "total_lines": 348110,
+      "code_lines": 295224,
+      "other_lines": 52886,
+      "message": "fix: 为主网关过载请求增加退避"
+    },
+    {
+      "date": "2026-10-14",
+      "commit": "fd7d880",
+      "total_lines": 348127,
+      "code_lines": 295237,
+      "other_lines": 52890,
+      "message": "fix: 补齐模型首字事件时间"
+    },
+    {
+      "date": "2026-10-14",
+      "commit": "2f77702",
+      "total_lines": 348133,
+      "code_lines": 295243,
+      "other_lines": 52890,
+      "message": "fix: 统一判断题答案选项回显"
+    },
+    {
+      "date": "2026-10-14",
+      "commit": "f919472",
+      "total_lines": 348133,
+      "code_lines": 295243,
+      "other_lines": 52890,
+      "message": "fix: 避免前端滚动发布短暂中断"
+    },
+    {
+      "date": "2026-10-14",
+      "commit": "ba28505",
+      "total_lines": 348217,
+      "code_lines": 295321,
+      "other_lines": 52896,
+      "message": "fix: 确保前端就绪与摘流配置实际生效"
+    },
+    {
+      "date": "2026-10-15",
+      "commit": "a1b2f6e",
+      "total_lines": 348518,
+      "code_lines": 295572,
+      "other_lines": 52946,
+      "message": "fix: 修复文档解析超时后的回退与错误诊断"
+    },
+    {
+      "date": "2026-10-15",
+      "commit": "370d899",
+      "total_lines": 348669,
+      "code_lines": 295699,
+      "other_lines": 52970,
+      "message": "fix: 修复资料正文恢复与示例课程导入阻塞"
+    },
+    {
+      "date": "2026-10-15",
+      "commit": "8679711",
+      "total_lines": 348715,
+      "code_lines": 295738,
+      "other_lines": 52977,
+      "message": "fix: 清理身份切换缓存并补全资料操作错误提示"
+    },
+    {
+      "date": "2026-10-15",
+      "commit": "a2931b4",
+      "total_lines": 348715,
+      "code_lines": 295738,
+      "other_lines": 52977,
+      "message": "fix: 避免手机端目录入口遮挡知识文档标题"
+    },
+    {
+      "date": "2026-10-15",
+      "commit": "a55e8d1",
+      "total_lines": 348715,
+      "code_lines": 295738,
+      "other_lines": 52977,
+      "message": "fix: 禁止缓存静态资源加载失败响应"
+    },
+    {
+      "date": "2026-10-16",
+      "commit": "8eed9b7",
+      "total_lines": 348887,
+      "code_lines": 295887,
+      "other_lines": 53000,
+      "message": "fix: 允许租约失效后重试残留构建方案"
+    },
+    {
+      "date": "2026-10-16",
+      "commit": "c7e9bbd",
+      "total_lines": 348946,
+      "code_lines": 295943,
+      "other_lines": 53003,
+      "message": "fix: 隔离规划缓存并修复草稿恢复与轮询"
+    },
+    {
+      "date": "2026-10-16",
+      "commit": "8782753",
+      "total_lines": 349299,
+      "code_lines": 296248,
+      "other_lines": 53051,
+      "message": "fix: 修复课程包导入去重与资产恢复"
+    },
+    {
+      "date": "2026-10-17",
+      "commit": "1bb5d54",
+      "total_lines": 350608,
+      "code_lines": 297381,
+      "other_lines": 53227,
+      "message": "fix: 修复课程发布题量合同与公式修补"
+    },
+    {
+      "date": "2026-10-17",
+      "commit": "1376823",
+      "total_lines": 350702,
+      "code_lines": 297469,
+      "other_lines": 53233,
+      "message": "fix: 修复公式填空与独立等式显示"
+    },
+    {
+      "date": "2026-10-18",
+      "commit": "d334c72",
+      "total_lines": 350702,
+      "code_lines": 297469,
+      "other_lines": 53233,
+      "message": "fix: 限制前端部署诊断等待时间"
+    },
+    {
+      "date": "2026-10-18",
+      "commit": "6a6a1db",
+      "total_lines": 351020,
+      "code_lines": 297731,
+      "other_lines": 53289,
+      "message": "fix: 保留并校验章末题型配额"
+    },
+    {
+      "date": "2026-10-18",
+      "commit": "b78b2d1",
+      "total_lines": 351338,
+      "code_lines": 297997,
+      "other_lines": 53341,
+      "message": "fix: 补齐修补与发布阶段的题型配额校验"
     }
   ]
 }
