@@ -23,6 +23,7 @@ interface Props {
   sourceFilesFetching: boolean;
   buildStage: string | null | undefined;
   buildStatus?: string | null;
+  imageUnderstandingEnabled?: boolean;
   isDocumentReady?: boolean;
   className?: string;
   /** Course ID for SSE streaming — enables live build updates */
@@ -33,6 +34,10 @@ const EVENT_STAGE_LABELS: Record<string, string> = {
   build_accepted: "已受理",
   search_only_mode: "联网模式",
   planner_confirmed: "方案确认",
+  visual_evidence_started: "准备图片",
+  visual_evidence_progress: "理解图片",
+  visual_evidence_ready: "图片理解完成",
+  visual_evidence_degraded: "继续分析文本",
   preparing_docgen_global_seed: "准备全局上下文",
   docgen_global_seed_started: "准备全局上下文",
   docgen_global_seed_ready: "全局上下文就绪",
@@ -88,6 +93,10 @@ const GRAPH_BUILD_STAGES = new Set([
   "graph_ready",
 ]);
 const BACKBONE_WORKSPACE_STAGES = new Set([
+  "visual_evidence_started",
+  "visual_evidence_progress",
+  "visual_evidence_ready",
+  "visual_evidence_degraded",
   "planner_confirmed",
   "plan_ready",
   "preparing_docgen_global_seed",
@@ -416,6 +425,7 @@ export function BuildView({
   buildPreview,
   buildStage,
   buildStatus,
+  imageUnderstandingEnabled = false,
   isDocumentReady = false,
   className,
   courseId,
@@ -546,6 +556,7 @@ export function BuildView({
                   {liveStatusText || "正在准备知识文档..."}
                 </h2>
                 <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-zinc-500 dark:text-slate-400">
+                  <span>{(sseSnapshot?.docgen?.image_understanding_enabled ?? imageUnderstandingEnabled) ? "图文构建" : "文本构建"}</span>
                   {(sseConnected || isBuildActive) ? (
                     <span className="inline-flex items-center gap-1.5 rounded-md bg-blue-50 px-2 py-0.5 text-blue-600 ring-1 ring-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500/20">
                       <span className={cn("h-1.5 w-1.5 rounded-full", sseConnected ? "build-live-dot text-blue-500" : "bg-zinc-300 dark:bg-slate-600")} />

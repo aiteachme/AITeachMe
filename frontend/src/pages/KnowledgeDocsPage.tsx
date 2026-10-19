@@ -7306,6 +7306,7 @@ export function KnowledgeDocsPage() {
             sourceFiles={sourceFiles}
             sourceFilesFetching={sourceFilesFetching}
             buildStage={buildMeta?.stage}
+            imageUnderstandingEnabled={buildMeta?.image_understanding_enabled}
             buildStatus={buildStatus}
             isDocumentReady={isRequestedBuildReady}
             courseId={courseId}
@@ -7637,6 +7638,7 @@ export function KnowledgeDocsPage() {
                       sourceFiles={sourceFiles}
                       sourceFilesFetching={sourceFilesFetching}
                       buildStage={buildMeta?.stage}
+                      imageUnderstandingEnabled={buildMeta?.image_understanding_enabled}
                       buildStatus={buildStatus}
                       isDocumentReady={isRequestedBuildReady}
                       courseId={courseId}

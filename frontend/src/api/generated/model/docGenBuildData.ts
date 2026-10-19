@@ -10,6 +10,8 @@ import type { CourseVectorStatusResponse } from './courseVectorStatusResponse.ts
  * Knowledge docs build response data.
  */
 export interface DocGenBuildData {
+  /** Effective image-understanding mode frozen for this build. */
+  image_understanding_enabled?: boolean;
   /** Accepted ready raw file IDs. */
   accepted_file_ids?: string[];
   /** Effective user prompt for the docs build after planner overrides are applied. */

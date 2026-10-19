@@ -13,6 +13,7 @@ import type {
 import type { ApiResponse } from "../api/types";
 
 export interface KnowledgeBuildLaneRuntime {
+  image_understanding_enabled?: boolean;
   lane: "aggregate" | "docgen" | "graph";
   build_group_id?: string | null;
   status?: string | null;

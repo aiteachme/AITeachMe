@@ -258,11 +258,13 @@ def test_knowledge_build_spawns_background_docgen_with_accepted_files(monkeypatc
         confirmed_plan_id="plan-1",
         digest_mode="sprint",
         model_override="primary",
+        image_understanding_enabled=True,
     )
 
     def fake_trigger_docgen_build(_session, **kwargs):
         assert kwargs["file_ids"] == ["file-a", "file-b"]
         assert kwargs["confirmed_plan_id"] == "plan-1"
+        assert kwargs["image_understanding_enabled"] is True
         return build_data, ["file-a"], kwargs["build_group_id"]
 
     def fake_run_docgen_background(**kwargs):
@@ -296,7 +298,7 @@ def test_knowledge_build_spawns_background_docgen_with_accepted_files(monkeypatc
         api.knowledge_build(
             request=request,
             course_id=COURSE_ID,
-            body=DocGenBuildRequest(file_ids=["file-a", "file-b"], prompt="draft", confirmed_plan_id="plan-1"),
+            body=DocGenBuildRequest(file_ids=["file-a", "file-b"], prompt="draft", confirmed_plan_id="plan-1", image_understanding_enabled=True),
             user=CurrentUserContext(
                 user_id=USER_ID,
                 email="learner@example.com",
@@ -322,6 +324,7 @@ def test_knowledge_build_spawns_background_docgen_with_accepted_files(monkeypatc
     assert run_kwargs["course_id"] == COURSE_ID
     assert run_kwargs["course_name"] == "API Course"
     assert run_kwargs["file_ids"] == ["file-a"]
+    assert run_kwargs["image_understanding_enabled"] is True
     assert run_kwargs["build_group_id"] == "group-1"
     assert run_kwargs["background_task_registry"] is request.app.state.background_task_registry
     assert len(callbacks) == 1

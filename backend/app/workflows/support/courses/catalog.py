@@ -17,6 +17,10 @@ from app.schemas.common import PaginatedData, build_paginated_data
 from app.schemas.course import CourseItem
 from app.utils.course import generate_course_id, validate_course_id
 from app.workflows.support.courses.icons import get_course_icon_key, set_course_icon_key
+from app.workflows.digest.common.build_preferences import (
+    get_image_understanding_enabled,
+    set_image_understanding_enabled,
+)
 
 
 def _create_unique_course_id(session: Session) -> str:
@@ -33,6 +37,7 @@ def _to_course_item(course: Course) -> CourseItem:
         description=course.description,
         user_intent=course.user_intent,
         icon_key=get_course_icon_key(course),
+        image_understanding_enabled=get_image_understanding_enabled(course),
         created_at=course.created_at,
         updated_at=course.updated_at,
     )
@@ -116,8 +121,11 @@ def update_course_record(
     description: str | None = None,
     user_intent: str | None = None,
     icon_key: str | None = None,
+    image_understanding_enabled: bool | None = None,
 ) -> CourseItem:
     course = get_course_record(session, course_id, owner_user_id=owner_user_id)
+    if image_understanding_enabled is not None:
+        set_image_understanding_enabled(course, image_understanding_enabled)
     updated = update_course(
         session,
         course,

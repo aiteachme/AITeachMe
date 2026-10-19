@@ -79,6 +79,11 @@ from app.shared.infra.tools.builtin.markdown_processing import normalize_markdow
 from app.utils.presenters import require_id
 from app.utils.time import utcnow
 from app.workflows.digest.common.build_lifecycle import maintain_knowledge_build_lock_lease
+from app.workflows.digest.common.build_preferences import (
+    get_image_understanding_enabled,
+    resolve_image_understanding_enabled,
+    set_image_understanding_enabled,
+)
 from app.workflows.digest.common.contracts import normalize_digest_confirmed_plan_payload
 from app.workflows.digest.common.file_status import is_markdown_ready_for_digest
 from app.workflows.digest.common.metrics import build_token_summary
@@ -747,6 +752,7 @@ def _resolve_runtime_build_status(
         planner_session_id=effective.planner_session_id,
         confirmed_plan_id=effective.confirmed_plan_id,
         digest_mode=effective.digest_mode,
+        image_understanding_enabled=effective.image_understanding_enabled,
         mode_reason=effective.mode_reason,
         current_stage_description=effective.current_stage_description,
     )
@@ -760,6 +766,7 @@ def _build_lane_runtime_response(
         return None
     return KnowledgeBuildLaneRuntimeResponse(
         lane=lane,
+        image_understanding_enabled=runtime_status.image_understanding_enabled,
         build_group_id=runtime_status.build_group_id,
         status=runtime_status.status,
         stage=runtime_status.stage,
@@ -908,6 +915,7 @@ def trigger_docgen_build(
     embedding_resolution: str | None,
     confirmed_plan_id: str | None,
     build_group_id: str | None = None,
+    image_understanding_enabled: bool | None = None,
 ) -> tuple[DocGenBuildData, list[str], str]:
     """处理知识文档构建请求的同步前置阶段。
 
@@ -970,6 +978,12 @@ def trigger_docgen_build(
         )
     cleaned_prompt = plan_prompt or cleaned_prompt
     accepted_file_ids = _resolve_file_ids(accepted_files)
+    image_preference = (
+        get_image_understanding_enabled(course)
+        if image_understanding_enabled is None
+        else image_understanding_enabled
+    )
+    effective_image_understanding = resolve_image_understanding_enabled(image_preference, accepted_files)
     search_only_mode = not accepted_file_ids
     if search_only_mode:
         recent_events.append(
@@ -1008,6 +1022,7 @@ def trigger_docgen_build(
         if force_full_rebuild:
             clear_chunk_vector_metadata(session, course_id=course.id)
         build_data = DocGenBuildData(
+            image_understanding_enabled=effective_image_understanding,
             accepted_file_ids=accepted_file_ids,
             ready_file_count=ready_file_count,
             prompt=cleaned_prompt,
@@ -1019,6 +1034,10 @@ def trigger_docgen_build(
             model_override=model_override,
         )
         _clear_docgen_staging_safely(course.id, course_scope=course_scope)
+        if image_understanding_enabled is not None:
+            set_image_understanding_enabled(course, image_preference)
+            session.add(course)
+            session.commit()
         update_knowledge_build_lane_status(
             course.id,
             lane="docgen",
@@ -1027,6 +1046,7 @@ def trigger_docgen_build(
             build_group_id=build_group_id,
             status="accepted",
             stage="build_accepted",
+            image_understanding_enabled=effective_image_understanding,
             error_message=None,
             draft_available=False,
             source_file_ids=accepted_file_ids,
@@ -1087,6 +1107,7 @@ async def run_docgen_background(
     planner_session_id: str | None = None,
     confirmed_plan_id: str | None = None,
     model_override: str | None = None,
+    image_understanding_enabled: bool = False,
     user_id: str | None = None,
     background_task_registry: Any | None = None,
 ) -> None:
@@ -1241,7 +1262,12 @@ async def run_docgen_background(
                 model_override=resolved_model_override,
                 current_stage_description="已关闭文档构建后自动图谱同步。",
             )
-        result = await run_docgen_workflow(
+        workflow_runner = run_docgen_workflow
+        if image_understanding_enabled:
+            from app.workflows.digest.docgen_multimodal import run_multimodal_docgen_workflow
+
+            workflow_runner = run_multimodal_docgen_workflow
+        result = await workflow_runner(
             course_id=course_id,
             course_name=course_name,
             user_id=user_id,

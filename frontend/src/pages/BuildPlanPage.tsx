@@ -80,6 +80,8 @@ import { buildCoursePath } from "../lib/courseNavigation";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
 import { CoursePagePillTitle } from "../components/course/CoursePagePillTitle";
 import { CircularFileParseProgress } from "../components/files/FileParseProgress";
+import { ImageUnderstandingToggle, haveNoDocumentImages } from "../components/build-plan/ImageUnderstandingToggle";
+import { useCourseBuildPreferences } from "../hooks/useCourseBuildPreferences";
 
 type ChatRole = "user" | "assistant" | "system";
 
@@ -116,6 +118,7 @@ const TRANSIENT_PLANNER_ERROR_SNIPPETS = [
 ];
 
 interface BuildPlanLocationState {
+  imageUnderstandingEnabled?: boolean;
   initialFiles?: File[];
   initialPrompt?: string;
   autoStart?: boolean;
@@ -2024,6 +2027,7 @@ export function BuildPlanPage() {
   const queryClient = useQueryClient();
 
   const navState = location.state as BuildPlanLocationState | null;
+  const buildPreferences = useCourseBuildPreferences(courseId, navState?.imageUnderstandingEnabled);
   const requestedAt = useMemo(
     () => new URLSearchParams(location.search).get("requested_at"),
     [location.search],
@@ -2173,6 +2177,11 @@ export function BuildPlanPage() {
   const courseFileIds = useMemo(() => files.map((item) => item.id), [files]);
   const plannerFileIds = useMemo(() => plannerFiles.map((item) => item.id), [plannerFiles]);
   const readyFileIds = useMemo(() => readyFiles.map((item) => item.id), [readyFiles]);
+  const imageSourceFiles = currentPlan?.selected_file_ids?.length
+    ? files.filter((file) => currentPlan.selected_file_ids?.includes(file.id))
+    : files;
+  const noDocumentImages = haveNoDocumentImages(imageSourceFiles);
+  const imageUnderstandingEnabled = buildPreferences.imageUnderstandingEnabled && !noDocumentImages;
   const plannerEffectiveFileIds = useMemo(
     () => (readyFileIds.length > 0 ? readyFileIds : plannerFileIds),
     [plannerFileIds, readyFileIds],
@@ -2728,6 +2737,7 @@ export function BuildPlanPage() {
       file_ids: readyFileIds.length > 0 ? readyFileIds : undefined,
       prompt: plannerUserPrompt(currentPlanRef.current) || undefined,
       confirmed_plan_id: currentPlanRef.current?.confirmed_plan_id ?? undefined,
+      image_understanding_enabled: imageUnderstandingEnabled,
     }),
     fallbackErrorMessage: "知识文档构建失败。",
     onSuccess: (data: DocGenBuildData) => {
@@ -3534,6 +3544,7 @@ export function BuildPlanPage() {
   }, [canEditPlannerMessages, editingMessageValue, submitPlannerPrompt]);
 
   const handleConfirmBuild = useCallback(async () => {
+    if (buildPreferences.isPending || buildPreferences.isError) return;
     logPlannerDebug("click_confirm_build", {
       courseId,
       plannerSessionId,
@@ -3612,6 +3623,7 @@ export function BuildPlanPage() {
         confirmed_plan_id: response.confirmed_plan_id,
         file_ids: readyFileIds.length > 0 ? readyFileIds : undefined,
         prompt: confirmedUserPrompt(response),
+        image_understanding_enabled: imageUnderstandingEnabled,
       });
     } catch (error) {
       logPlannerDebug("confirm_build_failed", {
@@ -3628,6 +3640,9 @@ export function BuildPlanPage() {
     }
   }, [
     confirmPlannerMutation,
+    buildPreferences.isPending,
+    buildPreferences.isError,
+    imageUnderstandingEnabled,
     courseId,
     currentPlan,
     isBuilding,
@@ -3877,7 +3892,7 @@ export function BuildPlanPage() {
                         <PlannerOutlineCard
                           plan={message.plan}
                           needsRefresh={plannerNeedsRefresh}
-                          isDisabled={isBuilding || isPlannerPending}
+                          isDisabled={isBuilding || isPlannerPending || buildPreferences.isPending || buildPreferences.isError}
                           isBuilding={isBuilding || isPlannerPending}
                           publishedDocReady={hasLiveDocMarkdown && !isBuilding && !isPlannerPending}
                           diagnosisPending={isPlannerDiagnosisPending(diagnosisGate, message.plan, plannerSessionId)}
@@ -3926,7 +3941,7 @@ export function BuildPlanPage() {
                   <PlannerOutlineCard
                     plan={currentPlan}
                     needsRefresh={plannerNeedsRefresh}
-                    isDisabled={isBuilding || isPlannerPending}
+                    isDisabled={isBuilding || isPlannerPending || buildPreferences.isPending || buildPreferences.isError}
                     isBuilding={isBuilding || isPlannerPending}
                     publishedDocReady={hasLiveDocMarkdown && !isBuilding && !isPlannerPending}
                     diagnosisPending={isPlannerDiagnosisPending(diagnosisGate, currentPlan, plannerSessionId)}
@@ -4065,6 +4080,13 @@ export function BuildPlanPage() {
                   </label>
                 ) : null}
 
+                <ImageUnderstandingToggle
+                  checked={isBuildActive ? (buildRuntimeQuery.data?.docgen?.image_understanding_enabled ?? buildMeta?.image_understanding_enabled ?? imageUnderstandingEnabled) : imageUnderstandingEnabled}
+                  onChange={buildPreferences.setImageUnderstandingEnabled}
+                  disabled={isBuilding || confirmPlannerMutation.isPending || buildPreferences.isPending || buildPreferences.isError}
+                  noImages={!isBuilding && noDocumentImages}
+                  statusText={buildPreferences.isError ? "暂时无法读取课程设置，请刷新后重试。" : isBuilding ? "本次构建已开始，图片理解设置已固定。" : undefined}
+                />
                 <div className="flex flex-col gap-2 px-1 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex min-w-0 w-full flex-wrap items-center gap-1.5 sm:flex-1 sm:gap-2">
                     <input

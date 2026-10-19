@@ -56,6 +56,8 @@ import {
 } from "../components/chat/ChatModelSelect";
 import type { FileRecord, FilesData, FilesUploadData } from "../types/files";
 import { CircularFileParseProgress } from "../components/files/FileParseProgress";
+import { ImageUnderstandingToggle, haveNoDocumentImages } from "../components/build-plan/ImageUnderstandingToggle";
+import { courseBuildPreferencesQueryKey, saveCourseImageUnderstanding } from "../hooks/useCourseBuildPreferences";
 
 /* ── API helpers (same as BuildPlanPage) ── */
 
@@ -687,6 +689,7 @@ export function HomePage() {
   const [uploadingFileNames, setUploadingFileNames] = useState<string[]>([]);
   const [entryFileIds, setEntryFileIds] = useState<string[]>([]);
   const [entryMode, setEntryMode] = useState<"course" | "chat">("course");
+  const [imageUnderstandingEnabled, setImageUnderstandingEnabled] = useState(false);
   const [chatModel, setChatModel] = useGlobalChatModelChoice();
   const [recentOpen, setRecentOpen] = useState(true);
   const [startersOpen, setStartersOpen] = useState(true);
@@ -711,6 +714,7 @@ export function HomePage() {
     setUploadingFileNames([]);
     setEntryFileIds([]);
     setEntryMode("course");
+    setImageUnderstandingEnabled(false);
     setLibraryPickerOpen(false);
     setError(null);
     navigate("/", { replace: true, state: null });
@@ -958,11 +962,14 @@ export function HomePage() {
         void queryClient.invalidateQueries({ queryKey: ["files", courseId] });
       }
       const userGoal = prompt.trim() || "请基于我选择的资料，直接生成一份课程构建规划。";
+      const imageMode = imageUnderstandingEnabled && !haveNoDocumentImages(uploadedFiles);
+      const savedCourse = await saveCourseImageUnderstanding(courseId, imageMode);
+      queryClient.setQueryData(courseBuildPreferencesQueryKey(courseId), savedCourse);
       navigate(buildCoursePath(courseId, "build"), {
-        state: { initialPrompt: userGoal, autoStart: true, entrySource: "home_arrow", model: selectedModel },
+        state: { initialPrompt: userGoal, autoStart: true, entrySource: "home_arrow", model: selectedModel, imageUnderstandingEnabled: imageMode },
       });
-    } catch {
-      // ensureDraftCourseId already writes user-facing error.
+    } catch (error) {
+      setError(getApiErrorMessage(error, "进入课程规划失败，请稍后重试。"));
     } finally {
       setIsStartingBuild(false);
     }
@@ -1284,6 +1291,14 @@ export function HomePage() {
                 </div>
               )}
 
+              {isCourseEntryMode && (
+                <ImageUnderstandingToggle
+                  checked={imageUnderstandingEnabled}
+                  onChange={setImageUnderstandingEnabled}
+                  disabled={isWorking}
+                  noImages={haveNoDocumentImages(uploadedFiles)}
+                />
+              )}
               <div className="flex flex-col gap-2 px-1 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex min-w-0 w-full flex-wrap items-center gap-1.5 sm:flex-1 sm:gap-2">
                   <input 

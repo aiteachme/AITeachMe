@@ -11,6 +11,7 @@ from app.schemas.course import (
     CourseDeletePreviewData,
     CourseDeletePreviewRequest,
     CourseDeleteRequest,
+    CourseDetailRequest,
     CourseItem,
     CourseListRequest,
     CourseUpdateRequest,
@@ -19,6 +20,7 @@ from app.shared.infra.analytics.posthog import capture_product_event_later
 from app.workflows.support.courses import (
     create_course_record,
     delete_course_record,
+    get_course_detail,
     infer_course_icon_key,
     list_course_records,
     preview_course_delete,
@@ -102,6 +104,20 @@ async def list_courses_api(
 
 
 @router.post(
+    "/detail",
+    response_model=ApiResponse[CourseItem],
+    summary="课程详情",
+    responses=build_error_responses([400, 404, 500]),
+)
+async def course_detail_api(
+    body: CourseDetailRequest,
+    user: CurrentUserContext = Depends(get_current_user_context),
+    session: Session = Depends(get_db),
+) -> ApiResponse[CourseItem]:
+    return ok_response(get_course_detail(session, body.course_id, owner_user_id=user.user_id))
+
+
+@router.post(
     "/delete/preview",
     response_model=ApiResponse[CourseDeletePreviewData],
     summary="删除课程预览",
@@ -166,6 +182,7 @@ async def update_course_api(
         description=body.description,
         user_intent=body.user_intent,
         icon_key=icon_key,
+        image_understanding_enabled=body.image_understanding_enabled,
     )
     if body.name is not None:
         schedule_course_icon_refinement(

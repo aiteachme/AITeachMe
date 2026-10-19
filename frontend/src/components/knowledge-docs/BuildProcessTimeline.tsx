@@ -104,6 +104,10 @@ const STAGE_TO_STEP_INDEX: Record<string, number> = {
   load_context: 0,
 
   prepare_shared: 1,
+  visual_evidence_started: 1,
+  visual_evidence_progress: 1,
+  visual_evidence_ready: 1,
+  visual_evidence_degraded: 1,
   preparing_docgen_global_seed: 1,
   preparing_docgen_context: 1,
   prepare_parallel_inputs: 1,
