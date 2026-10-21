@@ -1,0 +1,656 @@
+"""Independent multimodal Writer with direct original-image rereading."""
+
+from __future__ import annotations
+
+import asyncio
+import re
+from collections.abc import Awaitable, Callable, Mapping
+from time import perf_counter
+from typing import Any
+
+from app.workflows.digest.common.models import DigestMaterialContext
+from app.workflows.digest.docgen_multimodal.lib.models import VisualEvidence
+from app.workflows.digest.docgen_multimodal.lib.writer_images import WriterImageLoadResult, load_writer_reread_images
+from app.workflows.digest.docgen_multimodal.prompts.writer import add_writer_reread_images
+
+from app.shared.infra.env_support import get_env_bounded_float, get_env_bounded_int
+from app.shared.infra.exceptions import LLMTimeoutError
+from app.shared.infra.execution import BaseTracedExecution, TracedExecutionResult
+from app.shared.infra.llm_support import acompletion_stream
+from app.shared.infra.tools.builtin.markdown_processing import count_words
+from app.workflows.digest.common.pedagogy import (
+    analyze_chapter_heading_quality,
+    resolve_effective_chapter_title,
+)
+from app.workflows.digest.docgen.prompts.generation import build_docgen_writer_messages
+from app.workflows.digest.docgen.lib.asset_requests import (
+    ASSET_REQUEST_LANGUAGE,
+    build_asset_request_block,
+    has_asset_request,
+    strip_asset_requests,
+)
+from app.workflows.digest.docgen.lib.model_policy import DocGenModelStep, docgen_completion_kwargs_with_metadata
+from app.workflows.digest.docgen.lib.models import ChapterQuantityConstraints
+from app.workflows.digest.docgen.lib.quantity_contracts import explicit_chapter_structure_issues
+from app.workflows.digest.docgen.lib.presentation_policy import (
+    find_docgen_presentation_issues,
+    normalize_docgen_presentation,
+    summarize_docgen_presentation,
+)
+
+_PLACEHOLDER_TOKEN_MAP = {
+    "asset_request": ASSET_REQUEST_LANGUAGE,
+}
+_UNCLOSED_CODE_FENCE_ISSUE = "Markdown fenced code block 数量不成对。"
+
+STREAM_CALLBACK_MIN_DELTA_CHARS = get_env_bounded_int(
+    "DOCGEN_WRITER_STREAM_CALLBACK_MIN_DELTA_CHARS",
+    32,
+    min_value=8,
+    max_value=200,
+)
+STREAM_CALLBACK_MIN_INTERVAL_S = get_env_bounded_float(
+    "DOCGEN_WRITER_STREAM_CALLBACK_MIN_INTERVAL_S",
+    0.12,
+    min_value=0.03,
+    max_value=1.0,
+)
+WRITER_TASK_TIMEOUT_S = get_env_bounded_float(
+    "DOCGEN_WRITER_TASK_TIMEOUT_S",
+    180.0,
+    min_value=30.0,
+    max_value=360.0,
+)
+WRITER_MAX_EFFECTIVE_TARGET_WORDS = get_env_bounded_int(
+    "DOCGEN_WRITER_MAX_EFFECTIVE_TARGET_WORDS",
+    6200,
+    min_value=800,
+    max_value=8000,
+)
+
+
+def _positive_int(value: object, *, default: int) -> int:
+    try:
+        parsed = int(value or 0)
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed > 0 else default
+
+
+def _has_unclosed_code_fence(markdown: str) -> bool:
+    return _UNCLOSED_CODE_FENCE_ISSUE in find_docgen_presentation_issues(markdown)
+
+
+def _writer_target_word_count(execution_contract: Mapping[str, Any]) -> int:
+    target_words = _positive_int(execution_contract.get("target_word_count"), default=1200)
+    return min(target_words, WRITER_MAX_EFFECTIVE_TARGET_WORDS)
+
+
+def _writer_max_tokens_for_contract(execution_contract: Mapping[str, Any], *, digest_mode: str | None = None) -> int:
+    target_words = _writer_target_word_count(execution_contract)
+    if str(digest_mode or "").strip().lower() == "sprint":
+        return max(2000, min(9000, int(target_words * 1.6) + 1000))
+    return max(2400, min(12000, int(target_words * 1.8) + 1000))
+
+
+def _writer_stream_char_limit(execution_contract: Mapping[str, Any], *, digest_mode: str | None = None) -> int:
+    target_words = _writer_target_word_count(execution_contract)
+    if str(digest_mode or "").strip().lower() == "sprint":
+        return max(3600, min(7200, int(target_words * 3.2)))
+    return max(5000, min(14000, int(target_words * 4.5)))
+
+
+def _explicit_writer_contract_issues(markdown: str, execution_contract: Mapping[str, Any]) -> list[str]:
+    """Validate explicit Markdown structure, without guessing teaching intent."""
+
+    quantities = ChapterQuantityConstraints.model_validate(execution_contract.get("quantity_constraints") or {})
+    return explicit_chapter_structure_issues(markdown, quantities)
+
+
+class DocGenWriterNoContentError(RuntimeError):
+    """Raised when the writer model produced no publishable chapter content."""
+
+
+class DocGenWriterRuntime(BaseTracedExecution):
+    @property
+    def trace_namespace(self) -> str:
+        return "DocGen"
+
+    @property
+    def trace_name(self) -> str:
+        return "章节写作（关键图复读）"
+
+    async def execute(
+        self,
+        *,
+        chapter_plan: Mapping[str, Any],
+        dense_context: str,
+        digest_mode: str,
+        on_stream_update: Callable[[str], Awaitable[None]] | None = None,
+        material_context: DigestMaterialContext | None = None,
+        visual_evidence: list[VisualEvidence] | None = None,
+    ) -> TracedExecutionResult:
+        """根据章节执行合同和 dense_context 生成学生可读草稿。
+
+        Writer 将研究材料和严格筛选的少量原图直接写成一章 Markdown，
+        再执行标题、结构、字数和学生可见内容清理。不另行调用图片证据提取。
+        """
+
+        llm = self.context.resolve_llm_caller()
+        title = resolve_effective_chapter_title(chapter_plan, fallback_title="Untitled Chapter")
+        objective = str(chapter_plan.get("objective") or "")
+        required_elements = [str(item) for item in chapter_plan.get("required_elements", []) if str(item).strip()]
+        writing_instructions = str(chapter_plan.get("writing_instructions") or "")
+        media_hints = chapter_plan.get("media_hints") or {}
+        execution_contract = dict(chapter_plan.get("execution_contract") or {})
+        source_count = len(list(chapter_plan.get("source_details") or []))
+        chapter_index = int(chapter_plan.get("chapter_index", 0) or 0) or None
+        chapter_count = int(chapter_plan.get("total_chapters", 0) or 0) or None
+        messages = build_docgen_writer_messages(
+            title=title,
+            objective=objective,
+            digest_mode=digest_mode,
+            required_elements=required_elements,
+            writing_instructions=writing_instructions,
+            source_count=source_count,
+            dense_context=dense_context,
+            chapter_index=chapter_index,
+            chapter_count=chapter_count,
+            execution_contract=execution_contract,
+        )
+        text_messages = messages
+        loaded_images = WriterImageLoadResult()
+        if material_context is not None and visual_evidence:
+            try:
+                loaded_images = await load_writer_reread_images(
+                    material_context=material_context,
+                    visual_evidence=visual_evidence,
+                    chapter_plan=chapter_plan,
+                    digest_mode=digest_mode,
+                )
+            except Exception as exc:
+                loaded_images.failures.append({"image_id": "", "reason": type(exc).__name__})
+        messages = add_writer_reread_images(text_messages, loaded_images.images)
+        reread_text_fallback = False
+        reread_ids = [item.image_id for item in loaded_images.images]
+
+        writer_model_kwargs = docgen_completion_kwargs_with_metadata(
+            DocGenModelStep.WRITER,
+            digest_mode=digest_mode,
+            extra_metadata=self.context.trace_metadata(chapter_index=self.context.chapter_index),
+        )
+        writer_model_kwargs["extra_metadata"] = {
+            **dict(writer_model_kwargs.get("extra_metadata") or {}),
+            "writer_reread_image_ids": reread_ids,
+            "writer_reread_image_count": len(reread_ids),
+            "writer_reread_load_failures": loaded_images.failures,
+        }
+        text_api_mode = writer_model_kwargs.get("api_mode")
+        if loaded_images.images:
+            # The shared Responses adapter does not convert image content blocks.
+            writer_model_kwargs["api_mode"] = "chat_completions"
+
+        def text_fallback_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
+            fallback_kwargs = {
+                **kwargs,
+                "extra_metadata": {
+                    **dict(kwargs.get("extra_metadata") or {}),
+                    "writer_reread_image_ids": [],
+                    "writer_reread_image_count": 0,
+                    "writer_reread_fallback_text_only": True,
+                },
+            }
+            if text_api_mode is None:
+                fallback_kwargs.pop("api_mode", None)
+            else:
+                fallback_kwargs["api_mode"] = text_api_mode
+            return fallback_kwargs
+
+        target_max_tokens = _writer_max_tokens_for_contract(execution_contract, digest_mode=digest_mode)
+        configured_max_tokens = int(writer_model_kwargs.get("max_tokens") or target_max_tokens)
+        writer_model_kwargs["max_tokens"] = min(configured_max_tokens, target_max_tokens)
+        stream_char_limit = _writer_stream_char_limit(execution_contract, digest_mode=digest_mode)
+        markdown = ""
+        writer_no_content_reason = ""
+        stream_attempted = False
+        stream_timed_out = False
+        stream_failure_reason = ""
+        writer_fallback_used = False
+        writer_fallback_model_slot = ""
+        if on_stream_update is not None and self.context.llm_caller is None:
+            stream_attempted = True
+            streamed_chars = 0
+            stream_soft_limit_logged = False
+
+            async def _run_writer_stream(model_kwargs: Mapping[str, Any]) -> str:
+                nonlocal streamed_chars, stream_soft_limit_logged
+                streamed_chars = 0
+                stream_soft_limit_logged = False
+                chunks: list[str] = []
+                stream_callback_last_at = perf_counter()
+                stream_callback_last_len = 0
+                async for chunk in acompletion_stream(
+                    messages,
+                    **model_kwargs,
+                ):
+                    chunk_text = str(chunk)
+                    if not chunk_text:
+                        continue
+                    chunks.append(chunk_text)
+                    streamed_chars += len(chunk_text)
+                    now = perf_counter()
+                    if (
+                        streamed_chars - stream_callback_last_len >= STREAM_CALLBACK_MIN_DELTA_CHARS
+                        or now - stream_callback_last_at >= STREAM_CALLBACK_MIN_INTERVAL_S
+                    ):
+                        stream_callback_last_at = now
+                        stream_callback_last_len = streamed_chars
+                        await self._safe_stream_update(on_stream_update, "".join(chunks))
+                    if not stream_soft_limit_logged and streamed_chars >= stream_char_limit:
+                        self.logger.info(
+                            "docgen_writer_stream_soft_limit_reached",
+                            chapter_index=chapter_index,
+                            streamed_chars=streamed_chars,
+                            stream_char_limit=stream_char_limit,
+                            target_word_count=_writer_target_word_count(execution_contract),
+                        )
+                        stream_soft_limit_logged = True
+                result = "".join(chunks)
+                await self._safe_stream_update(on_stream_update, result)
+                return result
+
+            try:
+                markdown = await asyncio.wait_for(
+                    _run_writer_stream(writer_model_kwargs),
+                    timeout=WRITER_TASK_TIMEOUT_S,
+                )
+            except asyncio.TimeoutError as exc:
+                stream_timed_out = True
+                stream_failure_reason = f"TimeoutError: writer stream exceeded {WRITER_TASK_TIMEOUT_S:.0f}s"
+                self.logger.warning(
+                    "docgen_writer_stream_timeout_retry_completion",
+                    chapter_index=chapter_index,
+                    streamed_chars=streamed_chars,
+                    timeout_s=WRITER_TASK_TIMEOUT_S,
+                    error=type(exc).__name__,
+                )
+            except Exception as exc:
+                stream_timed_out = isinstance(exc, LLMTimeoutError)
+                stream_failure_reason = type(exc).__name__
+                self.logger.warning(
+                    "docgen_writer_stream_failed_retry_completion",
+                    chapter_index=chapter_index,
+                    streamed_chars=streamed_chars,
+                    error=type(exc).__name__,
+                )
+
+        if not markdown.strip():
+            completion_model_kwargs = dict(writer_model_kwargs)
+            if stream_attempted:
+                writer_fallback_used = True
+                stream_failure_reason = stream_failure_reason or "empty_writer_stream_output"
+                if stream_timed_out and str(completion_model_kwargs.get("model") or "") == "reason":
+                    completion_model_kwargs["model"] = "primary"
+                writer_fallback_model_slot = str(completion_model_kwargs.get("model") or "")
+                raw_metadata = completion_model_kwargs.get("extra_metadata")
+                completion_metadata = dict(raw_metadata) if isinstance(raw_metadata, Mapping) else {}
+                completion_metadata.update(
+                    {
+                        "docgen_writer_fallback": "stream_after_timeout" if stream_timed_out else "completion_after_stream_failure",
+                        "docgen_writer_stream_timed_out": stream_timed_out,
+                        "docgen_writer_stream_failure_reason": stream_failure_reason,
+                        "docgen_writer_fallback_model_slot": writer_fallback_model_slot,
+                        "docgen_model_slot": writer_fallback_model_slot,
+                    }
+                )
+                completion_model_kwargs["extra_metadata"] = completion_metadata
+                self.logger.info(
+                    "docgen_writer_retry_stream" if stream_timed_out else "docgen_writer_retry_completion",
+                    chapter_index=chapter_index,
+                    stream_timed_out=stream_timed_out,
+                    stream_failure_reason=stream_failure_reason,
+                    fallback_model_slot=writer_fallback_model_slot,
+                )
+
+            if loaded_images.images and stream_attempted:
+                messages = text_messages
+                reread_text_fallback = True
+                completion_model_kwargs = text_fallback_kwargs(completion_model_kwargs)
+
+            try:
+                retry_call = (
+                    _run_writer_stream(completion_model_kwargs)
+                    if stream_timed_out
+                    else llm(messages, **completion_model_kwargs)
+                )
+                markdown = await asyncio.wait_for(
+                    retry_call,
+                    timeout=WRITER_TASK_TIMEOUT_S,
+                )
+                markdown = str(markdown or "")
+            except Exception as exc:
+                completion_failure_reason = type(exc).__name__
+                writer_no_content_reason = (
+                    f"{stream_failure_reason}; fallback {completion_failure_reason}"
+                    if stream_failure_reason
+                    else completion_failure_reason
+                )
+                self.logger.warning(
+                    "docgen_writer_completion_failed",
+                    chapter_index=chapter_index,
+                    stream_failure_reason=stream_failure_reason,
+                    fallback_model_slot=writer_fallback_model_slot,
+                    error=type(exc).__name__,
+                )
+            if not markdown.strip() and loaded_images.images and not reread_text_fallback:
+                messages = text_messages
+                reread_text_fallback = True
+                writer_fallback_used = True
+                completion_model_kwargs = text_fallback_kwargs(completion_model_kwargs)
+                writer_fallback_model_slot = str(completion_model_kwargs.get("model") or "")
+                try:
+                    markdown = str(await asyncio.wait_for(
+                        llm(messages, **completion_model_kwargs),
+                        timeout=WRITER_TASK_TIMEOUT_S,
+                    ) or "")
+                    if markdown.strip():
+                        writer_no_content_reason = ""
+                except Exception as exc:
+                    writer_no_content_reason = f"text fallback: {type(exc).__name__}"
+
+            if not markdown.strip():
+                writer_no_content_reason = writer_no_content_reason or stream_failure_reason or "empty_writer_output"
+                self.logger.error(
+                    "docgen_writer_no_content",
+                    chapter_index=chapter_index,
+                    reason=writer_no_content_reason,
+                )
+                raise DocGenWriterNoContentError(
+                    f"DocGen writer produced no publishable content for chapter {chapter_index or '?'}: "
+                    f"{writer_no_content_reason}"
+                )
+
+        if _has_unclosed_code_fence(markdown):
+            invalid_markdown_reason = "unclosed_writer_code_fence"
+            retry_model_kwargs = dict(writer_model_kwargs)
+            retry_messages = messages
+            if loaded_images.images:
+                retry_messages = text_messages
+                retry_model_kwargs = text_fallback_kwargs(retry_model_kwargs)
+            raw_metadata = retry_model_kwargs.get("extra_metadata")
+            retry_metadata = dict(raw_metadata) if isinstance(raw_metadata, Mapping) else {}
+            retry_metadata.update(
+                {
+                    "docgen_writer_fallback": "completion_after_invalid_markdown",
+                    "docgen_writer_stream_failure_reason": invalid_markdown_reason,
+                }
+            )
+            retry_model_kwargs["extra_metadata"] = retry_metadata
+            self.logger.warning(
+                "docgen_writer_invalid_markdown_retry_completion",
+                chapter_index=chapter_index,
+                reason=invalid_markdown_reason,
+            )
+            try:
+                retry_markdown = await asyncio.wait_for(
+                    llm(retry_messages, **retry_model_kwargs),
+                    timeout=WRITER_TASK_TIMEOUT_S,
+                )
+                if str(retry_markdown or "").strip():
+                    markdown = str(retry_markdown)
+                    messages = retry_messages
+                    if loaded_images.images:
+                        reread_text_fallback = True
+                    writer_fallback_used = True
+                    writer_fallback_model_slot = str(retry_model_kwargs.get("model") or "")
+                    stream_failure_reason = invalid_markdown_reason
+            except Exception as exc:
+                self.logger.warning(
+                    "docgen_writer_invalid_markdown_retry_failed",
+                    chapter_index=chapter_index,
+                    reason=invalid_markdown_reason,
+                    error=type(exc).__name__,
+                )
+
+        markdown = strip_asset_requests(str(markdown).strip())
+        heading_quality = analyze_chapter_heading_quality(
+            markdown,
+            digest_mode=digest_mode,
+        )
+
+        markdown = self._ensure_media_placeholders(
+            markdown,
+            media_hints=media_hints,
+            execution_contract=execution_contract,
+        )
+        markdown, quality_summary = self._repair_markdown(
+            markdown,
+            title=title,
+            objective=objective,
+            required_elements=required_elements,
+            digest_mode=digest_mode,
+            dense_context=dense_context,
+            execution_contract=execution_contract,
+        )
+        markdown = self._sanitize_student_facing_markdown(
+            markdown,
+            title=title,
+            digest_mode=digest_mode,
+            focus_items=required_elements,
+        )
+        contract_issues = _explicit_writer_contract_issues(markdown, execution_contract)
+        contract_repair_attempted = bool(contract_issues)
+        if contract_issues:
+            repair_messages = [
+                *messages,
+                {"role": "assistant", "content": markdown},
+                {"role": "user", "content": (
+                    "正文尚未满足明确的小节数量合同：\n" + "\n".join(contract_issues)
+                    + "\n请保留正确知识、例题与章节边界，合并多余小节或重复说明，严格满足执行合同后重新输出完整正文。不要生成章末单元测试。"
+                )},
+            ]
+            repair_kwargs = text_fallback_kwargs(writer_model_kwargs) if reread_text_fallback else dict(writer_model_kwargs)
+            repair_kwargs["extra_metadata"] = {
+                **dict(repair_kwargs.get("extra_metadata") or {}),
+                "docgen_stage": "writer_contract_repair",
+            }
+            try:
+                repaired_markdown = await asyncio.wait_for(
+                    llm(repair_messages, **repair_kwargs), timeout=WRITER_TASK_TIMEOUT_S,
+                )
+            except Exception as exc:
+                raise DocGenWriterNoContentError("LLM failed to satisfy explicit chapter quantities.") from exc
+            if not str(repaired_markdown or "").strip():
+                raise DocGenWriterNoContentError("LLM returned empty chapter contract repair.")
+            markdown = self._sanitize_student_facing_markdown(
+                strip_asset_requests(str(repaired_markdown)),
+                title=title, digest_mode=digest_mode, focus_items=required_elements,
+            )
+            markdown = self._ensure_media_placeholders(
+                markdown, media_hints=media_hints, execution_contract=execution_contract,
+            )
+            markdown, quality_summary = self._repair_markdown(
+                markdown, title=title, objective=objective, required_elements=required_elements,
+                digest_mode=digest_mode, dense_context=dense_context, execution_contract=execution_contract,
+            )
+            contract_issues = _explicit_writer_contract_issues(markdown, execution_contract)
+            if contract_issues:
+                raise DocGenWriterNoContentError("Chapter still violates explicit contract: " + "；".join(contract_issues))
+            heading_quality = analyze_chapter_heading_quality(markdown, digest_mode=digest_mode)
+        source_urls = list(
+            dict.fromkeys(
+                str(item.get("url") or "").strip()
+                for item in list(chapter_plan.get("source_details") or [])
+                if isinstance(item, Mapping) and str(item.get("url") or "").strip()
+            )
+        )
+        return TracedExecutionResult(
+            content=markdown,
+            sources=source_urls,
+            metadata={
+                "title": title,
+                "writer_reread_attempted_image_ids": reread_ids,
+                "writer_reread_image_ids": [] if reread_text_fallback else reread_ids,
+                "writer_reread_image_count": 0 if reread_text_fallback else len(reread_ids),
+                "writer_reread_load_failures": loaded_images.failures,
+                "writer_reread_fallback_text_only": reread_text_fallback,
+                "coverage_score": float(quality_summary.get("coverage_score", 0.0) or 0.0),
+                "quality_score": float(quality_summary.get("quality_score", 0.0) or 0.0),
+                "repair_applied": bool(quality_summary.get("repair_applied", False)),
+                "repair_actions": list(quality_summary.get("repair_actions", []) or []),
+                "quality_summary": quality_summary,
+                "writer_no_content_reason": writer_no_content_reason,
+                "writer_contract_repair_attempted": contract_repair_attempted,
+                "writer_stream_failure_reason": stream_failure_reason,
+                "writer_fallback_model_slot": writer_fallback_model_slot,
+                "fallback_used": writer_fallback_used,
+                "heading_missing_module_count": len(list(heading_quality.get("missing_modules") or [])),
+            },
+        )
+
+    async def _safe_stream_update(
+        self,
+        callback: Callable[[str], Awaitable[None]],
+        markdown: str,
+    ) -> None:
+        try:
+            await callback(markdown)
+        except Exception as exc:
+            self.logger.warning(
+                "docgen_writer_stream_preview_update_failed",
+                chapter_index=self.context.chapter_index,
+                error=type(exc).__name__,
+            )
+
+    def _ensure_media_placeholders(
+        self,
+        markdown: str,
+        *,
+        media_hints: Mapping[str, Any],
+        execution_contract: Mapping[str, Any],
+    ) -> str:
+        additions: list[str] = []
+        mermaid_hints = [str(item) for item in media_hints.get("mermaid", []) if str(item).strip()]
+        quotas = dict(execution_contract.get("media_quota") or {})
+        if (
+            int(quotas.get("mermaid", 0) or 0) > 0
+            and mermaid_hints
+            and "```mermaid" not in markdown
+            and not has_asset_request(markdown, kind="mermaid")
+        ):
+            additions.append(build_asset_request_block("mermaid", mermaid_hints[0]))
+        if not additions:
+            return markdown
+        return markdown.rstrip() + "\n\n" + "\n\n".join(additions) + "\n"
+
+    def _repair_markdown(
+        self,
+        markdown: str,
+        *,
+        title: str,
+        objective: str,
+        required_elements: list[str],
+        digest_mode: str,
+        dense_context: str,
+        execution_contract: Mapping[str, Any],
+    ) -> tuple[str, dict[str, Any]]:
+        repair_actions: list[str] = []
+        repaired = markdown.rstrip() + "\n"
+        min_word_count = int(execution_contract.get("min_word_count", 0) or 0)
+        coverage_score = 0.0
+        missing_requirements: list[str] = []
+
+        if min_word_count > 0 and count_words(repaired) < min_word_count:
+            repair_actions.append("length_unresolved")
+
+        before_presentation_issues = find_docgen_presentation_issues(repaired)
+        if before_presentation_issues:
+            normalized = normalize_docgen_presentation(
+                repaired,
+                digest_mode=digest_mode,
+                title=title,
+                focus_items=required_elements,
+            )
+            after_presentation_issues = find_docgen_presentation_issues(normalized)
+            if normalized and len(after_presentation_issues) < len(before_presentation_issues):
+                repaired = normalized
+                repair_actions.append("presentation")
+                before_presentation_issues = after_presentation_issues
+
+        quality_score = self._estimate_quality_score(
+            markdown=repaired,
+            coverage_score=coverage_score,
+            min_word_count=min_word_count,
+        )
+        return repaired.rstrip() + "\n", {
+            "repair_applied": bool(repair_actions),
+            "repair_actions": repair_actions,
+            "coverage_score": coverage_score,
+            "quality_score": quality_score,
+            "missing_requirements": missing_requirements,
+            "final_word_count": count_words(repaired),
+            "target_word_count": int(execution_contract.get("target_word_count", 0) or 0),
+            "min_word_count": min_word_count,
+            "presentation": summarize_docgen_presentation(repaired),
+            "presentation_issues": before_presentation_issues[:12],
+        }
+
+    def _sanitize_student_facing_markdown(
+        self,
+        markdown: str,
+        *,
+        title: str,
+        digest_mode: str,
+        focus_items: list[str],
+    ) -> str:
+        cleaned = str(markdown or "").replace("\r\n", "\n").replace("\r", "\n")
+        cleaned = re.sub(r"```markdown\s*.*?```", "", cleaned, flags=re.IGNORECASE | re.DOTALL)
+        cleaned = re.sub(r"(?im)^\s*课程：\s*(?:course|subj)_[\w-]+\s*$", "", cleaned)
+        cleaned = cleaned.replace("```markdown", "")
+
+        forbidden_section_patterns = [
+            r"(?ms)^##\s*重点补全\s*\n.*?(?=^##\s|\Z)",
+            r"(?ms)^##\s*结构补全\s*\n.*?(?=^##\s|\Z)",
+            r"(?ms)^##\s*临考补充笔记\s*\n.*?(?=^##\s|\Z)",
+            r"(?ms)^##\s*深入理解补充\s*\n.*?(?=^##\s|\Z)",
+            r"(?ms)^###\s*仍需重点覆盖\s*\n.*?(?=^##\s|^###\s|\Z)",
+            r"(?ms)^###\s*研究材料.*?\n.*?(?=^##\s|^###\s|\Z)",
+        ]
+        for pattern in forbidden_section_patterns:
+            cleaned = re.sub(pattern, "", cleaned)
+
+        forbidden_line_fragments = (
+            "研究笔记",
+            "研究材料重组",
+            "重点补全",
+            "结构补全",
+        )
+        lines: list[str] = []
+        for raw_line in cleaned.split("\n"):
+            line = raw_line.rstrip()
+            if any(fragment in line for fragment in forbidden_line_fragments):
+                continue
+            lines.append(line)
+
+        cleaned = "\n".join(lines)
+        cleaned = normalize_docgen_presentation(
+            cleaned,
+            digest_mode=digest_mode,
+            title=title,
+            focus_items=focus_items,
+        )
+        cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+        if not cleaned.startswith("#"):
+            cleaned = f"# {title}\n\n{cleaned}".strip()
+        return cleaned + "\n"
+
+    def _estimate_quality_score(self, *, markdown: str, coverage_score: float, min_word_count: int) -> float:
+        del coverage_score
+        word_count = count_words(markdown)
+        length_score = 1.0 if min_word_count <= 0 else min(1.0, word_count / max(1, min_word_count))
+        heading_score = 1.0 if markdown.count("\n## ") >= 3 else 0.75
+        placeholder_bonus = 0.1 if any(token in markdown for token in _PLACEHOLDER_TOKEN_MAP.values()) else 0.0
+        score = (length_score * 0.6) + (heading_score * 0.4) + placeholder_bonus
+        return round(min(1.0, score), 4)
+
+__all__ = ["DocGenWriterNoContentError", "DocGenWriterRuntime"]

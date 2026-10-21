@@ -2060,6 +2060,77 @@
         }
       }
     },
+    "/api/v1/courses/detail": {
+      "post": {
+        "tags": [
+          "courses"
+        ],
+        "summary": "课程详情",
+        "operationId": "course_detail_api_api_v1_courses_detail_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CourseDetailRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_CourseItem_"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数不合法。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务内部异常。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/courses/delete/preview": {
       "post": {
         "tags": [
@@ -15889,6 +15960,20 @@
         ],
         "title": "CourseDeleteRequest"
       },
+      "CourseDetailRequest": {
+        "properties": {
+          "course_id": {
+            "type": "string",
+            "title": "Course Id",
+            "description": "Course id."
+          }
+        },
+        "type": "object",
+        "required": [
+          "course_id"
+        ],
+        "title": "CourseDetailRequest"
+      },
       "CourseItem": {
         "properties": {
           "course_id": {
@@ -15922,6 +16007,12 @@
             ],
             "title": "Icon Key",
             "description": "Course icon key."
+          },
+          "image_understanding_enabled": {
+            "type": "boolean",
+            "title": "Image Understanding Enabled",
+            "description": "Saved image-understanding preference for docs builds.",
+            "default": false
           },
           "created_at": {
             "type": "string",
@@ -16491,6 +16582,18 @@
             ],
             "title": "User Intent",
             "description": "User learning goal or intent."
+          },
+          "image_understanding_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Understanding Enabled",
+            "description": "Enable image understanding for subsequent docs builds."
           }
         },
         "type": "object",
@@ -16756,6 +16859,12 @@
       },
       "DocGenBuildData": {
         "properties": {
+          "image_understanding_enabled": {
+            "type": "boolean",
+            "title": "Image Understanding Enabled",
+            "description": "Effective image-understanding mode frozen for this build.",
+            "default": false
+          },
           "accepted_file_ids": {
             "items": {
               "type": "string"
@@ -16850,6 +16959,18 @@
       },
       "DocGenBuildRequest": {
         "properties": {
+          "image_understanding_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Understanding Enabled",
+            "description": "Use the independent multimodal docs lane; omitted uses the saved course preference."
+          },
           "file_ids": {
             "anyOf": [
               {
@@ -19579,6 +19700,11 @@
       },
       "KnowledgeBuildLaneRuntimeResponse": {
         "properties": {
+          "image_understanding_enabled": {
+            "type": "boolean",
+            "title": "Image Understanding Enabled",
+            "default": false
+          },
           "lane": {
             "type": "string",
             "enum": [
@@ -19990,6 +20116,11 @@
       },
       "KnowledgeBuildStatusResponse": {
         "properties": {
+          "image_understanding_enabled": {
+            "type": "boolean",
+            "title": "Image Understanding Enabled",
+            "default": false
+          },
           "status": {
             "type": "string",
             "title": "Status",

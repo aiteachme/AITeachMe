@@ -16,6 +16,7 @@ class CourseUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, description="Display name.")
     description: str | None = Field(default=None, description="Short course description.")
     user_intent: str | None = Field(default=None, description="User learning goal or intent.")
+    image_understanding_enabled: bool | None = Field(default=None, description="Enable image understanding for subsequent docs builds.")
 
 
 class CourseDeleteRequest(CourseDetailRequest):
@@ -40,6 +41,7 @@ class CourseItem(BaseModel):
     description: str = Field(description="Short course description.")
     user_intent: str = Field(description="User learning goal or intent.")
     icon_key: str | None = Field(default=None, description="Course icon key.")
+    image_understanding_enabled: bool = Field(default=False, description="Saved image-understanding preference for docs builds.")
     created_at: datetime = Field(description="Created time.")
     updated_at: datetime = Field(description="Updated time.")
 

@@ -21,6 +21,7 @@ import type {
   ApiResponsePaginatedDataCourseItem,
   CourseDeletePreviewRequest,
   CourseDeleteRequest,
+  CourseDetailRequest,
   CourseListRequest,
   CourseUpdateRequest,
   ErrorResponse,
@@ -225,6 +226,109 @@ export const useListCoursesApiApiV1CoursesListPost = <TError = HTTPValidationErr
         TContext
       > => {
       return useMutation(getListCoursesApiApiV1CoursesListPostMutationOptions(options), queryClient);
+    }
+    export type courseDetailApiApiV1CoursesDetailPostResponse200 = {
+  data: ApiResponseCourseItem
+  status: 200
+}
+
+export type courseDetailApiApiV1CoursesDetailPostResponse400 = {
+  data: ErrorResponse
+  status: 400
+}
+
+export type courseDetailApiApiV1CoursesDetailPostResponse404 = {
+  data: ErrorResponse
+  status: 404
+}
+
+export type courseDetailApiApiV1CoursesDetailPostResponse422 = {
+  data: HTTPValidationError
+  status: 422
+}
+
+export type courseDetailApiApiV1CoursesDetailPostResponse500 = {
+  data: ErrorResponse
+  status: 500
+}
+
+export type courseDetailApiApiV1CoursesDetailPostResponseSuccess = (courseDetailApiApiV1CoursesDetailPostResponse200) & {
+  headers: Headers;
+};
+export type courseDetailApiApiV1CoursesDetailPostResponseError = (courseDetailApiApiV1CoursesDetailPostResponse400 | courseDetailApiApiV1CoursesDetailPostResponse404 | courseDetailApiApiV1CoursesDetailPostResponse422 | courseDetailApiApiV1CoursesDetailPostResponse500) & {
+  headers: Headers;
+};
+
+export type courseDetailApiApiV1CoursesDetailPostResponse = (courseDetailApiApiV1CoursesDetailPostResponseSuccess | courseDetailApiApiV1CoursesDetailPostResponseError)
+
+export const getCourseDetailApiApiV1CoursesDetailPostUrl = () => {
+
+
+
+
+  return `/api/v1/courses/detail`
+}
+
+/**
+ * @summary 课程详情
+ */
+export const courseDetailApiApiV1CoursesDetailPost = async (courseDetailRequest: CourseDetailRequest, options?: RequestInit): Promise<courseDetailApiApiV1CoursesDetailPostResponse> => {
+
+  return orvalApiClient<courseDetailApiApiV1CoursesDetailPostResponse>(getCourseDetailApiApiV1CoursesDetailPostUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(courseDetailRequest)
+  }
+);}
+
+
+
+
+export const getCourseDetailApiApiV1CoursesDetailPostMutationOptions = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof courseDetailApiApiV1CoursesDetailPost>>, TError,{data: CourseDetailRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof courseDetailApiApiV1CoursesDetailPost>>, TError,{data: CourseDetailRequest}, TContext> => {
+
+const mutationKey = ['courseDetailApiApiV1CoursesDetailPost'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof courseDetailApiApiV1CoursesDetailPost>>, {data: CourseDetailRequest}> = (props) => {
+          const {data} = props ?? {};
+
+          return  courseDetailApiApiV1CoursesDetailPost(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CourseDetailApiApiV1CoursesDetailPostMutationResult = NonNullable<Awaited<ReturnType<typeof courseDetailApiApiV1CoursesDetailPost>>>
+    export type CourseDetailApiApiV1CoursesDetailPostMutationBody = CourseDetailRequest
+    export type CourseDetailApiApiV1CoursesDetailPostMutationError = ErrorResponse | HTTPValidationError
+
+    /**
+ * @summary 课程详情
+ */
+export const useCourseDetailApiApiV1CoursesDetailPost = <TError = ErrorResponse | HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof courseDetailApiApiV1CoursesDetailPost>>, TError,{data: CourseDetailRequest}, TContext>, request?: SecondParameter<typeof orvalApiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof courseDetailApiApiV1CoursesDetailPost>>,
+        TError,
+        {data: CourseDetailRequest},
+        TContext
+      > => {
+      return useMutation(getCourseDetailApiApiV1CoursesDetailPostMutationOptions(options), queryClient);
     }
     export type previewDeleteCourseApiApiV1CoursesDeletePreviewPostResponse200 = {
   data: ApiResponseCourseDeletePreviewData

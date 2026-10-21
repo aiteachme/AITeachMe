@@ -13,6 +13,8 @@ from app.schemas.common import PageParams
 class DocGenBuildRequest(BaseModel):
     """Trigger knowledge-doc generation."""
 
+    image_understanding_enabled: bool | None = Field(default=None, description="Use the independent multimodal docs lane; omitted uses the saved course preference.")
+
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
@@ -216,6 +218,8 @@ class CourseVectorIndexRebuildResponse(BaseModel):
 class DocGenBuildData(BaseModel):
     """Knowledge docs build response data."""
 
+    image_understanding_enabled: bool = Field(default=False, description="Effective image-understanding mode frozen for this build.")
+
     accepted_file_ids: list[str] = Field(default_factory=list, description="Accepted ready raw file IDs.")
     prompt: str | None = Field(
         default=None,
@@ -391,6 +395,8 @@ class KnowledgeGraphBuildMetricsResponse(BaseModel):
 class KnowledgeBuildStatusResponse(BaseModel):
     """Minimal runtime metadata exposed to clients for docs polling."""
 
+    image_understanding_enabled: bool = False
+
     status: str = Field(description="idle / accepted / running / publishing / completed / failed / cancelled")
     requested_at: datetime = Field(description="Build request timestamp.")
     stage: str = Field(description="Current lifecycle stage for the build.")
@@ -406,6 +412,8 @@ class KnowledgeBuildStatusResponse(BaseModel):
 
 class KnowledgeBuildLaneRuntimeResponse(BaseModel):
     """One runtime lane snapshot used by polling clients."""
+
+    image_understanding_enabled: bool = False
 
     lane: Literal["aggregate", "docgen", "graph"]
     build_group_id: str | None = Field(default=None, description="Shared build-group identifier across related lanes.")

@@ -9,6 +9,7 @@
  * Minimal runtime metadata exposed to clients for docs polling.
  */
 export interface KnowledgeBuildStatusResponse {
+  image_understanding_enabled?: boolean;
   /** idle / accepted / running / publishing / completed / failed / cancelled */
   status: string;
   /** Build request timestamp. */

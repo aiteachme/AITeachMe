@@ -16,6 +16,8 @@ export interface CourseItem {
   user_intent: string;
   /** Course icon key. */
   icon_key?: string | null;
+  /** Saved image-understanding preference for docs builds. */
+  image_understanding_enabled?: boolean;
   /** Created time. */
   created_at: string;
   /** Updated time. */

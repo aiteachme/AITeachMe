@@ -111,6 +111,10 @@ _STAGE_PROGRESS = {
     "build_accepted": 8,
     "prepare_shared": 18,
     "planner_confirmed": 22,
+    "visual_evidence_started": 24,
+    "visual_evidence_progress": 25,
+    "visual_evidence_ready": 27,
+    "visual_evidence_degraded": 27,
     "preparing_docgen_global_seed": 28,
     "preparing_docgen_context": 30,
     "dispatch_ready": 34,
@@ -237,6 +241,7 @@ class KnowledgeBuildRuntimeStatus(BaseModel):
     discovered_node_types: dict[str, int] = Field(default_factory=dict)
     digest_mode: str | None = None
     model_override: str | None = None
+    image_understanding_enabled: bool = False
     sample_nodes: list[dict[str, str]] = Field(default_factory=list)
     estimated_remaining_seconds: int | None = None
     current_stage_description: str | None = None
@@ -862,6 +867,7 @@ def build_aggregate_knowledge_build_status(
             KnowledgeBuildRuntimeStatus(
                 requested_at=requested_at,
                 build_kind="aggregate",
+                image_understanding_enabled=bool(docgen_runtime and docgen_runtime.image_understanding_enabled),
                 build_group_id=aggregate_build_group_id,
                 status=status,
                 stage=stage,

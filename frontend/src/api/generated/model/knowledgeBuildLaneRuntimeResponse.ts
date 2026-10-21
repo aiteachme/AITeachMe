@@ -11,6 +11,7 @@ import type { KnowledgeBuildLaneRuntimeResponseMetrics } from './knowledgeBuildL
  * One runtime lane snapshot used by polling clients.
  */
 export interface KnowledgeBuildLaneRuntimeResponse {
+  image_understanding_enabled?: boolean;
   lane: KnowledgeBuildLaneRuntimeResponseLane;
   /** Shared build-group identifier across related lanes. */
   build_group_id?: string | null;

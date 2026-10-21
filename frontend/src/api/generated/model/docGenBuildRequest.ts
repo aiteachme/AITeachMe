@@ -10,6 +10,8 @@ import type { DocGenBuildRequestEmbeddingResolution } from './docGenBuildRequest
  * Trigger knowledge-doc generation.
  */
 export interface DocGenBuildRequest {
+  /** Use the independent multimodal docs lane; omitted uses the saved course preference. */
+  image_understanding_enabled?: boolean | null;
   /** Optional parsed raw file IDs; omitted means auto-pick all available ready files for the course. Ignored when `confirmed_plan_id` is provided. */
   file_ids?: string[] | null;
   /** Optional user instruction for doc generation. Ignored when `confirmed_plan_id` is provided and the confirmed plan already freezes the build goal. */

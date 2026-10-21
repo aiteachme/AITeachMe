@@ -31,6 +31,7 @@ export interface KnowledgeBuildPrecheckConflictData {
 }
 
 export interface KnowledgeBuildRequestInput {
+  image_understanding_enabled?: boolean;
   file_ids?: string[];
   prompt?: string;
   confirmed_plan_id?: string;

@@ -14,4 +14,6 @@ export interface CourseUpdateRequest {
   description?: string | null;
   /** User learning goal or intent. */
   user_intent?: string | null;
+  /** Enable image understanding for subsequent docs builds. */
+  image_understanding_enabled?: boolean | null;
 }

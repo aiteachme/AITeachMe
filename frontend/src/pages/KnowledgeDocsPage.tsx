@@ -7306,6 +7306,7 @@ export function KnowledgeDocsPage() {
             sourceFiles={sourceFiles}
             sourceFilesFetching={sourceFilesFetching}
             buildStage={buildMeta?.stage}
+            imageUnderstandingEnabled={buildMeta?.image_understanding_enabled}
             buildStatus={buildStatus}
             isDocumentReady={isRequestedBuildReady}
             courseId={courseId}
@@ -7637,6 +7638,7 @@ export function KnowledgeDocsPage() {
                       sourceFiles={sourceFiles}
                       sourceFilesFetching={sourceFilesFetching}
                       buildStage={buildMeta?.stage}
+                      imageUnderstandingEnabled={buildMeta?.image_understanding_enabled}
                       buildStatus={buildStatus}
                       isDocumentReady={isRequestedBuildReady}
                       courseId={courseId}
@@ -8074,7 +8076,7 @@ export function KnowledgeDocsPage() {
         ref={graphDrawerRef}
         aria-hidden={!isGraphDrawerOpen || !courseId}
         className={cn(
-          "fixed bottom-0 right-0 top-0 z-[110] flex w-screen border-l border-zinc-200/80 bg-slate-50 shadow-[0_0_40px_rgba(0,0,0,0.15)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_0_44px_rgba(0,0,0,0.55)] lg:z-[84] lg:w-[var(--graph-panel-width)]",
+          "fixed bottom-0 right-0 top-0 z-[110] flex w-screen border-l border-zinc-200/80 bg-slate-50 shadow-[0_0_40px_rgba(0,0,0,0.15)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_0_44px_rgba(0,0,0,0.55)] lg:z-[84] lg:w-[var(--graph-panel-width)] lg:max-w-full",
           isGraphDrawerOpen && courseId ? "translate-x-0 pointer-events-auto" : "translate-x-full pointer-events-none",
           !isGraphDragging && "transition-transform duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)]"
         )}

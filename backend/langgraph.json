@@ -16,6 +16,10 @@
       "path": "./app/workflows/digest/docgen/graph.py:get_langgraph_dev_docgen_graph",
       "description": "Digest doc generation lane."
     },
+    "digest_docgen_multimodal": {
+      "path": "./app/workflows/digest/docgen_multimodal/graph.py:get_langgraph_dev_multimodal_docgen_graph",
+      "description": "Independent multimodal Digest doc generation lane."
+    },
     "digest_planner": {
       "path": "./app/workflows/digest/planner/graph.py:get_langgraph_dev_planner_graph",
       "description": "Digest planner workflow for confirmed build plans."
@@ -47,4 +51,3 @@
   },
   "env": "../.env"
 }
-

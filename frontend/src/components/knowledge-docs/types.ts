@@ -128,6 +128,7 @@ export interface ThreadTurnItem {
 /* ---- Build Status & Preview ---- */
 
 export interface DocGenBuildStatus {
+  image_understanding_enabled?: boolean;
   status?: string | null;
   requested_at?: string | null;
   stage?: string | null;

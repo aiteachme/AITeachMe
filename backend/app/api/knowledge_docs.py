@@ -887,6 +887,7 @@ async def knowledge_build(
             prompt=body.prompt,
             embedding_resolution=body.embedding_resolution,
             confirmed_plan_id=body.confirmed_plan_id,
+            image_understanding_enabled=body.image_understanding_enabled,
             build_group_id=build_group_id,
         )
         if prepared_build_group_id != build_group_id:
@@ -935,6 +936,7 @@ async def knowledge_build(
             planner_session_id=data.planner_session_id,
             confirmed_plan_id=data.confirmed_plan_id,
             model_override=data.model_override,
+            image_understanding_enabled=data.image_understanding_enabled,
             user_id=user.user_id,
             background_task_registry=getattr(request.app.state, "background_task_registry", None),
         )

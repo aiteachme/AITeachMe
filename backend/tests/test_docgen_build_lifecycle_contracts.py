@@ -150,11 +150,24 @@ def _confirmed_plan(*, status: str = "confirmed") -> ConfirmedBuildPlan:
     )
 
 
+@pytest.mark.parametrize("image_mode,image_count,saved_mode,expected", [
+    (None, 3, False, False), (None, 3, True, True), (True, 3, False, True),
+    (True, 0, False, False), (True, None, False, True), (False, 3, True, False),
+])
 def test_file_selection_and_trigger_docgen_build_write_runtime_contracts(
     session: Session,
     monkeypatch: pytest.MonkeyPatch,
+    image_mode: bool | None,
+    image_count: int | None,
+    saved_mode: bool,
+    expected: bool,
 ) -> None:
     course = _seed_course_and_files(session)
+    from app.workflows.digest.common.build_preferences import get_image_understanding_enabled, set_image_understanding_enabled
+
+    set_image_understanding_enabled(course, saved_mode)
+    session.get(RawFile, "file-ready").image_count = image_count
+    session.commit()
     statuses: list[dict[str, object]] = []
     locks: list[build_store.KnowledgeBuildLock] = []
     cleared_vectors: list[str] = []
@@ -198,6 +211,7 @@ def test_file_selection_and_trigger_docgen_build_write_runtime_contracts(
         prompt="用户临时输入会被 confirmed plan 覆盖",
         embedding_resolution=None,
         confirmed_plan_id="plan-1",
+        image_understanding_enabled=image_mode,
     )
 
     assert [item.id for item in selected] == ["file-ready"]
@@ -216,6 +230,10 @@ def test_file_selection_and_trigger_docgen_build_write_runtime_contracts(
     assert build_data.prompt == "按矩阵和线性映射生成知识文档"
     assert build_data.digest_mode == "systematic"
     assert build_data.model_override == "primary"
+    assert build_data.image_understanding_enabled is expected
+    assert statuses[0]["image_understanding_enabled"] is expected
+    session.refresh(course)
+    assert get_image_understanding_enabled(course) is (saved_mode if image_mode is None else image_mode)
     assert locks[0].source_file_ids == ["file-ready"]
     assert statuses[0]["status"] == "accepted"
     assert statuses[0]["planner_session_id"] == "planner-1"
@@ -1673,11 +1691,14 @@ def test_cancel_knowledge_build_preserves_docgen_when_publish_receipt_is_unknown
 
 
 @pytest.mark.parametrize("failure_mode", ["result", "exception"])
+@pytest.mark.parametrize("image_understanding_enabled", [False, True])
 def test_docgen_background_preserves_published_docs_when_downstream_graph_fails(
     monkeypatch: pytest.MonkeyPatch,
     failure_mode: str,
+    image_understanding_enabled: bool,
 ) -> None:
     import app.workflows.digest as digest_workflows
+    import app.workflows.digest.docgen_multimodal as multimodal_workflows
     from app.shared.infra.workflow import err_result
     from app.workflows.examine import initial_exam as initial_exam_service
     from app.workflows.digest.kg_doc_sync.lib import prefetch as prefetch_module
@@ -1759,7 +1780,11 @@ def test_docgen_background_preserves_published_docs_when_downstream_graph_fails(
         "release_knowledge_build_lock",
         lambda course_id, *, build_group_id, **_kwargs: releases.append((course_id, build_group_id)) or True,
     )
-    monkeypatch.setattr(digest_workflows, "run_docgen_workflow", fake_workflow)
+    async def unexpected_workflow(**_kwargs):
+        pytest.fail("The unselected Digest lane must never run.")
+
+    monkeypatch.setattr(digest_workflows, "run_docgen_workflow", unexpected_workflow if image_understanding_enabled else fake_workflow)
+    monkeypatch.setattr(multimodal_workflows, "run_multimodal_docgen_workflow", fake_workflow if image_understanding_enabled else unexpected_workflow)
     monkeypatch.setattr(prefetch_module, "cancel_docgen_kg_prefetch", lambda **_kwargs: None)
     monkeypatch.setattr(
         initial_exam_service,
@@ -1775,6 +1800,7 @@ def test_docgen_background_preserves_published_docs_when_downstream_graph_fails(
             prompt="build",
             requested_at=now,
             build_group_id="group-published",
+            image_understanding_enabled=image_understanding_enabled,
             confirmed_plan_id="plan-1",
             user_id=USER_ID,
         )

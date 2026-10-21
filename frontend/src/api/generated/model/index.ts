@@ -160,6 +160,7 @@ export * from './courseDeletePreviewDataDetailCounts.ts';
 export * from './courseDeletePreviewRequest.ts';
 export * from './courseDeleteRequest.ts';
 export * from './courseDeleteRequestKnownDetailCounts.ts';
+export * from './courseDetailRequest.ts';
 export * from './courseItem.ts';
 export * from './courseListRequest.ts';
 export * from './coursePackageItem.ts';
