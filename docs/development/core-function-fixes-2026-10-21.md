@@ -27,6 +27,7 @@
 | 全量后端测试 | 1937 passed、3 skipped |
 | 全量前端现有测试 | 167 passed |
 | 前端生产构建 | 通过；保留既有大 chunk 提示 |
+| 文档站生产构建 | 按锁文件安装依赖后构建通过 |
 | Alembic 升级 SQL 安全检查 | 通过 |
 | OpenAPI 同步检查 | 通过 |
 | 最终相关模块回归 | 81 passed |
@@ -34,15 +35,24 @@
 | 伴读 SSE、聊天历史 | 通过，首个正文约 3.51 秒，无错误事件 |
 | 默认规划 → 讲义 → 图谱 | 通过，三个运行状态均 completed，约 340.31 秒 |
 | 新课程出题 → 提交 → 批改 → 画像 | 通过，graded、profile_sync.completed，更新 2 个知识状态和复习任务 |
+| 导入课程出题 → 批改 → 画像 → 复习指南 | 通过，复习指南摘要非空，含 2 项行动建议与 2 个重点知识点；完成后再删除临时课程 |
 | 显式 reason 规划路径 | 通过，诊断、草案与确认约 30.05 秒 |
 | PDF、DOCX、PPTX 小型中文样本 | 全部 ready_for_digest，约 15.81 秒 |
+| 带图 PDF → 图片理解 → 讲义与图谱 | 通过，MinerU 识别 1 张图片，运行状态确认 image_understanding_enabled=true，约 123.06 秒，讲义 1655 字符 |
 | 演示课远程冷缓存导入 | 两轮成功；导入后新生成试卷、批改与画像同步成功 |
 | 微信、飞书社区二维码 | 均 200，并验证图片内容有效 |
+| 浏览器讲义、图谱、训练中心 | 通过；1037×881 窗口中正常点击收起图谱，临时课程通过界面删除 |
 
 默认建课实测中，上游发生过过载错误并恢复，端到端构建因此比修复前某次成功复现更慢。上述结果证明小样本流程可完成，不代表任意上游网络状况、大资料或多人并发都有相同时延。
 
-脱敏原始证据保存在 Git 忽略的 `.tmp-core-recheck/`：`local_fixed_default.json`、`local_fixed_reason.json`、`local_fixed_formats.json`、`local_fixed_demo.json`、`local_final_cold_demo.json`、`local_final_assets_corrected.json`。脚本创建的课程和资料均已清理，证据不保存密钥或会话令牌。
+推送前发现本地 `node_modules` 使用旧版 Orval 8.10.0，而锁文件要求 8.18.0。执行 `npm ci` 同步依赖后，重新生成客户端与已提交内容完全一致，推送钩子的 OpenAPI/Orval 和 Android API 合同检查均通过。同步依赖后的前端 167 项现有测试与生产构建再次通过，没有手工修改生成文件。
+
+脱敏原始证据保存在 Git 忽略的 `.tmp-core-recheck/`：`local_fixed_default.json`、`local_fixed_reason.json`、`local_fixed_formats.json`、`local_fixed_demo.json`、`local_final_cold_demo.json`、`local_final_assets_corrected.json`、`local_final_study_guide.json`、`local_final_multimodal.json`、`local_final_browser.json`。脚本创建的课程和资料均已清理，证据不保存密钥或会话令牌。
 
 ## 发布与线上验收
 
-本节将在修复推送、CI、部署及线上重新验收完成后记录实际结果；当前不将旧版本的验收结果作为本次发布依据。
+修复提交已推送到 `origin/hotfix/core-function-reliability`，代码提交为 `1a25d9c7`，其前包含 reader 安全修复 `47467a92` 和 `dev_cy` 合并 `3d86b48c`。
+
+截至本次记录，远程 main 仍为 `84c40281`，本次修复尚未部署。仓库分支规范要求通过 PR 发布；当前机器具备 Git SSH 推送权限，但没有已登录的 GitHub 网页/API 会话。已提交具体修复分支供审查，等待选择通过 PR 合并或授权本次快进 main，再继续 CI、部署与新版本线上验收。临时修复分支会在成功合入后清理，保留其他开发分支和工作区。
+
+本节将在发布与线上重新验收完成后更新实际结果；不将旧版本的验收结果作为本次发布依据。
