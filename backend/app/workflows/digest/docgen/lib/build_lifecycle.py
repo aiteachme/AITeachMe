@@ -687,7 +687,7 @@ def _build_graph_lane_runtime_from_sync_run(
     if snapshot is None:
         return None
     status = str(snapshot.get("status") or "").strip() or "idle"
-    stage = status if status in {"completed", "failed", "cancelled", "partial_failed"} else "graph_docs_sync"
+    stage = status if status in {"completed", "failed", "cancelled", "partial_failed", "skipped"} else "graph_docs_sync"
     metrics = _build_graph_metrics_from_sync_run(snapshot)
     return KnowledgeBuildLaneRuntimeResponse(
         lane="graph",
@@ -701,7 +701,7 @@ def _build_graph_lane_runtime_from_sync_run(
             snapshot.get("error_message"),
             build_kind="graph",
         ),
-        progress_pct=100 if status in {"completed", "partial_failed"} else 0,
+        progress_pct=100 if status in {"completed", "partial_failed", "skipped"} else 0,
         current_stage_description="知识图谱同步已完成" if status == "completed" else None,
         metrics=metrics.model_dump(),
     )
@@ -823,6 +823,14 @@ def get_knowledge_build_runtime_result(
     graph_metrics = _build_graph_metrics(build_status=graph_runtime)
     if not graph_status:
         graph_sync_snapshot = _latest_graph_sync_run_snapshot(session, course_id=course_id)
+        if (
+            graph_sync_snapshot is not None
+            and graph_sync_snapshot["status"] in {"pending", "accepted", "running", "publishing"}
+            and read_knowledge_build_lock(course_id, session=session, course_scope=course_scope) is None
+        ):
+            # Imported or abandoned run history is not a live task. Runtime envelopes
+            # take precedence above; a DB-only active run also needs a current lease.
+            graph_sync_snapshot = None
         if graph_sync_snapshot is not None:
             graph_status = str(graph_sync_snapshot.get("status") or "").strip() or "idle"
             graph_lane = _build_graph_lane_runtime_from_sync_run(graph_sync_snapshot)

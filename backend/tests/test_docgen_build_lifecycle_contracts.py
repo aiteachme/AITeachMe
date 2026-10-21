@@ -2442,6 +2442,60 @@ def test_build_runtime_backfills_graph_status_from_latest_sync_run(
     assert result.graph_metrics.last_synced_doc_version_no == 3
 
 
+@pytest.mark.parametrize(("status", "has_lock", "docs_ready"), [
+    ("pending", False, True),
+    ("accepted", False, True),
+    ("running", False, True),
+    ("publishing", False, True),
+    ("pending", True, True),
+    ("accepted", True, True),
+    ("running", True, True),
+    ("publishing", True, True),
+    ("running", False, False),
+])
+def test_build_runtime_requires_live_lease_for_active_sync_history(
+    monkeypatch: pytest.MonkeyPatch, session: Session,
+    status: str, has_lock: bool, docs_ready: bool,
+) -> None:
+    scope = build_course_storage_scope(user_id=USER_ID, course_id=COURSE_ID)
+    session.add(KnowledgeGraphSyncRun(
+        course_id=COURSE_ID, build_session_id="source-build", status=status,
+    ))
+    session.commit()
+    monkeypatch.setattr(build_lifecycle, "get_content_store", lambda: _TextStore())
+    monkeypatch.setattr(
+        build_lifecycle, "run_store_sync",
+        lambda func, *args, default=None, **kwargs: func(*args, **kwargs),
+    )
+    monkeypatch.setattr(build_lifecycle, "read_knowledge_build_runtime", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        build_lifecycle, "_resolve_current_published_manifest",
+        lambda *args, **kwargs: SimpleNamespace(chapter_titles=["Geography"]) if docs_ready else None,
+    )
+    monkeypatch.setattr(
+        build_lifecycle, "read_knowledge_build_lock",
+        lambda *args, **kwargs: build_store.KnowledgeBuildLock(
+            requested_at=datetime.now(timezone.utc), build_group_id="live-group",
+        ) if has_lock else None,
+    )
+    monkeypatch.setattr(
+        build_lifecycle, "get_settings",
+        lambda: SimpleNamespace(knowledge_graph=SimpleNamespace(sync_after_docgen=True)),
+    )
+
+    result = build_lifecycle.get_knowledge_build_runtime_result(session, course_id=COURSE_ID, course_scope=scope)
+
+    assert result.docs_ready is docs_ready
+    assert result.training_unlocked is (docs_ready and not has_lock)
+    assert result.graph_status == (status if has_lock else "skipped" if docs_ready else "idle")
+    if has_lock:
+        assert result.graph is not None
+        assert result.graph.status == status
+    else:
+        assert result.graph is None
+        assert result.build_group_id is None
+
+
 def test_build_runtime_uses_committed_docs_when_manifest_projection_is_missing(
     monkeypatch: pytest.MonkeyPatch,
     session: Session,

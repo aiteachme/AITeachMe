@@ -22,6 +22,7 @@ from app.models import (
     ExamPaper,
     ExamPaperItem,
     KnowledgeEdge,
+    KnowledgeGraphSyncRun,
     KnowledgeDocument,
     KnowledgeUnit,
     MasteryDrillAttempt,
@@ -227,6 +228,67 @@ def _write_import_fixture(tmp_path: Path, tables: dict[str, list[dict]]) -> Path
         for table_name, records in tables.items():
             archive.writestr(f"db/{table_name}.json", json.dumps({"records": records}))
     return package_path
+
+
+@pytest.mark.parametrize(("source_status", "expected_status"), [
+    (None, "skipped"),
+    ("pending", "skipped"),
+    ("accepted", "skipped"),
+    ("running", "skipped"),
+    ("publishing", "skipped"),
+    ("completed", "completed"),
+    ("partial_failed", "partial_failed"),
+    ("skipped", "skipped"),
+    ("failed", "failed"),
+    ("cancelled", "cancelled"),
+])
+def test_import_graph_sync_history_does_not_resume_source_tasks(
+    session: Session, export_import_store: _FakeStore, tmp_path: Path,
+    source_status: str | None, expected_status: str,
+) -> None:
+    timestamp = "2026-10-21T16:45:30"
+    package_path = _write_import_fixture(tmp_path, {
+        "course": [{
+            "id": COURSE_ID, "name": "Geography",
+            "build_lock_holder": '{"build_group_id":"source-group"}', "build_lock_at": timestamp,
+        }],
+        "knowledge_graph_sync_run": [{
+            "id": 850, "course_id": COURSE_ID, "build_session_id": "source-build",
+            "doc_version_no": 3, "graph_revision_no": 2,
+            "metrics_json": '{"unit_change_count":7}',
+            "started_at": timestamp, "created_at": timestamp, "updated_at": timestamp,
+            "finished_at": None if source_status != expected_status else timestamp,
+            **({"status": source_status} if source_status is not None else {}),
+        }],
+    })
+
+    result = import_module.import_course(
+        session, file_path=package_path,
+        options=ImportOptions(rebuild_embeddings=False), user_id="import-test",
+    )
+    session.expire_all()
+    run = session.exec(select(KnowledgeGraphSyncRun).where(
+        KnowledgeGraphSyncRun.course_id == result.course_id,
+    )).one()
+
+    course = session.get(Course, result.course_id)
+    assert course is not None
+    assert course.build_lock_holder is None
+    assert course.build_lock_at is None
+    assert run.status == expected_status
+    assert run.doc_version_no == 3
+    assert run.graph_revision_no == 2
+    assert json.loads(run.metrics_json) == {"unit_change_count": 7}
+    assert run.started_at == datetime.fromisoformat(timestamp)
+    assert run.finished_at is not None
+    if source_status != expected_status:
+        assert run.build_session_id is None
+        assert run.finished_at == run.updated_at
+        assert run.updated_at > run.started_at
+    else:
+        assert run.build_session_id == "source-build"
+        assert run.finished_at == datetime.fromisoformat(timestamp)
+        assert run.updated_at == datetime.fromisoformat(timestamp)
 
 
 @pytest.mark.parametrize("timestamp", [
@@ -864,6 +926,11 @@ def test_import_course_remaps_ids_and_restores_docgen_assets(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _seed_course_graph(session)
+    course = session.get(Course, COURSE_ID)
+    course.build_lock_holder = '{"build_group_id":"source-group"}'
+    course.build_lock_at = utcnow()
+    session.add(course)
+    session.commit()
     package_path = export_module.export_course(
         session,
         course_id=COURSE_ID,
@@ -875,6 +942,10 @@ def test_import_course_remaps_ids_and_restores_docgen_assets(
             include_profile=False,
         ),
     )
+    with zipfile.ZipFile(package_path, "r") as archive:
+        exported_course = json.loads(archive.read("db/course.json").decode("utf-8"))["records"][0]
+        assert "build_lock_holder" not in exported_course
+        assert "build_lock_at" not in exported_course
     with zipfile.ZipFile(package_path, "a", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("share_assets/docgen/figure.png", _VALID_PNG_BYTES)
         zf.writestr("share_assets/docgen/active.html", "<script>alert(1)</script>")

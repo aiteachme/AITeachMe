@@ -567,6 +567,8 @@ def _query_table(
 def _record_to_dict(record: SQLModel) -> dict:
     data = {}
     for key, value in record.model_dump().items():
+        if isinstance(record, Course) and key in {"build_lock_holder", "build_lock_at"}:
+            continue
         if hasattr(value, "isoformat"):
             data[key] = value.isoformat()
         else:
@@ -688,6 +690,8 @@ def _import_table(
             record_data["normalized_name"] = None
             record_data["created_at"] = imported_at
             record_data["updated_at"] = imported_at
+            record_data["build_lock_holder"] = None
+            record_data["build_lock_at"] = None
             _prepare_imported_course_settings(record_data, new_name)
         elif spec.course_field and spec.course_field != "id":
             record_data[spec.course_field] = new_course_id
@@ -782,6 +786,14 @@ def _import_table(
         elif spec.name == "knowledge_document":
             record_data["markdown_path"] = None
             record_data["markdown_uri"] = None
+        elif spec.name == "knowledge_graph_sync_run" and str(record_data.get("status") or "running").strip() in {
+            "pending", "accepted", "running", "publishing",
+        }:
+            # A package carries graph data and history, never the source task or its lease.
+            record_data["status"] = "skipped"
+            record_data["build_session_id"] = None
+            record_data["finished_at"] = imported_at
+            record_data["updated_at"] = imported_at
 
         # Create and flush the row to obtain its new primary key.
         try:
