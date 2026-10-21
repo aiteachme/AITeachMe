@@ -27,7 +27,7 @@ from app.workflows.digest.docgen.lib.unit_tests import (
     split_final_unit_test_section,
     unit_test_structure_issues,
 )
-from app.workflows.digest.docgen.prompts.repair import build_chapter_patch_messages, build_patch_verification_messages
+from app.workflows.digest.docgen.prompts.repair import build_chapter_patch_messages
 from app.workflows.digest.docgen.lib.unit_test_repair import (
     UnitTestQuestionPatches, apply_unit_test_question_patches, unit_test_question_blocks,
 )
@@ -78,13 +78,6 @@ class _LocalMarkdownPatch(DocGenBaseModel):
     covered_action_ids: list[str] = Field(default_factory=list)
     unresolved_action_ids: list[str] = Field(default_factory=list)
     note: str = ""
-
-
-class _LocalPatchVerification(DocGenBaseModel):
-    passed: bool
-    verified_action_ids: list[str]
-    issues: list[str] = Field(default_factory=list)
-    verification_notes: list[str] = Field(default_factory=list)
 
 
 def _unresolved_message(action: ReviewAction, *, status: str) -> str:
@@ -349,26 +342,6 @@ def _exact_text_patch_span(
     return (start, end), ""
 
 
-def _changed_markdown_contexts(original: str, patched: str) -> tuple[str, str]:
-    start = 0
-    while start < min(len(original), len(patched)) and original[start] == patched[start]:
-        start += 1
-    tail = 0
-    while (
-        tail < min(len(original), len(patched)) - start
-        and original[-tail - 1] == patched[-tail - 1]
-    ):
-        tail += 1
-
-    def _context(markdown: str) -> str:
-        end = len(markdown) - tail
-        left = markdown.rfind("\n", 0, max(0, start - 1500)) + 1
-        right = markdown.find("\n", min(len(markdown), end + 1500))
-        return _trim_patch_context(markdown[left:right if right >= 0 else len(markdown)])
-
-    return _context(original), _context(patched)
-
-
 def _duplicate_h2_titles(markdown: str) -> list[str]:
     seen: dict[str, str] = {}
     duplicates: list[str] = []
@@ -528,7 +501,7 @@ def _removes_forbidden_body_questions(
     patched_markdown: str,
     quantity_contract: dict | None,
 ) -> bool:
-    """Allow a verified body patch to restore an explicit zero-practice contract."""
+    """Allow a body patch to restore an explicit zero-practice contract."""
     quantities = (quantity_contract or {}).get("quantity_constraints") or {}
     if quantities.get("inline_practice_count") != 0:
         return False
@@ -801,7 +774,6 @@ async def _apply_llm_patch_actions(
     repair_round: int,
     quantity_contract: dict | None = None,
     previous_rejection: str = "",
-    pending_indexed_actions: list[tuple[int, ReviewAction]] | None = None,
 ) -> tuple[ReviewedChapterDraft, list[tuple[int, ReviewAction, RepairTraceItem, str | None]], list[tuple[int, ReviewAction]]]:
     """Ask the model for one local patch that can cover multiple actions."""
 
@@ -818,7 +790,6 @@ async def _apply_llm_patch_actions(
     }
     llm_call_group = f"ch{chapter.chapter_index:02d}_repair_round_{repair_round}"
     selective_unit_test = False
-    question_changes: tuple[str, str, str] | None = None
     try:
         # Re-emitting a large test to fix a few questions loses the middle to
         # context/output limits and lets unrelated, correct questions regress.
@@ -847,12 +818,11 @@ async def _apply_llm_patch_actions(
                 ), **kwargs, response_model=UnitTestQuestionPatches,
             )
             result = UnitTestQuestionPatches.model_validate(raw)
-            merged, original, changed, unchanged = (test_module, "", "", "")
+            merged = test_module
             if result.status == "patch":
-                merged, original, changed, unchanged = apply_unit_test_question_patches(
+                merged = apply_unit_test_question_patches(
                     test_module, result.patches, chapter_title=chapter.title,
                 )
-                question_changes = original, changed, unchanged
             patch = _LocalMarkdownPatch(
                 status=result.status, operation="replace_section", target_anchor="## 单元测试",
                 patch_markdown=merged, covered_action_ids=result.covered_action_ids,
@@ -886,35 +856,10 @@ async def _apply_llm_patch_actions(
                 patch_markdown=str(patch_result or "")
             )
     except Exception as exc:
-        if selective_unit_test:
-            return chapter, _rejected_llm_patch_results(
-                indexed_actions=indexed_actions, repair_round=repair_round, llm_call_group=llm_call_group,
-                reason=f"结构化逐题修补未通过，保留原题并重试：{str(exc)[:500]}",
-            ), indexed_actions
-        results: list[tuple[int, ReviewAction, RepairTraceItem, str | None]] = []
-        for action_index, action in indexed_actions:
-            updated_action = action.model_copy(update={"status": "downgraded"})
-            results.append(
-                (
-                    action_index,
-                    updated_action,
-                    RepairTraceItem(
-                        trace_id=f"repair_trace_{repair_round:02d}_{_repair_action_key(action_index, action)}",
-                        action_id=action.action_id,
-                        action_type=action.action_type,
-                        chapter_index=action.chapter_index,
-                        status="downgraded",
-                        reason=action.reason,
-                        target_anchor=action.target_anchor,
-                        changed=False,
-                        llm_attempted=True,
-                        llm_call_group=llm_call_group,
-                        detail=f"LLM patch round failed: {str(exc)[:180]}",
-                    ),
-                    _unresolved_message(updated_action, status="downgraded"),
-                )
-            )
-        return chapter, results, []
+        return chapter, _rejected_llm_patch_results(
+            indexed_actions=indexed_actions, repair_round=repair_round, llm_call_group=llm_call_group,
+            reason=f"修补输出未能应用，保留原文并重试：{str(exc)[:500]}",
+        ), indexed_actions
 
     covered_keys = {str(item).strip() for item in patch.covered_action_ids if str(item).strip()}
     unresolved_keys = {str(item).strip() for item in patch.unresolved_action_ids if str(item).strip()}
@@ -1082,6 +1027,12 @@ async def _apply_llm_patch_actions(
                 reason=risk_reason,
             ), indexed_actions
     if not patched or patched == chapter.markdown:
+        if any(action.severity == "error" for _, action in indexed_actions):
+            return chapter, _rejected_llm_patch_results(
+                indexed_actions=indexed_actions, repair_round=repair_round,
+                llm_call_group=llm_call_group,
+                reason="当前错误尚未修改；请直接返回解决所列错误的原位替换内容，不能返回空补丁或 no_change。",
+            ), indexed_actions
         results = []
         for action_index, action in indexed_actions:
             updated_action = action.model_copy(update={"status": "skipped"})
@@ -1106,65 +1057,8 @@ async def _apply_llm_patch_actions(
                 )
             )
         return chapter, results, []
-    covered_actions = [payload for payload in action_payloads if payload["repair_action_key"] in covered_keys]
-    if any(payload["severity"] == "error" for payload in covered_actions):
-        pending_actions = []
-        if replaced_span is not None:
-            for action_index, action in pending_indexed_actions or []:
-                section = _find_heading_section(
-                    chapter.markdown, anchor=action.target_anchor, chapter_title=chapter.title,
-                )
-                if action.severity == "error" and section is not None and (
-                    section[1] <= replaced_span[0] or section[0] >= replaced_span[1]
-                ):
-                    pending_actions.append({
-                        **action.model_dump(mode="json"),
-                        "repair_action_key": _repair_action_key(action_index, action),
-                    })
-        original_context, patched_context = _changed_markdown_contexts(chapter.markdown, patched)
-        patched_chapter = chapter.model_copy(update={"markdown": patched})
-        related_context = _related_patch_context(patched_chapter, [action_keys[key][1] for key in covered_keys])
-        verification_patch = patch_markdown
-        if question_changes is not None:
-            original_context, patched_context, unchanged = question_changes
-            verification_patch = patched_context
-            related_context += "\n\n本次逐字保留的其它题目（只读）：\n" + unchanged
-        try:
-            review_result = await acompletion_with_fallback(
-                build_patch_verification_messages(
-                    chapter_title=chapter.title,
-                    actions=covered_actions,
-                    patch_markdown=verification_patch,
-                    operation=patch.operation,
-                    original_markdown=original_context,
-                    patched_markdown_context=patched_context,
-                    related_markdown_context=related_context,
-                    quantity_contract=quantity_contract,
-                    pending_actions=pending_actions,
-                    selective_unit_test=selective_unit_test,
-                ),
-                **docgen_completion_kwargs_with_metadata(
-                    DocGenModelStep.REPAIR_PATCH_REVIEW,
-                    chapter_index=chapter.chapter_index,
-                    repair_round=repair_round,
-                    repair_action_count=len(covered_actions),
-                ),
-                response_model=_LocalPatchVerification,
-            )
-            review = _LocalPatchVerification.model_validate(review_result)
-            if review.passed and not review.issues and set(review.verified_action_ids) == covered_keys and review.verification_notes:
-                rejection = ""
-            else:
-                rejection = "补丁独立复核未通过：" + "；".join(review.issues or ["未完整验证当前动作及修补正确性。"])
-        except Exception as exc:
-            rejection = f"补丁独立复核失败，不能确认错误已修复：{str(exc)[:180]}"
-        if rejection:
-            return chapter, _rejected_llm_patch_results(
-                indexed_actions=indexed_actions,
-                repair_round=repair_round,
-                llm_call_group=llm_call_group,
-                reason=rejection,
-            ), indexed_actions
+    # The repairer owns content correction. Apply a structurally valid patch
+    # directly instead of starting another semantic review/repair loop.
     updated = chapter.model_copy(
         update={
             "markdown": patched,
@@ -1202,6 +1096,8 @@ async def _apply_llm_patch_actions(
                 )
             )
         elif key in unresolved_keys:
+            if action.severity == "error":
+                remaining.append((action_index, action))
             updated_action = action.model_copy(update={"status": "skipped"})
             results.append(
                 (
@@ -1235,7 +1131,7 @@ async def repair_or_route_review_actions(
     allow_llm_patches: bool = True,
     chapter_tasks: list[dict] | None = None,
 ) -> tuple[list[ReviewedChapterDraft], list[ReviewAction], list[str], list[RepairTraceItem]]:
-    """Apply safe local patches and route heavier actions for later repair loops."""
+    """Apply final content corrections without a second semantic review."""
 
     chapters_by_index = {chapter.chapter_index: chapter for chapter in reviewed_chapters}
     updated_actions_by_index: dict[int, ReviewAction] = {}
@@ -1306,7 +1202,7 @@ async def repair_or_route_review_actions(
             *_patch_action_batches(current_chapter, regular_llm_actions),
             *_patch_action_batches(current_chapter, unit_test_llm_actions),
         ]
-        for batch_index, action_batch in enumerate(action_batches):
+        for action_batch in action_batches:
             current_batch = action_batch
             previous_rejection = ""
             rejection_history: list[str] = []
@@ -1318,9 +1214,6 @@ async def repair_or_route_review_actions(
                     indexed_actions=current_batch,
                     repair_round=repair_round,
                     previous_rejection=previous_rejection,
-                    pending_indexed_actions=[
-                        item for later_batch in action_batches[batch_index + 1:] for item in later_batch
-                    ],
                     quantity_contract={
                         key: tasks_by_index.get(chapter.chapter_index, {}).get(key)
                         for key in ("quantity_constraints", "writing_rules", "chapter_end_practice_plan")
@@ -1361,7 +1254,9 @@ async def repair_or_route_review_actions(
         return current_chapter, results
 
     for action_index, action in enumerate(review_actions, start=1):
-        if action.action_type in _PATCHABLE_ACTION_TYPES:
+        if action.action_type in _PATCHABLE_ACTION_TYPES or (
+            action.severity == "error" and action.chapter_index in chapters_by_index
+        ):
             chapter = chapters_by_index.get(int(action.chapter_index or 0))
             if chapter is None:
                 updated_action = action.model_copy(update={"status": "skipped"})
@@ -1380,11 +1275,10 @@ async def repair_or_route_review_actions(
                 )
                 continue
             patch_action = action
-            if action.action_type == "regenerate_chapter":
+            if action.action_type not in {"surface_patch", "section_patch"}:
                 patch_action = action.model_copy(
                     update={
                         "action_type": "section_patch",
-                        "reason": f"重生成动作降级为单章局部修补：{action.reason}",
                     }
                 )
             patch_actions_by_chapter.setdefault(chapter.chapter_index, []).append((action_index, patch_action))

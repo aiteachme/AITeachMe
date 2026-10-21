@@ -58,8 +58,8 @@ def unit_test_question_blocks(module: str) -> tuple[str, dict[int, str]]:
 
 def apply_unit_test_question_patches(
     module: str, patches: list[UnitTestQuestionPatch], *, chapter_title: str,
-) -> tuple[str, str, str, str]:
-    """Return the merged module and exact changed/unchanged review contexts."""
+) -> str:
+    """Render only the replacements, preserving every other question verbatim."""
     prefix, blocks = unit_test_question_blocks(module)
     if not patches:
         raise ValueError("Question repair must return at least one targeted replacement.")
@@ -72,8 +72,4 @@ def apply_unit_test_question_patches(
             [patch.item], title=chapter_title, min_items=1, max_items=1, fallback_targets=[],
         )[0]
         replacements[number] = _render_unit_test_item_markdown(item, index=number) + "\n\n"
-    merged = prefix + "".join(replacements.get(number, block) for number, block in blocks.items())
-    original = "\n\n".join(block for number, block in blocks.items() if number in replacements)
-    changed = "\n\n".join(replacements[number] for number in blocks if number in replacements)
-    unchanged = "\n\n".join(block for number, block in blocks.items() if number not in replacements)
-    return merged, original, changed, unchanged
+    return prefix + "".join(replacements.get(number, block) for number, block in blocks.items())

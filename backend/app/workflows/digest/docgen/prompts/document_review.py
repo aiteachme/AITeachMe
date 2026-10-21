@@ -199,7 +199,7 @@ def build_document_review_messages(
 5. 检查是否能承接 examine/profile：核心概念、方法、易错点、题型/任务和章末练习是否足够结构化，是否存在无法被考试链路定位的空泛段落。
 6. 只输出真实问题。不要因为想更优雅、更多例子或更长篇幅而输出 action。
 7. 局部章节问题用 `section_patch` 或 `evidence_patch`，必须带 `chapter_index` 和 `target_anchor`。每条局部动作只能修复 target_anchor 指向的一个现有小节，instruction、constraints 和 expected_effect 只要求在该小节内完成；同一问题涉及多个小节时按实际定位拆成多条动作，不能把全章修复要求放进单一小节动作。章末题的 target_anchor 固定为 `## 单元测试`；正文错误指向实际小节标题，不要因需要保留测试就把正文动作指向测试模块。
-8. 纯记录或后续观察用 `record_only`；资料分配明显错用 `re_dispatch`；全局术语/符号骨架明显冲突才用 `rebuild_backbone`。
+8. 真实内容错误必须输出可立即执行的 `section_patch`，提供真实 chapter_index、现有小节 target_anchor 和具体修复依据；跨章错误按受影响的小节拆开，直接纠正文档。`record_only` 只用于非阻断的观察，severity 不得为 error。不要输出当前流程不执行的重派发或重建骨架任务来阻断已经生成的文档。
 9. 不要在 instruction 里直接写可复制的新标题或完整正文；只描述需要修复的学习问题、约束和预期效果。
 10. 如果没有影响正确性或学习闭环的问题，返回 passed=true、issues=[]、actions=[]。
 11. 检查明确的正文小节、例题/代码示例和练习数量，用户合同优先于模式默认密度；不要因为少于默认值而补题。body_section_count 按正文二级标题计数，不含单元测试；三级标题组织同一教学小节内的概念、方法或解析，不额外计为教学小节，除非原始用户需求或确认方案明确禁止三级标题。自动简报中的“不增小节”不能扩大成禁止所有内部标题。篇幅按正文叙述判断，不把 Markdown 标记和代码字符当成额外讲解。与明确数量不符时输出 severity=error 的局部 `section_patch`，约束必须保留用户规定的数量和边界。

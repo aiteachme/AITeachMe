@@ -66,15 +66,10 @@ def _action() -> ReviewAction:
 
 
 async def _apply(monkeypatch, chapter, *, operation="replace_text", original_text=OLD_ROW, replacement=NEW_ROW):
-    verification_messages = []
+    model_calls = []
 
     async def completion(messages, **kwargs):
-        if kwargs["response_model"] is repair._LocalPatchVerification:
-            verification_messages.append(messages)
-            return repair._LocalPatchVerification(
-                passed=True, verified_action_ids=["A3"],
-                verification_notes=["减法转化保持被减数不变，减数取相反数。"],
-            )
+        model_calls.append(kwargs["response_model"])
         return repair._LocalMarkdownPatch(
             operation=operation, original_text=original_text,
             target_anchor=ANCHOR, patch_markdown=replacement, covered_action_ids=["A3"],
@@ -85,30 +80,30 @@ async def _apply(monkeypatch, chapter, *, operation="replace_text", original_tex
         chapter=chapter, indexed_actions=[(1, _action())], repair_round=1,
         quantity_contract={"quantity_constraints": {"chapter_end_question_count": 9}},
     )
-    return updated, results, remaining, verification_messages
+    return updated, results, remaining, model_calls
 
 
 @pytest.mark.anyio
-async def test_error_append_cannot_hide_unchanged_intro_error_even_if_verifier_always_passes(monkeypatch):
+async def test_error_append_cannot_hide_unchanged_intro_error(monkeypatch):
     original = _chapter()
-    updated, results, remaining, verification_messages = await _apply(
+    updated, results, remaining, model_calls = await _apply(
         monkeypatch, original, operation="append",
     )
 
     assert updated.markdown == original.markdown
     assert results[0][1].status == "downgraded"
     assert remaining
-    assert verification_messages == []
+    assert model_calls == [repair._LocalMarkdownPatch]
     assert OLD_ROW in updated.markdown and NEW_ROW not in updated.markdown
 
 
 @pytest.mark.anyio
 async def test_unique_intro_table_row_is_replaced_in_place_despite_body_heading_anchor(monkeypatch):
     original = _chapter()
-    updated, results, remaining, verification_messages = await _apply(monkeypatch, original)
+    updated, results, remaining, model_calls = await _apply(monkeypatch, original)
 
     assert results[0][1].status == "applied"
-    assert not remaining and len(verification_messages) == 1
+    assert not remaining and len(model_calls) == 1
     assert OLD_ROW not in updated.markdown
     assert updated.markdown.count(NEW_ROW) == 1
     assert updated.markdown.index(NEW_ROW) < updated.markdown.index(ANCHOR)
@@ -122,7 +117,7 @@ async def test_unique_intro_table_row_is_replaced_in_place_despite_body_heading_
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("case", ["missing", "whitespace_mismatch", "duplicate", "empty", "blank", "oversize", "h1", "h2", "unit_test"])
-async def test_unsafe_or_ambiguous_original_fragment_is_rejected_without_verification(monkeypatch, case):
+async def test_unsafe_or_ambiguous_original_fragment_keeps_original_content(monkeypatch, case):
     oversized = "只用于检验局部替换上限。" * (repair._MAX_LOCAL_PATCH_CHARS // 10 + 1)
     original = _chapter(duplicate_source=case == "duplicate", extra_body=oversized if case == "oversize" else "")
     sources = {
@@ -136,54 +131,22 @@ async def test_unsafe_or_ambiguous_original_fragment_is_rejected_without_verific
         "h2": f"{ANCHOR}\n\n减去一个数，等于加上这个数的相反数。",
         "unit_test": "计算 1－1。",
     }
-    updated, results, remaining, verification_messages = await _apply(
+    updated, results, remaining, model_calls = await _apply(
         monkeypatch, original, original_text=sources[case],
     )
 
     assert updated.markdown == original.markdown
     assert results[0][1].status == "downgraded"
     assert remaining
-    assert verification_messages == []
-
-
-@pytest.mark.anyio
-async def test_verification_receives_operation_before_and_actual_after_at_original_location(monkeypatch):
-    original = _chapter()
-    captured = []
-    build_messages = repair.build_patch_verification_messages
-
-    def capture_messages(**kwargs):
-        captured.append(kwargs)
-        return build_messages(**kwargs)
-
-    monkeypatch.setattr(repair, "build_patch_verification_messages", capture_messages)
-    updated, results, remaining, _ = await _apply(monkeypatch, original)
-
-    assert results[0][1].status == "applied" and not remaining
-    assert len(captured) == 1
-    payload = captured[0]
-    assert payload["operation"] == "replace_text"
-    assert OLD_ROW in payload["original_markdown"]
-    after = payload["patched_markdown_context"]
-    assert TABLE_HEADER in after and NEW_ROW in after
-    assert OLD_ROW not in after
-    assert OLD_ROW not in payload["related_markdown_context"]
-    assert OLD_ROW not in updated.markdown
+    assert model_calls == [repair._LocalMarkdownPatch]
 
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("recover", [False, True])
 async def test_rejected_error_append_retries_with_feedback_and_cannot_be_marked_applied_on_exhaustion(monkeypatch, recover):
     patch_messages = []
-    verification_calls = []
 
     async def completion(messages, **kwargs):
-        if kwargs["response_model"] is repair._LocalPatchVerification:
-            verification_calls.append(messages)
-            return repair._LocalPatchVerification(
-                passed=True, verified_action_ids=["A3"],
-                verification_notes=["原位修正了保持不变的对象。"],
-            )
         patch_messages.append(messages)
         return repair._LocalMarkdownPatch(
             operation="replace_text" if recover and len(patch_messages) > 1 else "append",
@@ -201,7 +164,6 @@ async def test_rejected_error_append_retries_with_feedback_and_cannot_be_marked_
 
     assert len(patch_messages) == 2
     assert "append" in patch_messages[1][-1]["content"]
-    assert len(verification_calls) == int(recover)
     if recover:
         assert actions[0].status == "applied" and not unresolved
         assert OLD_ROW not in chapters[0].markdown

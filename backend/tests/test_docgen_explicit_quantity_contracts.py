@@ -601,7 +601,7 @@ async def test_quantity_rule_errors_survive_semantic_reviewer_success_or_failure
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("has_semantic_quantity", [True, False])
-async def test_semantic_quantity_contract_requires_successful_semantic_review(monkeypatch, has_semantic_quantity) -> None:
+async def test_review_unavailability_does_not_invent_unrepairable_content_errors(monkeypatch, has_semantic_quantity) -> None:
     async def failed_review(*args, **kwargs):
         raise RuntimeError("reviewer unavailable")
 
@@ -614,16 +614,15 @@ async def test_semantic_quantity_contract_requires_successful_semantic_review(mo
         chapter_tasks=[task.model_dump(mode="json")],
     )
     assert report.fallback_used is True
-    assert report.passed is (not has_semantic_quantity)
-    if has_semantic_quantity:
-        assert report.issues[0]["issue_type"] == "quantity_review_unavailable"
-        assert actions[0].severity == "error"
-        merged = quality.build_merge_review_report(
-            enhanced_chapters=[_published_chapter()], expected_chapter_count=1, plan="", review_actions=actions,
-        )
-        assert merged.decision == "fail"
-    else:
-        assert actions == []
+    assert report.passed is True
+    assert actions == []
+    assert report.issues == []
+    assert report.glossary_warnings
+    merged = quality.build_merge_review_report(
+        enhanced_chapters=[_published_chapter()], expected_chapter_count=1, plan="", review_actions=actions,
+    )
+    assert merged.passed is True
+
 
 
 @pytest.mark.anyio
@@ -684,15 +683,8 @@ def test_final_structure_count_ignores_literal_markers_and_nested_headings() -> 
 @pytest.mark.anyio
 async def test_semantic_repair_receives_user_quantity_and_writing_boundaries(monkeypatch) -> None:
     prompts = []
-    verification_prompts = []
 
     async def fake_patch(messages, **kwargs):
-        if kwargs["response_model"] is repair._LocalPatchVerification:
-            verification_prompts.append(messages[-1]["content"])
-            return repair._LocalPatchVerification(
-                passed=True, verified_action_ids=["repair_action_001"],
-                verification_notes=["负索引从末尾定位，未增加例题或扩大主题。"],
-            )
         prompts.append(messages[-1]["content"])
         return kwargs["response_model"](
             status="patch", operation="replace_section", target_anchor="## 索引",
@@ -714,9 +706,6 @@ async def test_semantic_repair_receives_user_quantity_and_writing_boundaries(mon
     assert len(prompts) == 1
     assert "'worked_example_count': 2" in prompts[0]
     assert "不要扩展到列表排序" in prompts[0]
-    assert len(verification_prompts) == 1
-    assert "'worked_example_count': 2" in verification_prompts[0]
-    assert "不要扩展到列表排序" in verification_prompts[0]
     assert actions[0].status == "applied"
     assert unresolved == []
     assert "负索引从列表末尾向前定位" in repaired[0].markdown

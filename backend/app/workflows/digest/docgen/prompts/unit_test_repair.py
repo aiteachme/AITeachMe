@@ -20,7 +20,7 @@ def build_unit_test_question_patch_messages(
             "item 包含 type、difficulty、target、stem、options、answer、basis。"
             "不要返回整份测试、Markdown 题答块或题组标题，不新增、删除、交换题号。"
             "每题独立复算后再输出，核验题干条件、每步解析、答案、单位及整数等实际限制；"
-            "不能只让方程算式成立而忽略题设情境矛盾。修正反馈中的新错时也必须完成原复核动作。"
+            "不能只让方程算式成立而忽略题设情境矛盾。你负责直接输出已完成纠错的最终题目，不依赖后续模型复审。"
             "covered_action_ids 列出已完整解决的 repair_action_key；未解决的放 unresolved_action_ids，不能重叠。"
             "无法安全修补才返回 status=no_change。"
         ) + UNIT_TEST_STRUCTURED_CONTENT_CONTRACT},

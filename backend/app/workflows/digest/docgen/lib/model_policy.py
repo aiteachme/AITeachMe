@@ -35,7 +35,6 @@ class DocGenModelStep(str, Enum):
     DOCUMENT_REVIEW_RETRY = "review_content.document_consistency_review_retry"
     REPAIR_PATCH = "repair_or_route.surface_section_patch"
     REPAIR_PATCH_RETRY = "repair_or_route.retry_section_patch"
-    REPAIR_PATCH_REVIEW = "repair_or_route.verify_section_patch"
     COVER_IMAGE = "cover_sidecar"
 
 
@@ -264,18 +263,7 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
         max_tokens=4500,
         timeout_s=120,
         temperature=0.1,
-        note="局部补丁被拒绝后，根据独立复核反馈重新推导并修补同一目标。",
-    ),
-    DocGenModelStep.REPAIR_PATCH_REVIEW: DocGenModelPolicy(
-        step=DocGenModelStep.REPAIR_PATCH_REVIEW,
-        call_type="structured",
-        model="reason",
-        max_tokens=3000,
-        timeout_s=90,
-        overall_timeout_s=195,
-        max_retries=2,
-        temperature=0.1,
-        note="错误级补丁应用前独立复核正确性，不信任补丁器自报的动作覆盖。",
+        note="局部补丁未满足程序结构检查时，根据反馈修正同一目标，不追加内容复审。",
     ),
     DocGenModelStep.COVER_IMAGE: DocGenModelPolicy(
         step=DocGenModelStep.COVER_IMAGE,

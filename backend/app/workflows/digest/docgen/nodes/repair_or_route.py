@@ -25,8 +25,8 @@ def _repair_trace_llm_call_group(item) -> str:
 def build_repair_or_route_node(*, context: WorkflowContext):
     """构建复核回流处理节点。
 
-    当前自动执行安全的 surface/section/evidence patch；整章重写和
-    重派发动作会进入 unresolved_warnings，等待更重的有限回流阶段继续实现。
+    错误级章节动作统一进入实际修复；修复后直接应用内容，不再启动模型复审。
+    非阻断的观察项保留在 unresolved_warnings。
     """
 
     async def repair_or_route_node(state: DocGenState) -> dict:
@@ -50,7 +50,7 @@ def build_repair_or_route_node(*, context: WorkflowContext):
             status="running",
             stage="repairing_or_routing",
             digest_mode=state.get("digest_mode") or None,
-            current_stage_description="正在处理复核回流动作：执行安全局部修补，其余重动作记录为 warning。",
+            current_stage_description="正在修正正文、例题与答案，并整理文档格式。",
         )
         allow_llm_patches = str(state.get("digest_mode") or "").strip().lower() != "sprint"
         # Sprint normally keeps one semantic writing pass. Deterministic

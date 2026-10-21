@@ -1,4 +1,4 @@
-"""Large-test repairs cannot rewrite untouched questions or bypass review."""
+"""Large-test repairs cannot rewrite untouched questions or start another review loop."""
 
 from __future__ import annotations
 
@@ -66,15 +66,9 @@ async def test_selective_repair_retries_bad_numbers_and_type_drift_without_rewri
     chapter, action, contract = _case(count, compact=compact)
     assert len(repair._question_callout_records(chapter.markdown)) == count
     target = count - 1
-    prompts, verification = [], []
+    prompts = []
 
     async def completion(messages, **kwargs):
-        if kwargs["response_model"] is repair._LocalPatchVerification:
-            verification.append(messages[-1]["content"])
-            return repair._LocalPatchVerification(
-                passed=True, verified_action_ids=[action.action_id],
-                verification_notes=[f"Q{target:02d} 的运算及解析一致，题目数量和题型保持不变。"],
-            )
         assert kwargs["response_model"] is UnitTestQuestionPatches
         assert kwargs["max_tokens"] >= 10000
         prompts.append(messages[-1]["content"])
@@ -95,7 +89,7 @@ async def test_selective_repair_retries_bad_numbers_and_type_drift_without_rewri
     chapters, actions, unresolved, _ = await repair.repair_or_route_review_actions(
         reviewed_chapters=[chapter], review_actions=[action], chapter_tasks=[{"chapter_index": 1, **contract}],
     )
-    assert len(prompts) == 3 and len(verification) == 1
+    assert len(prompts) == 3
     assert "题型配额" in prompts[-1]
     assert actions[0].status == "applied" and not unresolved
     original_body, original_test = split_final_unit_test_section(chapter.markdown)
@@ -110,26 +104,14 @@ async def test_selective_repair_retries_bad_numbers_and_type_drift_without_rewri
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("recover", [True, False])
-async def test_selective_repair_requires_independent_content_verification_before_application(monkeypatch, recover):
+async def test_selective_repair_delivers_final_answer_with_one_model_call(monkeypatch):
     chapter, action, contract = _case(20)
-    patch_calls = review_calls = 0
+    calls = []
 
-    async def completion(messages, **kwargs):
-        nonlocal patch_calls, review_calls
-        if kwargs["response_model"] is repair._LocalPatchVerification:
-            review_calls += 1
-            passed = recover and review_calls > 1
-            return repair._LocalPatchVerification(
-                passed=passed, verified_action_ids=[action.action_id] if passed else [],
-                issues=[] if passed else ["Q19 的答案与解析不一致，19+1应为20。"],
-                verification_notes=["独立复算19+1=20。"] if passed else [],
-            )
-        patch_calls += 1
-        if patch_calls > 1:
-            assert "19+1应为20" in messages[-1]["content"]
+    async def completion(_messages, **kwargs):
+        calls.append(kwargs["response_model"])
         return UnitTestQuestionPatches(
-            patches=[UnitTestQuestionPatch(question_number=19, item=_item(19, answer="20" if recover and patch_calls > 1 else "21"))],
+            patches=[UnitTestQuestionPatch(question_number=19, item=_item(19))],
             covered_action_ids=[action.action_id],
         )
 
@@ -137,8 +119,12 @@ async def test_selective_repair_requires_independent_content_verification_before
     chapters, actions, unresolved, _ = await repair.repair_or_route_review_actions(
         reviewed_chapters=[chapter], review_actions=[action], chapter_tasks=[{"chapter_index": 1, **contract}],
     )
-    assert patch_calls == review_calls == (2 if recover else 3)
-    assert (actions[0].status == "applied") is recover
-    assert bool(unresolved) is not recover
-    if not recover:
-        assert chapters[0].markdown == chapter.markdown
+    assert calls == [UnitTestQuestionPatches]
+    assert actions[0].status == "applied" and not unresolved
+    original_body, original_test = split_final_unit_test_section(chapter.markdown)
+    body, quiz = split_final_unit_test_section(chapters[0].markdown)
+    _, original = unit_test_question_blocks(original_test)
+    _, updated = unit_test_question_blocks(quiz)
+    assert body == original_body
+    assert [number for number in original if original[number] != updated[number]] == [19]
+    assert "999" not in updated[19] and "20" in updated[19]

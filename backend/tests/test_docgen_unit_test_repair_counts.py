@@ -55,15 +55,8 @@ def _action() -> ReviewAction:
 async def test_unit_test_patch_respects_explicit_quantity(
     monkeypatch, original_count, replacement_count, expected_count, accepted,
 ) -> None:
-    verification_calls = []
 
     async def fake_patch(_messages, **kwargs):
-        if kwargs["response_model"] is repair._LocalPatchVerification:
-            verification_calls.append(True)
-            return repair._LocalPatchVerification(
-                passed=True, verified_action_ids=["repair_action_001"],
-                verification_notes=["逐题核对整数加法及答案。"],
-            )
         return repair._LocalMarkdownPatch(
             status="patch", operation="replace_section", target_anchor="## 单元测试",
             patch_markdown=_quiz(replacement_count),
@@ -78,7 +71,6 @@ async def test_unit_test_patch_respects_explicit_quantity(
     )
     assert results[0][1].status == ("applied" if accepted else "downgraded")
     assert bool(remaining) is (not accepted)
-    assert len(verification_calls) == int(accepted)
     if accepted:
         assert updated.markdown.count("> [!QUESTION]") == replacement_count
         assert unit_test_structure_issues(updated.markdown, expected_question_count=expected_count) == []
@@ -90,15 +82,8 @@ async def test_unit_test_patch_respects_explicit_quantity(
 @pytest.mark.anyio
 async def test_quantity_rejection_retries_before_marking_action_applied(monkeypatch) -> None:
     patch_prompts = []
-    verification_calls = []
 
     async def fake_patch(messages, **kwargs):
-        if kwargs["response_model"] is repair._LocalPatchVerification:
-            verification_calls.append(True)
-            return repair._LocalPatchVerification(
-                passed=True, verified_action_ids=["repair_action_001"],
-                verification_notes=["五道题的题意与答案均已核对。"],
-            )
         patch_prompts.append(messages[-1]["content"])
         return repair._LocalMarkdownPatch(
             status="patch", operation="replace_section", target_anchor="## 单元测试",
@@ -112,7 +97,6 @@ async def test_quantity_rejection_retries_before_marking_action_applied(monkeypa
     )
     assert len(patch_prompts) == 2
     assert "必须恰好有 5 道题，当前为 9 道" in patch_prompts[1]
-    assert len(verification_calls) == 1
     assert actions[0].status == "applied"
     assert unresolved == []
     assert trace[0].changed is True
@@ -121,15 +105,8 @@ async def test_quantity_rejection_retries_before_marking_action_applied(monkeypa
 
 @pytest.mark.anyio
 async def test_body_append_cannot_change_valid_explicit_chapter_end_quantity(monkeypatch) -> None:
-    verification_calls = []
 
     async def fake_patch(_messages, **kwargs):
-        if kwargs["response_model"] is repair._LocalPatchVerification:
-            verification_calls.append(True)
-            return repair._LocalPatchVerification(
-                passed=True, verified_action_ids=["repair_action_001"],
-                verification_notes=["新增题目的答案均正确。"],
-            )
         return repair._LocalMarkdownPatch(
             operation="append", target_anchor="## 单元测试",
             patch_markdown="> [!QUESTION]" + _quiz(4, start=5).split("> [!QUESTION]", 1)[1],
@@ -150,17 +127,11 @@ async def test_body_append_cannot_change_valid_explicit_chapter_end_quantity(mon
     assert results[0][1].status == "downgraded"
     assert "必须恰好有 5 道题，当前为 9 道" in results[0][2].detail
     assert remaining
-    assert verification_calls == []
 
 
 @pytest.mark.anyio
 async def test_body_fix_can_precede_correction_of_existing_wrong_chapter_end_count(monkeypatch) -> None:
     async def fake_patch(_messages, **kwargs):
-        if kwargs["response_model"] is repair._LocalPatchVerification:
-            return repair._LocalPatchVerification(
-                passed=True, verified_action_ids=["repair_action_001"],
-                verification_notes=["正文概念已纠正，章末数量留给其独立修补动作。"],
-            )
         return repair._LocalMarkdownPatch(
             operation="replace_section", target_anchor="## 加一",
             patch_markdown="## 加一\n\n整数加一得到下一个整数。",
@@ -184,15 +155,8 @@ async def test_body_fix_can_precede_correction_of_existing_wrong_chapter_end_cou
 @pytest.mark.anyio
 async def test_body_question_cleanup_and_chapter_end_count_fix_can_run_in_order(monkeypatch) -> None:
     patch_calls = []
-    verification_calls = []
 
     async def fake_patch(_messages, **kwargs):
-        if kwargs["response_model"] is repair._LocalPatchVerification:
-            verification_calls.append(patch_calls[-1])
-            return repair._LocalPatchVerification(
-                passed=True, verified_action_ids=[patch_calls[-1]],
-                verification_notes=["本次动作已完成，原有正文与题目答案保持正确。"],
-            )
         key = "body" if not patch_calls else "quiz"
         patch_calls.append(key)
         return repair._LocalMarkdownPatch(
@@ -218,7 +182,7 @@ async def test_body_question_cleanup_and_chapter_end_count_fix_can_run_in_order(
             "quantity_constraints": {"inline_practice_count": 0, "chapter_end_question_count": 5},
         }],
     )
-    assert patch_calls == verification_calls == ["body", "quiz"]
+    assert patch_calls == ["body", "quiz"]
     assert [action.status for action in actions] == ["applied", "applied"]
     assert unresolved == []
     assert repaired[0].markdown.count("> [!QUESTION]") == 5

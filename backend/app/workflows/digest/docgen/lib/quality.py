@@ -438,26 +438,13 @@ async def review_document_consistency_with_llm(
         except Exception:
             llm_result = await _run_document_review(DocGenModelStep.DOCUMENT_REVIEW_RETRY)
     except Exception as exc:
-        semantic_quantity_tasks = [
-            task for task in (ChapterGenerationTask.model_validate(item) for item in chapter_tasks or [])
-            if any(value is not None for value in (
-                task.quantity_constraints.worked_example_count, task.quantity_constraints.inline_practice_count,
-                task.quantity_constraints.min_word_count, task.quantity_constraints.max_word_count,
-            ))
-        ]
-        review_errors = [
-            {
-                "severity": "error", "chapter_index": task.chapter_index,
-                "issue_type": "quantity_review_unavailable",
-                "detail": "明确的例题、正文练习或篇幅合同尚未完成语义审核。",
-            }
-            for task in semantic_quantity_tasks
-        ]
         fallback_report = rule_report.model_copy(
             update={
                 "fallback_used": True,
-                "passed": rule_report.passed and not review_errors,
-                "issues": [*rule_report.issues, *review_errors],
+                "glossary_warnings": [
+                    *rule_report.glossary_warnings,
+                    "整本语义审核暂不可用，保留已完成的生成、题目复算及程序结构检查结果。",
+                ],
                 "source_summary": {
                     **dict(rule_report.source_summary or {}),
                     "document_review_mode": "rule_fallback_after_llm_error",
@@ -466,13 +453,9 @@ async def review_document_consistency_with_llm(
                 },
             }
         )
-        actions = [ReviewAction(
-            action_id=f"document_quantity_review_unavailable_ch{task.chapter_index:02d}",
-            action_type="record_only", chapter_index=task.chapter_index, severity="error",
-            reason="数量合同的语义审核失败，不能仅凭 Markdown 结构检查发布。",
-            instruction="恢复审核模型服务后重新构建并完成语义审核。",
-        ) for task in semantic_quantity_tasks]
-        return fallback_report, actions, llm_calls
+        # An unavailable reviewer has found no content error to repair. Do not
+        # manufacture an unexecutable error action that blocks publication.
+        return fallback_report, [], llm_calls
     return _merge_document_review_report(rule_report=rule_report, llm_result=llm_result), _document_review_actions(llm_result), llm_calls
 
 

@@ -83,14 +83,9 @@ def _action():
 @pytest.mark.anyio
 @pytest.mark.parametrize("recover", [True, False])
 async def test_document_quiz_patch_retries_type_drift_then_recovers_or_stays_unresolved(monkeypatch, recover):
-    prompts, verification_calls = [], []
+    prompts = []
 
     async def completion(messages, **kwargs):
-        if kwargs["response_model"] is repair._LocalPatchVerification:
-            verification_calls.append(True)
-            return repair._LocalPatchVerification(
-                passed=True, verified_action_ids=["A1"], verification_notes=["已核对答案。"],
-            )
         prompts.append(messages[-1]["content"])
         types = EXPECTED_TYPES if recover and len(prompts) > 1 else DRIFTED_TYPES
         return repair._LocalMarkdownPatch(
@@ -106,7 +101,6 @@ async def test_document_quiz_patch_retries_type_drift_then_recovers_or_stays_unr
 
     assert len(prompts) == (2 if recover else 3)
     assert "应用迁移" in prompts[1] and "4" in prompts[1] and "3" in prompts[1]
-    assert len(verification_calls) == int(recover)
     assert actions[0].status == ("applied" if recover else "downgraded")
     assert bool(unresolved) is (not recover)
     assert trace[0].changed is recover
@@ -126,10 +120,6 @@ async def test_untyped_legacy_plan_keeps_legitimate_document_review_relabeling(m
 
     async def completion(_messages, **kwargs):
         calls.append(kwargs["response_model"])
-        if kwargs["response_model"] is repair._LocalPatchVerification:
-            return repair._LocalPatchVerification(
-                passed=True, verified_action_ids=["A1"], verification_notes=["题目内容与答案正确。"],
-            )
         return repair._LocalMarkdownPatch(
             operation="replace_section", target_anchor="## 单元测试",
             patch_markdown=_quiz(DRIFTED_TYPES, corrected=True), covered_action_ids=["A1"],
@@ -139,7 +129,7 @@ async def test_untyped_legacy_plan_keeps_legitimate_document_review_relabeling(m
     chapters, actions, unresolved, _ = await repair.repair_or_route_review_actions(
         reviewed_chapters=[_chapter()], review_actions=[_action()], chapter_tasks=[_task(untyped_plan)],
     )
-    assert calls == [repair._LocalMarkdownPatch, repair._LocalPatchVerification]
+    assert calls == [repair._LocalMarkdownPatch]
     assert actions[0].status == "applied" and not unresolved
     assert chapters[0].markdown.count("｜应用迁移｜") == 3
     assert chapters[0].markdown.count("｜错因辨析｜") == 1
@@ -148,10 +138,6 @@ async def test_untyped_legacy_plan_keeps_legitimate_document_review_relabeling(m
 @pytest.mark.anyio
 async def test_body_fix_may_precede_separate_correction_of_existing_wrong_type_quota(monkeypatch):
     async def completion(_messages, **kwargs):
-        if kwargs["response_model"] is repair._LocalPatchVerification:
-            return repair._LocalPatchVerification(
-                passed=True, verified_action_ids=["A1"], verification_notes=["正文已纠正。"],
-            )
         return repair._LocalMarkdownPatch(
             operation="replace_section", target_anchor="## 加一",
             patch_markdown="## 加一\n\n整数加一得到下一个整数。", covered_action_ids=["A1"],
