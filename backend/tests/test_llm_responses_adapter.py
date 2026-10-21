@@ -1066,15 +1066,24 @@ async def test_stream_completion_accepts_non_stream_responses_text(monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_stream_completion_reads_completed_responses_fallback(monkeypatch):
+@pytest.mark.parametrize("streamed_text", (None, "streamed text"))
+async def test_stream_completion_reads_completed_responses_fallback(monkeypatch, streamed_text):
     from app.shared.infra.llm_support import stream as stream_module
+
+    closed = []
+
+    async def close_transport():
+        closed.append(True)
 
     class FakeResponsesStream:
         def __init__(self) -> None:
+            self.response = SimpleNamespace(aclose=close_transport)
             self._chunks = iter([
                 SimpleNamespace(type="response.created"),
+                *([SimpleNamespace(type="response.output_text.delta", delta=streamed_text)]
+                  if streamed_text else []),
                 SimpleNamespace(
-                    type="response.completed",
+                    type=FakeResponseEventType("response.completed"),
                     response=SimpleNamespace(output_text="completed text"),
                 ),
             ])
@@ -1086,7 +1095,7 @@ async def test_stream_completion_reads_completed_responses_fallback(monkeypatch)
             try:
                 return next(self._chunks)
             except StopIteration as exc:
-                raise StopAsyncIteration from exc
+                raise AssertionError("Must stop at response.completed without waiting for EOF") from exc
 
     class FakeLiteLLM:
         async def aresponses(self, **kwargs):
@@ -1114,7 +1123,88 @@ async def test_stream_completion_reads_completed_responses_fallback(monkeypatch)
         )
     ]
 
-    assert "".join(chunks) == "completed text"
+    assert "".join(chunks) == (streamed_text or "completed text")
+    assert closed == [True]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("started", (False, True))
+@pytest.mark.parametrize("event_type", ("response.failed", "response.incomplete", "error"))
+async def test_stream_terminal_failure_retries_only_before_visible_text(monkeypatch, started, event_type):
+    from app.shared.infra.llm_support import stream as stream_module
+
+    calls = []
+    closed = []
+
+    async def no_sleep(*_args, **_kwargs):
+        pass
+
+    class FakeResponsesStream:
+        def __init__(self, chunks):
+            self.chunks = iter(chunks)
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            try:
+                return next(self.chunks)
+            except StopIteration as exc:
+                raise StopAsyncIteration from exc
+
+        async def aclose(self):
+            closed.append(True)
+
+    class FakeLiteLLM:
+        async def aresponses(self, **kwargs):
+            calls.append(kwargs)
+            if len(calls) > 1:
+                return FakeResponsesStream([
+                    {"type": "response.completed", "response": {"output_text": "retry ok"}},
+                ])
+            failure = (
+                {"type": event_type, "code": "server_error", "message": "upstream interrupted"}
+                if event_type == "error" else
+                {"type": event_type, "response": (
+                    {"incomplete_details": {"reason": "max_output_tokens"}}
+                    if event_type == "response.incomplete" else
+                    {"error": {"code": "server_error", "message": "upstream interrupted"}}
+                )}
+            )
+            return FakeResponsesStream([
+                *([{"type": "response.output_text.delta", "delta": "partial"}] if started else []),
+                failure,
+            ])
+
+    monkeypatch.setenv("LLM_API_KEY", "test-key")
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+    monkeypatch.delenv("LLM_BASE_URL", raising=False)
+    monkeypatch.setattr(stream_module, "load_litellm", lambda: FakeLiteLLM())
+    monkeypatch.setattr(stream_module, "sleep_before_retry", no_sleep)
+    set_system_settings_override({
+        "models": {"primary": "gpt-5.5"},
+        "llm": {"api_mode": "responses", "text_endpoint_fallback_enabled": False},
+    })
+
+    received = []
+
+    async def consume():
+        async for chunk in stream_module.acompletion_stream(
+            [{"role": "user", "content": "hello"}],
+            task_type=TaskType.CHAT, model="primary", max_retries=2,
+        ):
+            received.append(chunk)
+
+    if started:
+        with pytest.raises(LLMCallError, match=event_type):
+            await consume()
+        assert received == ["partial"]
+        assert len(calls) == 1
+    else:
+        await consume()
+        assert received == ["retry ok"]
+        assert len(calls) == 2
+    assert len(closed) == len(calls)
 
 
 @pytest.mark.anyio

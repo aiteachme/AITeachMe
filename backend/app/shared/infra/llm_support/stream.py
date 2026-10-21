@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import Awaitable, Callable, Mapping
+from contextlib import aclosing
 from typing import Any, AsyncGenerator
 
 from app.schemas.llm import ChatMessage
@@ -49,6 +50,7 @@ from .responses_adapter import (
     response_output_tool_events,
     response_stream_delta,
     response_stream_final_text,
+    validate_response_stream_event,
 )
 
 StreamAttemptCallback = Callable[[str, Mapping[str, Any]], Awaitable[None]]
@@ -184,27 +186,32 @@ async def _stream_content_parts(
             yield content, usage
         return
 
-    async for chunk in _stream_chunks_with_timeout(
+    chunks = _stream_chunks_with_timeout(
         response,
         timeout_s=context_request_timeout_s(context, provider_call.kwargs),
-    ):
-        usage = merge_usage(usage, extract_usage(chunk))
-        if provider_call.api_mode == "responses":
-            for event in response_output_tool_events(_get_response_payload(chunk)):
-                if event not in provider_tool_events:
-                    provider_tool_events.append(event)
-        content = _stream_chunk_content(
-            provider_call=provider_call,
-            chunk=chunk,
-            streamed_chunks=streamed_chunks,
-        )
-        if not content:
-            continue
-        if not first_token_seen:
-            _record_new_token_event(trace_run)
-            first_token_seen = True
-        streamed_chunks.append(content)
-        yield content, usage
+    )
+    async with aclosing(chunks):
+        async for chunk in chunks:
+            completed = False
+            usage = merge_usage(usage, extract_usage(chunk))
+            if provider_call.api_mode == "responses":
+                completed = validate_response_stream_event(chunk)
+                for event in response_output_tool_events(_get_response_payload(chunk)):
+                    if event not in provider_tool_events:
+                        provider_tool_events.append(event)
+            content = _stream_chunk_content(
+                provider_call=provider_call,
+                chunk=chunk,
+                streamed_chunks=streamed_chunks,
+            )
+            if content:
+                if not first_token_seen:
+                    _record_new_token_event(trace_run)
+                    first_token_seen = True
+                streamed_chunks.append(content)
+                yield content, usage
+            if completed:
+                break
 
 
 def _get_response_payload(chunk: Any) -> Any:
@@ -248,7 +255,14 @@ async def _stream_chunks_with_timeout(
             except StopAsyncIteration:
                 break
     finally:
-        close = getattr(iterator, "aclose", None) or getattr(response, "aclose", None)
+        close = (
+            getattr(iterator, "aclose", None)
+            or getattr(response, "aclose", None)
+            # LiteLLM's native Responses iterator exposes the HTTPX response
+            # but has no aclose() of its own. Release it on terminal events,
+            # read errors and cancellation instead of waiting for socket EOF.
+            or getattr(getattr(response, "response", None), "aclose", None)
+        )
         if callable(close):
             try:
                 await close()

@@ -68,6 +68,8 @@ from app.shared.infra.search import web_search, search_knowledge
 - retriever 名是稳定配置名，统一用小写 snake_case。
 - profile 名是内部检索 preset，不表达教学意图；对外应展示 `retrieval_policy`（本地优先、是否联网、来源优先级和选择原因），不要把 `docgen_*` 名称当业务语义。
 - 不提供泛化抓站入口。新增外部网站必须是明确站点适配器，放入 `search/retrievers/sites/` 并说明使用边界。
+- 通用 reader 的 HTTP 读取统一走 `search/readers/common.py::fetch_url()`。每一跳都校验 URL 和全部 DNS 地址，只连接已校验的公网 IP，同时保留原始 Host 与 TLS SNI/证书校验；禁止依赖 URL 字面量检查或校验后再次按域名连接。
+- reader 不继承环境代理、隐式认证或网页 Cookie；跨 origin 重定向不转发 Authorization，避免绕过地址隔离或泄露读取服务凭证。
 
 ### Provider-native tools 边界
 
@@ -85,7 +87,12 @@ from app.shared.infra.search import web_search, search_knowledge
 - `api_mode=auto` 时，`settings.llm.responses_api_models` 中的文本模型使用 Responses，其余文本模型使用 Chat Completions。该名单不改变端点归属；fallback 文本请求默认使用 Chat Completions。
 - Embedding、文生图、语音、视频等模型使用各自专用接口，只参与主/备用端点选择；图片理解仍属于文本生成，参与 Responses / Chat Completions 判断。
 - `acompletion_stream()` 始终向上游请求真实流式输出。自定义 OpenAI-compatible Responses 网关不采用 LiteLLM 对未知模型名生成的伪流式。
+- Responses 流收到 `response.completed` 后立即关闭连接，不等待网关断开；`response.failed` / `response.incomplete` / `error` 必须保留原因并抛出异常。输出正文后不自动重试，避免重复正文。
 - LangSmith LLM span 会记录 requested / initial / final API mode、route reason、原生 Responses 流式状态和 provider-native tool types，用于判断是否发生 Responses 到 Chat 的自动回退。
+
+### 公开资源下载
+
+`public_assets.public_asset_urls()` 仅为固定的 `aiteachme/assets` 仓库提供 raw GitHub 与官方 Contents API 两个来源。演示课程与社区二维码共享此入口；网络失败可以换源，课程包仍必须经过大小、SHA-256 校验，每次重下从零开始，不缓存部分文件。
 
 ## workflow / observability 公开接口
 

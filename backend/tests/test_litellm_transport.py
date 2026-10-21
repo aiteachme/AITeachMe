@@ -62,14 +62,14 @@ async def _local_http_server():
         await asyncio.gather(*pending, return_exceptions=True)
 
 
-def _provider_handler(monkeypatch):
+def _provider_handler(monkeypatch, *, timeout=1):
     monkeypatch.setenv("NO_PROXY", "127.0.0.1,localhost")
     monkeypatch.delenv("DISABLE_AIOHTTP_TRANSPORT", raising=False)
     litellm_loader.load_litellm.cache_clear()
     litellm_loader.load_litellm()
     from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler
 
-    return AsyncHTTPHandler(timeout=httpx.Timeout(1))
+    return AsyncHTTPHandler(timeout=httpx.Timeout(timeout))
 
 
 def test_provider_transport_rejects_truncated_stream_and_recovers(monkeypatch):
@@ -109,10 +109,10 @@ def test_provider_transport_cancelled_request_does_not_poison_followup(monkeypat
 def test_provider_transport_read_timeout_does_not_poison_followup(monkeypatch):
     async def scenario():
         async with _local_http_server() as (base, _stalled, release):
-            handler = _provider_handler(monkeypatch)
+            handler = _provider_handler(monkeypatch, timeout=0.05)
             try:
                 with pytest.raises(httpx.ReadTimeout):
-                    await handler.get(base + "/slow", timeout=httpx.Timeout(0.05))
+                    await handler.get(base + "/slow")
                 release.set()
                 assert (await handler.get(base + "/ok")).text == "ok"
             finally:

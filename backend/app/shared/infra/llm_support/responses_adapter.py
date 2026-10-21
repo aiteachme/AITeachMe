@@ -329,6 +329,20 @@ def response_stream_final_text(chunk: Any) -> str:
     return extract_response_text(chunk)
 
 
+def validate_response_stream_event(chunk: Any) -> bool:
+    """Raise on failed/incomplete Responses events; return True on completion."""
+
+    event_type = _event_type_text(chunk)
+    if event_type in {"response.failed", "response.incomplete", "error"}:
+        response = _get(chunk, "response") or chunk
+        detail = _get(response, "error") or _get(response, "incomplete_details") or chunk
+        code = _get(detail, "code") or _get(detail, "reason")
+        message = _get(detail, "message")
+        reason = ": ".join(str(value) for value in (code, message) if value)
+        raise ValueError(f"{event_type}: {reason or 'upstream response did not complete'}")
+    return event_type == "response.completed"
+
+
 def _response_output_tool_event(item: Any) -> dict[str, str] | None:
     item_type = str(_get(item, "type") or "").strip()
     if not _is_tool_output_type(item_type):

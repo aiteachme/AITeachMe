@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qsl, unquote, urlencode, urljoin, urlparse, urlunparse
+from urllib.parse import unquote, urljoin, urlparse
 
 import httpx
 import structlog
@@ -23,6 +23,7 @@ from app.shared.infra.exceptions import (
     ImportPackageTooLargeError,
 )
 from app.shared.infra.runtime import get_runtime_data_dir
+from app.shared.infra.public_assets import PUBLIC_ASSET_HEADERS, public_asset_urls
 from app.workflows.support.export_import.limits import (
     MAX_IMPORT_PACKAGE_BYTES,
     MAX_IMPORT_PACKAGE_SIZE_MB,
@@ -98,30 +99,54 @@ def download_course_package(identifier: str) -> tuple[Path, str]:
     try:
         timeout = _get_demo_courses_timeout_s()
         with httpx.Client(timeout=timeout, follow_redirects=True) as client:
-            with client.stream("GET", _with_cache_buster(descriptor.package_url)) as response:
-                _raise_for_http_status(
-                    response,
-                    action=f"下载课程包 `{descriptor.identifier}`",
-                )
-                _validate_remote_content_length(response)
-                hasher = hashlib.sha256() if descriptor.sha256 else None
-                bytes_written = 0
-                with tmp_path.open("wb") as fh:
-                    for chunk in response.iter_bytes():
-                        if chunk:
-                            bytes_written += len(chunk)
-                            if bytes_written > MAX_IMPORT_PACKAGE_BYTES:
-                                raise ImportPackageTooLargeError(MAX_IMPORT_PACKAGE_SIZE_MB)
-                            if hasher is not None:
-                                hasher.update(chunk)
-                            fh.write(chunk)
-                if hasher is not None and hasher.hexdigest().lower() != descriptor.sha256:
-                    raise DemoCourseCatalogUnavailableError(reason="课程包校验失败。")
+            sources = public_asset_urls(descriptor.package_url)
+            for index, url in enumerate(sources):
+                try:
+                    _download_package_to_path(client, url, descriptor, tmp_path)
+                    break
+                except (httpx.RequestError, DemoCourseCatalogUnavailableError) as exc:
+                    if index == len(sources) - 1:
+                        if isinstance(exc, DemoCourseCatalogUnavailableError):
+                            raise
+                        raise DemoCourseCatalogUnavailableError(
+                            reason="课程包下载连接失败或超时，请稍后重试。",
+                        ) from exc
+                    logger.warning(
+                        "demo_course_package_source_failed",
+                        identifier=descriptor.identifier,
+                        error_type=type(exc).__name__,
+                    )
         _store_cached_package(descriptor, tmp_path)
         return tmp_path, descriptor.package_filename
     except Exception:
         tmp_path.unlink(missing_ok=True)
         raise
+
+
+def _download_package_to_path(
+    client: httpx.Client,
+    url: str,
+    descriptor: _RemoteCourseDescriptor,
+    tmp_path: Path,
+) -> None:
+    with client.stream("GET", url, headers=PUBLIC_ASSET_HEADERS) as response:
+        _raise_for_http_status(response, action=f"下载课程包 `{descriptor.identifier}`")
+        _validate_remote_content_length(response)
+        hasher = hashlib.sha256() if descriptor.sha256 else None
+        bytes_written = 0
+        # Each source starts from byte zero, including after a partial read.
+        with tmp_path.open("wb") as fh:
+            for chunk in response.iter_bytes():
+                bytes_written += len(chunk)
+                if bytes_written > MAX_IMPORT_PACKAGE_BYTES:
+                    raise ImportPackageTooLargeError(MAX_IMPORT_PACKAGE_SIZE_MB)
+                if hasher is not None:
+                    hasher.update(chunk)
+                fh.write(chunk)
+        if descriptor.file_size_bytes and bytes_written != descriptor.file_size_bytes:
+            raise DemoCourseCatalogUnavailableError(reason="课程包大小校验失败。")
+        if hasher is not None and hasher.hexdigest().lower() != descriptor.sha256:
+            raise DemoCourseCatalogUnavailableError(reason="课程包校验失败。")
 
 
 def get_remote_course_descriptor(identifier: str) -> _RemoteCourseDescriptor:
@@ -247,27 +272,22 @@ def _fetch_remote_catalog_payload(catalog_url: str) -> Any:
     timeout = _get_demo_courses_timeout_s()
     try:
         with httpx.Client(timeout=timeout, follow_redirects=True) as client:
-            response = client.get(
-                _with_cache_buster(catalog_url),
-                headers={
-                    "Accept": "application/json",
-                    "Cache-Control": "no-cache",
-                    "Pragma": "no-cache",
-                },
-            )
-            _raise_for_http_status(response, action="读取演示课程目录")
-            return response.json()
+            sources = public_asset_urls(catalog_url)
+            for index, url in enumerate(sources):
+                try:
+                    response = client.get(
+                        url,
+                        headers={**PUBLIC_ASSET_HEADERS, "Cache-Control": "no-cache"},
+                    )
+                    _raise_for_http_status(response, action="读取演示课程目录")
+                    return response.json()
+                except (httpx.HTTPError, DemoCourseCatalogUnavailableError, ValueError):
+                    if index == len(sources) - 1:
+                        raise
     except DemoCourseCatalogUnavailableError:
         raise
     except Exception as exc:
         raise DemoCourseCatalogUnavailableError(reason=f"无法读取 `{catalog_url}`：{exc}") from exc
-
-
-def _with_cache_buster(url: str) -> str:
-    parsed = urlparse(url)
-    query_items = parse_qsl(parsed.query, keep_blank_values=True)
-    query_items.append(("_", str(time.time_ns())))
-    return urlunparse(parsed._replace(query=urlencode(query_items)))
 
 
 def _extract_catalog_items(payload: Any) -> list[dict[str, Any]]:

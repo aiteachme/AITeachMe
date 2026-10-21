@@ -7,8 +7,10 @@ from dataclasses import dataclass, field
 import structlog
 import time
 from collections.abc import Iterable
-from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
-from urllib.request import Request, urlopen
+
+import httpx
+
+from app.shared.infra.public_assets import PUBLIC_ASSET_HEADERS, public_asset_urls
 
 _COMMUNITY_QR_FETCH_TIMEOUT_SECONDS = 8
 _COMMUNITY_QR_CACHE_TTL_SECONDS = 10 * 60
@@ -48,34 +50,26 @@ _community_qr_cache: dict[str, CommunityQrCacheEntry] = {
 }
 
 
-def _with_cache_buster(url: str) -> str:
-    parsed = urlparse(url)
-    query = [
-        (key, value)
-        for key, value in parse_qsl(parsed.query, keep_blank_values=True)
-        if key != "t"
-    ]
-    query.append(("t", str(int(time.time()))))
-    return urlunparse(parsed._replace(query=urlencode(query)))
-
-
 def _read_remote_community_qr_sync(url: str) -> bytes:
-    request = Request(
-        _with_cache_buster(url),
-        headers={
-            "Accept": "image/*,*/*;q=0.8",
-            "Cache-Control": "no-cache",
-            "Pragma": "no-cache",
-            "User-Agent": "AITeachMe/CommunityQR",
-        },
-        method="GET",
-    )
-    with urlopen(request, timeout=_COMMUNITY_QR_FETCH_TIMEOUT_SECONDS) as response:
-        image_bytes = response.read(_COMMUNITY_QR_MAX_BYTES + 1)
-
-    if len(image_bytes) > _COMMUNITY_QR_MAX_BYTES:
-        raise ValueError("community QR image is too large")
-    return image_bytes
+    sources = public_asset_urls(url)
+    with httpx.Client(timeout=_COMMUNITY_QR_FETCH_TIMEOUT_SECONDS, follow_redirects=True) as client:
+        for index, source in enumerate(sources):
+            try:
+                with client.stream(
+                    "GET", source,
+                    headers={**PUBLIC_ASSET_HEADERS, "Cache-Control": "no-cache"},
+                ) as response:
+                    response.raise_for_status()
+                    image_bytes = bytearray()
+                    for chunk in response.iter_bytes():
+                        image_bytes.extend(chunk)
+                        if len(image_bytes) > _COMMUNITY_QR_MAX_BYTES:
+                            raise ValueError("community QR image is too large")
+                    return bytes(image_bytes)
+            except httpx.HTTPError:
+                if index == len(sources) - 1:
+                    raise
+    raise RuntimeError("No community QR source configured")
 
 
 async def read_community_qr_bytes(channel_id: str) -> bytes | None:
