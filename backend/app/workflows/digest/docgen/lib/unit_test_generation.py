@@ -17,6 +17,7 @@ from app.workflows.digest.docgen.lib.model_policy import (
 )
 from app.workflows.digest.docgen.lib.models import clean_chapter_end_practice_plan
 from app.workflows.digest.docgen.lib.unit_tests import (
+    UNIT_TEST_BATCH_SIZE,
     ChapterUnitTestGenerationError,
     ChapterUnitTestItem,
     ChapterUnitTestSet,
@@ -271,7 +272,7 @@ async def generate_chapter_unit_test_markdown(
         plan = clean_chapter_end_practice_plan([dict(item) for item in chapter_end_practice_plan])
     except ValueError as exc:
         raise ChapterUnitTestGenerationError(f"Invalid chapter-end question plan: {exc}") from exc
-    batches = _partition_practice_plan(plan, total=maximum, batch_size=12)
+    batches = _partition_practice_plan(plan, total=maximum, batch_size=UNIT_TEST_BATCH_SIZE)
     all_items: list[ChapterUnitTestItem] = []
     for index, (count, batch_plan) in enumerate(batches, start=1):
         contract = dict(writing_contract or {})

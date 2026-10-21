@@ -18,6 +18,8 @@ from app.workflows.digest.docgen.lib.presentation_policy import (
     normalize_docgen_presentation,
 )
 from app.workflows.digest.docgen.lib.unit_tests import (
+    UNIT_TEST_BATCH_SIZE,
+    _UNIT_TEST_CALLOUT_START_RE,
     _protect_fenced_code_blocks,
     _restore_fenced_code_blocks,
     markdown_unit_test_type_quota_issues,
@@ -26,6 +28,10 @@ from app.workflows.digest.docgen.lib.unit_tests import (
     unit_test_structure_issues,
 )
 from app.workflows.digest.docgen.prompts.repair import build_chapter_patch_messages, build_patch_verification_messages
+from app.workflows.digest.docgen.lib.unit_test_repair import (
+    UnitTestQuestionPatches, apply_unit_test_question_patches, unit_test_question_blocks,
+)
+from app.workflows.digest.docgen.prompts.unit_test_repair import build_unit_test_question_patch_messages
 
 
 _ACTION_REQUIRES_FUTURE_REPAIR = {
@@ -411,7 +417,13 @@ def _question_callout_records(markdown: str) -> list[tuple[str, int, int]]:
             index += 1
             continue
         end = index + 1
+        block_fence_state: tuple[str, int] | None = None
         while end < len(lines) and lines[end].lstrip().startswith(">"):
+            block_fence_state, boundary = _advance_fence_state(lines[end], block_fence_state)
+            if not boundary and block_fence_state is None and _UNIT_TEST_CALLOUT_START_RE.match(lines[end]):
+                # Adjacent callouts are separate blocks even without an empty
+                # line; otherwise a complete test is mistaken for one question.
+                break
             end += 1
         block_text = "\n".join(
             re.sub(r"^\s*>\s?", "", line)
@@ -536,11 +548,12 @@ def _local_patch_risk_reason(
     append_to_end: bool,
     unit_test_patch: bool = False,
     replace_section: bool = False,
+    program_rendered_unit_test: bool = False,
 ) -> str | None:
     patch = str(patch_markdown or "").strip()
     if not patch:
         return None
-    if len(patch) > _local_patch_char_limit(original_markdown, unit_test_patch=unit_test_patch):
+    if not program_rendered_unit_test and len(patch) > _local_patch_char_limit(original_markdown, unit_test_patch=unit_test_patch):
         return f"局部补丁过长（{len(patch)} 字符），已拒收以避免整章改写。"
     if _heading_titles(patch, levels={1}):
         return "局部补丁包含一级标题，疑似整章片段。"
@@ -804,34 +817,80 @@ async def _apply_llm_patch_actions(
         for action_index, action in indexed_actions
     }
     llm_call_group = f"ch{chapter.chapter_index:02d}_repair_round_{repair_round}"
+    selective_unit_test = False
+    question_changes: tuple[str, str, str] | None = None
     try:
-        patch_result = await acompletion_with_fallback(
-            build_chapter_patch_messages(
-                chapter_title=chapter.title,
-                actions=action_payloads,
-                markdown_context=_patch_context_for_actions(chapter, [action for _, action in indexed_actions]),
-                related_markdown_context=_related_patch_context(chapter, [action for _, action in indexed_actions]),
-                previous_rejection=previous_rejection,
-                full_markdown_chars=len(chapter.markdown),
-                repair_round=repair_round,
-                quantity_contract=quantity_contract,
-                max_patch_chars=_local_patch_char_limit(
-                    chapter.markdown,
-                    unit_test_patch=any(_is_unit_test_action(action) for _, action in indexed_actions),
-                ),
-            ),
-            **docgen_completion_kwargs_with_metadata(
+        # Re-emitting a large test to fix a few questions loses the middle to
+        # context/output limits and lets unrelated, correct questions regress.
+        # Keep the existing full-module route for missing/malformed tests;
+        # valid large tests use typed replacements at stable question numbers.
+        _, test_module = split_final_unit_test_section(chapter.markdown)
+        questions: dict[int, str] = {}
+        if all(_is_unit_test_action(action) for _, action in indexed_actions) and not unit_test_structure_issues(chapter.markdown):
+            _, questions = unit_test_question_blocks(test_module)
+        selective_unit_test = len(questions) > UNIT_TEST_BATCH_SIZE
+        if selective_unit_test:
+            kwargs = docgen_completion_kwargs_with_metadata(
                 DocGenModelStep.REPAIR_PATCH_RETRY if previous_rejection else DocGenModelStep.REPAIR_PATCH,
-                chapter_index=chapter.chapter_index,
-                repair_round=repair_round,
-                repair_action_count=len(indexed_actions),
-            ),
-            response_model=_LocalMarkdownPatch,
-        )
-        patch = patch_result if isinstance(patch_result, _LocalMarkdownPatch) else _LocalMarkdownPatch(
-            patch_markdown=str(patch_result or "")
-        )
+                chapter_index=chapter.chapter_index, repair_round=repair_round,
+                repair_action_count=len(indexed_actions), unit_test_selective_repair=True,
+            )
+            kwargs["max_tokens"] = max(
+                int(kwargs.get("max_tokens") or 0), 800 * min(len(questions), UNIT_TEST_BATCH_SIZE) + 400,
+            )
+            raw = await acompletion_with_fallback(
+                build_unit_test_question_patch_messages(
+                    chapter_title=chapter.title, actions=action_payloads, questions=questions,
+                    quantity_contract=quantity_contract or {},
+                    related_markdown_context=_related_patch_context(chapter, [action for _, action in indexed_actions]),
+                    previous_rejection=previous_rejection,
+                ), **kwargs, response_model=UnitTestQuestionPatches,
+            )
+            result = UnitTestQuestionPatches.model_validate(raw)
+            merged, original, changed, unchanged = (test_module, "", "", "")
+            if result.status == "patch":
+                merged, original, changed, unchanged = apply_unit_test_question_patches(
+                    test_module, result.patches, chapter_title=chapter.title,
+                )
+                question_changes = original, changed, unchanged
+            patch = _LocalMarkdownPatch(
+                status=result.status, operation="replace_section", target_anchor="## 单元测试",
+                patch_markdown=merged, covered_action_ids=result.covered_action_ids,
+                unresolved_action_ids=result.unresolved_action_ids, note=result.note,
+            )
+        else:
+            patch_result = await acompletion_with_fallback(
+                build_chapter_patch_messages(
+                    chapter_title=chapter.title,
+                    actions=action_payloads,
+                    markdown_context=_patch_context_for_actions(chapter, [action for _, action in indexed_actions]),
+                    related_markdown_context=_related_patch_context(chapter, [action for _, action in indexed_actions]),
+                    previous_rejection=previous_rejection,
+                    full_markdown_chars=len(chapter.markdown),
+                    repair_round=repair_round,
+                    quantity_contract=quantity_contract,
+                    max_patch_chars=_local_patch_char_limit(
+                        chapter.markdown,
+                        unit_test_patch=any(_is_unit_test_action(action) for _, action in indexed_actions),
+                    ),
+                ),
+                **docgen_completion_kwargs_with_metadata(
+                    DocGenModelStep.REPAIR_PATCH_RETRY if previous_rejection else DocGenModelStep.REPAIR_PATCH,
+                    chapter_index=chapter.chapter_index,
+                    repair_round=repair_round,
+                    repair_action_count=len(indexed_actions),
+                ),
+                response_model=_LocalMarkdownPatch,
+            )
+            patch = patch_result if isinstance(patch_result, _LocalMarkdownPatch) else _LocalMarkdownPatch(
+                patch_markdown=str(patch_result or "")
+            )
     except Exception as exc:
+        if selective_unit_test:
+            return chapter, _rejected_llm_patch_results(
+                indexed_actions=indexed_actions, repair_round=repair_round, llm_call_group=llm_call_group,
+                reason=f"结构化逐题修补未通过，保留原题并重试：{str(exc)[:500]}",
+            ), indexed_actions
         results: list[tuple[int, ReviewAction, RepairTraceItem, str | None]] = []
         for action_index, action in indexed_actions:
             updated_action = action.model_copy(update={"status": "downgraded"})
@@ -877,10 +936,10 @@ async def _apply_llm_patch_actions(
     append_to_end = unit_test_patch
     replace_text = patch.operation == "replace_text" and not unit_test_patch
     patch_markdown = (
-        patch.patch_markdown if replace_text
+        patch.patch_markdown if replace_text or selective_unit_test
         else _clean_patch_snippet(patch.patch_markdown, chapter_title=chapter.title)
     )
-    if unit_test_patch:
+    if unit_test_patch and not selective_unit_test:
         patch_markdown = normalize_unit_test_choice_answers(patch_markdown)
     target_anchor = patch.target_anchor or _fallback_patch_target_anchor(indexed_actions, covered_keys=covered_keys)
     replace_section = patch.operation == "replace_section" and not unit_test_patch
@@ -931,6 +990,7 @@ async def _apply_llm_patch_actions(
             append_to_end=append_to_end,
             unit_test_patch=unit_test_patch,
             replace_section=replace_section or replace_text,
+            program_rendered_unit_test=selective_unit_test,
         )
         if risk_reason:
             return chapter, _rejected_llm_patch_results(
@@ -939,11 +999,13 @@ async def _apply_llm_patch_actions(
                 llm_call_group=llm_call_group,
                 reason=risk_reason,
             ), indexed_actions
+    if selective_unit_test:
+        replaced_span = _find_heading_section(chapter.markdown, anchor="## 单元测试", chapter_title=chapter.title)
     patched = (
         chapter.markdown
         if patch.status == "no_change"
         else chapter.markdown[:replaced_span[0]] + patch_markdown + chapter.markdown[replaced_span[1]:]
-        if replace_text and replaced_span is not None
+        if (replace_text or selective_unit_test) and replaced_span is not None
         else _insert_local_patch(
             chapter.markdown,
             patch_markdown,
@@ -1061,18 +1123,25 @@ async def _apply_llm_patch_actions(
                     })
         original_context, patched_context = _changed_markdown_contexts(chapter.markdown, patched)
         patched_chapter = chapter.model_copy(update={"markdown": patched})
+        related_context = _related_patch_context(patched_chapter, [action_keys[key][1] for key in covered_keys])
+        verification_patch = patch_markdown
+        if question_changes is not None:
+            original_context, patched_context, unchanged = question_changes
+            verification_patch = patched_context
+            related_context += "\n\n本次逐字保留的其它题目（只读）：\n" + unchanged
         try:
             review_result = await acompletion_with_fallback(
                 build_patch_verification_messages(
                     chapter_title=chapter.title,
                     actions=covered_actions,
-                    patch_markdown=patch_markdown,
+                    patch_markdown=verification_patch,
                     operation=patch.operation,
                     original_markdown=original_context,
                     patched_markdown_context=patched_context,
-                    related_markdown_context=_related_patch_context(patched_chapter, [action_keys[key][1] for key in covered_keys]),
+                    related_markdown_context=related_context,
                     quantity_contract=quantity_contract,
                     pending_actions=pending_actions,
+                    selective_unit_test=selective_unit_test,
                 ),
                 **docgen_completion_kwargs_with_metadata(
                     DocGenModelStep.REPAIR_PATCH_REVIEW,

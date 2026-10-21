@@ -16,6 +16,8 @@ from app.workflows.digest.docgen.lib.models import (
     clean_text,
 )
 
+UNIT_TEST_BATCH_SIZE = 12
+
 
 _BODY_TEST_OR_RECAP_HEADING_RE = re.compile(r"(?ms)^##\s+(?P<title>[^\n]+?)\s*\n.*?(?=^##\s+|\Z)")
 _HEADING_NUMBER_PREFIX_RE = re.compile(r"^\s*(?:\d+(?:\.\d+)*\s*)+")
@@ -584,7 +586,12 @@ def markdown_unit_test_type_quota_issues(
             if header is not None:
                 question_types.append(_normalize_question_type(header.group("type")))
                 needs_header = False
-    return unit_test_type_quota_issues(question_types, practice_plan)
+    issues = unit_test_type_quota_issues(question_types, practice_plan)
+    if practice_plan and all(group.get("question_type") and group.get("question_count") for group in practice_plan):
+        expected_order = [str(group["question_type"]) for group in practice_plan for _ in range(int(group["question_count"]))]
+        if question_types != expected_order:
+            issues.append("章末独立题组必须按计划顺序连续排列，不能交错或交换题组。")
+    return issues
 
 
 def _callout_visible_lines(lines: list[str], *, marker_rest: str) -> tuple[list[str], bool]:

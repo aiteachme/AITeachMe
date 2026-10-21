@@ -99,6 +99,7 @@ def build_patch_verification_messages(
     operation: str = "replace_section",
     original_markdown: str = "",
     patched_markdown_context: str = "",
+    selective_unit_test: bool = False,
 ) -> list[dict[str, str]]:
     messages = [
         {
@@ -136,6 +137,13 @@ def build_patch_verification_messages(
                 "否则 passed=false，issues 具体指出题号、错误计算或未满足的约束，供下一轮修正。"
                 "verification_notes 简要记录逐题、逐项独立验算依据，不能只写‘已检查’。"
                 + UNIT_TEST_PRESENTATION_CONTRACT
+                + (
+                    "本次是程序按已有题号执行的结构化逐题替换。候选和前后对照只包含被修改题目，"
+                    "其余题目由程序逐字保留并置于只读参考；不能把候选片段题数当作整个模块题数。"
+                    "全模块题数、题型配额、题号和题答格式已由程序核对；仍须核验当前动作是否完整解决，"
+                    "逐题独立复算被修改题目及其与只读上下文的关系，指出任何新错或尚未修好的当前动作。"
+                    if selective_unit_test else ""
+                )
             ),
         },
         {
