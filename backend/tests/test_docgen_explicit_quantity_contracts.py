@@ -9,7 +9,8 @@ from markdown_it import MarkdownIt
 
 from app.shared.infra.execution import TracedExecutionContext
 from app.shared.infra.workflow.context import WorkflowContext
-from app.workflows.digest.docgen.graph import route_after_step
+from app.utils.time import utcnow
+from app.workflows.digest.docgen.graph import build_chapter_brief_sends, route_after_step
 from app.workflows.digest.docgen.lib import chapter_execution_brief, chapter_planning, quality, repair
 from app.workflows.digest.docgen.lib.chapter_context import DocGenChapterContextRuntime
 from app.workflows.digest.docgen.lib.models import (
@@ -35,7 +36,7 @@ from app.workflows.digest.docgen.lib.unit_tests import (
     ChapterUnitTestItem, ChapterUnitTestSet, append_unit_test_markdown, render_unit_test_markdown,
 )
 from app.workflows.digest.docgen.lib.writer import _explicit_writer_contract_issues
-from app.workflows.digest.docgen.nodes import assemble_chapter_tasks, merge_review
+from app.workflows.digest.docgen.nodes import assemble_chapter_tasks, build_chapter_execution_briefs, merge_review
 from app.workflows.digest.docgen.prompts.chapter_review import build_chapter_review_messages
 from app.workflows.digest.docgen.prompts.document_review import build_document_review_messages
 from app.workflows.digest.docgen.prompts.generation import build_docgen_writer_messages
@@ -177,6 +178,50 @@ def test_quantity_parser_does_not_merge_comma_separated_chapters() -> None:
         ["第1章章末4道练习，第2章章末5道练习"]
     )
     assert [item.total for item in contracts] == [4, 5]
+
+
+@pytest.mark.parametrize("text", ["章末保留两个题组", "章末共两个题组", "章末覆盖三种题型"])
+def test_question_groups_and_types_are_not_question_counts(text: str) -> None:
+    assert infer_explicit_chapter_end_question_contracts([text]) == []
+
+
+@pytest.mark.anyio
+async def test_multi_chapter_brief_does_not_inherit_another_chapters_unscoped_count(monkeypatch) -> None:
+    async def fake_brief(_messages, **kwargs):
+        return kwargs["response_model"](
+            teaching_outline=["复习二元一次方程组"],
+            quantity_constraints={"chapter_end_question_count": 13},
+            content_role_targets={"concept": ["二元一次方程组"]},
+            example_coverage_plan=[{"target": "代入消元法"}],
+            chapter_end_practice_plan=[
+                {"target": "应用迁移", "question_count": 3},
+                {"target": "填空检查", "question_count": 10},
+            ],
+        )
+
+    monkeypatch.setattr(chapter_execution_brief, "acompletion_with_fallback", fake_brief)
+    async def ignore_progress(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(build_chapter_execution_briefs, "publish_docgen_progress", ignore_progress)
+    monkeypatch.setattr(build_chapter_execution_briefs, "append_knowledge_build_recent_event", lambda *a, **k: None)
+    sends = build_chapter_brief_sends({
+        "course_id": "scoped-quantities", "requested_at": utcnow(),
+        "docgen_context": DocGenContext(
+            course_name="方程复习", digest_mode="sprint",
+            plan="第一章章末14道应用练习和6道短测，共20题；第二章同样保留3道应用练习和10道短测，共13题。",
+        ).model_dump(mode="json"),
+        "chapter_task_seeds": [
+            ChapterGenerationTaskSeed(chapter_index=i, confirmed_title=title).model_dump(mode="json")
+            for i, title in [(1, "一元一次方程"), (2, "二元一次方程组")]
+        ],
+    })
+    context = WorkflowContext(workflow_name="digest.docgen", course_id="scoped-quantities")
+    result = await build_chapter_execution_briefs.build_chapter_execution_briefs_node(context=context)(sends[1].arg)
+    assert not result.get("chapter_execution_brief_errors")
+    brief = ChapterExecutionBrief.model_validate(result["chapter_execution_brief_items"][0])
+    assert brief.quantity_constraints.chapter_end_question_count == 13
+    assert [group["question_count"] for group in brief.chapter_end_practice_plan] == [3, 10]
 
 
 def test_quantity_checker_accepts_total_plan_when_subset_is_not_a_separate_group() -> None:

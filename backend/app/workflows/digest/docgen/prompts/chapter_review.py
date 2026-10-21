@@ -7,6 +7,7 @@ from typing import Any
 from app.models.knowledge_taxonomy import KNOWLEDGE_RELATION_TYPE_LABELS, KNOWLEDGE_UNIT_TYPE_LABELS
 from app.workflows.digest.common.prompt_tracing import trace_prompt_build
 from app.workflows.digest.docgen.prompts.unit_test_contract import UNIT_TEST_PRESENTATION_CONTRACT
+from app.workflows.digest.docgen.prompts.execution_stage import DOCGEN_EXECUTION_STAGE_CONTRACT
 from app.workflows.digest.docgen.lib.mode_profiles import get_docgen_mode_profile
 
 _MAX_REVIEW_MARKDOWN_CHARS = 12000
@@ -64,7 +65,7 @@ def _compact_task(task: dict[str, Any]) -> dict[str, Any]:
         "coverage_threshold": task.get("coverage_threshold"),
         "evidence_support_threshold": task.get("evidence_support_threshold"),
         "example_coverage_plan": list(task.get("example_coverage_plan") or [])[:_MAX_REVIEW_LIST_ITEMS],
-        "chapter_end_practice_plan": list(task.get("chapter_end_practice_plan") or [])[:_MAX_REVIEW_LIST_ITEMS],
+        "chapter_end_practice_plan": list(task.get("chapter_end_practice_plan") or []),
         "practice_seed_policy": {
             "digest_mode": practice_seed_policy.get("digest_mode"),
             "example_density_policy": practice_seed_policy.get("example_density_policy"),
@@ -277,7 +278,7 @@ def build_chapter_review_messages(
 你不能新增事实，不能替正文打补丁，不能要求推翻已确认计划。
 如果问题可以局部修，输出 action_type 为 `section_patch` 或 `evidence_patch`；只有整章严重不可用时才输出 `regenerate_chapter`。
 证据不足时优先输出 action_type 为 `evidence_patch`，不要轻易要求整章重写。
-""".strip() + "\n" + UNIT_TEST_PRESENTATION_CONTRACT
+""".strip() + "\n" + DOCGEN_EXECUTION_STAGE_CONTRACT + "\n" + UNIT_TEST_PRESENTATION_CONTRACT
     user_prompt = f"""
 请复核下面这一章，并输出结构化结果。
 

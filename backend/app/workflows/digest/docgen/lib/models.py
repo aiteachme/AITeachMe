@@ -110,8 +110,10 @@ def clean_chapter_end_practice_plan(value: Any, *, limit: int = 12) -> list[dict
     items = value if isinstance(value, list) else ([] if value is None else [value])
     counted = any(isinstance(item, dict) and "question_count" in item for item in items)
     typed = any(isinstance(item, dict) and item.get("question_type") is not None for item in items)
-    if (counted or typed) and len(items) > limit:
-        raise ValueError("chapter-end question groups exceed the supported plan size")
+    # Coverage limits apply only to optional/default plans. Explicit groups
+    # must survive intact so the total validator can check the whole contract.
+    if counted or typed:
+        limit = len(items)
     cleaned: list[dict[str, Any]] = []
     for item in items:
         entry = clean_example_coverage_plan([item], limit=1)
@@ -121,8 +123,8 @@ def clean_chapter_end_practice_plan(value: Any, *, limit: int = 12) -> list[dict
             continue
         if isinstance(item, dict) and "question_count" in item:
             count = item["question_count"]
-            if type(count) is not int or not 1 <= count <= 12:
-                raise ValueError("chapter-end question_count must be an integer from 1 to 12")
+            if type(count) is not int or count < 1:
+                raise ValueError("chapter-end question_count must be a positive integer")
             entry[0]["question_count"] = count
         if isinstance(item, dict) and "question_type" in item:
             question_type = item["question_type"]
@@ -557,7 +559,7 @@ class ChapterQuantityConstraints(DocGenBaseModel):
     worked_example_count: int | None = Field(default=None, ge=0)
     inline_practice_count: int | None = Field(default=None, ge=0, description="正文中的练习总数，不含最终单元测试模块里的章末题组。")
     chapter_end_question_count: int | None = Field(
-        default=None, ge=1, le=12,
+        default=None, ge=1,
         description="最终单元测试模块内全部章末题目的总数；独立的章末练习与短测题组相加，包含关系不重复计数，正文练习另计。",
     )
     min_word_count: int | None = Field(default=None, ge=1)

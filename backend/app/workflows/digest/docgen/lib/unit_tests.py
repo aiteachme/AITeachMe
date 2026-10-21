@@ -892,7 +892,7 @@ def _prepare_unit_test_items(
     max_items: int | None = None,
 ) -> list[ChapterUnitTestItem]:
     limit = max_items if max_items is not None else max(min_items, len(items))
-    limit = max(min_items, min(int(limit or min_items), 12))
+    limit = max(min_items, int(limit or min_items))
     prepared = [item for item in _dedupe_unit_test_items(list(items or [])) if _is_usable_unit_test_item(item)][:limit]
     if len(prepared) < min_items:
         raise ChapterUnitTestGenerationError(

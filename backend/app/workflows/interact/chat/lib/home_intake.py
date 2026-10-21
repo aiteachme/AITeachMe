@@ -266,6 +266,9 @@ def _build_intent_messages(
                 "course_name，description，user_intent，planner_prompt，assistant_reply。"
                 "当且仅当用户明确表达创建/构建学科且目标足够清楚时 ready_to_create=true；"
                 "否则 assistant_reply 用自然中文追问或回答。"
+                "user_intent 和 planner_prompt 只保留学习目标、基础、章节、数量、资料与联网等持续约束；"
+                "‘先讨论’‘先规划’‘暂不构建’等操作顺序用于判断当前动作和 assistant_reply，"
+                "不要把它们写成后续正式文档永久只能停留在方案阶段的学习要求。"
             ) + _format_intent_tool_catalog(tool_catalog),
         },
         {

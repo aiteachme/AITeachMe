@@ -82,7 +82,7 @@ async def test_structured_unit_test_generation_uses_full_body_and_publishes_cano
         nonlocal captured_body
         captured_body = str(messages[-1]["content"])
         call_models.append(str(kwargs["model"]))
-        assert kwargs["response_model"] is ChapterUnitTestSet
+        assert issubclass(kwargs["response_model"], ChapterUnitTestSet)
         return ChapterUnitTestSet(
             chapter_index=1,
             items=[

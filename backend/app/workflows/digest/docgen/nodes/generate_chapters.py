@@ -1021,6 +1021,11 @@ def build_generate_chapters_node(*, context: WorkflowContext):
                     "max_items": chapter_end_max_items,
                 },
             )
+            async def call_unit_test_llm(*args, **kwargs):
+                nonlocal writer_attempt_count
+                writer_attempt_count += 1
+                return await traced_context.resolve_llm_caller()(*args, **kwargs)
+
             writer_markdown = await generate_chapter_unit_test_markdown(
                 chapter_index=task.chapter_index,
                 chapter_title=title,
@@ -1036,13 +1041,12 @@ def build_generate_chapters_node(*, context: WorkflowContext):
                     "quantity_constraints": execution_contract.get("quantity_constraints") or {},
                     "forbidden_scope": execution_contract.get("forbidden_scope") or [],
                 },
-                llm_caller=traced_context.resolve_llm_caller(),
+                llm_caller=call_unit_test_llm,
                 extra_metadata=traced_context.trace_metadata(
                     teaching_action="chapter_unit_test",
                     chapter_index=task.chapter_index,
                 ),
             )
-            writer_attempt_count += 2
             _publish_preview_delta(
                 _chapter_live_preview_markdown(writer_markdown, title=title),
                 status="drafting",

@@ -255,9 +255,9 @@ NODE_TRACE_DETAILS: dict[str, dict[str, Any]] = {
     },
     NODE_BUILD_CHAPTER_BRIEF: {
         "description": "LangGraph Send 按章 fan-out；每章独立调用 LLM，把共享骨架、确认范围、诊断和本章资料编译为执行 brief。",
-        "reads": ["chapter_task_seed", "document_backbone", "intent_core", "learner_profile_text"],
+        "reads": ["chapter_task_seed", "total_chapters", "document_backbone", "intent_core", "learner_profile_text"],
         "writes": ["chapter_execution_brief_items", "chapter_execution_brief_errors"],
-        "input_keys": ["chapter_task_seed", "document_backbone", "docgen_context", "high_confidence_evidence_units"],
+        "input_keys": ["chapter_task_seed", "total_chapters", "document_backbone", "docgen_context", "high_confidence_evidence_units"],
         "output_keys": ["chapter_execution_brief_items", "chapter_execution_brief_errors", "chapter_prepare_ms", "llm_calls_total"],
         "fanout": "langgraph_send_per_chapter",
         "fanin": "assemble_chapter_tasks",
@@ -1015,6 +1015,7 @@ def build_chapter_brief_sends(state: DocGenState) -> list[Send] | Literal["fail"
                 "document_backbone": state.get("document_backbone", {}),
                 "high_confidence_evidence_units": state.get("high_confidence_evidence_units", []),
                 "chapter_task_seed": task_seed,
+                "total_chapters": len(task_seeds),
             },
         )
         for task_seed in task_seeds

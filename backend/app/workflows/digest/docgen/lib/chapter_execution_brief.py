@@ -54,6 +54,7 @@ async def build_chapter_execution_brief(
     plan: str = "",
     docgen_history_brief: str = "",
     learner_profile_text: str = "",
+    total_chapters: int = 1,
     extra_metadata: Mapping[str, object] | None = None,
 ) -> ChapterExecutionBrief:
     chapter_index = int(chapter.get("chapter_index", 0) or 0) or 1
@@ -111,7 +112,7 @@ async def build_chapter_execution_brief(
     # course plan where another chapter may have a different allocation.
     if infer_explicit_chapter_end_question_contracts(chapter_scoped_sources):
         quantity_sources = chapter_scoped_sources
-    else:
+    elif total_chapters == 1:
         user_source = str(user_prompt or "").strip()
         plan_source = str(plan or "").strip()
         plan_contracts = infer_explicit_chapter_end_question_contracts((plan_source,))
@@ -125,12 +126,19 @@ async def build_chapter_execution_brief(
             quantity_sources = (user_source,)
         else:
             quantity_sources = ()
+    else:
+        # A course-level paragraph can mention one chapter's count while
+        # expressing another chapter's allocation without repeating “章末”.
+        # The text parser cannot resolve that scope. Never override the
+        # current chapter's semantic brief with an unscoped course count.
+        quantity_sources = ()
     quantity_issues = chapter_end_question_contract_issues(
         quantity_constraints=brief.quantity_constraints,
         chapter_end_practice_plan=brief.chapter_end_practice_plan,
         sources=quantity_sources,
     )
     if quantity_issues:
+        logger.warning("docgen_chapter_brief_quantity_conflict", chapter_index=chapter_index, issues=quantity_issues)
         raise ChapterExecutionBriefError(
             f"LLM chapter brief conflicts with the confirmed chapter-end quantity contract for chapter "
             f"{chapter_index}: {'; '.join(quantity_issues)}"

@@ -33,7 +33,7 @@ _QUESTION_LABEL = (
     r"选择题|填空题|判断题|简答题|短测|小测|自测|测验|测试|练习|习题|题目|题)"
 )
 _QUESTION_GROUP_RE = re.compile(
-    rf"{_QUESTION_COUNT}\s*(?:(?:道|个)\s*{_QUESTION_LABEL}|题)",
+    rf"{_QUESTION_COUNT}\s*(?:(?:道|个)\s*{_QUESTION_LABEL}|题)(?!组|型|量)",
 )
 _ADDITIVE_GROUP_RE = re.compile(
     rf"{_QUESTION_COUNT_VALUE}\s*(?:道|题|个)\s*{_QUESTION_LABEL}\s*"
@@ -41,7 +41,7 @@ _ADDITIVE_GROUP_RE = re.compile(
     rf"{_QUESTION_COUNT_VALUE}\s*(?:道|题|个)\s*{_QUESTION_LABEL}",
 )
 _QUESTION_TOTAL_RE = re.compile(
-    rf"(?:共|总计|合计)\s*{_QUESTION_COUNT}\s*(?:道|题|个)",
+    rf"(?:共|总计|合计)\s*{_QUESTION_COUNT}\s*(?:道|题|个)(?!\s*(?:题组|题型|题量|组|型|量))",
 )
 _CHAPTER_END_MARKER_RE = re.compile(
     r"章末|章尾|课后(?!\s*(?:练习|题|短测|小测|测验|测试|习题|题目|应用|实践|迁移|填空))|"
@@ -60,9 +60,8 @@ def _parse_question_count(value: str) -> int | None:
         return parsed if parsed > 0 else None
     if not normalized or any(char not in _CHINESE_DIGITS for char in normalized):
         return None
-    # Explicit quantity requests in this workflow are small (at most 12), but
-    # handle the common 十/百 forms so a malformed model response cannot widen
-    # the supported range by accident.
+    # Handle common 十/百 forms as well as Arabic numerals without altering
+    # the explicitly requested quantity.
     if len(normalized) == 1:
         parsed = _CHINESE_DIGITS[normalized]
         return parsed if parsed > 0 else None

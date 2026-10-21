@@ -4,6 +4,10 @@
 
 职责：根据 `confirmed_plan` 生成正式知识文档。
 
+用户明确的数量合同与模式默认密度分开保存：`quantity_constraints` 和互不重叠的 `chapter_end_practice_plan.question_count` 是生成、复核、修补和发布的统一依据。明确题数不受默认覆盖计划长度限制，不能因题量较大而填空或回退默认题数。章末测试按每批最多 12 题生成并独立复核，题数同时进入输出 JSON Schema 的 `minItems`/`maxItems`，少题响应使用共享结构化校验反馈修复。当前批次的数量与全章背景合同分开传递，保持所有题组的数量、题型和用途，携带已验收题目避免跨批重复；合并后统一编号、核验总量与题型配额，只发布一个单元测试模块。按章 fan-out 必须传递真实 `total_chapters`，多章时不得把全课程文本中抽取到的单个题量套到当前章。
+
+进入 DocGen 表示用户已确认方案并开始正式构建。历史对话中的“先规划、暂不构建”是之前的操作阶段要求，不能变成永久禁止生成正文的内容合同；主题、章数、数量、资料和联网限制继续有效。
+
 ```text
 输入: confirmed_plan + shared_inputs + profile + diagnose
 输出: KnowledgeDoc + markdown + manifest + graph_sync_status

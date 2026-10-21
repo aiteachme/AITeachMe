@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable, Mapping, Sequence
+from functools import lru_cache
 from typing import Any
 
 import structlog
+from pydantic import Field, create_model
 
 from app.shared.infra.llm_support import acompletion_with_fallback
 from app.workflows.digest.docgen.lib.model_policy import (
@@ -32,13 +34,22 @@ from app.workflows.digest.docgen.prompts.chapter_unit_tests import (
 logger = structlog.get_logger(__name__)
 
 
+@lru_cache(maxsize=96)
+def _unit_test_response_model(minimum: int, maximum: int) -> type[ChapterUnitTestSet]:
+    """Put the executable count in the schema and shared validation feedback."""
+    return create_model(
+        f"ChapterUnitTestSet{minimum}To{maximum}", __base__=ChapterUnitTestSet,
+        items=(list[ChapterUnitTestItem], Field(min_length=minimum, max_length=maximum)),
+    )
+
+
 def _unit_test_type_quota_issues(
     items: Sequence[ChapterUnitTestItem], practice_plan: Sequence[Mapping[str, object]],
 ) -> list[str]:
     return unit_test_type_quota_issues((item.type for item in items), practice_plan)
 
 
-async def generate_chapter_unit_test_markdown(
+async def _generate_chapter_unit_test_items(
     *,
     chapter_index: int,
     chapter_title: str,
@@ -51,8 +62,9 @@ async def generate_chapter_unit_test_markdown(
     writing_contract: Mapping[str, object] | None = None,
     llm_caller: Callable[..., Awaitable[Any]] | None = None,
     extra_metadata: Mapping[str, object] | None = None,
-) -> str:
-    """Generate structured questions and deterministically publish one final section.
+    previous_items: Sequence[ChapterUnitTestItem] = (),
+) -> list[ChapterUnitTestItem]:
+    """Generate and independently review one bounded batch of questions.
 
     The model owns teaching content.  Python only validates the typed result and
     renders the fixed QUESTION/ANSWER protocol; it never guesses or reconstructs
@@ -60,8 +72,9 @@ async def generate_chapter_unit_test_markdown(
     """
 
     caller = llm_caller or acompletion_with_fallback
-    safe_min = max(1, min(int(min_items or 1), 12))
-    safe_max = max(safe_min, min(int(max_items or safe_min), 12))
+    safe_min = max(1, int(min_items or 1))
+    safe_max = max(safe_min, int(max_items or safe_min))
+    response_model = _unit_test_response_model(safe_min, safe_max)
     required = [str(item) for item in required_elements if str(item).strip()]
     try:
         practice_plan = clean_chapter_end_practice_plan([dict(item) for item in chapter_end_practice_plan])
@@ -84,10 +97,14 @@ async def generate_chapter_unit_test_markdown(
         docgen_stage="generate_chapter_unit_test",
         chapter_index=chapter_index,
     )
+    # Both calls return the complete question set, including solutions. The
+    # default budget covers short tests; explicit larger sets need more room.
+    output_budget = max(int(kwargs.get("max_tokens") or 0), 600 * safe_max + 400)
+    kwargs["max_tokens"] = output_budget
     candidate: ChapterUnitTestSet | None = None
     generation_issue = ""
     try:
-        response = await caller(messages, **kwargs, response_model=ChapterUnitTestSet)
+        response = await caller(messages, **kwargs, response_model=response_model)
         candidate = response if isinstance(response, ChapterUnitTestSet) else ChapterUnitTestSet.model_validate(response)
         candidate.chapter_index = chapter_index
         candidate_markdown = render_unit_test_markdown(
@@ -142,8 +159,9 @@ async def generate_chapter_unit_test_markdown(
             repaired_generation=bool(review_issue),
             unit_test_review_attempt=review_attempt,
         )
+        review_kwargs["max_tokens"] = max(int(review_kwargs.get("max_tokens") or 0), output_budget)
         try:
-            response = await caller(review_messages, **review_kwargs, response_model=ChapterUnitTestSet)
+            response = await caller(review_messages, **review_kwargs, response_model=response_model)
             reviewed = response if isinstance(response, ChapterUnitTestSet) else ChapterUnitTestSet.model_validate(response)
             reviewed.chapter_index = chapter_index
             review_candidate = reviewed
@@ -162,8 +180,19 @@ async def generate_chapter_unit_test_markdown(
                     max_items=safe_max, fallback_targets=required,
                 ), practice_plan,
             ))
+            prepared = _prepare_unit_test_items(
+                list(reviewed.items), title=chapter_title, min_items=safe_min,
+                max_items=safe_max, fallback_targets=required,
+            )
+            # A later batch must not repeat a question already accepted from
+            # an earlier batch. Feed the failure into the existing review retry.
+            _prepare_unit_test_items(
+                [*previous_items, *prepared], title=chapter_title,
+                min_items=len(previous_items) + len(prepared),
+                max_items=len(previous_items) + len(prepared), fallback_targets=required,
+            )
             if not issues:
-                return published
+                return prepared
             review_issue = "；".join(issues)
             last_error = ChapterUnitTestGenerationError(review_issue)
         except asyncio.CancelledError:
@@ -187,6 +216,114 @@ async def generate_chapter_unit_test_markdown(
     raise ChapterUnitTestGenerationError(
         f"LLM failed to review a valid unit test for chapter {chapter_index}."
     ) from last_error
+
+
+def _partition_practice_plan(
+    plan: list[dict[str, Any]], *, total: int, batch_size: int,
+) -> list[tuple[int, list[dict[str, Any]]]]:
+    """Split disjoint exact groups without changing their total or type quotas."""
+    counted = any("question_count" in group for group in plan)
+    if counted and (any("question_count" not in group for group in plan)
+                    or sum(group["question_count"] for group in plan) != total):
+        raise ChapterUnitTestGenerationError("Chapter-end question groups do not match the requested total.")
+    if total <= batch_size:
+        return [(total, plan)]
+    batches: list[tuple[int, list[dict[str, Any]]]] = []
+    if not counted:
+        for start in range(0, total, batch_size):
+            batches.append((min(batch_size, total - start), plan))
+        return batches
+    for group in plan:
+        # Generate each explicitly independent group in order. Packing the
+        # tail of one group with the next lets the model interleave them.
+        for start in range(0, group["question_count"], batch_size):
+            take = min(batch_size, group["question_count"] - start)
+            batches.append((take, [{**group, "question_count": take}]))
+    return batches
+
+
+async def generate_chapter_unit_test_markdown(
+    *,
+    chapter_index: int,
+    chapter_title: str,
+    digest_mode: str,
+    required_elements: Sequence[str],
+    chapter_end_practice_plan: Sequence[Mapping[str, object]],
+    body_markdown: str,
+    min_items: int,
+    max_items: int,
+    writing_contract: Mapping[str, object] | None = None,
+    llm_caller: Callable[..., Awaitable[Any]] | None = None,
+    extra_metadata: Mapping[str, object] | None = None,
+) -> str:
+    """Honor the full chapter contract with bounded generation/review batches."""
+    minimum = max(1, int(min_items or 1))
+    maximum = max(minimum, int(max_items or minimum))
+    quantities = (writing_contract or {}).get("quantity_constraints") or {}
+    explicit_total = quantities.get("chapter_end_question_count") if isinstance(quantities, Mapping) else None
+    if explicit_total is not None:
+        if type(explicit_total) is not int or explicit_total < 1:
+            raise ChapterUnitTestGenerationError("Explicit chapter-end question count must be a positive integer.")
+        # The confirmed explicit quantity is authoritative even if a caller
+        # accidentally still carries the mode's default density range.
+        minimum = maximum = explicit_total
+    try:
+        plan = clean_chapter_end_practice_plan([dict(item) for item in chapter_end_practice_plan])
+    except ValueError as exc:
+        raise ChapterUnitTestGenerationError(f"Invalid chapter-end question plan: {exc}") from exc
+    batches = _partition_practice_plan(plan, total=maximum, batch_size=12)
+    all_items: list[ChapterUnitTestItem] = []
+    for index, (count, batch_plan) in enumerate(batches, start=1):
+        contract = dict(writing_contract or {})
+        if len(batches) > 1:
+            contract = {
+                "quantity_constraints": {"chapter_end_question_count": count},
+                "forbidden_scope": contract.get("forbidden_scope") or [],
+                "chapter_writing_contract": contract,
+                "unit_test_batch": {
+                    "batch_index": index,
+                    "batch_count": len(batches),
+                    "question_count": count,
+                    "chapter_question_count": maximum,
+                    "previous_questions": [
+                        {"type": item.type, "target": item.target, "stem": item.stem} for item in all_items
+                    ],
+                },
+            }
+        items = await _generate_chapter_unit_test_items(
+            chapter_index=chapter_index, chapter_title=chapter_title, digest_mode=digest_mode,
+            required_elements=required_elements, chapter_end_practice_plan=batch_plan,
+            body_markdown=body_markdown,
+            min_items=count if len(batches) > 1 else minimum, max_items=count,
+            writing_contract=contract, llm_caller=llm_caller,
+            extra_metadata={**dict(extra_metadata or {}), "unit_test_batch_index": index,
+                            "unit_test_batch_count": len(batches)}, previous_items=all_items,
+        )
+        all_items.extend(items)
+    issues = _unit_test_type_quota_issues(all_items, plan)
+    if issues:
+        raise ChapterUnitTestGenerationError("；".join(issues))
+    if plan and all(group.get("question_count") and group.get("question_type") for group in plan):
+        # Preserve independent typed groups even when a small, single batch
+        # returns their questions interleaved. No teaching content is changed.
+        by_type: dict[str, list[ChapterUnitTestItem]] = {}
+        for item in all_items:
+            by_type.setdefault(item.type, []).append(item)
+        ordered: list[ChapterUnitTestItem] = []
+        for group in plan:
+            pool = by_type[group["question_type"]]
+            ordered.extend(pool[:group["question_count"]])
+            del pool[:group["question_count"]]
+        all_items = ordered
+    rendered = render_unit_test_markdown(
+        ChapterUnitTestSet(chapter_index=chapter_index, items=all_items), title=chapter_title,
+        min_items=minimum, max_items=maximum, fallback_targets=list(required_elements),
+    )
+    published = append_unit_test_markdown(body_markdown, rendered)
+    issues = unit_test_structure_issues(published, expected_question_count=explicit_total)
+    if issues:
+        raise ChapterUnitTestGenerationError("；".join(issues))
+    return published
 
 
 __all__ = ["generate_chapter_unit_test_markdown"]

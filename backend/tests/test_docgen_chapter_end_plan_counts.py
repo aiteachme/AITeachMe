@@ -27,6 +27,7 @@ from app.workflows.digest.docgen.lib.models import (
     LockedChapterTitle,
 )
 from app.workflows.digest.docgen.nodes import assemble_chapter_tasks, build_chapter_execution_briefs
+from app.workflows.digest.docgen.lib.unit_test_generation import _unit_test_response_model
 from app.workflows.digest.docgen.state import DocGenState
 
 
@@ -51,11 +52,11 @@ def test_persisted_group_count_contradictions_are_rejected(model) -> None:
 
 
 @pytest.mark.parametrize("model", [ChapterExecutionBrief, ChapterGenerationTask])
-@pytest.mark.parametrize("invalid_count", [0, 13, None, True, 1.5, "2"])
+@pytest.mark.parametrize("invalid_count", [0, -1, None, True, 1.5, "2"])
 def test_invalid_group_counts_cannot_be_clamped_into_a_valid_contract(model, invalid_count) -> None:
     payload = _brief_payload(total=4, counts=(4,))
     payload["chapter_end_practice_plan"][0]["question_count"] = invalid_count
-    with pytest.raises(ValidationError, match="integer from 1 to 12"):
+    with pytest.raises(ValidationError, match="positive integer"):
         model.model_validate(payload)
 
 
@@ -72,7 +73,7 @@ def test_counted_plan_cannot_hide_groups_through_partial_or_empty_entries(model)
 
 
 def test_counted_groups_cannot_be_silently_truncated_to_match_a_smaller_total() -> None:
-    with pytest.raises(ValidationError, match="exceed the supported plan size"):
+    with pytest.raises(ValidationError, match="question group total 13 must equal chapter_end_question_count 12"):
         ChapterExecutionBrief.model_validate(_brief_payload(total=12, counts=(1,) * 13))
 
 
@@ -89,7 +90,9 @@ def test_legacy_plans_remain_readable_but_new_explicit_plans_require_counts() ->
         ChapterExecutionBrief.model_validate(_brief_payload(total=None))
 
 
-@pytest.mark.parametrize(("total", "counts"), [(9, (4, 5)), (5, (2, 3)), (5, (5,))])
+@pytest.mark.parametrize(("total", "counts"), [
+    (9, (4, 5)), (5, (2, 3)), (5, (5,)), (20, (14, 6)), (25, (25,)), (25, (1,) * 25),
+])
 def test_exact_group_counts_survive_compilation_and_json_restore(total, counts) -> None:
     brief = ChapterExecutionBriefForGeneration.model_validate(_brief_payload(total=total, counts=counts))
     assert "question_count" not in brief.example_coverage_plan[0]
@@ -179,6 +182,42 @@ async def test_invalid_raw_brief_return_cannot_bypass_the_generation_boundary(mo
             intent_core={}, glossary_terms=[], claim_targets=[], confusion_targets=[],
         )
     assert calls == 1
+
+
+@pytest.mark.anyio
+async def test_short_question_set_uses_shared_schema_feedback_to_recover_full_count(monkeypatch) -> None:
+    calls: list[dict] = []
+
+    class Provider:
+        async def aresponses(self, **kwargs):
+            calls.append(kwargs)
+            count = 2 if len(calls) == 1 else 12
+            return SimpleNamespace(
+                output_text=json.dumps({"items": [
+                    {"type": "填空题", "target": f"整数{i}加一", "stem": f"计算{i}+1。",
+                     "answer": str(i + 1), "basis": f"在{i}上增加1。"} for i in range(count)
+                ]}, ensure_ascii=False),
+                usage=SimpleNamespace(input_tokens=2, output_tokens=3, total_tokens=5),
+            )
+
+    monkeypatch.setenv("LLM_API_KEY", "test-key")
+    monkeypatch.setenv("LLM_BASE_URL", "https://gateway.example.com")
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+    monkeypatch.setattr(structured_calls, "load_litellm", lambda: Provider())
+    monkeypatch.setattr(structured_calls, "_load_instructor", lambda: None)
+    set_system_settings_override({
+        "models": {"primary": "gpt-5.5"},
+        "llm": {"api_mode": "responses", "text_endpoint_fallback_enabled": False},
+    })
+    try:
+        result = await structured_calls.acompletion_structured(
+            _unit_test_response_model(12, 12), [{"role": "user", "content": "生成12道整数加法填空题。"}],
+            model="primary", max_retries=1,
+        )
+    finally:
+        set_system_settings_override({})
+    assert len(calls) == 2 and len(result.items) == 12
+    assert "at least 12 items" in json.dumps(calls[1]["input"], ensure_ascii=False)
 
 
 @pytest.mark.anyio

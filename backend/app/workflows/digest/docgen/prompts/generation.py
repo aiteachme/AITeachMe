@@ -6,6 +6,7 @@ from app.workflows.digest.common.prompt_tracing import trace_prompt_build
 from app.workflows.digest.docgen.lib.presentation_policy import build_presentation_contract_prompt
 from app.workflows.digest.docgen.lib.mode_profiles import get_docgen_mode_profile
 from app.workflows.digest.docgen.lib.models import ChapterQuantityConstraints
+from app.workflows.digest.docgen.prompts.execution_stage import DOCGEN_EXECUTION_STAGE_CONTRACT
 
 
 def _bullet_lines(items: tuple[str, ...]) -> str:
@@ -219,7 +220,7 @@ def build_docgen_writer_messages(
 输出学生可直接阅读的中文 Markdown 讲义：清楚、可信、可复习。
 内容来自研究材料和本章执行合同；材料不足时稳健整理，不编造来源事实。
 章节讲清概念、条件、方法、例题/任务、检查点和易错边界。
-""".strip()
+""".strip() + "\n" + DOCGEN_EXECUTION_STAGE_CONTRACT
     user_prompt = f"""
 请只输出本章的中文 Markdown 正文，不要输出解释，不要输出代码块外的多余说明。
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 import pytest
 
@@ -136,7 +137,7 @@ async def test_four_end_exercises_and_five_quiz_items_publish_all_nine_with_grou
     assert unit_test_structure_issues(markdown, expected_question_count=9) == []
 
 
-@pytest.mark.parametrize("count", [9, 12])
+@pytest.mark.parametrize("count", [9, 12, 20, 25])
 def test_reviewers_receive_every_exact_group_after_task_round_trip(count: int) -> None:
     task = _compile(ChapterExecutionBrief(
         quantity_constraints={"chapter_end_question_count": count},
@@ -156,3 +157,63 @@ def test_reviewers_receive_every_exact_group_after_task_round_trip(count: int) -
         for i in range(1, count + 1):
             assert f"独立考点{i}" in prompt
         assert prompt.count("'question_count': 1") == count
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("group_counts", [(4, 5), (14, 6), (20,), (1,) * 25, (17, 16, 7)])
+async def test_large_explicit_sets_are_batched_reviewed_and_published_in_full(group_counts) -> None:
+    total = sum(group_counts)
+    groups = [
+        {"target": f"整数加法题组{index}", "question_count": count,
+         "question_type": "应用迁移" if index % 2 == 0 else "填空题"}
+        for index, count in enumerate(group_counts)
+    ]
+    task = _compile(ChapterExecutionBrief(
+        quantity_constraints={"chapter_end_question_count": total}, chapter_end_practice_plan=groups,
+    ))
+    contract = _chapter_plan_for_writer(task, total_chapters=1)["execution_contract"]
+    expected_types = [group["question_type"] for group in groups for _ in range(group["question_count"])]
+    batch_sizes = [total] if total <= 12 else [
+        min(12, count - start) for count in group_counts for start in range(0, count, 12)
+    ]
+    calls: list[tuple[int, str]] = []
+
+    async def fake_quiz(messages, **kwargs):
+        prompt = messages[-1]["content"]
+        received = json.loads(prompt.split(
+            "用户确认的需求与章节写作合同（固定题型、数量和主题边界优先）：\n", 1,
+        )[1].splitlines()[0])
+        batch = received.get("unit_test_batch") or {"batch_index": 1, "previous_questions": []}
+        start = len(batch["previous_questions"])
+        count = batch_sizes[batch["batch_index"] - 1]
+        assert received.get("chapter_writing_contract", received)["quantity_constraints"]["chapter_end_question_count"] == total
+        assert received["quantity_constraints"]["chapter_end_question_count"] == count
+        assert f"题量范围：{count}-{count}" in prompt
+        assert kwargs["max_tokens"] >= 600 * count
+        schema = kwargs["response_model"].model_json_schema()["properties"]["items"]
+        assert schema["minItems"] == schema["maxItems"] == count
+        calls.append((batch["batch_index"], kwargs["extra_metadata"]["docgen_stage"]))
+        return ChapterUnitTestSet(items=[
+            ChapterUnitTestItem(
+                type=expected_types[i], target=f"整数{i}加一",
+                stem=f"计算 ${i}+1$。", answer=str(i + 1), basis=f"从{i}增加1，得到{i + 1}。",
+            ) for i in reversed(range(start, start + count))
+        ])
+
+    markdown = await generate_chapter_unit_test_markdown(
+        chapter_index=1, chapter_title=TITLE, digest_mode="sprint", required_elements=["整数加法"],
+        chapter_end_practice_plan=contract["chapter_end_practice_plan"],
+        body_markdown="# 整数加法\n\n## 加一\n\n在原数上增加1。",
+        min_items=3, max_items=4,  # Stale mode defaults must not override the explicit contract.
+        writing_contract={"quantity_constraints": contract["quantity_constraints"]}, llm_caller=fake_quiz,
+    )
+    assert calls == [
+        (index, stage) for index in range(1, len(batch_sizes) + 1)
+        for stage in ["generate_chapter_unit_test", "review_chapter_unit_test"]
+    ]
+    assert markdown.count("## 单元测试") == 1
+    assert markdown.count("> [!QUESTION]") == markdown.count("> [!ANSWER]") == total
+    for kind in set(expected_types):
+        assert markdown.count(f"｜{kind}｜") == expected_types.count(kind)
+    assert re.findall(r'\[!QUESTION\][^\n]*?｜([^｜]+)｜', markdown) == expected_types
+    assert unit_test_structure_issues(markdown, expected_question_count=total) == []

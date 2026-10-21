@@ -118,6 +118,7 @@ def build_chapter_execution_briefs_node(*, context: WorkflowContext):
                 plan=docgen_context.plan,
                 docgen_history_brief=docgen_context.docgen_history_brief,
                 learner_profile_text=str(state.get("learner_profile_text") or docgen_context.learner_profile_text),
+                total_chapters=int(state.get("total_chapters") or 1),
                 extra_metadata={
                     "build_session_id": state.get("build_session_id") or "",
                     "planner_session_id": state.get("planner_session_id") or "",

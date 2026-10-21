@@ -32,6 +32,7 @@ def build_chapter_unit_test_messages(
 解析要写成可分行展示的短步骤，不要把完整解题过程挤成一长句。
 输出前必须逐题独立作答并复算，不能先假定自己拟定的答案正确。
 用户确认的题型和作答形式优先于默认题型多样性规则，不得为了多样性改成其它题型。
+若合同包含 unit_test_batch，本调用只生成当前批次的题量范围和题组切片；quantity_constraints 和 question_count 是本批次的确切题数，batch_count 只是总批次数、不是题数。chapter_writing_contract 保存全章要求用于分工背景，不能在当前批次重复生成全章题量。previous_questions 是已验收的其它批次题目，只用于避免重复，不要重新输出。所有批次合并并核验全章数量后才发布。
 """.strip() + "\n" + UNIT_TEST_STRUCTURED_CONTENT_CONTRACT
     user_prompt = f"""
 请为这一章生成结构化章末单元测试。
@@ -119,6 +120,7 @@ def build_chapter_unit_test_review_messages(
 请根据本章正文逐题复算条件、结论、选项和解析；发现错误、歧义、缺项或结构问题时直接修正。
 通过正确性、结构和用户合同检查的题目必须逐字段原样保留，不为措辞、风格或多样性而替换题干、选项、答案和解析；确有问题时只修改必要字段，并重新核验修改后的完整题目，防止引入重复或等价干扰项。
 最终返回一份完整可发布的题组，而不是评语、差异或局部补丁。
+若合同包含 unit_test_batch，本调用只复核并返回当前批次的题量范围和题组切片；quantity_constraints 和 question_count 是本批次的确切题数，batch_count 只是总批次数、不是题数。chapter_writing_contract 保存全章要求用于分工背景，不能在当前批次重复生成全章题量。previous_questions 是已验收的其它批次题目，只用于避免重复，不要重新输出。所有批次合并并核验全章数量后才发布。
 """.strip() + "\n" + UNIT_TEST_STRUCTURED_CONTENT_CONTRACT
     user_prompt = f"""
 请复核下面的章末单元测试，仅修正确有问题的内容，并返回完整 JSON 对象。
