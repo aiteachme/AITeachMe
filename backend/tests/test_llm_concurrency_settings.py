@@ -344,6 +344,20 @@ def test_gateway_outage_still_uses_endpoint_fallback() -> None:
     assert llm_common.should_try_endpoint_fallback(error)
 
 
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        ("response.failed: server_error: Internal processing failed.", True),
+        ("error: overloaded: Please try again later.", True),
+        ("response.incomplete: max_output_tokens", False),
+        ("error: invalid_request_error: Invalid input", False),
+        ("rate_limit_exceeded: overloaded", False),
+    ],
+)
+def test_responses_endpoint_errors_preserve_fallback_and_throttle_boundaries(message, expected) -> None:
+    assert llm_common.should_try_endpoint_fallback(ValueError(message)) is expected
+
+
 def test_existing_advanced_settings_remain_exposed_in_settings_page() -> None:
     overview = build_settings_overview_data()
     exposed_keys = {

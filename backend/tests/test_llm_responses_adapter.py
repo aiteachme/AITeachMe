@@ -1208,6 +1208,82 @@ async def test_stream_terminal_failure_retries_only_before_visible_text(monkeypa
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("started", (False, True))
+async def test_responses_server_error_uses_endpoint_fallback_only_before_visible_text(monkeypatch, started):
+    from app.shared.infra.llm_support import stream as stream_module
+
+    calls = []
+    closed = []
+
+    async def no_sleep(*_args, **_kwargs):
+        pass
+
+    class FakeStream:
+        def __init__(self, chunks):
+            self.chunks = iter(chunks)
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            try:
+                return next(self.chunks)
+            except StopIteration as exc:
+                raise StopAsyncIteration from exc
+
+        async def aclose(self):
+            closed.append(True)
+
+    class FakeLiteLLM:
+        async def aresponses(self, **kwargs):
+            calls.append(kwargs)
+            return FakeStream([
+                *([{"type": "response.output_text.delta", "delta": "partial"}] if started else []),
+                {"type": "response.failed", "response": {"error": {
+                    "code": "server_error",
+                    "message": "Our servers are currently overloaded. Please try again later.",
+                }}},
+            ])
+
+        async def acompletion(self, **kwargs):
+            calls.append(kwargs)
+            return FakeStream([SimpleNamespace(choices=[
+                SimpleNamespace(delta=SimpleNamespace(content="fallback ok")),
+            ])])
+
+    monkeypatch.setenv("LLM_API_KEY", "primary-key")
+    monkeypatch.setenv("LLM_BASE_URL", "https://primary-gateway.example.com")
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+    monkeypatch.setenv("LLM_FALLBACK_API_KEY", "fallback-key")
+    monkeypatch.setenv("LLM_FALLBACK_BASE_URL", "https://fallback-gateway.example.com")
+    monkeypatch.setattr(stream_module, "load_litellm", lambda: FakeLiteLLM())
+    monkeypatch.setattr(stream_module, "sleep_before_retry", no_sleep)
+    set_system_settings_override({
+        "models": {"primary": "gpt-5.5"},
+        "llm": {"api_mode": "responses", "text_endpoint_fallback_enabled": True},
+    })
+    received = []
+
+    async def consume():
+        async for chunk in stream_module.acompletion_stream(
+            [{"role": "user", "content": "hello"}],
+            task_type=TaskType.CHAT, model="primary", max_retries=2,
+        ):
+            received.append(chunk)
+
+    if started:
+        with pytest.raises(LLMCallError, match="server_error"):
+            await consume()
+        assert received == ["partial"]
+        assert [call["api_key"] for call in calls] == ["primary-key"]
+    else:
+        await consume()
+        assert received == ["fallback ok"]
+        assert [call["api_key"] for call in calls] == ["primary-key", "fallback-key"]
+    assert len(closed) == len(calls)
+
+
+@pytest.mark.anyio
 async def test_stream_completion_records_provider_native_tool_events(monkeypatch):
     from app.shared.infra.llm_support import stream as stream_module
 

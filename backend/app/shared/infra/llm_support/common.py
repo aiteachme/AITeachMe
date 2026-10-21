@@ -929,6 +929,8 @@ _ENDPOINT_FALLBACK_MESSAGE_MARKERS = (
     "bad gateway",
     "service unavailable",
     "internal server",
+    "server_error",
+    "overloaded",
     "gateway down",
     "gateway unavailable",
     "primary unavailable",

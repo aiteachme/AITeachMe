@@ -88,6 +88,7 @@ from app.shared.infra.search import web_search, search_knowledge
 - Embedding、文生图、语音、视频等模型使用各自专用接口，只参与主/备用端点选择；图片理解仍属于文本生成，参与 Responses / Chat Completions 判断。
 - `acompletion_stream()` 始终向上游请求真实流式输出。自定义 OpenAI-compatible Responses 网关不采用 LiteLLM 对未知模型名生成的伪流式。
 - Responses 流收到 `response.completed` 后立即关闭连接，不等待网关断开；`response.failed` / `response.incomplete` / `error` 必须保留原因并抛出异常。输出正文后不自动重试，避免重复正文。
+- 正文输出前的 `server_error` / `overloaded` 也属于端点故障，按已有配置切换备用端点；并发限流、无效请求和输出长度截断不因此触发换源。
 - LangSmith LLM span 会记录 requested / initial / final API mode、route reason、原生 Responses 流式状态和 provider-native tool types，用于判断是否发生 Responses 到 Chat 的自动回退。
 
 ### 公开资源下载
