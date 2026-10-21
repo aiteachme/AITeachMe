@@ -12,6 +12,10 @@ def build_unit_test_question_patch_messages(
     *, chapter_title: str, actions: list[dict], questions: dict[int, str],
     quantity_contract: dict, related_markdown_context: str, previous_rejection: str,
 ) -> list[dict[str, str]]:
+    question_snapshots = "\n\n".join(
+        f"原题 Q{number:02d}（Markdown 原文）：\n{markdown}"
+        for number, markdown in questions.items()
+    )
     messages = [
         {"role": "system", "content": (
             "你是 AITeachMe 的题目内容修补器，只输出合法 JSON。"
@@ -21,13 +25,16 @@ def build_unit_test_question_patch_messages(
             "不要返回整份测试、Markdown 题答块或题组标题，不新增、删除、交换题号。"
             "每题独立复算后再输出，核验题干条件、每步解析、答案、单位及整数等实际限制；"
             "不能只让方程算式成立而忽略题设情境矛盾。你负责直接输出已完成纠错的最终题目，不依赖后续模型复审。"
+            "从题干重新求解，不照抄旧答案与旧解析。basis 只保留核验成立的教学步骤和最终检验，"
+            "删除试算、错误分支、自我纠正记录及仍不确定的结论；每步必须与最终答案一致。"
+            "原题以 Markdown 原文提供，反斜杠按原字符读取，不再次解码，也不额外转义数学公式。"
             "covered_action_ids 列出已完整解决的 repair_action_key；未解决的放 unresolved_action_ids，不能重叠。"
             "无法安全修补才返回 status=no_change。"
         ) + UNIT_TEST_STRUCTURED_CONTENT_CONTRACT},
         {"role": "user", "content": (
             f"章节：{chapter_title}\n\n复核动作：\n{json.dumps(actions, ensure_ascii=False)}\n\n"
             f"数量与写作合同：\n{json.dumps(quantity_contract, ensure_ascii=False)}\n\n"
-            f"当前全部题目（未修改题由程序保留）：\n{json.dumps(questions, ensure_ascii=False)}\n\n"
+            f"当前全部题目（未修改题由程序保留）：\n{question_snapshots}\n\n"
             f"本章正文参考：\n{related_markdown_context}\n\n"
             f"历轮拒绝反馈：\n{previous_rejection or '无'}"
         )},

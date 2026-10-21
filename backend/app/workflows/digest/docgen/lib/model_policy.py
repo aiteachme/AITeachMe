@@ -249,12 +249,12 @@ _POLICIES: dict[DocGenModelStep, DocGenModelPolicy] = {
     ),
     DocGenModelStep.REPAIR_PATCH: DocGenModelPolicy(
         step=DocGenModelStep.REPAIR_PATCH,
-        call_type="text",
-        model="primary",
-        max_tokens=1800,
+        call_type="structured",
+        model="reason",
+        max_tokens=4500,
         timeout_s=120,
-        temperature=0.5,
-        note="只生成局部补丁片段，代码负责插入原章节。",
+        temperature=0.1,
+        note="由推理模型直接完成内容纠错并返回最终补丁，不以轻量修补后再复审代替正确生成。",
     ),
     DocGenModelStep.REPAIR_PATCH_RETRY: DocGenModelPolicy(
         step=DocGenModelStep.REPAIR_PATCH_RETRY,

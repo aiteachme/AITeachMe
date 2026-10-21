@@ -33,6 +33,14 @@ def test_docgen_model_policy_routes_tiers_and_bounds_noncritical_steps() -> None
     assert "api_mode" not in interactive_html
 
 
+def test_content_repair_uses_reasoning_model_to_return_final_content() -> None:
+    repair = docgen_completion_kwargs(DocGenModelStep.REPAIR_PATCH)
+    retry = docgen_completion_kwargs(DocGenModelStep.REPAIR_PATCH_RETRY)
+    assert repair["model"] == retry["model"] == "reason"
+    assert repair["temperature"] == retry["temperature"] == 0.1
+    assert repair["max_tokens"] >= 4500
+
+
 def test_kg_doc_sync_model_policy_disables_provider_native_tools_by_default() -> None:
     kwargs = kg_doc_sync_completion_kwargs(KGDocSyncModelStep.SECTION_GRAPH)
     metadata = get_kg_doc_sync_model_policy(KGDocSyncModelStep.SECTION_GRAPH).metadata()

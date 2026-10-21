@@ -13,11 +13,22 @@ from app.workflows.digest.docgen.lib.unit_tests import (
     ChapterUnitTestItem, ChapterUnitTestSet, append_unit_test_markdown,
     render_unit_test_markdown, split_final_unit_test_section, unit_test_structure_issues,
 )
+from app.workflows.digest.docgen.prompts.unit_test_repair import build_unit_test_question_patch_messages
 
 
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
+
+
+def test_question_repair_receives_formulas_and_code_as_original_markdown():
+    question = r"求 $\frac{x+1}{2}=3$ 中的 x。" + '\n```python\nprint("\\n")\n```'
+    messages = build_unit_test_question_patch_messages(
+        chapter_title="方程", actions=[], questions={7: question}, quantity_contract={},
+        related_markdown_context="", previous_rejection="",
+    )
+    assert question in messages[1]["content"]
+    assert "原题 Q07" in messages[1]["content"]
 
 
 def _item(number: int, *, answer: str | None = None, kind: str = "填空题") -> ChapterUnitTestItem:
