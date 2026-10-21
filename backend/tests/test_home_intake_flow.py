@@ -1,12 +1,32 @@
+from contextlib import contextmanager
 from types import SimpleNamespace
 
 import pytest
+from sqlalchemy.pool import StaticPool
+from sqlmodel import Session, create_engine
 
+from app.models import ChatSession
+from app.utils.course import GLOBAL_COURSE
 from app.workflows.interact.chat import graph as interact_graph
 from app.workflows.interact.chat.lib import home_intake
 from app.workflows.interact.chat.lib.intent import ChatPromptScene, resolve_prompt_scene, should_use_course_grounding
 from app.workflows.interact.chat.nodes import persist as persist_node
 from app.workflows.interact.chat.lib.types import RecentMessage
+
+
+@pytest.fixture(autouse=True)
+def intake_db(monkeypatch: pytest.MonkeyPatch):
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    ChatSession.__table__.create(engine)
+
+    @contextmanager
+    def session_scope():
+        with Session(engine) as session:
+            yield session
+
+    monkeypatch.setattr(home_intake, "managed_session", session_scope)
+    yield engine
+    engine.dispose()
 
 
 def test_home_intake_source_skips_course_grounding() -> None:
@@ -327,3 +347,59 @@ async def test_home_intake_confirmation_runs_create_tool(monkeypatch: pytest.Mon
             },
         }
     ]
+
+
+@pytest.mark.anyio
+async def test_home_intake_keeps_materials_through_clarification_and_confirmation(
+    monkeypatch: pytest.MonkeyPatch,
+    intake_db,
+) -> None:
+    with Session(intake_db) as session:
+        session.add(ChatSession(id="intake", course_id=GLOBAL_COURSE, user_id="user_1", meta_json={"other": "preserved"}))
+        session.commit()
+
+    classified_files: list[list[str]] = []
+    created_files: list[list[str]] = []
+
+    async def classify(**kwargs):
+        classified_files.append(kwargs["attached_file_ids"])
+        if len(classified_files) == 1:
+            return home_intake.HomeIntakeIntent(intent="clarify", assistant_reply="更侧重概念还是应用？")
+        return home_intake.HomeIntakeIntent(
+            intent="create_course", assistant_reply="", course_name="一次函数", ready_to_create=True,
+            user_intent="识别斜率与纵截距", planner_prompt="仅一章，结合已选资料复习一次函数。",
+        )
+
+    async def create(**kwargs):
+        created_files.append(kwargs["attached_file_ids"])
+        return {"data": {"course_id": "course_new", "course_name": "一次函数"}}
+
+    monkeypatch.setattr(home_intake, "_classify_home_intake_intent", classify)
+    monkeypatch.setattr(home_intake, "create_course_from_home_intake_tool", create)
+    state = {"course_id": GLOBAL_COURSE, "session_id": "intake", "user_id": "user_1"}
+
+    await home_intake.run_home_intake_turn({**state, "question": "先讨论资料", "attached_file_ids": ["file_a"]})
+    result = await home_intake.run_home_intake_turn(
+        {**state, "question": "只复习一次函数", "attached_file_ids": ["file_b", "file_a"]},
+    )
+    assert "关联当前选择的 2 份资料" in result.assistant_response
+    await home_intake.run_home_intake_turn({**state, "question": "确认创建", "attached_file_ids": []})
+
+    assert classified_files == [["file_a"], ["file_a", "file_b"]]
+    assert created_files == [["file_a", "file_b"]]
+    with Session(intake_db) as session:
+        assert session.get(ChatSession, "intake").meta_json["other"] == "preserved"
+
+
+def test_home_intake_materials_are_scoped_to_owned_session(intake_db) -> None:
+    with Session(intake_db) as session:
+        session.add_all([
+            ChatSession(id="first", course_id=GLOBAL_COURSE, user_id="user_1", meta_json={"home_intake": {"attached_file_ids": ["file_a"]}}),
+            ChatSession(id="second", course_id=GLOBAL_COURSE, user_id="user_1"),
+        ])
+        session.commit()
+
+    assert home_intake._remember_attached_file_ids(session_id="first", user_id="user_1", file_ids=[]) == ["file_a"]
+    assert home_intake._remember_attached_file_ids(session_id="second", user_id="user_1", file_ids=[]) == []
+    assert home_intake._remember_attached_file_ids(session_id="first", user_id="user_2", file_ids=["file_b"]) == ["file_b"]
+    assert home_intake._remember_attached_file_ids(session_id="first", user_id="user_1", file_ids=[]) == ["file_a"]
