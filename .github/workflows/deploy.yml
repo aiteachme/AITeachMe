@@ -484,7 +484,7 @@ jobs:
           # from the API on every deployment. Never pin a backend pod IP.
           upstream_service="${AITEACHME_API_UPSTREAM#http://}"
           upstream_service="${upstream_service%%.*}"
-          runtime_api_upstream="$(
+          AITEACHME_API_UPSTREAM="$(
             kubectl -n "${SEALOS_NAMESPACE}" get "service/${upstream_service}" -o json \
               | python -c '
           import ipaddress, json, sys
@@ -497,7 +497,7 @@ jobs:
           print(upstream._replace(netloc=authority).geturl())
           ' "${AITEACHME_API_UPSTREAM}"
           )"
-          echo "Frontend Service upstream: ${runtime_api_upstream}"
+          echo "Frontend Service upstream: ${AITEACHME_API_UPSTREAM}"
 
           frontend_container_name="$(
             kubectl -n "${SEALOS_NAMESPACE}" get \
@@ -511,7 +511,7 @@ jobs:
             --arg container_name "${frontend_container_name}" \
             --arg image "${{ steps.image.outputs.image }}" \
             --arg pull_secret "${SEALOS_IMAGE_PULL_SECRET}" \
-            --arg api_upstream "${runtime_api_upstream}" \
+            --arg api_upstream "${AITEACHME_API_UPSTREAM}" \
             --arg public_url "${FRONTEND_PUBLIC_URL}" \
             --arg body_limit "${AITEACHME_NGINX_IMPORT_CLIENT_MAX_BODY_SIZE}" \
             --argjson rollout_timeout "${FRONTEND_ROLLOUT_TIMEOUT_SECONDS}" \
