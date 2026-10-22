@@ -387,6 +387,15 @@ function isBackendDisconnectError(error: unknown): boolean {
   return error instanceof TypeError;
 }
 
+function needsBackendHealthProbe(error: unknown): boolean {
+  const apiError = error as ApiErrorShape;
+  return (
+    [502, 503, 504].includes(apiError?.response?.status ?? 0) ||
+    apiError?.code === "ECONNABORTED" ||
+    apiError?.code === "ETIMEDOUT"
+  );
+}
+
 export async function runTrackedApiFetch<T>(
   url: string,
   init: RequestInit,
@@ -406,6 +415,9 @@ export async function runTrackedApiFetch<T>(
       headers: createApiFetchHeaders(init.headers, init.method),
       signal: trackedSignal.signal,
     });
+    if ([502, 503, 504].includes(response.status)) {
+      void reportBackendConnectionIssue(disconnectReason);
+    }
     return await consume(response);
   } catch (error) {
     if (isBackendDisconnectError(error)) {
@@ -442,6 +454,9 @@ export async function runAnonymousApiFetch<T>(
       referrerPolicy: "no-referrer",
       signal: trackedSignal.signal,
     });
+    if ([502, 503, 504].includes(response.status)) {
+      void reportBackendConnectionIssue(disconnectReason);
+    }
     return await consume(response);
   } catch (error) {
     if (isBackendDisconnectError(error)) {
@@ -1060,6 +1075,10 @@ instance.interceptors.response.use(
     }
     if (isBackendDisconnectError(error)) {
       markBackendOffline("axios_disconnect");
+    } else if (needsBackendHealthProbe(error)) {
+      // A single slow or unavailable endpoint does not mean the whole backend
+      // is offline. Confirm with health before pausing requests and recovering.
+      void reportBackendConnectionIssue("axios_unavailable");
     }
     return Promise.reject(error);
   },

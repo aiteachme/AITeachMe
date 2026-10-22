@@ -72,7 +72,7 @@ def list_available_courses() -> list[CoursePackageItem]:
             catalog_url=get_demo_courses_index_url(),
             error=str(exc),
         )
-        return []
+        raise
 
 
 def download_course_package(identifier: str) -> tuple[Path, str]:
@@ -306,7 +306,7 @@ def _extract_catalog_items(payload: Any) -> list[dict[str, Any]]:
         "demo_course_catalog_shape_unrecognized",
         payload_type=type(payload).__name__,
     )
-    return []
+    raise DemoCourseCatalogUnavailableError(reason="演示课程目录格式无效，请稍后重试。")
 
 
 def _build_remote_course_descriptor(

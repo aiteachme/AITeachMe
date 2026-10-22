@@ -14,6 +14,31 @@ def reset_remote_catalog_cache(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(courses_module, "_REMOTE_DESCRIPTOR_CACHE", None)
 
 
+def test_catalog_failure_is_not_cached_as_an_empty_list_and_recovers(monkeypatch):
+    attempts = 0
+
+    def fetch_catalog(_url):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise DemoCourseCatalogUnavailableError(reason="连接超时")
+        return [{"id": "recovered", "course_name": "Recovered", "package_url": "atmx/recovered.atmx"}]
+
+    monkeypatch.setattr(courses_module, "_fetch_remote_catalog_payload", fetch_catalog)
+    with pytest.raises(DemoCourseCatalogUnavailableError):
+        courses_module.list_available_courses()
+    assert [item.filename for item in courses_module.list_available_courses()] == ["recovered"]
+    assert attempts == 2
+
+
+def test_invalid_catalog_is_distinct_from_an_explicit_empty_catalog(monkeypatch):
+    monkeypatch.setattr(courses_module, "_fetch_remote_catalog_payload", lambda _url: {"message": "unavailable"})
+    with pytest.raises(DemoCourseCatalogUnavailableError):
+        courses_module.list_available_courses()
+    monkeypatch.setattr(courses_module, "_fetch_remote_catalog_payload", lambda _url: {"courses": []})
+    assert courses_module.list_available_courses() == []
+
+
 def test_demo_course_list_reuses_catalog_cache_without_package_probes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

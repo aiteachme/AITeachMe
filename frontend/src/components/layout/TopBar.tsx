@@ -194,11 +194,9 @@ export function TopBar({ className }: TopBarProps) {
   const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
   const authSessionQuery = useAuthSession();
   const authUser = authSessionQuery.data?.current_user ?? null;
-  const authEnabled = authSessionQuery.isSuccess
+  const authEnabled = authSessionQuery.data
     ? Boolean(authSessionQuery.data?.auth_enabled)
-    : authSessionQuery.isError
-      ? false
-      : null;
+    : null;
 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
@@ -699,7 +697,7 @@ export function TopBar({ className }: TopBarProps) {
         >
           <button
             type="button"
-            onClick={() => setIsDropdownOpen((value) => !value)}
+            onClick={() => setIsDropdownOpen(true)}
             className="inline-flex h-9 items-center gap-2 rounded-full border border-slate-200/80 bg-white/90 px-2.5 pr-3 text-xs font-medium text-slate-600 shadow-[0_2px_10px_rgba(15,23,42,0.04)] transition-colors hover:border-slate-300 hover:bg-white hover:text-slate-900 dark:border-slate-800 dark:bg-slate-900/90 dark:text-slate-300 dark:hover:border-slate-700 dark:hover:bg-slate-900 dark:hover:text-slate-100"
             title={identitySubtitle}
             aria-label="身份菜单"
@@ -779,6 +777,13 @@ export function TopBar({ className }: TopBarProps) {
                         <span>注册账号</span>
                       </button>
                     </>
+                  ) : authEnabled === null ? (
+                    <div className="px-4 py-2 text-sm text-slate-500 dark:text-slate-400" role="status">
+                      <p>{authSessionQuery.isError || authSessionQuery.isPaused ? "登录服务暂时无法连接，正在重连…" : "正在连接登录服务…"}</p>
+                      <button type="button" onClick={() => void authSessionQuery.refetch()} disabled={authSessionQuery.isFetching} className="mt-2 text-indigo-600 hover:underline disabled:opacity-50 dark:text-indigo-400">
+                        重试登录服务
+                      </button>
+                    </div>
                   ) : (
                     <div className="px-4 py-2 text-sm text-slate-500 dark:text-slate-400">
                       {authUser?.is_local
@@ -898,6 +903,13 @@ export function TopBar({ className }: TopBarProps) {
                     <span>注册账号</span>
                   </button>
                 </>
+              ) : authEnabled === null ? (
+                <div className="px-4 py-2.5 text-sm text-slate-500 dark:text-slate-400" role="status">
+                  <p>{authSessionQuery.isError || authSessionQuery.isPaused ? "登录服务暂时无法连接，正在重连…" : "正在连接登录服务…"}</p>
+                  <button type="button" onClick={() => void authSessionQuery.refetch()} disabled={authSessionQuery.isFetching} className="mt-2 text-indigo-600 hover:underline disabled:opacity-50 dark:text-indigo-400">
+                    重试登录服务
+                  </button>
+                </div>
               ) : (
                 <div className="px-4 py-2.5 text-sm text-slate-500 dark:text-slate-400">
                   {authUser?.is_local

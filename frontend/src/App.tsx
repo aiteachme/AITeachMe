@@ -130,11 +130,16 @@ function RuntimeSettingsBootstrap() {
   useEffect(() => {
     const cachedOverview = getStoredSystemSettingsOverview();
     void ensureSystemSettingsOverviewLoaded();
+    const reloadSettings = () => void ensureSystemSettingsOverviewLoaded(true);
+    window.addEventListener(BACKEND_ONLINE_EVENT, reloadSettings);
+    let refreshTimer: number | undefined;
     if (cachedOverview && typeof window !== "undefined") {
-      window.setTimeout(() => {
-        void ensureSystemSettingsOverviewLoaded(true);
-      }, 1200);
+      refreshTimer = window.setTimeout(reloadSettings, 1200);
     }
+    return () => {
+      window.removeEventListener(BACKEND_ONLINE_EVENT, reloadSettings);
+      window.clearTimeout(refreshTimer);
+    };
   }, []);
   return null;
 }

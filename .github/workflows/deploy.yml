@@ -922,6 +922,44 @@ jobs:
           chmod 600 "${kube_dir}/config"
           echo "KUBECONFIG=${kube_dir}/config" >> "$GITHUB_ENV"
 
+      - name: Inspect backend availability before rollout
+        if: steps.optin.outputs.enabled == 'true'
+        timeout-minutes: 2
+        shell: bash
+        run: |
+          set +e
+          deployment="$(kubectl --request-timeout=10s -n "${SEALOS_NAMESPACE}" get "deployment/${SEALOS_BACKEND_DEPLOYMENT}" -o json)"
+          if ! jq -e '.spec.selector.matchLabels' <<< "${deployment}" >/dev/null; then
+            echo "::warning::Backend availability inspection could not read the deployment."
+            exit 0
+          fi
+          selector="$(jq -r '.spec.selector.matchLabels | to_entries | map(.key + "=" + .value) | join(",")' <<< "${deployment}")"
+          container="$(jq -r '.spec.template.spec.containers[0].name' <<< "${deployment}")"
+          pods="$(kubectl --request-timeout=10s -n "${SEALOS_NAMESPACE}" get pods -l "${selector}" -o json)"
+          pod_summary="$(jq -c '[.items[] | {name: .metadata.name, phase: .status.phase, conditions: [.status.conditions[]? | {type, status, reason}], containers: [.status.containerStatuses[]? | {name, ready, restartCount, waiting: .state.waiting.reason, terminated: (.state.terminated | {reason, exitCode})}]}]' <<< "${pods}")"
+          echo "::notice title=Backend pods before rollout::${pod_summary}"
+          upstream_host="${AITEACHME_API_UPSTREAM#http://}"
+          service="${upstream_host%%.*}"
+          endpoints="$(kubectl --request-timeout=10s -n "${SEALOS_NAMESPACE}" get "endpoints/${service}" -o json | jq -c '{name: .metadata.name, subsets: .subsets}')"
+          echo "::notice title=Backend endpoints before rollout::${endpoints}"
+          for pod in $(jq -r '.items[] | select(.status.phase == "Running") | .metadata.name' <<< "${pods}"); do
+            if timeout 10s kubectl --request-timeout=10s -n "${SEALOS_NAMESPACE}" exec "${pod}" -c "${container}" -- python -c 'import urllib.request; r=urllib.request.urlopen("http://127.0.0.1:9020/api/health", timeout=3); assert r.status == 200'; then
+              echo "::notice title=Backend health before rollout::${pod}: local health passed"
+            else
+              echo "::warning title=Backend health before rollout::${pod}: local health failed"
+            fi
+          done
+          frontend_pods="$(kubectl --request-timeout=10s -n "${SEALOS_NAMESPACE}" get pods --field-selector=status.phase=Running -o json | jq -r --arg prefix "${SEALOS_FRONTEND_DEPLOYMENT}-" '.items[] | select(.metadata.name | startswith($prefix)) | .metadata.name')"
+          for pod in ${frontend_pods}; do
+            for probe in "${AITEACHME_API_UPSTREAM%/}/api/health" "http://127.0.0.1/api/health"; do
+              if timeout 10s kubectl --request-timeout=10s -n "${SEALOS_NAMESPACE}" exec "${pod}" -- wget -q -O /dev/null -T 4 "${probe}"; then
+                echo "::notice title=Frontend upstream before rollout::${pod}: ${probe} passed"
+              else
+                echo "::warning title=Frontend upstream before rollout::${pod}: ${probe} failed"
+              fi
+            done
+          done
+
       - name: Update Sealos deployment image
         if: steps.optin.outputs.enabled == 'true'
         shell: bash

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { AxiosError } from "axios";
 
 class BrowserWindowStub extends EventTarget {
   location = {
@@ -37,6 +38,7 @@ const {
   API_AUTH_CHANGED_EVENT,
   BACKEND_OFFLINE_EVENT,
   abortActiveApiRequests,
+  apiClient,
   getApiAuthGeneration,
   isBackendOffline,
   markBackendOnline,
@@ -51,6 +53,59 @@ const encoder = new TextEncoder();
 function delay(ms) {
   return new Promise((resolve) => globalThis.setTimeout(resolve, ms));
 }
+
+test("gateway failures and timeouts probe health and recover without replaying requests", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    markBackendOnline();
+    globalThis.fetch = originalFetch;
+  });
+  for (const failure of [{ status: 502 }, { status: 503 }, { status: 504 }, { code: "ECONNABORTED" }, { code: "ETIMEDOUT" }]) {
+    let healthy = false;
+    let healthRequests = 0;
+    let apiRequests = 0;
+    globalThis.fetch = async () => {
+      healthRequests += 1;
+      return new Response(null, { status: healthy ? 200 : 503 });
+    };
+    await assert.rejects(apiClient({
+      url: "/api/v1/auth/user",
+      adapter: async (config) => {
+        apiRequests += 1;
+        throw new AxiosError("unavailable", failure.code ?? "ERR_BAD_RESPONSE", config, null,
+          failure.status ? { status: failure.status, data: null, headers: {}, config } : undefined);
+      },
+    }));
+    await withTimeout((async () => {
+      while (!isBackendOffline()) await delay(5);
+    })());
+    assert.equal(healthRequests, 1);
+    healthy = true;
+    await withTimeout((async () => {
+      while (isBackendOffline()) await delay(10);
+    })(), 3_000);
+    assert.equal(apiRequests, 1, "failed requests must not be automatically replayed by the HTTP client");
+  }
+});
+
+test("an isolated slow endpoint does not mark a healthy backend offline", async (t) => {
+  const originalFetch = globalThis.fetch;
+  let probes = 0;
+  globalThis.fetch = async () => {
+    probes += 1;
+    return new Response(null, { status: 200 });
+  };
+  t.after(() => {
+    markBackendOnline();
+    globalThis.fetch = originalFetch;
+  });
+  await assert.rejects(apiClient({ url: "/api/v1/demo-courses", adapter: async (config) => {
+    throw new AxiosError("timeout", "ECONNABORTED", config);
+  }}));
+  assert.equal(await reportBackendConnectionIssue(), true);
+  assert.equal(probes >= 1, true);
+  assert.equal(isBackendOffline(), false);
+});
 
 function withTimeout(promise, timeoutMs = 2_000) {
   let timer;

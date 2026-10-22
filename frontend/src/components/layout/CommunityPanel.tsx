@@ -1,7 +1,7 @@
 import { memo, useEffect, useState, type ComponentType, type CSSProperties } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Loader2, X } from "lucide-react";
-import { buildApiUrl } from "../../api/client";
+import { Loader2, RefreshCw, X } from "lucide-react";
+import { BACKEND_ONLINE_EVENT, buildApiUrl, reportBackendConnectionIssue } from "../../api/client";
 
 /* ------------------------------------------------------------------ */
 /*  Inline brand icons                                                 */
@@ -101,7 +101,7 @@ const communityQrPreloadCache = new Map<string, CommunityQrPreloadEntry>();
 function withCacheBuster(channel: CommunityChannel, entry: CommunityQrPreloadEntry, forceRefresh = false): string {
   const now = Date.now();
   if (forceRefresh || !entry.cacheToken || now - entry.cacheToken > QR_CACHE_BUSTER_TTL_MS) {
-    entry.cacheToken = now;
+    entry.cacheToken = Math.max(now, entry.cacheToken + 1);
   }
 
   const src = buildApiUrl(channel.qrPath);
@@ -138,10 +138,10 @@ export function ensureCommunityQrPreloaded(): { src: string; status: QrStatus } 
   return defaultResult;
 }
 
-function ensureCommunityChannelPreloaded(channel: CommunityChannel): { src: string; status: QrStatus } {
+function ensureCommunityChannelPreloaded(channel: CommunityChannel, forceRefresh = false): { src: string; status: QrStatus } {
   const entry = getPreloadEntry(channel);
   if (
-    entry.image &&
+    !forceRefresh && entry.image &&
     entry.src &&
     entry.status !== "error"
   ) {
@@ -151,20 +151,23 @@ function ensureCommunityChannelPreloaded(channel: CommunityChannel): { src: stri
     return { src: entry.src, status: entry.status };
   }
 
-  entry.src = withCacheBuster(channel, entry, entry.status === "error");
+  entry.src = withCacheBuster(channel, entry, forceRefresh || entry.status === "error");
   entry.status = "loading";
   const image = new Image();
   image.decoding = "async";
   image.loading = "eager";
   image.onload = () => {
+    if (entry.image !== image) return;
     entry.status = "ready";
   };
   image.onerror = () => {
+    if (entry.image !== image) return;
     entry.status = "error";
     entry.image = null;
+    void reportBackendConnectionIssue("community_qr_unavailable");
   };
-  image.src = entry.src;
   entry.image = image;
+  image.src = entry.src;
   return { src: entry.src, status: entry.status };
 }
 
@@ -192,25 +195,17 @@ export const CommunityModal = memo(function CommunityModal({
       return;
     }
 
-    let ignore = false;
-    const nextEntries = COMMUNITY_CHANNELS.reduce<Record<string, CommunityQrViewEntry>>(
-      (entries, channel) => {
-        const preloaded = ensureCommunityChannelPreloaded(channel);
-        entries[channel.id] = {
-          src: preloaded.src,
-          status: preloaded.status === "ready" ? "ready" : "loading",
-        };
-        return entries;
-      },
-      {},
-    );
-    if (!ignore) {
-      setQrEntries(nextEntries);
-    }
-
-    return () => {
-      ignore = true;
+    const loadImages = (recover = false) => {
+      const entries = Object.fromEntries(COMMUNITY_CHANNELS.map((channel) => [
+        channel.id,
+        ensureCommunityChannelPreloaded(channel, recover && getPreloadEntry(channel).status !== "ready"),
+      ]));
+      setQrEntries(entries);
     };
+    loadImages();
+    const recoverImages = () => loadImages(true);
+    window.addEventListener(BACKEND_ONLINE_EVENT, recoverImages);
+    return () => window.removeEventListener(BACKEND_ONLINE_EVENT, recoverImages);
   }, [isOpen]);
 
   return (
@@ -266,7 +261,13 @@ export const CommunityModal = memo(function CommunityModal({
                             style={QR_BOX_STYLE}
                           >
                             <span className="font-medium text-slate-700 dark:text-slate-200">图片加载失败</span>
-                            <span className="mt-2">可通过头像菜单里的意见反馈告知我们。</span>
+                            <button type="button" onClick={() => {
+                              const next = ensureCommunityChannelPreloaded(channel, true);
+                              setQrEntries((entries) => ({ ...entries, [channel.id]: next }));
+                            }} className="mt-3 inline-flex items-center gap-1.5 text-indigo-600 hover:underline dark:text-indigo-400" aria-label={`重新加载${channel.qrAlt}`}>
+                              <RefreshCw className="h-4 w-4" />
+                              重新加载
+                            </button>
                           </div>
                         ) : (
                           <div
