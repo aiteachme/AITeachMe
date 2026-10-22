@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import hmac
 import json
@@ -38,6 +39,14 @@ _AUTH_ERROR_CODES = {
     "RequestExpired",
     "SignatureDoesNotMatch",
 }
+
+
+def _add_delete_objects_md5(params: dict[str, Any], **_kwargs: Any) -> None:
+    # S3-compatible services may require MD5 even when the SDK sends CRC32.
+    # Hash the SDK's serialized XML before signing, including escaped UTF-8 keys.
+    if "Content-MD5" not in params["headers"]:
+        digest = hashlib.md5(params["body"], usedforsecurity=False).digest()
+        params["headers"]["Content-MD5"] = base64.b64encode(digest).decode("ascii")
 
 
 def _load_boto3_dependencies() -> tuple[Any, type[Any], type[Exception]]:
@@ -156,6 +165,7 @@ class S3ArtifactStore(ArtifactStore):
                 region_name=self._s3_region or "us-east-1",
                 config=self._boto_config,
             )
+            self._client.meta.events.register("before-call.s3.DeleteObjects", _add_delete_objects_md5)
             return self._client
 
     def _resolve_credentials(self) -> _ResolvedS3Credentials:
