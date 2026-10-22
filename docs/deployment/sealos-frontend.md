@@ -84,12 +84,16 @@ SEALOS_IMAGE_PULL_SECRET=<image-pull-secret>
 
 缺少 `SEALOS_KUBECONFIG_B64`、`ALIYUN_ACR_USERNAME` 或 `ALIYUN_ACR_PASSWORD` 时，Sealos 部署 job 会跳过，不会执行真实部署。
 
+部署前端时，workflow 会根据 `AITEACHME_API_UPSTREAM` 中的 Service 名称，通过 Kubernetes API 查询该 Service 的 ClusterIP，再写入前端容器的实际 upstream。该虚拟 IP 在后端 Pod 重建时保持不变，每次发布都会重新查询，避免 Nginx 长期持有的 DNS 连接在集群维护后失效，导致登录、演示课程和社区图片等所有 API 一起返回 502。不要把后端 Pod IP 写入配置；若手动重建 Service，也应重新执行前端部署以更新 ClusterIP。
+
 生成 kubeconfig base64：
 
 ```powershell
 $raw = Get-Content -Raw -Encoding UTF8 "<path-to-kubeconfig.yaml>"
 [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($raw))
 ```
+
+若部署报 `x509: certificate signed by unknown authority`，应从当前 Sealos 集群重新下载 kubeconfig，验证后更新 `SEALOS_KUBECONFIG_B64` 并重试发布。不要关闭 TLS 证书验证。证书信任失败发生在部署连接阶段，和网站内部 DNS 故障应分别检查。
 
 ## 验证
 

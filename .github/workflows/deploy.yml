@@ -24,9 +24,9 @@ env:
   # Non-secret deployment constants are intentionally kept here for maintainer
   # convenience. Do not put deploy hooks, kubeconfig, registry passwords, or
   # other credentials here; those must stay in GitHub Secrets.
-  # Nginx resolves runtime proxy_pass variables with its own resolver, which
-  # does not apply Kubernetes search domains. Keep the backend service as a
-  # fully qualified cluster DNS name rather than the Sealos short internal URL.
+  # Keep the Service DNS name as the deployment source. The frontend rollout
+  # discovers its stable ClusterIP through the Kubernetes API so Nginx does
+  # not depend on a persistent UDP DNS connection for every API request.
   AITEACHME_API_UPSTREAM: http://atm-d-tgkmhxmhacer.ns-icbq3ltw.svc.cluster.local:9020
   AITEACHME_NGINX_IMPORT_CLIENT_MAX_BODY_SIZE: 260m
   BACKEND_ACR_NAMESPACE: aiteachme
@@ -478,6 +478,27 @@ jobs:
             "secret/${SEALOS_IMAGE_PULL_SECRET}" \
             >/dev/null
 
+          # A stale Nginx DNS socket can outlive a cluster DNS restart even
+          # while fresh lookups succeed. Use the Service virtual IP, which
+          # remains stable across backend pod replacements, and refresh it
+          # from the API on every deployment. Never pin a backend pod IP.
+          upstream_service="${AITEACHME_API_UPSTREAM#http://}"
+          upstream_service="${upstream_service%%.*}"
+          runtime_api_upstream="$(
+            kubectl -n "${SEALOS_NAMESPACE}" get "service/${upstream_service}" -o json \
+              | python -c '
+          import ipaddress, json, sys
+          from urllib.parse import urlsplit
+          upstream = urlsplit(sys.argv[1])
+          address = ipaddress.ip_address(json.load(sys.stdin)["spec"]["clusterIP"])
+          authority = f"[{address}]" if address.version == 6 else str(address)
+          if upstream.port is not None:
+              authority += f":{upstream.port}"
+          print(upstream._replace(netloc=authority).geturl())
+          ' "${AITEACHME_API_UPSTREAM}"
+          )"
+          echo "Frontend Service upstream: ${runtime_api_upstream}"
+
           frontend_container_name="$(
             kubectl -n "${SEALOS_NAMESPACE}" get \
               "deployment/${SEALOS_FRONTEND_DEPLOYMENT}" -o json \
@@ -490,7 +511,7 @@ jobs:
             --arg container_name "${frontend_container_name}" \
             --arg image "${{ steps.image.outputs.image }}" \
             --arg pull_secret "${SEALOS_IMAGE_PULL_SECRET}" \
-            --arg api_upstream "${AITEACHME_API_UPSTREAM}" \
+            --arg api_upstream "${runtime_api_upstream}" \
             --arg public_url "${FRONTEND_PUBLIC_URL}" \
             --arg body_limit "${AITEACHME_NGINX_IMPORT_CLIENT_MAX_BODY_SIZE}" \
             --argjson rollout_timeout "${FRONTEND_ROLLOUT_TIMEOUT_SECONDS}" \
