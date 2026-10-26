@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-10-19T03:08:47.212249",
-  "total_commits_analyzed": 2227,
+  "generated_at": "2026-10-26T03:02:06.432413",
+  "total_commits_analyzed": 2253,
   "stats": [
     {
       "date": "2026-03-11",
@@ -17817,6 +17817,214 @@
       "code_lines": 297997,
       "other_lines": 53341,
       "message": "fix: 补齐修补与发布阶段的题型配额校验"
+    },
+    {
+      "date": "2026-10-19",
+      "commit": "7d63f51",
+      "total_lines": 351338,
+      "code_lines": 297997,
+      "other_lines": 53341,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-10-19",
+      "commit": "ab177d3",
+      "total_lines": 346830,
+      "code_lines": 294429,
+      "other_lines": 52401,
+      "message": "feat(digest): 接入独立图文构建链路与图片理解开关"
+    },
+    {
+      "date": "2026-10-20",
+      "commit": "84c4028",
+      "total_lines": 351718,
+      "code_lines": 298313,
+      "other_lines": 53405,
+      "message": "fix: 校验章节题量合同语义"
+    },
+    {
+      "date": "2026-10-21",
+      "commit": "3d86b48",
+      "total_lines": 358937,
+      "code_lines": 304692,
+      "other_lines": 54245,
+      "message": "feat: 合并 dev_cy 并修复构建与图谱交互问题"
+    },
+    {
+      "date": "2026-10-21",
+      "commit": "47467a9",
+      "total_lines": 359133,
+      "code_lines": 304847,
+      "other_lines": 54286,
+      "message": "fix: 阻止网页读取访问内网和重绑定地址"
+    },
+    {
+      "date": "2026-10-21",
+      "commit": "1a25d9c",
+      "total_lines": 359355,
+      "code_lines": 305025,
+      "other_lines": 54330,
+      "message": "fix: 修复模型流终止处理和公开课程下载失败"
+    },
+    {
+      "date": "2026-10-21",
+      "commit": "3124798",
+      "total_lines": 359732,
+      "code_lines": 305248,
+      "other_lines": 54484,
+      "message": "docs: 记录核心功能修复与本地验收结果"
+    },
+    {
+      "date": "2026-10-21",
+      "commit": "12f889a",
+      "total_lines": 359742,
+      "code_lines": 305255,
+      "other_lines": 54487,
+      "message": "docs: 补充图片理解与复习指南实测记录"
+    },
+    {
+      "date": "2026-10-21",
+      "commit": "589a134",
+      "total_lines": 359759,
+      "code_lines": 305267,
+      "other_lines": 54492,
+      "message": "docs: 记录当前线上核心流程复验结果"
+    },
+    {
+      "date": "2026-10-21",
+      "commit": "1611c13",
+      "total_lines": 359759,
+      "code_lines": 305267,
+      "other_lines": 54492,
+      "message": "docs: 记录本次快进发布授权"
+    },
+    {
+      "date": "2026-10-21",
+      "commit": "ab42a08",
+      "total_lines": 359859,
+      "code_lines": 305348,
+      "other_lines": 54511,
+      "message": "fix: 模型过载时正确切换备用端点"
+    },
+    {
+      "date": "2026-10-21",
+      "commit": "2906813",
+      "total_lines": 359891,
+      "code_lines": 305370,
+      "other_lines": 54521,
+      "message": "docs: 记录核心功能上线验收结果 [skip ci]"
+    },
+    {
+      "date": "2026-10-21",
+      "commit": "6893838",
+      "total_lines": 360000,
+      "code_lines": 305461,
+      "other_lines": 54539,
+      "message": "fix: 保留首页多轮建课对话中的已选资料"
+    },
+    {
+      "date": "2026-10-21",
+      "commit": "9c32213",
+      "total_lines": 360323,
+      "code_lines": 305742,
+      "other_lines": 54581,
+      "message": "fix: 统一构建数量合同并稳定生成独立题组"
+    },
+    {
+      "date": "2026-10-21",
+      "commit": "80e0cb8",
+      "total_lines": 360671,
+      "code_lines": 306046,
+      "other_lines": 54625,
+      "message": "fix: 按题号修补大题组并修正连续题块识别"
+    },
+    {
+      "date": "2026-10-21",
+      "commit": "25a1c4b",
+      "total_lines": 360811,
+      "code_lines": 306127,
+      "other_lines": 54684,
+      "message": "docs: 记录指南验收与通用构建修复结果 [skip ci]"
+    },
+    {
+      "date": "2026-10-22",
+      "commit": "cd4a9e4",
+      "total_lines": 360266,
+      "code_lines": 305594,
+      "other_lines": 54672,
+      "message": "fix: 简化文档修复流程并消除审核误判失败"
+    },
+    {
+      "date": "2026-10-22",
+      "commit": "a062585",
+      "total_lines": 360304,
+      "code_lines": 305624,
+      "other_lines": 54680,
+      "message": "fix: 使用推理模型直接完成内容纠错"
+    },
+    {
+      "date": "2026-10-22",
+      "commit": "302d777",
+      "total_lines": 360334,
+      "code_lines": 305642,
+      "other_lines": 54692,
+      "message": "docs: 记录构建修复最终线上验收结果 [skip ci]"
+    },
+    {
+      "date": "2026-10-22",
+      "commit": "5252604",
+      "total_lines": 360481,
+      "code_lines": 305776,
+      "other_lines": 54705,
+      "message": "fix: 防止导入课程的历史构建状态锁住训练中心"
+    },
+    {
+      "date": "2026-10-22",
+      "commit": "cbeb85c",
+      "total_lines": 360543,
+      "code_lines": 305810,
+      "other_lines": 54733,
+      "message": "docs: 记录课程导入训练入口修复验收结果 [skip ci]"
+    },
+    {
+      "date": "2026-10-22",
+      "commit": "64e2225",
+      "total_lines": 360620,
+      "code_lines": 305879,
+      "other_lines": 54741,
+      "message": "fix: 修复服务中断后登录和演示课程入口消失"
+    },
+    {
+      "date": "2026-10-22",
+      "commit": "78836fd",
+      "total_lines": 360624,
+      "code_lines": 305881,
+      "other_lines": 54743,
+      "message": "fix: 避免集群 DNS 连接失效导致全部接口中断"
+    },
+    {
+      "date": "2026-10-22",
+      "commit": "338dc30",
+      "total_lines": 360624,
+      "code_lines": 305881,
+      "other_lines": 54743,
+      "message": "fix: 保持前端发布补丁的上游参数兼容"
+    },
+    {
+      "date": "2026-10-22",
+      "commit": "54d0b61",
+      "total_lines": 360624,
+      "code_lines": 305881,
+      "other_lines": 54743,
+      "message": "chore: release v0.1.7"
+    },
+    {
+      "date": "2026-10-22",
+      "commit": "25f07fc",
+      "total_lines": 360697,
+      "code_lines": 305938,
+      "other_lines": 54759,
+      "message": "fix: 修复对象存储批量删除缺少校验头"
     }
   ]
 }
