@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-10-26T03:02:06.432413",
-  "total_commits_analyzed": 2253,
+  "generated_at": "2026-11-02T04:09:53.280020",
+  "total_commits_analyzed": 2255,
   "stats": [
     {
       "date": "2026-03-11",
@@ -18025,6 +18025,22 @@
       "code_lines": 305938,
       "other_lines": 54759,
       "message": "fix: 修复对象存储批量删除缺少校验头"
+    },
+    {
+      "date": "2026-10-26",
+      "commit": "bdadbb3",
+      "total_lines": 360697,
+      "code_lines": 305938,
+      "other_lines": 54759,
+      "message": "chore: update code statistics [skip ci]"
+    },
+    {
+      "date": "2026-10-27",
+      "commit": "dbab43b",
+      "total_lines": 360697,
+      "code_lines": 305938,
+      "other_lines": 54759,
+      "message": "chore: release v0.1.8"
     }
   ]
 }
